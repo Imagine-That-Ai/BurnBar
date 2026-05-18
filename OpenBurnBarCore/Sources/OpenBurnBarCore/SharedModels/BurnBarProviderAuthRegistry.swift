@@ -117,6 +117,10 @@ public struct BurnBarProviderAuthMethod: Codable, Hashable, Sendable, Identifiab
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return .empty }
 
+        if id == "opencode-auth-json" {
+            return Self.validateOpenCodeRouteCredential(trimmed)
+        }
+
         if let prefix = prefixHint,
            !trimmed.lowercased().hasPrefix(prefix.lowercased()) {
             return .warning("Expected this credential to start with \(prefix).")
@@ -136,6 +140,66 @@ public struct BurnBarProviderAuthMethod: Codable, Hashable, Sendable, Identifiab
         }
 
         return .ok
+    }
+
+    private static func validateOpenCodeRouteCredential(_ trimmed: String) -> BurnBarProviderAuthValidation {
+        if trimmed.first == "{" || trimmed.first == "[" {
+            guard let data = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) else {
+                return .warning("Paste valid OpenCode auth.json JSON or the opencode-go key value.")
+            }
+
+            guard let key = findOpenCodeRouteKey(in: json),
+                  key.count >= 12 else {
+                return .warning("OpenCode auth.json must include an opencode-go key.")
+            }
+
+            return .ok
+        }
+
+        if trimmed.count < 12 {
+            return .warning("OpenCode route keys are usually longer than 12 characters.")
+        }
+
+        return .ok
+    }
+
+    private static func findOpenCodeRouteKey(in value: Any) -> String? {
+        if let dictionary = value as? [String: Any] {
+            if let openCodeGo = dictionary["opencode-go"],
+               let key = findOpenCodeRouteKey(in: openCodeGo) {
+                return key
+            }
+
+            if let key = dictionary["key"] as? String {
+                let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+
+        if let array = value as? [Any] {
+            for item in array {
+                guard let dictionary = item as? [String: Any],
+                      let openCodeGo = dictionary["opencode-go"],
+                      let key = findOpenCodeRouteKey(in: openCodeGo) else {
+                    continue
+                }
+                return key
+            }
+        }
+
+        if let dictionary = value as? [String: Any] {
+            for keyName in ["opencodeGo", "opencode_go", "opencode"] {
+                if let candidate = dictionary[keyName],
+                   let key = findOpenCodeRouteKey(in: candidate) {
+                    return key
+                }
+            }
+        }
+
+        return nil
     }
 }
 
@@ -421,9 +485,9 @@ public enum BurnBarProviderAuthRegistry {
                 id: "ollama-cloud-key",
                 kind: .apiKey,
                 displayName: "Ollama Cloud Key",
-                summary: "Routes traffic through ollama.com gateway and tracks quota.",
-                helperText: "Generate a key at ollama.com/settings/keys. Local Ollama runtimes don't need this — they're auto-detected.",
-                placeholder: "sk-ollama-…",
+                summary: "Routes CLI traffic through the Ollama Cloud gateway.",
+                helperText: "Generate a key at ollama.com/settings/keys. Signing in to Ollama Cloud shows quota and account state; this API key is what makes BurnBar proxy requests.",
+                placeholder: "Ollama API key",
                 dashboardURL: "https://ollama.com/settings/keys",
                 dashboardLabel: "Ollama Cloud keys",
                 storage: .daemonSlot,
@@ -432,8 +496,8 @@ public enum BurnBarProviderAuthRegistry {
             )
         ],
         summary: "Ollama Cloud — managed inference for open models.",
-        proxyHint: "Routed via the Ollama Cloud gateway (OpenAI-compatible).",
-        quotaHint: "Quota windows pulled from the Ollama Cloud dashboard."
+        proxyHint: "Proxy routing requires an Ollama Cloud API key; browser sign-in alone is quota/account visibility.",
+        quotaHint: "Quota windows come from the Ollama Cloud dashboard sign-in."
     )
 
     private static let openAIDescriptor = BurnBarProviderAuthDescriptor(
@@ -466,12 +530,25 @@ public enum BurnBarProviderAuthRegistry {
                 storage: .daemonSlot,
                 unlocksProxyRouting: false,
                 unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "openai-codex-oauth",
+                kind: .browserLogin,
+                displayName: "Sign in with OpenAI / Codex",
+                summary: "Use your local Codex ChatGPT login for account and quota visibility.",
+                helperText: "Launch Codex login from Account Switcher or run `codex login`; OpenBurnBar detects the OAuth session locally. OpenAI API proxy routing still requires an API key because ChatGPT OAuth tokens are not OpenAI API keys.",
+                placeholder: "Codex ChatGPT OAuth session",
+                dashboardURL: "https://chatgpt.com/",
+                dashboardLabel: "Open ChatGPT sign-in",
+                storage: .appKeychain(account: "codex_oauth_session"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
             )
         ],
         primaryMethodID: "openai-api-key",
-        summary: "OpenAI — proxy routing with API keys, usage reporting with admin keys.",
+        summary: "OpenAI — API-key routing plus Codex OAuth sign-in for plan visibility.",
         proxyHint: "Routed through api.openai.com (OpenAI-compatible).",
-        quotaHint: "Usage reporting requires an org admin key."
+        quotaHint: "Usage reporting requires an org admin key; Codex OAuth quota comes from your local ChatGPT login."
     )
 
     private static let anthropicDescriptor = BurnBarProviderAuthDescriptor(
@@ -483,20 +560,46 @@ public enum BurnBarProviderAuthRegistry {
                 id: "anthropic-api-key",
                 kind: .apiKey,
                 displayName: "Anthropic API Key",
-                summary: "Tracks Claude usage and cost.",
-                helperText: "Anthropic keys start with sk-ant-…. Proxy routing for Anthropic uses its native protocol and is currently disabled in the gateway.",
+                summary: "Routes Claude Messages API traffic and records usage.",
+                helperText: "Anthropic keys start with sk-ant-…. OpenBurnBar routes Claude Code through the Anthropic-family /v1/messages gateway without translating request shape.",
                 placeholder: "sk-ant-…",
                 prefixHint: "sk-ant-",
                 dashboardURL: "https://console.anthropic.com/settings/keys",
                 dashboardLabel: "Anthropic API keys",
                 storage: .daemonSlot,
-                unlocksProxyRouting: false,
+                unlocksProxyRouting: true,
                 unlocksQuotaRefresh: false
+            ),
+            BurnBarProviderAuthMethod(
+                id: "anthropic-claude-oauth",
+                kind: .bearerToken,
+                displayName: "Claude OAuth Bearer",
+                summary: "Routes Claude Pro/Team OAuth bearer traffic through /v1/messages.",
+                helperText: "Paste a Claude Code or claude.ai OAuth access token. OAuth bearers are sent as Authorization: Bearer for Anthropic-family routing; use the Claude Code sign-in flow when you only need local CLI account switching.",
+                placeholder: "Bearer access token",
+                dashboardURL: "https://claude.ai/",
+                dashboardLabel: "Open Claude sign-in",
+                storage: .daemonSlot,
+                unlocksProxyRouting: true,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "anthropic-claude-code-login",
+                kind: .browserLogin,
+                displayName: "Sign in with Claude Code",
+                summary: "Use local Claude Code OAuth for CLI account and quota visibility.",
+                helperText: "Launch Claude Code login from Account Switcher or run `claude auth login`; OpenBurnBar detects the local CLI account and status-line quota bridge. Use Claude OAuth Bearer above when you want the gateway to route Claude Code requests.",
+                placeholder: "Claude Code OAuth session",
+                dashboardURL: "https://claude.ai/",
+                dashboardLabel: "Open Claude sign-in",
+                storage: .appKeychain(account: "claude_code_oauth_session"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
             )
         ],
-        summary: "Anthropic Claude — tracking and accounting only.",
-        proxyHint: "Tracking only — Anthropic uses a non-OpenAI protocol the proxy doesn't speak yet.",
-        quotaHint: nil
+        summary: "Anthropic Claude — API keys, OAuth bearers, and Claude Code sign-in.",
+        proxyHint: "Routed through the Anthropic-family /v1/messages gateway for Claude Code and other Anthropic-shape clients.",
+        quotaHint: "Claude Code sign-in feeds local quota visibility; OAuth bearers can also route through the gateway."
     )
 
     private static let openCodeDescriptor = BurnBarProviderAuthDescriptor(
@@ -506,21 +609,21 @@ public enum BurnBarProviderAuthRegistry {
         methods: [
             BurnBarProviderAuthMethod(
                 id: "opencode-auth-json",
-                kind: .sessionToken,
+                kind: .apiKey,
                 displayName: "OpenCode auth.json",
-                summary: "Tracks OpenCode Go quota from local or self-hosted stats.",
-                helperText: "Use ~/.local/share/opencode/auth.json only in your local OpenCode install or your own self-hosted quota runner. OpenBurnBar-hosted OpenCode credential refresh is disabled until OpenCode exposes a public account quota API.",
+                summary: "Routes OpenCode Go models; local quota comes from CLI stats.",
+                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, the full auth.json, or just its key value. OpenBurnBar extracts the route key and sends requests to OpenCode Go's OpenAI-compatible gateway.",
                 placeholder: "{\"opencode-go\":{\"type\":\"...\",\"key\":\"...\"}}",
                 dashboardURL: "https://opencode.ai/docs/go/",
-                dashboardLabel: "OpenCode Go quota docs",
-                storage: .appKeychain(account: "opencode_auth_json"),
-                unlocksProxyRouting: false,
+                dashboardLabel: "OpenCode Go docs",
+                storage: .daemonSlotMirroredToKeychain(account: "opencode_auth_json"),
+                unlocksProxyRouting: true,
                 unlocksQuotaRefresh: true
             )
         ],
-        summary: "OpenCode Go quota and account tracking.",
-        proxyHint: "Tracking only here. Route the OpenCode CLI through OpenBurnBar from Routing pools.",
-        quotaHint: "Supports local and self-hosted quota refresh for OpenCode Go accounts. Hosted OpenCode refresh is not offered without a public quota API."
+        summary: "OpenCode Go routing, quota, and account tracking.",
+        proxyHint: "Routed through OpenCode Go's OpenAI-compatible /zen/go/v1 gateway.",
+        quotaHint: "Local/self-hosted quota refresh reads OpenCode CLI stats; route credentials can be added as separate BurnBar accounts."
     )
 
     private static let googleDescriptor = BurnBarProviderAuthDescriptor(

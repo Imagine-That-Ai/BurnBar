@@ -12,7 +12,7 @@ import Foundation
 ///   against Standard Usage / Droid Core / Extra Usage.
 /// - **User-configured custom proxies** (`providerLock` ∈ {`openai`,
 ///   `anthropic`, `generic-chat-completion-api`, …}) — these route through
-///   `config.json.custom_models[]` base_urls (VibeProxy, OpenCode-Go,
+///   `config.json.custom_models[]` base_urls (third-party proxies, OpenCode-Go,
 ///   localhost Ollama, etc.) and are **not** billed by Factory at all.
 ///
 /// Before this classifier, the adapter summed every session into the
@@ -105,7 +105,7 @@ enum FactorySessionClassifier {
         let lock = lockRaw.lowercased()
         guard lock == "factory" else {
             // Any other providerLock means the user pointed this session
-            // at a custom_models[] entry in config.json (VibeProxy,
+            // at a custom_models[] entry in config.json (third-party proxies,
             // localhost Ollama, OpenCode-Go, BYOK keys, …). These are
             // user-owned routes and have nothing to do with Factory's
             // rate limits.

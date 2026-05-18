@@ -265,8 +265,270 @@ export interface HermesConnectionAuditEventDoc {
   expireAt?: import("firebase-admin/firestore").Timestamp;
 }
 
+// ---------------------------------------------------------------------------
+// Firestore: iroh transport pairing records
+// ---------------------------------------------------------------------------
+
+/**
+ * Iroh transport pairing record. Published by the Mac (AgentLens) once it
+ * has bootstrapped an iroh endpoint and signed the dialable NodeAddr fields
+ * with the user's
+ * Ed25519 pairing key (`provider_accounts/{uid}.irohPairingPublicKey`).
+ *
+ * Lives at:
+ *   /users/{uid}/iroh_pairing/{connectionId}
+ *
+ * Read-side (iOS / iPadOS):
+ *   1. Look up the user's `irohPairingPublicKey` (32 raw bytes, base64).
+ *   2. Verify `signature` over
+ *      `openburnbar.iroh.pairing.v1|{uid}|{connectionId}|{nodeId}|{relayURL}|{directAddresses}|{publishedAtMillis}`.
+ *   3. Reject records older than `IROH_PAIRING_FRESHNESS_MS` (24h) or with
+ *      a `protocolVersion` newer than the client understands.
+ *   4. Dial `nodeId` plus the signed relay/direct addresses over the QUIC ALPN advertised by
+ *      `IrohRelayProtocol.alpn`.
+ *
+ * Firestore rules gate this collection so only the owning user can read or
+ * write; see `firestore.rules`.
+ */
+export interface IrohPairingRecordDoc {
+  /** Stable connection ID (matches `HermesConnectionDoc.id` on the Mac side). */
+  id: string;
+
+  /** Base32 NodeId surface form (52 chars) advertised by the Mac. */
+  nodeId: string;
+
+  /** Home relay URL selected by the Mac endpoint. Required for reliable mobile dialing. */
+  relayURL?: string;
+
+  /** Optional direct socket addresses observed by the Mac endpoint. */
+  directAddresses?: string[];
+
+  /** Milliseconds since epoch when the Mac signed and published the record. */
+  publishedAtMillis: number;
+
+  /** Frame schema version the Mac is willing to speak. Default 1. */
+  protocolVersion?: number;
+
+  /**
+   * Base64 Ed25519 signature over the canonical AAD string. The signing key
+   * is the user's `irohPairingPublicKey`, persisted in the Mac Keychain.
+   */
+  signature: string;
+
+  /** Server-stamped time (Cloud Functions/iOS adopt ISO 8601). */
+  createdAt: string;
+  updatedAt: string;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/** Max age (ms) the iOS client will trust an `IrohPairingRecordDoc`. */
+export const IROH_PAIRING_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+
+/** Canonical AAD prefix the Mac signs. Mirrors `IrohPairingSignature` in
+ *  Swift: `openburnbar.iroh.pairing.v\(protocolVersion)` interpolated into
+ *  `IrohPairingSignature.canonicalPayload`.
+ */
+export const IROH_PAIRING_SIGNATURE_PREFIX = "openburnbar.iroh.pairing.v1";
+
+/**
+ * Singleton document published by the Mac at
+ * `users/{uid}/iroh_pairing_keys/host` containing the Ed25519 public half of
+ * the pairing key. iOS clients fetch this once per session and verify every
+ * `IrohPairingRecordDoc.signature` against it before dialing a NodeId.
+ *
+ * Why a dedicated collection (not a field on `provider_accounts/*`):
+ *   - Provider accounts are per-account, the pairing key is per-user.
+ *   - Querying for "any provider_accounts doc with the field set" is racy if
+ *     a user has multiple accounts.
+ *   - A dedicated path lets `firestore.rules` constrain the schema tightly
+ *     (only the 5 fields below are allowed).
+ */
+export interface IrohPairingPublicKeyDoc {
+  /** Role identifier — today always `"host"`; reserved for future client roles. */
+  id: string;
+
+  /** Base64 of the 32-byte Ed25519 public key. */
+  publicKeyBase64: string;
+
+  /** Milliseconds since epoch when the Mac wrote/refreshed the doc. */
+  publishedAtMillis: number;
+
+  /** Frame schema version the key is bound to. Default 1. */
+  protocolVersion: number;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/** Role id of the singleton iroh_pairing_keys document the Mac publishes. */
+export const IROH_PAIRING_KEY_HOST_ROLE = "host";
+
+/**
+ * Phone-control authority key. Published by iOS/iPadOS before it opens the
+ * Computer Use `control.input` stream; read by the Mac when it receives
+ * `control.classify`.
+ *
+ * Lives at:
+ *   /users/{uid}/iroh_pairing/{connectionId}/controllers/{peerNodeId}
+ *
+ * This keeps the Ed25519 verification root out of the stream it is supposed
+ * to authenticate. Firestore rules require `connectionId` to name the current
+ * pairing record and `deviceId` to refer to a trusted escrow device in the
+ * same user namespace.
+ */
+export interface ComputerUsePhoneAuthorityDoc {
+  /** Document id; equals `peerNodeId`. */
+  id: string;
+
+  /** Active iroh pairing document this controller key is scoped to. */
+  connectionId: string;
+
+  /** Stable phone-control peer id derived from the public key. */
+  peerNodeId: string;
+
+  /** Trusted escrow device publishing the key. */
+  deviceId: string;
+
+  /** Base64 of the 32-byte Ed25519 public key used for phone-control intents. */
+  publicKeyBase64: string;
+
+  /** Milliseconds since epoch when the phone wrote/refreshed the doc. */
+  publishedAtMillis: number;
+
+  /** Frame schema version the key is bound to. Default 1. */
+  protocolVersion: number;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/**
+ * Public readback record for a Mac trusted-device audit-export signer.
+ *
+ * Lives under the escrow device that owns the local Keychain private key:
+ *   /users/{uid}/escrow_devices/{deviceId}/computer_use_audit_export_signers/{publicKeySHA256Hex}
+ *
+ * The detached `.sig.json` sidecar can prove the archive was signed by a
+ * private key, but this Firestore record proves whether the corresponding
+ * public key was published by a currently trusted macOS escrow device. Device
+ * revocation invalidates every child signer by revoking the parent
+ * `escrow_devices/{deviceId}` document.
+ */
+export interface ComputerUseAuditExportSignerPublicKeyDoc {
+  /** Document id; equals `publicKeySHA256Hex`. */
+  id: string;
+
+  /** Owner namespace; equals the parent user id. */
+  userId: string;
+
+  /** Parent escrow device id. Parent must be trusted macOS. */
+  deviceId: string;
+
+  /** Stable local signer identifier copied into `.sig.json`. */
+  signerIdentifier: string;
+
+  /** OpenBurnBar signer family. */
+  signerKind: "openburnbar_trusted_device";
+
+  /** Trust root implemented by the daemon's Keychain-backed signer provider. */
+  trustRoot: "openburnbar-trusted-device-keychain-v1";
+
+  /** Signature algorithm for the detached archive signature. */
+  algorithm: "ed25519";
+
+  /** Base64 of the 32-byte Ed25519 public key. */
+  publicKeyBase64: string;
+
+  /** SHA-256 hex digest of the raw public key. Equals the document id. */
+  publicKeySHA256Hex: string;
+
+  /** Active until the parent escrow device is revoked or this doc is revoked. */
+  status: "active" | "revoked";
+
+  /** Milliseconds since epoch when the Mac published/refreshed the doc. */
+  publishedAtMillis: number;
+
+  /** Optional last time a verifier confirmed this record during readback. */
+  lastReadbackAtMillis?: number;
+
+  /** Explicit signer-level revocation timestamp, if any. */
+  revokedAt?: import("firebase-admin/firestore").Timestamp;
+
+  /** Device that initiated signer-level revocation, if any. */
+  revokedByDeviceId?: string;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/**
+ * Audit event the Mac (or the Cloud Functions hosted runner) writes when an
+ * iroh stream is opened, closed, or fails over to the WSS relay. Surfaces
+ * transport health to the user's audit log without exposing payload bytes.
+ */
+export interface IrohTransportAuditEventDoc {
+  id: string;
+  connectionId: string;
+  /** Logical reason this event was emitted. */
+  eventType:
+    | "iroh_stream_opened"
+    | "iroh_stream_closed"
+    | "iroh_stream_failed"
+    | "iroh_pairing_published"
+    | "iroh_pairing_verified"
+    | "iroh_pairing_rejected"
+    | "iroh_fallback_to_wss";
+  /** Observed RTT (ms) of the most recent ping on this stream, if known. */
+  rttMillis?: number;
+  /**
+   * Logical transport actually used for the payload. Mirrors the
+   * `HermesCompositeRelayTransport` selector.
+   */
+  transport?: "iroh-direct" | "iroh-relay" | "wss" | "firestore";
+  observedAt: string;
+  /**
+   * Optional structured detail (e.g., `{ "reason": "alpn_mismatch" }`).
+   * Strings only; never contains payload bytes.
+   */
+  detail?: Record<string, string>;
+  schemaVersion: number;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+}
+
+/** Daily operator rollup of `users/{uid}/iroh_audit_events/*`. */
+export interface IrohTransportDailyRollupDoc {
+  id: string;
+  date: string;
+  windowStart: string;
+  windowEnd: string;
+  generatedAt: string;
+  totalEvents: number;
+  uniqueUsers: number;
+  uniqueConnections: number;
+  eventCounts: Record<IrohTransportAuditEventDoc["eventType"], number>;
+  transportCounts: Record<NonNullable<IrohTransportAuditEventDoc["transport"]>, number>;
+  streamOpens: number;
+  streamCloses: number;
+  streamFailures: number;
+  wssFallbacks: number;
+  successRate: number;
+  fallbackRate: number;
+  directShare: number;
+  relayShare: number;
+  rttMillis: {
+    count: number;
+    p50?: number;
+    p95?: number;
+    p99?: number;
+  };
+  schemaVersion: number;
+}
+
 export type HermesRelayOperation =
   | "chatCompletions"
+  | "cliAgentChat"
   | "models"
   | "sessions"
   | "sessionDetail"
@@ -2094,4 +2356,377 @@ export interface InsightCapabilityTierDoc {
   tier: number;
   structuredOutput: boolean;
   maxTokens: number;
+}
+
+// ---------------------------------------------------------------------------
+// Mercury media (file transfer, screen share, 1:1 video calling)
+//
+// Schema mirrors the iroh transport docs in `IrohTransportAuditEventDoc` /
+// `IrohTransportDailyRollupDoc`. Source of truth and lifecycle live in
+// `plans/2026-05-15-mercury-media-master-plan.md` § F + § H.
+// ---------------------------------------------------------------------------
+
+export type MediaFeature = "fileTransfer" | "screenShare" | "videoCall";
+
+export type MediaStreamClass =
+  | "media.blob"
+  | "media.blob.advertise"
+  | "media.blob.fetch"
+  | "media.screen.video"
+  | "media.audio.out"
+  | "media.audio.in"
+  | "media.video.out"
+  | "media.video.in"
+  | "media.control"
+  | "media.classify";
+
+export type MediaSessionEndReason =
+  | "completedSuccess"
+  | "completedUserCancel"
+  | "completedPeerCancel"
+  | "timeout"
+  | "error"
+  | "entitlementRevoked"
+  | "budgetSoftCap"
+  | "budgetHardCap"
+  | "thermalCritical";
+
+/**
+ * Per-session telemetry record. Pure metadata — never carries payload bytes,
+ * filenames, hashes, or peer NodeIds in plaintext. Bucketed enums only.
+ *
+ * Path: `users/{uid}/media_session_events/{eventId}`
+ */
+export interface MediaSessionEventDoc {
+  id: string;
+  sessionId: string;
+  feature: MediaFeature;
+  streamClass: MediaStreamClass;
+  startedAt: string; // ISO 8601 UTC
+  endedAt?: string;
+  endReason?: MediaSessionEndReason;
+  peerDeviceIdHash?: string; // SHA-256 of NodeId, never plaintext
+  byteCountInbound: number;
+  byteCountOutbound: number;
+  freezeCount: number;
+  p95RoundTripMillisBucket?: "lt_50ms" | "50_150ms" | "150_400ms" | "gte_400ms";
+  p95BitsPerSecondBucket?:
+    | "lt_300kbps"
+    | "300_600kbps"
+    | "600kbps_1mbps"
+    | "1_2mbps"
+    | "2_4mbps"
+    | "4_8mbps"
+    | "gte_8mbps";
+  durationBucket?: "lt_30s" | "30s_2m" | "2m_10m" | "10m_30m" | "30m_60m" | "gte_60m";
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  schemaVersion: number;
+}
+
+/**
+ * Daily quota usage counter per user. Updated by the Mac during active
+ * sessions every 30 s (batched), corrected by the hourly
+ * `recomputeMediaQuotaUsage` Cloud Function. The Mac is the source of truth
+ * for live capability gating; this doc is the reconcile target.
+ *
+ * Path: `users/{uid}/media_quota_usage/{YYYY-MM-DD}`
+ */
+export interface MediaQuotaUsageDoc {
+  id: string; // YYYY-MM-DD
+  bytesUploadedFile: number;
+  bytesDownloadedFile: number;
+  fileTransfersInitiated: number;
+  fileTransfersFailed: number;
+  screenShareSecondsUsed: number;
+  screenShareSessions: number;
+  videoCallSecondsUsed: number;
+  videoCallSessions: number;
+  updatedAt: import("firebase-admin/firestore").Timestamp;
+  schemaVersion: number;
+}
+
+/**
+ * Per-attachment manifest. Bytes themselves never live in Firestore — they
+ * flow peer-to-peer over iroh-blobs. The manifest is a small audit record
+ * so DSR exports and admin tooling can answer "what files have been sent
+ * from this Mac to which paired iPhones."
+ *
+ * Path: `users/{uid}/media_attachment_manifests/{manifestId}`
+ */
+export interface MediaAttachmentManifestDoc {
+  id: string; // manifestId
+  blobHash: string; // BLAKE3 hex
+  filename: string;
+  mime: string;
+  size: number; // bytes
+  peerDeviceIdHash: string; // SHA-256 of NodeId, never plaintext
+  direction: "macToIos" | "iosToMac";
+  createdAt: import("firebase-admin/firestore").Timestamp;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  schemaVersion: number;
+}
+
+/**
+ * Daily rollup of `media_session_events` for the operator dashboard. Mirrors
+ * `IrohTransportDailyRollupDoc` shape. Generated by the
+ * `rollupMediaSessionDaily` Cloud Function.
+ *
+ * Path: `ops/media_session_daily_rollups/days/{YYYY-MM-DD}`
+ */
+export interface MediaSessionDailyRollupDoc {
+  id: string;
+  date: string;
+  windowStart: string;
+  windowEnd: string;
+  generatedAt: string;
+  totalEvents: number;
+  uniqueUsers: number;
+  perFeature: Record<
+    MediaFeature,
+    {
+      sessionCount: number;
+      successRate: number;
+      fallbackRate: number;
+      totalSeconds: number;
+      totalBytes: number;
+      rttMillis: {
+        count: number;
+        p50?: number;
+        p95?: number;
+        p99?: number;
+      };
+      bitsPerSecond: {
+        count: number;
+        p50?: number;
+        p95?: number;
+        p99?: number;
+      };
+      freezeCount: {
+        count: number;
+        p50?: number;
+        p95?: number;
+        p99?: number;
+      };
+    }
+  >;
+  schemaVersion: number;
+}
+
+export type MediaBudgetLevel = "normal" | "soft_cap" | "hard_cap";
+
+/**
+ * Current state of the n0 hosted-relay budget guardrail. Single document
+ * at `ops/media_budget_status/state/current`. Server-only writes; both apps cache
+ * the value for 60 s and re-read on session start.
+ *
+ * Operator runbook: `docs/runbooks/media-budget.md`.
+ * Decision: master plan Decision 4 ($600 soft / $1000 hard).
+ */
+export interface MediaBudgetStatusDoc {
+  level: MediaBudgetLevel;
+  projectedMonthEndUSD: number;
+  monthToDateUSD: number;
+  lastEvaluatedAt: import("firebase-admin/firestore").Timestamp;
+  activeEnvelope: {
+    screenShareDailyMinutes: number;
+    screenSharePerSessionMinutes: number;
+    videoCallDailyMinutes: number;
+    videoCallPerCallMinutes: number;
+    fileTransferDailyGBIn: number;
+    fileTransferDailyGBOut: number;
+  };
+  schemaVersion: number;
+}
+
+// MARK: - Computer Use (master plan 2026-05-16)
+
+export type ComputerUseMode = "agent_watch" | "browser" | "system";
+export type ComputerUseTrustMode = "manual" | "step" | "trusted";
+export type ComputerUseBudgetLevel = "normal" | "soft_cap" | "hard_cap";
+export type ComputerUseEndReason =
+  | "completed"
+  | "user_halt"
+  | "panic_hotkey"
+  | "panic_phone_gesture"
+  | "panic_mac_lock"
+  | "panic_remote_config"
+  | "panic_accessibility_revoked"
+  | "timeout"
+  | "entitlement_lost"
+  | "budget_soft_cap"
+  | "budget_hard_cap"
+  | "error";
+export type ComputerUseActionStatus =
+  | "executed"
+  | "denied"
+  | "rejected"
+  | "awaiting_approval"
+  | "error";
+export type ComputerUseApprovedBy =
+  | "mac"
+  | "phone"
+  | "trusted_scope"
+  | "step"
+  | "denied"
+  | "panic";
+
+/**
+ * Session record. Persisted server-side at session end with metadata
+ * only — never carries the action descriptors, screenshots, or scope
+ * rule contents. The full chain lives on the user's Mac under
+ * `~/Library/Application Support/...`.
+ *
+ * Path: `users/{uid}/computer_use_sessions/{sessionId}`
+ */
+export interface ComputerUseSessionDoc {
+  id: string;
+  sessionId: string;
+  userId: string;
+  mode: ComputerUseMode;
+  trustMode: ComputerUseTrustMode;
+  startedAt: import("firebase-admin/firestore").Timestamp;
+  endedAt?: import("firebase-admin/firestore").Timestamp;
+  endReason?: ComputerUseEndReason;
+  actionCount: number;
+  approvalCount: number;
+  rejectionCount: number;
+  panicHaltCount: number;
+  visionSpendUSD: number;
+  manifestHashHex: string;
+  auditHeadHashHex?: string;
+  macAppVersion: string;
+  schemaVersion: number;
+}
+
+/**
+ * Per-action audit *header* mirrored from the Mac's on-disk JSONL
+ * chain. The on-disk chain carries the full descriptor + screenshot
+ * hashes; this server doc holds only the chain links + status so the
+ * phone can render the live timeline without reading the local
+ * filesystem.
+ *
+ * Path: `users/{uid}/computer_use_actions/{actionId}`
+ */
+export interface ComputerUseActionDoc {
+  id: string;
+  sessionId: string;
+  entryIndex: number;
+  toolKind: string;
+  actionKind: string;
+  status: ComputerUseActionStatus;
+  approvedBy: ComputerUseApprovedBy;
+  scopeRuleId?: string;
+  denyReason?: string;
+  parentEntryHashHex: string;
+  approvalLatencyMillis?: number;
+  visionTokensCostUSD?: number;
+  recordedAt: import("firebase-admin/firestore").Timestamp;
+  schemaVersion: number;
+}
+
+/**
+ * Daily counters mirrored from the Mac. Source-of-truth correction
+ * runs hourly via `recomputeComputerUseQuotaUsage`.
+ *
+ * Path: `users/{uid}/computer_use_quota_usage/{YYYY-MM-DD}`
+ */
+export interface ComputerUseQuotaUsageDoc {
+  dayKey: string;
+  browserActionsExecuted: number;
+  browserActionsRejected: number;
+  systemActionsExecuted: number;
+  systemActionsRejected: number;
+  phoneControlIntentsExecuted: number;
+  phoneControlIntentsRejected: number;
+  sessionsStarted: number;
+  sessionsCompleted: number;
+  totalSessionSeconds: number;
+  visionModelSpendUSD: number;
+  updatedAt: import("firebase-admin/firestore").Timestamp;
+}
+
+/**
+ * Operator-side daily rollup. One per UTC day.
+ *
+ * Path: `ops/computer_use_session_daily_rollups/days/{YYYY-MM-DD}`
+ */
+export interface ComputerUseSessionDailyRollupDoc {
+  dayKey: string;
+  sessionsStarted: number;
+  sessionsCompleted: number;
+  browserActionsExecuted: number;
+  browserActionsRejected: number;
+  systemActionsExecuted: number;
+  systemActionsRejected: number;
+  phoneControlIntents: number;
+  scopeViolations: number;
+  panicHaltCount: number;
+  approvalLatencyP50Millis: number;
+  approvalLatencyP95Millis: number;
+  approvalLatencyP99Millis: number;
+  visionModelSpendUSD: number;
+  updatedAt: import("firebase-admin/firestore").Timestamp;
+}
+
+/**
+ * Current envelope. Single doc at `ops/computer_use_budget_status/state/current`.
+ */
+export interface ComputerUseBudgetStatusDoc {
+  level: ComputerUseBudgetLevel;
+  projectedMonthEndUSD: number;
+  monthToDateUSD: number;
+  activeActionsPerRun: number;
+  activeActionsPerDay: number;
+  activeSessionsPerDay: number;
+  perUserDailySpendCeilingUSD: number;
+  updatedAt: import("firebase-admin/firestore").Timestamp;
+}
+
+/**
+ * Entitlement claim. Mirror of the StoreKit entitlement.
+ *
+ * Path: `users/{uid}/entitlements/hosted_computer_use_sync`
+ */
+export interface ComputerUseEntitlementDoc {
+  active: boolean;
+  productID: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  features: {
+    browserComputerUse: boolean;
+    systemComputerUse: boolean;
+    phoneControl: boolean;
+    auditExport: boolean;
+    trustedScopes: boolean;
+  };
+}
+
+export interface ComputerUseOpenTimestampsValidationRequest {
+  uid: string;
+  sessionId: string;
+  auditHeadHashHex: string;
+  proofBase64: string;
+  /**
+   * Optional original chain file bytes. The official `ots verify` CLI can use
+   * the file beside `chain.jsonl.ots` for detached timestamp validation.
+   */
+  chainFileBase64?: string;
+}
+
+export type ComputerUseOpenTimestampsValidationStatus =
+  | "verified"
+  | "ots_verifier_unavailable"
+  | "ots_verify_failed"
+  | "session_not_found"
+  | "server_head_missing"
+  | "head_mismatch";
+
+export interface ComputerUseOpenTimestampsValidationResponse {
+  status: ComputerUseOpenTimestampsValidationStatus;
+  verified: boolean;
+  sessionId: string;
+  auditHeadHashHex: string;
+  serverAuditHeadHashHex?: string;
+  proofSizeBytes: number;
+  checkedAt: string;
+  otsVerifierOutput?: string;
 }

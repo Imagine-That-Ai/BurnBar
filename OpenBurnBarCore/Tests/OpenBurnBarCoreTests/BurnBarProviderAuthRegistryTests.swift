@@ -54,6 +54,46 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertFalse(openPlatform?.unlocksQuotaRefresh ?? true)
     }
 
+    func test_openAI_exposesAPIKeyAdminKeyAndCodexOAuthMethods() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "openai")
+        XCTAssertEqual(descriptor?.primaryMethod.id, "openai-api-key")
+
+        let apiKey = descriptor?.method(id: "openai-api-key")
+        XCTAssertEqual(apiKey?.kind, .apiKey)
+        XCTAssertTrue(apiKey?.unlocksProxyRouting ?? false)
+
+        let adminKey = descriptor?.method(id: "openai-admin-key")
+        XCTAssertEqual(adminKey?.kind, .apiKey)
+        XCTAssertFalse(adminKey?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(adminKey?.unlocksQuotaRefresh ?? false)
+
+        let oauth = descriptor?.method(id: "openai-codex-oauth")
+        XCTAssertEqual(oauth?.kind, .browserLogin)
+        XCTAssertFalse(oauth?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(oauth?.unlocksQuotaRefresh ?? false)
+        XCTAssertFalse(oauth?.storage.usesDaemonSlot ?? true)
+    }
+
+    func test_anthropic_exposesAPIKeyOAuthBearerAndClaudeCodeLoginMethods() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "claude")
+        XCTAssertEqual(descriptor?.providerID, "anthropic")
+
+        let apiKey = descriptor?.method(id: "anthropic-api-key")
+        XCTAssertEqual(apiKey?.kind, .apiKey)
+        XCTAssertTrue(apiKey?.unlocksProxyRouting ?? false)
+
+        let oauthBearer = descriptor?.method(id: "anthropic-claude-oauth")
+        XCTAssertEqual(oauthBearer?.kind, .bearerToken)
+        XCTAssertTrue(oauthBearer?.unlocksProxyRouting ?? false)
+        XCTAssertTrue(oauthBearer?.unlocksQuotaRefresh ?? false)
+
+        let login = descriptor?.method(id: "anthropic-claude-code-login")
+        XCTAssertEqual(login?.kind, .browserLogin)
+        XCTAssertFalse(login?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(login?.unlocksQuotaRefresh ?? false)
+        XCTAssertFalse(login?.storage.usesDaemonSlot ?? true)
+    }
+
     func test_kimiSessionMethodMirrorsToKimiAuthTokenKeychainAccount() {
         let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "moonshot")
         let session = descriptor?.method(id: "kimi-session-token")
@@ -61,6 +101,38 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertTrue(session?.unlocksQuotaRefresh ?? false)
         XCTAssertFalse(session?.unlocksProxyRouting ?? true)
         XCTAssertEqual(session?.storage.mirrorAccountIdentifier, "kimi_auth_token")
+    }
+
+    func test_ollamaCloudAPIKeyIsRoutingCredentialNotBrowserLoginSession() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "ollama")
+        let method = descriptor?.method(id: "ollama-cloud-key")
+
+        XCTAssertEqual(descriptor?.displayName, "Ollama Cloud")
+        XCTAssertEqual(method?.kind, .apiKey)
+        XCTAssertTrue(method?.storage.usesDaemonSlot ?? false)
+        XCTAssertTrue(method?.unlocksProxyRouting ?? false)
+        XCTAssertTrue(method?.unlocksQuotaRefresh ?? false)
+        XCTAssertTrue(descriptor?.proxyHint?.localizedCaseInsensitiveContains("API key") ?? false)
+        XCTAssertTrue(method?.validate("gmail").isWarning ?? false)
+        XCTAssertTrue(method?.validate("ollama-realistic-api-key-123456").isOK ?? false)
+        XCTAssertTrue(method?.validate("sk-ollama-test-key-123456").isOK ?? false)
+        XCTAssertNil(method?.prefixHint)
+    }
+
+    func test_openCodeAuthJSONAcceptsJSONEntryFullJSONAndBareRouteKey() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "opencode")
+        let method = descriptor?.method(id: "opencode-auth-json")
+
+        XCTAssertEqual(method?.kind, .apiKey)
+        XCTAssertTrue(method?.unlocksProxyRouting ?? false)
+        XCTAssertTrue(method?.unlocksQuotaRefresh ?? false)
+        XCTAssertTrue(method?.validate(#"{"type":"api","key":"opencode-route-key-123456"}"#).isOK ?? false)
+        XCTAssertTrue(method?.validate(#"{"opencode-go":{"type":"api","key":"opencode-route-key-123456"}}"#).isOK ?? false)
+        XCTAssertTrue(method?.validate(#"[{"opencode-go":{"type":"api","key":"opencode-route-key-123456"}}]"#).isOK ?? false)
+        XCTAssertTrue(method?.validate("opencode-route-key-123456").isOK ?? false)
+        XCTAssertTrue(method?.validate("short").isWarning ?? false)
+        XCTAssertTrue(method?.validate(#"{"some-other-provider":{"type":"api","key":"do-not-use"}}"#).isWarning ?? false)
+        XCTAssertTrue(method?.validate(#"{"opencode-go":{"type":"api"}}"#).isWarning ?? false)
     }
 
     func test_apiKeyValidation_warnsOnMissingPrefix() {

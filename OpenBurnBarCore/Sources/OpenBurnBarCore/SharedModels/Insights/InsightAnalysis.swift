@@ -751,6 +751,15 @@ public enum InsightConfidence: String, Codable, Hashable, Sendable, CaseIterable
     case low
     case medium
     case high
+
+    /// Numeric ordering for comparison. low=0, medium=1, high=2.
+    public var numericOrder: Int {
+        switch self {
+        case .low: return 0
+        case .medium: return 1
+        case .high: return 2
+        }
+    }
 }
 
 public enum InsightSeverity: String, Codable, Hashable, Sendable, CaseIterable {

@@ -60,6 +60,10 @@ If you use the BurnBar-hosted Intelligence Brief fallback, OpenBurnBar sends a b
 
 If you enable crash reporting or diagnostics, anonymized crash reports may be sent to Sentry. This is disabled by default.
 
+### Optional Computer Use Audit Notarization (opt-in only)
+
+If you choose to notarize a Computer Use audit session, OpenBurnBar submits only the 32-byte SHA-256 digest of your local `chain.jsonl` audit file to an OpenTimestamps calendar service and stores the returned `.ots` proof beside your local audit chain. During a support dispute, you may optionally send the `.ots` proof and chain file to OpenBurnBar so the server-side `validateOpenTimestampsProof` function can cross-check the session head and verify the proof through the configured OpenTimestamps verifier service. Screenshots and full action descriptors remain local unless you explicitly include them in an audit export.
+
 ---
 
 ## Data We Never Collect
@@ -83,6 +87,7 @@ When cloud sync is enabled:
 | Apple App Store / StoreKit | Subscription purchase, entitlement verification, and billing status | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
 | Google Play Billing | Android subscription purchase and entitlement verification | [policies.google.com/privacy](https://policies.google.com/privacy) |
 | Stripe | Web subscription checkout, customer portal, entitlement webhook processing | [stripe.com/privacy](https://stripe.com/privacy) |
+| OpenTimestamps calendar servers | Optional Computer Use audit-chain timestamping; receives only a 32-byte hash | [opentimestamps.org](https://opentimestamps.org/) |
 | OpenRouter / MiniMax | Optional BurnBar Pro hosted LLM fallback for Intelligence Brief answers | [openrouter.ai/privacy](https://openrouter.ai/privacy) / [minimax.io/privacy](https://www.minimax.io/privacy) |
 | Sentry | Optional crash reporting | [sentry.io/privacy](https://sentry.io/privacy) |
 

@@ -109,6 +109,8 @@ fun InsightsScreen(
     val error by viewModel.error.collectAsState()
     val selectedWidgetId by viewModel.selectedWidgetId.collectAsState()
     val analysis by viewModel.analysis.collectAsState()
+    val verdict by viewModel.verdict.collectAsState()
+    val verdictIsDemo by viewModel.verdictIsDemo.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
     val modelOptions by viewModel.modelOptions.collectAsState()
     val localOnlyMode by viewModel.localOnlyMode.collectAsState()
@@ -179,6 +181,29 @@ fun InsightsScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
             ) {
+                verdict?.let { v ->
+                    item {
+                        Box(modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)) {
+                            com.openburnbar.ui.insights.verdict.VerdictHeroSection(
+                                verdict = v,
+                                isStale = false,
+                                isDemo = verdictIsDemo,
+                                onRefresh = { viewModel.refresh() },
+                                onCitationTap = { viewModel.ask(citationPrompt(it)) },
+                                onAcceptAction = { action ->
+                                    viewModel.ask(
+                                        "Run the recommended action: ${action.label} " +
+                                            "(intent: ${action.intent.name})."
+                                    )
+                                },
+                                onFollowUpTap = { viewModel.ask(it) },
+                                onTraceTap = { sessionID ->
+                                    viewModel.ask("Show me the full trace for session $sessionID.")
+                                }
+                            )
+                        }
+                    }
+                }
                 analysis?.let { result ->
                     item {
                         IntelligenceBriefScreen(

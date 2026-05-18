@@ -23,6 +23,7 @@ final class SmartHubBridgeController {
     private let dataStore: DataStore?
 
     private var heartbeat: Task<Void, Never>?
+    private var autoRefreshTask: Task<Void, Never>?
     private var settingsObserver: Task<Void, Never>?
     private var castWatchdog: Task<Void, Never>?
     private var lastEnabledState: Bool = false
@@ -32,8 +33,11 @@ final class SmartHubBridgeController {
     private var lastCastReassertedAt: Date = .distantPast
 
     /// Auto-refresh cadence for provider quota while the bridge is running.
-    /// 60s keeps Claude (and other providers) fresh on the Nest Hub
-    /// without hammering remote APIs.
+    /// 60 s keeps Claude (and other providers) fresh on the Nest Hub
+    /// without hammering remote APIs. Runs on its own task so the
+    /// snapshot pump keeps firing during a multi-second refreshAll —
+    /// previously they shared the heartbeat and a long refresh blocked
+    /// the dashboard for the duration.
     private let autoRefreshIntervalSeconds: TimeInterval = 60
 
     /// Re-pump cadence for the on-device snapshot (no network fetch). Cheap.
@@ -59,8 +63,6 @@ final class SmartHubBridgeController {
     /// and we should re-cast.
     private let castClientHealthyPollWindowSeconds: TimeInterval = 20
 
-    private var lastAutoRefreshAt: Date = .distantPast
-
     init(
         settingsManager: SettingsManager,
         quotaService: ProviderQuotaService?,
@@ -72,20 +74,24 @@ final class SmartHubBridgeController {
     }
 
     /// Reads the current toggle state and starts/stops the bridge to match.
-    /// Begins a fast snapshot pump and an auto-refresh that keeps data
-    /// (especially Claude) under 60s old while the Nest is showing the
-    /// dashboard.
+    /// Begins a fast snapshot pump and a separate auto-refresh that keeps
+    /// data (especially Claude) fresh on the Nest Hub. The two used to
+    /// share a single heartbeat — a 30 s refreshAll would block the 5 s
+    /// pump for the duration, so the dashboard appeared frozen mid-refresh.
     func start() {
         wireBridgeHandlers()
         applySettings()
         observeSettings()
-        startHeartbeat()
+        startSnapshotPump()
+        startAutoRefresh()
         startCastWatchdog()
     }
 
     func stop() {
         heartbeat?.cancel()
         heartbeat = nil
+        autoRefreshTask?.cancel()
+        autoRefreshTask = nil
         settingsObserver?.cancel()
         settingsObserver = nil
         castWatchdog?.cancel()
@@ -131,7 +137,6 @@ final class SmartHubBridgeController {
         }
         if let dataStore {
             await quotaService.refreshAll(dataStore: dataStore)
-            lastAutoRefreshAt = Date()
         }
         await pumpSnapshot()
         return true
@@ -410,14 +415,33 @@ final class SmartHubBridgeController {
 
     // MARK: - Heartbeat snapshot pump
 
-    private func startHeartbeat() {
+    /// Fast pump: rebuilds the on-device JSON from the in-memory snapshot
+    /// every 5 s. No network. Independent from `startAutoRefresh` so a
+    /// long-running `refreshAll` can't freeze the dashboard.
+    private func startSnapshotPump() {
         heartbeat?.cancel()
         heartbeat = Task { @MainActor in
             while !Task.isCancelled {
                 healServerIfNeeded()
-                await refreshIfStale()
                 await pumpSnapshot()
                 let nanos = UInt64(snapshotPumpIntervalSeconds * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: nanos)
+            }
+        }
+    }
+
+    /// Slow background loop that drives provider re-fetches. Calls
+    /// `refreshIfNeeded` on each tick — the inner 60 s gate is the
+    /// single source of truth for staleness, so this loop can sleep
+    /// for the same interval without double-gating. Runs as its own
+    /// task because `refreshAll` regularly takes longer than the
+    /// pump cadence and must not block it.
+    private func startAutoRefresh() {
+        autoRefreshTask?.cancel()
+        autoRefreshTask = Task { @MainActor in
+            while !Task.isCancelled {
+                await refreshIfStale()
+                let nanos = UInt64(autoRefreshIntervalSeconds * 1_000_000_000)
                 try? await Task.sleep(nanoseconds: nanos)
             }
         }
@@ -443,18 +467,15 @@ final class SmartHubBridgeController {
         SmartHubBridgeServer.shared.start(port: port)
     }
 
-    /// Fires `quotaService.refreshAll` when the cached snapshot is older
-    /// than `autoRefreshIntervalSeconds`. Without this, the Mac dashboard
-    /// (and the Nest Hub) would only refresh when the user clicked the
-    /// refresh button — Claude in particular goes 2h+ stale.
+    /// Asks the quota service to refresh if its cached snapshot is older
+    /// than `autoRefreshIntervalSeconds`. Delegates the freshness check
+    /// to `refreshIfNeeded` so we don't double-gate (which previously
+    /// doubled the effective cadence to ~120 s). The watcher in
+    /// `ProviderQuotaService` keeps Claude itself sub-second; this loop
+    /// covers everything else and acts as a safety net for missed events.
     private func refreshIfStale() async {
         guard let quotaService, let dataStore else { return }
         guard SmartHubBridgeServer.shared.isRunning else { return }
-
-        let elapsed = Date().timeIntervalSince(lastAutoRefreshAt)
-        if elapsed < autoRefreshIntervalSeconds { return }
-
-        lastAutoRefreshAt = Date()
         await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: autoRefreshIntervalSeconds)
     }
 
@@ -940,6 +961,7 @@ final class SmartHubBridgeController {
         case .aider:      return "FF6B35"
         case .cursor:     return "AC8C57"
         case .openAI:     return "00A67E"
+        case .deepSeek:   return "6366F1"
         case .codex:      return "00A67E"
         case .openCode:   return "00A67E"
         case .zai:        return "8B5CF6"

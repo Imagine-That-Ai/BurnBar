@@ -70,11 +70,15 @@ public struct BurnBarProviderCatalogSupport: Sendable {
     }
 
     public func supportsModelID(_ modelID: String, providerID: String) -> Bool {
-        provider(id: providerID)?.models.contains(where: { $0.id == modelID }) ?? false
+        provider(id: providerID)?.models.contains { model in
+            model.id == modelID || model.matches(modelName: modelID)
+        } ?? false
     }
 
     public func model(id: String, providerID: String) -> BurnBarCatalogModel? {
-        provider(id: providerID)?.models.first(where: { $0.id == id })
+        provider(id: providerID)?.models.first { model in
+            model.id == id || model.matches(modelName: id)
+        }
     }
 
     public func preferredModels(
@@ -85,8 +89,18 @@ public struct BurnBarProviderCatalogSupport: Sendable {
             return []
         }
 
-        let requestedIDs = Set(preferredModelIDs)
-        let scopedModels = provider.models.filter { requestedIDs.contains($0.id) }
+        var seenModelIDs = Set<String>()
+        let scopedModels = preferredModelIDs.compactMap { requestedID -> BurnBarCatalogModel? in
+            guard let model = provider.models.first(where: {
+                $0.id == requestedID || $0.matches(modelName: requestedID)
+            }) else {
+                return nil
+            }
+            guard seenModelIDs.insert(model.id).inserted else {
+                return nil
+            }
+            return model
+        }
         if !scopedModels.isEmpty {
             return scopedModels
         }

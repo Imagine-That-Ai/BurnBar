@@ -10,6 +10,9 @@ struct ProfileRowView: View {
     let fallbackIndex: Int?          // position within its provider pool (1-based), nil if solo
     let providerColor: Color
     let quotaLookup: (AgentProvider) -> ProviderQuotaSnapshot?
+    let cliQuotaSnapshot: ProviderQuotaSnapshot?
+    let liveCLIAuthInfo: CLIAuthInfo?
+    let allowProviderQuotaFallback: Bool
     let isActive: Bool
     let isChangingAccount: Bool
     let canMoveUp: Bool
@@ -35,6 +38,9 @@ struct ProfileRowView: View {
         fallbackIndex: Int? = nil,
         providerColor: Color = DesignSystem.Colors.textMuted,
         quotaLookup: @escaping (AgentProvider) -> ProviderQuotaSnapshot? = { _ in nil },
+        cliQuotaSnapshot: ProviderQuotaSnapshot? = nil,
+        liveCLIAuthInfo: CLIAuthInfo? = nil,
+        allowProviderQuotaFallback: Bool = true,
         isActive: Bool,
         isChangingAccount: Bool = false,
         canMoveUp: Bool,
@@ -56,6 +62,9 @@ struct ProfileRowView: View {
         self.fallbackIndex = fallbackIndex
         self.providerColor = providerColor
         self.quotaLookup = quotaLookup
+        self.cliQuotaSnapshot = cliQuotaSnapshot
+        self.liveCLIAuthInfo = liveCLIAuthInfo
+        self.allowProviderQuotaFallback = allowProviderQuotaFallback
         self.isActive = isActive
         self.isChangingAccount = isChangingAccount
         self.canMoveUp = canMoveUp
@@ -256,9 +265,8 @@ struct ProfileRowView: View {
             if profile.isDisabled {
                 return "Paused — excluded from switching until re-enabled"
             }
-            if let accountDescription = profile.cliMetadata?.accountDescription,
-               !accountDescription.isEmpty {
-                return "Connected: \(accountDescription)"
+            if let identity = cliConnectedIdentity {
+                return "Connected: \(identity)"
             }
             if let exhaustedUntil = profile.cliMetadata?.exhaustedUntil,
                exhaustedUntil > Date() {
@@ -298,7 +306,7 @@ struct ProfileRowView: View {
     private var isConnected: Bool {
         switch profile.targetKind {
         case .cli:
-            return !profile.isDisabled && !(profile.cliMetadata?.accountDescription?.isEmpty ?? true)
+            return !profile.isDisabled && cliConnectedIdentity != nil
         case .browser:
             guard !profile.isDisabled else { return false }
             if let email = profile.browserMetadata?.accountEmail, !email.isEmpty {
@@ -312,19 +320,47 @@ struct ProfileRowView: View {
         if profile.isDisabled {
             return DesignSystem.Colors.textMuted
         }
-        if profile.targetKind == .cli,
-           profile.cliMetadata?.accountDescription?.isEmpty == false {
-            return DesignSystem.Colors.success
-        }
-        if profile.targetKind == .cli,
-           let exhaustedUntil = profile.cliMetadata?.exhaustedUntil,
-           exhaustedUntil > Date() {
-            return DesignSystem.Colors.warning
+        if profile.targetKind == .cli {
+            if cliConnectedIdentity != nil {
+                return DesignSystem.Colors.success
+            }
+            if let exhaustedUntil = profile.cliMetadata?.exhaustedUntil,
+               exhaustedUntil > Date() {
+                return DesignSystem.Colors.warning
+            }
+            return DesignSystem.Colors.textMuted
         }
         if accountIdentityText != "Not signed in" {
             return DesignSystem.Colors.success
         }
         return DesignSystem.Colors.textMuted
+    }
+
+    private var cliConnectedIdentity: String? {
+        guard profile.targetKind == .cli else { return nil }
+        if let accountDescription = profile.cliMetadata?.accountDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accountDescription.isEmpty {
+            return accountDescription
+        }
+        guard let liveCLIAuthInfo, isConnected(liveCLIAuthInfo) else { return nil }
+        if let accountDescription = liveCLIAuthInfo.accountDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accountDescription.isEmpty {
+            return accountDescription
+        }
+        if let configDirectory = liveCLIAuthInfo.configDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !configDirectory.isEmpty {
+            return URL(fileURLWithPath: configDirectory).lastPathComponent
+        }
+        return "\(liveCLIAuthInfo.cliType.displayName) login"
+    }
+
+    private func isConnected(_ authInfo: CLIAuthInfo) -> Bool {
+        switch authInfo.authState {
+        case .authenticated, .apiKeyPresent:
+            return true
+        case .notAuthenticated, .notInstalled:
+            return false
+        }
     }
 
     private var browserIdentityLabel: String {
@@ -352,11 +388,23 @@ struct ProfileRowView: View {
     }
 
     private var cliQuotaSummaryText: String? {
-        cliQuotaStatusText(for: profile, quotaLookup: quotaLookup)
+        cliQuotaStatusText(for: profile, snapshot: resolvedCLIQuotaSnapshot)
     }
 
     private var cliQuotaWindows: [SwitcherQuotaWindowDisplay] {
-        cliQuotaWindowDisplays(for: profile, quotaLookup: quotaLookup) ?? []
+        cliQuotaWindowDisplays(for: profile, snapshot: resolvedCLIQuotaSnapshot) ?? []
+    }
+
+    private var resolvedCLIQuotaSnapshot: ProviderQuotaSnapshot? {
+        if let cliQuotaSnapshot {
+            return cliQuotaSnapshot
+        }
+        guard allowProviderQuotaFallback,
+              let cliType = profile.cliType,
+              let provider = cliType.agentProvider else {
+            return nil
+        }
+        return quotaLookup(provider)
     }
 
     private func quotaWindowPill(_ window: SwitcherQuotaWindowDisplay) -> some View {

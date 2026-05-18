@@ -6,33 +6,51 @@ enum OpenAICompatibleModelProbe {
         URL(string: "v1/models", relativeTo: baseURL)?.absoluteURL
     }
 
-    static func probe(baseURL: URL, bearerToken: String?) async -> Bool {
-        await probeWithModel(baseURL: baseURL, bearerToken: bearerToken).available
-    }
-
-    static func probeWithModel(baseURL: URL, bearerToken: String?) async -> (available: Bool, modelName: String?) {
-        let result = await probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
-        return (result.available, result.modelName)
-    }
-
-    static func probeWithModels(baseURL: URL, bearerToken: String?) async -> (available: Bool, modelName: String?, models: [HermesAdvertisedModel]) {
-        guard let url = modelsURL(baseURL: baseURL) else { return (false, nil, []) }
-        var request = URLRequest(url: url, timeoutInterval: 2)
+    static func modelsRequest(baseURL: URL, bearerToken: String?, timeout: TimeInterval = 2) -> URLRequest? {
+        guard let url = modelsURL(baseURL: baseURL) else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "GET"
         if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        return request
+    }
+
+    static func probe(baseURL: URL, bearerToken: String?, timeout: TimeInterval = 2, session: URLSession = .shared) async -> Bool {
+        await probeWithModel(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout, session: session).available
+    }
+
+    static func probeWithModel(
+        baseURL: URL,
+        bearerToken: String?,
+        timeout: TimeInterval = 2,
+        session: URLSession = .shared
+    ) async -> (available: Bool, modelName: String?) {
+        let result = await probeWithModels(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout, session: session)
+        return (result.available, result.modelName)
+    }
+
+    static func probeWithModels(
+        baseURL: URL,
+        bearerToken: String?,
+        timeout: TimeInterval = 2,
+        session: URLSession = .shared
+    ) async -> (available: Bool, modelName: String?, hermesModels: [HermesAdvertisedModel], models: [OpenAICompatibleAdvertisedModel]) {
+        guard let request = modelsRequest(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout) else {
+            return (false, nil, [], [])
+        }
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse,
-                  (200...299).contains(http.statusCode) else { return (false, nil, []) }
+                  (200...299).contains(http.statusCode) else { return (false, nil, [], []) }
             return (
                 true,
                 OpenAICompatibleModelListParser.modelName(from: data),
-                OpenAICompatibleModelListParser.hermesAdvertisedModels(from: data)
+                OpenAICompatibleModelListParser.hermesAdvertisedModels(from: data),
+                OpenAICompatibleModelListParser.advertisedModels(from: data)
             )
         } catch {
-            return (false, nil, [])
+            return (false, nil, [], [])
         }
     }
 }
@@ -48,6 +66,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         history: [ChatMessageRecord],
         bearerToken: String?,
         unavailableError: CLIBridgeError,
+        missingModelError: CLIBridgeError,
         httpStreamID: UInt64,
         attachmentBytes: [String: Data] = [:],
         capabilities: HermesBackendCapabilities = .default,
@@ -62,6 +81,12 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
 
         guard let url = URL(string: "v1/chat/completions", relativeTo: baseURL)?.absoluteURL else {
             continuation.finish(throwing: unavailableError)
+            return
+        }
+
+        let selectedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !selectedModel.isEmpty else {
+            continuation.finish(throwing: missingModelError)
             return
         }
 
@@ -83,7 +108,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         var parser = OpenAICompatibleSSEParser()
         do {
             let body: [String: Any] = [
-                "model": model,
+                "model": selectedModel,
                 "stream": true,
                 "messages": messages,
                 "stream_options": ["include_usage": true]
@@ -99,7 +124,11 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
             let (bytes, response) = try await session.bytes(for: request)
 
             if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                continuation.finish(throwing: CLIBridgeError.hermesSSEError("HTTP \(http.statusCode)"))
+                let detail = try await Self.errorDetail(
+                    statusCode: http.statusCode,
+                    lines: bytes.lines
+                )
+                continuation.finish(throwing: CLIBridgeError.hermesSSEError(detail))
                 return
             }
 
@@ -131,7 +160,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                 let content = try await Self.nonStreamingFallback(
                     url: url,
                     messages: messages,
-                    model: model,
+                    model: selectedModel,
                     session: session,
                     bearerToken: bearerToken
                 )
@@ -171,7 +200,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         let (data, response) = try await session.data(for: request)
 
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw CLIBridgeError.hermesSSEError("HTTP \(http.statusCode)")
+            throw CLIBridgeError.hermesSSEError(Self.errorDetail(statusCode: http.statusCode, data: data))
         }
 
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -184,6 +213,64 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         }
 
         return (content, OpenAICompatibleUsageParser.usage(from: obj))
+    }
+
+    private static func errorDetail<Lines: AsyncSequence>(
+        statusCode: Int,
+        lines: Lines
+    ) async throws -> String where Lines.Element == String {
+        var chunks: [String] = []
+        for try await line in lines {
+            let trimmed = line.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            chunks.append(trimmed)
+            if chunks.joined(separator: "\n").count > 4096 { break }
+        }
+        let text = chunks.joined(separator: "\n")
+        guard !text.isEmpty else { return "HTTP \(statusCode)" }
+        if let data = text.data(using: .utf8) {
+            return errorDetail(statusCode: statusCode, data: data)
+        }
+        return "HTTP \(statusCode): \(text)"
+    }
+
+    private static func errorDetail(statusCode: Int, data: Data) -> String {
+        let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if let parsed = parsedErrorMessage(from: data)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !parsed.isEmpty {
+            if parsed.localizedCaseInsensitiveContains("HTTP \(statusCode)") {
+                return parsed
+            }
+            return "HTTP \(statusCode): \(parsed)"
+        }
+        guard !text.isEmpty else { return "HTTP \(statusCode)" }
+        return "HTTP \(statusCode): \(text)"
+    }
+
+    private static func parsedErrorMessage(from data: Data) -> String? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        if let error = obj["error"] as? String {
+            return error
+        }
+        if let error = obj["error"] as? [String: Any] {
+            return (error["message"] as? String)
+                ?? (error["detail"] as? String)
+                ?? (error["code"] as? String)
+        }
+        if let message = obj["message"] as? String {
+            return message
+        }
+        if let detail = obj["detail"] as? String {
+            return detail
+        }
+        if let hermes = obj["hermes"] as? [String: Any],
+           let error = hermes["error"] as? String {
+            return error
+        }
+        return nil
     }
 
     /// Builds the OpenAI-compatible `messages` array. When attachments are

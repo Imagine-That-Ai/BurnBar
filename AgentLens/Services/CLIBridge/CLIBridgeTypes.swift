@@ -21,6 +21,24 @@ struct CLIUsageSnapshot: Hashable {
     }
 }
 
+struct OpenAICompatibleAdvertisedModel: Identifiable, Equatable, Hashable, Sendable {
+    let id: String
+    let displayName: String
+    let providerID: String?
+    let providerName: String?
+    let routeEligible: Bool
+
+    var menuTitle: String {
+        let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let provider = providerName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let provider, !provider.isEmpty, !name.isEmpty, name != id {
+            return "\(name) · \(provider)"
+        }
+        if !name.isEmpty { return name }
+        return id
+    }
+}
+
 // MARK: - Errors
 
 enum CLIBridgeError: LocalizedError {
@@ -31,6 +49,7 @@ enum CLIBridgeError: LocalizedError {
     case hermesUnavailable
     case openClawUnavailable
     case piAgentUnavailable
+    case noSelectedModel(String)
     case hermesSSEError(String)
     case emptyResponse
 
@@ -53,6 +72,8 @@ enum CLIBridgeError: LocalizedError {
             return "OpenClaw gateway is unavailable. Start the OpenClaw gateway (default 127.0.0.1:18789) or check Settings → Chat."
         case .piAgentUnavailable:
             return "Pi agent is not running. Open Settings → Chat Gateway and choose Open Pi + Gateway, or enable the startup toggle there."
+        case .noSelectedModel(let backend):
+            return "No model selected for \(backend). Choose a live advertised model before sending."
         case .hermesSSEError(let detail):
             return "Chat server error: \(detail)"
         case .emptyResponse:

@@ -315,8 +315,10 @@ class InsightsDataLayerTest {
             title = "Run debt mission",
             status = "completed",
             requestedRuntime = "auto",
+            requestedModelID = "gpt-5.5",
             selectedRuntime = "codex",
             selectedRuntimeName = "Codex",
+            selectedModelID = "gpt-5.5",
             liveSummary = "Codex is summarizing the result.",
             resultPreview = "Found three high-leverage refactors.",
             errorMessage = null,
@@ -397,6 +399,26 @@ class InsightsDataLayerTest {
     }
 
     @Test
+    fun `CLI agent mission request payload includes requested model id`() {
+        val payload = CLIAgentMissionRequestPayloadFactory.build(
+            id = "mission-model",
+            title = "Run Codex",
+            prompt = "Answer using the selected model.",
+            missionKind = "chat",
+            requestedRuntime = "codex",
+            targetProject = null,
+            depth = "standard",
+            approvalMode = "existing_policy",
+            commandsAllowed = false,
+            fileEditsAllowed = false,
+            requestedModelID = "  gpt-5.5  ",
+        )
+
+        assertEquals("codex", payload["requestedRuntime"])
+        assertEquals("gpt-5.5", payload["requestedModelID"])
+    }
+
+    @Test
     fun `CLI agent mission launch contract includes all Android remote control runtimes`() {
         assertEquals(
             listOf("auto", "codex", "claude", "hermes", "openclaw", "piAgent", "opencode", "ollama"),
@@ -425,8 +447,10 @@ class InsightsDataLayerTest {
             title = "Run modernization mission",
             status = "pending",
             requestedRuntime = "codex",
+            requestedModelID = null,
             selectedRuntime = null,
             selectedRuntimeName = null,
+            selectedModelID = null,
             liveSummary = "Waiting for Mac.",
             resultPreview = null,
             errorMessage = null,
@@ -450,8 +474,10 @@ class InsightsDataLayerTest {
             title = "Run risky mission",
             status = "waiting_for_approval",
             requestedRuntime = "codex",
+            requestedModelID = "gpt-5.5",
             selectedRuntime = "codex",
             selectedRuntimeName = "Codex",
+            selectedModelID = "gpt-5.5",
             liveSummary = "Codex is waiting for approval before commands and file edits.",
             resultPreview = null,
             errorMessage = null,
@@ -593,8 +619,10 @@ class InsightsDataLayerTest {
         title = "Mission $status",
         status = status,
         requestedRuntime = "codex",
+        requestedModelID = null,
         selectedRuntime = "codex",
         selectedRuntimeName = "Codex",
+        selectedModelID = null,
         liveSummary = "Mission is $status.",
         resultPreview = if (status == "completed") "Done." else null,
         errorMessage = if (status in setOf("failed", "unauthorized", "agent_launch_failed")) "Mission failed." else null,

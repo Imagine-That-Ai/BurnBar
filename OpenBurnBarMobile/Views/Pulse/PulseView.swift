@@ -15,7 +15,7 @@ struct PulseView: View {
     @State private var displayMode: UsageDisplayMode = .currency
     @State private var timelineScope: PulseTimelineScope = .day
     @State private var liveNow = Date()
-    @State private var liveUsageStart = PulseWindowMetricBuilder.todayStart()
+    @State private var liveUsageStart = PulseWindowMetricBuilder.liveQueryStart()
     @State private var showCloudStore = false
     @AppStorage("cloudBannerDismissed") private var cloudBannerDismissed = false
 
@@ -160,10 +160,10 @@ struct PulseView: View {
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now in
             liveNow = now
-            let todayStart = PulseWindowMetricBuilder.todayStart(now: now)
-            guard todayStart != liveUsageStart else { return }
-            liveUsageStart = todayStart
-            sessionsStore.startLiveUsageListening(since: todayStart)
+            let queryStart = PulseWindowMetricBuilder.liveQueryStart(now: now)
+            guard queryStart != liveUsageStart else { return }
+            liveUsageStart = queryStart
+            sessionsStore.startLiveUsageListening(since: queryStart)
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }

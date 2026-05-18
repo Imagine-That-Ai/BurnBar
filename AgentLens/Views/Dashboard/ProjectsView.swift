@@ -1,3 +1,4 @@
+import Charts
 import OpenBurnBarCore
 import SwiftUI
 
@@ -97,6 +98,7 @@ struct ProjectsView: View {
     let dataStore: DataStore
     let settingsManager: SettingsManager
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
+    let chatController: ChatSessionController
 
     @State private var daemonManager: OpenBurnBarDaemonManager
     @State private var openProject: MergedProject?
@@ -108,11 +110,13 @@ struct ProjectsView: View {
         dataStore: DataStore,
         settingsManager: SettingsManager,
         operatingLayer: OpenBurnBarOperatingLayer,
+        chatController: ChatSessionController,
         daemonManager: OpenBurnBarDaemonManager = .shared
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
         self._operatingLayer = Bindable(operatingLayer)
+        self.chatController = chatController
         _daemonManager = State(initialValue: daemonManager)
     }
 
@@ -189,6 +193,7 @@ struct ProjectsView: View {
                     operatingLayer: operatingLayer,
                     daemonManager: daemonManager,
                     settingsManager: settingsManager,
+                    chatController: chatController,
                     onBack: {
                         withAnimation(DesignSystem.Animation.standard) {
                             openProject = nil
@@ -484,6 +489,7 @@ private struct ProjectHubView: View {
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     let daemonManager: OpenBurnBarDaemonManager
     let settingsManager: SettingsManager
+    let chatController: ChatSessionController
     let onBack: () -> Void
     let onEditSetup: () -> Void
     let onLaunchReview: (BurnBarControllerReviewCadence) -> Void
@@ -491,6 +497,10 @@ private struct ProjectHubView: View {
     @State private var projectMemorySnapshot: ProjectMemorySnapshot?
     @State private var projectMemoryError: String?
     @State private var isRefreshingProjectMemory = false
+    @State private var selectedPage: ProjectMemoryPage?
+    @State private var selectedVisual: ProjectMemoryVisual?
+    @State private var showHeroSheet = false
+    @State private var selectedCitations: CitationWrapper?
 
     private var daemonIsHealthy: Bool {
         if case .healthy = daemonManager.status { return true }
@@ -621,6 +631,28 @@ private struct ProjectHubView: View {
             .task(id: project.id) {
                 await scrollProjectHubToTop(using: proxy, anchorID: projectHubTopAnchorID)
                 await loadProjectMemory(forceRefresh: false)
+            }
+            .sheet(item: $selectedPage) { page in
+                ProjectMemoryPageDetailSheet(
+                    page: page,
+                    projectName: project.displayName,
+                    chatController: chatController
+                )
+                .frame(minWidth: 720, minHeight: 540)
+            }
+            .sheet(item: $selectedVisual) { visual in
+                ProjectMemoryVisualDetailSheet(visual: visual, chatController: chatController)
+                    .frame(minWidth: 760, minHeight: 560)
+            }
+            .sheet(isPresented: $showHeroSheet) {
+                if let snapshot = projectMemorySnapshot {
+                    ProjectMemoryHeroDetailSheet(snapshot: snapshot, chatController: chatController)
+                        .frame(minWidth: 760, minHeight: 580)
+                }
+            }
+            .sheet(item: $selectedCitations) { wrapper in
+                CitationInsightSheet(citations: wrapper.citations, chatController: chatController)
+                    .frame(minWidth: 800, minHeight: 620)
             }
         }
     }
@@ -879,17 +911,21 @@ private struct ProjectHubView: View {
                 }
 
                 if let snapshot = projectMemorySnapshot {
-                    ProjectMemoryHeroCard(snapshot: snapshot)
+                    ProjectMemoryHeroCard(snapshot: snapshot, onTap: { showHeroSheet = true })
 
                     ForEach(snapshot.pages.prefix(2)) { page in
-                        ProjectMemoryPageCard(page: page)
+                        ProjectMemoryPageCard(
+                            page: page,
+                            onTap: { selectedPage = page },
+                            onCitationTap: { citations in selectedCitations = CitationWrapper(citations: citations) }
+                        )
                     }
 
                     if snapshot.visuals.isEmpty == false {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: DesignSystem.Spacing.md) {
                                 ForEach(snapshot.visuals) { visual in
-                                    ProjectMemoryVisualCard(visual: visual)
+                                    ProjectMemoryVisualCard(visual: visual, onTap: { selectedVisual = visual })
                                 }
                             }
                             .padding(.vertical, DesignSystem.Spacing.xs)
@@ -1359,68 +1395,77 @@ private extension ProjectMemoryFreshness {
 
 private struct ProjectMemoryHeroCard: View {
     let snapshot: ProjectMemorySnapshot
+    var onTap: (() -> Void)? = nil
+    @State private var isHovered = false
 
     private var coverVisual: ProjectMemoryVisual? {
         snapshot.visuals.first { $0.kind == .cover }
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            DesignSystem.Colors.hermesMercury.opacity(0.22),
-                            DesignSystem.Colors.hermesAureate.opacity(0.22),
-                            DesignSystem.Colors.surfaceElevated.opacity(0.7),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+        Button(action: { onTap?() }) {
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                DesignSystem.Colors.hermesMercury.opacity(0.22),
+                                DesignSystem.Colors.hermesAureate.opacity(0.22),
+                                DesignSystem.Colors.surfaceElevated.opacity(0.7),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                        .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 1)
-                )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                            .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 1)
+                    )
 
-            Circle()
-                .fill(DesignSystem.Colors.hermesAureate.opacity(0.18))
-                .frame(width: 120, height: 120)
-                .offset(x: 180, y: -30)
-                .blur(radius: 1.2)
+                Circle()
+                    .fill(DesignSystem.Colors.hermesAureate.opacity(0.18))
+                    .frame(width: 120, height: 120)
+                    .offset(x: 180, y: -30)
+                    .blur(radius: 1.2)
 
-            Circle()
-                .fill(DesignSystem.Colors.whimsy.opacity(0.12))
-                .frame(width: 80, height: 80)
-                .offset(x: 235, y: 42)
-                .blur(radius: 1)
+                Circle()
+                    .fill(DesignSystem.Colors.whimsy.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                    .offset(x: 235, y: 42)
+                    .blur(radius: 1)
 
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                Text(snapshot.projectDisplayName)
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text(snapshot.usageSummary)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let coverVisual {
-                    HStack(spacing: DesignSystem.Spacing.md) {
-                        ForEach(Array(coverVisual.points.prefix(3).enumerated()), id: \.offset) { _, point in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(point.label.uppercased())
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                                Text(metric(point))
-                                    .font(DesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Text(snapshot.projectDisplayName)
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(snapshot.usageSummary)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let coverVisual {
+                        HStack(spacing: DesignSystem.Spacing.md) {
+                            ForEach(Array(coverVisual.points.prefix(3).enumerated()), id: \.offset) { _, point in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(point.label.uppercased())
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    Text(metric(point))
+                                        .font(DesignSystem.Typography.monoSmall)
+                                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                                }
                             }
                         }
                     }
                 }
+                .padding(DesignSystem.Spacing.lg)
             }
-            .padding(DesignSystem.Spacing.lg)
+            .clipShape(.rect(cornerRadius: DesignSystem.Radius.lg))
+            .contentShape(Rectangle())
         }
-        .clipShape(.rect(cornerRadius: DesignSystem.Radius.lg))
+        .buttonStyle(.plain)
+        .scaleEffect(isHovered ? 1.015 : 1.0)
+        .animation(DesignSystem.Animation.hover, value: isHovered)
+        .onHover { isHovered = $0 }
     }
 
     private func metric(_ point: ProjectMemoryVisualPoint) -> String {
@@ -1436,103 +1481,127 @@ private struct ProjectMemoryHeroCard: View {
 
 private struct ProjectMemoryPageCard: View {
     let page: ProjectMemoryPage
+    var onTap: (() -> Void)? = nil
+    var onCitationTap: (([ProjectMemoryCitation]) -> Void)? = nil
+    @State private var isHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text(page.title)
-                .font(DesignSystem.Typography.headline)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Text(page.summary)
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+        Button(action: { onTap?() }) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text(page.title)
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(page.summary)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            ForEach(page.sections.prefix(2)) { section in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(section.title)
-                        .font(DesignSystem.Typography.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    Text(section.body)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .lineLimit(3)
-                    if section.citations.isEmpty == false {
-                        Text("\(section.citations.count) citation\(section.citations.count == 1 ? "" : "s")")
+                ForEach(page.sections.prefix(2)) { section in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(section.title)
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        Text(section.body)
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .lineLimit(3)
+                        if section.citations.isEmpty == false {
+                            Button {
+                                onCitationTap?(section.citations)
+                            } label: {
+                                Text("\(section.citations.count) citation\(section.citations.count == 1 ? "" : "s")")
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
+                    .padding(DesignSystem.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.55))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .stroke(DesignSystem.Colors.border.opacity(0.25), lineWidth: 0.75)
+                    )
                 }
-                .padding(DesignSystem.Spacing.sm)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.55))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .stroke(DesignSystem.Colors.border.opacity(0.25), lineWidth: 0.75)
-                )
             }
+            .padding(DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+            )
+            .contentShape(Rectangle())
         }
-        .padding(DesignSystem.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .fill(DesignSystem.Colors.surface.opacity(0.55))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
-        )
+        .buttonStyle(.plain)
+        .scaleEffect(isHovered ? 1.015 : 1.0)
+        .animation(DesignSystem.Animation.hover, value: isHovered)
+        .onHover { isHovered = $0 }
     }
 }
 
 private struct ProjectMemoryVisualCard: View {
     let visual: ProjectMemoryVisual
+    var onTap: (() -> Void)? = nil
+    @State private var isHovered = false
 
     private var maxValue: Double {
         max(visual.points.map(\.value).max() ?? 1, 1)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text(visual.title)
-                .font(DesignSystem.Typography.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            if let subtitle = visual.subtitle {
-                Text(subtitle)
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-            }
+        Button(action: { onTap?() }) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text(visual.title)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                if let subtitle = visual.subtitle {
+                    Text(subtitle)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
 
-            ForEach(Array(visual.points.prefix(5).enumerated()), id: \.offset) { _, point in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(point.label)
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(pointValueLabel(point))
-                            .font(DesignSystem.Typography.monoTiny)
-                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                ForEach(Array(visual.points.prefix(5).enumerated()), id: \.offset) { _, point in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(point.label)
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(pointValueLabel(point))
+                                .font(DesignSystem.Typography.monoTiny)
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        }
+                        Capsule()
+                            .fill(DesignSystem.Colors.hermesAureate.opacity(0.8))
+                            .frame(width: CGFloat(max(0.12, point.value / maxValue)) * 140, height: 4)
                     }
-                    Capsule()
-                        .fill(DesignSystem.Colors.hermesAureate.opacity(0.8))
-                        .frame(width: CGFloat(max(0.12, point.value / maxValue)) * 140, height: 4)
                 }
             }
+            .padding(DesignSystem.Spacing.md)
+            .frame(width: 220, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.65))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 0.75)
+            )
+            .contentShape(Rectangle())
         }
-        .padding(DesignSystem.Spacing.md)
-        .frame(width: 220, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.65))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 0.75)
-        )
+        .buttonStyle(.plain)
+        .scaleEffect(isHovered ? 1.015 : 1.0)
+        .animation(DesignSystem.Animation.hover, value: isHovered)
+        .onHover { isHovered = $0 }
     }
 
     private func pointValueLabel(_ point: ProjectMemoryVisualPoint) -> String {
@@ -1742,5 +1811,2578 @@ private struct ControllerProjectEditorSheet: View {
         .padding(DesignSystem.Spacing.xl)
         .frame(minWidth: 520)
         .background(DesignSystem.Colors.background)
+    }
+}
+
+
+// MARK: - Editorial Subviews (shared by all Project Memory detail sheets)
+
+/// Identifiable bridge so multiple citations OR a single citation can drive
+/// `.sheet(item:)`. Each invocation gets a fresh `id` so re-tapping the
+/// same chip presents a new sheet (intentional — the sheet's own controller
+/// re-runs Hermes on every present).
+struct CitationWrapper: Identifiable {
+    let id: UUID
+    let citations: [ProjectMemoryCitation]
+
+    init(citations: [ProjectMemoryCitation]) {
+        self.id = UUID()
+        self.citations = citations
+    }
+
+    static func single(_ citation: ProjectMemoryCitation) -> CitationWrapper {
+        CitationWrapper(citations: [citation])
+    }
+}
+
+@MainActor
+@Observable
+final class ProjectMemoryInsightController {
+    enum State: Equatable {
+        case idle
+        case streaming
+        case complete
+        case failed(String)
+    }
+
+    private(set) var streamingContent: String = ""
+    private(set) var state: State = .idle
+
+    private let chat: ChatSessionController
+    private var trackedAssistantID: String?
+    private var trackedAfterMessageCount: Int = 0
+    private var streamTask: Task<Void, Never>?
+
+    init(chatController: ChatSessionController) {
+        self.chat = chatController
+    }
+
+    func generate(prompt: String) {
+        cancel()
+        streamingContent = ""
+        state = .streaming
+        trackedAfterMessageCount = chat.messages.count
+        chat.inputText = prompt
+        streamTask = Task { @MainActor in
+            await chat.send()
+        }
+    }
+
+    func observeStreamingTick(messages: [ChatMessageRecord], activeID: String?, isStreaming: Bool) {
+        guard state == .streaming else { return }
+
+        if trackedAssistantID == nil, let id = activeID {
+            trackedAssistantID = id
+        }
+
+        let candidateID = trackedAssistantID ?? activeID
+        let candidate: ChatMessageRecord? = {
+            if let id = candidateID, let m = messages.first(where: { $0.id == id }) {
+                return m
+            }
+            return messages.dropFirst(trackedAfterMessageCount).first(where: { $0.role == .assistant })
+        }()
+
+        if let msg = candidate {
+            streamingContent = msg.content
+        }
+
+        if !isStreaming, activeID == nil {
+            let trimmed = streamingContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                state = .failed("Hermes returned no content. Open the chat panel to retry.")
+            } else {
+                state = .complete
+            }
+        }
+    }
+
+    func cancel() {
+        streamTask?.cancel()
+        streamTask = nil
+        trackedAssistantID = nil
+    }
+}
+
+private struct EditorialHero: View {
+    let eyebrow: String
+    let subtitle: String?
+    let headline: String
+    let metaSegments: [String]
+    let leadAccent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "scroll.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(leadAccent)
+                Text(eyebrow.uppercased())
+                    .font(DesignSystem.Typography.caption)
+                    .tracking(2.0)
+                    .foregroundStyle(leadAccent)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+            }
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(headline)
+                .font(.system(.title2, design: .rounded).weight(.semibold))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if !metaSegments.isEmpty {
+                Text(metaSegments.joined(separator: "  ·  "))
+                    .font(DesignSystem.Typography.monoSmall)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
+            }
+            MercuryHairline()
+                .padding(.top, DesignSystem.Spacing.xs)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct MercuryHairline: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: CGFloat = -1
+
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(DesignSystem.Colors.mercuryGradient)
+                    .frame(height: 0.5)
+                if !reduceMotion {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    DesignSystem.Colors.hermesMercury.opacity(0.0),
+                                    DesignSystem.Colors.hermesAureate.opacity(0.55),
+                                    DesignSystem.Colors.hermesMercury.opacity(0.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(40, w * 0.18), height: 0.5)
+                        .offset(x: phase * w)
+                        .blendMode(.plusLighter)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(width: w, height: 0.5, alignment: .leading)
+            .clipped()
+        }
+        .frame(height: 0.5)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 3.0)) { phase = 1 }
+        }
+    }
+}
+
+private struct HermesReadingCard: View {
+    let title: String
+    let placeholder: String
+    let controller: ProjectMemoryInsightController
+    var onRetry: (() -> Void)? = nil
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            header
+            content
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.68))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Hermes reading")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var accessibilityValue: String {
+        switch controller.state {
+        case .idle: return placeholder
+        case .streaming where controller.streamingContent.isEmpty: return "Hermes is reading the evidence."
+        case .streaming: return controller.streamingContent
+        case .complete: return controller.streamingContent
+        case .failed(let err): return "Failed. " + err
+        }
+    }
+
+    @ViewBuilder
+    private var header: some View {
+        HStack(spacing: 6) {
+            Image(systemName: headerIcon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+            Text(title.uppercased())
+                .font(DesignSystem.Typography.caption)
+                .tracking(2.0)
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+            Spacer(minLength: 0)
+            trailingControl
+        }
+    }
+
+    @ViewBuilder
+    private var trailingControl: some View {
+        switch controller.state {
+        case .streaming:
+            MercuryPoolDots()
+        case .failed:
+            if let onRetry {
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.borderless)
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+            } else {
+                EmptyView()
+            }
+        case .idle, .complete:
+            EmptyView()
+        }
+    }
+
+    private var headerIcon: String {
+        switch controller.state {
+        case .failed: return "exclamationmark.triangle.fill"
+        default:      return "sparkles"
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch controller.state {
+        case .idle:
+            Text(placeholder)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+        case .streaming where controller.streamingContent.isEmpty:
+            Text(placeholder)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+        case .streaming:
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text(controller.streamingContent)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: controller.streamingContent)
+                MercuryCaret()
+            }
+        case .complete:
+            Text(controller.streamingContent)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+        case .failed(let err):
+            VStack(alignment: .leading, spacing: 6) {
+                Text(err)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.error)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("If Hermes isn't running, the indexed evidence below is still authoritative.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        }
+    }
+}
+
+private struct MercuryPoolDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var t: Double = 0
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3) { i in
+                Circle()
+                    .fill(DesignSystem.Colors.mercuryGradient)
+                    .frame(width: 6, height: 6)
+                    .scaleEffect(scale(at: i))
+                    .opacity(opacity(at: i))
+            }
+        }
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                t = 1
+            }
+        }
+    }
+
+    private func scale(at i: Int) -> CGFloat {
+        let start: [CGFloat] = [1.0, 0.8, 1.0]
+        let target: [CGFloat] = [1.4, 1.0, 0.8]
+        return start[i] + (target[i] - start[i]) * CGFloat(t)
+    }
+
+    private func opacity(at i: Int) -> Double {
+        let start: [Double] = [0.55, 1.0, 0.6]
+        let target: [Double] = [1.0, 0.55, 1.0]
+        return start[i] + (target[i] - start[i]) * t
+    }
+}
+
+private struct MercuryCaret: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible = true
+
+    var body: some View {
+        Rectangle()
+            .fill(DesignSystem.Colors.hermesAureate)
+            .frame(width: 6, height: 14)
+            .opacity(visible ? 1 : 0.2)
+            .accessibilityHidden(true)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) {
+                    visible.toggle()
+                }
+            }
+    }
+}
+
+private struct NumberedSectionRow: View {
+    let index: Int
+    let total: Int
+    let title: String
+    let text: String
+    let accent: Color
+    let citations: [ProjectMemoryCitation]
+    let onCitationTap: (ProjectMemoryCitation) -> Void
+    let onCombinedCitationTap: (() -> Void)?
+    var pivotQueries: [WikiQuery] = []
+    var onPivotTap: ((WikiQuery) -> Void)? = nil
+
+    private var trimmedBody: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSentinelBody: Bool {
+        let lowered = trimmedBody.lowercased()
+        let sentinels = [
+            "no indexed conversations are available yet",
+            "no explicit decision summaries were found yet",
+            "no key-file evidence found yet",
+            "no reusable commands captured yet",
+            "no unresolved risk language captured yet"
+        ]
+        return sentinels.contains(where: { lowered.hasPrefix($0) }) || trimmedBody.count < 12
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                Text(String(format: "%02d", index))
+                    .font(.system(.title3, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(accent)
+                Text(title)
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer(minLength: 0)
+                Text("\(index) / \(total)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            if isSentinelBody {
+                EmptyEvidenceCallout(message: trimmedBody)
+            } else {
+                Text(trimmedBody)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !pivotQueries.isEmpty, let onPivotTap {
+                WikiPivotPillRow(queries: pivotQueries, onTap: onPivotTap)
+                    .padding(.top, 2)
+            }
+            if !citations.isEmpty {
+                citationStrip
+            }
+        }
+        .padding(.leading, DesignSystem.Spacing.md + 3 + DesignSystem.Spacing.sm)
+        .padding(.trailing, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.55))
+        )
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(accent)
+                .frame(width: 3)
+                .padding(.leading, DesignSystem.Spacing.md)
+                .padding(.vertical, 1)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(index) of \(total). \(title)")
+        .accessibilityValue(isSentinelBody ? "Insufficient evidence" : trimmedBody)
+    }
+
+    @ViewBuilder
+    private var citationStrip: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: 6) {
+                Text("FOOTNOTES")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .tracking(1.4)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                if let onCombinedCitationTap {
+                    Button {
+                        onCombinedCitationTap()
+                    } label: {
+                        Text("Read all \(citations.count) →")
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer(minLength: 0)
+            }
+            HFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+                ForEach(Array(citations.prefix(8).enumerated()), id: \.element.id) { idx, citation in
+                    FootnoteCitationChip(
+                        ordinal: idx + 1,
+                        citation: citation,
+                        onTap: { onCitationTap(citation) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct FootnoteCitationChip: View {
+    let ordinal: Int
+    let citation: ProjectMemoryCitation
+    let onTap: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Text(String(format: "[%02d]", ordinal))
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text(citation.title.isEmpty ? citation.sourceKind.rawValue : citation.title)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(hovered ? 0.95 : 0.55))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(
+                        hovered ? DesignSystem.Colors.hermesAureate.opacity(0.5) : DesignSystem.Colors.borderSubtle,
+                        lineWidth: 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(hovered ? 1.02 : 1.0)
+        .animation(DesignSystem.Animation.hover, value: hovered)
+        .onHover { hovered = $0 }
+        .accessibilityLabel("Footnote \(ordinal): \(citation.title)")
+        .accessibilityHint("Opens Hermes analysis of this citation")
+    }
+}
+
+private struct EmptyEvidenceCallout: View {
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: 6) {
+                Image(systemName: "tray")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                Text("INSUFFICIENT EVIDENCE")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .tracking(1.6)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+            }
+            Text(message.isEmpty ? "This section needs more indexed conversations before it can synthesize a meaningful answer." : message)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Run Refresh Memory on the project to regenerate this section.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .italic()
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(DesignSystem.Colors.warning.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .stroke(DesignSystem.Colors.warning.opacity(0.25), lineWidth: 0.5)
+        )
+    }
+}
+
+private struct CitationQuoteCard: View {
+    let ordinal: Int
+    let citation: ProjectMemoryCitation
+
+    var body: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            Text(String(format: "%02d", ordinal))
+                .font(.system(.title3, design: .monospaced).weight(.semibold))
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                .frame(width: 32, alignment: .leading)
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack {
+                    Text(citation.title.isEmpty ? "Untitled" : citation.title)
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                    sourceChip
+                }
+                Text(citation.snippet.isEmpty ? "(no snippet captured)" : citation.snippet)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let createdAt = citation.createdAt {
+                    Text(createdAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var sourceChip: some View {
+        Text(sourceLabel)
+            .font(DesignSystem.Typography.monoTiny)
+            .tracking(0.8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule().fill(DesignSystem.Colors.hermesAureate.opacity(0.12))
+            )
+            .overlay(
+                Capsule().stroke(DesignSystem.Colors.hermesAureate.opacity(0.35), lineWidth: 0.5)
+            )
+            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+    }
+
+    private var sourceLabel: String {
+        switch citation.sourceKind {
+        case .conversation:    return "TRANSCRIPT"
+        case .skillDoc:        return "SKILL DOC"
+        case .agentDoc:        return "AGENT DOC"
+        case .sharedArtifact:  return "SHARED ARTIFACT"
+        }
+    }
+}
+
+private struct VisualChart: View {
+    let visual: ProjectMemoryVisual
+    let sortAscending: Bool
+
+    private var points: [ProjectMemoryVisualPoint] {
+        visual.points.sorted { sortAscending ? $0.value < $1.value : $0.value > $1.value }
+    }
+
+    var body: some View {
+        Chart {
+            switch visual.kind {
+            case .timeline:
+                ForEach(Array(visual.points.enumerated()), id: \.offset) { idx, point in
+                    LineMark(
+                        x: .value("Bucket", idx),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    .interpolationMethod(.catmullRom)
+                    PointMark(
+                        x: .value("Bucket", idx),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    .annotation(position: .top, alignment: .center, spacing: 2) {
+                        Text(Int(point.value).formatAsTokenVolume())
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                }
+            case .providerMix, .hotspots, .cover:
+                ForEach(Array(points.enumerated()), id: \.offset) { idx, point in
+                    BarMark(
+                        x: .value("Label", point.label),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(barColor(at: idx))
+                    .cornerRadius(4)
+                    .annotation(position: .top, alignment: .center, spacing: 2) {
+                        Text(valueLabel(point))
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                }
+            }
+        }
+        .frame(height: 220)
+        .chartXAxis {
+            AxisMarks(values: .automatic) { _ in
+                AxisGridLine().foregroundStyle(DesignSystem.Colors.borderSubtle)
+                AxisValueLabel()
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { _ in
+                AxisGridLine().foregroundStyle(DesignSystem.Colors.borderSubtle)
+                AxisValueLabel()
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        }
+        .accessibilityLabel("Chart of \(visual.title)")
+        .accessibilityValue("\(visual.points.count) data points")
+    }
+
+    private func barColor(at idx: Int) -> Color {
+        let palette: [Color] = [
+            DesignSystem.Colors.hermesAureate,
+            DesignSystem.Colors.whimsy,
+            DesignSystem.Colors.ember,
+            DesignSystem.Colors.amber,
+            DesignSystem.Colors.hermesMercury
+        ]
+        return palette[idx % palette.count]
+    }
+
+    private func valueLabel(_ point: ProjectMemoryVisualPoint) -> String {
+        if let s = point.subtitle, !s.isEmpty { return s }
+        if visual.kind == .providerMix { return point.value.formatAsCost() }
+        if visual.kind == .timeline { return Int(point.value).formatAsTokenVolume() }
+        return String(Int(point.value))
+    }
+}
+
+private struct CascadeInModifier: ViewModifier {
+    let index: Int
+    let visible: Int
+    let reduceMotion: Bool
+
+    // Cascade-in must never hide content — content rendering is always
+    // synchronous; the modifier is now a no-op so a stalled cascade
+    // Task (e.g. when the MainActor is busy assembling the Hermes
+    // system prompt) can't trap the sheet in an invisible state. Keep
+    // the parameters so call sites compile, but let the view through.
+    func body(content: Content) -> some View {
+        _ = (index, visible, reduceMotion)
+        return content
+    }
+}
+
+private extension View {
+    func cascadeIn(index: Int, visible: Int, reduceMotion: Bool) -> some View {
+        modifier(CascadeInModifier(index: index, visible: visible, reduceMotion: reduceMotion))
+    }
+}
+
+private struct HFlowLayout: Layout {
+    var horizontalSpacing: CGFloat
+    var verticalSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var rowHeight: CGFloat = 0
+        var totalHeight: CGFloat = 0
+        var rowWidth: CGFloat = 0
+        for s in subviews {
+            let size = s.sizeThatFits(.unspecified)
+            if rowWidth + size.width > width, rowWidth > 0 {
+                totalHeight += rowHeight + verticalSpacing
+                rowHeight = size.height
+                rowWidth = size.width + horizontalSpacing
+            } else {
+                rowWidth += size.width + horizontalSpacing
+                rowHeight = max(rowHeight, size.height)
+            }
+        }
+        totalHeight += rowHeight
+        return CGSize(width: width.isFinite ? width : rowWidth, height: totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX
+        var y: CGFloat = bounds.minY
+        var rowHeight: CGFloat = 0
+        for s in subviews {
+            let size = s.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+            s.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + horizontalSpacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+// MARK: - Wiki Primitives
+// Editorial-Observatory + Wikipedia hybrid: breadcrumbs, anchor TOCs, pivot
+// pills with curated Hermes queries, see-also rails. Used by every Project
+// Memory detail sheet so the sheets form a clickable, navigable spiderweb
+// instead of dead-end cards.
+
+struct WikiQuery: Identifiable, Equatable {
+    let id: UUID
+    let label: String
+    let prompt: String
+
+    init(label: String, prompt: String) {
+        self.id = UUID()
+        self.label = label
+        self.prompt = prompt
+    }
+
+    static func == (lhs: WikiQuery, rhs: WikiQuery) -> Bool { lhs.id == rhs.id }
+}
+
+extension WikiQuery {
+    static func curated(forSectionTitle title: String, projectName: String) -> [WikiQuery] {
+        let lower = title.lowercased()
+        if lower.contains("executive") {
+            return [
+                .init(label: "Why now?", prompt: "Why does this executive brief describe \(projectName) the way it does — what changed this week vs last?"),
+                .init(label: "What's at stake?", prompt: "What is the single highest-leverage decision facing \(projectName) right now? Be specific and name files or sessions."),
+                .init(label: "Show evidence", prompt: "Surface the three strongest pieces of evidence behind this executive brief for \(projectName) with verbatim quotes.")
+            ]
+        }
+        if lower.contains("recent") && lower.contains("agent") {
+            return [
+                .init(label: "Open latest session", prompt: "Open the most recent agent session in \(projectName) and summarize what the agent did, what it spent, and what's still open."),
+                .init(label: "Who spent the most?", prompt: "Which model or provider drove the highest spend in \(projectName) over the last week, and what was it doing?"),
+                .init(label: "What blocked?", prompt: "What errors, retries, or blocked tool calls hit recent agent runs in \(projectName)?")
+            ]
+        }
+        if lower.contains("decision") {
+            return [
+                .init(label: "Show the receipt", prompt: "For every decision listed for \(projectName) here, cite the verbatim conversation excerpt that locked it in."),
+                .init(label: "What dissented?", prompt: "Were there rejected alternatives behind these \(projectName) decisions? Surface them with quotes."),
+                .init(label: "What's next?", prompt: "Given these decisions in \(projectName), what is the natural next call the operator should make?")
+            ]
+        }
+        if lower.contains("architecture") || lower.contains("map") {
+            return [
+                .init(label: "Where are the seams?", prompt: "Where are the architecture seams and coupling points in \(projectName)? Name files."),
+                .init(label: "Recent changes", prompt: "What architectural changes have happened recently in \(projectName) based on the indexed sessions?"),
+                .init(label: "What's at risk?", prompt: "Which parts of the \(projectName) architecture look risky right now and why?")
+            ]
+        }
+        if lower.contains("command") || lower.contains("runbook") {
+            return [
+                .init(label: "Walk me through", prompt: "Walk me through running the most important command in \(projectName) end-to-end, with the prerequisites."),
+                .init(label: "What can break?", prompt: "What are the failure modes for the listed commands in \(projectName)?"),
+                .init(label: "Add to runbook", prompt: "Suggest one command we should add to the \(projectName) runbook based on recent agent work.")
+            ]
+        }
+        if lower.contains("risk") || lower.contains("question") || lower.contains("open") {
+            return [
+                .init(label: "Triage all", prompt: "Triage the open risks and questions for \(projectName) by severity and what they block."),
+                .init(label: "Who can answer?", prompt: "For each open question in \(projectName), name the file, session, or person likely to have the answer."),
+                .init(label: "What blocks progress?", prompt: "Of the open items in \(projectName), which one is currently blocking the next forward move?")
+            ]
+        }
+        return [
+            .init(label: "Why?", prompt: "Explain why this section matters for \(projectName) right now and what it implies."),
+            .init(label: "Show evidence", prompt: "Surface the strongest evidence behind the claims in this section for \(projectName) with verbatim quotes."),
+            .init(label: "What's next?", prompt: "Given this section about \(projectName), what concrete next move makes sense in the next 30 minutes?")
+        ]
+    }
+
+    static func curatedForVisual(_ visual: ProjectMemoryVisual, projectName: String) -> [WikiQuery] {
+        [
+            .init(label: "Why this shape?", prompt: "Why does the \(visual.title.lowercased()) for \(projectName) look the way it does? Name 2–3 drivers."),
+            .init(label: "What's the outlier?", prompt: "Which point on the \(visual.title) for \(projectName) is the outlier, and what made it happen?"),
+            .init(label: "What changed?", prompt: "What changed in \(projectName) recently that would shift this \(visual.title.lowercased()) next week?")
+        ]
+    }
+
+    static func curatedForCitations(_ citations: [ProjectMemoryCitation]) -> [WikiQuery] {
+        let firstTitle = citations.first?.title.prefix(80) ?? "this evidence"
+        return [
+            .init(label: "Connect the dots", prompt: "Across these \(citations.count) citation\(citations.count == 1 ? "" : "s"), connect them and tell me the single story they tell. Start with: \(firstTitle)"),
+            .init(label: "What did I miss?", prompt: "Read these citations more aggressively than Hermes already did and surface a non-obvious risk, contradiction, or opportunity."),
+            .init(label: "Open in chat", prompt: "Let's keep pulling on this thread. Citations: \(citations.prefix(3).map(\.title).joined(separator: ", ")). Ask me the right next question.")
+        ]
+    }
+}
+
+struct WikiBreadcrumbItem: Identifiable {
+    let id: UUID = UUID()
+    let label: String
+    let action: (() -> Void)?
+}
+
+struct WikiBreadcrumb: View {
+    let crumbs: [WikiBreadcrumbItem]
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(Array(crumbs.enumerated()), id: \.element.id) { idx, crumb in
+                if idx > 0 {
+                    Text("›")
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                if let action = crumb.action, idx < crumbs.count - 1 {
+                    Button(action: action) {
+                        Text(crumb.label)
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text(crumb.label)
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(idx == crumbs.count - 1
+                                         ? DesignSystem.Colors.textPrimary
+                                         : DesignSystem.Colors.textSecondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(crumbs.map(\.label).joined(separator: ", "))
+    }
+}
+
+struct WikiPivotPillRow: View {
+    let queries: [WikiQuery]
+    let onTap: (WikiQuery) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text("PIVOT")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .tracking(1.4)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            ForEach(queries) { q in
+                Button {
+                    onTap(q)
+                } label: {
+                    Text(q.label)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(DesignSystem.Colors.hermesAureate.opacity(0.08))
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(DesignSystem.Colors.hermesAureate.opacity(0.45), lineWidth: 0.5)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Pivot: \(q.label)")
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+struct WikiTOCItem: Identifiable {
+    let id: String
+    let ordinal: Int
+    let title: String
+    let citationCount: Int
+    let body: String
+}
+
+struct WikiTableOfContents: View {
+    let items: [WikiTOCItem]
+    let onJump: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "list.number")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text("CONTENTS")
+                    .font(DesignSystem.Typography.caption)
+                    .tracking(2.0)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                Text("\(items.count) section\(items.count == 1 ? "" : "s")")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            VStack(spacing: 0) {
+                ForEach(items) { item in
+                    Button {
+                        onJump(item.id)
+                    } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.md) {
+                            Text(String(format: "%02d", item.ordinal))
+                                .font(.system(.body, design: .monospaced).weight(.semibold))
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                                .frame(width: 28, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title)
+                                    .font(DesignSystem.Typography.body)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    .lineLimit(1)
+                                if !item.body.isEmpty {
+                                    Text(item.body)
+                                        .font(DesignSystem.Typography.monoTiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            if item.citationCount > 0 {
+                                Text("\(item.citationCount) cite\(item.citationCount == 1 ? "" : "s")")
+                                    .font(DesignSystem.Typography.monoTiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            }
+                            Image(systemName: "arrow.down.right")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate.opacity(0.7))
+                        }
+                        .padding(.vertical, DesignSystem.Spacing.sm)
+                        .padding(.horizontal, DesignSystem.Spacing.md)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Jump to section \(item.ordinal), \(item.title)")
+                    if item.id != items.last?.id {
+                        Rectangle()
+                            .fill(DesignSystem.Colors.borderSubtle)
+                            .frame(height: 0.5)
+                            .padding(.horizontal, DesignSystem.Spacing.md)
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+            )
+        }
+    }
+}
+
+struct WikiSeeAlsoItem: Identifiable {
+    let id: UUID = UUID()
+    let label: String
+    let detail: String?
+    let symbol: String
+    let action: () -> Void
+}
+
+struct WikiSeeAlsoRail: View {
+    let title: String
+    let items: [WikiSeeAlsoItem]
+    var symbol: String = "link"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text(title.uppercased())
+                    .font(DesignSystem.Typography.caption)
+                    .tracking(2.0)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+            }
+            HFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
+                ForEach(items) { item in
+                    Button(action: item.action) {
+                        HStack(spacing: 6) {
+                            Image(systemName: item.symbol)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(item.label)
+                                    .font(DesignSystem.Typography.monoSmall)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    .lineLimit(1)
+                                if let detail = item.detail {
+                                    Text(detail)
+                                        .font(DesignSystem.Typography.monoTiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .lineLimit(1)
+                                }
+                            }
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate.opacity(0.7))
+                        }
+                        .padding(.horizontal, DesignSystem.Spacing.md)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(DesignSystem.Colors.surface.opacity(0.45))
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(DesignSystem.Colors.hermesAureate.opacity(0.35), lineWidth: 0.6)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(title), \(item.label)")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Project Memory Hero Detail Sheet (Editorial Observatory)
+
+private struct ProjectMemoryHeroDetailSheet: View {
+    let snapshot: ProjectMemorySnapshot
+    let chatController: ChatSessionController
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var insight: ProjectMemoryInsightController
+    @State private var visibleSections: Int = -1
+    @State private var cascadeTask: Task<Void, Never>?
+    @State private var selectedPage: ProjectMemoryPage?
+    @State private var selectedVisual: ProjectMemoryVisual?
+    @State private var citationWrapper: CitationWrapper?
+
+    init(snapshot: ProjectMemorySnapshot, chatController: ChatSessionController) {
+        self.snapshot = snapshot
+        self.chatController = chatController
+        _insight = State(initialValue: ProjectMemoryInsightController(chatController: chatController))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            chrome
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    WikiBreadcrumb(crumbs: [
+                        WikiBreadcrumbItem(label: "Projects", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: snapshot.projectDisplayName, action: { dismiss() }),
+                        WikiBreadcrumbItem(label: "Project memory", action: nil)
+                    ])
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    EditorialHero(
+                        eyebrow: "PROJECT MEMORY · \(snapshot.freshness.label)",
+                        subtitle: subtitle,
+                        headline: snapshot.projectDisplayName,
+                        metaSegments: metaSegments,
+                        leadAccent: DesignSystem.Colors.hermesAureate
+                    )
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    HermesReadingCard(
+                        title: "Hermes Reading",
+                        placeholder: "Hermes is synthesizing the project memory into a three-beat brief: what the team is working on, where the spend is going, what to do next.",
+                        controller: insight,
+                        onRetry: { startInsight() }
+                    )
+                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    if !snapshot.pages.isEmpty {
+                        pagesSection
+                            .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    if !snapshot.visuals.isEmpty {
+                        visualsSection
+                            .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    if !snapshot.keyFiles.isEmpty {
+                        keyFilesSection
+                            .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    if !snapshot.keyCommands.isEmpty {
+                        keyCommandsSection
+                            .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    if !heroSeeAlsoItems.isEmpty {
+                        WikiSeeAlsoRail(title: "Spider out", items: heroSeeAlsoItems, symbol: "point.3.connected.trianglepath.dotted")
+                            .cascadeIn(index: 7, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    auditFooter
+                        .cascadeIn(index: 8, visible: visibleSections, reduceMotion: reduceMotion)
+                }
+                .padding(DesignSystem.Spacing.xl)
+            }
+        }
+        .background(DesignSystem.Colors.background)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .onAppear { startInsight(); runEntranceMotion() }
+        .onDisappear { cascadeTask?.cancel(); insight.cancel() }
+        .onChange(of: chatController.streamingTick) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .onChange(of: chatController.isStreaming) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .sheet(item: $selectedPage) { page in
+            ProjectMemoryPageDetailSheet(page: page, projectName: snapshot.projectDisplayName, chatController: chatController)
+                .frame(minWidth: 720, minHeight: 540)
+        }
+        .sheet(item: $selectedVisual) { visual in
+            ProjectMemoryVisualDetailSheet(visual: visual, chatController: chatController)
+                .frame(minWidth: 760, minHeight: 560)
+        }
+        .sheet(item: $citationWrapper) { wrapper in
+            CitationInsightSheet(citations: wrapper.citations, chatController: chatController)
+                .frame(minWidth: 800, minHeight: 620)
+        }
+    }
+
+    private var chrome: some View {
+        HStack {
+            Text("Memory · \(snapshot.projectDisplayName)")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Spacer()
+            Button {
+                handoffToChat()
+            } label: {
+                Label("Continue in chat", systemImage: "arrow.right.circle.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.xl)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DesignSystem.Colors.borderSubtle)
+                .frame(height: 0.5)
+        }
+    }
+
+    private var subtitle: String {
+        var parts: [String] = []
+        if let end = snapshot.sourceWindowEnd, let start = snapshot.sourceWindowStart {
+            parts.append("\(start.formatted(date: .abbreviated, time: .omitted)) – \(end.formatted(date: .abbreviated, time: .omitted))")
+        }
+        parts.append("Generated \(snapshot.generatedAt.formatted(.relative(presentation: .named)))")
+        return parts.joined(separator: " · ")
+    }
+
+    private var metaSegments: [String] {
+        var parts: [String] = []
+        parts.append("\(snapshot.sourceSessionCount) sessions")
+        parts.append("\(snapshot.sourceConversationCount) transcripts")
+        if let usage = parseUsageSummary() {
+            parts.append(usage.cost)
+            parts.append(usage.tokens)
+        }
+        parts.append("\(snapshot.keyFiles.count) files · \(snapshot.keyCommands.count) cmds")
+        return parts
+    }
+
+    private var heroSeeAlsoItems: [WikiSeeAlsoItem] {
+        var items: [WikiSeeAlsoItem] = []
+        for page in snapshot.pages.prefix(3) {
+            items.append(
+                WikiSeeAlsoItem(
+                    label: page.title,
+                    detail: "\(page.sections.count) section\(page.sections.count == 1 ? "" : "s")",
+                    symbol: "book.pages",
+                    action: { selectedPage = page }
+                )
+            )
+        }
+        for visual in snapshot.visuals.prefix(3) {
+            let detail: String = {
+                switch visual.kind {
+                case .cover:        return "cover"
+                case .providerMix:  return "provider mix"
+                case .timeline:     return "timeline"
+                case .hotspots:     return "hotspots"
+                }
+            }()
+            items.append(
+                WikiSeeAlsoItem(
+                    label: visual.title,
+                    detail: detail,
+                    symbol: "chart.bar",
+                    action: { selectedVisual = visual }
+                )
+            )
+        }
+        let allCitations = snapshot.pages.flatMap { $0.sections.flatMap(\.citations) }
+        if let firstCitation = allCitations.first {
+            items.append(
+                WikiSeeAlsoItem(
+                    label: "Open \(allCitations.count) citation\(allCitations.count == 1 ? "" : "s") together",
+                    detail: "synthesize evidence",
+                    symbol: "quote.bubble",
+                    action: { citationWrapper = CitationWrapper(citations: Array(allCitations.prefix(8))) }
+                )
+            )
+            _ = firstCitation
+        }
+        return items
+    }
+
+    private func parseUsageSummary() -> (cost: String, tokens: String)? {
+        let parts = snapshot.usageSummary.split(separator: " ")
+        var cost: String?
+        var tokens: String?
+        for p in parts {
+            if p.hasPrefix("$") { cost = String(p); continue }
+            if p.contains("tok") || p.contains("M") || p.contains("B") || p.contains("K") {
+                tokens = String(p)
+            }
+        }
+        if let cost, let tokens { return (cost, tokens) }
+        return nil
+    }
+
+    private var pagesSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("PAGES")
+            VStack(spacing: DesignSystem.Spacing.md) {
+                ForEach(Array(snapshot.pages.enumerated()), id: \.element.id) { idx, page in
+                    HeroPageRow(
+                        ordinal: idx + 1,
+                        total: snapshot.pages.count,
+                        page: page,
+                        onTap: { selectedPage = page },
+                        onCitationTap: { c in citationWrapper = .single(c) }
+                    )
+                }
+            }
+        }
+    }
+
+    private var visualsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("VISUALS")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                    ForEach(snapshot.visuals) { visual in
+                        VisualTile(visual: visual, onTap: { selectedVisual = visual })
+                    }
+                }
+                .padding(.vertical, DesignSystem.Spacing.xs)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private var keyFilesSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("KEY FILES")
+            VStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(Array(snapshot.keyFiles.enumerated()), id: \.offset) { idx, file in
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Text(String(format: "%02d", idx + 1))
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .frame(width: 24, alignment: .leading)
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        Text(file)
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+            )
+        }
+    }
+
+    private var keyCommandsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("KEY COMMANDS")
+            VStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(Array(snapshot.keyCommands.enumerated()), id: \.offset) { idx, cmd in
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                        Text(String(format: "%02d", idx + 1))
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .frame(width: 24, alignment: .leading)
+                        Image(systemName: "terminal")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        Text(cmd)
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+            )
+        }
+    }
+
+    private var auditFooter: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Rectangle()
+                .fill(DesignSystem.Colors.mercuryGradient)
+                .frame(height: 0.5)
+            HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                Text("Schema v\(snapshot.schemaVersion)  ·  Hash \(String(snapshot.contentHash.prefix(8)))  ·  \(snapshot.freshness.label)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func sectionEyebrow(_ title: String) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.caption)
+            .tracking(2.0)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func startInsight() {
+        let prompt = """
+        You are summarizing a local project memory snapshot for a developer.
+        Write a tight three-paragraph brief — no preamble, no headings, no fluff.
+
+        Paragraph 1: What the team is working on right now (use the pages + key files).
+        Paragraph 2: Where the spend and effort are going (use the usage summary).
+        Paragraph 3: What to do next (concrete, actionable, prioritized).
+
+        Project: \(snapshot.projectDisplayName)
+        Window: \(snapshot.usageSummary)
+        Sessions: \(snapshot.sourceSessionCount); Transcripts: \(snapshot.sourceConversationCount)
+        Key files: \(snapshot.keyFiles.prefix(8).joined(separator: ", "))
+        Key commands: \(snapshot.keyCommands.prefix(6).joined(separator: " ; "))
+
+        Page outlines:
+        \(snapshot.pages.map { page in
+            "• \(page.title) — \(page.summary)\n  sections: \(page.sections.map(\.title).joined(separator: ", "))"
+        }.joined(separator: "\n"))
+        """
+        insight.generate(prompt: prompt)
+    }
+
+    @MainActor
+    private func handoffToChat() {
+        let prompt = """
+        Continue analyzing the project memory for \(snapshot.projectDisplayName).
+        Key files: \(snapshot.keyFiles.prefix(8).joined(separator: ", "))
+        \(snapshot.usageSummary)
+        Ask me what I want to dive into.
+        """
+        chatController.inputText = prompt
+        Task { await chatController.send() }
+        dismiss()
+    }
+
+    private func runEntranceMotion() {
+        if reduceMotion {
+            visibleSections = 9
+            return
+        }
+        guard visibleSections < 0 else { return }
+        visibleSections = 0
+        cascadeTask?.cancel()
+        cascadeTask = Task { @MainActor in
+            for i in 0..<9 {
+                if i > 0 {
+                    try? await Task.sleep(nanoseconds: 40_000_000)
+                    if Task.isCancelled { return }
+                }
+                withAnimation(DesignSystem.Animation.gentle) {
+                    visibleSections = i + 1
+                }
+            }
+        }
+    }
+}
+
+private struct HeroPageRow: View {
+    let ordinal: Int
+    let total: Int
+    let page: ProjectMemoryPage
+    let onTap: () -> Void
+    let onCitationTap: (ProjectMemoryCitation) -> Void
+    @State private var hovered = false
+
+    private var aggregatedCitations: [ProjectMemoryCitation] {
+        Array(page.sections.flatMap(\.citations).prefix(6))
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                    Text(String(format: "%02d", ordinal))
+                        .font(.system(.title3, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    Text(page.title)
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Spacer(minLength: 0)
+                    Text("\(ordinal) / \(total)")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                Text(page.summary)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !page.sections.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(page.sections) { section in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("·")
+                                    .font(DesignSystem.Typography.monoSmall)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                Text(section.title)
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            }
+                        }
+                    }
+                }
+                if !aggregatedCitations.isEmpty {
+                    HFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+                        ForEach(Array(aggregatedCitations.prefix(5).enumerated()), id: \.element.id) { idx, c in
+                            FootnoteCitationChip(
+                                ordinal: idx + 1,
+                                citation: c,
+                                onTap: { onCitationTap(c) }
+                            )
+                        }
+                    }
+                }
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Open page")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .tracking(0.8)
+                }
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                .padding(.top, 2)
+            }
+            .padding(.leading, DesignSystem.Spacing.md + 3 + DesignSystem.Spacing.sm)
+            .padding(.trailing, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(hovered ? 0.85 : 0.55))
+            )
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(DesignSystem.Colors.mercuryGradient)
+                    .frame(width: 3)
+                    .padding(.leading, DesignSystem.Spacing.md)
+                    .padding(.vertical, 1)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(
+                        hovered ? DesignSystem.Colors.hermesAureate.opacity(0.45) : DesignSystem.Colors.border.opacity(0.3),
+                        lineWidth: hovered ? 1 : 0.75
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(hovered ? 1.005 : 1.0)
+        .animation(DesignSystem.Animation.hover, value: hovered)
+        .onHover { hovered = $0 }
+    }
+}
+
+private struct VisualTile: View {
+    let visual: ProjectMemoryVisual
+    let onTap: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text(visualKindLabel.uppercased())
+                    .font(DesignSystem.Typography.monoTiny)
+                    .tracking(1.4)
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text(visual.title)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(2)
+                if let subtitle = visual.subtitle {
+                    Text(subtitle)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                }
+                MiniVisualPreview(visual: visual)
+                    .frame(height: 60)
+                Text("\(visual.points.count) points · open →")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(DesignSystem.Spacing.md)
+            .frame(width: 220, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(hovered ? 0.85 : 0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: hovered ? 1 : 0.75)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(hovered ? 1.02 : 1.0)
+        .animation(DesignSystem.Animation.hover, value: hovered)
+        .onHover { hovered = $0 }
+    }
+
+    private var visualKindLabel: String {
+        switch visual.kind {
+        case .cover: return "Cover"
+        case .providerMix: return "Provider Mix"
+        case .timeline: return "Timeline"
+        case .hotspots: return "Hotspots"
+        }
+    }
+}
+
+private struct MiniVisualPreview: View {
+    let visual: ProjectMemoryVisual
+
+    var body: some View {
+        Chart {
+            switch visual.kind {
+            case .timeline:
+                ForEach(Array(visual.points.enumerated()), id: \.offset) { idx, p in
+                    LineMark(x: .value("i", idx), y: .value("v", p.value))
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        .interpolationMethod(.catmullRom)
+                }
+            default:
+                ForEach(Array(visual.points.prefix(6).enumerated()), id: \.offset) { idx, p in
+                    BarMark(x: .value("i", idx), y: .value("v", p.value))
+                        .foregroundStyle(barColor(idx))
+                        .cornerRadius(2)
+                }
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .accessibilityHidden(true)
+    }
+
+    private func barColor(_ idx: Int) -> Color {
+        let palette: [Color] = [
+            DesignSystem.Colors.hermesAureate,
+            DesignSystem.Colors.whimsy,
+            DesignSystem.Colors.ember,
+            DesignSystem.Colors.amber,
+            DesignSystem.Colors.hermesMercury
+        ]
+        return palette[idx % palette.count]
+    }
+}
+
+// MARK: - Project Memory Page Detail Sheet (Editorial Observatory)
+
+private struct ProjectMemoryPageDetailSheet: View {
+    let page: ProjectMemoryPage
+    let projectName: String
+    let chatController: ChatSessionController
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var insight: ProjectMemoryInsightController
+    @State private var visibleSections: Int = -1
+    @State private var cascadeTask: Task<Void, Never>?
+    @State private var citationWrapper: CitationWrapper?
+
+    init(page: ProjectMemoryPage, projectName: String, chatController: ChatSessionController) {
+        self.page = page
+        self.projectName = projectName
+        self.chatController = chatController
+        _insight = State(initialValue: ProjectMemoryInsightController(chatController: chatController))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            chrome
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                        WikiBreadcrumb(crumbs: breadcrumbs)
+                            .id("__top")
+                            .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+                        EditorialHero(
+                            eyebrow: "MEMORY PAGE · \(page.title)",
+                            subtitle: page.summary,
+                            headline: page.title,
+                            metaSegments: heroMetaSegments,
+                            leadAccent: DesignSystem.Colors.hermesAureate
+                        )
+                        .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                        HermesReadingCard(
+                            title: "Hermes Reading",
+                            placeholder: "Hermes is interpreting this page — what it tells the operator and what to do with it.",
+                            controller: insight,
+                            onRetry: { startInsight() }
+                        )
+                        .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+
+                        if page.sections.count > 1 {
+                            WikiTableOfContents(items: tocItems) { anchor in
+                                withAnimation(DesignSystem.Animation.gentle) {
+                                    proxy.scrollTo(anchor, anchor: .top)
+                                }
+                            }
+                            .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                        }
+
+                        if !page.sections.isEmpty {
+                            sectionsSection
+                                .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                        } else {
+                            EmptyEvidenceCallout(message: "This page has no synthesized sections yet.")
+                                .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                        }
+
+                        if !seeAlsoItems.isEmpty {
+                            WikiSeeAlsoRail(title: "See also", items: seeAlsoItems, symbol: "link")
+                                .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+                        }
+
+                        if !page.visualIDs.isEmpty {
+                            visualsRefsSection
+                                .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
+                        }
+
+                        auditFooter
+                            .cascadeIn(index: 7, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+                    .padding(DesignSystem.Spacing.xl)
+                }
+            }
+        }
+        .background(DesignSystem.Colors.background)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .onAppear { startInsight(); runEntranceMotion() }
+        .onDisappear { cascadeTask?.cancel(); insight.cancel() }
+        .onChange(of: chatController.streamingTick) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .onChange(of: chatController.isStreaming) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .sheet(item: $citationWrapper) { wrapper in
+            CitationInsightSheet(citations: wrapper.citations, chatController: chatController)
+                .frame(minWidth: 800, minHeight: 620)
+        }
+    }
+
+    private var breadcrumbs: [WikiBreadcrumbItem] {
+        [
+            WikiBreadcrumbItem(label: projectName, action: { dismiss() }),
+            WikiBreadcrumbItem(label: "Project memory", action: { dismiss() }),
+            WikiBreadcrumbItem(label: page.title, action: nil)
+        ]
+    }
+
+    private var tocItems: [WikiTOCItem] {
+        page.sections.enumerated().map { idx, section in
+            WikiTOCItem(
+                id: sectionAnchorID(section),
+                ordinal: idx + 1,
+                title: section.title,
+                citationCount: section.citations.count,
+                body: section.body
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .components(separatedBy: .newlines)
+                    .first ?? ""
+            )
+        }
+    }
+
+    private var seeAlsoItems: [WikiSeeAlsoItem] {
+        var items: [WikiSeeAlsoItem] = []
+        let allCitations = page.sections.flatMap(\.citations)
+        let topCitations = Array(allCitations.prefix(3))
+        for c in topCitations {
+            let detail: String
+            switch c.sourceKind {
+            case .conversation:    detail = "transcript"
+            case .skillDoc:        detail = "skill doc"
+            case .agentDoc:        detail = "agent doc"
+            case .sharedArtifact:  detail = "shared artifact"
+            }
+            items.append(
+                WikiSeeAlsoItem(
+                    label: c.title.isEmpty ? "Untitled" : c.title,
+                    detail: detail,
+                    symbol: "quote.bubble",
+                    action: { citationWrapper = .single(c) }
+                )
+            )
+        }
+        if !page.visualIDs.isEmpty {
+            items.append(
+                WikiSeeAlsoItem(
+                    label: "\(page.visualIDs.count) referenced visual\(page.visualIDs.count == 1 ? "" : "s")",
+                    detail: "in this snapshot",
+                    symbol: "chart.bar",
+                    action: { handoffToChat() }
+                )
+            )
+        }
+        return items
+    }
+
+    private func sectionAnchorID(_ section: ProjectMemorySection) -> String {
+        "section-\(section.id)"
+    }
+
+    private var chrome: some View {
+        HStack {
+            Text("\(projectName) · Memory page")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Spacer()
+            Button {
+                handoffToChat()
+            } label: {
+                Label("Deep dive in chat", systemImage: "arrow.right.circle.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.xl)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DesignSystem.Colors.borderSubtle)
+                .frame(height: 0.5)
+        }
+    }
+
+    private var heroMetaSegments: [String] {
+        var parts: [String] = []
+        parts.append("\(page.sections.count) sections")
+        let totalCitations = page.sections.reduce(0) { $0 + $1.citations.count }
+        parts.append("\(totalCitations) citations")
+        if !page.visualIDs.isEmpty {
+            parts.append("\(page.visualIDs.count) visuals")
+        }
+        return parts
+    }
+
+    private var sectionsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("SECTIONS")
+            VStack(spacing: DesignSystem.Spacing.md) {
+                ForEach(Array(page.sections.enumerated()), id: \.element.id) { idx, section in
+                    NumberedSectionRow(
+                        index: idx + 1,
+                        total: page.sections.count,
+                        title: section.title,
+                        text: section.body,
+                        accent: accentColor(for: idx),
+                        citations: section.citations,
+                        onCitationTap: { c in citationWrapper = .single(c) },
+                        onCombinedCitationTap: section.citations.isEmpty ? nil : {
+                            citationWrapper = CitationWrapper(citations: section.citations)
+                        },
+                        pivotQueries: WikiQuery.curated(forSectionTitle: section.title, projectName: projectName),
+                        onPivotTap: { query in runPivot(query) }
+                    )
+                    .id(sectionAnchorID(section))
+                }
+            }
+        }
+    }
+
+    private func runPivot(_ query: WikiQuery) {
+        chatController.inputText = query.prompt
+        Task { await chatController.send() }
+        dismiss()
+    }
+
+    private var visualsRefsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("REFERENCED VISUALS")
+            Text(page.visualIDs.joined(separator: " · "))
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .padding(DesignSystem.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.4))
+                )
+        }
+    }
+
+    private var auditFooter: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Rectangle()
+                .fill(DesignSystem.Colors.mercuryGradient)
+                .frame(height: 0.5)
+            Text("page-id \(page.id)  ·  \(page.sections.count) sections  ·  \(page.visualIDs.count) visuals")
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+        }
+    }
+
+    private func accentColor(for idx: Int) -> Color {
+        let palette: [Color] = [
+            DesignSystem.Colors.hermesAureate,
+            DesignSystem.Colors.ember,
+            DesignSystem.Colors.whimsy,
+            DesignSystem.Colors.amber
+        ]
+        return palette[idx % palette.count]
+    }
+
+    private func sectionEyebrow(_ title: String) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.caption)
+            .tracking(2.0)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func startInsight() {
+        let prompt = """
+        You are reading a single page from a project memory snapshot. Write a tight 2–3 paragraph reading — no preamble, no headings, no fluff.
+
+        Paragraph 1: What this page is actually saying about the project right now (synthesize across the sections).
+        Paragraph 2: What gaps, risks, or questions the operator should care about (be specific, name files or session ids when relevant).
+        Paragraph 3 (optional): What next move makes sense — a concrete suggestion the operator can take in the next 30 minutes.
+
+        Project: \(projectName)
+        Page: \(page.title)
+        Summary: \(page.summary)
+
+        Sections:
+        \(page.sections.map { section in
+            "• \(section.title)\n  \(section.body)"
+        }.joined(separator: "\n\n"))
+        """
+        insight.generate(prompt: prompt)
+    }
+
+    @MainActor
+    private func handoffToChat() {
+        let prompt = """
+        Deep dive into the project memory page "\(page.title)" for \(projectName).
+        Summary: \(page.summary)
+        Sections to analyze: \(page.sections.map(\.title).joined(separator: ", "))
+        Pull on threads from the body text, surface contradictions, and suggest next investigations.
+        """
+        chatController.inputText = prompt
+        Task { await chatController.send() }
+        dismiss()
+    }
+
+    private func runEntranceMotion() {
+        if reduceMotion {
+            visibleSections = 8
+            return
+        }
+        guard visibleSections < 0 else { return }
+        visibleSections = 0
+        cascadeTask?.cancel()
+        cascadeTask = Task { @MainActor in
+            for i in 0..<8 {
+                if i > 0 {
+                    try? await Task.sleep(nanoseconds: 40_000_000)
+                    if Task.isCancelled { return }
+                }
+                withAnimation(DesignSystem.Animation.gentle) {
+                    visibleSections = i + 1
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Project Memory Visual Detail Sheet (Swift Charts-first)
+
+private struct ProjectMemoryVisualDetailSheet: View {
+    let visual: ProjectMemoryVisual
+    let chatController: ChatSessionController
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var insight: ProjectMemoryInsightController
+    @State private var visibleSections: Int = -1
+    @State private var cascadeTask: Task<Void, Never>?
+    @State private var sortAscending: Bool = false
+
+    init(visual: ProjectMemoryVisual, chatController: ChatSessionController) {
+        self.visual = visual
+        self.chatController = chatController
+        _insight = State(initialValue: ProjectMemoryInsightController(chatController: chatController))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            chrome
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    WikiBreadcrumb(crumbs: [
+                        WikiBreadcrumbItem(label: "Project memory", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: "Visuals", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: visual.title, action: nil)
+                    ])
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    EditorialHero(
+                        eyebrow: "VISUAL · \(kindLabel.uppercased())",
+                        subtitle: visual.subtitle ?? "Source: local project memory snapshot.",
+                        headline: visual.title,
+                        metaSegments: heroMetaSegments,
+                        leadAccent: DesignSystem.Colors.hermesAureate
+                    )
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    WikiPivotPillRow(
+                        queries: WikiQuery.curatedForVisual(visual, projectName: "this project"),
+                        onTap: { runPivot($0) }
+                    )
+                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    chartCard
+                        .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    dataTableSection
+                        .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    HermesReadingCard(
+                        title: "Hermes Reading",
+                        placeholder: "Hermes is interpreting this visual — what the distribution implies and what to do about it.",
+                        controller: insight,
+                        onRetry: { startInsight() }
+                    )
+                    .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    auditFooter
+                        .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
+                }
+                .padding(DesignSystem.Spacing.xl)
+            }
+        }
+        .background(DesignSystem.Colors.background)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .onAppear { startInsight(); runEntranceMotion() }
+        .onDisappear { cascadeTask?.cancel(); insight.cancel() }
+        .onChange(of: chatController.streamingTick) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .onChange(of: chatController.isStreaming) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+    }
+
+    @MainActor
+    private func runPivot(_ query: WikiQuery) {
+        chatController.inputText = query.prompt
+        Task { await chatController.send() }
+        dismiss()
+    }
+
+    private var chrome: some View {
+        HStack {
+            Text("Visual · \(kindLabel)")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Spacer()
+            Button {
+                sortAscending.toggle()
+            } label: {
+                Label(sortAscending ? "Sort: ascending" : "Sort: descending",
+                      systemImage: sortAscending ? "arrow.up" : "arrow.down")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.xl)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DesignSystem.Colors.borderSubtle)
+                .frame(height: 0.5)
+        }
+    }
+
+    private var kindLabel: String {
+        switch visual.kind {
+        case .cover: return "Cover"
+        case .providerMix: return "Provider Mix"
+        case .timeline: return "Timeline"
+        case .hotspots: return "Hotspots"
+        }
+    }
+
+    private var heroMetaSegments: [String] {
+        var parts: [String] = []
+        parts.append("\(visual.points.count) points")
+        let sum = visual.points.reduce(0.0) { $0 + $1.value }
+        if visual.kind == .providerMix {
+            parts.append("Σ \(sum.formatAsCost())")
+        } else if visual.kind == .timeline {
+            parts.append("Σ \(Int(sum).formatAsTokenVolume())")
+        } else {
+            parts.append("Σ \(Int(sum))")
+        }
+        if let mx = visual.points.max(by: { $0.value < $1.value }) {
+            parts.append("max · \(mx.label)")
+        }
+        return parts
+    }
+
+    private var chartCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("DISTRIBUTION")
+            VisualChart(visual: visual, sortAscending: sortAscending)
+                .padding(DesignSystem.Spacing.md)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.55))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+                )
+        }
+    }
+
+    private var sortedPoints: [ProjectMemoryVisualPoint] {
+        visual.points.sorted {
+            sortAscending ? $0.value < $1.value : $0.value > $1.value
+        }
+    }
+
+    private var hasDetail: Bool {
+        sortedPoints.contains { $0.subtitle != nil }
+    }
+
+    private var dataTableSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("DATA POINTS")
+            VStack(spacing: 0) {
+                HStack {
+                    Text("LABEL")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .tracking(1.4)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("VALUE")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .tracking(1.4)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .frame(width: 120, alignment: .trailing)
+                    if hasDetail {
+                        Text("DETAIL")
+                            .font(DesignSystem.Typography.monoTiny)
+                            .tracking(1.4)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .frame(width: 140, alignment: .trailing)
+                    }
+                }
+                .padding(.vertical, DesignSystem.Spacing.sm)
+                Rectangle()
+                    .fill(DesignSystem.Colors.border.opacity(0.5))
+                    .frame(height: 0.5)
+
+                ForEach(Array(sortedPoints.enumerated()), id: \.offset) { _, point in
+                    HStack {
+                        Text(point.label)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(valueLabel(point))
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            .frame(width: 120, alignment: .trailing)
+                        if hasDetail {
+                            if let subtitle = point.subtitle {
+                                Text(subtitle)
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .frame(width: 140, alignment: .trailing)
+                            } else {
+                                Color.clear.frame(width: 140)
+                            }
+                        }
+                    }
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+                    Rectangle()
+                        .fill(DesignSystem.Colors.border.opacity(0.25))
+                        .frame(height: 0.5)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+            )
+        }
+    }
+
+    private var auditFooter: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Rectangle()
+                .fill(DesignSystem.Colors.mercuryGradient)
+                .frame(height: 0.5)
+            Text("visual-id \(visual.id)  ·  kind \(visual.kind.rawValue)  ·  \(visual.points.count) points")
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+        }
+    }
+
+    private func valueLabel(_ point: ProjectMemoryVisualPoint) -> String {
+        if let s = point.subtitle, !s.isEmpty { return s }
+        if visual.kind == .providerMix { return point.value.formatAsCost() }
+        if visual.kind == .timeline { return Int(point.value).formatAsTokenVolume() }
+        return String(Int(point.value))
+    }
+
+    private func sectionEyebrow(_ title: String) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.caption)
+            .tracking(2.0)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func startInsight() {
+        let topLine = sortedPoints.prefix(5).map { p in
+            "\(p.label): \(valueLabel(p))"
+        }.joined(separator: " · ")
+        let prompt = """
+        You are reading a chart from a project memory snapshot.
+
+        Write a tight 2-paragraph reading — no preamble, no headings, no fluff.
+
+        Paragraph 1: What the distribution means (concentration, skew, outliers, recent shifts).
+        Paragraph 2: What action the developer should take — concrete, specific, with at most one number.
+
+        Visual: \(visual.title) (kind: \(kindLabel))
+        Subtitle: \(visual.subtitle ?? "—")
+        Top points: \(topLine)
+        Total points: \(visual.points.count)
+        """
+        insight.generate(prompt: prompt)
+    }
+
+    private func runEntranceMotion() {
+        if reduceMotion {
+            visibleSections = 7
+            return
+        }
+        guard visibleSections < 0 else { return }
+        visibleSections = 0
+        cascadeTask?.cancel()
+        cascadeTask = Task { @MainActor in
+            for i in 0..<7 {
+                if i > 0 {
+                    try? await Task.sleep(nanoseconds: 40_000_000)
+                    if Task.isCancelled { return }
+                }
+                withAnimation(DesignSystem.Animation.gentle) {
+                    visibleSections = i + 1
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Citation Insight Sheet (LLM-powered, live streaming)
+
+private struct CitationInsightSheet: View {
+    let citations: [ProjectMemoryCitation]
+    let chatController: ChatSessionController
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var insight: ProjectMemoryInsightController
+    @State private var visibleSections: Int = -1
+    @State private var cascadeTask: Task<Void, Never>?
+
+    init(citations: [ProjectMemoryCitation], chatController: ChatSessionController) {
+        self.citations = citations
+        self.chatController = chatController
+        _insight = State(initialValue: ProjectMemoryInsightController(chatController: chatController))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            chrome
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    WikiBreadcrumb(crumbs: [
+                        WikiBreadcrumbItem(label: "Project memory", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: "Citations", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: citations.count == 1 ? (citations.first?.title ?? "Citation") : "\(citations.count) citations", action: nil)
+                    ])
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    EditorialHero(
+                        eyebrow: "CITATION INSIGHT · \(citations.count) CITATION\(citations.count == 1 ? "" : "S")",
+                        subtitle: heroSubtitle,
+                        headline: heroHeadline,
+                        metaSegments: heroMetaSegments,
+                        leadAccent: DesignSystem.Colors.hermesAureate
+                    )
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    WikiPivotPillRow(
+                        queries: WikiQuery.curatedForCitations(citations),
+                        onTap: { runPivot($0) }
+                    )
+                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    HermesReadingCard(
+                        title: "Hermes Reading",
+                        placeholder: citations.count == 1
+                            ? "Hermes is reading this citation — what it means and why it matters."
+                            : "Hermes is reading the evidence — drawing connections and surfacing what matters.",
+                        controller: insight,
+                        onRetry: { startInsight() }
+                    )
+                    .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    evidenceSection
+                        .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    handoffFooter
+                        .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+                }
+                .padding(DesignSystem.Spacing.xl)
+            }
+        }
+        .background(DesignSystem.Colors.background)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .onAppear { startInsight(); runEntranceMotion() }
+        .onDisappear { cascadeTask?.cancel(); insight.cancel() }
+        .onChange(of: chatController.streamingTick) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .onChange(of: chatController.isStreaming) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+    }
+
+    private var chrome: some View {
+        HStack {
+            Text("Citation insight · live")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Spacer()
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.xl)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DesignSystem.Colors.borderSubtle)
+                .frame(height: 0.5)
+        }
+    }
+
+    private var heroHeadline: String {
+        if citations.count == 1, let only = citations.first {
+            return only.title.isEmpty ? "Untitled evidence" : only.title
+        }
+        let trimmed = insight.streamingContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty,
+           let dot = trimmed.firstIndex(where: { ".!?".contains($0) }) {
+            return String(trimmed[..<dot]) + "."
+        }
+        return "Reading the evidence"
+    }
+
+    private var heroSubtitle: String {
+        let kinds = Array(Set(citations.map(\.sourceKind))).map { kind -> String in
+            switch kind {
+            case .conversation:    return "transcripts"
+            case .skillDoc:        return "skill docs"
+            case .agentDoc:        return "agent docs"
+            case .sharedArtifact:  return "shared artifacts"
+            }
+        }
+        return "Across " + kinds.joined(separator: ", ") + " · synthesized by Hermes"
+    }
+
+    private var heroMetaSegments: [String] {
+        var parts: [String] = []
+        parts.append("\(citations.count) cite\(citations.count == 1 ? "" : "s")")
+        let snippetChars = citations.reduce(0) { $0 + $1.snippet.count }
+        parts.append("\(snippetChars) chars evidence")
+        if let oldest = citations.compactMap(\.createdAt).min() {
+            parts.append("since \(oldest.formatted(.relative(presentation: .named)))")
+        }
+        return parts
+    }
+
+    private var evidenceSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("EVIDENCE")
+            VStack(spacing: DesignSystem.Spacing.md) {
+                ForEach(Array(citations.enumerated()), id: \.element.id) { idx, citation in
+                    CitationQuoteCard(ordinal: idx + 1, citation: citation)
+                }
+            }
+        }
+    }
+
+    private var handoffFooter: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Rectangle()
+                .fill(DesignSystem.Colors.mercuryGradient)
+                .frame(height: 0.5)
+            HStack {
+                Text("Want to keep pulling on this thread?")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer()
+                Button {
+                    handoffToChat()
+                } label: {
+                    Label("Continue in chat", systemImage: "arrow.right.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private func sectionEyebrow(_ title: String) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.caption)
+            .tracking(2.0)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func startInsight() {
+        let citationSummaries = citations.enumerated().map { idx, citation in
+            """
+            [\(String(format: "%02d", idx + 1))] \(citation.title) (\(citation.sourceKind.rawValue), id: \(citation.sourceID))
+            \(citation.snippet)
+            """
+        }.joined(separator: "\n\n")
+
+        let prompt = citations.count == 1 ? """
+            You are reading a single piece of evidence from a project's local memory. Write a tight 2-paragraph reading — no preamble, no headings, no fluff.
+
+            Paragraph 1: What this evidence actually says and why it matters in this project.
+            Paragraph 2: What the operator should do next — concrete, specific, low-friction.
+
+            \(citationSummaries)
+            """ : """
+            You are synthesizing a small evidence pack from a project's local memory. The citations below were grouped because they share a section. Write a tight 2–3 paragraph reading — no preamble, no headings, no fluff. Connect across the citations.
+
+            Paragraph 1: What story this evidence tells, drawing connections (name 1–2 citations by their [01]-style ordinals).
+            Paragraph 2: What pattern or risk this surfaces.
+            Paragraph 3 (optional): What concrete next move makes sense given this evidence.
+
+            \(citationSummaries)
+            """
+        insight.generate(prompt: prompt)
+    }
+
+    @MainActor
+    private func handoffToChat() {
+        let citationTitles = citations.prefix(5).map(\.title).joined(separator: ", ")
+        let prompt = """
+        Continue analyzing these citations — pull on the threads I haven't surfaced yet.
+        Citations: \(citationTitles)
+        Hermes already gave me one reading — give me a deeper one with concrete file/path mentions if you can.
+        """
+        chatController.inputText = prompt
+        Task { await chatController.send() }
+        dismiss()
+    }
+
+    private func runEntranceMotion() {
+        if reduceMotion {
+            visibleSections = 6
+            return
+        }
+        guard visibleSections < 0 else { return }
+        visibleSections = 0
+        cascadeTask?.cancel()
+        cascadeTask = Task { @MainActor in
+            for i in 0..<6 {
+                if i > 0 {
+                    try? await Task.sleep(nanoseconds: 40_000_000)
+                    if Task.isCancelled { return }
+                }
+                withAnimation(DesignSystem.Animation.gentle) {
+                    visibleSections = i + 1
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func runPivot(_ query: WikiQuery) {
+        chatController.inputText = query.prompt
+        Task { await chatController.send() }
+        dismiss()
     }
 }

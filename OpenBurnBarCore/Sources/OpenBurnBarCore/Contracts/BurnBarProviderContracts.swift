@@ -47,13 +47,137 @@ public struct BurnBarProviderCredentialSlot: Codable, Hashable, Identifiable, Se
     }
 }
 
+/// Thinking-level ladder shared across providers.
+///
+/// Anthropic maps each level to a `thinking.budget_tokens` budget (and the new
+/// `effort` parameter shipped under `effort-2025-11-24`). OpenAI maps each
+/// level to `reasoning_effort` / `reasoning.effort`. `.max` collapses to
+/// `xhigh` on OpenAI (no higher tier exists) while pushing Anthropic's budget
+/// to its documented effective ceiling.
+public enum BurnBarThinkingLevel: String, Codable, CaseIterable, Hashable, Sendable {
+    case low
+    case medium
+    case high
+    case xhigh
+    case max
+
+    /// Lower-case slug used to suffix a variant's wire id (`claude-opus-4-7-xhigh`).
+    public var slug: String { rawValue }
+
+    /// Human-friendly label used in the Settings editor and `displayName`.
+    public var displayLabel: String {
+        switch self {
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        case .xhigh: return "XHigh"
+        case .max: return "Max"
+        }
+    }
+
+    /// Anthropic `thinking.budget_tokens` value. Pinned to documented tiers.
+    public var anthropicBudgetTokens: Int {
+        switch self {
+        case .low: return 2048
+        case .medium: return 4096
+        case .high: return 8192
+        case .xhigh: return 16384
+        case .max: return 32768
+        }
+    }
+
+    /// OpenAI `reasoning_effort` / `reasoning.effort` value. `.max` collapses
+    /// to `xhigh` since OpenAI does not expose a higher tier.
+    public var openAIEffort: String {
+        switch self {
+        case .low: return "low"
+        case .medium: return "medium"
+        case .high: return "high"
+        case .xhigh, .max: return "xhigh"
+        }
+    }
+
+    /// Anthropic `effort` value sent on routes that include the `effort-2025-11-24`
+    /// beta. `.max` collapses to `xhigh` because Anthropic only documents up to
+    /// `xhigh`; the deeper budget is expressed via `thinking.budget_tokens`.
+    public var anthropicEffort: String {
+        switch self {
+        case .low: return "low"
+        case .medium: return "medium"
+        case .high: return "high"
+        case .xhigh, .max: return "xhigh"
+        }
+    }
+
+    /// Sort order from lowest effort to highest.
+    public var ladderIndex: Int {
+        switch self {
+        case .low: return 0
+        case .medium: return 1
+        case .high: return 2
+        case .xhigh: return 3
+        case .max: return 4
+        }
+    }
+}
+
+/// A user-defined variant of an advertised model that pins a specific
+/// `BurnBarThinkingLevel` (and optional `maxOutputTokens`). Variants are
+/// surfaced as distinct rows in `/v1/models` and in every wired CLI's model
+/// picker, with stable wire ids derived from the base model id + level slug.
+public struct BurnBarModelVariant: Codable, Hashable, Identifiable, Sendable {
+    public let variantID: String
+    public var label: String
+    public var baseModelID: String
+    public var thinkingLevel: BurnBarThinkingLevel
+    public var maxOutputTokens: Int?
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    public var id: String { variantID }
+
+    public init(
+        variantID: String,
+        label: String,
+        baseModelID: String,
+        thinkingLevel: BurnBarThinkingLevel,
+        maxOutputTokens: Int? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.variantID = variantID
+        self.label = label
+        self.baseModelID = baseModelID
+        self.thinkingLevel = thinkingLevel
+        self.maxOutputTokens = maxOutputTokens
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// Default wire id derived from the base model + level (`claude-opus-4-7-xhigh`).
+    public static func defaultVariantID(baseModelID: String, level: BurnBarThinkingLevel) -> String {
+        let trimmed = baseModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(trimmed)-\(level.slug)"
+    }
+
+    /// Default label rendered alongside the variant ("XHigh").
+    public static func defaultLabel(for level: BurnBarThinkingLevel) -> String {
+        level.displayLabel
+    }
+}
+
 public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable {
     public let providerID: String
     public var isEnabled: Bool
     public var baseURL: String
     public var preferredModelIDs: [String]
+    public var disabledAdvertisedModelIDs: [String]
     public var preferredCredentialSlotID: String?
     public var credentialSlots: [BurnBarProviderCredentialSlot]
+    /// User-defined thinking-level variants. Each variant ships as its own
+    /// row in `/v1/models` and in every wired CLI's picker, while still
+    /// routing through `baseModelID`.
+    public var modelVariants: [BurnBarModelVariant]
 
     public var id: String { providerID }
 
@@ -62,15 +186,70 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         isEnabled: Bool = false,
         baseURL: String,
         preferredModelIDs: [String],
+        disabledAdvertisedModelIDs: [String] = [],
         preferredCredentialSlotID: String? = nil,
-        credentialSlots: [BurnBarProviderCredentialSlot] = []
+        credentialSlots: [BurnBarProviderCredentialSlot] = [],
+        modelVariants: [BurnBarModelVariant] = []
     ) {
         self.providerID = providerID
         self.isEnabled = isEnabled
         self.baseURL = baseURL
         self.preferredModelIDs = preferredModelIDs
+        self.disabledAdvertisedModelIDs = Self.normalizedDisabledAdvertisedModelIDs(disabledAdvertisedModelIDs)
         self.preferredCredentialSlotID = preferredCredentialSlotID
         self.credentialSlots = credentialSlots
+        self.modelVariants = Self.normalizedModelVariants(modelVariants)
+    }
+
+    public func isModelAdvertisementEnabled(_ modelID: String) -> Bool {
+        let normalized = Self.normalizedAdvertisedModelID(modelID)
+        guard !normalized.isEmpty else { return true }
+        return !Set(disabledAdvertisedModelIDs.map(Self.normalizedAdvertisedModelID)).contains(normalized)
+    }
+
+    public mutating func setModelAdvertisement(modelID: String, isEnabled: Bool) {
+        let normalized = Self.normalizedAdvertisedModelID(modelID)
+        guard !normalized.isEmpty else { return }
+        var disabled = Set(disabledAdvertisedModelIDs.map(Self.normalizedAdvertisedModelID))
+        if isEnabled {
+            disabled.remove(normalized)
+        } else {
+            disabled.insert(normalized)
+        }
+        disabledAdvertisedModelIDs = disabled.sorted()
+    }
+
+    /// Insert or update a variant, keyed by `variantID`. Touches `updatedAt`.
+    public mutating func upsertModelVariant(_ variant: BurnBarModelVariant) {
+        var working = modelVariants
+        var inserted = variant
+        inserted.updatedAt = Date()
+        if let index = working.firstIndex(where: { $0.variantID == inserted.variantID }) {
+            inserted.createdAt = working[index].createdAt
+            working[index] = inserted
+        } else {
+            working.append(inserted)
+        }
+        modelVariants = Self.normalizedModelVariants(working)
+    }
+
+    /// Remove a variant by id. Returns `true` if a row was removed.
+    @discardableResult
+    public mutating func removeModelVariant(variantID: String) -> Bool {
+        let trimmed = variantID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let before = modelVariants.count
+        modelVariants.removeAll { $0.variantID.caseInsensitiveCompare(trimmed) == .orderedSame }
+        return modelVariants.count != before
+    }
+
+    /// Variants that target a specific base model id.
+    public func variants(forBaseModelID baseModelID: String) -> [BurnBarModelVariant] {
+        let normalized = baseModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return [] }
+        return modelVariants.filter {
+            $0.baseModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -78,8 +257,10 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         case isEnabled
         case baseURL
         case preferredModelIDs
+        case disabledAdvertisedModelIDs
         case preferredCredentialSlotID
         case credentialSlots
+        case modelVariants
     }
 
     public init(from decoder: Decoder) throws {
@@ -88,8 +269,59 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
         baseURL = try container.decode(String.self, forKey: .baseURL)
         preferredModelIDs = try container.decode([String].self, forKey: .preferredModelIDs)
+        disabledAdvertisedModelIDs = Self.normalizedDisabledAdvertisedModelIDs(
+            try container.decodeIfPresent([String].self, forKey: .disabledAdvertisedModelIDs) ?? []
+        )
         preferredCredentialSlotID = try container.decodeIfPresent(String.self, forKey: .preferredCredentialSlotID)
         credentialSlots = try container.decodeIfPresent([BurnBarProviderCredentialSlot].self, forKey: .credentialSlots) ?? []
+        modelVariants = Self.normalizedModelVariants(
+            try container.decodeIfPresent([BurnBarModelVariant].self, forKey: .modelVariants) ?? []
+        )
+    }
+
+    private static func normalizedDisabledAdvertisedModelIDs(_ modelIDs: [String]) -> [String] {
+        var seen = Set<String>()
+        return modelIDs.compactMap { raw in
+            let normalized = normalizedAdvertisedModelID(raw)
+            guard !normalized.isEmpty, seen.insert(normalized).inserted else { return nil }
+            return normalized
+        }
+    }
+
+    private static func normalizedAdvertisedModelID(_ modelID: String) -> String {
+        modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func normalizedModelVariants(_ variants: [BurnBarModelVariant]) -> [BurnBarModelVariant] {
+        var seen = Set<String>()
+        return variants.compactMap { raw in
+            let trimmedID = raw.variantID.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedBase = raw.baseModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedID.isEmpty,
+                  !trimmedBase.isEmpty,
+                  seen.insert(trimmedID.lowercased()).inserted else {
+                return nil
+            }
+            let label = raw.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedTokens: Int? = raw.maxOutputTokens.flatMap { tokens in
+                tokens > 0 ? tokens : nil
+            }
+            return BurnBarModelVariant(
+                variantID: trimmedID,
+                label: label.isEmpty ? BurnBarModelVariant.defaultLabel(for: raw.thinkingLevel) : label,
+                baseModelID: trimmedBase,
+                thinkingLevel: raw.thinkingLevel,
+                maxOutputTokens: normalizedTokens,
+                createdAt: raw.createdAt,
+                updatedAt: raw.updatedAt
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.baseModelID.caseInsensitiveCompare(rhs.baseModelID) != .orderedSame {
+                return lhs.baseModelID.localizedCaseInsensitiveCompare(rhs.baseModelID) == .orderedAscending
+            }
+            return lhs.thinkingLevel.ladderIndex < rhs.thinkingLevel.ladderIndex
+        }
     }
 }
 
@@ -139,6 +371,84 @@ public struct BurnBarConfigResponse: Codable, Hashable, Sendable {
 
     public init(snapshot: BurnBarProviderConfigurationSnapshot) {
         self.snapshot = snapshot
+    }
+}
+
+public struct BurnBarProviderCredentialSlotUpsertRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let slotID: String?
+    public let label: String
+    public let apiKey: String
+    public let isEnabled: Bool
+
+    public init(
+        providerID: String,
+        slotID: String? = nil,
+        label: String,
+        apiKey: String,
+        isEnabled: Bool = true
+    ) {
+        self.providerID = providerID
+        self.slotID = slotID
+        self.label = label
+        self.apiKey = apiKey
+        self.isEnabled = isEnabled
+    }
+}
+
+public struct BurnBarProviderCredentialSlotRemoveRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let slotID: String
+
+    public init(providerID: String, slotID: String) {
+        self.providerID = providerID
+        self.slotID = slotID
+    }
+}
+
+public struct BurnBarProviderCredentialSlotMutationResponse: Codable, Hashable, Sendable {
+    public let snapshot: BurnBarProviderConfigurationSnapshot
+    public let slot: BurnBarProviderCredentialSlot?
+
+    public init(
+        snapshot: BurnBarProviderConfigurationSnapshot,
+        slot: BurnBarProviderCredentialSlot? = nil
+    ) {
+        self.snapshot = snapshot
+        self.slot = slot
+    }
+}
+
+public struct BurnBarProviderModelVariantUpsertRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let variant: BurnBarModelVariant
+
+    public init(providerID: String, variant: BurnBarModelVariant) {
+        self.providerID = providerID
+        self.variant = variant
+    }
+}
+
+public struct BurnBarProviderModelVariantRemoveRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let variantID: String
+
+    public init(providerID: String, variantID: String) {
+        self.providerID = providerID
+        self.variantID = variantID
+    }
+}
+
+public struct BurnBarProviderModelVariantMutationResponse: Codable, Hashable, Sendable {
+    public let snapshot: BurnBarProviderConfigurationSnapshot
+    public let variant: BurnBarModelVariant?
+
+    public init(
+        snapshot: BurnBarProviderConfigurationSnapshot,
+        variant: BurnBarModelVariant? = nil
+    ) {
+        self.snapshot = snapshot
+        self.variant = variant
     }
 }
 

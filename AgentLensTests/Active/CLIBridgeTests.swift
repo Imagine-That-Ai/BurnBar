@@ -49,12 +49,12 @@ final class CLIBridgeTests: XCTestCase {
 
     // MARK: - Codex Arguments Tests
 
-    func test_cliBridge_codexArguments_defaultModelAndReasoning() {
+    func test_cliBridge_codexArguments_defaultUsesCodexProfileAndReasoning() {
         let args = CLIBridge.codexArguments(prompt: "test")
         XCTAssertTrue(args.contains("exec"))
         XCTAssertTrue(args.contains("--json"))
-        // Default model should be gpt-5.5
-        XCTAssertTrue(args.contains("gpt-5.5"))
+        XCTAssertFalse(args.contains("-m"))
+        XCTAssertFalse(args.contains("gpt-5.5"))
     }
 
     func test_cliBridge_codexArguments_useExplicitModelWhenProvided() {
@@ -62,16 +62,21 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(args.contains("gpt-5.4"))
     }
 
-    func test_cliBridge_codexArguments_fallbackToSupportedModelWhenInvalidModelProvided() {
-        let args = CLIBridge.codexArguments(prompt: "test", model: "MiniMax-M2.7-highspeed")
+    func test_cliBridge_codexArguments_normalizesBundledCatalogSlug() {
+        let args = CLIBridge.codexArguments(prompt: "test", model: "gpt-5-5")
         XCTAssertTrue(args.contains("gpt-5.5"))
-        XCTAssertFalse(args.contains("MiniMax-M2.7-highspeed"))
+        XCTAssertFalse(args.contains("gpt-5-5"))
     }
 
-    func test_settingsManager_resolvedHermesChatModel_minimaxAdvertised_usesCodexCompatibleDefault() {
+    func test_cliBridge_codexArguments_preservesExplicitModelWhenUnknown() {
+        let args = CLIBridge.codexArguments(prompt: "test", model: "MiniMax-M2.7-highspeed")
+        XCTAssertTrue(args.contains("MiniMax-M2.7-highspeed"))
+    }
+
+    func test_settingsManager_resolvedHermesChatModel_minimaxAdvertised_usesAdvertisedModel() {
         XCTAssertEqual(
             SettingsManager.resolvedHermesChatModel(override: "", gatewayAdvertisedModel: "MiniMax-M2.7-highspeed"),
-            "gpt-5.5"
+            "MiniMax-M2.7-highspeed"
         )
     }
 
@@ -82,10 +87,10 @@ final class CLIBridgeTests: XCTestCase {
         )
     }
 
-    func test_settingsManager_resolvedHermesChatModel_nonMinimax_usesHermes() {
+    func test_settingsManager_resolvedHermesChatModel_nonMinimax_usesAdvertisedModel() {
         XCTAssertEqual(
             SettingsManager.resolvedHermesChatModel(override: "", gatewayAdvertisedModel: "NousResearch/Hermes-3-Llama-3.1-8B"),
-            "hermes"
+            "NousResearch/Hermes-3-Llama-3.1-8B"
         )
     }
 
@@ -94,6 +99,79 @@ final class CLIBridgeTests: XCTestCase {
             SettingsManager.resolvedHermesChatModel(override: "", gatewayAdvertisedModel: nil),
             "hermes"
         )
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_familyOverrideUsesAdvertisedModelID() {
+        let advertised = [
+            HermesAdvertisedModel(id: "glm-4.7:cloud", displayName: "glm-4.7", family: .zai),
+            HermesAdvertisedModel(id: "minimax-m2.7-highspeed", displayName: "MiniMax-M2.7", family: .minimax)
+        ]
+
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "zai",
+            selectedFamily: nil,
+            advertisedModels: advertised,
+            gatewayDefault: "claude-haiku-4-5"
+        )
+
+        XCTAssertEqual(resolved, "glm-4.7:cloud")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_exactAdvertisedPanelSelectionWins() {
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "minimax-m2.7-highspeed",
+            settingsOverride: "zai",
+            selectedFamily: .zai,
+            advertisedModels: [
+                HermesAdvertisedModel(id: "minimax-m2.7-highspeed", displayName: "MiniMax-M2.7", family: .minimax),
+                HermesAdvertisedModel(id: "glm-4.7:cloud", displayName: "glm-4.7", family: .zai)
+            ],
+            gatewayDefault: "claude-haiku-4-5"
+        )
+
+        XCTAssertEqual(resolved, "minimax-m2.7-highspeed")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_stalePanelSelectionUsesLiveFamilyModel() {
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "minimax-m2.7:cloud",
+            settingsOverride: "zai",
+            selectedFamily: .zai,
+            advertisedModels: [
+                HermesAdvertisedModel(id: "minimax-m2.7-highspeed", displayName: "MiniMax-M2.7", family: .minimax),
+                HermesAdvertisedModel(id: "glm-4.7:cloud", displayName: "glm-4.7", family: .zai)
+            ],
+            gatewayDefault: "claude-haiku-4-5"
+        )
+
+        XCTAssertEqual(resolved, "minimax-m2.7-highspeed")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_familyOverrideFallsBackToGatewayDefaultWhenCatalogHasNoFamilyMatch() {
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "zai",
+            selectedFamily: .zai,
+            advertisedModels: [
+                HermesAdvertisedModel(id: "minimax-m2.7-highspeed", displayName: "MiniMax-M2.7", family: .minimax)
+            ],
+            gatewayDefault: "hermes-agent"
+        )
+
+        XCTAssertEqual(resolved, "hermes-agent")
+    }
+
+    func test_openAICompatibleModelProbe_modelsRequestCarriesGatewayRelayTimeoutAndBearer() throws {
+        let request = try XCTUnwrap(OpenAICompatibleModelProbe.modelsRequest(
+            baseURL: URL(string: "http://127.0.0.1:8317/")!,
+            bearerToken: " gateway-token ",
+            timeout: 10
+        ))
+
+        XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:8317/v1/models")
+        XCTAssertEqual(request.timeoutInterval, 10)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer gateway-token")
     }
 
     func test_cliBridge_codexArguments_includesReasoningEffort() {
@@ -315,6 +393,26 @@ final class CLIBridgeTests: XCTestCase {
 
         XCTAssertEqual(models.map(\.id), ["kimi-k2", "glm-4.6", "minimax-m2.7-highspeed"])
         XCTAssertEqual(models.map(\.family), [.kimi, .zai, .minimax])
+    }
+
+    func test_openAICompatibleModelListParser_preservesFullLiveRowsAndRouteEligibility() throws {
+        let data = #"""
+        {
+          "data": [
+            {"id":"glm-5","display_name":"GLM 5","provider_id":"zai","provider_name":"Z.AI","route_eligible":true},
+            {"id":"new-provider-model","display_name":"New Provider Model","provider_id":"new-provider","provider_name":"New Provider"},
+            {"id":"stale-model","display_name":"Stale Model","provider_id":"openai","route_eligible":false}
+          ]
+        }
+        """#.data(using: .utf8)!
+
+        let models = OpenAICompatibleModelListParser.advertisedModels(from: data)
+
+        XCTAssertEqual(models.map(\.id), ["glm-5", "new-provider-model", "stale-model"])
+        XCTAssertEqual(models.first?.displayName, "GLM 5")
+        XCTAssertEqual(models.first?.providerID, "zai")
+        XCTAssertEqual(models.first?.providerName, "Z.AI")
+        XCTAssertEqual(models.map(\.routeEligible), [true, true, false])
     }
 
     func test_streamRuntime_cancelRunningProcess_terminatesMatchingTokenOnly() async throws {

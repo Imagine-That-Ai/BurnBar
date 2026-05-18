@@ -29,6 +29,35 @@ final class MobileAgentInsightsProducer: AgentInsightsBundleProducer, @unchecked
         try await assemble(scope: scope)
     }
 
+    func rosterOverview(
+        window insightWindow: InsightTimeWindow = .last7d
+    ) async -> (status: [AgentProvider: AgentInsightsHeader.Status], lastSeen: [AgentProvider: Date]) {
+        let now = Date()
+        let interval = insightWindow.interval(now: now, calendar: calendar)
+        let snapshot = (try? await dataSource.snapshot(window: interval))
+            ?? InsightDataSnapshot(window: interval, generatedAt: now)
+        let canvases = store.canvases
+        let analysis = store.currentAnalysis
+
+        var status: [AgentProvider: AgentInsightsHeader.Status] = [:]
+        var lastSeen: [AgentProvider: Date] = [:]
+        for provider in AgentProvider.allCases {
+            let bundle = AgentInsightsBundleAssembler.assemble(
+                scope: .agent(provider, window: insightWindow),
+                snapshot: snapshot,
+                canvases: canvases,
+                analysis: analysis,
+                auditEntries: [],
+                now: now
+            )
+            status[provider] = bundle.header.status
+            if let seen = bundle.header.lastSeen {
+                lastSeen[provider] = seen
+            }
+        }
+        return (status, lastSeen)
+    }
+
     private func assemble(scope: AgentInsightsScope) async throws -> AgentInsightsBundle {
         let now = Date()
         let currentInterval = scope.window.interval(now: now, calendar: calendar)

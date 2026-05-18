@@ -20,17 +20,34 @@ struct AgentInsightsTabScreen: View {
     @State private var path = NavigationPath()
     @State private var selectedScope: AgentInsightsScope?
     @State private var showWorkspace = false
+    @State private var showCloudStore = false
+    @State private var initializationError: String?
     @State private var rosterStatus: [AgentProvider: AgentInsightsHeader.Status] = [:]
     @State private var rosterLastSeen: [AgentProvider: Date] = [:]
 
+    @Environment(\.cloudSubscriptionStore) private var cloudStore
+
     var body: some View {
-        adaptiveLayout
+        Group {
+            if let cloudStore, !cloudStore.isActive {
+                lockedInsightsTeaser
+            } else {
+                adaptiveLayout
+            }
+        }
             .sheet(isPresented: $showWorkspace) {
                 InsightsWorkspaceSheet(
                     dashboardStore: dashboardStore,
                     hermesService: hermesService,
                     isPresented: $showWorkspace
                 )
+            }
+            .sheet(isPresented: $showCloudStore) {
+                NavigationStack {
+                    CloudStoreView(onClose: { showCloudStore = false })
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
             .task { await prepare() }
             .onReceive(NotificationCenter.default.publisher(for: .init("ShowInsightsTab"))) { note in
@@ -46,6 +63,18 @@ struct AgentInsightsTabScreen: View {
             iPadLayout
         } else {
             iPhoneLayout
+        }
+    }
+
+    private var lockedInsightsTeaser: some View {
+        LockedFeatureVeil(
+            headline: "Insights, surfaced.",
+            detail: "Cross-agent patterns, weekly retros, forecast cohorts, and Hermes-narrated story cards — included with OpenBurnBar Cloud.",
+            ctaLabel: "Open Cloud"
+        ) {
+            showCloudStore = true
+        } background: {
+            InsightsTeaserBackground()
         }
     }
 
@@ -126,6 +155,13 @@ struct AgentInsightsTabScreen: View {
                         select(.aggregate)
                     }
                 )
+            } else if let initializationError {
+                ContentUnavailableView(
+                    "Couldn't load Insights",
+                    systemImage: "exclamationmark.triangle.fill",
+                    description: Text(initializationError)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -155,12 +191,17 @@ struct AgentInsightsTabScreen: View {
 
     @MainActor
     private func prepare() async {
+        guard cloudStore?.isActive ?? true else { return }
         await dashboardStore.load()
         if insightsStore == nil {
             let dataSource = MobileInsightDataSource(dashboardStore: dashboardStore)
-            if let store = try? InsightsStore(dataSource: dataSource) {
+            do {
+                let store = try InsightsStore(dataSource: dataSource)
                 insightsStore = store
                 producer = MobileAgentInsightsProducer(store: store, dataSource: dataSource)
+                initializationError = nil
+            } catch {
+                initializationError = error.localizedDescription
             }
         }
         await refreshRoster()
@@ -169,26 +210,9 @@ struct AgentInsightsTabScreen: View {
     @MainActor
     private func refreshRoster() async {
         guard let producer else { return }
-        let bundle = try? await producer.bundle(for: AgentInsightsScope(window: .last7d))
-        guard let bundle else { return }
-        // Derive per-provider roster status from the aggregate snapshot:
-        // any agent that appears in the lineup is at least "idle"; the
-        // top one inherits the aggregate header's status.
-        var status: [AgentProvider: AgentInsightsHeader.Status] = [:]
-        var lastSeen: [AgentProvider: Date] = [:]
-        for provider in AgentProvider.allCases {
-            // Per-agent bundle is fast (in-memory aggregation over the
-            // snapshot the producer already fetched). Reusing the
-            // assembler keeps the roster honest without firing 24
-            // separate Firestore queries.
-            let scope = AgentInsightsScope.agent(provider)
-            if let agentBundle = try? await producer.bundle(for: scope) {
-                status[provider] = agentBundle.header.status
-                lastSeen[provider] = agentBundle.header.lastSeen
-            }
-        }
-        rosterStatus = status
-        rosterLastSeen = lastSeen
+        let overview = await producer.rosterOverview()
+        rosterStatus = overview.status
+        rosterLastSeen = overview.lastSeen
     }
 }
 

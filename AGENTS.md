@@ -35,12 +35,18 @@ Human-oriented Cursor and product context (onboarding, architecture, threat mode
 
 ### Build & run
 
-The Android app is a **read-only Firestore consumer** — it displays burn data that other clients push to Firebase.
+The Android app reaches **full iOS parity** as of 2026-05-16 — Hermes Square, messaging, iroh transport, and Mercury Media (file transfer, screen-share viewer, 1:1 calls) all ship in the same release. Read-only Firestore consumption is still the default Firestore pattern; the new outbound write paths (iroh pairing, media analytics, FCM tokens, mission dispatch, approval policy) follow the schemas in `functions/src/types.ts`.
 
 | Command | What it does |
 |---|---|
 | `cd android && ./gradlew assembleDebug` | Build debug APK (Java 21, `ANDROID_HOME=$HOME/Library/Android`) |
 | `cd android && ./gradlew clean assembleDebug --no-daemon 2>&1 \| grep "^e:\\|BUILD"` | Clean build, errors only |
+| `cd android && ./gradlew :app:testDebugUnitTest --no-daemon` | Run the JVM unit suite (relay + media + missions + atom parser, ~253 tests) |
+| `cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon` | iroh-relay library unit tests (codec + pairing + loopback transport) |
+| `scripts/build-iroh-android-aar.sh` | Build `Vendor/openburnbar-iroh.aar` (auto-installs NDK + cargo-ndk + Rust targets) |
+| `scripts/build_opus_android.sh` | Build `Vendor/opus-android.aar` from libopus 1.5 (4 ABIs) |
+| `scripts/e2e/android-iroh-chat.sh` | Install debug APK + run the iroh chat instrumented suite via `adb` |
+| `scripts/e2e/android-mercury-call.sh` | Install debug APK + run the Mercury call instrumented suite via `adb` |
 
 ### Firebase config
 
@@ -107,3 +113,35 @@ export JAVA_HOME="$HOME/.homebrew/opt/openjdk@21" # or /opt/homebrew/opt/openjdk
 export ANDROID_HOME="$HOME/Library/Android"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 ```
+
+---
+
+## Computer Use (Phases 8–13)
+
+**Master plan:** [`plans/2026-05-16-computer-use-master-plan.md`](plans/2026-05-16-computer-use-master-plan.md) · **Wire reference:** [`docs/HERMES_COMPUTER_USE.md`](docs/HERMES_COMPUTER_USE.md) · **Rollout log:** [`docs/runbooks/computer-use-rollout-status.md`](docs/runbooks/computer-use-rollout-status.md)
+
+| Capability | Direction | Phase | Flag |
+|---|---|---|---|
+| Agent Watch — Mac → phone read-only mirror | Mac → iOS/Android | 8 | `computer_use_watch_enabled` |
+| Browser Computer Use — agent drives Playwright Chromium | Agent → daemon | 9 | `computer_use_browser_enabled` |
+| Trust modes + scope rules + audit chain | Mac UI | 10 | `computer_use_trust_modes_enabled` |
+| Mac System Computer Use — CGEvent + AX | Agent → Mac | 11 | `computer_use_system_enabled` |
+| Phone-as-controller — Ed25519-signed intents | Phone → Mac | 12 | `computer_use_phone_control_enabled` |
+| Polish — Trusted scopes, audit export, OpenTimestamps | Cross-cutting | 13 | `computer_use_polish_enabled` |
+
+**Key invariants:**
+- Approval is the only ground truth at v1. No silent auto-pilot.
+- Trust mode is per-session; never sticky across sessions.
+- The audit chain is content-addressed (SHA-256 today, BLAKE3-swappable). Tamper detection covers every entry including the terminal one when `head.json` is supplied.
+- Three independent panic-kill paths: `⌃⌥⌘.` global hotkey, phone three-finger long-press, NSWorkspace auth gate (loginwindow / SecurityAgent / screen sleep), Remote Config `computer_use_kill_switch`.
+- Path C (Mac System) ships only via direct download with notarization. The MAS build compiles it out via `#if DISTRIBUTION_MAS`.
+
+**Tool kinds:** `BurnBarToolKind.computerUseToolKinds` (13 kinds). New cases are auto-routed through `ComputerUseRunCoordinator`.
+
+**Bridge script:** `OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js`. The driver pins `playwright@1.49.1` via `OpenBurnBarPlaywrightLifecycle`.
+
+**Budget governance:**
+- Soft cap at projected $1500/mo (envelope tightens to 25 actions/run · 100/day).
+- Hard cap at $2500/mo (Remote Config kill-switch).
+- Per-user daily ceiling $5 (normal) / $2.50 (soft) / $0 (hard).
+- `evaluateComputerUseBudget` Cloud Function evaluates hourly.

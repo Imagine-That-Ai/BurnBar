@@ -45,6 +45,89 @@ public struct AssistantModelOption: Hashable, Identifiable, Sendable {
     }
 }
 
+// MARK: - Model ID aliases
+
+/// Shared model-ID compatibility layer for mobile preferences and live relay
+/// catalogs. The public website catalog historically used URL-safe marketing
+/// slugs (`minimax-m2-7`, `gpt-5-4-mini`) while real OpenAI-compatible
+/// gateways advertise provider-native IDs (`minimax-m2.7-highspeed`,
+/// `gpt-5.4-mini`). Persist and send the provider-native ID whenever the live
+/// relay can prove it exists.
+enum AssistantModelIDCanonicalizer {
+    static func canonicalized(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch trimmed.lowercased() {
+        case "gpt-5-5":
+            return "gpt-5.5"
+        case "gpt-5-4":
+            return "gpt-5.4"
+        case "gpt-5-4-mini":
+            return "gpt-5.4-mini"
+        case "gpt-5-3-codex":
+            return "gpt-5.3-codex"
+        case "minimax-m2-7":
+            return "minimax-m2.7-highspeed"
+        case "kimi-k2-5":
+            return "kimi-k2.5"
+        case "glm-5":
+            return "glm-5-turbo"
+        default:
+            return trimmed
+        }
+    }
+
+    static func canonicalizedPersistedSelection(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch trimmed.lowercased() {
+        case "gpt-5-5", "gpt-5-4", "gpt-5-4-mini", "gpt-5-3-codex", "minimax-m2-7", "kimi-k2-5":
+            return canonicalized(trimmed)
+        default:
+            return trimmed
+        }
+    }
+
+    static func lookupKey(_ raw: String) -> String {
+        canonicalized(raw)
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
+    }
+
+    static func familyKey(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
+    }
+
+    static func resolveRouteEligibleModelID(
+        _ raw: String,
+        in options: [HermesRuntimeModelOption]
+    ) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let eligible = options.filter(\.isRouteEligible)
+        if let exact = eligible.first(where: { $0.modelID == trimmed }) {
+            return exact.modelID
+        }
+        if let caseInsensitive = eligible.first(where: { $0.modelID.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            return caseInsensitive.modelID
+        }
+
+        let canonical = canonicalized(trimmed)
+        if canonical != trimmed {
+            if let exactCanonical = eligible.first(where: { $0.modelID == canonical }) {
+                return exactCanonical.modelID
+            }
+            if let caseInsensitiveCanonical = eligible.first(where: { $0.modelID.caseInsensitiveCompare(canonical) == .orderedSame }) {
+                return caseInsensitiveCanonical.modelID
+            }
+        }
+
+        let rawFamilyKey = familyKey(trimmed)
+        return eligible.first { familyKey($0.modelID) == rawFamilyKey }?.modelID
+    }
+}
+
 // MARK: - Catalog store
 
 public actor AssistantModelCatalogStore {
@@ -98,10 +181,11 @@ public actor AssistantModelCatalogStore {
     private static func decode(_ data: Data) throws -> [AssistantModelOption] {
         let raw = try JSONDecoder().decode([RawEntry].self, from: data)
         return raw.map { entry in
-            AssistantModelOption(
+            let canonicalModelID = AssistantModelIDCanonicalizer.canonicalized(entry.modelID)
+            return AssistantModelOption(
                 providerID: entry.providerID,
                 providerName: entry.providerDisplay,
-                modelID: entry.modelID,
+                modelID: canonicalModelID,
                 displayName: entry.modelDisplay,
                 tier: entry.tier ?? "mid"
             )
@@ -216,14 +300,19 @@ public enum CLIAgentModelPreferences {
 
     public static func preferredModelID(for runtime: AssistantRuntimeID,
                                         defaults: UserDefaults = .standard) -> String? {
-        defaults.string(forKey: key(for: runtime))
+        guard let stored = defaults.string(forKey: key(for: runtime)) else { return nil }
+        let canonical = AssistantModelIDCanonicalizer.canonicalized(stored)
+        if canonical != stored {
+            defaults.set(canonical, forKey: key(for: runtime))
+        }
+        return canonical
     }
 
     public static func setPreferredModelID(_ modelID: String?,
                                            for runtime: AssistantRuntimeID,
                                            defaults: UserDefaults = .standard) {
         if let modelID, !modelID.isEmpty {
-            defaults.set(modelID, forKey: key(for: runtime))
+            defaults.set(AssistantModelIDCanonicalizer.canonicalized(modelID), forKey: key(for: runtime))
         } else {
             defaults.removeObject(forKey: key(for: runtime))
         }
@@ -237,5 +326,39 @@ public enum CLIAgentModelPreferences {
             return match
         }
         return options.first
+    }
+
+    public static func validatedPreferredModelID(
+        for runtime: AssistantRuntimeID,
+        defaults: UserDefaults = .standard,
+        options explicitOptions: [AssistantModelOption]? = nil
+    ) throws -> String? {
+        guard let preferredID = preferredModelID(for: runtime, defaults: defaults)?.nonEmpty else {
+            return nil
+        }
+        let options = explicitOptions ?? AssistantModelCatalog.options(for: runtime)
+        guard !options.isEmpty else {
+            throw CLIAgentModelPreferenceError.catalogUnverified(runtime: runtime, modelID: preferredID)
+        }
+        guard options.contains(where: {
+            AssistantModelIDCanonicalizer.lookupKey($0.modelID) == AssistantModelIDCanonicalizer.lookupKey(preferredID)
+        }) else {
+            throw CLIAgentModelPreferenceError.selectedModelUnavailable(runtime: runtime, modelID: preferredID)
+        }
+        return preferredID
+    }
+}
+
+public enum CLIAgentModelPreferenceError: LocalizedError, Equatable {
+    case catalogUnverified(runtime: AssistantRuntimeID, modelID: String)
+    case selectedModelUnavailable(runtime: AssistantRuntimeID, modelID: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .catalogUnverified(runtime, modelID):
+            return "Selected \(runtime.displayName) model '\(modelID)' has not been verified against this Mac \(runtime.displayName) harness catalog yet. Refresh the Mac \(runtime.displayName) gateway before sending, so the selected model is not silently rerouted."
+        case let .selectedModelUnavailable(runtime, modelID):
+            return "Selected \(runtime.displayName) model '\(modelID)' is no longer advertised by this Mac \(runtime.displayName) harness catalog. Pick an available model before sending, so the request is not silently rerouted."
+        }
     }
 }

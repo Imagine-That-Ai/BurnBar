@@ -14,18 +14,19 @@ final class AnthropicCredentialProbeTests: XCTestCase {
     // MARK: - detectShape
 
     func test_detectShape_consoleAPIKey() {
-        XCTAssertEqual(AnthropicCredentialProbe.detectShape("sk-ant-abc123"), .consoleAPIKey)
-        XCTAssertEqual(AnthropicCredentialProbe.detectShape("sk-ant-something-longer-and-base64ish"), .consoleAPIKey)
+        XCTAssertEqual(AnthropicCredentialProbe.detectShape("sk-ant-api03-abc123"), .consoleAPIKey)
+        XCTAssertEqual(AnthropicCredentialProbe.detectShape("sk-ant-api03-something-longer-and-base64ish"), .consoleAPIKey)
     }
 
     func test_detectShape_oauthBearer_default() {
+        XCTAssertEqual(AnthropicCredentialProbe.detectShape("sk-ant-oat01-oauth-token"), .oauthBearer)
         XCTAssertEqual(AnthropicCredentialProbe.detectShape("eyJhbGciOiJIUzI1NiJ9.eyJ"), .oauthBearer)
         XCTAssertEqual(AnthropicCredentialProbe.detectShape("Bearer something"), .oauthBearer)
         XCTAssertEqual(AnthropicCredentialProbe.detectShape("anything-not-prefixed"), .oauthBearer)
     }
 
     func test_detectShape_handlesSurroundingWhitespace() {
-        XCTAssertEqual(AnthropicCredentialProbe.detectShape("  sk-ant-abc  \n"), .consoleAPIKey)
+        XCTAssertEqual(AnthropicCredentialProbe.detectShape("  sk-ant-api03-abc  \n"), .consoleAPIKey)
         XCTAssertEqual(AnthropicCredentialProbe.detectShape("\tabcd\t"), .oauthBearer)
     }
 
@@ -57,7 +58,7 @@ final class AnthropicCredentialProbeTests: XCTestCase {
     /// (the probe model name is the source of truth).
     func test_classify_okOn200() async {
         let probe = makeMockedProbe(status: 200, body: #"{"id":"msg_01"}"#)
-        let result = await probe.probe(credential: "sk-ant-fake")
+        let result = await probe.probe(credential: "sk-ant-api03-fake")
         XCTAssertEqual(result.verdict, .ok(model: AnthropicCredentialProbe.defaultProbeModel))
         XCTAssertTrue(result.isHealthy)
         XCTAssertEqual(result.shape, .consoleAPIKey)
@@ -65,32 +66,32 @@ final class AnthropicCredentialProbeTests: XCTestCase {
 
     func test_classify_authFailedOn401() async {
         let probe = makeMockedProbe(status: 401, body: #"{"error":"invalid auth"}"#)
-        let result = await probe.probe(credential: "sk-ant-bad")
+        let result = await probe.probe(credential: "sk-ant-api03-bad")
         XCTAssertEqual(result.verdict, .authFailed)
         XCTAssertFalse(result.isHealthy)
     }
 
     func test_classify_quotaExhaustedOn402() async {
         let probe = makeMockedProbe(status: 402, body: #"{"error":"out of quota"}"#)
-        let result = await probe.probe(credential: "sk-ant-fake")
+        let result = await probe.probe(credential: "sk-ant-api03-fake")
         XCTAssertEqual(result.verdict, .quotaExhausted)
     }
 
     func test_classify_rateLimitedOn429WithoutQuotaText() async {
         let probe = makeMockedProbe(status: 429, body: #"{"error":"rate limited"}"#)
-        let result = await probe.probe(credential: "sk-ant-fake")
+        let result = await probe.probe(credential: "sk-ant-api03-fake")
         XCTAssertEqual(result.verdict, .rateLimited)
     }
 
     func test_classify_quotaExhaustedOn429WithQuotaText() async {
         let probe = makeMockedProbe(status: 429, body: #"{"error":"quota exhausted for the month"}"#)
-        let result = await probe.probe(credential: "sk-ant-fake")
+        let result = await probe.probe(credential: "sk-ant-api03-fake")
         XCTAssertEqual(result.verdict, .quotaExhausted)
     }
 
     func test_classify_modelUnavailableOn404() async {
         let probe = makeMockedProbe(status: 404, body: #"{"error":"model not found"}"#)
-        let result = await probe.probe(credential: "sk-ant-fake")
+        let result = await probe.probe(credential: "sk-ant-api03-fake")
         if case .modelUnavailable = result.verdict { } else {
             XCTFail("expected .modelUnavailable, got \(result.verdict)")
         }
@@ -98,7 +99,7 @@ final class AnthropicCredentialProbeTests: XCTestCase {
 
     func test_classify_unexpectedOn500() async {
         let probe = makeMockedProbe(status: 500, body: "internal server error")
-        let result = await probe.probe(credential: "sk-ant-fake")
+        let result = await probe.probe(credential: "sk-ant-api03-fake")
         if case .unexpected(let status, _) = result.verdict {
             XCTAssertEqual(status, 500)
         } else {
@@ -109,7 +110,7 @@ final class AnthropicCredentialProbeTests: XCTestCase {
     func test_classify_truncatesLongBodyMessages() async {
         let longBody = String(repeating: "X", count: 1024)
         let probe = makeMockedProbe(status: 503, body: longBody)
-        let result = await probe.probe(credential: "sk-ant-fake")
+        let result = await probe.probe(credential: "sk-ant-api03-fake")
         if case .unexpected(_, let message) = result.verdict {
             XCTAssertLessThanOrEqual(message.count, 200)
             XCTAssertTrue(message.hasSuffix("…"))
@@ -120,29 +121,29 @@ final class AnthropicCredentialProbeTests: XCTestCase {
 
     // MARK: - probe header dispatch
 
-    func test_probe_sendsConsoleAPIKeyHeader_forSkAntPrefix() async throws {
+    func test_probe_sendsConsoleAPIKeyHeader_forSkAntAPIKeyPrefix() async throws {
         let recorder = RequestRecorder()
         let probe = makeMockedProbe(status: 200, body: "{}", recorder: recorder)
-        _ = await probe.probe(credential: "sk-ant-recorded")
+        _ = await probe.probe(credential: "sk-ant-api03-recorded")
         let recorded = recorder.last
         XCTAssertNotNil(recorded)
-        XCTAssertEqual(recorded?.value(forHTTPHeaderField: "x-api-key"), "sk-ant-recorded")
+        XCTAssertEqual(recorded?.value(forHTTPHeaderField: "x-api-key"), "sk-ant-api03-recorded")
         XCTAssertNil(recorded?.value(forHTTPHeaderField: "Authorization"))
     }
 
-    func test_probe_sendsBearerHeader_forNonSkAntCredential() async throws {
+    func test_probe_sendsBearerHeader_forOAuthCredential() async throws {
         let recorder = RequestRecorder()
         let probe = makeMockedProbe(status: 200, body: "{}", recorder: recorder)
-        _ = await probe.probe(credential: "oauth-bearer-token")
+        _ = await probe.probe(credential: "sk-ant-oat01-oauth-bearer-token")
         let recorded = recorder.last
-        XCTAssertEqual(recorded?.value(forHTTPHeaderField: "Authorization"), "Bearer oauth-bearer-token")
+        XCTAssertEqual(recorded?.value(forHTTPHeaderField: "Authorization"), "Bearer sk-ant-oat01-oauth-bearer-token")
         XCTAssertNil(recorded?.value(forHTTPHeaderField: "x-api-key"))
     }
 
     func test_probe_alwaysPinsAnthropicVersionHeader() async {
         let recorder = RequestRecorder()
         let probe = makeMockedProbe(status: 200, body: "{}", recorder: recorder)
-        _ = await probe.probe(credential: "sk-ant-test")
+        _ = await probe.probe(credential: "sk-ant-api03-test")
         let recorded = recorder.last
         XCTAssertEqual(
             recorded?.value(forHTTPHeaderField: "anthropic-version"),

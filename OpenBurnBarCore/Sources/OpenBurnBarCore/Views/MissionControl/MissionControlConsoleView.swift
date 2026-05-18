@@ -11,6 +11,7 @@ import SwiftUI
 //   • Local view owns the *draft* (title, prompt, kind, runtime, depth, etc.).
 //   • Forecast is recomputed reactively from draft + selected runtime.
 
+@MainActor
 public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
     @Bindable public var host: Host
     public let onDismiss: (() -> Void)?
@@ -99,11 +100,14 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xl) {
                 heroStrip
                 composerColumn
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
                 situationColumn
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
             }
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
             .padding(.bottom, UnifiedDesignSystem.Spacing.xxl)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollIndicators(.hidden)
     }
 
     // MARK: Pieces
@@ -154,10 +158,12 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
                     MissionApprovalLever(mode: $approvalMode)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
                     MissionDepthDial(depth: $depth)
                     MissionApprovalLever(mode: $approvalMode)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             MissionPermissionsRow(
@@ -183,6 +189,7 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
                 action: { dispatch() }
             )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var situationColumn: some View {

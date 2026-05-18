@@ -18,6 +18,58 @@ public enum BurnBarToolKind: String, Codable, CaseIterable, Hashable, Sendable {
     case searchWorkspace = "search_workspace"
     case applyPatch = "apply_patch"
     case runTerminal = "run_terminal"
+    // Computer Use — Browser (Path B). See
+    // plans/2026-05-16-computer-use-master-plan.md § B.4.
+    case browserClick = "browser_click"
+    case browserFill = "browser_fill"
+    case browserGoto = "browser_goto"
+    case browserKey = "browser_key"
+    case browserSelect = "browser_select"
+    case browserScreenshot = "browser_screenshot"
+    case browserExtract = "browser_extract"
+    // Computer Use — Mac System (Path C).
+    case macInputClick = "mac_input_click"
+    case macInputType = "mac_input_type"
+    case macInputKey = "mac_input_key"
+    case macInputShortcut = "mac_input_shortcut"
+    case macInputDragDrop = "mac_input_drag_drop"
+    case macInputScroll = "mac_input_scroll"
+    case macInspectAccessibility = "mac_inspect_accessibility"
+}
+
+public extension BurnBarToolKind {
+    /// The Computer Use tool kinds — used by the daemon's run executor
+    /// to detect a request that should route through
+    /// `ComputerUseRunCoordinator` instead of the existing companion-tool
+    /// dispatcher.
+    static let computerUseToolKinds: Set<BurnBarToolKind> = [
+        .browserClick, .browserFill, .browserGoto, .browserKey,
+        .browserSelect, .browserScreenshot, .browserExtract,
+        .macInputClick, .macInputType, .macInputKey,
+        .macInputShortcut, .macInputDragDrop, .macInputScroll, .macInspectAccessibility
+    ]
+
+    /// Whether this kind dispatches through Playwright.
+    var isBrowserComputerUse: Bool {
+        switch self {
+        case .browserClick, .browserFill, .browserGoto, .browserKey,
+             .browserSelect, .browserScreenshot, .browserExtract:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this kind requires Accessibility permission.
+    var isMacComputerUse: Bool {
+        switch self {
+        case .macInputClick, .macInputType, .macInputKey,
+             .macInputShortcut, .macInputDragDrop, .macInputScroll, .macInspectAccessibility:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 public struct BurnBarToolDefinition: Codable, Hashable, Sendable {

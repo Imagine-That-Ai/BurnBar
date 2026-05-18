@@ -7,7 +7,8 @@ import OpenBurnBarCore
 // internally:
 //   • Hermes / Pi → live model list off the service (`modelOptions`).
 //     Tap to call the service's `selectModel(_:)` and (optionally) star
-//     a favorite.
+//     a favorite. Catalog rows are visible for setup context, but they
+//     are not selectable unless this relay advertises the exact model ID.
 //   • Codex / Claude / OpenClaw → static catalog from
 //     `AssistantModelCatalog`. Tap writes to
 //     `CLIAgentModelPreferences`. The CLI binary on the user's Mac
@@ -158,6 +159,8 @@ struct AssistantModelPickerSheet: View {
         //   2. User's connected provider accounts (AccountStore)
         //   3. Bundled / remote catalog (AssistantModelCatalog)
         // The merger drops the broken `hermes-agent` / `pi-agent` self-loop.
+        // Only `.liveOnRelay` rows can be selected for live runtimes; this
+        // keeps the chip from saving a model the Mac cannot actually route.
         mergedGroups()
     }
 
@@ -301,16 +304,21 @@ struct AssistantModelPickerSheet: View {
                           reachability: AssistantModelMerger.Row.Reachability = .liveOnRelay,
                           isFavoriteToggleable: Bool,
                           isFavorite: Bool) -> some View {
-        let isSelected = currentModelID() == option.modelID && reachability != .unreachable
+        let isSelected = currentModelID().map {
+            AssistantModelIDCanonicalizer.lookupKey($0) == AssistantModelIDCanonicalizer.lookupKey(option.modelID)
+        } == true && reachability == .liveOnRelay
         let isUnreachable = reachability == .unreachable
         let rowOpacity: Double = isUnreachable ? 0.55 : 1.0
 
         return HStack(spacing: 10) {
             Button {
-                if isUnreachable {
-                    showProviderWizard = inferAgentProvider(for: option)
-                } else {
+                switch reachability {
+                case .liveOnRelay:
                     applySelection(option)
+                case .connectedOnIOS:
+                    Task { await refreshLive() }
+                case .unreachable:
+                    showProviderWizard = inferAgentProvider(for: option)
                 }
             } label: {
                 HStack(spacing: MobileTheme.Spacing.md) {
@@ -382,7 +390,7 @@ struct AssistantModelPickerSheet: View {
         case .liveOnRelay:
             EmptyView()
         case .connectedOnIOS:
-            tagPill(text: "Account", tint: MobileTheme.hermesAureate)
+            tagPill(text: "Not live", tint: MobileTheme.amber)
         case .unreachable:
             tagPill(text: "Connect", tint: MobileTheme.amber)
         }
@@ -399,12 +407,16 @@ struct AssistantModelPickerSheet: View {
             Image(systemName: "plus.circle.fill")
                 .font(.system(size: 19, weight: .bold))
                 .foregroundStyle(MobileTheme.amber)
-        case .liveOnRelay, .connectedOnIOS:
+        case .liveOnRelay:
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 19, weight: .bold))
                     .foregroundStyle(MobileTheme.success)
             }
+        case .connectedOnIOS:
+            Image(systemName: "arrow.clockwise.circle.fill")
+                .font(.system(size: 19, weight: .bold))
+                .foregroundStyle(MobileTheme.amber)
         }
     }
 
@@ -428,7 +440,7 @@ struct AssistantModelPickerSheet: View {
     ) -> String {
         switch reachability {
         case .liveOnRelay:    return "\(option.displayName), available on relay"
-        case .connectedOnIOS: return "\(option.displayName), account connected"
+        case .connectedOnIOS: return "\(option.displayName), account connected but not advertised by this Mac relay"
         case .unreachable:    return "\(option.displayName), tap to connect provider"
         }
     }
@@ -519,11 +531,11 @@ struct AssistantModelPickerSheet: View {
     private func clearPreference() {
         switch runtime {
         case .hermes:
-            hermesService.selectedModelID = nil
+            hermesService.clearSelectedModel()
         case .pi:
-            piService.selectedModelID = nil
+            piService.clearSelectedModel()
         case .openClaw:
-            OpenClawService.shared.selectedModelID = nil
+            OpenClawService.shared.clearSelectedModel()
         case .codex, .claude:
             CLIAgentModelPreferences.setPreferredModelID(nil, for: runtime)
             cliPreference = nil

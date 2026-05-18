@@ -31,13 +31,12 @@ final class PulseWindowMetricsTests: XCTestCase {
         XCTAssertEqual(day.total.requests, 3)
     }
 
-    func testCalendarDayStartsAtLocalMidnight() {
+    func testDayWindowIsRollingTwentyFourHoursAcrossLocalMidnight() {
         var calendar = gregorianUTC()
         calendar.timeZone = TimeZone(secondsFromGMT: -5 * 3_600)!
         let now = calendar.date(from: DateComponents(year: 2026, month: 1, day: 13, hour: 0, minute: 20, second: 0))!
-        let localStart = calendar.startOfDay(for: now)
-        let justBeforeLocalMidnight = localStart.addingTimeInterval(-1)
-        let justAfterLocalMidnight = localStart.addingTimeInterval(1)
+        let insideRollingDay = now.addingTimeInterval(-7 * 60 * 60)
+        let outsideRollingDay = now.addingTimeInterval(-(24 * 60 * 60 + 1))
         let rollups: [RollupWindowKey: RollupTotals] = [
             .sevenDays: RollupTotals(requests: 7, tokens: 700, costUsd: 7)
         ]
@@ -46,8 +45,8 @@ final class PulseWindowMetricsTests: XCTestCase {
             scope: .day,
             rollupTotals: rollups,
             liveUsages: [
-                usage(id: 1, cost: 10, tokens: 1_000, at: justBeforeLocalMidnight),
-                usage(id: 2, cost: 2, tokens: 200, at: justAfterLocalMidnight)
+                usage(id: 1, cost: 10, tokens: 1_000, at: outsideRollingDay),
+                usage(id: 2, cost: 2, tokens: 200, at: insideRollingDay)
             ],
             now: now,
             calendar: calendar
@@ -56,6 +55,19 @@ final class PulseWindowMetricsTests: XCTestCase {
         XCTAssertEqual(day.total.costUsd, 2, accuracy: 0.001)
         XCTAssertEqual(day.total.tokens, 200)
         XCTAssertEqual(day.total.requests, 1)
+    }
+
+    func testLiveQueryStartCoversRollingDayWithoutRestartingEverySecond() {
+        var calendar = gregorianUTC()
+        calendar.timeZone = TimeZone(secondsFromGMT: -5 * 3_600)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 1, day: 13, hour: 0, minute: 20, second: 30))!
+
+        let start = PulseWindowMetricBuilder.liveQueryStart(now: now, calendar: calendar)
+
+        XCTAssertLessThanOrEqual(start, now.addingTimeInterval(-24 * 60 * 60))
+        XCTAssertGreaterThan(start, now.addingTimeInterval(-(25 * 60 * 60)))
+        XCTAssertEqual(calendar.component(.minute, from: start), 0)
+        XCTAssertEqual(calendar.component(.second, from: start), 0)
     }
 
     func testMinuteWindowAgesOutWithoutNewUsage() {
@@ -71,6 +83,25 @@ final class PulseWindowMetricsTests: XCTestCase {
         XCTAssertEqual(aged.total.costUsd, 0, accuracy: 0.001)
     }
 
+    func testLiveWindowUsesSessionEndTimeForAdvancingRows() {
+        let calendar = gregorianUTC()
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 13, hour: 18, minute: 30, second: 0))!
+        let row = usage(
+            id: 1,
+            cost: 4,
+            tokens: 400,
+            start: now.addingTimeInterval(-90 * 60),
+            end: now.addingTimeInterval(-30)
+        )
+
+        let minute = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: [:], liveUsages: [row], now: now, calendar: calendar)
+        let hour = PulseWindowMetricBuilder.metrics(scope: .hour, rollupTotals: [:], liveUsages: [row], now: now, calendar: calendar)
+
+        XCTAssertEqual(minute.total.requests, 1)
+        XCTAssertEqual(minute.total.tokens, 400)
+        XCTAssertEqual(hour.total.requests, 1)
+    }
+
     private func gregorianUTC() -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -78,6 +109,10 @@ final class PulseWindowMetricsTests: XCTestCase {
     }
 
     private func usage(id: Int, cost: Double, tokens: Int, at date: Date) -> TokenUsage {
+        usage(id: id, cost: cost, tokens: tokens, start: date, end: date)
+    }
+
+    private func usage(id: Int, cost: Double, tokens: Int, start: Date, end: Date) -> TokenUsage {
         TokenUsage(
             id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", id))!,
             provider: .codex,
@@ -87,9 +122,9 @@ final class PulseWindowMetricsTests: XCTestCase {
             inputTokens: tokens,
             outputTokens: 0,
             costUSD: cost,
-            startTime: date,
-            endTime: date,
-            createdAt: date
+            startTime: start,
+            endTime: end,
+            createdAt: start
         )
     }
 }

@@ -1,0 +1,48 @@
+name: computer-use-loopback-test
+
+on:
+  pull_request:
+    paths:
+      - "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/**"
+      - "OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/**"
+      - "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/**"
+      - "OpenBurnBarDaemon/Resources/PlaywrightBridge/**"
+      - ".github/workflows/computer-use-loopback-test.yml"
+      - "scripts/install-playwright.sh"
+      - "scripts/test-computer-use-loopback.sh"
+      - "scripts/test-computer-use-browser-scenarios.mjs"
+  workflow_dispatch:
+
+jobs:
+  swiftpm-tests:
+    name: SwiftPM — OpenBurnBarComputerUseCoreTests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build + test
+        run: |
+          cd OpenBurnBarCore
+          swift test --filter "OpenBurnBarComputerUseCoreTests"
+      - name: Build daemon
+        run: |
+          cd OpenBurnBarDaemon
+          swift build --target OpenBurnBarDaemon
+
+  loopback-smoke:
+    name: Playwright bridge — loopback smoke
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Playwright (pinned)
+        run: bash scripts/install-playwright.sh
+      - name: Smoke
+        env:
+          OPENBURNBAR_PLAYWRIGHT_BRIDGE: ${{ github.workspace }}/OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js
+        run: bash scripts/test-computer-use-loopback.sh
+      - name: Browser scenarios
+        env:
+          OPENBURNBAR_PLAYWRIGHT_BRIDGE: ${{ github.workspace }}/OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js
+        run: node scripts/test-computer-use-browser-scenarios.mjs --runs 5

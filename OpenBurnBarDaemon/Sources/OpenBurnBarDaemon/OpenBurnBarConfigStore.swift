@@ -57,6 +57,8 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
     case unsupportedProvider(String)
     case invalidBaseURL(String)
     case unsupportedModel(providerID: String, modelID: String)
+    case missingCredential(providerID: String)
+    case credentialReadbackFailed(providerID: String, slotID: String)
 
     public var errorDescription: String? {
         switch self {
@@ -66,6 +68,10 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
             return "Provider '\(providerID)' must have a non-empty base URL."
         case .unsupportedModel(let providerID, let modelID):
             return "Model '\(modelID)' is not supported for provider '\(providerID)'."
+        case .missingCredential(let providerID):
+            return "Provider '\(providerID)' needs a non-empty credential before it can be routed."
+        case .credentialReadbackFailed(let providerID, let slotID):
+            return "Provider '\(providerID)' credential slot '\(slotID)' was not readable after saving."
         }
     }
 }
@@ -200,29 +206,42 @@ public actor BurnBarConfigStore {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedLabel = normalizedLabel.isEmpty ? "Plan \(slotID ?? "")".trimmingCharacters(in: .whitespacesAndNewlines) : normalizedLabel
         let resolvedSlotID = (slotID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? UUID().uuidString
+        guard key.isEmpty == false else {
+            throw BurnBarConfigStoreError.missingCredential(providerID: normalizedProviderID)
+        }
+
+        let secretStoreKey = slotSecretStoreKey(providerID: normalizedProviderID, slotID: resolvedSlotID)
+        try await secretStore.setSecret(key, for: secretStoreKey)
+        guard let persistedKey = try await secretStore.secret(for: secretStoreKey),
+              persistedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            try? await secretStore.setSecret(nil, for: secretStoreKey)
+            throw BurnBarConfigStoreError.credentialReadbackFailed(
+                providerID: normalizedProviderID,
+                slotID: resolvedSlotID
+            )
+        }
 
         var updatedSlot = BurnBarProviderCredentialSlot(slotID: resolvedSlotID, label: resolvedLabel, isEnabled: isEnabled, status: isEnabled ? .ready : .disabled)
         let updatedSettings = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
             var mutable = settings
+            mutable.isEnabled = true
             if let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == resolvedSlotID }) {
                 var existing = mutable.credentialSlots[index]
                 existing.label = resolvedLabel
                 existing.isEnabled = isEnabled
                 existing.status = isEnabled ? .ready : .disabled
+                existing.cooldownUntil = nil
+                existing.lastStatusMessage = nil
                 existing.updatedAt = Date()
                 mutable.credentialSlots[index] = existing
                 updatedSlot = existing
             } else {
                 mutable.credentialSlots.append(updatedSlot)
             }
-            if mutable.preferredCredentialSlotID == nil {
+            if mutable.preferredCredentialSlotID == nil, isEnabled {
                 mutable.preferredCredentialSlotID = resolvedSlotID
             }
             return mutable
-        }
-
-        if key.isEmpty == false {
-            try await secretStore.setSecret(key, for: slotSecretStoreKey(providerID: normalizedProviderID, slotID: resolvedSlotID))
         }
 
         logger.notice(
@@ -230,7 +249,8 @@ public actor BurnBarConfigStore {
             metadata: [
                 "provider_id": normalizedProviderID,
                 "slot_id": resolvedSlotID,
-                "slots": "\(updatedSettings.credentialSlots.count)"
+                "slots": "\(updatedSettings.credentialSlots.count)",
+                "secret_readback": "true"
             ]
         )
         return updatedSlot
@@ -273,6 +293,128 @@ public actor BurnBarConfigStore {
             return mutable
         }
         try await secretStore.setSecret(nil, for: slotSecretStoreKey(providerID: normalizedProviderID, slotID: slotID))
+    }
+
+    @discardableResult
+    public func upsertModelVariant(
+        providerID: String,
+        variant: BurnBarModelVariant
+    ) throws -> BurnBarModelVariant {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedVariant = BurnBarModelVariant(
+            variantID: variant.variantID.trimmingCharacters(in: .whitespacesAndNewlines),
+            label: variant.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? BurnBarModelVariant.defaultLabel(for: variant.thinkingLevel)
+                : variant.label.trimmingCharacters(in: .whitespacesAndNewlines),
+            baseModelID: variant.baseModelID.trimmingCharacters(in: .whitespacesAndNewlines),
+            thinkingLevel: variant.thinkingLevel,
+            maxOutputTokens: variant.maxOutputTokens,
+            createdAt: variant.createdAt,
+            updatedAt: Date()
+        )
+
+        guard !normalizedVariant.variantID.isEmpty else {
+            throw BurnBarConfigStoreError.invalidBaseURL(normalizedProviderID)
+        }
+        guard !normalizedVariant.baseModelID.isEmpty,
+              catalogSupport.supportsModelID(normalizedVariant.baseModelID, providerID: normalizedProviderID) else {
+            throw BurnBarConfigStoreError.unsupportedModel(
+                providerID: normalizedProviderID,
+                modelID: normalizedVariant.baseModelID
+            )
+        }
+
+        let updated = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            mutable.upsertModelVariant(normalizedVariant)
+            return mutable
+        }
+        return updated.modelVariants.first(where: { $0.variantID == normalizedVariant.variantID }) ?? normalizedVariant
+    }
+
+    public func removeModelVariant(
+        providerID: String,
+        variantID: String
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            _ = mutable.removeModelVariant(variantID: variantID)
+            return mutable
+        }
+    }
+
+    /// Seed default thinking-level variants for known reasoning-capable models
+    /// the first time the daemon boots after this feature ships. Idempotent —
+    /// re-seeding never runs once the marker file exists. The seed only touches
+    /// providers that are already configured; providers added later get their
+    /// defaults the next time the daemon boots after the user enables them.
+    public func seedDefaultModelVariantsIfNeeded(
+        markerURL: URL? = nil,
+        now: Date = Date()
+    ) throws {
+        let resolvedMarkerURL = markerURL ?? fileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("model-variants-seed.v1")
+        if FileManager.default.fileExists(atPath: resolvedMarkerURL.path) {
+            return
+        }
+
+        let defaults: [(providerID: String, baseModelID: String, levels: [BurnBarThinkingLevel])] = [
+            ("anthropic", "claude-opus-4-7", [.high, .xhigh, .max]),
+            ("openai", "gpt-5.3-codex", [.low, .medium, .high, .xhigh])
+        ]
+
+        var didMutate = false
+        for entry in defaults {
+            guard catalogSupport.isSupported(providerID: entry.providerID),
+                  catalogSupport.supportsModelID(entry.baseModelID, providerID: entry.providerID) else {
+                continue
+            }
+            for level in entry.levels {
+                let variantID = BurnBarModelVariant.defaultVariantID(
+                    baseModelID: entry.baseModelID,
+                    level: level
+                )
+                let variant = BurnBarModelVariant(
+                    variantID: variantID,
+                    label: BurnBarModelVariant.defaultLabel(for: level),
+                    baseModelID: entry.baseModelID,
+                    thinkingLevel: level,
+                    maxOutputTokens: nil,
+                    createdAt: now,
+                    updatedAt: now
+                )
+                _ = try? mutateProviderSettings(providerID: entry.providerID) { settings in
+                    var mutable = settings
+                    guard !mutable.modelVariants.contains(where: { $0.variantID.caseInsensitiveCompare(variantID) == .orderedSame }) else {
+                        return mutable
+                    }
+                    mutable.upsertModelVariant(variant)
+                    didMutate = true
+                    return mutable
+                }
+            }
+        }
+
+        let directoryURL = resolvedMarkerURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try? Data("seeded".utf8).write(to: resolvedMarkerURL, options: .atomic)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: resolvedMarkerURL.path
+        )
+
+        if didMutate {
+            logger.notice(
+                "default_model_variants_seeded",
+                metadata: ["marker_path": resolvedMarkerURL.path]
+            )
+        }
     }
 
     public func setPreferredCredentialSlot(
@@ -393,7 +535,9 @@ public actor BurnBarConfigStore {
         for settings in orderedProviders {
             let provider = try catalogSupport.requiredProvider(id: settings.providerID)
             var mutableSettings = settings
-            let legacySecret = try await secretStore.secret(for: settings.providerID)
+            let legacySecret = mutableSettings.credentialSlots.isEmpty
+                ? try await secretStore.secret(for: settings.providerID)
+                : nil
             if mutableSettings.credentialSlots.isEmpty,
                let legacySecret,
                legacySecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
@@ -571,14 +715,45 @@ public actor BurnBarConfigStore {
             return preferred
         }()
 
+        let normalizedBaseURL = normalizedBaseURL(
+            providerID: settings.providerID,
+            rawBaseURL: settings.baseURL
+        )
+
+        let supportedVariants = settings.modelVariants.filter { variant in
+            catalogSupport.supportsModelID(variant.baseModelID, providerID: settings.providerID)
+        }
+
         return BurnBarProviderSettings(
             providerID: settings.providerID,
             isEnabled: settings.isEnabled,
-            baseURL: settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            baseURL: normalizedBaseURL,
             preferredModelIDs: preferredModelIDs,
+            disabledAdvertisedModelIDs: settings.disabledAdvertisedModelIDs,
             preferredCredentialSlotID: preferredSlotID,
-            credentialSlots: normalizedSlots
+            credentialSlots: normalizedSlots,
+            modelVariants: supportedVariants
         )
+    }
+
+    private func normalizedBaseURL(providerID: String, rawBaseURL: String) -> String {
+        let trimmed = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard providerID.caseInsensitiveCompare("opencode") == .orderedSame,
+              var components = URLComponents(string: trimmed),
+              let host = components.host?.lowercased(),
+              host == "opencode.ai" || host.hasSuffix(".opencode.ai") else {
+            return trimmed
+        }
+
+        let path = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if path.isEmpty {
+            return catalogSupport.provider(id: "opencode")?.baseURL ?? trimmed
+        }
+        if path.caseInsensitiveCompare("zen/go") == .orderedSame {
+            components.percentEncodedPath = "/zen/go/v1"
+            return components.string ?? trimmed
+        }
+        return trimmed
     }
 
     private func makeDefaultSnapshot() throws -> BurnBarProviderConfigurationSnapshot {

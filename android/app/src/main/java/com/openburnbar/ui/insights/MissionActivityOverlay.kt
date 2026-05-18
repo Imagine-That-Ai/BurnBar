@@ -484,6 +484,12 @@ private fun MissionDoneOrb(
                     orbOffset += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
                 }
             }
+            // Tap opens the mission detail sheet. `MissionLiveOrb` wires this
+            // the same way; the terminal orb was missing it, so the green
+            // checkmark looked dead on tap.
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onClick() })
+            }
     ) {
         Box(
             contentAlignment = Alignment.Center,
@@ -557,6 +563,12 @@ private fun MissionAlertOrb(
                     change.consume()
                     orbOffset += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
                 }
+            }
+            // Tap opens the mission detail sheet (same wiring as
+            // `MissionLiveOrb`). Without this, the red warning orb looked
+            // dead on tap and the only escape was flick-to-dismiss.
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onClick() })
             }
     ) {
         Box(

@@ -81,6 +81,7 @@ public enum CLILaunchAdapter {
         "GIT_EDITOR",     // Git editor
         "HG_EDITOR",      // Mercurial editor
         // Claude-specific safe variables
+        "CLAUDE_CONFIG_DIR",
         "CLAUDE_CONFIG_PATH",
         // Codex-specific safe variables
         "CODEX_HOME",
@@ -146,6 +147,21 @@ public enum CLILaunchAdapter {
             return URL(fileURLWithPath: path)
         }
 
+        if let shellPath = resolveExecutableFromLoginShell(
+            named: cliType.executableName,
+            environment: environment,
+            fileManager: fileManager
+        ), isTrustedResolvedExecutable(
+            shellPath,
+            for: cliType,
+            environment: environment,
+            homeDirectory: homeDirectory,
+            fileManager: fileManager
+        ) {
+            executableResolutionCache.withLock { $0[cacheKey] = shellPath }
+            return URL(fileURLWithPath: shellPath)
+        }
+
         if let path = firstExecutable(
             named: cliType.executableName,
             in: userManagedExecutableSearchDirectories(
@@ -168,21 +184,6 @@ public enum CLILaunchAdapter {
         ) {
             executableResolutionCache.withLock { $0[cacheKey] = path }
             return URL(fileURLWithPath: path)
-        }
-
-        if let shellPath = resolveExecutableFromLoginShell(
-            named: cliType.executableName,
-            environment: environment,
-            fileManager: fileManager
-        ), isTrustedResolvedExecutable(
-            shellPath,
-            for: cliType,
-            environment: environment,
-            homeDirectory: homeDirectory,
-            fileManager: fileManager
-        ) {
-            executableResolutionCache.withLock { $0[cacheKey] = shellPath }
-            return URL(fileURLWithPath: shellPath)
         }
 
         return nil
@@ -745,7 +746,7 @@ public enum CLILaunchAdapter {
         case .codex:
             return ["CODEX_HOME", "CODEX_CONFIG_PATH"]
         case .claude:
-            return ["CLAUDE_CONFIG_PATH"]
+            return ["CLAUDE_CONFIG_DIR", "CLAUDE_CONFIG_PATH"]
         case .opencode:
             return ["OPENCODE_CONFIG_PATH", "OPENCODE_DATA", "OPENCODE_DATA_HOME"]
         }

@@ -162,17 +162,76 @@ public struct HermesRuntimeProfile: Codable, Identifiable, Sendable, Equatable {
 }
 
 public struct HermesRuntimeModelOption: Codable, Identifiable, Sendable, Equatable {
-    public var id: String { providerID + ":" + modelID }
+    public var id: String {
+        [providerID, accountID ?? sourceID ?? "default", modelID].joined(separator: ":")
+    }
     public var providerID: String
     public var providerName: String
     public var modelID: String
     public var displayName: String
+    public var accountID: String?
+    public var accountLabel: String?
+    public var sourceID: String?
+    public var sourceKind: String?
+    public var capabilities: [String]
+    public var quotaState: String?
+    public var routeEligible: Bool?
+    public var lastRefreshAt: Date?
+    public var lastError: String?
 
-    public init(providerID: String, providerName: String, modelID: String, displayName: String? = nil) {
+    public init(
+        providerID: String,
+        providerName: String,
+        modelID: String,
+        displayName: String? = nil,
+        accountID: String? = nil,
+        accountLabel: String? = nil,
+        sourceID: String? = nil,
+        sourceKind: String? = nil,
+        capabilities: [String] = [],
+        quotaState: String? = nil,
+        routeEligible: Bool? = nil,
+        lastRefreshAt: Date? = nil,
+        lastError: String? = nil
+    ) {
         self.providerID = providerID
         self.providerName = providerName
         self.modelID = modelID
         self.displayName = displayName ?? modelID
+        self.accountID = accountID
+        self.accountLabel = accountLabel
+        self.sourceID = sourceID
+        self.sourceKind = sourceKind
+        self.capabilities = capabilities
+        self.quotaState = quotaState
+        self.routeEligible = routeEligible
+        self.lastRefreshAt = lastRefreshAt
+        self.lastError = lastError
+    }
+
+    public var isRouteEligible: Bool {
+        routeEligible ?? true
+    }
+
+    public var liveCatalogDetailText: String? {
+        var parts: [String] = []
+        if let accountLabel = accountLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accountLabel.isEmpty {
+            parts.append(accountLabel)
+        } else if let accountID = accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !accountID.isEmpty,
+                  accountID != "default" {
+            parts.append(accountID)
+        }
+        if let quotaState = quotaState?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !quotaState.isEmpty {
+            parts.append(quotaState.replacingOccurrences(of: "_", with: " "))
+        }
+        if let lastError = lastError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !lastError.isEmpty {
+            parts.append(lastError)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 
@@ -212,11 +271,101 @@ public struct HermesRuntimeJob: Codable, Identifiable, Sendable, Equatable {
 
 public enum HermesRelayOperation: String, Codable, Sendable, Equatable, CaseIterable {
     case chatCompletions
+    case cliAgentChat
     case models
     case sessions
     case sessionDetail
     case profiles
     case jobs
+}
+
+public enum CLIAgentRelayChatEventKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case assistantSnapshot
+    case completed
+    case failed
+}
+
+public enum CLIAgentRelayTranscriptPieceKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case text
+    case toolUse
+    case toolResult
+}
+
+public struct CLIAgentRelayTranscriptPiece: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var kind: CLIAgentRelayTranscriptPieceKind
+    public var value: String
+    public var detail: String?
+
+    public init(
+        id: String,
+        kind: CLIAgentRelayTranscriptPieceKind,
+        value: String,
+        detail: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.value = value
+        self.detail = detail
+    }
+}
+
+public struct CLIAgentRelayChatRequest: Codable, Sendable, Equatable {
+    public var runtime: String
+    public var prompt: String
+    public var clientThreadID: String
+    public var modelID: String?
+    public var title: String?
+    public var parentSessionID: String?
+    public var resumeAction: String?
+
+    public init(
+        runtime: String,
+        prompt: String,
+        clientThreadID: String,
+        modelID: String? = nil,
+        title: String? = nil,
+        parentSessionID: String? = nil,
+        resumeAction: String? = nil
+    ) {
+        self.runtime = runtime
+        self.prompt = prompt
+        self.clientThreadID = clientThreadID
+        self.modelID = modelID
+        self.title = title
+        self.parentSessionID = parentSessionID
+        self.resumeAction = resumeAction
+    }
+}
+
+public struct CLIAgentRelayChatEvent: Codable, Sendable, Equatable {
+    public var kind: CLIAgentRelayChatEventKind
+    public var text: String?
+    public var modelID: String?
+    public var transcriptPieces: [CLIAgentRelayTranscriptPiece]
+    public var errorMessage: String?
+
+    public init(
+        kind: CLIAgentRelayChatEventKind,
+        text: String? = nil,
+        modelID: String? = nil,
+        transcriptPieces: [CLIAgentRelayTranscriptPiece] = [],
+        errorMessage: String? = nil
+    ) {
+        self.kind = kind
+        self.text = text
+        self.modelID = modelID
+        self.transcriptPieces = transcriptPieces
+        self.errorMessage = errorMessage
+    }
+
+    public var isTerminal: Bool {
+        kind == .completed || kind == .failed
+    }
+
+    public var isError: Bool {
+        kind == .failed
+    }
 }
 
 public enum HermesRelayRequestStatus: String, Codable, Sendable, Equatable, CaseIterable {

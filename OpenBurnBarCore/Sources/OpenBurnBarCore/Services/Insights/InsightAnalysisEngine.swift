@@ -510,7 +510,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         let benchmarks = digest.modelBenchmarks
         guard benchmarks.isEmpty == false else { return ([], [], []) }
 
-        let usedModels = Dictionary(uniqueKeysWithValues: digest.models.map { (normalizedModelID($0.id), $0) })
+        let usedModels = mergedModelSnapshotsByNormalizedID(digest.models)
         let benchmarkByModel = Dictionary(grouping: benchmarks, by: { normalizedModelID($0.modelID) })
         let topUsedBenchmark = topModel.flatMap { bestBenchmark(for: normalizedModelID($0.id), in: benchmarkByModel) }
         let bestDesign = bestBenchmark(in: benchmarks.filter { $0.taskCategory == "design" })
@@ -919,6 +919,58 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             return "Cost signal \(Int((signal * 100).rounded()))/100; exact dollar savings need provider price confirmation."
         }
         return nil
+    }
+
+    private static func mergedModelSnapshotsByNormalizedID(
+        _ models: [InsightDigest.ModelSnapshot]
+    ) -> [String: InsightDigest.ModelSnapshot] {
+        models.reduce(into: [:]) { partial, model in
+            let key = normalizedModelID(model.id)
+            guard var existing = partial[key] else {
+                partial[key] = model
+                return
+            }
+            existing.costUSD += model.costUSD
+            existing.totalTokens += model.totalTokens
+            existing.sessionCount += model.sessionCount
+            existing.avgCostPerSession = existing.sessionCount > 0
+                ? existing.costUSD / Double(existing.sessionCount)
+                : 0
+            existing.cacheHitRate = weightedAverage(
+                lhsValue: existing.cacheHitRate,
+                lhsWeight: max(0, existing.totalTokens - model.totalTokens),
+                rhsValue: model.cacheHitRate,
+                rhsWeight: model.totalTokens
+            )
+            existing.topInferredTaskTitles = stableUnique(
+                existing.topInferredTaskTitles + model.topInferredTaskTitles,
+                limit: 5
+            )
+            existing.topProjects = stableUnique(existing.topProjects + model.topProjects, limit: 3)
+            partial[key] = existing
+        }
+    }
+
+    private static func weightedAverage(
+        lhsValue: Double,
+        lhsWeight: Int,
+        rhsValue: Double,
+        rhsWeight: Int
+    ) -> Double {
+        let totalWeight = lhsWeight + rhsWeight
+        guard totalWeight > 0 else { return 0 }
+        return ((lhsValue * Double(lhsWeight)) + (rhsValue * Double(rhsWeight))) / Double(totalWeight)
+    }
+
+    private static func stableUnique(_ values: [String], limit: Int) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for value in values where !value.isEmpty && !seen.contains(value) {
+            seen.insert(value)
+            out.append(value)
+            if out.count == limit { break }
+        }
+        return out
     }
 
     private static func normalizedModelID(_ value: String) -> String {

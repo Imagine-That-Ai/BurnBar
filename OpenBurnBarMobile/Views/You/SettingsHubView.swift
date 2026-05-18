@@ -108,6 +108,10 @@ struct SettingsHubView: View {
             SettingsDeepLinkScrollContainer(route: .chatTiles) { _ in
                 ChatTilesSettingsView()
             }
+        case .media:
+            SettingsDeepLinkScrollContainer(route: .media) { _ in
+                MediaSettingsView()
+            }
         }
     }
 
@@ -280,6 +284,21 @@ struct SettingsHubView: View {
                         )
                     }
                     .settingsAnchor(SettingsAnchor.piRow)
+
+                    // Mercury media — per-partner save preferences,
+                    // iPad multi-cam toggle, stats overlay. Lives in
+                    // its own row rather than nested under Hermes so
+                    // the SKU rollout (`hosted_media_sync`) can be
+                    // surfaced with its own privacy + entitlement copy.
+                    NavigationLink(value: SettingsPageRoute.media) {
+                        SettingsLabel(
+                            icon: "play.rectangle.on.rectangle",
+                            color: MobileTheme.hermesAureate,
+                            title: "Media",
+                            logoProviders: [.hermes]
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.mediaRow)
                 } header: { groupHeader("AI Environments") }
 
                 Section {

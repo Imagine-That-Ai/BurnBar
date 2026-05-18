@@ -133,7 +133,10 @@ struct QuotaPopoverBar: View {
 
     @ViewBuilder
     private func quotaProviderRow(provider: AgentProvider, isConnected: Bool) -> some View {
-        let snapshot = quotaService.snapshot(for: provider)
+        let snapshot = quotaService.primaryDisplaySnapshot(
+            for: provider,
+            cumulative: settingsManager.cumulativeAcrossAccounts
+        )
         let theme = ProviderTheme.theme(for: provider)
         let isActive = quotaService.isRefreshing(provider)
         let isExpanded = expandedProvider == provider

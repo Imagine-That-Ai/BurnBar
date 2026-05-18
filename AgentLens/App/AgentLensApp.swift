@@ -20,13 +20,42 @@ import Sentry
 /// scene with `EmptyScene` so the test process becomes a near-empty SwiftUI host whose only
 /// job is loading and executing `OpenBurnBarTests.xctest`.
 enum OpenBurnBarRuntime {
+    @MainActor private static var harnessHostActivity: NSObjectProtocol?
+
     /// True when the current process is an XCTest host. Detected via the well-known
     /// XCTest environment variables that Apple injects into the test runner.
     static var isRunningTests: Bool {
-        let environment = ProcessInfo.processInfo.environment
+        isRunningTests(
+            environment: ProcessInfo.processInfo.environment,
+            loadedBundlePaths: Bundle.allBundles.map(\.bundlePath),
+            mainBundleContainsXCTestPlugin: mainBundleContainsXCTestPlugin()
+        )
+    }
+
+    static func isRunningTests(
+        environment: [String: String],
+        loadedBundlePaths: [String],
+        mainBundleContainsXCTestPlugin: Bool
+    ) -> Bool {
         return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestSessionIdentifier"] != nil
             || environment["XCTestBundlePath"] != nil
+            || environment["TEST_RUNNER_CI"] == "true"
+            || environment["TEST_RUNNER_GITHUB_ACTIONS"] == "true"
+            || environment["TEST_RUNNER_RUNNER_OS"] != nil
+            || loadedBundlePaths.contains { $0.hasSuffix(".xctest") }
+            || mainBundleContainsXCTestPlugin
+    }
+
+    private static func mainBundleContainsXCTestPlugin() -> Bool {
+        guard let plugInsURL = Bundle.main.builtInPlugInsURL,
+              let contents = try? FileManager.default.contentsOfDirectory(
+                at: plugInsURL,
+                includingPropertiesForKeys: nil
+              ) else {
+            return false
+        }
+        return contents.contains { $0.pathExtension == "xctest" }
     }
 
     /// Allows tests / harnesses to opt **in** to the live menu-bar scene by setting
@@ -35,9 +64,44 @@ enum OpenBurnBarRuntime {
         ProcessInfo.processInfo.environment["OPENBURNBAR_FORCE_LIVE_SCENE"] == "1"
     }
 
+    /// Harness-launched live-scene processes must remain alive even when AppKit
+    /// sees no active window. The iroh relay smoke starts the menu-bar app from
+    /// a shell, so automatic termination can otherwise kill the host right after
+    /// the first relay publish.
+    static var shouldDisableAutomaticTerminationForHarness: Bool {
+        shouldDisableAutomaticTerminationForHarness(environment: ProcessInfo.processInfo.environment)
+    }
+
+    static func shouldDisableAutomaticTerminationForHarness(environment: [String: String]) -> Bool {
+        environment["OPENBURNBAR_FORCE_LIVE_SCENE"] == "1"
+            || environment["OPENBURNBAR_E2E_HOLD_OPEN"] == "1"
+    }
+
+    @MainActor
+    static func beginHarnessHostActivityIfNeeded() {
+        beginHarnessHostActivityIfNeeded(environment: ProcessInfo.processInfo.environment)
+    }
+
+    @MainActor
+    static func beginHarnessHostActivityIfNeeded(environment: [String: String]) {
+        guard shouldDisableAutomaticTerminationForHarness(environment: environment),
+              harnessHostActivity == nil else { return }
+        let processInfo = ProcessInfo.processInfo
+        processInfo.disableSuddenTermination()
+        processInfo.disableAutomaticTermination("OpenBurnBar E2E relay host is active")
+        harnessHostActivity = processInfo.beginActivity(
+            options: [.automaticTerminationDisabled, .suddenTerminationDisabled],
+            reason: "OpenBurnBar E2E relay host is active"
+        )
+    }
+
     /// True when we should bypass the live menu-bar scene and present `EmptyScene()` instead.
     /// This is the gate that protects the XCTest runner-connect window.
     static var shouldUseTestStubScene: Bool {
+        shouldUseTestStubScene(isRunningTests: isRunningTests, forceLiveScene: forceLiveScene)
+    }
+
+    static func shouldUseTestStubScene(isRunningTests: Bool, forceLiveScene: Bool) -> Bool {
         isRunningTests && !forceLiveScene
     }
 }
@@ -444,25 +508,23 @@ final class WindowManager: ObservableObject {
         settingsManager: SettingsManager,
         accountManager: AccountManager
     ) -> NSWindow {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        if !OpenBurnBarRuntime.isRunningTests {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
 
         if let window = WindowManager.chatPopOutWindow {
             window.makeKeyAndOrderFront(nil)
             return window
         }
 
-        let contentView = DashboardChatWorkspaceView(
+        let contentView = WindowManager.chatPopOutContent(
             controller: controller,
             dataStore: dataStore,
             settingsManager: settingsManager,
-            sharedFeaturesAvailable: accountManager.isSignedIn,
-            mode: .popOut,
-            onClose: { [weak self] in
-                self?.closeChatPopOutWindow()
-            }
+            accountManager: accountManager,
+            onClose: { [weak self] in self?.closeChatPopOutWindow() }
         )
         .frame(minWidth: 780, minHeight: 560)
-        .environment(settingsManager)
 
         let initialFrame = WindowManager.persistedChatPopOutFrame()
             ?? NSRect(x: 0, y: 0, width: 1100, height: 760)
@@ -481,7 +543,11 @@ final class WindowManager: ObservableObject {
         if WindowManager.persistedChatPopOutFrame() == nil {
             window.center()
         }
-        window.makeKeyAndOrderFront(nil)
+        if OpenBurnBarRuntime.isRunningTests {
+            window.orderFront(nil)
+        } else {
+            window.makeKeyAndOrderFront(nil)
+        }
         window.isReleasedWhenClosed = false
 
         let delegate = ChatPopOutWindowLifecycleDelegate { closed in
@@ -502,6 +568,30 @@ final class WindowManager: ObservableObject {
 
     /// Test-only accessor.
     static func _currentChatPopOutWindow() -> NSWindow? { chatPopOutWindow }
+
+    private static func chatPopOutContent(
+        controller: ChatSessionController,
+        dataStore: DataStore,
+        settingsManager: SettingsManager,
+        accountManager: AccountManager,
+        onClose: @escaping () -> Void
+    ) -> AnyView {
+        guard !OpenBurnBarRuntime.isRunningTests else {
+            return AnyView(ChatPopOutWindowTestContent(onClose: onClose))
+        }
+
+        return AnyView(
+            DashboardChatWorkspaceView(
+                controller: controller,
+                dataStore: dataStore,
+                settingsManager: settingsManager,
+                sharedFeaturesAvailable: accountManager.isSignedIn,
+                mode: .popOut,
+                onClose: onClose
+            )
+            .environment(settingsManager)
+        )
+    }
 
     fileprivate static func persistedChatPopOutFrame() -> NSRect? {
         let raw = UserDefaults.standard.string(forKey: "dashboardChatPopOutFrameJSON") ?? ""
@@ -541,6 +631,20 @@ private final class ChatPopOutWindowLifecycleDelegate: NSObject, NSWindowDelegat
         Task { @MainActor in
             self.onWillClose(window)
         }
+    }
+}
+
+private struct ChatPopOutWindowTestContent: View {
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Chat")
+                .font(.headline)
+            Button("Close", action: onClose)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("chat-pop-out-test-content")
     }
 }
 
@@ -647,6 +751,7 @@ struct OpenBurnBarApp: App {
             chatController: controller,
             operatingLayer: layer
         )
+        context.startRelayServices()
         context.startSmartDisplayServices()
         return context
     }
@@ -906,9 +1011,22 @@ struct OpenBurnBarApp: App {
         NSApplication.shared.terminate(nil)
     }
 
+    #if DEBUG
+    @MainActor
+    private func toggleHermesIrohTransportFromDebugMenu() {
+        guard let context = startupState.runtimeContext else {
+            NSSound.beep()
+            return
+        }
+        context.settingsManager.hermesRemoteRelayEnabled = true
+        context.settingsManager.hermesIrohTransportEnabled.toggle()
+    }
+    #endif
+
     @SceneBuilder
     private var liveMenuBarScene: some Scene {
         let _ = installCommandRouter()
+        let _ = OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
         MenuBarExtra {
             if OpenBurnBarRuntime.shouldUseTestStubScene {
                 EmptyView()
@@ -951,7 +1069,8 @@ struct OpenBurnBarApp: App {
                                     openDashboard(context: context)
                                 }
                             )
-                        }
+                        },
+                        runtimeContext: context
                     )
                     .environment(context.settingsManager)
                 case .failed(let failure):
@@ -997,31 +1116,13 @@ struct OpenBurnBarApp: App {
                         }
                         context.cloudSyncService = sync
 
-                        let hermesRelayHost: HermesRelayHostService
-                        if let existingRelayHost = context.hermesRelayHostService {
-                            hermesRelayHost = existingRelayHost
-                        } else {
-                            hermesRelayHost = HermesRelayHostService(
-                                accountManager: context.accountManager,
-                                settingsManager: context.settingsManager
-                            )
-                        }
-                        context.hermesRelayHostService = hermesRelayHost
-                        hermesRelayHost.start()
-
-                        let piRelayHost: PiAgentCloudRelayHostService
-                        if let existingPiRelayHost = context.piAgentRelayHostService {
-                            piRelayHost = existingPiRelayHost
-                        } else {
-                            piRelayHost = PiAgentCloudRelayHostService(
-                                accountManager: context.accountManager,
-                                settingsManager: context.settingsManager
-                            )
-                        }
-                        context.piAgentRelayHostService = piRelayHost
-                        piRelayHost.start()
-
+                        context.startRelayServices()
                         context.startSmartDisplayServices()
+                        // Mercury Phase 8 — mount the user-facing
+                        // services after relay services so the iroh
+                        // client exists and we can attach the router
+                        // to its control-stream dispatcher.
+                        context.startMercuryServices()
 
                         let mirror: ICloudSessionMirrorService
                         if let existingMirror = context.iCloudSessionMirrorService {
@@ -1046,7 +1147,10 @@ struct OpenBurnBarApp: App {
                         context.aggregator = aggregator
                         context.operatingLayer.aggregator = aggregator
                         context.operatingLayer.chatController = context.chatController
-                        context.daemonManager.attach(dataStore: context.dataStore)
+                        context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
+                        #if !DISTRIBUTION_MAS
+                        ComputerUseDaemonApprovalPresenter.shared.start(daemonManager: context.daemonManager)
+                        #endif
                         context.cursorConnectorManager.attach(dataStore: context.dataStore)
                         context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
                         if !hasShownInitialDashboard {
@@ -1188,8 +1292,44 @@ struct OpenBurnBarApp: App {
     /// Sentry boot) is handled in `init()`. Returning `liveMenuBarScene`
     /// unconditionally keeps `body` as a single concrete `Scene` type, avoiding
     /// SwiftUI's `SceneBuilder` if/else inference quirks.
+    @SceneBuilder
     var body: some Scene {
         liveMenuBarScene
+            .commands {
+                #if DEBUG
+                CommandMenu("Debug") {
+                    Button(
+                        startupState.runtimeContext?.settingsManager.hermesIrohTransportEnabled == true
+                            ? "Disable Hermes iroh Transport"
+                            : "Enable Hermes iroh Transport"
+                    ) {
+                        toggleHermesIrohTransportFromDebugMenu()
+                    }
+                    .keyboardShortcut("i", modifiers: [.command, .option, .control])
+                }
+                #endif
+            }
+
+        // Mercury Phase 8 — global chrome window. Hosts the
+        // `IncomingCallSheet` (when an iPhone asks to mirror) and the
+        // `CallHUD` (while a mirror is active), independent of the
+        // menu-bar popover's open state. Auto-shows when the router
+        // transitions out of `.idle`/`.cooldown`; auto-hides otherwise.
+        WindowGroup(id: "mercury.chrome") {
+            if let context = startupState.runtimeContext,
+               let router = context.mercuryRouter,
+               let peerSource = context.mercuryPeerSource,
+               let hud = context.mercuryCallHUDState {
+                MercuryChromeRoot(
+                    router: router,
+                    peerSource: peerSource,
+                    hudState: hud
+                )
+            } else {
+                EmptyView()
+            }
+        }
+        .windowResizability(.contentSize)
     }
 }
 

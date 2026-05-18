@@ -3,17 +3,18 @@ import Foundation
 // MARK: - Claude OAuth Credential Shapes
 
 /// Claude OAuth credential payload used by explicit test/self-hosted
-/// integrations. Production OpenBurnBar deliberately does not discover
-/// these credentials from Claude Code's Keychain item or from
-/// `~/.claude/.credentials.json`.
+/// integrations. Provider-level production refresh deliberately does not
+/// discover these credentials from Claude Code's global Keychain item. Explicit
+/// account/profile refresh paths may inject credentials that the user already
+/// configured inside OpenBurnBar or an OpenBurnBar-managed CLI profile.
 ///
 /// ## Security boundary
 ///
-/// OpenBurnBar must not trigger macOS authorization prompts for
-/// third-party Claude credentials. The default reader is
-/// `NoClaudeCredentialsReader`, so Claude quota refresh relies on the
-/// statusline bridge and local JSONL session logs unless a caller
-/// injects credentials intentionally.
+/// OpenBurnBar must not trigger macOS authorization prompts for third-party
+/// Claude credentials. The default reader is `NoClaudeCredentialsReader`, so
+/// provider-level Claude quota refresh relies on the statusline bridge and
+/// local JSONL session logs unless an account-scoped caller injects credentials
+/// intentionally.
 ///
 /// ## Payload shape (as observed 2026-05)
 ///
@@ -88,6 +89,28 @@ struct ClaudeOAuthCredentials: Sendable, Equatable {
         if tier.contains("enterprise") { return "Enterprise" }
         return subscriptionType.isEmpty ? "Claude" : subscriptionType.capitalized
     }
+
+    /// Storage payload for BurnBar's Anthropic route credential slot.
+    ///
+    /// The UI still displays/probes `accessToken`, but saving the full OAuth
+    /// payload lets the daemon refresh the bearer later instead of making the
+    /// user re-import Claude Code whenever the access token expires.
+    func routeCredentialStoragePayload() -> String {
+        var oauth: [String: Any] = ["accessToken": accessToken]
+        if let refreshToken { oauth["refreshToken"] = refreshToken }
+        if let expiresAt { oauth["expiresAt"] = expiresAt.timeIntervalSince1970 * 1000 }
+        if !subscriptionType.isEmpty { oauth["subscriptionType"] = subscriptionType }
+        if !rateLimitTier.isEmpty { oauth["rateLimitTier"] = rateLimitTier }
+
+        var root: [String: Any] = ["claudeAiOauth": oauth]
+        if let organizationUuid { root["organizationUuid"] = organizationUuid }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys]),
+              let payload = String(data: data, encoding: .utf8) else {
+            return accessToken
+        }
+        return payload
+    }
 }
 
 protocol ClaudeCredentialsReading: Sendable {
@@ -146,4 +169,10 @@ enum ClaudeCredentialsReader {
 struct StaticClaudeCredentialsReader: ClaudeCredentialsReading {
     let credentials: ClaudeOAuthCredentials?
     func load() -> ClaudeOAuthCredentials? { credentials }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
 }

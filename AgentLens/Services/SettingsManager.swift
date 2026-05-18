@@ -1,4 +1,6 @@
 import Foundation
+import FirebaseCore
+import FirebaseRemoteConfig
 import SwiftUI
 import OpenBurnBarCore
 
@@ -41,6 +43,8 @@ final class SettingsManager {
     let quotas: QuotaSettings
     let providerPath: ProviderPathSettings
     let artifactDiscovery: ArtifactDiscoverySettings
+    let routedClientWiring: RoutedClientWiringSettings
+    private var computerUseRemoteConfigTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -85,6 +89,7 @@ final class SettingsManager {
         self.quotas = QuotaSettings(persistence: coordinator)
         self.providerPath = ProviderPathSettings(persistence: coordinator)
         self.artifactDiscovery = ArtifactDiscoverySettings(persistence: coordinator)
+        self.routedClientWiring = RoutedClientWiringSettings(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(
@@ -93,10 +98,54 @@ final class SettingsManager {
             name: NSApplication.willResignActiveNotification,
             object: nil
         )
+        startComputerUseRemoteConfigPolling()
     }
 
     @objc private func flushPendingWrites() {
         persistence.flush()
+    }
+
+    private func startComputerUseRemoteConfigPolling() {
+        computerUseRemoteConfigTask?.cancel()
+        computerUseRemoteConfigTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshComputerUseRemoteConfigOnce()
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+            }
+        }
+    }
+
+    private func refreshComputerUseRemoteConfigOnce() async {
+        guard FirebaseApp.app() != nil else { return }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        remoteConfig.setDefaults([
+            "computer_use_watch_enabled": false as NSObject,
+            "computer_use_browser_enabled": false as NSObject,
+            "computer_use_system_enabled": false as NSObject,
+            "computer_use_phone_control_enabled": false as NSObject,
+            "computer_use_trust_modes_enabled": false as NSObject,
+            "computer_use_polish_enabled": false as NSObject,
+            "computer_use_kill_switch": false as NSObject
+        ])
+
+        _ = await withCheckedContinuation { continuation in
+            remoteConfig.fetchAndActivate { status, error in
+                continuation.resume(returning: (status, error))
+            }
+        }
+
+        computerUseWatchEnabled = remoteConfig.configValue(forKey: "computer_use_watch_enabled").boolValue
+        computerUseBrowserEnabled = remoteConfig.configValue(forKey: "computer_use_browser_enabled").boolValue
+        computerUseSystemEnabled = remoteConfig.configValue(forKey: "computer_use_system_enabled").boolValue
+        computerUsePhoneControlEnabled = remoteConfig.configValue(forKey: "computer_use_phone_control_enabled").boolValue
+        computerUseTrustedScopesEnabled = remoteConfig.configValue(forKey: "computer_use_trust_modes_enabled").boolValue
+        computerUseAuditExportEnabled = remoteConfig.configValue(forKey: "computer_use_polish_enabled").boolValue
+
+        let killSwitchEnabled = remoteConfig.configValue(forKey: "computer_use_kill_switch").boolValue
+        computerUseKillSwitch = killSwitchEnabled
+        if killSwitchEnabled {
+            NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
+        }
     }
 
     // MARK: - Backward Compatibility (Computed Properties)
@@ -388,6 +437,52 @@ final class SettingsManager {
         set { chatBackend.hermesRealtimeRelayURL = newValue }
     }
 
+    var hermesIrohTransportEnabled: Bool {
+        get { chatBackend.hermesIrohTransportEnabled }
+        set { chatBackend.hermesIrohTransportEnabled = newValue }
+    }
+
+    /// Mercury Phase 1 — see `ChatBackendSettings.mediaBlobTransferEnabled`.
+    var mediaBlobTransferEnabled: Bool {
+        get { chatBackend.mediaBlobTransferEnabled }
+        set { chatBackend.mediaBlobTransferEnabled = newValue }
+    }
+
+    var computerUseWatchEnabled: Bool {
+        get { chatBackend.computerUseWatchEnabled }
+        set { chatBackend.computerUseWatchEnabled = newValue }
+    }
+
+    var computerUseBrowserEnabled: Bool {
+        get { chatBackend.computerUseBrowserEnabled }
+        set { chatBackend.computerUseBrowserEnabled = newValue }
+    }
+
+    var computerUseSystemEnabled: Bool {
+        get { chatBackend.computerUseSystemEnabled }
+        set { chatBackend.computerUseSystemEnabled = newValue }
+    }
+
+    var computerUsePhoneControlEnabled: Bool {
+        get { chatBackend.computerUsePhoneControlEnabled }
+        set { chatBackend.computerUsePhoneControlEnabled = newValue }
+    }
+
+    var computerUseTrustedScopesEnabled: Bool {
+        get { chatBackend.computerUseTrustedScopesEnabled }
+        set { chatBackend.computerUseTrustedScopesEnabled = newValue }
+    }
+
+    var computerUseAuditExportEnabled: Bool {
+        get { chatBackend.computerUseAuditExportEnabled }
+        set { chatBackend.computerUseAuditExportEnabled = newValue }
+    }
+
+    var computerUseKillSwitch: Bool {
+        get { chatBackend.computerUseKillSwitch }
+        set { chatBackend.computerUseKillSwitch = newValue }
+    }
+
     var launchHermesWithOpenBurnBar: Bool {
         get { chatBackend.launchHermesWithOpenBurnBar }
         set { chatBackend.launchHermesWithOpenBurnBar = newValue }
@@ -671,6 +766,14 @@ final class SettingsManager {
         set { quotas.tokenizerAssistedFallbackEnabled = newValue }
     }
 
+    /// When true, surfaces that show per-account quota cards collapse
+    /// multi-account providers into one combined card whose buckets are
+    /// summed across accounts (same `(key, windowKind)` grouping).
+    var cumulativeAcrossAccounts: Bool {
+        get { quotas.cumulativeAcrossAccounts }
+        set { quotas.cumulativeAcrossAccounts = newValue }
+    }
+
     var smartHubQuotaDisplayEnabled: Bool {
         get { quotas.smartHubQuotaDisplayEnabled }
         set { quotas.smartHubQuotaDisplayEnabled = newValue }
@@ -797,10 +900,7 @@ final class SettingsManager {
         guard let advertised = gatewayAdvertisedModel?.trimmingCharacters(in: .whitespacesAndNewlines), !advertised.isEmpty else {
             return "hermes"
         }
-        if advertised.range(of: "minimax", options: .caseInsensitive) != nil {
-            return CLIBridge.normalizedCodexModel("gpt-5.5")
-        }
-        return "hermes"
+        return advertised
     }
 
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String {

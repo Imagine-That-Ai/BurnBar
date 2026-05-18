@@ -14,6 +14,28 @@ final class RemoteMCPConnectedClientsUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testOpeningInsightsTabDoesNotCrash() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let insightsButton = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Insights")
+        ).firstMatch
+        XCTAssertTrue(
+            insightsButton.waitForExistence(timeout: 30),
+            "The Insights navigation item did not appear. The device may not be past auth/onboarding. \(app.debugDescription)"
+        )
+
+        insightsButton.tap()
+
+        let insightsTitle = app.staticTexts["Insights"].firstMatch
+        XCTAssertTrue(
+            insightsTitle.waitForExistence(timeout: 20),
+            "Opening the Insights tab did not render the Insights title. \(app.debugDescription)"
+        )
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
     func testSignedInCloudMemberCanSeeAndRevokeRemoteMCPClient() throws {
         let environment = ProcessInfo.processInfo.environment
         let configuration = try liveConfiguration(environment: environment)

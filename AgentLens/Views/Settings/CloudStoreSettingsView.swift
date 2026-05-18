@@ -35,6 +35,7 @@ struct CloudStoreSettingsView: View {
                     hero
                         .padding(.horizontal, 28)
                         .padding(.top, 24)
+                        .settingsAnchor(SettingsAnchor.cloudOverview)
 
                     if entitlement.isActive {
                         auroraMemberCard

@@ -393,12 +393,13 @@ final class PixelClockQuotaRendererTests: XCTestCase {
             let colorGrid = logo.pixels
                 .map { row in row.map { $0 ?? "." }.joined(separator: ",") }
                 .joined(separator: "\n")
-            let litPixelCount = logo.pixels.flatMap(\.self).compactMap(\.self).count
+            let litPixels = renderedPixels(in: logo)
+            let litPixelCount = litPixels.count
 
             XCTAssertEqual(pattern.count, 8, provider.displayName)
             XCTAssertTrue(pattern.allSatisfy { $0.count == 8 }, provider.displayName)
             XCTAssertGreaterThanOrEqual(litPixelCount, 14, provider.displayName)
-            XCTAssertGreaterThanOrEqual(Set(logo.pixels.flatMap(\.self).compactMap(\.self)).count, 2, provider.displayName)
+            XCTAssertGreaterThanOrEqual(Set(litPixels).count, 2, provider.displayName)
             XCTAssertEqual(logo.sourceName, expectedLogoSourceName(for: provider), provider.displayName)
             let allowsSharedOpenAIFamilyLogo = [.openAI, .codex, .openCode].contains(provider)
             if !allowsSharedOpenAIFamilyLogo {
@@ -565,8 +566,9 @@ final class PixelClockQuotaRendererTests: XCTestCase {
             "........",
             "........"
         ])
-        XCTAssertLessThanOrEqual(cursor.pixels.flatMap(\.self).compactMap(\.self).count, 17)
-        XCTAssertEqual(Set(cursor.pixels.flatMap(\.self).compactMap(\.self)), [
+        let litPixels = renderedPixels(in: cursor)
+        XCTAssertLessThanOrEqual(litPixels.count, 17)
+        XCTAssertEqual(Set(litPixels), [
             "#FFFFFF",
             "#AEB7C2",
             "#7F8790",
@@ -1030,6 +1032,12 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         }
         XCTFail("Expected logo to contain at least one lit pixel.")
         return (0, 0, "#000000")
+    }
+
+    private func renderedPixels(in logo: PixelClockProviderLogo) -> [String] {
+        logo.pixels.flatMap { row in
+            row.compactMap { $0 }
+        }
     }
 
     private func hasPixel(

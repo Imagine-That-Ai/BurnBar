@@ -45,6 +45,9 @@ struct YouView: View {
                     providerConnectionsRow
                         .staggeredEntrance(delay: 0.15)
 
+                    computerUseRow
+                        .staggeredEntrance(delay: 0.18)
+
                     settingsRow
                         .staggeredEntrance(delay: 0.20)
 
@@ -207,6 +210,37 @@ struct YouView: View {
         .buttonStyle(.plain)
     }
 
+    private var computerUseRow: some View {
+        NavigationLink(value: YouRoute.computerUse) {
+            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "cursorarrow.click.2")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.orange)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.orange.opacity(0.16))
+                        )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Computer Use")
+                            .font(MobileTheme.Typography.headline)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text("Watch, approve, take over, or halt your Mac agent")
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+                .contentShape(Rectangle())
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     /// Distinct providers that have at least one active account or legacy
     /// connection. Earlier code only counted the legacy
     /// `provider_connections` collection, which left this number stuck at 0
@@ -298,6 +332,7 @@ enum YouRoute: Hashable, CaseIterable {
     case settings
     case devices
     case providers
+    case computerUse
 }
 
 // MARK: - Cloud Member Crest Row

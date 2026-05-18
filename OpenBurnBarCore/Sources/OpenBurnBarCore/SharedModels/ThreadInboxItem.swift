@@ -3,9 +3,9 @@ import Foundation
 // MARK: - Thread Inbox Item (Hermes Square §6.2)
 //
 // Unified view-model for an entry in the Living Inbox. The
-// `ThreadInboxStore` aggregates from Hermes (mobile chat history), Pi
-// (mobile chat history), and CLI-mirror Firestore sessions into a single
-// list of these items.
+// `ThreadInboxStore` aggregates native mobile chat history, Mac-mirrored CLI
+// Firestore sessions, missions, and subscription posts into a single list of
+// these items.
 //
 // Plain value type — no protocol identity, no Firebase, no service refs.
 // The store builds these as projections of the per-runtime authoritative
@@ -50,6 +50,10 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
     /// row show a mission tile inline.
     public let liveMissionID: String?
 
+    /// Compact previews for recent user attachments in this thread. These
+    /// stay metadata-only; file bytes remain in the per-thread workspace.
+    public let attachments: [HermesAttachment]
+
     public enum Source: String, Codable, Sendable, Hashable {
         case hermes
         case pi
@@ -68,7 +72,8 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
         needsAttention: Bool = false,
         source: Source,
         liveMissionID: String? = nil,
-        searchText: String? = nil
+        searchText: String? = nil,
+        attachments: [HermesAttachment] = []
     ) {
         self.id = id
         self.agentURI = agentURI
@@ -80,6 +85,7 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
         self.needsAttention = needsAttention
         self.source = source
         self.liveMissionID = liveMissionID
+        self.attachments = attachments
     }
 }
 

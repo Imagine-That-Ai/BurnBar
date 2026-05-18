@@ -1,0 +1,380 @@
+/**
+ * Firestore rules emulator test for the Computer Use rule blocks.
+ *
+ * Validates that:
+ *   - Unauthenticated reads of CU collections are rejected.
+ *   - Authenticated user can read their own CU sessions / actions.
+ *   - Authenticated user CANNOT create a CU session without an
+ *     `hosted_computer_use_sync` entitlement.
+ *   - With an active entitlement, creating a session succeeds.
+ *   - Creating an action with secret-looking fields (`url`, `selector`,
+ *     `screenshot`, `text`) is rejected — the server-side audit header
+ *     never carries the action descriptor.
+ *   - Operator-side `ops/computer_use_budget_status/state/current`
+ *     is readable by any signed-in user but client writes are rejected.
+ *
+ * Run with:
+ *   cd firestore-rules-tests && npm test
+ */
+import {
+  initializeTestEnvironment,
+  assertSucceeds,
+  assertFails,
+} from "@firebase/rules-unit-testing";
+import { readFileSync } from "node:fs";
+import {
+  deleteDoc,
+  doc,
+  getDoc,
+  setDoc,
+  Timestamp,
+} from "firebase/firestore";
+
+const PROJECT_ID = "burnbar-test";
+const RULES_PATH = "../firestore.rules";
+
+const aliceUid = "alice-uid";
+const bobUid = "bob-uid";
+
+const futureTimestamp = Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+const validSessionDoc = {
+  sessionId: "session-1",
+  userId: aliceUid,
+  mode: "browser",
+  trustMode: "manual",
+  startedAt: Timestamp.fromMillis(Date.now()),
+  manifestHashHex: "a".repeat(64),
+  macAppVersion: "1.0.0",
+  schemaVersion: 1,
+  actionCount: 0,
+  approvalCount: 0,
+  rejectionCount: 0,
+  panicHaltCount: 0,
+  visionSpendUSD: 0,
+};
+
+const validActionDoc = {
+  id: "action-1",
+  sessionId: "session-1",
+  entryIndex: 0,
+  toolKind: "browser_click",
+  actionKind: "browser.click",
+  status: "executed",
+  approvedBy: "mac",
+  parentEntryHashHex: "0".repeat(64),
+  schemaVersion: 1,
+  recordedAt: Timestamp.fromMillis(Date.now()),
+};
+
+const validPhoneAuthorityDoc = {
+  id: "ios-phone-authority-1",
+  connectionId: "relay-connection-1",
+  peerNodeId: "ios-phone-authority-1",
+  deviceId: "iphone-1",
+  publicKeyBase64: "A".repeat(44),
+  publishedAtMillis: Date.now(),
+  protocolVersion: 1,
+  schemaVersion: 1,
+};
+
+const validAuditExportSignerDoc = {
+  id: "a".repeat(64),
+  userId: aliceUid,
+  deviceId: "mac-1",
+  signerIdentifier: "openburnbar-trusted-device-ed25519-keychain-v1:abc123",
+  signerKind: "openburnbar_trusted_device",
+  trustRoot: "openburnbar-trusted-device-keychain-v1",
+  algorithm: "ed25519",
+  publicKeyBase64: "A".repeat(44),
+  publicKeySHA256Hex: "a".repeat(64),
+  status: "active",
+  publishedAtMillis: Date.now(),
+  schemaVersion: 1,
+};
+
+function entitlementGranted(productID = "com.openburnbar.hostedComputerUseSync.monthly") {
+  return {
+    active: true,
+    productID,
+    expireAt: futureTimestamp,
+    features: {
+      browserComputerUse: true,
+      systemComputerUse: true,
+      phoneControl: true,
+      auditExport: true,
+      trustedScopes: true,
+    },
+  };
+}
+
+async function withEntitlement(testEnv, uid, body) {
+  // Seed the entitlement via the privileged path so we don't need to
+  // write a separate rule for the test fixture.
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const dbAdmin = ctx.firestore();
+    await setDoc(
+      doc(dbAdmin, `users/${uid}/entitlements/hosted_computer_use_sync`),
+      entitlementGranted()
+    );
+  });
+  return body();
+}
+
+async function seedEscrowDevice(testEnv, uid, deviceId, trustState = "trusted", platform = "iOS") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const dbAdmin = ctx.firestore();
+    await setDoc(doc(dbAdmin, `users/${uid}/escrow_devices/${deviceId}`), {
+      deviceId,
+      deviceName: "Test iPhone",
+      platform,
+      trustState,
+      createdAt: Timestamp.fromMillis(Date.now()),
+      updatedAt: Timestamp.fromMillis(Date.now()),
+    });
+  });
+}
+
+async function seedIrohPairing(testEnv, uid, connectionId) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const dbAdmin = ctx.firestore();
+    await setDoc(doc(dbAdmin, `users/${uid}/iroh_pairing/${connectionId}`), {
+      id: connectionId,
+      nodeId: "mac-node-1",
+      relayURL: "https://relay.openburnbar.test",
+      directAddresses: [],
+      publishedAtMillis: Date.now(),
+      protocolVersion: 1,
+      signature: "sig",
+      createdAt: Timestamp.fromMillis(Date.now()),
+      updatedAt: Timestamp.fromMillis(Date.now()),
+      schemaVersion: 1,
+    });
+  });
+}
+
+let testEnv;
+let failures = 0;
+let runs = 0;
+
+async function step(name, fn) {
+  runs += 1;
+  try {
+    await fn();
+    console.log(`  ✓ ${name}`);
+  } catch (e) {
+    failures += 1;
+    console.error(`  ✕ ${name}\n    ${e && e.message ? e.message : e}`);
+  }
+}
+
+async function main() {
+  testEnv = await initializeTestEnvironment({
+    projectId: PROJECT_ID,
+    firestore: {
+      rules: readFileSync(RULES_PATH, "utf8"),
+      host: "127.0.0.1",
+      port: 8080,
+    },
+  });
+
+  console.log("Computer Use Firestore rules emulator tests");
+
+  // unauth path
+  const anonDB = testEnv.unauthenticatedContext().firestore();
+  await step("unauthenticated read of computer_use_sessions is rejected", async () => {
+    await assertFails(getDoc(doc(anonDB, `users/${aliceUid}/computer_use_sessions/session-1`)));
+  });
+
+  // signed-in but no entitlement
+  const aliceDB = testEnv.authenticatedContext(aliceUid).firestore();
+  await step("signed-in user cannot create a session without entitlement", async () => {
+    await assertFails(
+      setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_sessions/session-1`), validSessionDoc)
+    );
+  });
+
+  // with entitlement
+  await withEntitlement(testEnv, aliceUid, async () => {
+    await step("authenticated user with entitlement can create a session", async () => {
+      await assertSucceeds(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_sessions/session-1`), validSessionDoc)
+      );
+    });
+
+    await step("user cannot create a session in another user's namespace", async () => {
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${bobUid}/computer_use_sessions/session-1`), {
+          ...validSessionDoc,
+          userId: bobUid,
+        })
+      );
+    });
+
+    await step("action with descriptor fields (selector/url/text/screenshot) is rejected", async () => {
+      const leaky = { ...validActionDoc, selector: "button[type=submit]" };
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-1`), leaky)
+      );
+    });
+
+    await step("action with allowed shape is accepted", async () => {
+      await assertSucceeds(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-1`), validActionDoc)
+      );
+    });
+
+    await step("quota_usage write with the right shape succeeds", async () => {
+      await assertSucceeds(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_quota_usage/2026-05-17`), {
+          dayKey: "2026-05-17",
+          browserActionsExecuted: 0,
+          browserActionsRejected: 0,
+          systemActionsExecuted: 0,
+          systemActionsRejected: 0,
+          phoneControlIntentsExecuted: 0,
+          phoneControlIntentsRejected: 0,
+          visionModelSpendUSD: 0,
+        })
+      );
+    });
+
+    await step("phone-control authority requires a trusted escrow device", async () => {
+      await seedIrohPairing(testEnv, aliceUid, validPhoneAuthorityDoc.connectionId);
+      await assertFails(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/${validPhoneAuthorityDoc.peerNodeId}`),
+          validPhoneAuthorityDoc
+        )
+      );
+      await seedEscrowDevice(testEnv, aliceUid, validPhoneAuthorityDoc.deviceId, "trusted");
+      await assertSucceeds(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/${validPhoneAuthorityDoc.peerNodeId}`),
+          validPhoneAuthorityDoc
+        )
+      );
+    });
+
+    await step("phone-control authority cannot use a mismatched peer or connection id", async () => {
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/other-peer`), {
+          ...validPhoneAuthorityDoc,
+          id: "other-peer",
+          peerNodeId: validPhoneAuthorityDoc.peerNodeId,
+        })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/${validPhoneAuthorityDoc.peerNodeId}`), {
+          ...validPhoneAuthorityDoc,
+          connectionId: "different-connection",
+        })
+      );
+    });
+
+    await step("phone-control authority requires an existing iroh pairing record", async () => {
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/missing-connection/controllers/${validPhoneAuthorityDoc.peerNodeId}`), {
+          ...validPhoneAuthorityDoc,
+          connectionId: "missing-connection",
+        })
+      );
+    });
+
+    await step("audit-export signer requires a trusted macOS escrow device", async () => {
+      const path = `users/${aliceUid}/escrow_devices/${validAuditExportSignerDoc.deviceId}/computer_use_audit_export_signers/${validAuditExportSignerDoc.publicKeySHA256Hex}`;
+      await assertFails(setDoc(doc(aliceDB, path), validAuditExportSignerDoc));
+      await seedEscrowDevice(testEnv, aliceUid, validAuditExportSignerDoc.deviceId, "trusted", "macOS");
+      await assertSucceeds(setDoc(doc(aliceDB, path), validAuditExportSignerDoc));
+      await assertSucceeds(getDoc(doc(aliceDB, path)));
+    });
+
+    await step("audit-export signer rejects non-macOS trusted escrow devices", async () => {
+      const signer = {
+        ...validAuditExportSignerDoc,
+        id: "b".repeat(64),
+        deviceId: "iphone-audit-signer-1",
+        publicKeySHA256Hex: "b".repeat(64),
+      };
+      const path = `users/${aliceUid}/escrow_devices/${signer.deviceId}/computer_use_audit_export_signers/${signer.publicKeySHA256Hex}`;
+      await seedEscrowDevice(testEnv, aliceUid, signer.deviceId, "trusted", "iOS");
+      await assertFails(setDoc(doc(aliceDB, path), signer));
+    });
+
+    await step("audit-export signer rejects malformed hash, id mismatch, and secret fields", async () => {
+      const basePath = `users/${aliceUid}/escrow_devices/${validAuditExportSignerDoc.deviceId}/computer_use_audit_export_signers`;
+      await assertFails(setDoc(doc(aliceDB, `${basePath}/not-a-hash`), {
+        ...validAuditExportSignerDoc,
+        id: "not-a-hash",
+        publicKeySHA256Hex: "not-a-hash",
+      }));
+      await assertFails(setDoc(doc(aliceDB, `${basePath}/${"c".repeat(64)}`), {
+        ...validAuditExportSignerDoc,
+        id: "c".repeat(64),
+        publicKeySHA256Hex: "d".repeat(64),
+      }));
+      await assertFails(setDoc(doc(aliceDB, `${basePath}/${"e".repeat(64)}`), {
+        ...validAuditExportSignerDoc,
+        id: "e".repeat(64),
+        publicKeySHA256Hex: "e".repeat(64),
+        privateKeyBase64: "do-not-store-this",
+      }));
+    });
+
+    await step("audit-export signer allows revocation update but denies key mutation and delete", async () => {
+      const signer = {
+        ...validAuditExportSignerDoc,
+        id: "f".repeat(64),
+        publicKeySHA256Hex: "f".repeat(64),
+      };
+      const path = `users/${aliceUid}/escrow_devices/${signer.deviceId}/computer_use_audit_export_signers/${signer.publicKeySHA256Hex}`;
+      await assertSucceeds(setDoc(doc(aliceDB, path), signer));
+      await assertSucceeds(setDoc(doc(aliceDB, path), {
+        ...signer,
+        status: "revoked",
+        revokedAt: Timestamp.fromMillis(Date.now()),
+        revokedByDeviceId: signer.deviceId,
+      }));
+      await assertFails(setDoc(doc(aliceDB, path), {
+        ...signer,
+        publicKeyBase64: "B".repeat(44),
+      }));
+      await assertFails(deleteDoc(doc(aliceDB, path)));
+    });
+
+    await step("ops/computer_use_budget_status is read-only for clients", async () => {
+      await assertFails(
+        setDoc(doc(aliceDB, `ops/computer_use_budget_status/state/current`), {
+          level: "normal",
+          projectedMonthEndUSD: 0,
+        })
+      );
+    });
+  });
+
+  // umbrella SKU (pro_max) also unlocks CU
+  await step("burnbar_pro_max also unlocks computer-use writes", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const dbAdmin = ctx.firestore();
+      // remove the per-feature entitlement and grant only the umbrella.
+      await setDoc(doc(dbAdmin, `users/${bobUid}/entitlements/burnbar_pro_max`), entitlementGranted("com.openburnbar.proMax.monthly"));
+    });
+    const bobDB = testEnv.authenticatedContext(bobUid).firestore();
+    await assertSucceeds(
+      setDoc(doc(bobDB, `users/${bobUid}/computer_use_sessions/session-bob`), {
+        ...validSessionDoc,
+        sessionId: "session-bob",
+        userId: bobUid,
+      })
+    );
+  });
+
+  await testEnv.cleanup();
+  console.log(`\n${runs - failures}/${runs} cases passed`);
+  if (failures > 0) process.exit(1);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(2);
+});

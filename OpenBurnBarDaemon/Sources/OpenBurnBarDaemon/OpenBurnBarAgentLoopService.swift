@@ -104,6 +104,13 @@ public struct BurnBarAgentLoopService: Sendable {
         - read_file
         - apply_patch
         - run_terminal
+        - browser_goto
+        - browser_click
+        - browser_fill
+        - browser_key
+        - browser_select
+        - browser_screenshot
+        - browser_extract
         - request_approval
         - fail
 
@@ -114,6 +121,15 @@ public struct BurnBarAgentLoopService: Sendable {
         - requestedTool
         - arguments
         - message
+
+        Browser action arguments:
+        - browser_goto: {"url":"https://example.com"}
+        - browser_click: {"selector":"button[type=submit]"} or {"positionX":100,"positionY":200}
+        - browser_fill: {"selector":"input[name=q]","text":"query"}
+        - browser_key: {"key":"Enter"}
+        - browser_select: {"selector":"select","value":"option"}
+        - browser_screenshot: {}
+        - browser_extract: {"selector":"main"} or {}
         """
 
         if repairMode {
@@ -215,6 +231,34 @@ public struct BurnBarAgentLoopService: Sendable {
             guard arguments?.objectValue()?["command"]?.stringValue() != nil else {
                 return nil
             }
+        case .browserGoto:
+            guard arguments?.objectValue()?["url"]?.stringValue() != nil else {
+                return nil
+            }
+        case .browserClick:
+            let object = arguments?.objectValue()
+            guard object?["selector"]?.stringValue() != nil
+                    || (object?["positionX"]?.intValue() != nil && object?["positionY"]?.intValue() != nil) else {
+                return nil
+            }
+        case .browserFill:
+            let object = arguments?.objectValue()
+            guard object?["selector"]?.stringValue() != nil,
+                  object?["text"]?.stringValue() != nil else {
+                return nil
+            }
+        case .browserKey:
+            guard arguments?.objectValue()?["key"]?.stringValue() != nil else {
+                return nil
+            }
+        case .browserSelect:
+            let object = arguments?.objectValue()
+            guard object?["selector"]?.stringValue() != nil,
+                  object?["value"]?.stringValue() != nil else {
+                return nil
+            }
+        case .browserScreenshot, .browserExtract:
+            break
         case .requestApproval:
             guard requestedTool != nil else {
                 return nil
@@ -236,10 +280,17 @@ public struct BurnBarAgentLoopService: Sendable {
             )
         }
 
+        let normalizedArguments: BurnBarJSONValue?
+        if (action == .browserScreenshot || action == .browserExtract), arguments == nil {
+            normalizedArguments = .object([:])
+        } else {
+            normalizedArguments = arguments
+        }
+
         return BurnBarAgentLoopDecision(
             action: action,
-            requestedTool: requestedTool,
-            arguments: arguments,
+            requestedTool: requestedTool ?? action.browserToolKind,
+            arguments: normalizedArguments,
             rationale: parsed.rationale,
             message: parsed.message
         )
@@ -276,5 +327,3 @@ private struct RawLoopDecision: Codable {
     let rationale: String
     let message: String?
 }
-
-

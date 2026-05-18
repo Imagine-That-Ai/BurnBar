@@ -137,6 +137,7 @@ public enum DesignSystemColors {
         case .aider:      return Color(hex: "FF6B35")
         case .cursor:     return Color(hex: "AC8C57")
         case .openAI:     return Color(hex: "00A67E")
+        case .deepSeek:   return Color(hex: "6366F1")
         case .codex:      return Color(hex: "00A67E")
         case .zai:        return Color(hex: "8B5CF6")
         case .minimax:    return Color(hex: "F59E0B")
@@ -166,6 +167,7 @@ public enum DesignSystemColors {
         case .aider:      return blaze
         case .cursor:     return Color(hex: "007AFF")
         case .openAI:     return Color(hex: "00C48C")
+        case .deepSeek:   return Color(hex: "818CF8")
         case .codex:      return Color(hex: "00C48C")
         case .zai:        return Color(hex: "A78BFA")
         case .minimax:    return Color(hex: "FCD34D")

@@ -42,7 +42,7 @@ struct SettingsView: View {
                     .padding(.top, DesignSystem.Spacing.sm)
                     .padding(.bottom, DesignSystem.Spacing.xs)
 
-                List(SettingsTab.allCases, selection: $router.selectedTab) { tab in
+                List(SettingsTab.visibleTabs, selection: $router.selectedTab) { tab in
                     NavigationLink(value: tab) {
                         sidebarRow(for: tab)
                     }
@@ -56,9 +56,12 @@ struct SettingsView: View {
                 // Consume a deep-link tab parked in UserDefaults by callers
                 // like the menu-bar popover whisper — e.g. tapping "Cloud
                 // Member" should drop the user straight on the Cloud pane.
+                // `resolving(legacyRawValue:)` maps the retired `providers`
+                // and `routingPools` raw values onto the unified
+                // `.connections` tab so old deep links still resolve.
                 let key = "settings.pendingTab"
                 if let raw = UserDefaults.standard.string(forKey: key),
-                   let tab = SettingsTab(rawValue: raw) {
+                   let tab = SettingsTab.resolving(legacyRawValue: raw) {
                     router.selectedTab = tab
                     UserDefaults.standard.removeObject(forKey: key)
                 }
@@ -206,12 +209,52 @@ struct SettingsView: View {
             RemoteRelayDetailView(settingsManager: settingsManager)
         case .hermesPiRelay:
             RemoteRelayPiDetailView(settingsManager: settingsManager)
-        case .generalRoot, .daemonRoot, .accountRoot, .providersRoot,
-             .routingPoolsRoot,
-             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
-             .switcherRoot, .hermesRoot:
+        case .agentsAccounts:
+            AgentsAccountsView(
+                settingsManager: settingsManager,
+                daemonManager: .shared,
+                dataStore: dataStore,
+                accountManager: accountManager
+            )
+        case .agentsCLIs:
+            AgentsCLIsView(
+                settingsManager: settingsManager,
+                daemonManager: .shared,
+                dataStore: dataStore,
+                accountManager: accountManager
+            )
+        case .agentsRuntimes:
+            AgentsRuntimesView(
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
+            )
+        case .agentsModels:
+            AgentsModelsView(
+                settingsManager: settingsManager,
+                daemonManager: .shared
+            )
+        case .agentsAdvanced:
+            AgentsAdvancedView(
+                settingsManager: settingsManager,
+                daemonManager: .shared,
+                dataStore: dataStore,
+                accountManager: accountManager,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
+            )
+        case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot,
+             .agentsRoot,
+             .connectionsRoot, .providersRoot, .routingPoolsRoot,
+             .switcherRoot, .hermesRoot,
+             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot,
+             .computerUseRoot:
             // Roots are reachable via the sidebar tab selection — the path
-            // stays empty for these.
+            // stays empty for these. Legacy roots (`connectionsRoot`,
+            // `providersRoot`, `routingPoolsRoot`, `switcherRoot`,
+            // `hermesRoot`) forward into the unified Agents tab via the
+            // tab resolver.
             detailContent
         }
     }
@@ -276,20 +319,16 @@ struct SettingsView: View {
         case .cloud:
             CloudStoreSettingsView()
                 .navigationTitle("OpenBurnBar Cloud")
-        case .providers:
-            ProvidersSettingsView(
+        case .agents:
+            AgentsSettingsView(
                 settingsManager: settingsManager,
                 daemonManager: .shared,
                 dataStore: dataStore,
-                accountManager: accountManager
+                accountManager: accountManager,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
             )
-                .navigationTitle("Providers")
-        case .routingPools:
-            RoutingPoolsView(
-                settingsManager: settingsManager,
-                dataStore: dataStore
-            )
-                .navigationTitle("Routing pools")
+                .navigationTitle("Agents")
         case .alerts:
             AlertsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Alerts")
@@ -302,20 +341,17 @@ struct SettingsView: View {
                 runtimeContext: runtimeContext
             )
                 .navigationTitle(MacCopy.devicesAndSyncTitle)
-        case .switcher:
-            AccountSwitcherSettingsView(
-                dataStore: dataStore,
-                settingsManager: settingsManager
-            )
-                .navigationTitle("Account Switcher")
-        case .hermes:
-            ChatGatewaySettingsView(
-                settingsManager: settingsManager,
-                dataStore: dataStore,
-                cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService
-            )
-                .navigationTitle("Hermes")
+        case .media:
+            MediaPermissionsView()
+                .navigationTitle("Media & Sharing")
+        case .computerUse:
+            #if DISTRIBUTION_MAS
+            MediaPermissionsView()
+                .navigationTitle("Media & Sharing")
+            #else
+            ComputerUseSettingsView(runtimeController: runtimeContext?.computerUseRuntimeController)
+                .navigationTitle("Computer Use")
+            #endif
         }
     }
 

@@ -144,7 +144,7 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.gatewayEnabled,
             title: "HTTP Gateway",
             subtitle: "Expose an OpenAI-compatible API on a local port",
-            keywords: ["api", "openai", "gateway", "endpoint", "vibeproxy"]
+            keywords: ["api", "openai", "gateway", "endpoint", "hydrant"]
         ),
         SettingsItem(
             id: "daemon.gateway.host",
@@ -164,7 +164,7 @@ enum SettingsManifest {
             focusID: SettingsFocus.gatewayPort,
             title: "Gateway Port",
             subtitle: "TCP port the gateway listens on",
-            keywords: ["port", "tcp", "8317", "vibeproxy"]
+            keywords: ["port", "tcp", "8317", "hydrant"]
         ),
         SettingsItem(
             id: "daemon.gateway.token",
@@ -237,50 +237,106 @@ enum SettingsManifest {
             keywords: ["delete", "remove", "wipe", "gdpr"]
         ),
 
-        // MARK: Providers
+        // MARK: Cloud
 
         SettingsItem(
-            id: "providers.add",
-            tab: .providers,
-            pageRoute: .providersRoot,
-            anchorID: SettingsAnchor.providersAdd,
-            title: "Add Provider Account",
-            subtitle: "Connect Claude, OpenCode, Factory, OpenAI, Kimi, and more",
-            keywords: ["add", "account", "provider", "claude", "opencode", "open code", "opencode go", "factory", "openai", "anthropic"],
-            logoProviders: [.claudeCode, .openCode, .factory, .openAI]
+            id: "cloud.overview",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudOverview,
+            title: "OpenBurnBar Cloud",
+            subtitle: "Hosted refresh, backup, remote MCP clients, and member status",
+            keywords: ["cloud", "member", "pro", "hosted", "backup", "remote mcp", "subscription", "billing", "relay"]
+        ),
+
+        // MARK: Agents (unified Connections + Account Switcher + AI Environments tab)
+
+        SettingsItem(
+            id: "agents.accounts",
+            tab: .agents,
+            pageRoute: .agentsAccounts,
+            anchorID: SettingsAnchor.agentsAccounts,
+            title: "Add Account",
+            subtitle: "Bring API keys for OpenAI, Anthropic, and other providers — add many keys per provider for automatic failover",
+            keywords: [
+                "agent", "agents",
+                "connect", "connections", "account", "accounts", "add", "key", "api key",
+                "openai", "anthropic", "claude", "claude code", "opencode", "open code",
+                "factory", "kimi", "moonshot", "minimax", "zai", "z.ai", "deepseek", "ollama",
+                "provider", "providers", "plan", "plans"
+            ],
+            logoProviders: [.claudeCode, .openAI, .openCode, .factory]
         ),
         SettingsItem(
-            id: "providers.cli",
-            tab: .providers,
-            pageRoute: .providersRoot,
-            anchorID: SettingsAnchor.providersCLI,
-            title: "CLI Authentication",
-            subtitle: "OAuth and API key management for local CLIs",
-            keywords: ["cli", "oauth", "api key", "anthropic", "openai", "opencode", "open code", "auth"],
-            logoProviders: [.claudeCode, .codex, .openCode]
-        ),
-        SettingsItem(
-            id: "providers.logSources",
-            tab: .providers,
-            pageRoute: .providersRoot,
-            anchorID: SettingsAnchor.providersLogSources,
-            title: "Log Sources",
-            subtitle: "Enable or disable individual on-disk log scans",
-            keywords: ["logs", "sources", "scan", "claude code", "factory droid", "codex", "opencode", "open code"],
+            id: "agents.clis",
+            tab: .agents,
+            pageRoute: .agentsCLIs,
+            anchorID: SettingsAnchor.agentsCLIs,
+            title: "Connect a CLI",
+            subtitle: "Wire Claude Code, Codex, OpenCode, Forge, or Droid to your local gateway and switch between CLI profiles",
+            keywords: [
+                "agent", "agents",
+                "cli", "app", "apps", "connect", "wire", "wiring", "claude code", "codex",
+                "opencode", "open code", "forge", "droid", "factory",
+                // Legacy "routing pool" / "hydrant" vocabulary still resolves here.
+                "routing", "routing pool", "routing pools", "pool", "pools",
+                "fire hydrant", "hydrant", "gateway", "failover", "fallback",
+                "oauth", "api key", "auth",
+                // Account Switcher vocabulary forwarded here.
+                "switcher", "profile", "profiles", "reserve", "primary",
+                "swap", "credentials", "isolated"
+            ],
             logoProviders: [.claudeCode, .codex, .openCode, .factory]
         ),
-
-        // MARK: Routing pools
-
         SettingsItem(
-            id: "routingPools.overview",
-            tab: .routingPools,
-            pageRoute: .routingPoolsRoot,
-            anchorID: SettingsAnchor.routingPoolsOverview,
-            title: "Routing Pools",
-            subtitle: "Wire Claude Code, OpenCode, and OpenAI-compatible clients through routed provider pools",
-            keywords: ["routing", "fire hydrant", "pools", "failover", "claude code", "codex", "opencode", "open code", "gateway"],
-            logoProviders: [.claudeCode, .codex, .openCode, .openAI]
+            id: "agents.runtimes",
+            tab: .agents,
+            pageRoute: .agentsRuntimes,
+            anchorID: SettingsAnchor.agentsRuntimes,
+            title: "Runtimes & Relays",
+            subtitle: "Local Hermes, Pi, and OpenClaw runtimes plus their iPhone/iPad relays",
+            keywords: [
+                "agent", "agents",
+                "runtime", "runtimes", "hermes", "pi", "pi agent", "openclaw", "open claw",
+                "gateway", "engine", "engines", "relay", "remote", "tunnel", "webapi",
+                "ai environment", "ai environments", "chat engine"
+            ],
+            logoProviders: [.hermes, .piAgent, .openClaw]
+        ),
+        SettingsItem(
+            id: "agents.models",
+            tab: .agents,
+            pageRoute: .agentsModels,
+            anchorID: SettingsAnchor.agentsModels,
+            title: "Models & Providers",
+            subtitle: "Every model the local gateway can serve right now — grouped by provider and account, with route-readiness and quota state",
+            keywords: [
+                "agent", "agents",
+                "model", "models", "model catalog", "catalog", "directory",
+                "provider", "providers", "advertised", "exposed", "proxy",
+                "gateway", "v1/models", "endpoint", "routes", "routing",
+                "claude", "gpt", "sonnet", "opus", "kimi", "minimax", "deepseek",
+                "openai", "anthropic", "browse", "list", "view", "see"
+            ],
+            logoProviders: [.claudeCode, .openAI, .openCode, .kimi]
+        ),
+        SettingsItem(
+            id: "agents.advanced",
+            tab: .agents,
+            pageRoute: .agentsAdvanced,
+            anchorID: SettingsAnchor.agentsAdvanced,
+            title: "Advanced Routing, Gateway, Browsers & Setup",
+            subtitle: "Routing strategy, local gateway, browser profiles, chat engines, Hermes models, inventory, setup wizard",
+            keywords: [
+                "agent", "agents",
+                "advanced", "router", "router mode", "routing strategy", "intelligent",
+                "provider family", "gateway", "host", "port", "token", "bearer",
+                "loopback", "log sources", "logs", "smart hubs", "quota",
+                "browser", "chrome", "safari", "profile",
+                "chat engine", "engine", "engines", "model", "models", "hermes model",
+                "inventory", "import", "setup", "setup wizard", "wizard"
+            ],
+            logoProviders: [.claudeCode, .openAI, .hermes]
         ),
 
         // MARK: Alerts
@@ -365,99 +421,131 @@ enum SettingsManifest {
             keywords: ["nest", "hub", "pixel", "clock", "display", "cast"]
         ),
 
-        // MARK: Account Switcher
+        // MARK: Media & Sharing
+
+        SettingsItem(
+            id: "media.permissions",
+            tab: .media,
+            pageRoute: .mediaRoot,
+            anchorID: SettingsAnchor.mediaPermissions,
+            title: "Media Permissions",
+            subtitle: "Camera, microphone, screen sharing, and file-transfer readiness for Mercury sessions",
+            keywords: [
+                "media", "mercury", "permissions", "camera", "microphone", "mic",
+                "screen recording", "screen share", "file transfer", "voice call",
+                "video call", "sharing", "iroh"
+            ]
+        ),
+
+        // MARK: Computer Use
+
+        SettingsItem(
+            id: "computerUse.readiness",
+            tab: .computerUse,
+            pageRoute: .computerUseRoot,
+            anchorID: SettingsAnchor.computerUseReadiness,
+            title: "Computer Use Readiness",
+            subtitle: "Agent Watch, browser automation, Mac input, approvals, and audit chain",
+            keywords: [
+                "computer use", "agent watch", "browser", "playwright", "mac input",
+                "approval", "panic", "audit", "accessibility"
+            ],
+            helpText: "Shows local permission state and the controls needed to validate Computer Use on this Mac."
+        ),
+
+        // MARK: Account Switcher — now lives inside Agents → CLIs / Advanced.
 
         SettingsItem(
             id: "switcher.browser",
-            tab: .switcher,
-            pageRoute: .switcherRoot,
+            tab: .agents,
+            pageRoute: .agentsAdvanced,
             anchorID: SettingsAnchor.switcherBrowser,
             title: "Browser Profiles",
-            subtitle: "Launch isolated browser profiles per provider",
-            keywords: ["browser", "profile", "chrome", "safari", "firefox"]
+            subtitle: "Launch isolated browser profiles per provider (now under Agents → Advanced)",
+            keywords: ["browser", "profile", "chrome", "safari", "firefox", "switcher"]
         ),
         SettingsItem(
             id: "switcher.cli",
-            tab: .switcher,
-            pageRoute: .switcherRoot,
+            tab: .agents,
+            pageRoute: .agentsCLIs,
             anchorID: SettingsAnchor.switcherCLI,
             title: "CLI Profiles",
-            subtitle: "Swap CLI credentials between Claude / Factory accounts",
-            keywords: ["cli", "profile", "credentials", "swap"],
+            subtitle: "Swap CLI credentials between Claude / Codex / OpenCode accounts (now under Agents → CLIs)",
+            keywords: ["cli", "profile", "credentials", "swap", "switcher"],
             logoProviders: [.claudeCode, .codex, .openCode, .factory]
         ),
 
-        // MARK: Hermes / AI environments
+        // MARK: Hermes / AI environments — now live inside Agents → Runtimes / Advanced.
 
         SettingsItem(
             id: "hermes.connections",
-            tab: .hermes,
-            pageRoute: .hermesChatEngines,
+            tab: .agents,
+            pageRoute: .agentsAdvanced,
             anchorID: SettingsAnchor.hermesConnections,
             title: "Chat Engines",
-            subtitle: "Choose which chat engines appear in OpenBurnBar",
+            subtitle: "Choose which chat engines appear in OpenBurnBar (now under Agents → Advanced)",
             keywords: ["hermes", "pi", "connection", "engine", "chat", "codex", "claude", "openclaw"],
             logoProviders: [.hermes, .piAgent, .openClaw, .claudeCode, .codex]
         ),
         SettingsItem(
             id: "hermes.models",
-            tab: .hermes,
-            pageRoute: .hermesChatEngines,
+            tab: .agents,
+            pageRoute: .agentsAdvanced,
             anchorID: SettingsAnchor.hermesModels,
             title: "Hermes Models",
-            subtitle: "Default models exposed by Hermes",
+            subtitle: "Default models exposed by Hermes (now under Agents → Advanced)",
             keywords: ["model", "hermes", "claude", "gpt", "llm"],
             logoProviders: [.hermes, .claudeCode, .openAI, .geminiCLI]
         ),
         SettingsItem(
             id: "hermes.gateway.url",
-            tab: .hermes,
-            pageRoute: .hermesGateway,
+            tab: .agents,
+            pageRoute: .agentsRuntimes,
             anchorID: SettingsAnchor.hermesGatewayURL,
             focusID: SettingsFocus.hermesGatewayURL,
             title: "Hermes Gateway URL",
-            subtitle: "Base URL of the Hermes webapi gateway",
-            keywords: ["gateway", "url", "endpoint", "webapi"],
+            subtitle: "Base URL of the Hermes webapi gateway (now under Agents → Runtimes)",
+            keywords: ["gateway", "url", "endpoint", "webapi", "hermes"],
             logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.gateway.token",
-            tab: .hermes,
-            pageRoute: .hermesGateway,
+            tab: .agents,
+            pageRoute: .agentsRuntimes,
             anchorID: SettingsAnchor.hermesGatewayToken,
             focusID: SettingsFocus.hermesGatewayToken,
             title: "Hermes Gateway Token",
-            subtitle: "Bearer token used to authenticate to the gateway",
-            keywords: ["bearer", "token", "secret", "gateway"],
+            subtitle: "Bearer token used to authenticate to the gateway (now under Agents → Runtimes)",
+            keywords: ["bearer", "token", "secret", "gateway", "hermes"],
             logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.pi.hosts",
-            tab: .hermes,
-            pageRoute: .hermesPiAgent,
+            tab: .agents,
+            pageRoute: .agentsRuntimes,
             anchorID: SettingsAnchor.hermesPiHosts,
             title: "Pi Agent Base URL",
-            subtitle: "Gateway endpoint for local Pi runtimes",
+            subtitle: "Gateway endpoint for local Pi runtimes (now under Agents → Runtimes)",
             keywords: ["pi", "raspberry", "host", "edge", "gateway", "url"],
             logoProviders: [.piAgent]
         ),
         SettingsItem(
             id: "hermes.relay",
-            tab: .hermes,
-            pageRoute: .hermesRelay,
+            tab: .agents,
+            pageRoute: .agentsRuntimes,
             anchorID: SettingsAnchor.hermesRelay,
             title: "Hermes Remote Relay",
-            subtitle: "Reach Hermes from the cloud relay endpoint",
+            subtitle: "Reach Hermes from the cloud relay endpoint (now under Agents → Runtimes)",
             keywords: ["hermes", "relay", "remote", "tunnel", "cloud"],
             logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.pi.relay",
-            tab: .hermes,
-            pageRoute: .hermesPiRelay,
+            tab: .agents,
+            pageRoute: .agentsRuntimes,
             anchorID: SettingsAnchor.hermesPiRelay,
             title: "Pi Remote Relay",
-            subtitle: "Reach Pi from the cloud relay endpoint",
+            subtitle: "Reach Pi from the cloud relay endpoint (now under Agents → Runtimes)",
             keywords: ["pi", "raspberry", "relay", "remote", "tunnel", "cloud"],
             logoProviders: [.piAgent]
         ),
@@ -496,10 +584,12 @@ enum SettingsManifest {
         SettingsAnchor.accountSignIn,
         SettingsAnchor.accountSubscription,
         SettingsAnchor.accountDelete,
-        SettingsAnchor.providersAdd,
-        SettingsAnchor.providersCLI,
-        SettingsAnchor.providersLogSources,
-        SettingsAnchor.routingPoolsOverview,
+        SettingsAnchor.cloudOverview,
+        SettingsAnchor.agentsAccounts,
+        SettingsAnchor.agentsCLIs,
+        SettingsAnchor.agentsRuntimes,
+        SettingsAnchor.agentsModels,
+        SettingsAnchor.agentsAdvanced,
         SettingsAnchor.alertsDailySpend,
         SettingsAnchor.alertsDigest,
         SettingsAnchor.notificationsLocal,
@@ -508,6 +598,8 @@ enum SettingsManifest {
         SettingsAnchor.cloudSyncToggle,
         SettingsAnchor.trustedDevices,
         SettingsAnchor.smartDisplays,
+        SettingsAnchor.mediaPermissions,
+        SettingsAnchor.computerUseReadiness,
         SettingsAnchor.switcherBrowser,
         SettingsAnchor.switcherCLI,
         SettingsAnchor.hermesConnections,
@@ -525,11 +617,11 @@ enum SettingsManifest {
             .map { provider in
                 SettingsItem(
                     id: providerItemID(for: provider),
-                    tab: .providers,
-                    pageRoute: .providersRoot,
+                    tab: .agents,
+                    pageRoute: .agentsAccounts,
                     anchorID: providerAnchor(for: provider),
                     title: provider.displayName,
-                    subtitle: "\(provider.displayName) provider setup, logs, accounts, and quota signals",
+                    subtitle: "\(provider.displayName) accounts, keys, and quota signals",
                     keywords: providerKeywords(for: provider),
                     logoProviders: [provider]
                 )
@@ -540,17 +632,12 @@ enum SettingsManifest {
         provider == .openCode ? "providers.openCode" : "providers.\(provider.persistedToken)"
     }
 
+    /// Per-provider scroll anchor. The Connections page itself only renders
+    /// three anchored sections, so these per-provider IDs scroll the user to
+    /// the top of the Accounts section in practice — they exist so each
+    /// provider has its own unique manifest entry for search.
     private static func providerAnchor(for provider: AgentProvider) -> String {
-        switch provider {
-        case .claudeCode:
-            return SettingsAnchor.providerCLI(SwitcherCLIProfileType.claude.rawValue)
-        case .codex:
-            return SettingsAnchor.providerCLI(SwitcherCLIProfileType.codex.rawValue)
-        case .openCode:
-            return SettingsAnchor.providersOpenCode
-        default:
-            return SettingsAnchor.providerLogSource(provider.persistedToken)
-        }
+        "agents.account.\(provider.persistedToken)"
     }
 
     private static func providerKeywords(for provider: AgentProvider) -> [String] {

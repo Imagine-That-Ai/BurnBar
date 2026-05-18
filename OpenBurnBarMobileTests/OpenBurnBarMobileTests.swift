@@ -1,5 +1,8 @@
 import XCTest
+import CryptoKit
 import OpenBurnBarCore
+import OpenBurnBarIrohRelay
+import OpenBurnBarMedia
 @testable import OpenBurnBarMobile
 
 @MainActor
@@ -139,6 +142,142 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(decoded.totals.tokens, 1000)
     }
 
+    // MARK: - Computer Use Agent Watch
+
+    func testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds() async throws {
+        let uid = "user-agent-watch"
+        let connectionID = "relay-connection-1"
+        let stream = AgentWatchFakeStream()
+        let authorityPublisher = AgentWatchFakeAuthorityPublisher()
+        let coordinator = AgentWatchOverlayCoordinator(
+            dialer: { dialedUID, dialedConnectionID, relayPublicKey in
+                XCTAssertEqual(dialedUID, uid)
+                XCTAssertEqual(dialedConnectionID, connectionID)
+                XCTAssertEqual(relayPublicKey, Data(repeating: 7, count: 32))
+                return stream
+            },
+            authorityPublisher: authorityPublisher,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        defer {
+            Task { await coordinator.stop() }
+        }
+
+        coordinator.start(
+            uid: uid,
+            connectionID: connectionID,
+            relayPublicKey: Data(repeating: 7, count: 32)
+        )
+
+        let classifyFrame = try await waitForFrame(
+            from: stream,
+            matching: { $0.type == .controlClassify }
+        )
+        XCTAssertEqual(classifyFrame.uid, uid)
+        XCTAssertEqual(classifyFrame.connectionId, connectionID)
+        XCTAssertEqual(classifyFrame.control?.streamClass, MediaStreamClass.controlInput.rawValue)
+        XCTAssertNotNil(classifyFrame.control?.authorityPeerNodeId)
+        XCTAssertNil(classifyFrame.control?.authorityPublicKeyBase64)
+        let publishedAuthorities = await authorityPublisher.published()
+        XCTAssertEqual(publishedAuthorities.count, 1)
+        XCTAssertEqual(publishedAuthorities.first?.uid, uid)
+        XCTAssertEqual(publishedAuthorities.first?.connectionId, connectionID)
+        XCTAssertEqual(publishedAuthorities.first?.peerNodeId, classifyFrame.control?.authorityPeerNodeId)
+
+        let approval = HermesRealtimeRelayApprovalRequest(
+            approvalId: "approval-1",
+            runId: "run-1",
+            sessionId: "session-1",
+            toolKind: "mac.input.click",
+            title: "Approve click",
+            message: "Click Submit",
+            beforeScreenshotBlake3: "abc123",
+            actionSummary: "Click Submit",
+            requestedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        await stream.pushInbound(HermesRealtimeRelayFrame(
+            type: .controlApprovalRequest,
+            uid: uid,
+            connectionId: connectionID,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlApproval.rawValue,
+                sessionId: approval.sessionId,
+                approvalRequest: approval
+            )
+        ))
+
+        try await waitForCondition {
+            coordinator.state.pendingApproval?.approvalId == approval.approvalId
+        }
+        XCTAssertEqual(coordinator.state.sessionId?.rawValue, approval.sessionId)
+
+        try await coordinator.receiver?.approve(approval)
+
+        let responseFrame = try await waitForFrame(
+            from: stream,
+            matching: { $0.type == .controlApprovalResponse }
+        )
+        XCTAssertEqual(responseFrame.uid, uid)
+        XCTAssertEqual(responseFrame.connectionId, connectionID)
+        XCTAssertEqual(responseFrame.control?.streamClass, MediaStreamClass.controlApproval.rawValue)
+        XCTAssertEqual(responseFrame.control?.sessionId, approval.sessionId)
+        XCTAssertEqual(responseFrame.control?.approvalResponse?.approvalId, approval.approvalId)
+        XCTAssertEqual(responseFrame.control?.approvalResponse?.decision, .approve)
+        XCTAssertNil(coordinator.state.pendingApproval)
+    }
+
+    func testAgentWatchReceiverSendsSignedTapAndScrollIntents() async throws {
+        let uid = "user-agent-watch-input"
+        let connectionID = "relay-connection-input"
+        let stream = AgentWatchFakeStream()
+        let coordinator = AgentWatchOverlayCoordinator(
+            dialer: { _, _, _ in stream },
+            authorityPublisher: AgentWatchFakeAuthorityPublisher(),
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        defer {
+            Task { await coordinator.stop() }
+        }
+
+        coordinator.start(
+            uid: uid,
+            connectionID: connectionID,
+            relayPublicKey: Data(repeating: 9, count: 32)
+        )
+        _ = try await waitForFrame(from: stream) { $0.type == .controlClassify }
+
+        try await coordinator.receiver?.tap(normalizedX: 0.25, normalizedY: 0.75)
+        let tapFrame = try await waitForFrame(from: stream) {
+            $0.type == .controlInputIntent &&
+            $0.control?.inputIntent?.kind == .tap
+        }
+        let tapIntent = try XCTUnwrap(tapFrame.control?.inputIntent)
+        XCTAssertEqual(try XCTUnwrap(tapIntent.normalizedX), 0.25, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(tapIntent.normalizedY), 0.75, accuracy: 0.0001)
+        XCTAssertFalse(tapIntent.authority.peerNodeId.isEmpty)
+        XCTAssertFalse(tapIntent.authority.signatureEd25519.isEmpty)
+
+        try await coordinator.receiver?.scrollDrag(
+            startNormalizedX: 0.40,
+            startNormalizedY: 0.45,
+            endNormalizedX: 0.40,
+            endNormalizedY: 0.20
+        )
+        let scrollFrame = try await waitForFrame(from: stream) {
+            $0.type == .controlInputIntent &&
+            $0.control?.inputIntent?.kind == .scroll
+        }
+        let scrollIntent = try XCTUnwrap(scrollFrame.control?.inputIntent)
+        XCTAssertEqual(try XCTUnwrap(scrollIntent.normalizedX), 0.40, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(scrollIntent.normalizedY), 0.45, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(scrollIntent.normalizedX2), 0.40, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(scrollIntent.normalizedY2), 0.20, accuracy: 0.0001)
+        XCTAssertEqual(scrollIntent.authority.counter, tapIntent.authority.counter + 1)
+        XCTAssertFalse(scrollIntent.authority.signatureEd25519.isEmpty)
+    }
+
     // MARK: - Formatting
 
     func testCostFormatting() {
@@ -222,6 +361,35 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("not-a-url"))
     }
 
+    private func waitForFrame(
+        from stream: AgentWatchFakeStream,
+        matching predicate: @escaping (HermesRealtimeRelayFrame) -> Bool,
+        timeout: TimeInterval = 2
+    ) async throws -> HermesRealtimeRelayFrame {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let frame = await stream.sentFrames().first(where: predicate) {
+                return frame
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("Timed out waiting for Agent Watch frame")
+        throw NSError(domain: "AgentWatchOverlayCoordinatorTests", code: 1)
+    }
+
+    private func waitForCondition(
+        timeout: TimeInterval = 2,
+        _ condition: @escaping @MainActor () -> Bool
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("Timed out waiting for Agent Watch condition")
+        throw NSError(domain: "AgentWatchOverlayCoordinatorTests", code: 2)
+    }
+
     private func makeUsage(
         provider: AgentProvider,
         sessionId: String,
@@ -243,5 +411,75 @@ final class OpenBurnBarMobileTests: XCTestCase {
             startTime: startTime,
             endTime: endTime
         )
+    }
+}
+
+private actor AgentWatchFakeStream: IrohRelayStream {
+    private var inboundFrames: [HermesRealtimeRelayFrame] = []
+    private var outboundFrames: [HermesRealtimeRelayFrame] = []
+    private var receiveWaiter: CheckedContinuation<HermesRealtimeRelayFrame?, Error>?
+    private var isClosed = false
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {
+        outboundFrames.append(frame)
+    }
+
+    func receive() async throws -> HermesRealtimeRelayFrame? {
+        if !inboundFrames.isEmpty { return inboundFrames.removeFirst() }
+        if isClosed { return nil }
+        return try await withCheckedThrowingContinuation { continuation in
+            receiveWaiter = continuation
+        }
+    }
+
+    func close() async {
+        isClosed = true
+        receiveWaiter?.resume(returning: nil)
+        receiveWaiter = nil
+    }
+
+    func pushInbound(_ frame: HermesRealtimeRelayFrame) {
+        if let receiveWaiter {
+            self.receiveWaiter = nil
+            receiveWaiter.resume(returning: frame)
+            return
+        }
+        inboundFrames.append(frame)
+    }
+
+    func sentFrames() -> [HermesRealtimeRelayFrame] {
+        outboundFrames
+    }
+}
+
+private actor AgentWatchFakeAuthorityPublisher: PhoneControlAuthorityPublishing {
+    struct Published: Equatable {
+        let uid: String
+        let connectionId: String
+        let deviceId: String
+        let peerNodeId: String
+        let publicKeyData: Data
+    }
+
+    private var values: [Published] = []
+
+    func publish(
+        uid: String,
+        connectionId: String,
+        deviceId: String,
+        peerNodeId: String,
+        publicKey: Curve25519.Signing.PublicKey
+    ) async throws {
+        values.append(Published(
+            uid: uid,
+            connectionId: connectionId,
+            deviceId: deviceId,
+            peerNodeId: peerNodeId,
+            publicKeyData: publicKey.rawRepresentation
+        ))
+    }
+
+    func published() -> [Published] {
+        values
     }
 }

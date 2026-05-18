@@ -2,16 +2,20 @@ package com.openburnbar
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import com.google.firebase.auth.FirebaseAuth
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
+import com.openburnbar.data.hermes.HermesConnectionMode
+import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.assistants.PiPendingPrompt
 import com.openburnbar.ui.navigation.BurnBarNavHost
 import com.openburnbar.ui.navigation.HermesPendingPrompt
 import com.openburnbar.ui.theme.AuroraTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -21,6 +25,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         stashPendingPromptFromIntent(intent)
         launchE2EMissionFromIntent(intent)
+        launchE2EHermesIrohFromIntent(intent)
         setContent {
             AuroraTheme {
                 BurnBarNavHost()
@@ -33,6 +38,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         stashPendingPromptFromIntent(intent)
         launchE2EMissionFromIntent(intent)
+        launchE2EHermesIrohFromIntent(intent)
     }
 
     /**
@@ -106,7 +112,63 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun launchE2EHermesIrohFromIntent(intent: Intent?) {
+        if (!BuildConfig.DEBUG || intent?.getBooleanExtra(EXTRA_E2E_HERMES_IROH, false) != true) return
+        lifecycleScope.launch {
+            val service = HermesService(appContext = applicationContext)
+            try {
+                val auth = FirebaseAuth.getInstance()
+                val expectedUid = intent.getStringExtra(EXTRA_E2E_FIREBASE_UID)
+                if (expectedUid.isNullOrBlank() || auth.currentUser?.uid != expectedUid) {
+                    val email = intent.getStringExtra(EXTRA_E2E_FIREBASE_EMAIL)?.takeIf { it.isNotBlank() }
+                    val password = intent.getStringExtra(EXTRA_E2E_FIREBASE_PASSWORD)?.takeIf { it.isNotBlank() }
+                    if (email == null || password == null) {
+                        throw IllegalStateException("Android Hermes iroh E2E requires the expected Firebase user to already be signed in, or email/password extras.")
+                    }
+                    auth.signInWithEmailAndPassword(email, password).await()
+                }
+
+                service.refreshRelayConnections()
+                val requestedConnectionId = intent.getStringExtra(EXTRA_E2E_HERMES_CONNECTION_ID)
+                    ?.takeIf { it.isNotBlank() }
+                val relay = service.connections.value.firstOrNull {
+                    it.mode == HermesConnectionMode.RELAY_LINK &&
+                        (requestedConnectionId == null || it.id == requestedConnectionId)
+                } ?: throw IllegalStateException("No Hermes relay-link connection is available for Android E2E.")
+                service.selectConnection(relay)
+                delay(750)
+
+                val modelExtra = intent.getStringExtra(EXTRA_E2E_HERMES_MODEL)?.trim().orEmpty()
+                val model = modelExtra.takeIf { it.isNotBlank() && !it.equals("auto", ignoreCase = true) }
+                    ?: relay.advertisedModel
+                    ?: service.modelOptions.value.firstOrNull()?.modelID
+                    ?: "hermes"
+                val prompt = intent.getStringExtra(EXTRA_E2E_HERMES_PROMPT)
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Respond with exactly: android iroh ok"
+
+                service.sendMessage(prompt, model)
+                val deadline = System.currentTimeMillis() + ANDROID_HERMES_IROH_E2E_TIMEOUT_MILLIS
+                while (System.currentTimeMillis() < deadline) {
+                    val assistant = service.messages.value.lastOrNull { it.role == "assistant" }
+                    if (assistant != null && !service.isStreaming.value) {
+                        if (assistant.isError) throw IllegalStateException(assistant.content)
+                        Log.i(TAG, "Android Hermes iroh E2E complete model=$model responseChars=${assistant.content.length}")
+                        return@launch
+                    }
+                    delay(250)
+                }
+                throw IllegalStateException("Android Hermes iroh E2E timed out waiting for assistant response.")
+            } catch (err: Throwable) {
+                Log.e(TAG, "Android Hermes iroh E2E failed: ${err.message}", err)
+            } finally {
+                service.destroy()
+            }
+        }
+    }
+
     companion object {
+        private const val TAG = "BurnBarE2E"
         const val EXTRA_ASSISTANT = "burnbar.assistant"
         const val EXTRA_PROMPT = "burnbar.prompt"
         const val ASSISTANT_HERMES = "hermes"
@@ -118,5 +180,10 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_E2E_MISSION_RUNTIME = "openburnbar.e2e.missionRuntime"
         const val EXTRA_E2E_MISSION_TARGET = "openburnbar.e2e.missionTarget"
         const val EXTRA_E2E_MISSION_PROMPT = "openburnbar.e2e.missionPrompt"
+        const val EXTRA_E2E_HERMES_IROH = "openburnbar.e2e.hermesIroh"
+        const val EXTRA_E2E_HERMES_CONNECTION_ID = "openburnbar.e2e.hermesConnectionId"
+        const val EXTRA_E2E_HERMES_MODEL = "openburnbar.e2e.hermesModel"
+        const val EXTRA_E2E_HERMES_PROMPT = "openburnbar.e2e.hermesPrompt"
+        private const val ANDROID_HERMES_IROH_E2E_TIMEOUT_MILLIS = 600_000L
     }
 }

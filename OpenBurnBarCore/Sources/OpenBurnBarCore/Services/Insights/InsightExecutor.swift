@@ -775,29 +775,116 @@ public struct InsightExecutor: Sendable {
 
     // MARK: - Anomaly table
 
+    /// Day-of-week-normalized robust z-score anomaly detection.
+    ///
+    /// Plan §4.5 — `Robust z-score on day-of-week–normalized daily cost;
+    /// surface only z>=2; cap at 12; include drill-down citations`.
+    ///
+    /// Each weekday is rolled up independently so a Tuesday spike is
+    /// scored against Tuesday history, not weekend history. This catches
+    /// the "Thursday cache hit dropped" class of anomaly that a plain
+    /// median completely misses.
+    ///
+    /// Each surfaced row carries up to 3 session-id citations from that
+    /// day so the renderer can offer "open the session that drove the
+    /// anomaly" as a drill-through.
     private func makeAnomalyTable(usages: [InsightUsageRow]) -> InsightWidgetData.AnomalyTable {
         let dailyMap = Dictionary(grouping: usages) { calendar.startOfDay(for: $0.startTime) }
         let days = dailyMap.keys.sorted()
-        let costs = days.map { day in dailyMap[day, default: []].reduce(0) { $0 + $1.costUSD } }
-        guard costs.count >= 5 else { return .init(rows: []) }
-        let median = Self.median(costs)
-        let mad = max(0.0001, Self.median(costs.map { abs($0 - median) }))
-        var rows: [InsightWidgetData.AnomalyTable.Row] = []
-        for (idx, day) in days.enumerated() {
-            let z = 0.6745 * (costs[idx] - median) / mad
-            if abs(z) >= 2.5 {
-                rows.append(.init(
-                    id: ISO8601DateFormatter().string(from: day),
-                    occurredAt: day,
-                    label: z > 0 ? "Spend spike" : "Spend dip",
-                    detail: String(format: "%.2f std deviations from median", z),
-                    score: abs(z),
-                    citations: [.init(kind: .day(date: ISO8601DateFormatter().string(from: day)),
-                                      label: dayLabel(day))]
-                ))
-            }
+        guard days.count >= Self.anomalyMinimumDays else { return .init(rows: []) }
+
+        // Pair each day with its weekday + cost so the leave-one-out
+        // baseline computation below can skip the candidate cleanly.
+        let dayCosts: [(day: Date, weekday: Int, cost: Double)] = days.map { day in
+            let weekday = calendar.component(.weekday, from: day)
+            let cost = dailyMap[day, default: []].reduce(0) { $0 + $1.costUSD }
+            return (day, weekday, cost)
         }
-        return .init(rows: rows.sorted { $0.score > $1.score })
+
+        var rows: [InsightWidgetData.AnomalyTable.Row] = []
+        for entry in dayCosts {
+            // Leave-one-out so the candidate day doesn't warp its own
+            // baseline. Try the weekday-normalized baseline first; fall
+            // back to the global baseline when the weekday has too few
+            // data points to be stable. Both are O(n) per candidate; the
+            // overall scan is O(n²) but n is small (≤90 days).
+            let weekdayBaseline = dayCosts
+                .filter { $0.weekday == entry.weekday && $0.day != entry.day }
+                .map(\.cost)
+            let baseline: [Double]
+            let baselineLabel: String
+            let weekdayName = Self.weekdayName(entry.weekday, calendar: calendar)
+            if weekdayBaseline.count >= Self.anomalyMinimumPerWeekday {
+                baseline = weekdayBaseline
+                baselineLabel = weekdayName
+            } else {
+                baseline = dayCosts.filter { $0.day != entry.day }.map(\.cost)
+                baselineLabel = "global"
+            }
+            guard baseline.count >= Self.anomalyMinimumDays else { continue }
+            let med = Self.median(baseline)
+            let mad = max(Self.anomalyFloorMAD,
+                          Self.median(baseline.map { abs($0 - med) }))
+            let z = 0.6745 * (entry.cost - med) / mad
+            guard abs(z) >= Self.anomalyZThreshold else { continue }
+
+            let day = entry.day
+
+            let label = z > 0 ? "\(weekdayName) spike" : "\(weekdayName) dip"
+            let dayISO = Self.dayOnlyFormatter.string(from: day)
+            // Surface up to 3 sessions for drill-through. Rank by cost
+            // contribution so the largest contributor to the anomaly is
+            // always cited first — that's the session the user wants to
+            // open when they tap the anomaly.
+            let costBySession = Dictionary(grouping: dailyMap[day, default: []],
+                                           by: \.sessionID)
+                .mapValues { rows in rows.reduce(0) { $0 + $1.costUSD } }
+            let topSessionIDs = costBySession
+                .sorted { lhs, rhs in lhs.value > rhs.value }
+                .prefix(3)
+                .map(\.key)
+            var citations: [InsightCitation] = [
+                .init(kind: .day(date: dayISO), label: dayLabel(day))
+            ]
+            for sid in topSessionIDs {
+                citations.append(.init(kind: .session(id: sid, provider: nil),
+                                       label: "session \(sid.prefix(8))"))
+            }
+
+            rows.append(.init(
+                id: dayISO,
+                occurredAt: day,
+                label: label,
+                detail: String(
+                    format: "%.2f z vs %@ baseline ($%.2f median).",
+                    z, baselineLabel, med
+                ),
+                score: abs(z),
+                citations: citations
+            ))
+        }
+        return .init(rows: Array(rows.sorted { $0.score > $1.score }.prefix(Self.anomalyMaxRows)))
+    }
+
+    static let anomalyZThreshold: Double = 2.0
+    static let anomalyMaxRows: Int = 12
+    static let anomalyMinimumDays: Int = 5
+    static let anomalyMinimumPerWeekday: Int = 2
+    static let anomalyFloorMAD: Double = 0.0001
+
+    private static let dayOnlyFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f
+    }()
+
+    private static func weekdayName(_ weekday: Int, calendar: Calendar) -> String {
+        // Calendar.weekday is 1-indexed with 1 == Sunday in the Gregorian
+        // calendar. Use the calendar's `standaloneWeekdaySymbols` so the
+        // label respects the user's locale.
+        let symbols = calendar.standaloneWeekdaySymbols
+        let idx = max(0, min(symbols.count - 1, weekday - 1))
+        return symbols[idx]
     }
 
     private static func median(_ values: [Double]) -> Double {

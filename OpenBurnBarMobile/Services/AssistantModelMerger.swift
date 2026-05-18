@@ -59,15 +59,18 @@ struct AssistantModelMerger {
         connectedProviderIDs: Set<ProviderID>
     ) -> [Row] {
         let cleanLive = sanitize(liveRelay: liveRelay, runtime: runtime)
-        let liveByModelID: [String: HermesRuntimeModelOption] = Dictionary(
-            uniqueKeysWithValues: cleanLive.map { ($0.modelID, $0) }
-        )
+        let liveByModelID = cleanLive.reduce(into: [String: HermesRuntimeModelOption]()) { partialResult, live in
+            partialResult[AssistantModelIDCanonicalizer.lookupKey(live.modelID)] = live
+            partialResult[AssistantModelIDCanonicalizer.familyKey(live.modelID), default: live] = live
+        }
 
         var rows: [Row] = []
         var consumedLiveIDs: Set<String> = []
 
         for catalogOption in catalog {
-            if let live = liveByModelID[catalogOption.modelID] {
+            let lookupKey = AssistantModelIDCanonicalizer.lookupKey(catalogOption.modelID)
+            let familyKey = AssistantModelIDCanonicalizer.familyKey(catalogOption.modelID)
+            if let live = liveByModelID[lookupKey] ?? liveByModelID[familyKey] {
                 rows.append(Row(
                     option: enrich(catalog: catalogOption, with: live),
                     reachability: .liveOnRelay
@@ -151,7 +154,7 @@ struct AssistantModelMerger {
         AssistantModelOption(
             providerID: catalog.providerID,
             providerName: catalog.providerName.isEmpty ? live.providerName : catalog.providerName,
-            modelID: catalog.modelID,
+            modelID: live.modelID,
             displayName: catalog.displayName.isEmpty ? live.displayName : catalog.displayName,
             tier: catalog.tier
         )

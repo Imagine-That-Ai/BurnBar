@@ -30,11 +30,20 @@ private struct PresentedPiChatRoute: Identifiable {
 
 struct PiConversationListView: View {
     @Bindable var service: PiService
+    let onSelectExistingThreadInSplit: ((String) -> Void)?
 
     @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var showConnectionSheet = false
     @State private var showModelPicker = false
     @State private var presentedChatRoute: PresentedPiChatRoute?
+
+    init(
+        service: PiService,
+        onSelectExistingThreadInSplit: ((String) -> Void)? = nil
+    ) {
+        self.service = service
+        self.onSelectExistingThreadInSplit = onSelectExistingThreadInSplit
+    }
 
     var body: some View {
         ZStack {
@@ -207,6 +216,11 @@ struct PiConversationListView: View {
 
     private func openPiChat(_ route: PiChatRoute) {
         HapticBus.sheetOpen()
+        if case .existing(let threadID) = route,
+           let onSelectExistingThreadInSplit {
+            onSelectExistingThreadInSplit(threadID)
+            return
+        }
         if case .new = route {
             service.startNewThread()
         }
@@ -247,6 +261,7 @@ private struct PiThreadRow: View {
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
                         .lineLimit(2)
                 }
+                MobileAttachmentSummaryStrip(attachments: thread.recentAttachmentPreviews)
                 HStack(spacing: 8) {
                     Text(thread.updatedAt, style: .relative)
                     Text("· \(thread.messageCount) msgs")

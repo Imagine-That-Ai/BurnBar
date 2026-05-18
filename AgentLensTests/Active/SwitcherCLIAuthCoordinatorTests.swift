@@ -478,6 +478,7 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         let coordinator = SwitcherCLIAuthCoordinator()
         let keys = coordinator.configEnvironmentKeys(for: .claude)
 
+        XCTAssertTrue(keys.contains("CLAUDE_CONFIG_DIR"))
         XCTAssertTrue(keys.contains("CLAUDE_CONFIG_PATH"))
     }
 
@@ -599,6 +600,45 @@ final class SwitcherCLIFallbackPlannerTests: XCTestCase {
 
         let eligibility = await planner.eligibility(for: profile)
         XCTAssertEqual(eligibility, .quotaExhausted(reason: "No quota remaining."))
+    }
+
+    func testEligibility_usesCandidateSpecificQuotaLookup() async {
+        let planner = SwitcherCLIFallbackPlanner { profile in
+            if profile.id == "primary-spent" {
+                return CLIFallbackQuotaStatus(
+                    fiveHourRemainingPercent: 0,
+                    weeklyRemainingPercent: 42,
+                    statusMessage: "Primary account spent."
+                )
+            }
+            return CLIFallbackQuotaStatus(
+                fiveHourRemainingPercent: 78,
+                weeklyRemainingPercent: 91,
+                statusMessage: "Reserve account healthy."
+            )
+        }
+        let primary = makeCLIProfile(
+            id: "primary-spent",
+            cliType: .codex,
+            label: "Primary",
+            providerID: .openAI,
+            capabilityClassID: "openai:gpt-pro",
+            subscriptionTierID: "openai-gpt-pro"
+        )
+        let reserve = makeCLIProfile(
+            id: "reserve-healthy",
+            cliType: .codex,
+            label: "Reserve",
+            providerID: .openAI,
+            capabilityClassID: "openai:gpt-pro",
+            subscriptionTierID: "openai-gpt-pro"
+        )
+
+        let primaryEligibility = await planner.eligibility(for: primary)
+        let reserveEligibility = await planner.eligibility(for: reserve)
+
+        XCTAssertEqual(primaryEligibility, .quotaExhausted(reason: "Primary account spent."))
+        XCTAssertEqual(reserveEligibility, .eligible)
     }
 
     func testOrderedCandidates_returnsOnlySelfWhenNoSameProviderProfilesExist() async {
@@ -1088,6 +1128,329 @@ final class SwitcherAuthStoreTests: XCTestCase {
         try store.deleteCredentials(forProfileID: "nonexistent-profile")
     }
 
+    // MARK: - Claude Code OAuth Import Tests
+
+    func test_claudeCodeOAuthImporter_readsClaudeCodeKeychainPayload() throws {
+        let payload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "claude-access-token",
+            "refreshToken": "claude-refresh-token",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "org-123"
+        }
+        """
+        try testBackend.set(
+            Data(payload.utf8),
+            service: ClaudeCodeOAuthCredentialImporter.keychainService,
+            account: "test-user"
+        )
+
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            accounts: ["test-user"]
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "claude-access-token")
+        XCTAssertEqual(credentials.refreshToken, "claude-refresh-token")
+        XCTAssertEqual(credentials.organizationUuid, "org-123")
+    }
+
+    func test_claudeCodeOAuthImporter_throwsMissingWhenNoClaudeCredentialExists() {
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            accounts: ["test-user"]
+        )
+
+        XCTAssertThrowsError(try importer.load(allowUserInteraction: false)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                ClaudeCodeOAuthCredentialImportError.missing.localizedDescription
+            )
+        }
+    }
+
+    func test_claudeCodeOAuthImporter_readsIsolatedConfigCredentialWithoutGlobalFallback() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-claude-isolated-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let payload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "isolated-claude-token",
+            "refreshToken": "isolated-refresh-token",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "pro",
+            "rateLimitTier": "default_claude_pro_5x"
+          }
+        }
+        """
+        try payload.write(
+            to: root.appendingPathComponent(".credentials.json", isDirectory: false),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            accounts: ["test-user"],
+            configDirectory: root.path,
+            allowDefaultKeychainFallback: false
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "isolated-claude-token")
+        XCTAssertEqual(credentials.planDisplayName, "Pro")
+    }
+
+    func test_claudeCodeOAuthImporter_derivesClaudeCodeProfileKeychainService() {
+        XCTAssertEqual(
+            ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+                configDirectory: "/tmp/openburnbar-claude-profile"
+            ),
+            "Claude Code-credentials-41e15920"
+        )
+    }
+
+    func test_claudeCodeOAuthImporter_readsProfileScopedKeychainWithoutGlobalFallback() throws {
+        let backend = try XCTUnwrap(testBackend)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-claude-profile-keychain-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let profileService = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: root.path
+        )
+        XCTAssertTrue(profileService.hasPrefix("\(ClaudeCodeOAuthCredentialImporter.keychainService)-"))
+        XCTAssertNotEqual(profileService, ClaudeCodeOAuthCredentialImporter.keychainService)
+
+        let profilePayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "profile-keychain-token",
+            "refreshToken": "profile-keychain-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "profile-org"
+        }
+        """
+        let defaultPayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "default-keychain-token",
+            "refreshToken": "default-keychain-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "pro",
+            "rateLimitTier": "default_claude_pro_5x"
+          },
+          "organizationUuid": "default-org"
+        }
+        """
+        try backend.set(
+            Data(profilePayload.utf8),
+            service: profileService,
+            account: "test-user"
+        )
+        try backend.set(
+            Data(defaultPayload.utf8),
+            service: ClaudeCodeOAuthCredentialImporter.keychainService,
+            account: "test-user"
+        )
+
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            profileKeychainStore: { service in
+                KeychainStore(service: service, legacyServices: [], backend: backend)
+            },
+            accounts: ["test-user"],
+            configDirectory: root.path,
+            allowDefaultKeychainFallback: false
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "profile-keychain-token")
+        XCTAssertEqual(credentials.organizationUuid, "profile-org")
+        XCTAssertEqual(credentials.planDisplayName, "Max")
+    }
+
+    func test_claudeCodeOAuthImporter_usesSecurityToolFallbackForDeniedProfileKeychain() throws {
+        let backend = try XCTUnwrap(testBackend)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-claude-denied-keychain-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let profileService = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: root.path
+        )
+        backend.readErrors[profileService] = KeychainStoreError.unhandled(-25337)
+
+        let fallbackPayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "security-tool-profile-token",
+            "refreshToken": "security-tool-profile-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "security-tool-org"
+        }
+        """
+        var fallbackRequests: [(String, String)] = []
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            profileKeychainStore: { service in
+                KeychainStore(service: service, legacyServices: [], backend: backend)
+            },
+            externalKeychainPasswordReader: { service, account in
+                fallbackRequests.append((service, account))
+                return service == profileService && account == "test-user" ? fallbackPayload : nil
+            },
+            accounts: ["test-user"],
+            configDirectory: root.path,
+            allowDefaultKeychainFallback: false
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "security-tool-profile-token")
+        XCTAssertEqual(credentials.organizationUuid, "security-tool-org")
+        XCTAssertEqual(fallbackRequests.count, 1)
+        XCTAssertEqual(fallbackRequests.first?.0, profileService)
+        XCTAssertEqual(fallbackRequests.first?.1, "test-user")
+    }
+
+    func test_claudeCodeOAuthImporter_usesSecurityToolFallbackWhenProfileKeychainReturnsNil() throws {
+        let backend = try XCTUnwrap(testBackend)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-claude-nil-keychain-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let profileService = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: root.path
+        )
+        let fallbackPayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "security-tool-nil-profile-token",
+            "refreshToken": "security-tool-nil-profile-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "security-tool-nil-org"
+        }
+        """
+        var fallbackRequests: [(String, String)] = []
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            profileKeychainStore: { service in
+                KeychainStore(service: service, legacyServices: [], backend: backend)
+            },
+            externalKeychainPasswordReader: { service, account in
+                fallbackRequests.append((service, account))
+                return service == profileService && account == "test-user" ? fallbackPayload : nil
+            },
+            accounts: ["test-user"],
+            configDirectory: root.path,
+            allowDefaultKeychainFallback: false
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "security-tool-nil-profile-token")
+        XCTAssertEqual(credentials.organizationUuid, "security-tool-nil-org")
+        XCTAssertEqual(fallbackRequests.count, 1)
+        XCTAssertEqual(fallbackRequests.first?.0, profileService)
+        XCTAssertEqual(fallbackRequests.first?.1, "test-user")
+    }
+
+    func test_claudeCodeOAuthImporter_readsSharedKeychainAfterIsolatedLogin() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-claude-shared-keychain-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let profileState = """
+        {
+          "oauthAccount": {
+            "emailAddress": "second@example.com",
+            "billingType": "stripe_subscription"
+          }
+        }
+        """
+        try profileState.write(
+            to: root.appendingPathComponent(".claude.json", isDirectory: false),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let keychainPayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "shared-keychain-token",
+            "refreshToken": "shared-keychain-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          }
+        }
+        """
+        try testBackend.set(
+            Data(keychainPayload.utf8),
+            service: ClaudeCodeOAuthCredentialImporter.keychainService,
+            account: "test-user"
+        )
+
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            accounts: ["test-user"],
+            configDirectory: root.path,
+            allowDefaultKeychainFallback: true
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "shared-keychain-token")
+        XCTAssertEqual(credentials.planDisplayName, "Max")
+    }
+
     // MARK: - Helper
 
     private func makeStore() -> SwitcherAuthStore {
@@ -1103,13 +1466,17 @@ final class SwitcherAuthStoreTests: XCTestCase {
 
 private final class SwitcherAuthStoreTestKeychainBackend: KeychainStoreBackend {
     var storage: [String: [String: Data]] = [:]
+    var readErrors: [String: Error] = [:]
 
     func set(_ value: Data, service: String, account: String) throws {
         storage[service, default: [:]][account] = value
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        storage[service]?[account]
+        if let error = readErrors[service] {
+            throw error
+        }
+        return storage[service]?[account]
     }
 
     func delete(service: String, account: String) throws {
@@ -1340,10 +1707,41 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, true)
     }
 
+    func test_firebaseAuthDefaultStoredUserDeleteQuery_targetsCurrentFirebaseSwiftRow() {
+        let query = AccountManager.firebaseAuthDefaultStoredUserDeleteQueryForTesting(
+            service: "firebase_auth_1:123:ios:abc",
+            appName: "__FIRAPP_DEFAULT"
+        )
+
+        XCTAssertEqual(query[kSecClass as String] as? String, kSecClassGenericPassword as String)
+        XCTAssertEqual(query[kSecAttrService as String] as? String, "firebase_auth_1:123:ios:abc")
+        XCTAssertEqual(
+            query[kSecAttrAccount as String] as? String,
+            "firebase_auth_1___FIRAPP_DEFAULT_firebase_user"
+        )
+        XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
+    }
+
+    func test_firebaseAuthLegacyDefaultStoredUserDeleteQuery_targetsLegacyNoServiceRow() {
+        let query = AccountManager.firebaseAuthLegacyDefaultStoredUserDeleteQueryForTesting(
+            appName: "__FIRAPP_DEFAULT"
+        )
+
+        XCTAssertEqual(query[kSecClass as String] as? String, kSecClassGenericPassword as String)
+        XCTAssertNil(query[kSecAttrService as String])
+        XCTAssertEqual(query[kSecAttrAccount as String] as? String, "__FIRAPP_DEFAULT_firebase_user")
+    }
+
     func test_recoverableFirebaseAuthKeychainDeleteStatus_isStrict() {
         XCTAssertTrue(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecSuccess))
         XCTAssertTrue(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecItemNotFound))
         XCTAssertFalse(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
+    }
+
+    func test_recoverableDefaultFirebaseAuthKeychainDeleteStatus_allowsMissingEntitlement() {
+        XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecSuccess))
+        XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecItemNotFound))
+        XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
     }
 
     func test_googleAuthPresentationWindow_returnsVisibleWindow() {

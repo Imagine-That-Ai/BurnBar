@@ -10,6 +10,12 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +28,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.scale
+import com.openburnbar.ui.theme.LocalAuroraReduceMotion
+import kotlin.math.PI
+import kotlin.math.sin
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -153,17 +163,35 @@ internal fun HermesSquareVoiceSheet(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Hold-to-talk button
+            // Hold-to-talk button — sine-based breath-pulse while listening
+            val reduceMotion = LocalAuroraReduceMotion.current
+            val infiniteTransition = rememberInfiniteTransition(label = "voice-breath")
+            val pulsePhase by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = (2 * PI).toFloat(),
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 1200, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "voice-breath-phase"
+            )
+            val pulseScale = if (listening && !reduceMotion) {
+                // 0.95 → 1.06 sine pulse
+                (1.005f + 0.055f * sin(pulsePhase))
+            } else {
+                1f
+            }
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp)
+                    .height(140.dp)
             ) {
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(if (listening) 104.dp else 96.dp)
+                        .size(if (listening) 108.dp else 96.dp)
+                        .scale(pulseScale)
                         .clip(RoundedCornerShape(50))
                         .background(
                             Brush.linearGradient(

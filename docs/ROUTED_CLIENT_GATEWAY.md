@@ -1,8 +1,9 @@
-# Routed Client Gateway — the Fire Hydrant
+# Routed Client Gateway
 
 OpenBurnBar exposes selected routed models through the local daemon's gateway
 so supported clients can share the same provider rotation policy. The gateway
-runs on `127.0.0.1:8317` and is the named "Fire Hydrant" in user-facing copy.
+runs on `127.0.0.1:8317` by default and appears in the app as the local
+OpenBurnBar gateway.
 
 ## Router modes
 
@@ -12,9 +13,9 @@ OpenBurnBar now has a persisted router mode. Existing installs default to
 | Mode | What it does | What it will not do |
 |---|---|---|
 | **Provider-Family Failover** | Extends capacity across multiple accounts or subscriptions for the selected provider family. A Codex route stays with Codex accounts, a Claude route stays with Claude accounts, and a Z.ai route stays with Z.ai accounts. The exact selected account/model stays active while it is healthy. | It does not treat unrelated providers as one generic coding quota pool. It will not send Codex traffic to Claude, or Claude traffic to Z.ai, just because another provider has quota or looks cheaper. |
-| **Intelligent Model Router** | Ranks compatible routes using task intent, model capability, quota/account health, local availability, cost, latency, context-window, reliability, and benchmark freshness signals. User pinning, provider-family constraints, auth, quota exhaustion, safety, and availability still win. | It is advisory, not absolute. In v1 it stays within the request wire-format pool; it does not translate OpenAI Chat Completions traffic into Anthropic Messages traffic or vice versa. |
+| **Intelligent Model Router** | Ranks compatible routes using task intent, model capability, quota/account health, local availability, cost, latency, context-window, reliability, and benchmark freshness signals. User pinning, provider-family constraints, auth, quota exhaustion, safety, and availability still win. | It is advisory, not absolute. It only uses routes that the live catalog advertises for the requested local endpoint; it never silently swaps to another model or provider family. |
 
-The routing cockpit in Settings -> Routing pools exposes the mode toggle and
+The routing cockpit in Settings -> Agents -> CLIs exposes the mode toggle and
 shows the current mode, selected route, active route, next fallback, blocked
 routes, latest sanitized routing reason, and benchmark freshness status when
 Intelligent Model Router is enabled.
@@ -56,28 +57,38 @@ inputs such as `DESIGN_ARENA_API_KEY`, `DESIGN_ARENA_FIXTURE_JSON`, and
 `MODEL_LANDSCAPE_MANUAL_FIXTURES_JSON` through the normal Cloud Functions
 runtime environment when those sources are approved for the project.
 
-## Two routing pools (wire-format boundary)
+## Wire-format pools and advertised bridge endpoints
 
-The gateway exposes two independent pools. **A request hitting one endpoint
-can only be served by accounts in that pool — format families never cross.**
-This is the "two highways" model: pass-through routing within a single
-wire-format family, no cross-format translation.
+The gateway still keeps native upstream routing by provider format family.
+OpenAI-compatible upstream accounts speak OpenAI-shaped APIs, and Anthropic
+accounts speak Anthropic Messages upstream. `/v1/models` is the contract that
+tells clients which local endpoints BurnBar can serve for each advertised
+provider/model pair. Multiple credential slots for the same provider/model are
+collapsed into one advertised row; the router keeps the slot list internally
+and fails over automatically. A Claude model can appear in `/v1/models` for
+`/v1/chat/completions` or `/v1/responses` only because BurnBar has an explicit
+Anthropic bridge for those local endpoints.
 
 | Pool | Endpoint | Format | Upstream providers that participate |
 |---|---|---|---|
 | **OpenAI-family** | `POST /v1/chat/completions` | OpenAI Chat Completions | OpenAI, Z.ai, MiniMax, Kimi, Ollama Cloud, Ollama Local |
 | **Anthropic-family** | `POST /v1/messages` | Anthropic Messages | Anthropic Console (API key), Anthropic Pro/Team (OAuth bearer) |
+| **Anthropic bridge** | `POST /v1/chat/completions`, `POST /v1/responses` | Local OpenAI-style request/response translated to upstream Anthropic Messages | Anthropic Console (API key), Anthropic Pro/Team (OAuth bearer) |
 
-A request to `/v1/chat/completions` with only Anthropic-family accounts
-configured returns `503` with a structured error pointing the caller at the
-right pool, and vice versa. Within a pool, the existing in-flight failover
-loop applies — on `429` / `quota_exceeded` / `auth_failed` the gateway marks
-the slot, parks it in a five-minute cool-down, and retries against the next
-healthy candidate in the same pool.
+A request for a model not advertised for that local endpoint returns `503`
+with `No eligible route for <model>. Add or enable an account/provider that
+serves this model.` Within a compatible pool, the existing in-flight failover
+loop applies. When a real upstream route proves that a provider/account/model
+pair cannot serve the selected model, BurnBar records that model-level gateway
+health result and removes that slot from the advertised provider/model pool
+until the block expires. If another healthy slot can serve the same
+provider/model, the public row stays visible and failover remains automatic.
+Other models on the same account remain visible if their own route is still
+healthy.
 
 ## What routes today
 
-- **OpenAI-family client targets:** Cursor (BYOK tunnel), Droid/Factory,
+- **OpenAI-style local endpoint targets:** Cursor (BYOK tunnel), Droid/Factory,
   Forge, OpenCode, Codex CLI in `OPENAI_BASE_URL` mode, any
   OpenAI-compatible IDE.
 - **OpenAI-family upstream providers:** OpenAI, Z.ai, MiniMax, Kimi,
@@ -87,13 +98,18 @@ healthy candidate in the same pool.
 - **Anthropic-family upstream providers:** Anthropic Console (`sk-ant-…`
   routed via the `x-api-key` header), Anthropic Pro/Team (OAuth bearer via
   the `Authorization: Bearer` header).
+- **Anthropic bridge targets:** any OpenAI-style client that chooses an
+  Anthropic model from `/v1/models`; BurnBar translates Chat Completions or
+  Responses requests to Anthropic Messages, then translates the answer back.
 - **Endpoint shape:** OpenAI-compatible `/v1/models`, `/v1/chat/completions`,
-  plus Anthropic-compatible `/v1/messages`.
+  `/v1/responses`, plus Anthropic-compatible `/v1/messages`.
 - **Usage attribution:** proxied local-client calls record as `OpenBurnBar Gateway`.
 
-Droid/Factory, Forge, OpenCode and Codex are client targets, not new upstream
-providers. Their requests still route through the same upstream accounts and
-credential slots configured in OpenBurnBar.
+Droid/Factory, Forge, OpenCode and Codex are client targets. Their requests
+still route through the same upstream accounts and credential slots configured
+in OpenBurnBar. OpenCode Go can also be added as an upstream provider: paste an
+`opencode-go` auth JSON/key in Accounts, and BurnBar routes through
+`https://opencode.ai/zen/go/v1` like any other OpenAI-compatible provider.
 
 ## Format-family enforcement
 
@@ -113,25 +129,45 @@ lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
   to backup.
 - `testForgeOpenAICompatRequestFailsOverWhenPrimaryQuotaExhausted` —
   Forge-shaped `/v1/chat/completions` request fails over from primary to backup.
+- `testGatewayResponsesFallsBackToChatCompletionsWhenProviderDoesNotExposeResponses` —
+  Codex-style `/v1/responses` works when the advertised provider only exposes
+  chat completions.
+- `testGatewayResponsesStreamingFallbackEmitsResponsesEvents` —
+  streaming `/v1/responses` fallback emits Responses API SSE events, not raw
+  chat-completion chunks.
+- `testGatewayModelsAdvertisesAnthropicRoutesWithRealBridgeEndpoints` —
+  Claude appears in `/v1/models` with `/v1/messages`, `/v1/chat/completions`,
+  and `/v1/responses` only when an Anthropic route exists.
+- `testGatewayChatCompletionsRoutesAdvertisedClaudeThroughAnthropicBridge` —
+  OpenAI-style chat completions route an advertised Claude model through the
+  Anthropic bridge.
+- `testGatewayResponsesRoutesAdvertisedClaudeThroughAnthropicBridge` —
+  Responses API clients can call an advertised Claude model through the same
+  bridge.
+- `testGatewayStopsAdvertisingAnthropicModelAfterRealRouteFailure` —
+  a Claude OAuth model/account row that returns an opaque upstream 429 stops
+  appearing in `/v1/models`, while healthy sibling Claude models remain
+  advertised.
 - `testClaudeCodeAnthropicRequestFailsOverWhenPrimaryQuotaExhausted` —
   Claude Code-shaped `/v1/messages` request fails over from primary to backup.
 - `testGatewayMessagesReturns503WhenOnlyOpenAICompatProvidersConfigured` —
   Anthropic request with no Anthropic accounts → structured 503.
 - `testGatewayChatCompletionsReturns503WhenOnlyAnthropicProvidersConfigured` —
-  OpenAI-shape request with no OpenAI-shape accounts → structured 503.
+  OpenAI-shape request with no model advertised for the local endpoint →
+  structured 503.
 
 ## Setup
 
 1. Open OpenBurnBar on the Mac that will run the client.
-2. Open Settings -> Routing pools and use **Use local defaults** if the
+2. Open Settings -> Agents -> CLIs and use **Use local defaults** if the
    gateway is not already on. This enables the loopback gateway at
-   `127.0.0.1:8317`, matching the VibeProxy-style local setup.
+   `127.0.0.1:8317`.
 3. Add at least one provider account in the matching pool. Add a second
    account or key in that pool if you want failover to have somewhere to go.
-4. In Settings -> Routing pools -> Client apps:
+4. In Settings -> Agents -> CLIs:
    - wire Codex CLI through `~/.codex/config.toml`;
-   - sync Droid/Factory through `~/.factory/settings.json` and
-     `~/.factory/config.json`;
+   - sync Droid/Factory through `~/.factory/settings.local.json`,
+     `~/.factory/settings.json`, and `~/.factory/config.json`;
    - wire Forge through `~/forge/.forge.toml`;
    - wire Claude Code through `~/.claude/settings.json`.
 5. Use **Probe** / **Probe pool** to send a one-token request through the
@@ -148,12 +184,13 @@ before replacing prior OpenBurnBar entries.
 
 | Client | File | OpenBurnBar-owned keys |
 |---|---|---|
-| Droid/Factory | `~/.factory/settings.json` | `customModels` entries with provider `openai`, `id = openburnbar:<model>`, and display names prefixed `OpenBurnBar` |
-| Droid/Factory | `~/.factory/config.json` | `custom_models` entries with provider `openai` and display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/settings.local.json` | Deduped `customModels` entries with `provider = openai` for models served by OpenAI-owned upstream accounts and `generic-chat-completion-api` for other gateway-served chat models, including bridged Claude models; one entry per provider/model, `id = custom:OpenBurnBar-<model>-<index>`; display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/settings.json` | Same `customModels` entries as `settings.local.json`, kept in sync because Factory/Droid has used both files across versions |
+| Droid/Factory | `~/.factory/config.json` | `custom_models` entries with the same provider adapter choice and display names prefixed `OpenBurnBar` |
 | OpenCode | `~/.config/opencode/opencode.json` | `provider.openburnbar`; default `model` only when no model is set |
 | Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN`, plus a marker key `env.OPENBURNBAR_WIRED` so the helper can detect its own previous wiring |
-| Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
-| Forge CLI | `~/forge/.forge.toml` | Sentinel-fenced VibeProxy-style `[[providers]]` block named `openburnbar` with `url = http://127.0.0.1:8317/v1/chat/completions`, `models = http://127.0.0.1:8317/v1/models`, `api_key_var = OPENBURNBAR_GATEWAY_TOKEN`, and `response_type = OpenAI` |
+| Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`, with `wire_api = "responses"`. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
+| Forge CLI | `~/forge/.forge.toml` | Sentinel-fenced OpenBurnBar-owned `[[providers]]` block named `openburnbar` with `url = http://127.0.0.1:8317/v1/chat/completions`, `models = http://127.0.0.1:8317/v1/models`, `api_key_var = OPENBURNBAR_GATEWAY_TOKEN`, and `response_type = OpenAI` |
 
 The client config receives the local gateway URL and either the gateway auth
 token or the harmless `openburnbar-local` placeholder when the loopback gateway
@@ -165,22 +202,31 @@ reversible by hand if the helper is ever uninstalled.
 
 ## Wiring routed CLI clients from the Mac app
 
-`Settings → Routing pools` exposes a setup checklist and VibeProxy-style client
-rows for each pool. Two modes:
+`Settings -> Agents -> CLIs` exposes OpenBurnBar-owned client rows for each
+supported CLI. For Droid, the button is intentionally direct: `Connect + Sync`
+on first setup, then `Sync models` after the row is connected.
 
-1. **Config-file mode (toggle)** — writes the env / TOML block listed above,
+Two modes:
+
+1. **Config-file mode (button)** — writes the env / TOML block listed above,
    then runs a 1-token probe (`POST /v1/messages` for Claude Code, `POST
-   /v1/chat/completions` for Codex and Forge) to confirm the gateway actually
-   serves the wired client before reporting success. Toggle off to remove the
+   /v1/responses` for Codex, and `POST /v1/chat/completions` for Forge) to confirm the gateway actually
+   serves the wired client before reporting success. Disconnect to remove the
    OpenBurnBar block.
 2. **Shell-snippet mode (button)** — opens a copy/pasteable
    `export ANTHROPIC_BASE_URL=…` / `export OPENAI_BASE_URL=…` block for
    users on managed dotfiles or non-standard shells. No file writes.
 
-Droid/Factory uses a sync button instead of a toggle because Factory consumes
-custom model arrays, not a sentinel block. OpenBurnBar writes the same
-`provider: "openai"` local gateway shape VibeProxy documents for Factory, then
-uses the shared OpenAI-family probe to prove the pool responds.
+Droid/Factory consumes custom model arrays, not a sentinel block. Pressing
+`Connect + Sync` or `Sync models` asks the local gateway for live `/v1/models`,
+filters to route-eligible models served by `/v1/chat/completions` or
+`/v1/responses`, and rewrites OpenBurnBar's entries in
+`~/.factory/settings.local.json`, `~/.factory/settings.json`, and
+`~/.factory/config.json`. The sync writes one custom model per provider/model,
+not one per account; account-level failover remains behind the gateway. Stale
+OpenBurnBar or local VibeProxy entries on the gateway port are removed during
+each sync, so Droid only sees the current BurnBar catalog. The shared
+OpenAI-style probe runs after the write.
 
 Codex's ChatGPT-auth mode (browser session cookies) cannot be routed through
 a generic proxy; only the API-key path participates in the OpenAI-family pool
@@ -193,11 +239,73 @@ OAuth bearers) is sent as `Authorization: Bearer …`. The probe issues a
 real `max_tokens: 1` request against `/v1/messages` so the credential is
 charged at most one output token for the verification.
 
+## Claude Max subscription identity (Opus on OAuth)
+
+Anthropic's public Messages API treats Claude Code OAuth bearer tokens
+(`sk-ant-oat…`) and Console API keys (`sk-ant-api…`) differently. With a
+bare bearer token, Sonnet and Haiku work; **Opus is gated behind a Claude
+Code identity check** and a request that does not present that identity
+gets an opaque `HTTP 429 rate_limit_error`, even when the account holds a
+Max subscription that includes Opus.
+
+`BurnBarAnthropicProviderExecutor` detects the credential shape (`sk-ant-oat`
+prefix on the Anthropic provider) and applies the Claude Code identity only
+on those routes:
+
+- URL: `POST /v1/messages?beta=true`.
+- Header `anthropic-beta: claude-code-20250219,oauth-2025-04-20,…` — the
+  `claude-code-20250219` + `oauth-2025-04-20` tokens are the minimum that
+  unlock Opus on the OAuth route. BurnBar intentionally **does not**
+  advertise `context-management-2025-06-27` because it strips the
+  `context_management` field before forwarding.
+- Header `User-Agent: claude-cli/2.1.143 (external, sdk-cli)`.
+- Header `x-app: cli`.
+- Header `anthropic-dangerous-direct-browser-access: true`.
+- Body `system` prefix: BurnBar prepends the canonical Claude Code system
+  guard (`You are Claude Code, Anthropic's official CLI for Claude.`) to
+  whatever `system` text the caller already supplied. If the caller's
+  system is a content-block array, the guard becomes the first block.
+
+Console API key routes (`sk-ant-api*`) never receive the Claude Code
+identity dress-up; those credentials bill differently and Anthropic treats
+the beta+guard pair as the "request came from the Claude Code CLI"
+signal. BurnBar only forwards that signal when the underlying credential
+is actually a Claude Code/Claude.ai session token issued through the OAuth
+flow.
+
+Once the identity is in place, a 429 on Opus over an OAuth route is a real
+usage signal (Claude Max quota window), not a routing problem. BurnBar's
+gateway-model-health store reflects that in the error message it surfaces
+to clients, and removes that account from the advertised model pool until the
+cooldown expires.
+
+Coverage lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
+
+- `testGatewayPresentsClaudeCodeIdentityOnOAuthOpusRoute` — asserts the
+  `?beta=true` query, the beta header (including the required tokens, but
+  **not** `context-management`), the CLI identity headers, and the
+  injected system guard.
+- `testGatewayDoesNotPresentClaudeCodeIdentityOnConsoleAPIKeyRoute` — the
+  same gateway with a Console API key sends none of those headers and
+  leaves the caller's `system` text untouched.
+- `testGatewayPreservesCallerSystemPromptWhenInjectingClaudeCodeGuard` —
+  the guard is prepended; caller-provided system text is preserved.
+- `testGatewayDoesNotDowngradeOpusToHaikuOnOAuthFailure` — when the only
+  configured Opus route returns 429 and a Haiku route also exists in the
+  same Anthropic pool, BurnBar surfaces the precise Opus error instead of
+  silently retrying as Haiku.
+
 ## Ollama Cloud Routing
 
 Ollama Cloud is an upstream routed provider. OpenBurnBar stores the Ollama API
 key as a normal provider-plan slot, then proxies gateway chat requests to
 `https://ollama.com/api/chat` with `Authorization: Bearer ...`.
+
+When an enabled Ollama API-key slot exists, `/v1/models` refreshes the live
+cloud catalog from `https://ollama.com/api/tags` and advertises the returned
+models as route-eligible BurnBar models. Browser sign-in to Ollama Cloud is
+still useful for quota/account visibility, but it is not treated as a proxy
+credential unless an API key is also saved.
 
 Direct Ollama Cloud model IDs omit the local `-cloud` suffix. The catalog still
 accepts common client-facing aliases such as `deepseek-v4-flash:cloud`,

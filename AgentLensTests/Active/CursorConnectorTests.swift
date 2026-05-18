@@ -230,6 +230,35 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertFalse(script.contains("/usr/bin/security"))
     }
 
+    func test_keychainStoreDisablesSystemPromptsForBackgroundReads() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = repoRoot.appendingPathComponent("AgentLens/Services/CursorConnector/KeychainStore.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("SecKeychainSetUserInteractionAllowed"))
+        XCTAssertTrue(source.contains("if allowUserInteraction"))
+        XCTAssertTrue(source.contains("status = withKeychainInteractionDisabled"))
+        XCTAssertTrue(
+            source.contains("withKeychainInteractionDisabled {\n                SecItemCopyMatching"),
+            "Background Cursor connector keychain reads must keep Security.framework UI disabled."
+        )
+        XCTAssertTrue(
+            source.contains("withKeychainInteractionDisabled {\n            SecItemUpdate"),
+            "Cursor connector keychain rewrites must not be able to show login-keychain prompts."
+        )
+        XCTAssertTrue(
+            source.contains("withKeychainInteractionDisabled {\n            SecItemAdd"),
+            "Cursor connector keychain migrations must not be able to show login-keychain prompts."
+        )
+        XCTAssertTrue(
+            source.contains("withKeychainInteractionDisabled {\n            SecItemDelete"),
+            "Cursor connector keychain deletes must not be able to show login-keychain prompts."
+        )
+    }
+
     func test_proxyScript_preservesDeepSeekReasoningContentAcrossResponsesConversion() {
         let script = CursorConnectorManager.proxyScript()
 
@@ -259,7 +288,8 @@ final class CursorConnectorTests: XCTestCase {
           "theme": "factory",
           "customModels": [
             {"model": "existing-model", "baseUrl": "https://example.com/v1", "provider": "other"},
-            {"model": "old-burnbar", "id": "openburnbar:old-burnbar", "baseUrl": "http://old/v1", "provider": "openburnbar"}
+            {"model": "old-burnbar", "id": "openburnbar:old-burnbar", "baseUrl": "http://old/v1", "provider": "openburnbar"},
+            {"model": "claude-opus-4-7", "id": "custom:VibeProxy-Claude-0", "baseUrl": "http://localhost:8317", "displayName": "VibeProxy Claude", "provider": "anthropic"}
           ]
         }
         """.utf8).write(to: settingsURL)
@@ -267,7 +297,8 @@ final class CursorConnectorTests: XCTestCase {
         {
           "custom_models": [
             {"model": "existing-config-model", "base_url": "https://example.com/v1", "provider": "other"},
-            {"model": "old-burnbar", "base_url": "http://old/v1", "provider": "openburnbar"}
+            {"model": "old-burnbar", "base_url": "http://old/v1", "provider": "openburnbar"},
+            {"model": "claude-sonnet-4-6", "base_url": "http://localhost:8317", "model_display_name": "VibeProxy Sonnet", "provider": "anthropic"}
           ]
         }
         """.utf8).write(to: configURL)
@@ -288,14 +319,15 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertEqual(settings.compactMap { $0["model"] as? String }, ["existing-model", "glm-5", "minimax-m2.7-highspeed"])
         XCTAssertEqual(settings.last?["baseUrl"] as? String, "http://127.0.0.1:8317/v1")
         XCTAssertEqual(settings.last?["apiKey"] as? String, "gateway-token")
-        XCTAssertEqual(settings.last?["provider"] as? String, "openai")
+        XCTAssertEqual(settings.last?["provider"] as? String, "generic-chat-completion-api")
+        XCTAssertEqual(settings.last?["id"] as? String, "custom:OpenBurnBar-minimax-m2.7-highspeed-2")
         XCTAssertTrue(FileManager.default.fileExists(atPath: settingsURL.deletingLastPathComponent().appendingPathComponent("settings.json.openburnbar-backup-20231114221320").path))
 
         let factoryConfig = try XCTUnwrap(readJSON(configURL)["custom_models"] as? [[String: Any]])
         XCTAssertEqual(factoryConfig.compactMap { $0["model"] as? String }, ["existing-config-model", "glm-5", "minimax-m2.7-highspeed"])
         XCTAssertEqual(factoryConfig.last?["base_url"] as? String, "http://127.0.0.1:8317/v1")
         XCTAssertEqual(factoryConfig.last?["api_key"] as? String, "gateway-token")
-        XCTAssertEqual(factoryConfig.last?["provider"] as? String, "openai")
+        XCTAssertEqual(factoryConfig.last?["provider"] as? String, "generic-chat-completion-api")
         XCTAssertTrue(service.isFactoryGatewayConfigPresent())
     }
 

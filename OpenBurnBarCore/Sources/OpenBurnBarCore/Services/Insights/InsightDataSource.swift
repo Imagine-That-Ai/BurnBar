@@ -118,15 +118,17 @@ public struct InsightQuotaBucket: Codable, Hashable, Sendable, Identifiable {
 /// Daemon operating-action history row.
 public struct InsightOperatingAction: Codable, Hashable, Sendable, Identifiable {
     public var id: String
+    public var sessionID: String?
     public var actionKind: String
     public var projectName: String?
     public var occurredAt: Date
+    public var duration: TimeInterval?
     public var summary: String
-    public init(id: String, actionKind: String, projectName: String?,
-                occurredAt: Date, summary: String) {
-        self.id = id; self.actionKind = actionKind
+    public init(id: String, sessionID: String? = nil, actionKind: String, projectName: String?,
+                occurredAt: Date, duration: TimeInterval? = nil, summary: String) {
+        self.id = id; self.sessionID = sessionID; self.actionKind = actionKind
         self.projectName = projectName
-        self.occurredAt = occurredAt; self.summary = summary
+        self.occurredAt = occurredAt; self.duration = duration; self.summary = summary
     }
 }
 

@@ -780,14 +780,432 @@
       ]
     },
     {
+      "id": "factory",
+      "displayName": "Factory Droid",
+      "baseURL": "factory-droid://local",
+      "visibility": "public",
+      "logoKey": "FactoryLogo",
+      "capabilities": ["routing", "accounting"],
+      "formatFamily": "openai_compat",
+      "models": [
+        {
+          "id": "factory-claude-opus-4-7-family",
+          "displayName": "Claude Opus 4.7 via Factory",
+          "visibility": "public",
+          "aliases": ["claude-opus-4-7"],
+          "matchers": [
+            { "all": ["claude", "opus", "4.7"], "any": [], "none": [] },
+            { "all": ["claude-opus-4-7"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheReadPerMToken": 0.5
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
+        },
+        {
+          "id": "factory-claude-opus-4-7-fast-family",
+          "displayName": "Claude Opus 4.7 Fast via Factory",
+          "visibility": "public",
+          "aliases": ["claude-opus-4-7-fast"],
+          "matchers": [
+            { "all": ["claude", "opus", "4.7", "fast"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheReadPerMToken": 0.5
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
+        },
+        {
+          "id": "factory-claude-sonnet-4-6-family",
+          "displayName": "Claude Sonnet 4.6 via Factory",
+          "visibility": "public",
+          "aliases": ["claude-sonnet-4-6"],
+          "matchers": [
+            { "all": ["claude", "sonnet", "4.6"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.3
+          },
+          "capabilityClassID": "anthropic:sonnet",
+          "capabilityClassRank": 50
+        },
+        {
+          "id": "factory-claude-haiku-4-5-family",
+          "displayName": "Claude Haiku 4.5 via Factory",
+          "visibility": "public",
+          "aliases": ["claude-haiku-4-5"],
+          "matchers": [
+            { "all": ["claude", "haiku", "4.5"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1,
+            "outputPerMToken": 5,
+            "cacheReadPerMToken": 0.1
+          },
+          "capabilityClassID": "anthropic:haiku",
+          "capabilityClassRank": 10
+        },
+        {
+          "id": "factory-gpt-5.5-family",
+          "displayName": "GPT-5.5 via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.5"],
+          "matchers": [
+            { "all": ["gpt", "5.5"], "any": [], "none": ["fast", "pro"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          },
+          "capabilityClassID": "openai:gpt-5.5",
+          "capabilityClassRank": 90
+        },
+        {
+          "id": "factory-gpt-5.5-fast-family",
+          "displayName": "GPT-5.5 Fast via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.5-fast"],
+          "matchers": [
+            { "all": ["gpt", "5.5", "fast"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          },
+          "capabilityClassID": "openai:gpt-5.5-fast",
+          "capabilityClassRank": 90
+        },
+        {
+          "id": "factory-gpt-5.5-pro-family",
+          "displayName": "GPT-5.5 Pro via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.5-pro"],
+          "matchers": [
+            { "all": ["gpt", "5.5", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 15,
+            "outputPerMToken": 60,
+            "cacheReadPerMToken": 7.5
+          },
+          "capabilityClassID": "openai:gpt-5.5-pro",
+          "capabilityClassRank": 100
+        },
+        {
+          "id": "factory-gpt-5.4-family",
+          "displayName": "GPT-5.4 via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.4"],
+          "matchers": [
+            { "all": ["gpt", "5.4"], "any": [], "none": ["fast", "mini"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          },
+          "capabilityClassID": "openai:gpt-5.4",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "factory-gpt-5.3-codex-family",
+          "displayName": "GPT-5.3 Codex via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.3-codex"],
+          "matchers": [
+            { "all": ["gpt", "5.3", "codex"], "any": [], "none": ["fast"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "factory-gemini-3.1-pro-preview-family",
+          "displayName": "Gemini 3.1 Pro via Factory",
+          "visibility": "public",
+          "aliases": ["gemini-3.1-pro-preview"],
+          "matchers": [
+            { "all": ["gemini", "3.1", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2,
+            "outputPerMToken": 12,
+            "cacheReadPerMToken": 0.2
+          },
+          "capabilityClassID": "google:gemini-3.1-pro",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "factory-gemini-3-flash-preview-family",
+          "displayName": "Gemini 3 Flash via Factory",
+          "visibility": "public",
+          "aliases": ["gemini-3-flash-preview"],
+          "matchers": [
+            { "all": ["gemini", "3", "flash"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.3,
+            "outputPerMToken": 2.5,
+            "cacheReadPerMToken": 0.03
+          },
+          "capabilityClassID": "google:gemini-3-flash",
+          "capabilityClassRank": 30
+        },
+        {
+          "id": "factory-glm-5.1-family",
+          "displayName": "Droid Core GLM-5.1",
+          "visibility": "public",
+          "aliases": ["glm-5.1"],
+          "matchers": [
+            { "all": ["glm", "5.1"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "factory-droid-core:glm-5.1",
+          "capabilityClassRank": 20
+        },
+        {
+          "id": "factory-kimi-k2.6-family",
+          "displayName": "Droid Core Kimi K2.6",
+          "visibility": "public",
+          "aliases": ["kimi-k2.6"],
+          "matchers": [
+            { "all": ["kimi", "k2.6"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "factory-droid-core:kimi-k2.6",
+          "capabilityClassRank": 20
+        },
+        {
+          "id": "factory-deepseek-v4-pro-family",
+          "displayName": "Droid Core DeepSeek V4 Pro",
+          "visibility": "public",
+          "aliases": ["deepseek-v4-pro"],
+          "matchers": [
+            { "all": ["deepseek", "v4", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "factory-droid-core:deepseek-v4-pro",
+          "capabilityClassRank": 20
+        },
+        {
+          "id": "factory-minimax-m2.7-family",
+          "displayName": "Droid Core MiniMax M2.7",
+          "visibility": "public",
+          "aliases": ["minimax-m2.7"],
+          "matchers": [
+            { "all": ["minimax", "m2.7"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "factory-droid-core:minimax-m2.7",
+          "capabilityClassRank": 20
+        }
+      ]
+    },
+    {
       "id": "opencode",
       "displayName": "OpenCode",
-      "baseURL": "https://opencode.ai",
+      "baseURL": "https://opencode.ai/zen/go/v1",
       "visibility": "public",
       "logoKey": "OpenCodeLogo",
-      "capabilities": ["accounting"],
+      "capabilities": ["routing", "accounting"],
       "formatFamily": "openai_compat",
-      "models": []
+      "models": [
+        {
+          "id": "opencode-kimi-k2.6-family",
+          "displayName": "Kimi K2.6",
+          "visibility": "public",
+          "aliases": ["kimi-k2.6"],
+          "matchers": [
+            { "all": ["kimi", "k2.6"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "kimi-k2.6",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-kimi-k2.5-family",
+          "displayName": "Kimi K2.5",
+          "visibility": "public",
+          "aliases": ["kimi-k2.5"],
+          "matchers": [
+            { "all": ["kimi", "k2.5"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "kimi-k2.5",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-glm-5.1-family",
+          "displayName": "GLM 5.1",
+          "visibility": "public",
+          "aliases": ["glm-5.1"],
+          "matchers": [
+            { "all": ["glm", "5.1"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "glm-5.1",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-glm-5-family",
+          "displayName": "GLM 5",
+          "visibility": "public",
+          "aliases": ["glm-5"],
+          "matchers": [
+            { "all": ["glm", "5"], "any": [], "none": ["5.1", "turbo", "code"] }
+          ],
+          "capabilityClassID": "glm-5",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-minimax-m2.7-family",
+          "displayName": "MiniMax M2.7",
+          "visibility": "public",
+          "aliases": ["minimax-m2.7"],
+          "matchers": [
+            { "all": ["minimax", "m2.7"], "any": [], "none": ["highspeed"] }
+          ],
+          "capabilityClassID": "minimax-m2.7",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-minimax-m2.5-family",
+          "displayName": "MiniMax M2.5",
+          "visibility": "public",
+          "aliases": ["minimax-m2.5"],
+          "matchers": [
+            { "all": ["minimax", "m2.5"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "minimax-m2.5",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-deepseek-v4-pro-family",
+          "displayName": "DeepSeek V4 Pro",
+          "visibility": "public",
+          "aliases": ["deepseek-v4-pro"],
+          "matchers": [
+            { "all": ["deepseek", "v4", "pro"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "deepseek-v4-pro",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-deepseek-v4-flash-family",
+          "displayName": "DeepSeek V4 Flash",
+          "visibility": "public",
+          "aliases": ["deepseek-v4-flash"],
+          "matchers": [
+            { "all": ["deepseek", "v4", "flash"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "deepseek-v4-flash",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-qwen3.6-plus-family",
+          "displayName": "Qwen 3.6 Plus",
+          "visibility": "public",
+          "aliases": ["qwen3.6-plus"],
+          "matchers": [
+            { "all": ["qwen3.6", "plus"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "qwen3.6-plus",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-qwen3.5-plus-family",
+          "displayName": "Qwen 3.5 Plus",
+          "visibility": "public",
+          "aliases": ["qwen3.5-plus"],
+          "matchers": [
+            { "all": ["qwen3.5", "plus"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "qwen3.5-plus",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-mimo-v2.5-pro-family",
+          "displayName": "Mimo V2.5 Pro",
+          "visibility": "public",
+          "aliases": ["mimo-v2.5-pro"],
+          "matchers": [
+            { "all": ["mimo", "v2.5", "pro"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "mimo-v2.5-pro",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-mimo-v2.5-family",
+          "displayName": "Mimo V2.5",
+          "visibility": "public",
+          "aliases": ["mimo-v2.5"],
+          "matchers": [
+            { "all": ["mimo", "v2.5"], "any": [], "none": ["pro"] }
+          ],
+          "capabilityClassID": "mimo-v2.5",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-mimo-v2-pro-family",
+          "displayName": "Mimo V2 Pro",
+          "visibility": "public",
+          "aliases": ["mimo-v2-pro"],
+          "matchers": [
+            { "all": ["mimo", "v2", "pro"], "any": [], "none": ["v2.5"] }
+          ],
+          "capabilityClassID": "mimo-v2-pro",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-mimo-v2-omni-family",
+          "displayName": "Mimo V2 Omni",
+          "visibility": "public",
+          "aliases": ["mimo-v2-omni"],
+          "matchers": [
+            { "all": ["mimo", "v2", "omni"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "mimo-v2-omni",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-hy3-preview-family",
+          "displayName": "HY3 Preview",
+          "visibility": "public",
+          "aliases": ["hy3-preview"],
+          "matchers": [
+            { "all": ["hy3"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "hy3-preview",
+          "capabilityClassRank": 60
+        }
+      ]
     },
     {
       "id": "google",
@@ -931,7 +1349,7 @@
       "baseURL": "https://api.x.ai/v1",
       "visibility": "hidden",
       "logoKey": "GrokLogo",
-      "capabilities": ["accounting"],
+      "capabilities": ["routing", "accounting"],
       "models": [
         {
           "id": "grok-4-family",
@@ -1005,10 +1423,10 @@
           }
         },
         {
-          "id": "grok-code-fast",
-          "displayName": "Grok Code Fast",
-          "visibility": "hidden",
-          "aliases": ["grok-code-fast-1"],
+          "id": "grok-code-fast-1",
+          "displayName": "Grok Code Fast 1",
+          "visibility": "public",
+          "aliases": ["grok-code-fast"],
           "matchers": [
             { "all": ["grok", "code"], "any": [], "none": [] }
           ],
@@ -1025,14 +1443,14 @@
       "displayName": "DeepSeek",
       "baseURL": "https://api.deepseek.com/v1",
       "visibility": "hidden",
-      "logoKey": "DeepSeekLogo",
-      "capabilities": ["accounting"],
+      "logoKey": "DeepSeekProviderLogo",
+      "capabilities": ["routing", "accounting"],
       "models": [
         {
-          "id": "deepseek-chat-family",
-          "displayName": "DeepSeek Chat Family",
-          "visibility": "hidden",
-          "aliases": ["deepseek-chat"],
+          "id": "deepseek-chat",
+          "displayName": "DeepSeek Chat",
+          "visibility": "public",
+          "aliases": ["deepseek-v4-flash"],
           "matchers": [
             { "all": ["deepseek"], "any": ["chat", "v3", "v4"], "none": ["reasoner", "r1", "coder"] }
           ],
@@ -1105,13 +1523,14 @@
       "displayName": "Mistral",
       "baseURL": "https://api.mistral.ai/v1",
       "visibility": "hidden",
-      "capabilities": ["accounting"],
+      "logoKey": "MistralProviderLogo",
+      "capabilities": ["routing", "accounting"],
       "models": [
         {
-          "id": "mistral-large-family",
-          "displayName": "Mistral Large Family",
-          "visibility": "hidden",
-          "aliases": ["mistral-large-latest"],
+          "id": "mistral-large-latest",
+          "displayName": "Mistral Large",
+          "visibility": "public",
+          "aliases": ["mistral-large"],
           "matchers": [
             { "all": ["mistral", "large"], "any": [], "none": ["pixtral"] }
           ],
@@ -1254,12 +1673,13 @@
       "displayName": "Meta",
       "baseURL": "https://api.together.xyz/v1",
       "visibility": "hidden",
-      "capabilities": ["accounting"],
+      "logoKey": "MetaProviderLogo",
+      "capabilities": ["routing", "accounting"],
       "models": [
         {
-          "id": "llama-4-maverick",
+          "id": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
           "displayName": "Llama 4 Maverick",
-          "visibility": "hidden",
+          "visibility": "public",
           "aliases": ["llama-4-maverick"],
           "matchers": [
             { "all": ["llama", "4", "maverick"], "any": [], "none": [] }
@@ -1375,6 +1795,7 @@
       "displayName": "Cohere",
       "baseURL": "https://api.cohere.ai/v2",
       "visibility": "hidden",
+      "logoKey": "CohereProviderLogo",
       "capabilities": ["accounting"],
       "models": [
         {
@@ -1442,6 +1863,7 @@
       "displayName": "Amazon",
       "baseURL": "https://bedrock-runtime.amazonaws.com",
       "visibility": "hidden",
+      "logoKey": "AmazonProviderLogo",
       "capabilities": ["accounting"],
       "models": [
         {
@@ -1507,7 +1929,8 @@
       "displayName": "Alibaba",
       "baseURL": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
       "visibility": "hidden",
-      "capabilities": ["accounting"],
+      "logoKey": "AlibabaProviderLogo",
+      "capabilities": ["routing", "accounting"],
       "models": [
         {
           "id": "qwen3-max",
@@ -1540,7 +1963,7 @@
         {
           "id": "qwen3-coder-plus",
           "displayName": "Qwen3 Coder Plus",
-          "visibility": "hidden",
+          "visibility": "public",
           "aliases": ["qwen3-coder-plus"],
           "matchers": [
             { "all": ["qwen3", "coder", "plus"], "any": [], "none": [] }
@@ -1700,6 +2123,7 @@
       "displayName": "Z.ai",
       "baseURL": "https://api.z.ai/api/coding/paas/v4",
       "visibility": "public",
+      "logoKey": "ZaiProviderLogo",
       "capabilities": ["routing", "accounting", "cursor_connector"],
       "models": [
         {
@@ -1787,6 +2211,22 @@
           }
         },
         {
+          "id": "minimax-m2.7-family",
+          "displayName": "MiniMax M2.7",
+          "visibility": "hidden",
+          "aliases": ["minimax-m2.7"],
+          "matchers": [
+            { "all": ["minimax", "m2.7"], "any": [], "none": ["highspeed"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.69,
+            "outputPerMToken": 0.69,
+            "cacheReadPerMToken": 0.07
+          },
+          "capabilityClassID": "minimax-m2.7",
+          "capabilityClassRank": 80
+        },
+        {
           "id": "minimax-m23-family",
           "displayName": "MiniMax M2/M3 Family",
           "visibility": "hidden",
@@ -1821,7 +2261,7 @@
       "displayName": "Kimi (Moonshot)",
       "baseURL": "https://api.moonshot.ai/v1",
       "visibility": "public",
-      "logoKey": "KimiLogo",
+      "logoKey": "KimiProviderLogo",
       "capabilities": ["routing", "accounting"],
       "formatFamily": "openai_compat",
       "models": [

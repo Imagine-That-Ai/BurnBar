@@ -16,7 +16,7 @@
 - **Factory** uses three-tier real data: org billing API → dashboard HTML scraping (personal) → droid session files. All return `.exact`.
 - **Ollama Cloud** scrapes `ollama.com/settings` HTML using an explicit OpenBurnBar login session. Falls back to `.unavailable` when no app-owned session exists.
 - **Warp** uses real GraphQL API at `app.warp.dev/graphql/v2` (not log-tailing). Requires `wk-...` API key.
-- **Forge** reads `~/forge/.forge.db` SQLite database — 482 conversations, 1,277 lines changed, `claude-opus-4-7-thinking-32000` via vibeproxy. All `.exact` from Forge's own storage.
+- **Forge** reads `~/forge/.forge.db` SQLite database — 482 conversations, 1,277 lines changed in the legacy audit sample. Current routed-client setup is OpenBurnBar-owned via the local Hydrant gateway. All `.exact` rows come from Forge's own storage.
 - **Kimi** hits `kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages` with JWT Bearer auth — real weekly token/request usage and rate limits.
 
 ---
@@ -122,7 +122,7 @@ Three-tier approach:
 - **Also reads:** `~/forge/.forge.toml` for config (model, provider, max_tokens)
 - **Returns:** Conversation count, files changed (unique files, total lines), active model/provider
 - **Token tracking:** Forge routes through BurnBar HTTP gateway (`127.0.0.1:8317`); gateway handles token accounting
-- **Verified:** 482 conversations, 4 files changed (1,277 lines), `claude-opus-4-7-thinking-32000` via vibeproxy
+- **Verified:** 482 conversations, 4 files changed (1,277 lines) in the legacy sample; current setup routes through OpenBurnBar Hydrant
 - **Auth:** None — local file system reads
 
 ### 3.14 Gemini CLI

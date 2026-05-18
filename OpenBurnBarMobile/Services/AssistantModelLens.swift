@@ -163,7 +163,11 @@ extension PiService {
     /// nil if no advertised option matches. Mirrors `HermesService`.
     var selectedModelOption: HermesRuntimeModelOption? {
         guard let selectedModelID else { return nil }
-        return modelOptions.first { $0.modelID == selectedModelID }
+        let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(
+            selectedModelID,
+            in: modelOptions
+        ) ?? selectedModelID
+        return modelOptions.first { $0.modelID == resolved }
     }
 }
 

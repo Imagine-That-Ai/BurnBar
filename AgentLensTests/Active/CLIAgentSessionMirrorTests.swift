@@ -288,6 +288,13 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(ollama.usesDirectCLI)
     }
 
+    func test_cliAgentRelayExecutor_classifiesCodexAndClaudeOnly() {
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "codex"), .codex)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "claude-code"), .claude)
+        XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "hermes"))
+        XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "openclaw"))
+    }
+
     func test_missionRuntimePlanner_selectsMissionKindFallbacksFromEnabledBackends() {
         XCTAssertEqual(
             CLIAgentMissionRuntimePlanner.resolve(
@@ -367,6 +374,68 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Find the blocking issue."))
     }
 
+    func test_missionRuntimePlanner_buildsPlainPromptForMobileChat() {
+        let backend = CLIAgentMissionBackend(chatBackend: .claude)
+        let prompt = CLIAgentMissionRuntimePlanner.prompt(
+            title: "New Claude Chat",
+            prompt: "Hi how are you",
+            backend: backend,
+            data: [
+                "source": "ios-chat",
+                "missionKind": "chat",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        )
+
+        XCTAssertTrue(prompt.contains("continuing a normal chat"))
+        XCTAssertTrue(prompt.contains("Source: ios-chat"))
+        XCTAssertTrue(prompt.contains("Reply directly to the user's message"))
+        XCTAssertTrue(prompt.contains("Hi how are you"))
+        XCTAssertFalse(prompt.contains("Mission:"))
+        XCTAssertFalse(prompt.contains("Produce actionable findings"))
+    }
+
+    func test_missionRuntimePlanner_acceptsSafeMobileClientThreadIDForChatContinuity() {
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+                "source": "ios-chat",
+                "clientThreadID": "mobile-codex-ABC_123"
+            ]),
+            "mobile-codex-ABC_123"
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+                "source": "android-chat",
+                "clientThreadID": "mobile-claude-xyz"
+            ]),
+            "mobile-claude-xyz"
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+                "missionKind": "chat",
+                "clientThreadID": "mobile-openclaw-1"
+            ]),
+            "mobile-openclaw-1"
+        )
+    }
+
+    func test_missionRuntimePlanner_rejectsUnsafeOrNonChatClientThreadID() {
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+            "source": "ios",
+            "missionKind": "debt",
+            "clientThreadID": "mobile-codex-ABC_123"
+        ]))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+            "source": "ios-chat",
+            "clientThreadID": "../escape"
+        ]))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+            "source": "ios-chat",
+            "clientThreadID": String(repeating: "a", count: 513)
+        ]))
+    }
+
     func test_missionRuntimePlanner_keepsShellBackedPromptsOutOfCommandStrings() throws {
         let hostilePrompt = #"Inspect repo"; touch /tmp/openburnbar-owned; echo "$OPENROUTER_API_KEY" #"#
         let data: [String: Any] = [
@@ -391,7 +460,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
                 data: data
             ))
             XCTAssertEqual(plan.executableName, "zsh")
-            XCTAssertEqual(plan.arguments.first, "-lic")
+            XCTAssertEqual(plan.arguments.first, "-lc")
             XCTAssertFalse(
                 plan.arguments.joined(separator: " ").contains(hostilePrompt),
                 "\(backend.displayName) must not interpolate mobile prompt text into the shell command."
@@ -417,7 +486,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
 
         XCTAssertEqual(plan.executableName, "openclaude")
         XCTAssertEqual(plan.extraEnvironment, [:])
-        XCTAssertFalse(plan.arguments.contains("-lic"))
+        XCTAssertFalse(plan.arguments.contains("-lc"))
         XCTAssertTrue(plan.arguments.contains("-p"))
         XCTAssertTrue(plan.arguments.contains("--permission-mode"))
         XCTAssertTrue(plan.arguments.contains("plan"))
@@ -425,6 +494,44 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         let toolsIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--tools"))
         XCTAssertEqual(plan.arguments[toolsIndex + 1], "")
         XCTAssertTrue(plan.arguments.joined(separator: "\n").contains(hostilePrompt))
+    }
+
+    func test_missionRuntimePlanner_passesRequestedModelToPiDirectCLI() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .piAgent)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Pi selected model mission",
+            prompt: "Use the phone-selected model.",
+            backend: backend,
+            data: [
+                "requestedModelID": "openai/gpt-5.5",
+                "approvalMode": "read_only",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        XCTAssertEqual(plan.executableName, "zsh")
+        XCTAssertEqual(plan.extraEnvironment["OPENBURNBAR_MISSION_MODEL"], "openai/gpt-5.5")
+        XCTAssertTrue(plan.arguments.joined(separator: "\n").contains("--model \"$OPENBURNBAR_MISSION_MODEL\""))
+        XCTAssertFalse(plan.arguments.joined(separator: "\n").contains("openai/gpt-5.5"))
+    }
+
+    func test_missionRuntimePlanner_passesRequestedModelToOpenClawDirectCLI() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .openclaw)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "OpenClaw selected model mission",
+            prompt: "Use the phone-selected model.",
+            backend: backend,
+            data: [
+                "requestedModelID": "claude-opus-4-7",
+                "approvalMode": "read_only",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        let modelIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--model"))
+        XCTAssertEqual(plan.arguments[modelIndex + 1], "claude-opus-4-7")
     }
 
     func test_missionRuntimePlanner_constrainsOpenClawEditToolsWhenFileEditsAreDisabled() throws {

@@ -63,6 +63,8 @@ struct ProviderQuotaBucketRow: View {
                     )
                 }
 
+                PaceBadge(pace: bucket.idealPace())
+
                 if bucket.isEstimated {
                     QuotaMicroBadge(text: "Estimated", tint: DesignSystem.Colors.warning)
                 }

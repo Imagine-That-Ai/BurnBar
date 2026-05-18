@@ -1,5 +1,8 @@
 import SwiftUI
 import OpenBurnBarCore
+#if DEBUG
+import OSLog
+#endif
 
 // MARK: - Root Tab View (iPhone)
 //
@@ -8,6 +11,10 @@ import OpenBurnBarCore
 // backdrop and hero cards drift in unison.
 
 struct RootTabView: View {
+    #if DEBUG
+    private static let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
+    #endif
+
     let authStore: AuthStore
     let syncHealthStore: CloudSyncHealthStore
     let providerSummaryStore: ProviderSummaryStore
@@ -16,6 +23,9 @@ struct RootTabView: View {
 
     @State private var selection: AuroraNavDestination = .pulse
     @State private var didApplyScreenshotRoute = false
+    #if DEBUG
+    @State private var didApplyHermesE2EPrompt = false
+    #endif
     @State private var router = PulseRouter()
     @State private var motionStore = MotionStore()
     @State private var hermesService = HermesService()
@@ -98,6 +108,7 @@ struct RootTabView: View {
         .environment(\.chartStudioPresenter, studioPresenter)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
+        .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task { missionActivityCenter.start() }
         .task { missionConsoleHost.start() }
         .sheet(isPresented: $isMissionConsolePresented) {
@@ -107,9 +118,19 @@ struct RootTabView: View {
         }
         .onAppear {
             applyScreenshotRouteIfNeeded()
+            applyHermesE2EPromptIfNeeded()
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowHermesChat"))) { _ in
+            selection = .hermes
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowAssistantsTab"))) { notification in
+            let runtime = notification.userInfo?["runtime"] as? String
+            if runtime == nil || runtime == AssistantRuntimeID.hermes.rawValue {
+                selection = .hermes
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
             isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
@@ -186,6 +207,10 @@ struct RootTabView: View {
                 case .settings: SettingsHubView(authStore: authStore)
                 case .devices:  iPadDevicesSettingsView(hermesService: hermesService)
                 case .providers: ProviderConnectionsView(showsDoneButton: false)
+                case .computerUse: AgentWatchScreen(
+                    authUID: authStore.currentIdentity?.uid,
+                    hermesService: hermesService
+                )
                 }
             }
         }
@@ -234,6 +259,67 @@ struct RootTabView: View {
             selection = .pulse
         }
     }
+
+    private func applyHermesE2EPromptIfNeeded() {
+        #if DEBUG
+        guard !didApplyHermesE2EPrompt else {
+            print("OpenBurnBarMobile Hermes E2E RootTab skip alreadyApplied")
+            Self.hermesE2ELogger.debug("Skipping Hermes E2E prompt because it was already applied")
+            return
+        }
+        let prompt = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_PROMPT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let prompt, !prompt.isEmpty else {
+            print("OpenBurnBarMobile Hermes E2E RootTab skip emptyPrompt")
+            Self.hermesE2ELogger.debug("Skipping Hermes E2E prompt because OPENBURNBAR_E2E_HERMES_PROMPT is empty")
+            return
+        }
+        guard authStore.currentIdentity?.uid != nil else {
+            print("OpenBurnBarMobile Hermes E2E RootTab skip authState=\(authStateLabel(authStore.state))")
+            Self.hermesE2ELogger.info("Skipping Hermes E2E prompt because auth state is \(authStateLabel(authStore.state), privacy: .public)")
+            return
+        }
+        let modelID = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_MODEL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedModelID = (modelID?.isEmpty == false) ? modelID! : "default"
+        print("OpenBurnBarMobile Hermes E2E RootTab apply promptCharacters=\(prompt.count) model=\(selectedModelID)")
+        Self.hermesE2ELogger.info("Applying Hermes E2E prompt promptCharacters=\(prompt.count, privacy: .public) model=\(selectedModelID, privacy: .public)")
+        didApplyHermesE2EPrompt = true
+        selection = .hermes
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await hermesService.refreshRuntime()
+            hermesService.startNewSession()
+            if let modelID, !modelID.isEmpty {
+                print("OpenBurnBarMobile Hermes E2E RootTab selectingModel=\(modelID)")
+                Self.hermesE2ELogger.info("Selecting Hermes E2E model \(modelID, privacy: .public)")
+                hermesService.selectModelIDForAutomation(modelID)
+            }
+            print("OpenBurnBarMobile Hermes E2E RootTab send")
+            Self.hermesE2ELogger.info("Sending Hermes E2E prompt through selected mobile harness")
+            hermesService.sendMessage(prompt)
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private func authStateLabel(_ state: AuthState) -> String {
+        switch state {
+        case .signedOut:
+            return "signedOut"
+        case .signingIn:
+            return "signingIn"
+        case .signedIn:
+            return "signedIn"
+        case .deletingAccount:
+            return "deletingAccount"
+        case .firebaseUnavailable:
+            return "firebaseUnavailable"
+        case .firestoreUnavailable:
+            return "firestoreUnavailable"
+        }
+    }
+    #endif
 
     // MARK: - Destination Mapping (for external router compatibility)
 

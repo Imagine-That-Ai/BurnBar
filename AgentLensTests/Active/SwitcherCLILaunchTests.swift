@@ -28,6 +28,26 @@ private final class MutableBox<Value>: Sendable {
     }
 }
 
+private actor AsyncSignal {
+    private var isSignaled = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func signal() {
+        guard !isSignaled else { return }
+        isSignaled = true
+        let pending = waiters
+        waiters.removeAll()
+        pending.forEach { $0.resume() }
+    }
+
+    func wait() async {
+        if isSignaled { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+}
+
 private struct TestCLIFallbackPlanner: CLIFallbackPlanning {
     let exhaustedProfileIDs: Set<String>
 
@@ -181,6 +201,62 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertTrue(capturedScriptContents.value?.contains("export CODEX_CONFIG_PATH=") == true)
         XCTAssertTrue(capturedScriptContents.value?.contains("OpenBurnBar is adding Codex") == true)
         XCTAssertTrue(capturedScriptContents.value?.contains("choose a DIFFERENT Codex account") == true)
+    }
+
+    func test_cliAuthCoordinator_exportsClaudeConfigDirAndAcceptsMissingAccountLabel() async throws {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-claude-auth-env")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? executableURL : nil
+        }
+
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let capturedScriptContents = MutableBox<String?>(nil)
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { scriptURL in
+                    capturedScriptContents.value = try String(contentsOf: scriptURL, encoding: .utf8)
+                    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
+                    try "0".write(to: markerURL, atomically: true, encoding: .utf8)
+                },
+                discoverAuthState: { cliType, configDirectory in
+                    CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: executableURL.path,
+                        authState: .authenticated(lastRefresh: nil),
+                        configDirectory: configDirectory,
+                        accountDescription: nil
+                    )
+                }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            id: "claude-env",
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Claude Env",
+                configDirectory: configDirectory.path
+            ),
+            sortKey: 1
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .readyToPersist(let updatedProfile) = result else {
+            return XCTFail("Expected readyToPersist result")
+        }
+
+        XCTAssertEqual(updatedProfile.cliMetadata?.configDirectory, configDirectory.path)
+        XCTAssertNil(updatedProfile.cliMetadata?.accountDescription)
+        XCTAssertTrue(capturedScriptContents.value?.contains("export CLAUDE_CONFIG_DIR=") == true)
+        XCTAssertTrue(capturedScriptContents.value?.contains("export CLAUDE_CONFIG_PATH=") == true)
     }
 
     func test_cliAuthCoordinator_classifiesBrokenCodexWrapperBeforeOpeningTerminal() async throws {
@@ -772,6 +848,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "SSH_AUTH_SOCK": "/tmp/ssh-agent",
             "GIT_EDITOR": "vim",
             "HG_EDITOR": "vim",
+            "CLAUDE_CONFIG_DIR": "/Users/test/.claude",
             "CLAUDE_CONFIG_PATH": "/Users/test/.claude",
             "CODEX_HOME": "/Users/test/.codex",
             "CODEX_CONFIG_PATH": "/Users/test/.codex",
@@ -791,6 +868,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertEqual(result["TERM_PROGRAM"], "Apple_Terminal")
         XCTAssertEqual(result["LANG"], "en_US.UTF-8")
         XCTAssertEqual(result["LC_ALL"], "en_US.UTF-8")
+        XCTAssertEqual(result["CLAUDE_CONFIG_DIR"], "/Users/test/.claude")
         XCTAssertEqual(result["CLAUDE_CONFIG_PATH"], "/Users/test/.claude")
         XCTAssertEqual(result["CODEX_HOME"], "/Users/test/.codex")
         XCTAssertEqual(result["CODEX_CONFIG_PATH"], "/Users/test/.codex")
@@ -822,6 +900,33 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         XCTAssertEqual(config.env["CODEX_HOME"], "/Users/test/.codex-reserve")
         XCTAssertEqual(config.env["CODEX_CONFIG_PATH"], "/Users/test/.codex-reserve")
+    }
+
+    func test_buildCLILaunch_setsBothClaudeConfigEnvironmentKeys() {
+        let claudeURL = URL(fileURLWithPath: "/tmp/test-claude-env-build")
+        let cleanup = makeTempExecutable(at: claudeURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? claudeURL : nil
+        }
+
+        let profile = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                configDirectory: "/Users/test/.claude-reserve"
+            ),
+            sortKey: 1
+        )
+
+        let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
+        guard case .success(let config) = result else {
+            return XCTFail("Expected launch config")
+        }
+
+        XCTAssertEqual(config.env["CLAUDE_CONFIG_DIR"], "/Users/test/.claude-reserve")
+        XCTAssertEqual(config.env["CLAUDE_CONFIG_PATH"], "/Users/test/.claude-reserve")
     }
 
     func test_buildAllowlistedBaselineEnvironment_excludesKeysNotInBaseEnv() {
@@ -1692,8 +1797,9 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
             cliType == .claude ? claudeURL : nil
         }
         // Simulate a launch that never completes (stays in-progress)
+        let firstLaunchStarted = AsyncSignal()
         CLILaunchInvoker.launchHandler = { _, _, _, _, _, _ in
-            // Never return — simulates an in-progress launch
+            await firstLaunchStarted.signal()
             try? await Task.sleep(nanoseconds: 10_000_000_000)
             return .success(())
         }
@@ -1710,8 +1816,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         let launchService = MutableBox(service!)
         // Launch once — this will block in the handler
         let launchTask = Task { await launchService.value.launchCLI(for: "test-profile") }
-        // Give the first launch time to start
-        try? await Task.sleep(nanoseconds: 50_000)
+        await firstLaunchStarted.wait()
 
         // Second launch should be rejected (already in progress)
         let outcome2 = await service.launchCLI(for: "test-profile")
@@ -1719,6 +1824,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         // Cancel the blocked first launch and clean up
         launchTask.cancel()
+        _ = await launchTask.value
         CLILaunchInvoker.launchHandler = nil
     }
 

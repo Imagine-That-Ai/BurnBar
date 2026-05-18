@@ -323,11 +323,21 @@ struct HermesSettingsView: View {
                             .font(MobileTheme.Typography.tiny)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .lineLimit(1)
+                        if let detail = option.liveCatalogDetailText {
+                            Text(detail)
+                                .font(MobileTheme.Typography.tiny)
+                                .foregroundStyle(option.isRouteEligible ? MobileTheme.Colors.textSecondary : MobileTheme.error)
+                                .lineLimit(1)
+                        }
                     }
 
                     Spacer()
 
-                    if isDefault {
+                    if !option.isRouteEligible {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(MobileTheme.error)
+                    } else if isDefault {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 18))
                             .foregroundStyle(MobileTheme.whimsy)
@@ -336,6 +346,8 @@ struct HermesSettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(!option.isRouteEligible)
+            .opacity(option.isRouteEligible ? 1 : 0.62)
 
             Button {
                 service.toggleFavoriteModel(option)

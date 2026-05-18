@@ -17,6 +17,10 @@ struct MenuBarPopoverView: View {
     var chatController: ChatSessionController?
     var onOpenDashboardWithChat: (() -> Void)?
     var onOpenOnboardingWizard: (() -> Void)?
+    /// Mercury Phase 8 — when present, the popover renders a Mercury
+    /// tray section with the live indicator + outbound triggers.
+    /// Left optional so previews + onboarding paths can omit it.
+    var runtimeContext: OpenBurnBarRuntimeContext?
 
     @AppStorage("hasOnboarded") private var hasOnboarded = false
     @State private var showScanFlash = false
@@ -25,6 +29,11 @@ struct MenuBarPopoverView: View {
     @State private var hermesChatActive = false
     @State private var isCastingSmartHub = false
     @State private var smartHubCastStatusMessage: String?
+    @State private var resizingStartSize: CGSize?
+
+    @AppStorage("popoverTrayWidth") private var storedPopoverTrayWidth = 340.0
+    @AppStorage("popoverTrayHeight") private var storedPopoverTrayHeight = 540.0
+    @AppStorage("popoverTraySectionOrder") private var storedPopoverTraySectionOrder = ""
 
     private var isScanning: Bool { aggregator?.isRefreshing ?? false }
 
@@ -32,16 +41,39 @@ struct MenuBarPopoverView: View {
         insightSnapshot.insights
     }
 
-    /// Keep the menu-bar tray compact. The quota rail has its own internal
-    /// scroller, so the rest of the popover should never force the NSPopover
-    /// to consume most of the display.
+    private var popoverWidth: CGFloat {
+        clampPopoverWidth(CGFloat(storedPopoverTrayWidth))
+    }
+
     private var popoverViewportHeight: CGFloat {
-        let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
-        return min(max(screenHeight * 0.58, 500), 560)
+        clampPopoverHeight(CGFloat(storedPopoverTrayHeight))
     }
 
     private var popoverScrollMaxHeight: CGFloat {
         max(popoverViewportHeight - 285, 210)
+    }
+
+    private var availableTraySections: [PopoverTraySection] {
+        PopoverTraySection.allCases.filter { section in
+            switch section {
+            case .chat:
+                return chatController != nil
+            case .mercury:
+                return runtimeContext?.mercuryRouter != nil
+            default:
+                return true
+            }
+        }
+    }
+
+    private var orderedTraySections: [PopoverTraySection] {
+        let available = availableTraySections
+        let decoded = storedPopoverTraySectionOrder
+            .split(separator: ",")
+            .compactMap { PopoverTraySection(rawValue: String($0)) }
+            .filter { available.contains($0) }
+        let appended = decoded + available.filter { !decoded.contains($0) }
+        return appended.isEmpty ? available : appended
     }
 
     private var menuBarSparklineSeries: [Double] {
@@ -140,63 +172,7 @@ struct MenuBarPopoverView: View {
                     Divider().background(DesignSystem.Colors.border)
 
                     ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 0) {
-                            PopoverOperatingTray(
-                                operatingLayer: operatingLayer,
-                                onOpenDashboard: {
-                                    dismiss()
-                                    onOpenDashboard()
-                                }
-                            )
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, DesignSystem.Spacing.sm)
-                            Divider().background(DesignSystem.Colors.border)
-                            InsightCardView(
-                                insights: insights,
-                                freshness: insightSnapshot.freshness,
-                                freshnessMessage: insightSnapshot.statusMessage
-                            )
-                            Divider().background(DesignSystem.Colors.border)
-                            summaryView
-                            Divider().background(DesignSystem.Colors.border)
-                            providerListView
-                            if let chatController {
-                                Divider().background(DesignSystem.Colors.border)
-                                AssistantsPopoverStrip(
-                                    controller: chatController,
-                                    onOpenDashboardWithChat: {
-                                        onOpenDashboardWithChat?()
-                                    },
-                                    onActivateChat: {
-                                        withAnimation(DesignSystem.Animation.gentle) {
-                                            hermesChatActive = true
-                                        }
-                                    },
-                                    hermesSetupCompleted: settingsManager.hermesSetupWizardCompleted,
-                                    onRequireHermesSetup: {
-                                        dismiss()
-                                        WindowManager.shared.openHermesSetupWizard(
-                                            settingsManager: settingsManager,
-                                            chatController: chatController,
-                                            dataStore: dataStore
-                                        )
-                                    }
-                                )
-                                .padding(.horizontal, DesignSystem.Spacing.sm)
-                                .padding(.vertical, DesignSystem.Spacing.xs)
-                            }
-                            Divider().background(DesignSystem.Colors.border)
-                            PopoverQuickSwitchView(
-                                dataStore: dataStore,
-                                onOpenSettings: {
-                                    dismiss()
-                                    onOpenSettings()
-                                },
-                                settingsManager: settingsManager
-                            )
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
-                        }
+                        trayContent
                     }
                     .frame(maxHeight: popoverScrollMaxHeight)
 
@@ -207,9 +183,12 @@ struct MenuBarPopoverView: View {
                 }
             }
         }
-        .frame(width: 340)
+        .frame(width: popoverWidth)
         .frame(height: popoverViewportHeight)
         .background(DesignSystem.Colors.background)
+        .overlay(alignment: .bottomTrailing) {
+            resizeHandle
+        }
         .onChange(of: isScanning) { oldValue, newValue in
             guard oldValue, !newValue else { return }
             refreshInsightRollups()
@@ -225,6 +204,7 @@ struct MenuBarPopoverView: View {
             }
         }
         .onAppear {
+            clampStoredPopoverSize()
             Task { @MainActor in
                 listAppeared = true
                 refreshInsightRollups()
@@ -241,6 +221,194 @@ struct MenuBarPopoverView: View {
         }
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
+    }
+
+    // MARK: - Tray Layout
+
+    private var trayContent: some View {
+        VStack(spacing: 0) {
+            let sections = orderedTraySections
+            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                traySection(section)
+                    .overlay(alignment: .topTrailing) {
+                        trayReorderControls(for: section, at: index, totalCount: sections.count)
+                    }
+                if index < sections.count - 1 {
+                    Divider().background(DesignSystem.Colors.border)
+                }
+            }
+        }
+        .animation(DesignSystem.Animation.snappy, value: orderedTraySections)
+    }
+
+    @ViewBuilder
+    private func traySection(_ section: PopoverTraySection) -> some View {
+        switch section {
+        case .insights:
+            InsightCardView(
+                insights: insights,
+                freshness: insightSnapshot.freshness,
+                freshnessMessage: insightSnapshot.statusMessage
+            )
+        case .summary:
+            summaryView
+        case .providers:
+            providerListView
+        case .chat:
+            if let chatController {
+                AssistantsPopoverStrip(
+                    controller: chatController,
+                    onOpenDashboardWithChat: {
+                        onOpenDashboardWithChat?()
+                    },
+                    onActivateChat: {
+                        withAnimation(DesignSystem.Animation.gentle) {
+                            hermesChatActive = true
+                        }
+                    },
+                    hermesSetupCompleted: settingsManager.hermesSetupWizardCompleted,
+                    onRequireHermesSetup: {
+                        dismiss()
+                        WindowManager.shared.openHermesSetupWizard(
+                            settingsManager: settingsManager,
+                            chatController: chatController,
+                            dataStore: dataStore
+                        )
+                    }
+                )
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+            }
+        case .quickSwitch:
+            PopoverQuickSwitchView(
+                dataStore: dataStore,
+                onOpenSettings: {
+                    dismiss()
+                    onOpenSettings()
+                },
+                settingsManager: settingsManager
+            )
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs)
+        case .mercury:
+            if let router = runtimeContext?.mercuryRouter,
+               let peerSource = runtimeContext?.mercuryPeerSource {
+                MercuryTraySection(
+                    router: router,
+                    peerSource: peerSource,
+                    fileTransferService: runtimeContext?.hermesRelayHostService?.mercuryFileTransfer,
+                    voipCallTrigger: runtimeContext?.voipCallTrigger,
+                    consentStore: runtimeContext?.mercuryConsentStore,
+                    uidProvider: { [weak runtimeContext] in
+                        runtimeContext?.accountManager.userID
+                    },
+                    onDismissPopover: { dismiss() }
+                )
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+            }
+        }
+    }
+
+    private func trayReorderControls(for section: PopoverTraySection, at index: Int, totalCount: Int) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                moveTraySection(section, offset: -1)
+            } label: {
+                Image(systemName: "chevron.up")
+            }
+            .disabled(index == 0)
+            .accessibilityLabel("Move \(section.accessibilityLabel) up")
+            .popoverTooltip("Move \(section.accessibilityLabel) up")
+
+            Button {
+                moveTraySection(section, offset: 1)
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .disabled(index >= totalCount - 1)
+            .accessibilityLabel("Move \(section.accessibilityLabel) down")
+            .popoverTooltip("Move \(section.accessibilityLabel) down")
+        }
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.72))
+        .buttonStyle(.plain)
+        .padding(.horizontal, 5)
+        .frame(height: 22)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+        )
+        .padding(.top, 3)
+        .padding(.trailing, 4)
+    }
+
+    private var resizeHandle: some View {
+        Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.75))
+            .frame(width: 28, height: 28)
+            .contentShape(.rect)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if resizingStartSize == nil {
+                            resizingStartSize = CGSize(width: popoverWidth, height: popoverViewportHeight)
+                        }
+                        let start = resizingStartSize ?? CGSize(width: popoverWidth, height: popoverViewportHeight)
+                        storedPopoverTrayWidth = Double(clampPopoverWidth(start.width + value.translation.width))
+                        storedPopoverTrayHeight = Double(clampPopoverHeight(start.height + value.translation.height))
+                    }
+                    .onEnded { _ in
+                        resizingStartSize = nil
+                        clampStoredPopoverSize()
+                    }
+            )
+            .accessibilityLabel("Resize popover tray")
+            .popoverTooltip("Drag to resize")
+            .padding(2)
+    }
+
+    private func setTraySectionOrder(_ sections: [PopoverTraySection]) {
+        let available = availableTraySections
+        let normalized = sections.filter { available.contains($0) }
+            + available.filter { !sections.contains($0) }
+        storedPopoverTraySectionOrder = normalized.map(\.rawValue).joined(separator: ",")
+    }
+
+    private func moveTraySection(_ section: PopoverTraySection, offset: Int) {
+        let sections = orderedTraySections
+        guard let currentIndex = sections.firstIndex(of: section) else { return }
+        moveTraySection(section, toSlot: currentIndex + offset)
+    }
+
+    private func moveTraySection(_ section: PopoverTraySection, toSlot slot: Int) {
+        var sections = orderedTraySections
+        guard let currentIndex = sections.firstIndex(of: section) else { return }
+
+        sections.remove(at: currentIndex)
+        let adjustedSlot = slot > currentIndex ? slot - 1 : slot
+        let clampedSlot = min(max(adjustedSlot, 0), sections.count)
+        sections.insert(section, at: clampedSlot)
+        withAnimation(DesignSystem.Animation.snappy) {
+            setTraySectionOrder(sections)
+        }
+    }
+
+    private func clampStoredPopoverSize() {
+        storedPopoverTrayWidth = Double(popoverWidth)
+        storedPopoverTrayHeight = Double(popoverViewportHeight)
+    }
+
+    private func clampPopoverWidth(_ width: CGFloat) -> CGFloat {
+        min(max(width, 320), 560)
+    }
+
+    private func clampPopoverHeight(_ height: CGFloat) -> CGFloat {
+        let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
+        let maxHeight = min(max(screenHeight * 0.86, 500), 760)
+        return min(max(height, 420), maxHeight)
     }
 
     // MARK: - Header
@@ -277,6 +445,16 @@ struct MenuBarPopoverView: View {
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
                 .popoverTooltip("Import new and updated sessions from your agent log folders.")
+
+                GlassIconButton(action: {
+                    dismiss()
+                    onOpenSettings()
+                }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+                .popoverTooltip("Open settings")
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.vertical, DesignSystem.Spacing.md)
@@ -518,22 +696,6 @@ struct MenuBarPopoverView: View {
         .padding(DesignSystem.Spacing.md)
     }
 
-}
-
-// MARK: - Popover operating tray
-
-private struct PopoverOperatingTray: View {
-    @Bindable var operatingLayer: OpenBurnBarOperatingLayer
-    let onOpenDashboard: () -> Void
-
-    var body: some View {
-        OpenBurnBarCompactOperatingHomeCard(
-            layer: operatingLayer,
-            onOpenDashboard: onOpenDashboard
-        )
-        .frame(maxHeight: 380)
-        .clipped()
-    }
 }
 
 // MARK: - Period Cost
@@ -876,6 +1038,34 @@ struct GlassIconButton<Label: View>: View {
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
+    }
+}
+
+private enum PopoverTraySection: String, CaseIterable, Identifiable {
+    case insights
+    case summary
+    case providers
+    case mercury
+    case chat
+    case quickSwitch
+
+    var id: String { rawValue }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .insights:
+            return "Insights"
+        case .summary:
+            return "Summary"
+        case .providers:
+            return "Providers"
+        case .mercury:
+            return "Mercury"
+        case .chat:
+            return "Chat"
+        case .quickSwitch:
+            return "Quick Switch"
+        }
     }
 }
 

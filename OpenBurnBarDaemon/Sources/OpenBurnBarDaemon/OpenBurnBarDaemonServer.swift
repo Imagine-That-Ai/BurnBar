@@ -13,6 +13,7 @@ public actor BurnBarDaemonServer {
     private let clientRegistry: BurnBarClientRegistry
     private let runService: BurnBarRunService
     private let toolingProxy: BurnBarToolingProxyService
+    private let computerUseService: ComputerUseService
     private let missionControlService: any BurnBarMissionControlServing
     private let indexedSearch: BurnBarIndexedSearchService?
     private let gatewayServer: BurnBarHTTPGatewayServer?
@@ -62,6 +63,7 @@ public actor BurnBarDaemonServer {
             connectorPlaneService: resolvedRunService.connectorPlaneService,
             browserToolService: resolvedRunService.browserToolService
         )
+        self.computerUseService = ComputerUseService()
         self.rateLimiter = rateLimiter ?? BurnBarRateLimiter(configuration: configuration.socketRateLimit)
         // VAL-DAEMON-011: Wire a concrete execution readiness gate with fail-closed semantics.
         // When gate data is unavailable (no config, no connector plane), the gate returns a failure
@@ -146,7 +148,7 @@ public actor BurnBarDaemonServer {
             self.indexedSearch = nil
         }
 
-        // HTTP gateway (Vibe Proxy style) — only initialized if enabled
+        // HTTP gateway — only initialized if enabled.
         if configuration.gateway.isEnabled {
             self.gatewayServer = BurnBarHTTPGatewayServer(
                 configuration: configuration.gateway,
@@ -193,6 +195,15 @@ public actor BurnBarDaemonServer {
         let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
         try BurnBarUnixDomainSocket.restrictSocketPermissions(at: configuration.socketPath)
         listenerFileDescriptor = fileDescriptor
+
+        do {
+            try await configStore.seedDefaultModelVariantsIfNeeded()
+        } catch {
+            logger.warning(
+                "default_model_variants_seed_failed",
+                metadata: ["error": "\(error)"]
+            )
+        }
 
         acceptLoopTask = Task.detached(priority: .background) { [logger] in
             await Self.runAcceptLoop(
@@ -396,6 +407,79 @@ public actor BurnBarDaemonServer {
                     result: BurnBarConfigResponse(snapshot: snapshot)
                 )
                 return encode(response)
+            case .providerCredentialSlotUpsert:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderCredentialSlotUpsertRequest>.self,
+                    from: requestData
+                )
+                let slot = try await configStore.upsertCredentialSlot(
+                    providerID: typedRequest.params.providerID,
+                    slotID: typedRequest.params.slotID,
+                    label: typedRequest.params.label,
+                    apiKey: typedRequest.params.apiKey,
+                    isEnabled: typedRequest.params.isEnabled
+                )
+                let snapshot = try await configStore.snapshot()
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderCredentialSlotMutationResponse(
+                        snapshot: snapshot,
+                        slot: slot
+                    )
+                )
+                return encode(response)
+            case .providerCredentialSlotRemove:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderCredentialSlotRemoveRequest>.self,
+                    from: requestData
+                )
+                try await configStore.removeCredentialSlot(
+                    providerID: typedRequest.params.providerID,
+                    slotID: typedRequest.params.slotID
+                )
+                let snapshot = try await configStore.snapshot()
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderCredentialSlotMutationResponse(snapshot: snapshot)
+                )
+                return encode(response)
+            case .providerModelVariantUpsert:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderModelVariantUpsertRequest>.self,
+                    from: requestData
+                )
+                let variant = try await configStore.upsertModelVariant(
+                    providerID: typedRequest.params.providerID,
+                    variant: typedRequest.params.variant
+                )
+                let snapshot = try await configStore.snapshot()
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderModelVariantMutationResponse(
+                        snapshot: snapshot,
+                        variant: variant
+                    )
+                )
+                return encode(response)
+            case .providerModelVariantRemove:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderModelVariantRemoveRequest>.self,
+                    from: requestData
+                )
+                try await configStore.removeModelVariant(
+                    providerID: typedRequest.params.providerID,
+                    variantID: typedRequest.params.variantID
+                )
+                let snapshot = try await configStore.snapshot()
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderModelVariantMutationResponse(snapshot: snapshot)
+                )
+                return encode(response)
             case .usageRecent:
                 let typedRequest = try decoder.decode(
                     BurnBarRPCRequestEnvelopeWithParams<BurnBarRecentUsageRequest>.self,
@@ -493,6 +577,78 @@ public actor BurnBarDaemonServer {
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
                     result: try await toolingProxy.performBrowserAction(typedRequest.params)
+                )
+                return encode(response)
+            case .computerUseSessionStart:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseSessionStartRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseSessionStartResponse = try await computerUseService.startSession(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUseInvoke:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseInvokeRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseInvokeResponse = try await computerUseService.invoke(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUseApprovalPending:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseApprovalPendingRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseApprovalPendingResponse = await computerUseService.pendingApprovals(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUseApprovalRespond:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseApprovalRespondRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseApprovalRespondResponse = await computerUseService.respondToApproval(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUsePanicHalt:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUsePanicHaltRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUsePanicHaltResponse = try await computerUseService.panicHalt(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUseAuditExport:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseAuditExportRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseAuditExportResponse = try await computerUseService.exportAudit(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
                 )
                 return encode(response)
             case .controllerSummary:

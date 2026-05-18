@@ -122,6 +122,7 @@ struct SettingsSearchResultsView: View {
         case .hermes: return "Hermes"
         case .pi: return "Pi"
         case .chatTiles: return "Chat tiles"
+        case .media: return "Media"
         }
     }
 }

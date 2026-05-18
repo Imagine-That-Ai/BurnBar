@@ -226,6 +226,7 @@ public enum BurnBarProviderRouterError: Error, LocalizedError {
     case unsupportedProvider(String)
     case providerDisabled(String)
     case missingCredential(String)
+    case credentialsUnavailable(providerID: String, reason: String)
     case unsupportedModel(String)
 
     public var errorDescription: String? {
@@ -238,6 +239,8 @@ public enum BurnBarProviderRouterError: Error, LocalizedError {
             return "Provider '\(providerID)' is disabled in the daemon config."
         case .missingCredential(let providerID):
             return "Provider '\(providerID)' is missing credentials."
+        case .credentialsUnavailable(let providerID, let reason):
+            return "Provider '\(providerID)' has no usable credentials: \(reason)"
         case .unsupportedModel(let modelName):
             return "Model '\(modelName)' is not supported by the configured OpenBurnBar providers."
         }
@@ -248,15 +251,18 @@ public struct BurnBarProviderRouter: Sendable {
     private let configStore: BurnBarConfigStore
     private let logger: BurnBarDaemonLogger
     private let routingEventStore: BurnBarProviderRoutingDecisionEventStore?
+    private let allowDynamicOpenAICompatibleModels: Bool
 
     public init(
         configStore: BurnBarConfigStore,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "provider-router"),
-        routingEventStore: BurnBarProviderRoutingDecisionEventStore? = nil
+        routingEventStore: BurnBarProviderRoutingDecisionEventStore? = nil,
+        allowDynamicOpenAICompatibleModels: Bool = false
     ) {
         self.configStore = configStore
         self.logger = logger
         self.routingEventStore = routingEventStore
+        self.allowDynamicOpenAICompatibleModels = allowDynamicOpenAICompatibleModels
     }
 
     public func route(
@@ -315,6 +321,7 @@ public struct BurnBarProviderRouter: Sendable {
             ? preferredProviderForProviderFamilyMode(
                 modelName: modelName,
                 routerMode: effectiveRouterMode,
+                requestedFormatFamily: requestedFormatFamily,
                 configurations: configurations
             )
             : nil
@@ -413,13 +420,99 @@ public struct BurnBarProviderRouter: Sendable {
         }
         if !routes.isEmpty { return routes }
 
-        if let matchingProviderWithoutCredential = scopedConfigurations.first(where: {
-            resolveModel(named: trimmedModelName, in: $0) != nil && effectiveAPIKey(for: $0) == nil
-        }) {
-            throw BurnBarProviderRouterError.missingCredential(matchingProviderWithoutCredential.provider.id)
+        if let unavailable = credentialUnavailableError(
+            for: trimmedModelName,
+            configurations: scopedConfigurations
+        ) {
+            throw unavailable
         }
 
         return []
+    }
+
+    private func credentialUnavailableError(
+        for modelName: String,
+        configurations: [BurnBarResolvedProviderConfiguration]
+    ) -> BurnBarProviderRouterError? {
+        let now = Date()
+        for configuration in configurations where resolveModel(named: modelName, in: configuration) != nil {
+            if configuration.credentialSlots.isEmpty {
+                if effectiveAPIKey(for: configuration) == nil {
+                    return .missingCredential(configuration.provider.id)
+                }
+                continue
+            }
+
+            let enabledSlots = configuration.credentialSlots.filter { $0.slot.isEnabled }
+            if enabledSlots.isEmpty {
+                return .credentialsUnavailable(
+                    providerID: configuration.provider.id,
+                    reason: "all configured credential slots are disabled."
+                )
+            }
+
+            let slotsWithSecret = enabledSlots.filter { resolvedSlot in
+                OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+                    providerID: configuration.provider.id,
+                    rawSecret: resolvedSlot.apiKey
+                ) != nil
+            }
+            if slotsWithSecret.isEmpty {
+                return .missingCredential(configuration.provider.id)
+            }
+
+            if slotsWithSecret.allSatisfy({ $0.slot.status == .exhausted }) {
+                return .credentialsUnavailable(
+                    providerID: configuration.provider.id,
+                    reason: unavailableCredentialReason(
+                        prefix: "all configured credential slots are exhausted",
+                        slots: slotsWithSecret
+                    )
+                )
+            }
+
+            let coolingSlots = slotsWithSecret.filter { resolvedSlot in
+                guard let cooldownUntil = resolvedSlot.slot.cooldownUntil else { return false }
+                return cooldownUntil > now
+            }
+            if coolingSlots.count == slotsWithSecret.count {
+                let nextRetry = coolingSlots
+                    .compactMap(\.slot.cooldownUntil)
+                    .sorted()
+                    .first
+                let suffix = nextRetry.map { " Retry after \($0.formatted(date: .abbreviated, time: .standard))." } ?? ""
+                return .credentialsUnavailable(
+                    providerID: configuration.provider.id,
+                    reason: "all configured credential slots are cooling down.\(suffix)"
+                )
+            }
+
+            if slotsWithSecret.allSatisfy({ $0.slot.status == .missingSecret }) {
+                return .missingCredential(configuration.provider.id)
+            }
+
+            return .credentialsUnavailable(
+                providerID: configuration.provider.id,
+                reason: unavailableCredentialReason(
+                    prefix: "configured credential slots are not ready",
+                    slots: slotsWithSecret
+                )
+            )
+        }
+        return nil
+    }
+
+    private func unavailableCredentialReason(
+        prefix: String,
+        slots: [BurnBarResolvedProviderConfiguration.ResolvedCredentialSlot]
+    ) -> String {
+        let message = slots
+            .compactMap { $0.slot.lastStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty })
+        if let message {
+            return "\(prefix). Last error: \(message)"
+        }
+        return "\(prefix)."
     }
 
     public func markRouteFailure(
@@ -428,10 +521,14 @@ public struct BurnBarProviderRouter: Sendable {
     ) async {
         guard let slotID = route.credentialSlotID else { return }
         let now = Date()
-        var status: BurnBarProviderCredentialSlotStatus = .coolingDown
-        var cooldownUntil = Calendar.current.date(byAdding: .minute, value: 5, to: now)
+        let cooldown = Calendar.current.date(byAdding: .minute, value: 5, to: now)
+        var status: BurnBarProviderCredentialSlotStatus?
+        var cooldownUntil: Date?
         if let providerError = error as? BurnBarProviderExecutorError,
            case .upstreamError(let statusCode, let body) = providerError {
+            if FactoryDroidProviderExecutor.isStrictStandardUsageExhaustion(error: error, route: route) {
+                return
+            }
             let lowerBody = body.lowercased()
             if statusCode == 401 || statusCode == 403 {
                 status = .missingSecret
@@ -442,22 +539,44 @@ public struct BurnBarProviderRouter: Sendable {
                 || lowerBody.contains("exhaust") {
                 status = .exhausted
                 cooldownUntil = nil
+            } else if statusCode == 429 || lowerBody.contains("rate limit") || lowerBody.contains("rate_limit") {
+                if Self.shouldPreserveSlotAvailabilityForRateLimit(route) {
+                    return
+                }
+                status = .coolingDown
+                cooldownUntil = cooldown
+            } else {
+                return
             }
         } else {
+            if FactoryDroidProviderExecutor.isStrictStandardUsageExhaustion(error: error, route: route) {
+                return
+            }
             let lowercasedDescription = error.localizedDescription.lowercased()
             if lowercasedDescription.contains("quota")
                 || lowercasedDescription.contains("insufficient")
                 || lowercasedDescription.contains("exhaust") {
                 status = .exhausted
                 cooldownUntil = nil
+            } else if lowercasedDescription.contains("rate limit")
+                || lowercasedDescription.contains("rate_limit")
+                || lowercasedDescription.contains("429") {
+                if Self.shouldPreserveSlotAvailabilityForRateLimit(route) {
+                    return
+                }
+                status = .coolingDown
+                cooldownUntil = cooldown
             } else if lowercasedDescription.contains("401")
                 || lowercasedDescription.contains("403")
                 || lowercasedDescription.contains("invalid api key") {
                 status = .missingSecret
                 cooldownUntil = nil
+            } else {
+                return
             }
         }
 
+        guard let status else { return }
         do {
             try await configStore.updateCredentialSlotStatus(
                 providerID: route.providerID,
@@ -469,6 +588,18 @@ public struct BurnBarProviderRouter: Sendable {
         } catch {
             logger.silentFailure("update_credential_slot_status_failure", error: error)
         }
+    }
+
+    private static func shouldPreserveSlotAvailabilityForRateLimit(_ route: BurnBarProviderRoute) -> Bool {
+        guard route.providerID.caseInsensitiveCompare("anthropic") == .orderedSame,
+              route.formatFamily == .anthropic else {
+            return false
+        }
+
+        let normalizedKey = route.apiKey
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalizedKey.hasPrefix("sk-ant-oat")
     }
 
     public func markRouteSuccess(_ route: BurnBarProviderRoute) async {
@@ -524,7 +655,10 @@ public struct BurnBarProviderRouter: Sendable {
                 }
 
                 for slot in sortedSlots {
-                    guard let key = slot.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
+                    guard let key = OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+                        providerID: configuration.provider.id,
+                        rawSecret: slot.apiKey
+                    ) else {
                         continue
                     }
                     routes.append(
@@ -571,8 +705,10 @@ public struct BurnBarProviderRouter: Sendable {
     }
 
     private func effectiveAPIKey(for configuration: BurnBarResolvedProviderConfiguration) -> String? {
-        if let apiKey = configuration.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !apiKey.isEmpty {
+        if let apiKey = OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+            providerID: configuration.provider.id,
+            rawSecret: configuration.apiKey
+        ) {
             return apiKey
         }
 
@@ -590,10 +726,49 @@ public struct BurnBarProviderRouter: Sendable {
     ) -> BurnBarCatalogModel? {
         let normalized = modelName.lowercased()
 
+        if configuration.provider.id.lowercased() == "ollama",
+           isOllamaCloudBaseURL(configuration.settings.baseURL),
+           normalizedOllamaCloudModelID(from: modelName) == nil {
+            return nil
+        }
+
+        if configuration.provider.id.lowercased() == "ollama",
+           let directCloudModelID = normalizedOllamaCloudModelID(from: modelName) {
+            let exactCloudModel = configuration.preferredModels.first(where: {
+                $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
+            })
+            let cloudFamily = configuration.provider.models.first(where: { $0.id == "ollama-cloud-family" })
+            let modelTemplate = exactCloudModel ?? cloudFamily
+            guard let modelTemplate else { return nil }
+            let capabilityClassID: String? = {
+                if let exactCloudModel {
+                    return exactCloudModel.capabilityClassID ?? exactCloudModel.id
+                }
+                return directCloudModelID
+            }()
+            return BurnBarCatalogModel(
+                id: directCloudModelID,
+                displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+                visibility: .hidden,
+                aliases: [modelName],
+                matchers: [],
+                pricing: modelTemplate.pricing,
+                capabilityClassID: capabilityClassID,
+                capabilityClassRank: cloudFamily?.capabilityClassRank ?? modelTemplate.capabilityClassRank
+            )
+        }
+
         if let exactMatch = configuration.preferredModels.first(where: {
             $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
         }) {
-            return exactMatch
+            return wireModel(for: exactMatch, requestedModel: modelName)
+        }
+
+        if let dynamicModel = dynamicOpenAICompatibleModel(
+            named: modelName,
+            in: configuration
+        ) {
+            return dynamicModel
         }
 
         guard let matchedModel = configuration.preferredModels.first(where: { $0.matches(modelName: normalized) }) else {
@@ -610,12 +785,91 @@ public struct BurnBarProviderRouter: Sendable {
                 aliases: [modelName],
                 matchers: [],
                 pricing: matchedModel.pricing,
-                capabilityClassID: matchedModel.capabilityClassID,
+                capabilityClassID: matchedModel.capabilityClassID ?? matchedModel.id,
                 capabilityClassRank: matchedModel.capabilityClassRank
             )
         }
 
-        return matchedModel
+        return wireModel(for: matchedModel, requestedModel: modelName)
+    }
+
+    private func dynamicOpenAICompatibleModel(
+        named modelName: String,
+        in configuration: BurnBarResolvedProviderConfiguration
+    ) -> BurnBarCatalogModel? {
+        guard allowDynamicOpenAICompatibleModels,
+              configuration.provider.formatFamily == .openaiCompat,
+              configuration.provider.capabilities.contains(.routing),
+              let template = configuration.preferredModels.first ?? configuration.provider.models.first(where: { $0.visibility == .public }) else {
+            return nil
+        }
+
+        let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let normalized = trimmed.lowercased()
+        let capabilityTemplate = configuration.provider.models.first(where: { $0.matches(modelName: normalized) }) ?? template
+
+        return BurnBarCatalogModel(
+            id: trimmed,
+            displayName: trimmed,
+            visibility: .hidden,
+            aliases: [trimmed],
+            matchers: [],
+            pricing: capabilityTemplate.pricing,
+            capabilityClassID: trimmed,
+            capabilityClassRank: capabilityTemplate.capabilityClassRank
+        )
+    }
+
+    private func isOllamaCloudBaseURL(_ rawURL: String) -> Bool {
+        guard let host = URL(string: rawURL)?.host?.lowercased() else {
+            return false
+        }
+        return host == "ollama.com" || host.hasSuffix(".ollama.com")
+    }
+
+    private func wireModel(
+        for model: BurnBarCatalogModel,
+        requestedModel: String
+    ) -> BurnBarCatalogModel {
+        let aliases = model.aliases
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard aliases.isEmpty == false else {
+            return model
+        }
+
+        let normalizedRequestedModel = requestedModel
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let matchedAlias = aliases.first(where: { $0.lowercased() == normalizedRequestedModel })
+        let isVirtualFamily = model.id.lowercased().hasSuffix("-family")
+
+        let wireModelID: String
+        if isVirtualFamily {
+            wireModelID = matchedAlias ?? aliases.first ?? model.id
+        } else if let matchedAlias {
+            wireModelID = matchedAlias
+        } else {
+            return model
+        }
+
+        guard wireModelID.isEmpty == false,
+              wireModelID.lowercased() != model.id.lowercased() else {
+            return model
+        }
+
+        let capabilityClassID = model.capabilityClassID ?? (isVirtualFamily ? nil : wireModelID)
+        return BurnBarCatalogModel(
+            id: wireModelID,
+            displayName: model.displayName,
+            visibility: model.visibility,
+            aliases: aliases,
+            matchers: model.matchers,
+            pricing: model.pricing,
+            capabilityClassID: capabilityClassID,
+            capabilityClassRank: model.capabilityClassRank
+        )
     }
 
     private func normalizedOllamaCloudModelID(from modelName: String) -> String? {
@@ -642,24 +896,56 @@ public struct BurnBarProviderRouter: Sendable {
     private func preferredProviderForProviderFamilyMode(
         modelName: String,
         routerMode: ProviderRouterMode,
+        requestedFormatFamily: BurnBarProviderFormatFamily?,
         configurations: [BurnBarResolvedProviderConfiguration]
     ) -> String? {
         guard routerMode == .providerFamilyFailover else { return nil }
-        let enabledMatches = configurations.filter { configuration in
-            configuration.settings.isEnabled && resolveModel(named: modelName, in: configuration) != nil
-        }
-        if enabledMatches.count == 1 {
-            return enabledMatches[0].provider.id
+        if normalizedOllamaCloudModelID(from: modelName) != nil {
+            let ollamaMatches = configurations.filter { configuration in
+                configuration.provider.id.lowercased() == "ollama"
+                    && configuration.settings.isEnabled
+                    && (requestedFormatFamily == nil || configuration.provider.formatFamily == requestedFormatFamily)
+                    && resolveModel(named: modelName, in: configuration) != nil
+            }
+            if ollamaMatches.contains(where: { !selectRoutes(for: modelName, configurations: [$0]).isEmpty }) {
+                return "ollama"
+            }
+            if ollamaMatches.count == 1 {
+                return "ollama"
+            }
         }
         if let catalogProviderID = configStore.catalogSupport.catalog.vendorForModel(named: modelName)?.id {
-            if enabledMatches.contains(where: { $0.provider.id == catalogProviderID }) {
-                return catalogProviderID
+            let catalogMatches = configurations.filter { configuration in
+                configuration.provider.id == catalogProviderID
+                    && configuration.settings.isEnabled
+                    && (requestedFormatFamily == nil || configuration.provider.formatFamily == requestedFormatFamily)
+                    && resolveModel(named: modelName, in: configuration) != nil
             }
-            if enabledMatches.isEmpty {
+            if catalogMatches.contains(where: { !selectRoutes(for: modelName, configurations: [$0]).isEmpty }) {
                 return catalogProviderID
             }
         }
-        return enabledMatches.first?.provider.id
+
+        let matchingConfigurations = configurations.filter { configuration in
+            configuration.settings.isEnabled
+                && (requestedFormatFamily == nil || configuration.provider.formatFamily == requestedFormatFamily)
+                && resolveModel(named: modelName, in: configuration) != nil
+        }
+
+        let routableMatches = matchingConfigurations.filter { configuration in
+            !selectRoutes(for: modelName, configurations: [configuration]).isEmpty
+        }
+        if routableMatches.count == 1 {
+            return routableMatches[0].provider.id
+        }
+        if routableMatches.count > 1 {
+            return nil
+        }
+        if matchingConfigurations.count == 1 {
+            return matchingConfigurations[0].provider.id
+        }
+
+        return nil
     }
 
     public func persistDecisionIfNeeded(
@@ -772,6 +1058,7 @@ extension BurnBarProviderRouter {
             ? preferredProviderForProviderFamilyMode(
                 modelName: modelName,
                 routerMode: effectiveRouterMode,
+                requestedFormatFamily: requestedFormatFamily,
                 configurations: configurations
             )
             : nil
@@ -790,7 +1077,7 @@ extension BurnBarProviderRouter {
         // to compute which lower-class routes were excluded. Used by callers (gateway)
         // to report "downgrade disabled" when the same-class pool is exhausted.
         let blockedByCapabilityClass: [BurnBarProviderRoute]
-        if let requiredCapabilityClassID {
+        if requiredCapabilityClassID != nil {
             let unfilteredCandidates = try candidateRoutes(
                 modelName: modelName,
                 preferredProviderID: effectivePreferredProviderID,

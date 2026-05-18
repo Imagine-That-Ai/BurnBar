@@ -17,8 +17,14 @@ final class CLIBridge: ObservableObject {
     private(set) var hermesModelName: String?
     /// Concrete Hermes gateway models grouped by `HermesModelID` in UI.
     private(set) var hermesAdvertisedModels: [HermesAdvertisedModel] = []
+    /// Full OpenAI-compatible model rows advertised by the Hermes gateway.
+    private(set) var hermesGatewayModels: [OpenAICompatibleAdvertisedModel] = []
     /// The model name currently advertised by the Pi gateway.
     private(set) var piAgentModelName: String?
+    /// Full OpenAI-compatible model rows advertised by the OpenClaw gateway.
+    private(set) var openClawGatewayModels: [OpenAICompatibleAdvertisedModel] = []
+    /// Full OpenAI-compatible model rows advertised by the Pi gateway.
+    private(set) var piAgentGatewayModels: [OpenAICompatibleAdvertisedModel] = []
 
     nonisolated private let resolver = CLIExecutableResolver()
     nonisolated private let streamRuntime = CLIBridgeStreamRuntimeCoordinator()
@@ -53,19 +59,23 @@ final class CLIBridge: ObservableObject {
         )
         hermesAvailable = result.available
         hermesModelName = result.modelName
-        hermesAdvertisedModels = result.models
+        hermesAdvertisedModels = result.hermesModels
+        hermesGatewayModels = result.models
     }
 
     /// Probe OpenClaw gateway (OpenAI-compatible `/v1/models`).
     func probeOpenClawAvailability(baseURL: URL, bearerToken: String? = nil) async {
-        openClawAvailable = await OpenAICompatibleModelProbe.probe(baseURL: baseURL, bearerToken: bearerToken)
+        let result = await OpenAICompatibleModelProbe.probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
+        openClawAvailable = result.available
+        openClawGatewayModels = result.models
     }
 
     /// Probe Pi agent gateway (OpenAI-compatible `/v1/models`).
     func probePiAgentAvailability(baseURL: URL, bearerToken: String? = nil) async {
-        let result = await OpenAICompatibleModelProbe.probeWithModel(baseURL: baseURL, bearerToken: bearerToken)
+        let result = await OpenAICompatibleModelProbe.probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
         piAgentAvailable = result.available
         piAgentModelName = result.modelName
+        piAgentGatewayModels = result.models
     }
 
     func cancel() {
@@ -239,6 +249,7 @@ final class CLIBridge: ObservableObject {
                     history: history,
                     bearerToken: bearerToken,
                     unavailableError: .hermesUnavailable,
+                    missingModelError: .noSelectedModel("Hermes"),
                     httpStreamID: streamID,
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,
@@ -267,7 +278,7 @@ final class CLIBridge: ObservableObject {
         systemPrompt: String,
         history: [ChatMessageRecord],
         bearerToken: String?,
-        model: String = "gpt-4o-mini",
+        model: String = "",
         attachmentBytes: [String: Data] = [:],
         capabilities: HermesBackendCapabilities = .default,
         workspaceURL: URL? = nil
@@ -284,14 +295,12 @@ final class CLIBridge: ObservableObject {
                 let streamID = await streamIDTask.value
                 await OpenAICompatibleChatGatewayClient(runtime: self.streamRuntime).runStream(
                     baseURL: baseURL,
-                    model: {
-                        let t = model.trimmingCharacters(in: .whitespacesAndNewlines)
-                        return t.isEmpty ? "gpt-4o-mini" : t
-                    }(),
+                    model: model,
                     systemPrompt: systemPrompt,
                     history: history,
                     bearerToken: bearerToken,
                     unavailableError: .openClawUnavailable,
+                    missingModelError: .noSelectedModel("OpenClaw"),
                     httpStreamID: streamID,
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,
@@ -346,6 +355,7 @@ final class CLIBridge: ObservableObject {
                     history: history,
                     bearerToken: bearerToken,
                     unavailableError: .piAgentUnavailable,
+                    missingModelError: .noSelectedModel("Pi"),
                     httpStreamID: streamID,
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,
@@ -429,7 +439,19 @@ final class CLIBridge: ObservableObject {
         await resolver.resolveExecutable(named: name)
     }
 
-    nonisolated private static func probeHermes(baseURL: URL, bearerToken: String?) async -> (available: Bool, modelName: String?, models: [HermesAdvertisedModel]) {
-        await OpenAICompatibleModelProbe.probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
+    nonisolated private static func probeHermes(
+        baseURL: URL,
+        bearerToken: String?
+    ) async -> (
+        available: Bool,
+        modelName: String?,
+        hermesModels: [HermesAdvertisedModel],
+        models: [OpenAICompatibleAdvertisedModel]
+    ) {
+        await OpenAICompatibleModelProbe.probeWithModels(
+            baseURL: baseURL,
+            bearerToken: bearerToken,
+            timeout: 8
+        )
     }
 }

@@ -28,6 +28,10 @@ public enum BurnBarDaemonPaths {
         supportDirectoryURL.appendingPathComponent("provider-config.json", isDirectory: false)
     }
 
+    public static var defaultProviderSecretContinuityURL: URL {
+        supportDirectoryURL.appendingPathComponent("provider-secrets.continuity.json", isDirectory: false)
+    }
+
     public static var defaultUsageLedgerURL: URL {
         supportDirectoryURL.appendingPathComponent("usage-events.jsonl", isDirectory: false)
     }
@@ -38,6 +42,10 @@ public enum BurnBarDaemonPaths {
 
     public static var defaultRoutingDecisionEventsURL: URL {
         supportDirectoryURL.appendingPathComponent("provider-routing-decisions.jsonl", isDirectory: false)
+    }
+
+    public static var defaultGatewayModelHealthURL: URL {
+        supportDirectoryURL.appendingPathComponent("gateway-model-health.json", isDirectory: false)
     }
 
     public static var defaultRunCheckpointDirectoryURL: URL {
@@ -142,7 +150,7 @@ public struct BurnBarDaemonConfiguration: Sendable {
     public let catalog: BurnBarCatalog
     /// Read-only path to the OpenBurnBar app SQLite database (`openburnbar.sqlite`) for indexed search RPC.
     public let indexDatabasePath: String?
-    /// HTTP gateway configuration for external client access (Vibe Proxy style).
+    /// HTTP gateway configuration for OpenBurnBar Hydrant client access.
     public let gateway: BurnBarGatewayConfiguration
     /// Rate limiting configuration for Unix domain socket RPC.
     /// Default: 60 req/s sustained, 100 burst.

@@ -92,6 +92,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
+        INFOPLIST_KEY_NSSupportsAutomaticTermination: NO
+        INFOPLIST_KEY_NSSupportsSuddenTermination: NO
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
     postBuildScripts:
       - name: Configure Firebase Auth Resources
@@ -123,6 +125,10 @@ targets:
         embed: false
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarIrohRelay
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
       - package: GRDB
         product: GRDB
       - package: Firebase
@@ -131,6 +137,8 @@ targets:
         product: FirebaseFirestore
       - package: Firebase
         product: FirebaseFunctions
+      - package: Firebase
+        product: FirebaseRemoteConfig
       - package: Firebase
         product: FirebaseAppCheck
       - package: GoogleSignIn
@@ -220,6 +228,10 @@ targets:
       - target: OpenBurnBar
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+        link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
+        link: false
       - package: ViewInspector
         product: ViewInspector
       - package: SnapshotTesting
@@ -366,13 +378,18 @@ targets:
       - target: OpenBurnBarWidget
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
-        embed: true
+      - package: OpenBurnBarCore
+        product: OpenBurnBarIrohRelay
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
         product: FirebaseFirestore
       - package: Firebase
         product: FirebaseFunctions
+      - package: Firebase
+        product: FirebaseRemoteConfig
       - package: Firebase
         product: FirebaseAppCheck
       - package: GoogleSignIn

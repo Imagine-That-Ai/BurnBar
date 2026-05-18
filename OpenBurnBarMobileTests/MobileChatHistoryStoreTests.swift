@@ -24,9 +24,13 @@ final class MobileChatHistoryStoreTests: XCTestCase {
 
         store.upsert(Self.makeThread(id: "pi-1", runtime: .pi, title: "Pi chat"))
         store.upsert(Self.makeThread(id: "h-1", runtime: .hermes, title: "Hermes chat"))
+        store.upsert(Self.makeThread(id: "codex-1", runtime: .codex, title: "Codex chat"))
+        store.upsert(Self.makeThread(id: "claude-1", runtime: .claude, title: "Claude chat"))
 
         XCTAssertEqual(store.threads(for: .pi).map(\.id), ["pi-1"])
         XCTAssertEqual(store.threads(for: .hermes).map(\.id), ["h-1"])
+        XCTAssertEqual(store.threads(for: .codex).map(\.id), ["codex-1"])
+        XCTAssertEqual(store.threads(for: .claude).map(\.id), ["claude-1"])
     }
 
     func testLoadFromDiskRestoresThreads() throws {
@@ -494,6 +498,100 @@ final class PiServicePersistenceTests: XCTestCase {
 
         XCTAssertTrue(store.threads(for: .pi).isEmpty)
         XCTAssertNil(service.currentThreadID)
+    }
+
+    func testPiServiceClearSelectedModelRemovesPersistedPreference() {
+        let defaults = makeDefaults()
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: defaults, history: store)
+        let option = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+
+        service.selectModel(option)
+        XCTAssertEqual(defaults.string(forKey: "pi.selectedModelID"), "gpt-5.5")
+
+        service.clearSelectedModel()
+
+        XCTAssertNil(service.selectedModelID)
+        XCTAssertNil(defaults.string(forKey: "pi.selectedModelID"))
+    }
+
+    func testPiServiceFailsBeforeSendingWhenExplicitModelIsMissing() {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        let stale = HermesRuntimeModelOption(
+            providerID: "zai",
+            providerName: "Z.AI",
+            modelID: "glm-5.1",
+            displayName: "GLM 5.1"
+        )
+        let available = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+
+        service.modelOptions = [stale]
+        service.selectModel(stale)
+        service.modelOptions = [available]
+        service.send(prompt: "Use the selected Pi model")
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertTrue(service.lastError?.contains("Selected Pi model 'glm-5.1'") ?? false)
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+        XCTAssertTrue(service.messages.last?.text.contains("Selected Pi model 'glm-5.1'") ?? false)
+    }
+
+    func testPiServiceFailsBeforeSendingWhenExplicitModelCatalogIsUnverified() {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        let selected = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        service.modelOptions = []
+        service.send(prompt: "Use the selected Pi model")
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertTrue(service.lastError?.contains("has not been verified") ?? false)
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+        XCTAssertTrue(service.messages.last?.text.contains("Selected Pi model 'gpt-5.5'") ?? false)
+    }
+
+    func testPiServiceFailsMissionDispatchModelWhenExplicitCatalogIsUnverified() throws {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        let selected = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        service.modelOptions = []
+
+        XCTAssertThrowsError(try service.validatedModelIDForMissionDispatch()) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Selected Pi model 'gpt-5.5' has not been verified against this Mac Pi harness catalog yet. Refresh the Mac Pi gateway before sending, so the selected model is not silently rerouted."
+            )
+        }
     }
 
     func testPiServiceMergeToolCallsAccumulatesArgumentsAcrossDeltas() {

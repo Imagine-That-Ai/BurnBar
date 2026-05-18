@@ -88,6 +88,17 @@ android {
 }
 
 dependencies {
+    // Local Kotlin library: Android-side iroh transport + pairing
+    // verifier. 1:1 mirror of the Swift OpenBurnBarIrohRelay package.
+    implementation(project(":openburnbar-iroh-relay"))
+    // Computer Use phone-control intents are signed on Android with the
+    // same portable Ed25519 primitive used by the relay pairing verifier.
+    implementation("com.google.crypto.tink:tink-android:1.15.0")
+    val irohAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/openburnbar-iroh.aar")
+    if (irohAar.exists()) {
+        implementation(files(irohAar))
+    }
+
     // Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
@@ -126,6 +137,23 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-functions-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ktx")
+    // Mercury Media — high-priority FCM data messages for incoming calls.
+    implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // Mercury Media — CameraX for the local camera capture pipeline that
+    // feeds the HEVC encoder via a MediaCodec.createInputSurface() input
+    // surface. 1.4.x is the first 1.x line that ships
+    // CameraSelector.LENS_FACING_FRONT support across all minSdk targets.
+    val cameraXVersion = "1.4.0"
+    implementation("androidx.camera:camera-core:$cameraXVersion")
+    implementation("androidx.camera:camera-camera2:$cameraXVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraXVersion")
+    implementation("androidx.camera:camera-view:$cameraXVersion")
+    // CameraX hands out a `ListenableFuture<ProcessCameraProvider>`; the
+    // kotlinx-coroutines-guava bridge provides `.await()`.
+    implementation("androidx.concurrent:concurrent-futures:1.2.0")
+    implementation("androidx.concurrent:concurrent-futures-ktx:1.2.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.9.0")
     // Auth — legacy GoogleSignIn kept for backwards compat with existing code paths;
     // Credential Manager is the new primary entry point.
     implementation("com.google.android.gms:play-services-auth:21.3.0")
@@ -168,8 +196,19 @@ dependencies {
     // Real org.json on the JVM test classpath so parsers can run without an
     // emulator (Android's bundled JSONObject is stubbed in unit tests).
     testImplementation("org.json:json:20240303")
+    // Ed25519 signer for the Hermes iroh transport tests only — production
+    // code is verify-only via Tink. Same lib + version the relay module's
+    // test classpath uses.
+    testImplementation("net.i2p.crypto:eddsa:0.3.0")
+    // DataStore Preferences test helpers — the partner-save preference
+    // store materialises a Preferences DataStore on a temp dir.
+    testImplementation("androidx.datastore:datastore-preferences:1.1.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.8")
     androidTestImplementation("androidx.compose.ui:ui-test-manifest:1.7.8")
+    // Mockk on-device flavor — pure-JVM `io.mockk:mockk` brings in
+    // bytebuddy classes the ART runtime can't load, so the instrumented
+    // suites use `mockk-android` instead.
+    androidTestImplementation("io.mockk:mockk-android:1.13.13")
 }

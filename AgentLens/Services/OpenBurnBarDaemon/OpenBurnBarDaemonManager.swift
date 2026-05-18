@@ -206,6 +206,7 @@ final class OpenBurnBarDaemonManager {
     let usageSyncService: OpenBurnBarDaemonUsageSyncService
     let settingsManager: SettingsManager
     weak var dataStore: DataStore?
+    private var uploadPendingUsageAfterImport: (() async -> Void)?
 
     var status: OpenBurnBarDaemonStatus = .checking
     var lastError: String?
@@ -228,12 +229,14 @@ final class OpenBurnBarDaemonManager {
         settingsManager: SettingsManager = .shared,
         paths: OpenBurnBarDaemonRuntimePaths = .live(),
         dependencies: OpenBurnBarDaemonDependencies = .live(),
-        usageSyncService: OpenBurnBarDaemonUsageSyncService? = nil
+        usageSyncService: OpenBurnBarDaemonUsageSyncService? = nil,
+        uploadPendingUsageAfterImport: (() async -> Void)? = nil
     ) {
         self.settingsManager = settingsManager
         self.paths = paths
         self.dependencies = dependencies
         self.usageSyncService = usageSyncService ?? OpenBurnBarDaemonUsageSyncService(paths: paths)
+        self.uploadPendingUsageAfterImport = uploadPendingUsageAfterImport
     }
 
     /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the main actor or the UI hangs.
@@ -261,11 +264,38 @@ final class OpenBurnBarDaemonManager {
         }
     }
 
-    func attach(dataStore: DataStore) {
+    func attach(dataStore: DataStore, cloudSyncService: CloudSyncService? = nil) {
         self.dataStore = dataStore
+        if let cloudSyncService {
+            uploadPendingUsageAfterImport = { [weak cloudSyncService] in
+                await cloudSyncService?.uploadPending()
+            }
+        }
         OpenBurnBarDaemonLocalNotificationRelay.shared.start()
         exportControllerActivitySnapshot()
-        Task { await refreshRuntimeSnapshot() }
+        Task {
+            await refreshInstalledDaemonIfNeededForCurrentAppBuild()
+            await refreshHealth()
+            await repairProviderCredentialSlotSecrets()
+        }
+    }
+
+    @discardableResult
+    func refreshInstalledDaemonIfNeededForCurrentAppBuild() async -> Bool {
+        guard !isBusy, installedDaemonBinaryNeedsRefresh() else {
+            return false
+        }
+        lastError = "Updating the OpenBurnBar daemon to match this app build."
+        await repair()
+        return true
+    }
+
+    /// Force a health re-probe even if the supervisor is in crash-loop backoff.
+    /// Used before daemon operations so a stale crash-loop state doesn't block
+    /// the user from adding provider plans when the daemon is actually healthy.
+    func forceRefreshHealth() async {
+        supervisionState = .idle
+        await refreshHealth()
     }
 
     func refreshHealth() async {
@@ -296,10 +326,16 @@ final class OpenBurnBarDaemonManager {
             } else {
                 status = .healthy(snapshot)
                 supervisionState = .healthy
+                if await refreshInstalledDaemonIfNeededForCurrentAppBuild() {
+                    return
+                }
             }
             lastError = nil
         } catch {
             if isInstalled {
+                if await refreshInstalledDaemonIfNeededForCurrentAppBuild() {
+                    return
+                }
                 status = .unhealthy(error.localizedDescription)
                 lastError = error.localizedDescription
                 supervisionState = OpenBurnBarDaemonSupervisor.advance(
@@ -347,6 +383,7 @@ final class OpenBurnBarDaemonManager {
                 recentEvents = loadRecentDaemonEvents()
                 controllerProjects = projects
                 runtimeStateSource = .daemonRPC
+                await uploadImportedUsageIfNeeded(snapshot)
                 return
             } catch {
                 runtimeStateSource = .localFallback
@@ -371,6 +408,12 @@ final class OpenBurnBarDaemonManager {
         recentEvents = loadRecentDaemonEvents()
         controllerProjects = []
         runtimeStateSource = .localFallback
+        await uploadImportedUsageIfNeeded(snapshot)
+    }
+
+    private func uploadImportedUsageIfNeeded(_ snapshot: OpenBurnBarDaemonRuntimeSnapshot) async {
+        guard snapshot.ledgerRecordCount > 0, let uploadPendingUsageAfterImport else { return }
+        await uploadPendingUsageAfterImport()
     }
 
     func performBusyWork(_ operation: () async throws -> Void) async {
@@ -385,6 +428,34 @@ final class OpenBurnBarDaemonManager {
             status = .unhealthy(error.localizedDescription)
             lastError = error.localizedDescription
             await refreshRuntimeSnapshot()
+        }
+    }
+
+    func performRequiredBusyWork<T: Sendable>(_ operation: () async throws -> T) async throws -> T {
+        var attempts = 0
+        while isBusy && attempts < 50 {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            attempts += 1
+        }
+
+        guard !isBusy else {
+            throw OpenBurnBarDaemonManagerError.rpcError(
+                "OpenBurnBar is still finishing another daemon update. Wait a moment and try Save & Connect again."
+            )
+        }
+
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            let result = try await operation()
+            await refreshHealth()
+            return result
+        } catch {
+            status = .unhealthy(error.localizedDescription)
+            lastError = error.localizedDescription
+            await refreshRuntimeSnapshot()
+            throw error
         }
     }
 

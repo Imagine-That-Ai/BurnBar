@@ -491,6 +491,20 @@ enum OpenAICompatibleModelListParser {
     }
 
     static func hermesAdvertisedModels(from data: Data) -> [HermesAdvertisedModel] {
+        advertisedModels(from: data).compactMap { model in
+            guard let family = hermesFamily(
+                modelID: model.id,
+                displayName: model.displayName,
+                providerID: model.providerID ?? "",
+                providerName: model.providerName ?? ""
+            ) else {
+                return nil
+            }
+            return HermesAdvertisedModel(id: model.id, displayName: model.displayName, family: family)
+        }
+    }
+
+    static func advertisedModels(from data: Data) -> [OpenAICompatibleAdvertisedModel] {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = obj["data"] as? [[String: Any]] else { return [] }
         var seen = Set<String>()
@@ -509,15 +523,17 @@ enum OpenAICompatibleModelListParser {
             let providerName = (raw["provider_name"] as? String)
                 ?? (raw["providerName"] as? String)
                 ?? ""
-            guard let family = hermesFamily(
-                modelID: id,
+            let routeEligible = (raw["route_eligible"] as? Bool)
+                ?? (raw["routeEligible"] as? Bool)
+                ?? (raw["enabled"] as? Bool)
+                ?? true
+            return OpenAICompatibleAdvertisedModel(
+                id: id,
                 displayName: displayName,
-                providerID: providerID,
-                providerName: providerName
-            ) else {
-                return nil
-            }
-            return HermesAdvertisedModel(id: id, displayName: displayName, family: family)
+                providerID: providerID.isEmpty ? nil : providerID,
+                providerName: providerName.isEmpty ? nil : providerName,
+                routeEligible: routeEligible
+            )
         }
     }
 

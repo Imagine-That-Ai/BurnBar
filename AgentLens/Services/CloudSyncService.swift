@@ -4,6 +4,7 @@ import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarMedia
 
 // MARK: - CloudSyncService
 
@@ -852,11 +853,24 @@ final class HermesRelayHostService {
     private let urlSession: URLSession
     private let relayKeyStore: HermesRelayKeyStore
     private let realtimeRelayClient: HermesRealtimeRelayHosting
+    private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
+    private var computerUseControlDispatcher: ControlFrameDispatcher?
     private var heartbeatTask: Task<Void, Never>?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
     private var requestTasks: [String: Task<Void, Never>] = [:]
     private var processingRequestIDs: Set<String> = []
+    /// Retained Mercury file-transfer service so its persistent control
+    /// stream + `@Published` state survive the lifetime of the Hermes
+    /// session. The Mac chat input reads this property via
+    /// `HermesRelayHostService` to drive paperclip + drag-and-drop
+    /// sends.
+    @MainActor private(set) var mercuryFileTransfer: MacFileTransferService?
+
+    /// Mercury Phase 8 — the registry the iroh client hands inbound
+    /// `media.control` streams to. Surfaced so the runtime context can
+    /// build `MercuryPeerSource` against the same registry instance.
+    @MainActor private(set) var mercuryControlStreamRegistry: MediaControlStreamRegistry?
 
     init(
         db: Firestore = Firestore.firestore(),
@@ -864,19 +878,106 @@ final class HermesRelayHostService {
         settingsManager: SettingsManager = .shared,
         urlSession: URLSession = .shared,
         relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore(),
-        realtimeRelayClient: HermesRealtimeRelayHosting? = nil
+        realtimeRelayClient: HermesRealtimeRelayHosting? = nil,
+        cliChatDispatcher: CLIAgentRelayChatDispatcher? = nil
     ) {
         self.db = db
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.urlSession = urlSession
         self.relayKeyStore = relayKeyStore
-        self.realtimeRelayClient = realtimeRelayClient ?? HermesRealtimeRelayHostClient(
-            accountManager: accountManager,
-            settingsManager: settingsManager,
-            relayKeyStore: relayKeyStore,
-            urlSession: urlSession
-        )
+        self.cliChatDispatcher = cliChatDispatcher
+        if let realtimeRelayClient {
+            self.realtimeRelayClient = realtimeRelayClient
+        } else {
+            let wssClient = HermesRealtimeRelayHostClient(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                relayKeyStore: relayKeyStore,
+                urlSession: urlSession
+            )
+            wssClient.cliChatDispatcher = cliChatDispatcher
+            let forceIrohTransport: Bool = {
+                #if DEBUG
+                ProcessInfo.processInfo.environment["OPENBURNBAR_ENABLE_IROH_TRANSPORT"] == "1"
+                #else
+                false
+                #endif
+            }()
+            if settingsManager.hermesIrohTransportEnabled || forceIrohTransport {
+                let irohClient = HermesIrohRelayHostClient(
+                    accountManager: accountManager,
+                    settingsManager: settingsManager,
+                    relayKeyStore: relayKeyStore,
+                    urlSession: urlSession
+                )
+                // Mercury Phase 1b + Risk-1 fix — wire the Mac
+                // file-transfer service AND the persistent media
+                // control-stream registry. Returns nil on builds that
+                // don't link the xcframework (loopback dev path).
+                if let fileTransferService = MediaFileTransferServiceFactory.make() {
+                    let controlRegistry = MediaControlStreamRegistry()
+                    self.mercuryControlStreamRegistry = controlRegistry
+                    let macFileTransfer = MacFileTransferService(
+                        service: fileTransferService,
+                        settingsProvider: { @MainActor [settingsManager] in
+                            settingsManager.mediaBlobTransferEnabled
+                        },
+                        controlStreamRegistry: controlRegistry
+                    )
+                    // Per-request dispatch (chat-piggyback path) — used
+                    // when an advertise rides an active chat response
+                    // stream rather than the long-lived control stream.
+                    irohClient.mediaDispatcher = { @Sendable frame, ackSender in
+                        await macFileTransfer.handleAdvertise(frame: frame, ackSender: ackSender)
+                    }
+                    // Control-stream registrar (Risk-1 fix) — when iOS
+                    // dials a stream and classifies it as
+                    // `media.control`, the request handler hands it
+                    // here. MacFileTransferService owns the long-lived
+                    // read loop and uses the same stream for outbound
+                    // pushes.
+                    irohClient.mediaControlRegistrar = { @Sendable stream, uid, connectionID in
+                        await macFileTransfer.mountControlStream(
+                            stream,
+                            uid: uid,
+                            connectionID: connectionID
+                        )
+                    }
+                    self.mercuryFileTransfer = macFileTransfer
+                }
+                irohClient.cliChatDispatcher = cliChatDispatcher
+                irohClient.setControlDispatcher(computerUseControlDispatcher)
+                self.realtimeRelayClient = HermesRelayHostFanout(
+                    primary: irohClient,
+                    fallback: wssClient
+                )
+            } else {
+                self.realtimeRelayClient = wssClient
+            }
+        }
+    }
+
+    func setComputerUseControlDispatcher(_ dispatcher: ControlFrameDispatcher?) {
+        computerUseControlDispatcher = dispatcher
+        if let irohClient = realtimeRelayClient as? HermesIrohRelayHostClient {
+            irohClient.setControlDispatcher(dispatcher)
+        } else if let fanout = realtimeRelayClient as? HermesRelayHostFanout {
+            fanout.setControlDispatcher(dispatcher)
+        }
+    }
+
+    /// Mercury Phase 8 — attach the router so the persistent
+    /// `media.control` stream's read loop fans inbound mirror /
+    /// presence frames into it. The closure stays alive as long as
+    /// `mercuryFileTransfer` does, which matches the lifetime of the
+    /// iroh client.
+    @MainActor
+    func attachMercuryRouter(_ router: MercuryRouter) {
+        guard let transfer = mercuryFileTransfer else { return }
+        transfer.setMercuryDispatcher { @Sendable frame, reply in
+            await router.handleFrame(frame, replySender: reply)
+        }
     }
 
     var connectionID: String {
@@ -950,7 +1051,7 @@ final class HermesRelayHostService {
                 "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
                 "mode": HermesConnectionMode.relayLink.rawValue,
                 "status": HermesConnectionStatus.offline.rawValue,
-                "capabilities": ["chat_completions", "remote_relay"],
+                "capabilities": ["remote_relay"],
                 "advertisedModel": FieldValue.delete(),
                 "realtimeRelayURL": FieldValue.delete(),
                 "realtimeRelayStatus": "offline",
@@ -986,23 +1087,32 @@ final class HermesRelayHostService {
             return
         }
         let probe = await OpenAICompatibleModelProbe.probeWithModel(
-            baseURL: hermesBaseURL(),
-            bearerToken: settingsManager.hermesBearerToken
+            baseURL: burnBarGatewayBaseURLWithTrailingSlash(),
+            bearerToken: settingsManager.gatewayAuthToken,
+            timeout: 10
         )
         let now = Self.iso8601.string(from: Date())
+        let cliAgentChatAvailable = cliChatDispatcher != nil
+        let relayAvailable = probe.available || cliAgentChatAvailable
         let realtimeRegistered: Bool
-        if probe.available {
+        if relayAvailable {
             realtimeRegistered = await realtimeRelayClient.start(uid: uid, connectionID: connectionID)
         } else {
             realtimeRelayClient.stop()
             realtimeRegistered = false
         }
-        let realtimeRelayURL = realtimeRegistered ? realtimeRelayClient.publishableRelayURLString : nil
-        let realtimeReady = realtimeRelayURL != nil
+        let realtimeReady = realtimeRegistered && realtimeRelayClient.isReady
         if realtimeRegistered && !realtimeReady {
             realtimeRelayClient.stop()
         }
-        var capabilities = ["chat_completions", "remote_relay"]
+        let realtimeRelayURL = realtimeReady ? realtimeRelayClient.publishableRelayURLString : nil
+        var capabilities = ["remote_relay"]
+        if probe.available {
+            capabilities.append("chat_completions")
+        }
+        if cliAgentChatAvailable {
+            capabilities.append("cli_agent_chat")
+        }
         if realtimeReady {
             capabilities.append(HermesRealtimeRelayProtocol.capability)
         }
@@ -1010,7 +1120,7 @@ final class HermesRelayHostService {
             "id": connectionID,
             "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
             "mode": HermesConnectionMode.relayLink.rawValue,
-            "status": probe.available ? HermesConnectionStatus.online.rawValue : HermesConnectionStatus.offline.rawValue,
+            "status": relayAvailable ? HermesConnectionStatus.online.rawValue : HermesConnectionStatus.offline.rawValue,
             "capabilities": capabilities,
             "relayPublicKey": relayPrivateKey.publicKeyBase64,
             "relayKeyVersion": HermesRelayCrypto.keyVersion,
@@ -1021,10 +1131,13 @@ final class HermesRelayHostService {
         ]
         if let relayURL = realtimeRelayURL {
             data["realtimeRelayURL"] = relayURL
+        } else {
+            data["realtimeRelayURL"] = FieldValue.delete()
+        }
+        if realtimeReady {
             data["realtimeRelayLastSeenAt"] = now
             data["realtimeRelayProtocolVersion"] = HermesRealtimeRelayProtocol.version
         } else {
-            data["realtimeRelayURL"] = FieldValue.delete()
             data["realtimeRelayLastSeenAt"] = FieldValue.delete()
             data["realtimeRelayProtocolVersion"] = FieldValue.delete()
         }
@@ -1033,6 +1146,9 @@ final class HermesRelayHostService {
             data["lastSeenAt"] = now
         } else {
             data["advertisedModel"] = FieldValue.delete()
+            if relayAvailable {
+                data["lastSeenAt"] = now
+            }
         }
         let ref = db.collection("users").document(uid).collection("hermes_connections").document(connectionID)
         do {
@@ -1119,6 +1235,12 @@ final class HermesRelayHostService {
                     context: prepared.context,
                     data: prepared.data
                 )
+            case .cliAgentChat:
+                try await forwardCLIAgentChatRequest(
+                    reference: reference,
+                    context: prepared.context,
+                    data: prepared.data
+                )
             case .models, .sessions, .sessionDetail, .profiles, .jobs:
                 try await forwardUnaryRequest(
                     reference: reference,
@@ -1135,6 +1257,43 @@ final class HermesRelayHostService {
                 context: context
             )
         }
+    }
+
+    private func forwardCLIAgentChatRequest(
+        reference: DocumentReference,
+        context: HermesRelayRequestContext,
+        data: [String: Any]
+    ) async throws {
+        guard let cliChatDispatcher else {
+            throw HermesRelayHostError.cliAgentChatUnavailable
+        }
+        guard let body = data["body"] as? String,
+              let bodyData = body.data(using: .utf8) else {
+            throw HermesRelayHostError.missingBody
+        }
+        let request = try JSONDecoder().decode(CLIAgentRelayChatRequest.self, from: bodyData)
+        guard try await relayRequestCanReceiveOutput(reference: reference) else {
+            throw HermesRelayHostError.requestNoLongerActive
+        }
+        let now = Self.iso8601.string(from: Date())
+        try await reference.setData([
+            "status": HermesRelayRequestStatus.streaming.rawValue,
+            "updatedAt": now
+        ], merge: true)
+
+        let sequencer = CLIAgentRelayChunkSequencer()
+        try await cliChatDispatcher(request) { event in
+            let payload = try JSONEncoder().encode(event)
+            let sequence = await sequencer.next()
+            _ = try await self.writeRelayChunk(
+                reference: reference,
+                context: context,
+                sequence: sequence,
+                kind: .sse,
+                data: String(data: payload, encoding: .utf8) ?? "{}"
+            )
+        }
+        try await completeRelayRequest(reference: reference, chunkCount: await sequencer.count())
     }
 
     private func decryptRelayRequest(
@@ -1229,7 +1388,7 @@ final class HermesRelayHostService {
             throw HermesRelayHostError.httpStatus(statusCode)
         }
         let responseBody: Data
-        if operation == .models {
+        if operation == .models, !Self.usesBurnBarGateway(operation) {
             responseBody = await enrichedModelsBody(primaryBody: body)
         } else {
             responseBody = body
@@ -1299,13 +1458,19 @@ final class HermesRelayHostService {
 
     private func makeForwardRequest(operation: HermesRelayOperation, data: [String: Any]) throws -> URLRequest {
         let path = try relayPath(operation: operation, data: data)
-        guard let url = URL(string: path, relativeTo: hermesBaseURLWithTrailingSlash())?.absoluteURL else {
+        let useBurnBarGateway = Self.usesBurnBarGateway(operation)
+        let base = useBurnBarGateway
+            ? burnBarGatewayBaseURLWithTrailingSlash()
+            : hermesBaseURLWithTrailingSlash()
+        guard let url = URL(string: path, relativeTo: base)?.absoluteURL else {
             throw HermesRelayHostError.invalidPath
         }
-        var request = URLRequest(url: url, timeoutInterval: operation == .chatCompletions ? 120 : 20)
+        var request = URLRequest(url: url, timeoutInterval: operation == .chatCompletions ? 300 : 20)
         request.httpMethod = operation == .chatCompletions ? "POST" : "GET"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = useBurnBarGateway
+            ? settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            : settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -1317,6 +1482,15 @@ final class HermesRelayHostService {
             request.httpBody = bodyData
         }
         return request
+    }
+
+    private static func usesBurnBarGateway(_ operation: HermesRelayOperation) -> Bool {
+        switch operation {
+        case .chatCompletions, .models:
+            return true
+        case .cliAgentChat, .sessions, .profiles, .jobs, .sessionDetail:
+            return false
+        }
     }
 
     static func enrichedModelsBody(
@@ -1371,6 +1545,8 @@ final class HermesRelayHostService {
         switch operation {
         case .chatCompletions:
             return "v1/chat/completions"
+        case .cliAgentChat:
+            throw HermesRelayHostError.invalidPath
         case .models:
             return "v1/models"
         case .sessions:
@@ -1531,6 +1707,15 @@ final class HermesRelayHostService {
         return URL(string: "\(url.absoluteString)/") ?? url
     }
 
+    private func burnBarGatewayBaseURLWithTrailingSlash() -> URL {
+        let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
+        let port = max(settingsManager.gatewayPort, 1)
+        let url = URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+        if url.absoluteString.hasSuffix("/") { return url }
+        return URL(string: "\(url.absoluteString)/") ?? url
+    }
+
     private func isExpired(_ raw: Any?) -> Bool {
         guard let text = raw as? String,
               let date = Self.iso8601.date(from: text) ?? Self.iso8601NoFraction.date(from: text) else {
@@ -1631,6 +1816,7 @@ private enum HermesRelayHostError: LocalizedError {
     case requestNoLongerActive
     case payloadTooLarge
     case encryptionRequired
+    case cliAgentChatUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -1648,6 +1834,8 @@ private enum HermesRelayHostError: LocalizedError {
             return "Hermes relay response chunk is too large to relay safely."
         case .encryptionRequired:
             return "Hermes relay requests must be encrypted."
+        case .cliAgentChatUnavailable:
+            return "Codex and Claude chat relay is not available on this Mac yet."
         }
     }
 }

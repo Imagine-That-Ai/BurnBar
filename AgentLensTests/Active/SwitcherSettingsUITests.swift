@@ -3,6 +3,9 @@ import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
+private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
+private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot
+
 // MARK: - Switcher Settings UI Tests
 
 /// Unit tests for the Account Switcher Settings view.
@@ -72,12 +75,12 @@ final class SwitcherSettingsUITests: XCTestCase {
 
     /// Account switcher management is reachable from Settings in one primary navigation action.
     func test_settingsSwitcherTab_isDiscoverable() throws {
-        // Verify SettingsTab.switcher exists and has correct properties
-        let tab = SettingsTab.switcher
+        // Account switcher now lives under the unified Agents settings tab.
+        let tab = SettingsTab.agents
 
-        XCTAssertEqual(tab.id, "switcher")
-        XCTAssertEqual(tab.title, "Account Switcher")
-        XCTAssertEqual(tab.icon, "arrow.triangle.2.circlepath")
+        XCTAssertEqual(tab.id, "agents")
+        XCTAssertEqual(tab.title, "Agents")
+        XCTAssertFalse(tab.icon.isEmpty)
     }
 
     // MARK: - VAL-SETTINGS-002: Empty State
@@ -707,8 +710,8 @@ final class SwitcherSettingsUITests: XCTestCase {
 
     /// Settings switcher supports keyboard shortcuts and accessibility.
     func test_keyboardShortcuts_defined() throws {
-        // Verify SettingsTab.switcher icon exists
-        let tab = SettingsTab.switcher
+        // Verify the unified Agents tab icon exists.
+        let tab = SettingsTab.agents
         XCTAssertFalse(tab.icon.isEmpty)
 
         // Verify keyboard shortcut is defined in view

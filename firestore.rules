@@ -4,6 +4,7 @@ rules_version = '2';
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
 // - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
+// - users/{uid}/iroh_pairing, iroh_pairing_keys, iroh_audit_events
 // - users/{uid}/pi_agent_connections, pi_agent_pairings, pi_agent_relay_requests, pi_agent_audit_events
 // - users/{uid}/provider_account_device_links, runtime_connection_preferences
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
@@ -194,6 +195,70 @@ service cloud.firestore {
         );
     }
 
+    // --- Mercury media entitlement (Phase 2 SKU rollout) ---
+    // Mirrors `hasActiveHostedQuotaEntitlement` for the new
+    // `hosted_media_sync` SKU. The Mac is the source of truth at session
+    // time (Decision 2), but the rules-side helper is what gates the
+    // owner-writable metadata collections (`media_attachment_manifests`,
+    // `media_session_events`).
+    function hostedMediaEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/hosted_media_sync;
+    }
+
+    function activeMediaEntitlementData(entitlement) {
+      return entitlement.active == true
+        && entitlement.productID in [
+          "com.openburnbar.hostedMediaSync.monthly",
+          "com.openburnbar.pro.monthly"
+        ]
+        && entitlement.expireAt is timestamp
+        && entitlement.expireAt > request.time;
+    }
+
+    function hasActiveHostedMediaEntitlement(userId) {
+      return (
+          exists(hostedMediaEntitlementPath(userId))
+          && activeMediaEntitlementData(get(hostedMediaEntitlementPath(userId)).data)
+        )
+        || (
+          exists(burnBarProEntitlementPath(userId))
+          && activePremiumEntitlementData(get(burnBarProEntitlementPath(userId)).data)
+        );
+    }
+
+    // Computer Use entitlement helpers. Phase 9 ships
+    // `hosted_computer_use_sync` as a separate SKU; the `pro_max`
+    // umbrella bundles it. See
+    // `plans/2026-05-16-computer-use-master-plan.md` § E.1.
+    function hostedComputerUseEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/hosted_computer_use_sync;
+    }
+
+    function burnBarProMaxEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/burnbar_pro_max;
+    }
+
+    function activeComputerUseEntitlementData(entitlement) {
+      return entitlement.active == true
+        && entitlement.productID in [
+          "com.openburnbar.hostedComputerUseSync.monthly",
+          "com.openburnbar.proMax.monthly"
+        ]
+        && entitlement.expireAt is timestamp
+        && entitlement.expireAt > request.time;
+    }
+
+    function hasActiveHostedComputerUseEntitlement(userId) {
+      return (
+          exists(hostedComputerUseEntitlementPath(userId))
+          && activeComputerUseEntitlementData(get(hostedComputerUseEntitlementPath(userId)).data)
+        )
+        || (
+          exists(burnBarProMaxEntitlementPath(userId))
+          && activeComputerUseEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
+        );
+    }
+
     function ownerWritableHostedCloudBackup(userId) {
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId);
@@ -346,7 +411,7 @@ service cloud.firestore {
         && request.resource.data.id is string
         && request.resource.data.id == requestId
         && request.resource.data.connectionId is string
-        && request.resource.data.operation in ["chatCompletions", "models", "sessions", "sessionDetail", "profiles", "jobs"]
+        && request.resource.data.operation in ["chatCompletions", "cliAgentChat", "models", "sessions", "sessionDetail", "profiles", "jobs"]
         && request.resource.data.status in ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired"]
         && request.resource.data.method in ["GET", "POST"]
         && request.resource.data.chunkCount is int
@@ -682,6 +747,7 @@ service cloud.firestore {
           "prompt",
           "missionKind",
           "requestedRuntime",
+          "requestedModelID",
           "targetProject",
           "depth",
           "approvalMode",
@@ -696,6 +762,7 @@ service cloud.firestore {
           "claimedBy",
           "selectedRuntime",
           "selectedRuntimeName",
+          "selectedModelID",
           "sessionId",
           "approvalRequestId",
           "approvalStatus",
@@ -729,6 +796,7 @@ service cloud.firestore {
         && request.resource.data.prompt.size() <= 20000
         && request.resource.data.missionKind in ["debt", "diligence", "creative", "accretive", "security", "ui_improvement", "modernization", "provider_routing", "cost_efficiency", "project_focus", "custom", "chat"]
         && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama"]
+        && (!("requestedModelID" in request.resource.data) || (request.resource.data.requestedModelID is string && request.resource.data.requestedModelID.size() <= 240))
         && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights", "ios-chat", "android-chat"]
         && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed"]
         && request.resource.data.schemaVersion is int
@@ -740,6 +808,7 @@ service cloud.firestore {
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
         && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama"])
         && (!("selectedRuntimeName" in request.resource.data) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 80))
+        && (!("selectedModelID" in request.resource.data) || (request.resource.data.selectedModelID is string && request.resource.data.selectedModelID.size() <= 240))
         && (!("sessionId" in request.resource.data) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
         && (!("approvalRequestId" in request.resource.data) || (request.resource.data.approvalRequestId is string && request.resource.data.approvalRequestId.size() <= 512))
         && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
@@ -773,6 +842,7 @@ service cloud.firestore {
           && !("claimedBy" in request.resource.data)
           && !("selectedRuntime" in request.resource.data)
           && !("selectedRuntimeName" in request.resource.data)
+          && !("selectedModelID" in request.resource.data)
           && !("sessionId" in request.resource.data)
           && !("approvalRequestId" in request.resource.data)
           && !("approvalStatus" in request.resource.data)
@@ -1328,6 +1398,295 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Iroh transport pairing public keys. The Mac writes one singleton
+    // document per host role (today: `host`) containing the base64-encoded
+    // 32-byte Ed25519 public half of the pairing key. iOS clients read this
+    // value to verify `iroh_pairing/*` signatures before dialing. Schema lives
+    // in `functions/src/types.ts` (`IrohPairingPublicKeyDoc`).
+    match /users/{userId}/iroh_pairing_keys/{roleId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "publicKeyBase64",
+          "publishedAtMillis",
+          "protocolVersion",
+          "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == roleId
+        && request.resource.data.publicKeyBase64 is string
+        && request.resource.data.publicKeyBase64.size() >= 32
+        && request.resource.data.publicKeyBase64.size() <= 128
+        && request.resource.data.publishedAtMillis is int
+        && request.resource.data.publishedAtMillis > 0
+        && request.resource.data.protocolVersion is int
+        && request.resource.data.protocolVersion >= 1
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1;
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Iroh transport pairing records. Mac publishes; iOS reads + verifies the
+    // Ed25519 signature using `iroh_pairing_keys/host.publicKeyBase64` before
+    // dialing the signed NodeAddr material. Schema lives in `functions/src/types.ts`
+    // (`IrohPairingRecordDoc`); the Mac is the sole writer.
+    match /users/{userId}/iroh_pairing/{connectionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "nodeId",
+          "relayURL",
+          "directAddresses",
+          "publishedAtMillis",
+          "protocolVersion",
+          "signature",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == connectionId
+        && request.resource.data.nodeId is string
+        && request.resource.data.nodeId.size() <= 64
+        && (!("relayURL" in request.resource.data)
+          || (request.resource.data.relayURL is string
+            && request.resource.data.relayURL.size() <= 512))
+        && (!("directAddresses" in request.resource.data)
+          || (request.resource.data.directAddresses is list
+            && request.resource.data.directAddresses.size() <= 16))
+        && request.resource.data.publishedAtMillis is int
+        && request.resource.data.publishedAtMillis > 0
+        && request.resource.data.signature is string
+        && request.resource.data.signature.size() <= 256
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1;
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Iroh transport audit events. Append-only; written by the Mac (on stream
+    // open/close/fail) and the Cloud Functions hosted runner (on fallback to
+    // the WSS relay). Schema lives in `functions/src/types.ts`
+    // (`IrohTransportAuditEventDoc`).
+    match /users/{userId}/iroh_audit_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "connectionId",
+          "eventType",
+          "rttMillis",
+          "transport",
+          "observedAt",
+          "detail",
+          "schemaVersion",
+          "expireAt"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == eventId
+        && request.resource.data.eventType in [
+          "iroh_stream_opened",
+          "iroh_stream_closed",
+          "iroh_stream_failed",
+          "iroh_pairing_published",
+          "iroh_pairing_verified",
+          "iroh_pairing_rejected",
+          "iroh_fallback_to_wss"
+        ]
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // --- Mercury media (Phase 2) ---
+    // Per-session metadata. Bucketed enums only, never payload bytes.
+    // Schema in `functions/src/types.ts` (`MediaSessionEventDoc`).
+    match /users/{userId}/media_session_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && hasActiveHostedMediaEntitlement(userId)
+        && request.resource.data.id == eventId
+        && request.resource.data.feature in ["fileTransfer", "screenShare", "videoCall"]
+        && request.resource.data.startedAt is string
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && !("body" in request.resource.data)
+        && !("payloadCiphertext" in request.resource.data)
+        && !("ciphertext" in request.resource.data)
+        && !("filename" in request.resource.data);
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // --- Computer Use (Phase 8-13, master plan 2026-05-16) ---
+    // Phone-control authority keys. The phone publishes its Ed25519 public
+    // key before opening `control.input`; the Mac fetches it from the active
+    // `iroh_pairing/{connectionId}/controllers/{peerNodeId}` doc when it
+    // receives `control.classify`. This keeps the verifier root out of the
+    // stream it authenticates and binds it to the pairing record iOS verified
+    // before dialing.
+    match /users/{userId}/iroh_pairing/{connectionId}/controllers/{peerNodeId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && exists(/databases/$(database)/documents/users/$(userId)/iroh_pairing/$(connectionId))
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "connectionId",
+          "peerNodeId",
+          "deviceId",
+          "publicKeyBase64",
+          "publishedAtMillis",
+          "protocolVersion",
+          "schemaVersion"
+        ])
+        && request.resource.data.id == peerNodeId
+        && request.resource.data.connectionId == connectionId
+        && request.resource.data.peerNodeId == peerNodeId
+        && request.resource.data.deviceId is string
+        && request.resource.data.deviceId.size() <= 160
+        && request.resource.data.publicKeyBase64 is string
+        && request.resource.data.publicKeyBase64.size() >= 32
+        && request.resource.data.publicKeyBase64.size() <= 128
+        && request.resource.data.publishedAtMillis is int
+        && request.resource.data.publishedAtMillis > 0
+        && request.resource.data.protocolVersion is int
+        && request.resource.data.protocolVersion >= 1
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId))
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.trustState == "trusted"
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.platform in ["iOS", "iPadOS", "Android"];
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Per-session metadata. The full audit chain lives on the Mac at
+    // ~/Library/Application Support/com.openburnbar.AgentLens/computer-use-audit/.
+    // Server-side carries only the chain header (manifest hash, head
+    // hash, end reason). Never carries action descriptors, screenshots,
+    // or scope rule contents.
+    match /users/{userId}/computer_use_sessions/{sessionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && request.resource.data.sessionId == sessionId
+        && request.resource.data.userId == userId
+        && request.resource.data.mode in ["agent_watch", "browser", "system"]
+        && request.resource.data.trustMode in ["manual", "step", "trusted"]
+        && request.resource.data.manifestHashHex is string
+        && request.resource.data.macAppVersion is string
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && !("body" in request.resource.data)
+        && !("payloadCiphertext" in request.resource.data)
+        && !("ciphertext" in request.resource.data)
+        && !("screenshots" in request.resource.data)
+        && !("actionDescriptors" in request.resource.data);
+      // End-of-session updates may set endReason/endedAt/auditHeadHashHex.
+      allow update: if ownsUserNamespace(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.manifestHashHex == resource.data.manifestHashHex;
+      allow delete: if false;
+    }
+
+    // Per-action audit *header*. Carries only the chain link, status,
+    // and cost — never the full descriptor or selectors / URLs / coords.
+    match /users/{userId}/computer_use_actions/{actionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && request.resource.data.id == actionId
+        && request.resource.data.sessionId is string
+        && request.resource.data.entryIndex is int
+        && request.resource.data.toolKind is string
+        && request.resource.data.status in [
+          "executed", "denied", "rejected", "awaiting_approval", "error"
+        ]
+        && request.resource.data.approvedBy in [
+          "mac", "phone", "trusted_scope", "step", "denied", "panic"
+        ]
+        && request.resource.data.parentEntryHashHex is string
+        && request.resource.data.schemaVersion is int
+        && !("body" in request.resource.data)
+        && !("selector" in request.resource.data)
+        && !("text" in request.resource.data)
+        && !("url" in request.resource.data)
+        && !("screenshot" in request.resource.data)
+        && !("ciphertext" in request.resource.data);
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Daily counters mirrored from the Mac. Owner-writable; cloud
+    // function `recomputeComputerUseQuotaUsage` reconciles drift.
+    match /users/{userId}/computer_use_quota_usage/{day} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.dayKey == day
+        && request.resource.data.browserActionsExecuted is number
+        && request.resource.data.browserActionsRejected is number
+        && request.resource.data.systemActionsExecuted is number
+        && request.resource.data.systemActionsRejected is number
+        && request.resource.data.phoneControlIntentsExecuted is number
+        && request.resource.data.phoneControlIntentsRejected is number
+        && request.resource.data.visionModelSpendUSD is number;
+      allow delete: if false;
+    }
+
+    // Operator-side documents. Server-only writes.
+    match /ops/computer_use_budget_status/state/current {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    match /ops/computer_use_session_daily_rollups/days/{day} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Owner-writable daily quota counter. The Mac batches updates every
+    // 30 s during active sessions; the hourly `recomputeMediaQuotaUsage`
+    // Cloud Function reconciles drift from `iroh_audit_events`.
+    match /users/{userId}/media_quota_usage/{day} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.id == day
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.bytesUploadedFile is number
+        && request.resource.data.bytesDownloadedFile is number
+        && request.resource.data.fileTransfersInitiated is number
+        && request.resource.data.fileTransfersFailed is number
+        && request.resource.data.screenShareSecondsUsed is number
+        && request.resource.data.screenShareSessions is number
+        && request.resource.data.videoCallSecondsUsed is number
+        && request.resource.data.videoCallSessions is number;
+      allow delete: if false;
+    }
+
+    // Per-attachment manifest. No payload bytes — the file flows
+    // peer-to-peer over iroh-blobs. This doc is the audit record so DSR
+    // exports + admin tooling can answer "what files have been sent."
+    match /users/{userId}/media_attachment_manifests/{manifestId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && hasActiveHostedMediaEntitlement(userId)
+        && request.resource.data.id == manifestId
+        && request.resource.data.blobHash is string
+        && request.resource.data.filename is string
+        && request.resource.data.mime is string
+        && request.resource.data.size is number
+        && request.resource.data.peerDeviceIdHash is string
+        && request.resource.data.direction in ["macToIos", "iosToMac"]
+        && request.resource.data.schemaVersion is int
+        && !("body" in request.resource.data)
+        && !("ciphertext" in request.resource.data);
+      allow update: if false;
+      allow delete: if false;
+    }
+
     match /users/{userId}/pi_agent_connections/{connectionId} {
       allow read: if ownsUserNamespace(userId);
       allow create: if piRelayConnectionWrite(userId, connectionId);
@@ -1570,6 +1929,10 @@ service cloud.firestore {
     // rejection where credentials could otherwise be mis-serialized.
 
     match /users/{userId}/escrow_devices/{deviceId} {
+      function escrowDevicePath(deviceId) {
+        return /databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId);
+      }
+
       function validEscrowDeviceDocument(deviceId) {
         return request.resource.data.keys().hasOnly([
           "deviceId",
@@ -1625,6 +1988,97 @@ service cloud.firestore {
         && hasNoPlaintextSecretFields()
         && validEscrowDeviceUpdate(deviceId);
       allow delete: if ownsUserNamespace(userId);
+
+      match /computer_use_audit_export_signers/{signerId} {
+        function parentEscrowDeviceIsTrustedMac() {
+          return exists(escrowDevicePath(deviceId))
+            && get(escrowDevicePath(deviceId)).data.trustState == "trusted"
+            && get(escrowDevicePath(deviceId)).data.platform == "macOS";
+        }
+
+        function validAuditExportSignerDocument() {
+          return request.resource.data.keys().hasOnly([
+            "id",
+            "userId",
+            "deviceId",
+            "signerIdentifier",
+            "signerKind",
+            "trustRoot",
+            "algorithm",
+            "publicKeyBase64",
+            "publicKeySHA256Hex",
+            "status",
+            "publishedAtMillis",
+            "lastReadbackAtMillis",
+            "revokedAt",
+            "revokedByDeviceId",
+            "schemaVersion"
+          ])
+          && request.resource.data.id == signerId
+          && request.resource.data.userId == userId
+          && request.resource.data.deviceId == deviceId
+          && request.resource.data.signerIdentifier is string
+          && request.resource.data.signerIdentifier.size() <= 160
+          && request.resource.data.signerKind == "openburnbar_trusted_device"
+          && request.resource.data.trustRoot == "openburnbar-trusted-device-keychain-v1"
+          && request.resource.data.algorithm == "ed25519"
+          && request.resource.data.publicKeyBase64 is string
+          && request.resource.data.publicKeyBase64.size() >= 32
+          && request.resource.data.publicKeyBase64.size() <= 128
+          && request.resource.data.publicKeySHA256Hex is string
+          && request.resource.data.publicKeySHA256Hex == signerId
+          && request.resource.data.publicKeySHA256Hex.matches("^[0-9a-f]{64}$")
+          && request.resource.data.status in ["active", "revoked"]
+          && request.resource.data.publishedAtMillis is int
+          && request.resource.data.publishedAtMillis > 0
+          && (!("lastReadbackAtMillis" in request.resource.data)
+            || (request.resource.data.lastReadbackAtMillis is int
+              && request.resource.data.lastReadbackAtMillis > 0))
+          && (!("revokedAt" in request.resource.data)
+            || request.resource.data.revokedAt is timestamp)
+          && (!("revokedByDeviceId" in request.resource.data)
+            || (request.resource.data.revokedByDeviceId is string
+              && request.resource.data.revokedByDeviceId.size() <= 160))
+          && request.resource.data.schemaVersion is int
+          && request.resource.data.schemaVersion >= 1;
+        }
+
+        function auditExportSignerImmutableFieldsUnchanged() {
+          return request.resource.data.id == resource.data.id
+            && request.resource.data.userId == resource.data.userId
+            && request.resource.data.deviceId == resource.data.deviceId
+            && request.resource.data.signerIdentifier == resource.data.signerIdentifier
+            && request.resource.data.signerKind == resource.data.signerKind
+            && request.resource.data.trustRoot == resource.data.trustRoot
+            && request.resource.data.algorithm == resource.data.algorithm
+            && request.resource.data.publicKeyBase64 == resource.data.publicKeyBase64
+            && request.resource.data.publicKeySHA256Hex == resource.data.publicKeySHA256Hex
+            && request.resource.data.schemaVersion == resource.data.schemaVersion;
+        }
+
+        allow read: if ownsUserNamespace(userId);
+        allow create: if ownerWritableNonSecret(userId)
+          && hasActiveHostedComputerUseEntitlement(userId)
+          && parentEscrowDeviceIsTrustedMac()
+          && escrowDocumentLimits()
+          && hasNoPlaintextSecretFields()
+          && validAuditExportSignerDocument()
+          && request.resource.data.status == "active"
+          && !("revokedAt" in request.resource.data)
+          && !("revokedByDeviceId" in request.resource.data);
+        allow update: if ownerWritableNonSecret(userId)
+          && hasActiveHostedComputerUseEntitlement(userId)
+          && parentEscrowDeviceIsTrustedMac()
+          && escrowDocumentLimits()
+          && hasNoPlaintextSecretFields()
+          && validAuditExportSignerDocument()
+          && auditExportSignerImmutableFieldsUnchanged()
+          && (
+            request.resource.data.status == resource.data.status
+            || (resource.data.status == "active" && request.resource.data.status == "revoked")
+          );
+        allow delete: if false;
+      }
     }
 
     match /users/{userId}/escrow_public_keys/{keyId} {
@@ -1711,6 +2165,21 @@ service cloud.firestore {
         allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
         allow delete: if sharedArtifactOwnerRead();
       }
+    }
+
+    // --- Operator-owned Mercury observability ---
+    // Public read so both apps can cache the budget envelope and the
+    // session daily rollups for status-bar display. Server-only writes —
+    // the canonical writers are `evaluateMediaBudget` and
+    // `rollupMediaSessionDaily`.
+    match /ops/media_budget_status/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /ops/media_session_daily_rollups/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
     }
   }
 }

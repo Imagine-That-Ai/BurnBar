@@ -187,6 +187,50 @@ public enum BurnBarBrowserActionKind: String, Codable, CaseIterable, Hashable, S
     case openExternal = "open_external"
     case fetchDocument = "fetch_document"
     case extractLinks = "extract_links"
+    // Computer Use — Path B. Implemented over Playwright JSON-RPC in
+    // OpenBurnBarPlaywrightDriver. Older daemons that don't recognize
+    // these cases reply with a BurnBarToolExecutionError(.unknown).
+    case click
+    case fill
+    case goto
+    case key
+    case select
+    case screenshot
+    case extract
+}
+
+/// Optional argument carrier for a Computer Use browser action. Reused
+/// by the daemon dispatcher and the Mac side BrowserActionDispatcher so
+/// argument decoding only lives in one place.
+public struct BurnBarBrowserActionArguments: Codable, Hashable, Sendable {
+    public let selector: String?
+    public let text: String?
+    public let url: String?
+    public let key: String?
+    public let value: String?
+    public let positionX: Int?
+    public let positionY: Int?
+    public let timeoutMillis: Int?
+
+    public init(
+        selector: String? = nil,
+        text: String? = nil,
+        url: String? = nil,
+        key: String? = nil,
+        value: String? = nil,
+        positionX: Int? = nil,
+        positionY: Int? = nil,
+        timeoutMillis: Int? = nil
+    ) {
+        self.selector = selector
+        self.text = text
+        self.url = url
+        self.key = key
+        self.value = value
+        self.positionX = positionX
+        self.positionY = positionY
+        self.timeoutMillis = timeoutMillis
+    }
 }
 
 public struct BurnBarBrowserEnginePreference: Codable, Hashable, Sendable {
@@ -280,17 +324,20 @@ public struct BurnBarBrowserActionRequest: Codable, Hashable, Sendable {
     public let url: String
     public let preferredEngine: BurnBarBrowserEngineKind?
     public let maxLinks: Int
+    public let arguments: BurnBarBrowserActionArguments?
 
     public init(
         action: BurnBarBrowserActionKind,
         url: String,
         preferredEngine: BurnBarBrowserEngineKind? = nil,
-        maxLinks: Int = 10
+        maxLinks: Int = 10,
+        arguments: BurnBarBrowserActionArguments? = nil
     ) {
         self.action = action
         self.url = url
         self.preferredEngine = preferredEngine
         self.maxLinks = maxLinks
+        self.arguments = arguments
     }
 }
 

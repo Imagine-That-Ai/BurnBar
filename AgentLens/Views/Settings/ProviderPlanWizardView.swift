@@ -29,9 +29,9 @@ enum ProviderPlanStrategy: String, CaseIterable, Identifiable {
 
     var summary: String {
         switch self {
-        case .auto: return "Rotate fairly across plans"
-        case .preferred: return "Use this plan first, fall back on failure"
-        case .backup: return "Stay disabled until other plans fail"
+        case .auto: return "Rotate fairly across your accounts"
+        case .preferred: return "Try this account first; fall back on failure"
+        case .backup: return "Stay disabled until other accounts fail"
         }
     }
 }
@@ -59,7 +59,7 @@ private enum ProviderPlanWizardStep: Int, CaseIterable {
 
     var shortTitle: String {
         switch self {
-        case .dashboard: return "Plans"
+        case .dashboard: return "Accounts"
         case .provider: return "Provider"
         case .auth: return "Method"
         case .credential: return "Credential"
@@ -73,13 +73,22 @@ private enum ProviderPlanWizardStep: Int, CaseIterable {
 
 struct ProviderPlanWizardView: View {
     let daemonManager: OpenBurnBarDaemonManager
+    let dataStore: DataStore
     let initialProviderID: String?
+    let startsAtProviderSelection: Bool
     let onDismiss: () -> Void
 
     @State private var currentStep: ProviderPlanWizardStep = .dashboard
+    @State private var quotaService = ProviderQuotaService.shared
 
     // Dashboard state
     @State private var activeProviderID: String?
+    @State private var switcherProfiles: [SwitcherProfileRecord] = []
+    @State private var switcherProfileLoadError: String?
+    @State private var dashboardExternalAuthStates: [String: CLIAuthInfo] = [:]
+    @State private var gatewayAdvertisedProviderIDs: Set<String>?
+    @State private var gatewayProviderRouteIssues: [String: String] = [:]
+    @State private var gatewayAdvertisementError: String?
 
     // Provider step state
     @State private var selectedProviderID: String?
@@ -91,12 +100,22 @@ struct ProviderPlanWizardView: View {
     // Credential step state
     @State private var planLabel = ""
     @State private var apiKeyInput = ""
+    @State private var credentialStorageOverride: String?
+    @State private var credentialStorageOverrideVisibleToken: String?
     @State private var showAPIKey = false
     @State private var isProbingQuota = false
     @State private var quotaProbeResult: String?
     @State private var quotaProbePercent: Double?
     @State private var quotaProbeError: String?
     @State private var quotaProbeTask: Task<Void, Never>?
+    @State private var isImportingCredential = false
+    @State private var credentialImportMessage: String?
+    @State private var externalAuthInfo: CLIAuthInfo?
+    @State private var externalAuthMessage: String?
+    @State private var isOpeningExternalLogin = false
+    @State private var isAddingExternalAccount = false
+    @State private var externalAccountActionMessage: String?
+    @State private var editingCredentialSlot: EditingCredentialSlot?
 
     // Strategy step state
     @State private var selectedStrategy: ProviderPlanStrategy = .auto
@@ -107,12 +126,59 @@ struct ProviderPlanWizardView: View {
 
     // Delete confirmation
     @State private var slotToDelete: SlotDeleteTarget?
+    @State private var externalAccountToDelete: ExternalAccountDeleteTarget?
 
     private struct SlotDeleteTarget: Identifiable {
         let providerID: String
         let slotID: String
         let slotLabel: String
         var id: String { slotID }
+    }
+
+    private struct EditingCredentialSlot: Identifiable {
+        let providerID: String
+        let slotID: String
+        var id: String { "\(providerID):\(slotID)" }
+    }
+
+    private struct ExternalAccountDeleteTarget: Identifiable {
+        let profileID: String
+        let label: String
+        let cliType: SwitcherCLIProfileType
+        var id: String { profileID }
+    }
+
+    private struct ExternalOAuthAccount: Identifiable {
+        let id: String
+        let cliType: SwitcherCLIProfileType
+        let label: String
+        let detail: String?
+        let statusText: String
+        let isCurrentLogin: Bool
+        let isDisabled: Bool
+        let profile: SwitcherProfileRecord?
+    }
+
+    private struct GatewayModelsEnvelope: Decodable {
+        let data: [GatewayModelRow]
+    }
+
+    private struct GatewayModelRow: Decodable {
+        let providerID: String?
+        let ownedBy: String?
+        let quotaState: String?
+        let lastError: String?
+        let enabled: Bool?
+        let routeEligible: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case providerID = "provider_id"
+            case ownedBy = "owned_by"
+            case quotaState = "quota_state"
+            case lastError = "last_error"
+            case enabled
+            case routeEligible = "route_eligible"
+        }
     }
 
     // MARK: - Lookups
@@ -190,9 +256,13 @@ struct ProviderPlanWizardView: View {
     private var canProceedFromProvider: Bool { selectedProviderID != nil }
     private var canProceedFromAuth: Bool { selectedAuthMethod != nil }
     private var canProceedFromCredential: Bool {
+        if let method = selectedAuthMethod, method.usesExternalLogin {
+            return externalAuthInfo?.isWizardConnected == true
+        }
         let trimmedLabel = planLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmedLabel.isEmpty && !trimmedKey.isEmpty
+        guard !trimmedLabel.isEmpty, !trimmedKey.isEmpty else { return false }
+        return selectedAuthMethod?.validate(trimmedKey).isWarning != true
     }
 
     // MARK: - Body
@@ -220,7 +290,19 @@ struct ProviderPlanWizardView: View {
         .frame(width: 600)
         .frame(minHeight: 580)
         .background(DesignSystem.Colors.background)
-        .onAppear { primeWizardOnAppear() }
+        .onAppear {
+            primeWizardOnAppear()
+            loadSwitcherProfiles()
+            refreshDashboardExternalAuthStates()
+        }
+        .task(id: externalAuthRefreshID) {
+            refreshDashboardExternalAuthStates()
+        }
+        .task {
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
+            await daemonManager.repairProviderCredentialSlotSecrets()
+            await refreshGatewayAdvertisementState()
+        }
         .onDisappear { quotaProbeTask?.cancel() }
         .alert("Delete plan?", isPresented: Binding(
             get: { slotToDelete != nil },
@@ -233,6 +315,17 @@ struct ProviderPlanWizardView: View {
         } message: {
             Text("This permanently removes the plan \"\(slotToDelete?.slotLabel ?? "")\" and its credentials.")
         }
+        .alert("Remove account?", isPresented: Binding(
+            get: { externalAccountToDelete != nil },
+            set: { if !$0 { externalAccountToDelete = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { externalAccountToDelete = nil }
+            Button("Remove", role: .destructive) {
+                if let target = externalAccountToDelete { deleteExternalAccount(target) }
+            }
+        } message: {
+            Text("This removes \"\(externalAccountToDelete?.label ?? "")\" from BurnBar and deletes its stored switcher credentials. It does not sign out your default local CLI login.")
+        }
     }
 
     private var stepTransition: AnyTransition {
@@ -243,11 +336,183 @@ struct ProviderPlanWizardView: View {
     }
 
     private func primeWizardOnAppear() {
+        if startsAtProviderSelection {
+            activeProviderID = nil
+            selectedProviderID = nil
+            selectedAuthMethodID = nil
+            credentialStorageOverride = nil
+            credentialStorageOverrideVisibleToken = nil
+            currentStep = .provider
+            return
+        }
+
         if let initialID = initialProviderID {
             activeProviderID = initialID
         } else if eligibleProviders.count == 1 {
             activeProviderID = eligibleProviders.first?.providerID
         }
+    }
+
+    private var externalAuthRefreshID: String {
+        let providerPart = eligibleProviders
+            .filter { supportsExternalOAuth(for: $0.providerID) }
+            .map(\.providerID)
+            .joined(separator: "|")
+        return providerPart.isEmpty ? "default-cli-oauth" : providerPart
+    }
+
+    private func loadSwitcherProfiles() {
+        do {
+            switcherProfiles = try dataStore.switcherStore.fetchAllProfiles()
+            switcherProfileLoadError = nil
+        } catch {
+            switcherProfiles = []
+            switcherProfileLoadError = "Could not load OAuth profiles: \(error.localizedDescription)"
+        }
+    }
+
+    private func refreshDashboardExternalAuthStates() {
+        var next: [String: CLIAuthInfo] = [:]
+        var seen = Set<String>()
+        for cliType in [SwitcherCLIProfileType.codex, .claude] {
+            seen.insert(cliType.rawValue)
+            next[cliType.rawValue] = CLIAuthDiscovery.discoverAuthState(for: cliType)
+        }
+        for provider in eligibleProviders {
+            guard supportsExternalOAuth(for: provider.providerID),
+                  let cliType = externalCLIType(forProviderID: provider.providerID),
+                  !seen.contains(cliType.rawValue) else {
+                continue
+            }
+            seen.insert(cliType.rawValue)
+            next[cliType.rawValue] = CLIAuthDiscovery.discoverAuthState(for: cliType)
+        }
+        dashboardExternalAuthStates = next
+    }
+
+    private func refreshGatewayAdvertisementState() async {
+        guard daemonManager.settingsManager.gatewayEnabled else {
+            gatewayAdvertisedProviderIDs = nil
+            gatewayProviderRouteIssues = [:]
+            gatewayAdvertisementError = "The local gateway is off."
+            return
+        }
+
+        guard let url = gatewayModelsURL() else {
+            gatewayAdvertisedProviderIDs = nil
+            gatewayProviderRouteIssues = [:]
+            gatewayAdvertisementError = "The local gateway URL is invalid."
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        let token = daemonManager.settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                gatewayAdvertisedProviderIDs = nil
+                gatewayProviderRouteIssues = [:]
+                gatewayAdvertisementError = "The local gateway returned an invalid /v1/models response."
+                return
+            }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                gatewayAdvertisedProviderIDs = nil
+                gatewayProviderRouteIssues = [:]
+                gatewayAdvertisementError = "The local gateway returned HTTP \(httpResponse.statusCode) for /v1/models."
+                return
+            }
+
+            let envelope = try JSONDecoder().decode(GatewayModelsEnvelope.self, from: data)
+            var advertisedIDs = Set<String>()
+            var blockedRowsByProvider: [String: [GatewayModelRow]] = [:]
+            for row in envelope.data {
+                guard row.enabled != false else { continue }
+                let rawProviderID = row.providerID ?? row.ownedBy
+                guard let rawProviderID else { continue }
+                let providerID = ProviderID.normalize(rawProviderID)
+                guard !providerID.isEmpty else { continue }
+
+                if row.routeEligible != false {
+                    advertisedIDs.insert(providerID)
+                } else {
+                    blockedRowsByProvider[providerID, default: []].append(row)
+                }
+            }
+
+            gatewayAdvertisedProviderIDs = advertisedIDs
+            gatewayProviderRouteIssues = blockedRowsByProvider.mapValues(gatewayRouteIssue)
+            gatewayAdvertisementError = nil
+        } catch {
+            gatewayAdvertisedProviderIDs = nil
+            gatewayProviderRouteIssues = [:]
+            gatewayAdvertisementError = "Could not read live /v1/models: \(error.localizedDescription)"
+        }
+    }
+
+    private func gatewayRouteIssue(for rows: [GatewayModelRow]) -> String {
+        let states = rows.compactMap { $0.quotaState?.lowercased() }
+        if states.contains("missing_credential") {
+            return "The live gateway sees this provider, but the daemon cannot read a routing credential. Use current login or paste a credential, then Save."
+        }
+        if states.contains("exhausted") {
+            return "The live gateway sees this provider, but every matching account is out of quota."
+        }
+        if states.contains("cooling_down") {
+            return "The live gateway sees this provider, but its account is cooling down after a failed or rate-limited request."
+        }
+        if states.contains("auth_failed") {
+            return "The live gateway sees this provider, but the saved credential was rejected. Reconnect or replace it."
+        }
+        if states.contains("disabled") {
+            return "The live gateway sees this provider, but the provider or account is switched off."
+        }
+        if let error = rows
+            .compactMap({ $0.lastError?.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty }) {
+            return error
+        }
+        return "The live gateway sees this provider, but no advertised model is route-ready yet."
+    }
+
+    private func gatewayRouteIssueLabel(for issue: String) -> String {
+        let lower = issue.lowercased()
+        if lower.contains("cannot read") || lower.contains("credential") {
+            return "Credential missing"
+        }
+        if lower.contains("quota") {
+            return "Quota exhausted"
+        }
+        if lower.contains("cooling") {
+            return "Cooling down"
+        }
+        if lower.contains("switched off") {
+            return "Proxy off"
+        }
+        return "Not routable"
+    }
+
+    private func gatewayModelsURL() -> URL? {
+        let settings = daemonManager.settingsManager
+        let configuredHost = settings.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host: String
+        switch configuredHost {
+        case "", "0.0.0.0", "::":
+            host = "127.0.0.1"
+        default:
+            host = configuredHost
+        }
+
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = host
+        components.port = settings.gatewayPort > 0 ? settings.gatewayPort : 8317
+        components.path = "/v1/models"
+        return components.url
     }
 
     // MARK: - Header
@@ -395,22 +660,28 @@ struct ProviderPlanWizardView: View {
                 emptyDaemonNotice
             } else if let provider = activeProvider {
                 providerHero(provider)
+                gatewayAdvertisementNotice(provider)
+                if let error = switcherProfileLoadError {
+                    errorCallout(error)
+                }
                 providerSlotList(provider)
                 addPlanCTA(providerID: provider.providerID)
             } else {
-                Text("Select a provider to manage its plans, or add a new account.")
+                Text("Select a provider to manage its accounts, or bring a key for a new one. You can keep adding accounts so OpenBurnBar can fail over when one runs out.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
 
                 Button {
                     selectedProviderID = nil
                     selectedAuthMethodID = nil
+                    credentialStorageOverride = nil
+                    credentialStorageOverrideVisibleToken = nil
                     navigateToStep(.provider)
                 } label: {
                     HStack(spacing: DesignSystem.Spacing.sm) {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 16, weight: .semibold))
-                        Text("Add a Provider Account")
+                        Text("Add an account")
                             .font(DesignSystem.Typography.body)
                             .fontWeight(.semibold)
                     }
@@ -452,9 +723,27 @@ struct ProviderPlanWizardView: View {
     }
 
     @ViewBuilder
+    private func errorCallout(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.warning)
+                .padding(.top, 1)
+            Text(message)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.warning.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+    }
+
+    @ViewBuilder
     private func providerHero(_ provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
         let descriptor = self.descriptor(for: provider.providerID)
         let primary = ProviderBrand.colorForProviderID(provider.providerID)
+        let proxyChip = proxyReadinessChip(for: provider)
         let gradient = LinearGradient(
             colors: [primary.opacity(0.32), primary.opacity(0.08)],
             startPoint: .topLeading,
@@ -491,6 +780,7 @@ struct ProviderPlanWizardView: View {
                                 providerID: provider.providerID,
                                 isEnabled: enabled
                             )
+                            await refreshGatewayAdvertisementState()
                         }
                     }
                 ))
@@ -500,7 +790,7 @@ struct ProviderPlanWizardView: View {
 
             HStack(spacing: 6) {
                 if descriptor.supportsProxyRouting && provider.hasRoutingCapability {
-                    capabilityChip(label: "Routed proxy", system: "arrow.triangle.swap", tint: DesignSystem.Colors.blaze)
+                    capabilityChip(label: proxyChip.label, system: proxyChip.system, tint: proxyChip.tint)
                 }
                 if descriptor.supportsQuotaRefresh {
                     capabilityChip(label: "Live quota", system: "gauge.with.needle", tint: DesignSystem.Colors.success)
@@ -534,6 +824,56 @@ struct ProviderPlanWizardView: View {
         )
     }
 
+    private func proxyReadinessChip(
+        for provider: OpenBurnBarDaemonProviderConfiguration
+    ) -> (label: String, system: String, tint: Color) {
+        guard provider.hasRoutingCapability else {
+            return ("Tracking only", "chart.bar.doc.horizontal", DesignSystem.Colors.textMuted)
+        }
+
+        if !provider.isEnabled {
+            return ("Proxy off", "power", DesignSystem.Colors.textMuted)
+        }
+
+        if !provider.routeReadyCredentialSlots.isEmpty {
+            if let advertisedProviderIDs = gatewayAdvertisedProviderIDs {
+                if !advertisedProviderIDs.contains(ProviderID.normalize(provider.providerID)),
+                   let issue = gatewayProviderRouteIssues[ProviderID.normalize(provider.providerID)] {
+                    return (gatewayRouteIssueLabel(for: issue), "exclamationmark.triangle.fill", DesignSystem.Colors.warning)
+                }
+                return advertisedProviderIDs.contains(ProviderID.normalize(provider.providerID))
+                    ? ("Advertised", "checkmark.seal.fill", DesignSystem.Colors.success)
+                    : ("Not advertised", "exclamationmark.triangle.fill", DesignSystem.Colors.warning)
+            }
+
+            if gatewayAdvertisementError != nil {
+                return ("Gateway unverified", "questionmark.circle.fill", DesignSystem.Colors.warning)
+            }
+
+            return ("Proxy credential saved", "checkmark.seal.fill", DesignSystem.Colors.success)
+        }
+
+        if provider.credentialSlots.isEmpty {
+            return ("Proxy needs credential", "key.fill", DesignSystem.Colors.warning)
+        }
+
+        return ("Proxy blocked", "exclamationmark.triangle.fill", DesignSystem.Colors.warning)
+    }
+
+    @ViewBuilder
+    private func gatewayAdvertisementNotice(_ provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        if !provider.routeReadyCredentialSlots.isEmpty,
+           let advertisedProviderIDs = gatewayAdvertisedProviderIDs,
+           !advertisedProviderIDs.contains(ProviderID.normalize(provider.providerID)) {
+            let issue = gatewayProviderRouteIssues[ProviderID.normalize(provider.providerID)]
+                ?? "The live /v1/models gateway is not advertising this provider yet. Refresh or repair the daemon, then test again."
+            errorCallout("\(provider.displayName) is not routable. \(issue)")
+        } else if !provider.routeReadyCredentialSlots.isEmpty,
+                  let gatewayAdvertisementError {
+            errorCallout("BurnBar has a route credential saved for \(provider.displayName), but the local gateway catalog check did not finish. \(gatewayAdvertisementError)")
+        }
+    }
+
     @ViewBuilder
     private func capabilityChip(label: String, system: String, tint: Color) -> some View {
         HStack(spacing: 4) {
@@ -548,15 +888,17 @@ struct ProviderPlanWizardView: View {
 
     @ViewBuilder
     private func providerSlotList(_ provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
-        if provider.credentialSlots.isEmpty {
+        let externalAccounts = visibleExternalOAuthAccounts(for: provider)
+
+        if provider.credentialSlots.isEmpty && externalAccounts.isEmpty {
             VStack(spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: "tray")
+                Image(systemName: provider.hasRoutingCapability ? "key.slash" : "tray")
                     .font(.system(size: 28, weight: .light))
                     .foregroundStyle(DesignSystem.Colors.textMuted)
-                Text("No accounts yet")
+                Text(provider.hasRoutingCapability ? "No route credentials yet" : "No accounts yet")
                     .font(DesignSystem.Typography.body)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
-                Text("Add a credential to start using this provider through OpenBurnBar.")
+                Text(emptyAccountCopy(for: provider))
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .multilineTextAlignment(.center)
@@ -567,11 +909,307 @@ struct ProviderPlanWizardView: View {
             .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
         } else {
             VStack(spacing: DesignSystem.Spacing.sm) {
+                if provider.credentialSlots.isEmpty {
+                    errorCallout(routeCredentialMissingMessage(for: provider))
+                }
                 ForEach(provider.credentialSlots) { slot in
                     planCard(slot, provider: provider)
                 }
+                if !externalAccounts.isEmpty {
+                    if !provider.credentialSlots.isEmpty {
+                        HStack {
+                            Text("Local OAuth sign-ins")
+                                .font(DesignSystem.Typography.tiny)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            Spacer()
+                        }
+                        .padding(.top, DesignSystem.Spacing.xs)
+                    }
+                    ForEach(externalAccounts) { account in
+                        externalOAuthAccountCard(account, provider: provider)
+                    }
+                }
             }
         }
+    }
+
+    private func emptyAccountCopy(for provider: OpenBurnBarDaemonProviderConfiguration) -> String {
+        if supportsExternalOAuth(for: provider.providerID) {
+            return routeCredentialMissingMessage(for: provider)
+        }
+        return "Add a credential to start using this provider through OpenBurnBar."
+    }
+
+    private func routeCredentialMissingMessage(for provider: OpenBurnBarDaemonProviderConfiguration) -> String {
+        if !provider.hasRoutingCapability {
+            return "This provider is for account and quota tracking only."
+        }
+        return "\(provider.displayName) is switched on, but BurnBar has no route credential saved for it. Add an API key or provider OAuth bearer to make the local proxy serve this provider. Local CLI sign-ins below are only for account and quota status."
+    }
+
+    private func providerAccountCount(_ provider: OpenBurnBarDaemonProviderConfiguration) -> Int {
+        provider.credentialSlots.count
+    }
+
+    private func supportsExternalOAuth(for providerID: String) -> Bool {
+        if externalCLIType(forProviderID: providerID) != nil {
+            return true
+        }
+        return descriptor(for: providerID).methods.contains { method in
+            method.usesExternalLogin && externalCLIType(forProviderID: providerID) != nil
+        }
+    }
+
+    private func externalCLIType(forProviderID providerID: String) -> SwitcherCLIProfileType? {
+        switch ProviderID.normalize(providerID) {
+        case "openai", "codex":
+            return .codex
+        case "anthropic", "claude", "claude-code":
+            return .claude
+        case "opencode", "open-code":
+            return .opencode
+        default:
+            return nil
+        }
+    }
+
+    private func visibleExternalOAuthAccounts(for provider: OpenBurnBarDaemonProviderConfiguration) -> [ExternalOAuthAccount] {
+        guard supportsExternalOAuth(for: provider.providerID),
+              let cliType = externalCLIType(forProviderID: provider.providerID) else {
+            return []
+        }
+
+        let storedAccounts = switcherProfiles
+            .filter { $0.targetKind == .cli && $0.cliType == cliType }
+            .map { profile in
+                ExternalOAuthAccount(
+                    id: profile.id,
+                    cliType: cliType,
+                    label: externalAccountLabel(for: profile, cliType: cliType),
+                    detail: normalizedString(profile.cliMetadata?.configDirectory),
+                    statusText: "Local \(cliType.displayName) profile for account and quota status. Add it as an OpenBurnBar credential to route requests.",
+                    isCurrentLogin: false,
+                    isDisabled: profile.isDisabled,
+                    profile: profile
+                )
+            }
+
+        let current = dashboardExternalAuthStates[cliType.rawValue]
+            ?? CLIAuthDiscovery.discoverAuthState(for: cliType)
+        guard current.isWizardConnected,
+              !storedProfileDuplicatesCurrentAuth(cliType: cliType, authInfo: current) else {
+            return storedAccounts
+        }
+
+        let currentAccount = ExternalOAuthAccount(
+            id: "current-\(cliType.rawValue)-\(normalizedString(current.accountDescription) ?? normalizedString(current.configDirectory) ?? "default")",
+            cliType: cliType,
+            label: normalizedString(current.accountDescription) ?? "Current \(cliType.displayName) login",
+            detail: normalizedString(current.configDirectory),
+            statusText: current.authState == .apiKeyPresent
+                ? "Detected from the default local \(cliType.displayName) API-key config for account status. Add it as an OpenBurnBar credential to route requests."
+                : "Detected from the default local \(cliType.displayName) OAuth sign-in for account status. Add a provider OAuth credential to route requests.",
+            isCurrentLogin: true,
+            isDisabled: false,
+            profile: nil
+        )
+        return [currentAccount] + storedAccounts
+    }
+
+    private func storedProfileDuplicatesCurrentAuth(cliType: SwitcherCLIProfileType, authInfo: CLIAuthInfo) -> Bool {
+        let authAccount = normalizedString(authInfo.accountDescription)
+        let authDirectory = normalizedString(authInfo.configDirectory)
+
+        return switcherProfiles.contains { profile in
+            guard profile.targetKind == .cli,
+                  profile.cliType == cliType else {
+                return false
+            }
+
+            if let authAccount,
+               let profileAccount = normalizedString(profile.cliMetadata?.accountDescription),
+               profileAccount.caseInsensitiveCompare(authAccount) == .orderedSame {
+                return true
+            }
+
+            if let authDirectory,
+               let profileDirectory = normalizedString(profile.cliMetadata?.configDirectory),
+               profileDirectory == authDirectory {
+                return true
+            }
+
+            return false
+        }
+    }
+
+    private func externalAccountLabel(for profile: SwitcherProfileRecord, cliType: SwitcherCLIProfileType) -> String {
+        normalizedString(profile.cliMetadata?.accountDescription)
+            ?? normalizedString(profile.cliMetadata?.displayLabel)
+            ?? normalizedString(profile.displayName)
+            ?? "\(cliType.displayName) OAuth profile"
+    }
+
+    @ViewBuilder
+    private func externalOAuthAccountCard(_ account: ExternalOAuthAccount, provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        let tint = account.isDisabled ? DesignSystem.Colors.textMuted : DesignSystem.Colors.warning
+
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 8, height: 8)
+                    .overlay(
+                        Circle()
+                            .stroke(tint.opacity(0.35), lineWidth: 4)
+                            .frame(width: 16, height: 16)
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(account.label)
+                            .font(DesignSystem.Typography.body)
+                            .fontWeight(.medium)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                        Text(account.isCurrentLogin ? "CLI login only" : "CLI profile only")
+                            .font(DesignSystem.Typography.tiny)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(tint.opacity(0.12))
+                            .foregroundStyle(tint)
+                            .clipShape(Capsule())
+
+                        if account.isDisabled {
+                            Text("Disabled")
+                                .font(DesignSystem.Typography.tiny)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(DesignSystem.Colors.textMuted.opacity(0.12))
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    Text(account.statusText)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                    if let detail = account.detail {
+                        Text(detail)
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    if account.isCurrentLogin {
+                        slotButton("arrow.clockwise", help: "Refresh local OAuth status") {
+                            refreshDashboardExternalAuthStates()
+                            Task {
+                                if let provider = account.cliType.agentProvider {
+                                    await quotaService.refresh(provider: provider, dataStore: dataStore)
+                                }
+                            }
+                        }
+                    } else if let profile = account.profile {
+                        slotButton("person.crop.circle.badge.checkmark", help: "Reconnect this OAuth profile") {
+                            reconnectExternalOAuthProfile(profile, providerID: provider.providerID)
+                        }
+                        slotButton("trash", help: "Remove this OAuth profile", tint: DesignSystem.Colors.error) {
+                            externalAccountToDelete = ExternalAccountDeleteTarget(
+                                profileID: profile.id,
+                                label: account.label,
+                                cliType: account.cliType
+                            )
+                        }
+                    }
+                }
+            }
+
+            let quotaWindows = externalOAuthQuotaWindows(for: account)
+            if !quotaWindows.isEmpty {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    ForEach(quotaWindows) { window in
+                        externalQuotaPill(window)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+    }
+
+    private func externalOAuthQuotaWindows(for account: ExternalOAuthAccount) -> [SwitcherQuotaWindowDisplay] {
+        guard let provider = account.cliType.agentProvider else { return [] }
+
+        if let accountSnapshot = exactExternalQuotaSnapshot(for: account, provider: provider) {
+            let windows = switcherQuotaWindowDisplays(snapshot: accountSnapshot)
+            if !windows.isEmpty { return windows }
+        }
+
+        if account.isCurrentLogin {
+            return switcherQuotaWindowDisplays(snapshot: quotaService.snapshot(for: provider))
+        }
+
+        return []
+    }
+
+    private func exactExternalQuotaSnapshot(
+        for account: ExternalOAuthAccount,
+        provider: AgentProvider
+    ) -> ProviderQuotaSnapshot? {
+        let snapshots = quotaService.snapshots(for: provider.providerID)
+
+        if let profile = account.profile {
+            let normalizedProfileID = normalizedQuotaIdentifier(profile.id)
+            let normalizedProfileSourceIDs = Set([
+                "switcher-cli:\(account.cliType.rawValue):\(profile.id)",
+                "switcher:\(profile.id)",
+            ].compactMap(normalizedQuotaIdentifier))
+            return snapshots.first { snapshot in
+                normalizedQuotaIdentifier(snapshot.accountID) == normalizedProfileID
+                    || normalizedQuotaIdentifier(snapshot.sourceId).map { normalizedProfileSourceIDs.contains($0) } == true
+            }
+        }
+
+        return snapshots.first { snapshot in
+            normalizedString(snapshot.accountLabel)?.caseInsensitiveCompare(account.label) == .orderedSame
+        }
+    }
+
+    @ViewBuilder
+    private func externalQuotaPill(_ window: SwitcherQuotaWindowDisplay) -> some View {
+        HStack(spacing: 4) {
+            Text(window.label)
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            Text(window.remaining)
+                .font(DesignSystem.Typography.monoTiny)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.success)
+            Text(window.resetText)
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(DesignSystem.Colors.surfaceElevated.opacity(0.72))
+        .clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5))
     }
 
     @ViewBuilder
@@ -645,9 +1283,22 @@ struct ProviderPlanWizardView: View {
                 }
             }
         } else if slot.status == .missingSecret {
-            Text("Missing credential")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.error)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Missing API key")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.error)
+                if let message = slot.lastStatusMessage, !message.isEmpty, message != "Missing API key" {
+                    Text(message)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text("Replace the credential to route Ollama Cloud.")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
         } else {
             Text("Quota will refresh after first use")
                 .font(DesignSystem.Typography.tiny)
@@ -658,6 +1309,12 @@ struct ProviderPlanWizardView: View {
     @ViewBuilder
     private func slotActionRow(_ slot: OpenBurnBarDaemonProviderConfiguration.CredentialSlot, provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
         HStack(spacing: 4) {
+            if slot.status == .missingSecret {
+                slotButton("key.fill", help: "Replace missing credential", tint: DesignSystem.Colors.blaze) {
+                    startCredentialRepairFlow(provider: provider, slot: slot)
+                }
+            }
+
             if provider.preferredCredentialSlotID != slot.slotID && slot.isEnabled {
                 slotButton("star", help: "Mark preferred") {
                     Task {
@@ -715,13 +1372,18 @@ struct ProviderPlanWizardView: View {
 
     @ViewBuilder
     private func addPlanCTA(providerID: String) -> some View {
+        let provider = daemonManager.providerConfigurations.first { $0.providerID == providerID }
+        let title = provider?.credentialSlots.isEmpty == true && provider?.hasRoutingCapability == true
+            ? "Add route credential"
+            : "Add another account"
+
         Button {
             startAddFlow(providerID: providerID)
         } label: {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: 16, weight: .semibold))
-                Text("Add another account")
+                Text(title)
                     .font(DesignSystem.Typography.body)
                     .fontWeight(.semibold)
             }
@@ -843,6 +1505,7 @@ struct ProviderPlanWizardView: View {
         let isSelected = selectedProviderID == config.providerID
         let descriptor = self.descriptor(for: config.providerID)
         let primary = ProviderBrand.colorForProviderID(config.providerID)
+        let accountCount = providerAccountCount(config)
 
         Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -868,12 +1531,12 @@ struct ProviderPlanWizardView: View {
                             .font(DesignSystem.Typography.body)
                             .fontWeight(.semibold)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        if config.credentialSlots.isEmpty {
+                        if accountCount == 0 {
                             Text("Not connected")
                                 .font(DesignSystem.Typography.tiny)
                                 .foregroundStyle(DesignSystem.Colors.textMuted)
                         } else {
-                            Text("\(config.credentialSlots.count) plan\(config.credentialSlots.count == 1 ? "" : "s")")
+                            Text("\(accountCount) account\(accountCount == 1 ? "" : "s")")
                                 .font(DesignSystem.Typography.tiny)
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                         }
@@ -1030,8 +1693,13 @@ struct ProviderPlanWizardView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 selectedAuthMethodID = method.id
                 apiKeyInput = ""
+                credentialStorageOverride = nil
+                credentialStorageOverrideVisibleToken = nil
                 quotaProbeResult = nil
                 quotaProbeError = nil
+                externalAuthInfo = nil
+                externalAuthMessage = nil
+                externalAccountActionMessage = nil
             }
         } label: {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
@@ -1126,11 +1794,26 @@ struct ProviderPlanWizardView: View {
 
             if let method = selectedAuthMethod {
                 methodHeroCard(method)
-                planLabelField
-                credentialField(method)
-                liveValidationView(method)
-                liveQuotaProbeView()
+                if method.usesExternalLogin {
+                    externalLoginPanel(method)
+                } else {
+                    planLabelField
+                    credentialField(method)
+                    if method.isClaudeOAuthBearer, let externalAccountActionMessage {
+                        miniHintCard(
+                            symbol: externalAccountActionMessage.localizedCaseInsensitiveContains("failed")
+                                ? "exclamationmark.triangle.fill"
+                                : "person.crop.circle.badge.checkmark",
+                            text: externalAccountActionMessage
+                        )
+                    }
+                    liveValidationView(method)
+                    liveQuotaProbeView()
+                }
             }
+        }
+        .task(id: selectedAuthMethodID) {
+            refreshExternalAuthStateIfNeeded()
         }
     }
 
@@ -1176,7 +1859,57 @@ struct ProviderPlanWizardView: View {
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let url = method.dashboardURL.flatMap(URL.init(string:)) {
+            if method.isClaudeOAuthBearer {
+                HStack(spacing: 8) {
+                    Button {
+                        importClaudeCodeOAuthBearer()
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isImportingCredential {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: "key.fill")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            Text(isImportingCredential ? "Checking Claude Code" : "Use current Claude login")
+                                .font(DesignSystem.Typography.tiny)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(primary.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isImportingCredential)
+
+                    Button {
+                        startDifferentClaudeOAuthLogin(for: method)
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isAddingExternalAccount {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            Text(isAddingExternalAccount ? "Opening login" : "Sign in different account")
+                                .font(DesignSystem.Typography.tiny)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(DesignSystem.Colors.surfaceElevated)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isAddingExternalAccount)
+                }
+            } else if let url = method.dashboardURL.flatMap(URL.init(string:)) {
                 Button {
                     NSWorkspace.shared.open(url)
                 } label: {
@@ -1228,6 +1961,122 @@ struct ProviderPlanWizardView: View {
     }
 
     @ViewBuilder
+    private func externalLoginPanel(_ method: BurnBarProviderAuthMethod) -> some View {
+        let cliType = externalCLIType(for: method)
+        let authInfo = externalAuthInfo
+        let statusColor = authInfo?.wizardStateColor ?? DesignSystem.Colors.textMuted
+
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(statusColor.opacity(0.14))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: authInfo?.isWizardConnected == true ? "checkmark.seal.fill" : "person.crop.circle.badge.plus")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(statusColor)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(cliType?.displayName ?? method.displayName)
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text(externalAuthMessage ?? "Checking local sign-in…")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let accountDescription = authInfo?.accountDescription, !accountDescription.isEmpty {
+                        Text(accountDescription)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+
+                    if let configDirectory = authInfo?.configDirectory {
+                        Text(configDirectory)
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                Spacer()
+            }
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button {
+                    refreshExternalAuthStateIfNeeded()
+                    refreshDashboardExternalAuthStates()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    openExternalLogin(for: method)
+                } label: {
+                    if isOpeningExternalLogin {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.mini)
+                            Text("Opening…")
+                        }
+                    } else {
+                        Label(authInfo?.isWizardConnected == true ? "Reconnect" : "Open Login", systemImage: "terminal")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.blaze)
+                .disabled(cliType == nil || isOpeningExternalLogin)
+
+                Button {
+                    Task { await addExternalOAuthAccount(for: method) }
+                } label: {
+                    if isAddingExternalAccount {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.mini)
+                            Text("Adding…")
+                        }
+                    } else {
+                        Label(addExternalAccountLabel(for: cliType), systemImage: "person.2.badge.plus")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(cliType == nil || isAddingExternalAccount)
+            }
+
+            if let externalAccountActionMessage {
+                miniHintCard(
+                    symbol: externalAccountActionMessage.localizedCaseInsensitiveContains("failed")
+                        ? "exclamationmark.triangle.fill"
+                        : "info.circle.fill",
+                    text: externalAccountActionMessage
+                )
+            }
+
+            if authInfo?.isWizardConnected == true {
+                miniHintCard(
+                    symbol: "checkmark.circle.fill",
+                    text: "\(cliType?.displayName ?? "Local CLI") is signed in and now appears in Accounts. Use Add OAuth Account to create an isolated additional login."
+                )
+            } else {
+                miniHintCard(
+                    symbol: "info.circle.fill",
+                    text: "Use Open Login for the default local CLI login, or Add OAuth Account to create an isolated additional profile."
+                )
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(statusColor.opacity(0.45), lineWidth: 0.75)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+    }
+
+    @ViewBuilder
     private func credentialField(_ method: BurnBarProviderAuthMethod) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -1239,6 +2088,9 @@ struct ProviderPlanWizardView: View {
                 Button {
                     if let pasted = NSPasteboard.general.string(forType: .string) {
                         apiKeyInput = pasted
+                        credentialStorageOverride = nil
+                        credentialStorageOverrideVisibleToken = nil
+                        credentialImportMessage = nil
                         scheduleQuotaProbe()
                     }
                 } label: {
@@ -1255,6 +2107,74 @@ struct ProviderPlanWizardView: View {
                     .overlay(Capsule().strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5))
                 }
                 .buttonStyle(.plain)
+                if method.isClaudeOAuthBearer {
+                    Button {
+                        importClaudeCodeOAuthBearer()
+                    } label: {
+                        HStack(spacing: 3) {
+                            if isImportingCredential {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: "key.fill")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            Text(isImportingCredential ? "Checking" : "Use current Claude")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundStyle(DesignSystem.Colors.blaze)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(DesignSystem.Colors.blaze.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isImportingCredential)
+
+                    Button {
+                        startDifferentClaudeOAuthLogin(for: method)
+                    } label: {
+                        HStack(spacing: 3) {
+                            if isAddingExternalAccount {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            Text(isAddingExternalAccount ? "Opening" : "Different account")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(DesignSystem.Colors.surfaceElevated)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isAddingExternalAccount)
+                }
+                if method.isOpenCodeAuthJSON {
+                    Button {
+                        importOpenCodeAuthJSON()
+                    } label: {
+                        HStack(spacing: 3) {
+                            if isImportingCredential {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: "key.fill")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            Text(isImportingCredential ? "Checking" : "Use current OpenCode")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundStyle(DesignSystem.Colors.blaze)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(DesignSystem.Colors.blaze.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isImportingCredential)
+                }
                 Button {
                     withAnimation(.snappy) { showAPIKey.toggle() }
                 } label: {
@@ -1295,6 +2215,31 @@ struct ProviderPlanWizardView: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
             .animation(.snappy, value: apiKeyInput)
+
+            if let credentialImportMessage {
+                miniHintCard(
+                    symbol: credentialImportMessage.localizedCaseInsensitiveContains("imported")
+                        ? "checkmark.circle.fill"
+                        : "info.circle.fill",
+                    text: credentialImportMessage
+                )
+                .padding(.top, DesignSystem.Spacing.xs)
+
+                if method.isClaudeOAuthBearer,
+                   !apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   canProceedFromCredential {
+                    Button {
+                        navigateForward()
+                    } label: {
+                        Label("Continue to save", systemImage: "arrow.right.circle.fill")
+                            .font(DesignSystem.Typography.tiny)
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.blaze)
+                    .padding(.top, DesignSystem.Spacing.xs)
+                }
+            }
         }
     }
 
@@ -1749,10 +2694,18 @@ struct ProviderPlanWizardView: View {
         selectedAuthMethodID = descriptor.primaryMethod.id
         planLabel = ""
         apiKeyInput = ""
+        credentialStorageOverride = nil
+        credentialStorageOverrideVisibleToken = nil
+        editingCredentialSlot = nil
         showAPIKey = false
         quotaProbeResult = nil
         quotaProbeError = nil
         quotaProbePercent = nil
+        externalAuthInfo = nil
+        externalAuthMessage = nil
+        externalAccountActionMessage = nil
+        isOpeningExternalLogin = false
+        isAddingExternalAccount = false
         selectedStrategy = .auto
         saveError = nil
 
@@ -1775,7 +2728,16 @@ struct ProviderPlanWizardView: View {
         case .auth:
             nextStep = .credential
         case .credential:
-            nextStep = .strategy
+            if let method = selectedAuthMethod, !method.storage.usesDaemonSlot {
+                if method.usesExternalLogin {
+                    activeProviderID = selectedProviderID ?? activeProviderID
+                    nextStep = .dashboard
+                } else {
+                    nextStep = .confirm
+                }
+            } else {
+                nextStep = .strategy
+            }
         case .strategy:
             nextStep = .confirm
         case .dashboard, .confirm:
@@ -1819,6 +2781,35 @@ struct ProviderPlanWizardView: View {
         }
     }
 
+    private func startCredentialRepairFlow(
+        provider: OpenBurnBarDaemonProviderConfiguration,
+        slot: OpenBurnBarDaemonProviderConfiguration.CredentialSlot
+    ) {
+        let descriptor = self.descriptor(for: provider.providerID)
+        selectedProviderID = provider.providerID
+        selectedAuthMethodID = descriptor.primaryMethod.id
+        planLabel = slot.label
+        apiKeyInput = ""
+        credentialStorageOverride = nil
+        credentialStorageOverrideVisibleToken = nil
+        editingCredentialSlot = EditingCredentialSlot(
+            providerID: provider.providerID,
+            slotID: slot.slotID
+        )
+        showAPIKey = false
+        quotaProbeResult = nil
+        quotaProbeError = nil
+        quotaProbePercent = nil
+        externalAuthInfo = nil
+        externalAuthMessage = nil
+        externalAccountActionMessage = nil
+        isOpeningExternalLogin = false
+        isAddingExternalAccount = false
+        selectedStrategy = slot.isEnabled ? .preferred : .backup
+        saveError = nil
+        navigateToStep(.credential)
+    }
+
     // MARK: - Quota Probe
 
     private func scheduleQuotaProbe() {
@@ -1833,6 +2824,11 @@ struct ProviderPlanWizardView: View {
               let method = selectedAuthMethod,
               method.unlocksQuotaRefresh,
               let quotaProvider = quotaProbeProvider(for: providerID) else {
+            return
+        }
+
+        if quotaProvider == .openCode {
+            quotaProbeResult = "Format accepted - local quota refresh runs from OpenCode CLI stats after save."
             return
         }
 
@@ -1860,7 +2856,7 @@ struct ProviderPlanWizardView: View {
                             quotaProbeResult = bucket.remainingText
                         }
                     } else if snapshot.confidence == .unavailable {
-                        quotaProbeError = snapshot.statusMessage ?? "Live quota probe didn't return data."
+                        quotaProbeError = snapshot.statusMessage
                     } else {
                         quotaProbeResult = "Connected — quota will populate after first use."
                     }
@@ -1875,6 +2871,479 @@ struct ProviderPlanWizardView: View {
         }
     }
 
+    private func importClaudeCodeOAuthBearer(
+        configDirectory: String? = nil,
+        accountLabel: String? = nil,
+        allowDefaultKeychainFallback: Bool = true
+    ) {
+        guard selectedAuthMethod?.isClaudeOAuthBearer == true else { return }
+
+        isImportingCredential = true
+        credentialImportMessage = nil
+        credentialStorageOverride = nil
+        credentialStorageOverrideVisibleToken = nil
+        quotaProbeError = nil
+        quotaProbeResult = nil
+
+        Task {
+            do {
+                let credentials = try ClaudeCodeOAuthCredentialImporter(
+                    configDirectory: configDirectory,
+                    allowDefaultKeychainFallback: allowDefaultKeychainFallback
+                ).load(allowUserInteraction: true)
+                await MainActor.run {
+                    apiKeyInput = credentials.accessToken
+                    credentialStorageOverride = credentials.routeCredentialStoragePayload()
+                    credentialStorageOverrideVisibleToken = credentials.accessToken
+                    if let accountLabel, !accountLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        let message = configDirectory == nil
+                            ? "Imported \(accountLabel)'s Claude OAuth token. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
+                            : "Imported \(accountLabel)'s Claude OAuth token from Claude Code's macOS keychain. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
+                        credentialImportMessage = message
+                        externalAccountActionMessage = message
+                    } else {
+                        credentialImportMessage = "Imported the signed-in Claude Code OAuth token. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
+                    }
+                    isImportingCredential = false
+                    scheduleQuotaProbe()
+                }
+            } catch {
+                await MainActor.run {
+                    isImportingCredential = false
+                    if configDirectory != nil {
+                        let message = "\(error.localizedDescription) The separate Claude login was added for account switching, but Claude did not expose a route token BurnBar could import. Use current Claude login, sign in again, or paste a bearer token to route through BurnBar."
+                        credentialImportMessage = message
+                        externalAccountActionMessage = message
+                    } else if let method = selectedAuthMethod {
+                        credentialImportMessage = "\(error.localizedDescription) Opening Claude Code login; finish sign-in, then press Use current Claude login again."
+                        openExternalLogin(for: method)
+                    }
+                }
+            }
+        }
+    }
+
+    private func importOpenCodeAuthJSON() {
+        guard selectedAuthMethod?.isOpenCodeAuthJSON == true else { return }
+
+        isImportingCredential = true
+        credentialImportMessage = nil
+        credentialStorageOverride = nil
+        credentialStorageOverrideVisibleToken = nil
+        quotaProbeError = nil
+        quotaProbeResult = nil
+
+        Task {
+            do {
+                let authURL = URL(fileURLWithPath: NSHomeDirectory())
+                    .appendingPathComponent(".local/share/opencode/auth.json", isDirectory: false)
+                let data = try Data(contentsOf: authURL)
+                guard let json = String(data: data, encoding: .utf8),
+                      json.localizedCaseInsensitiveContains("opencode-go"),
+                      json.localizedCaseInsensitiveContains("\"key\"") else {
+                    throw ProviderPlanWizardError.message("OpenCode auth.json did not contain an opencode-go route key.")
+                }
+                await MainActor.run {
+                    apiKeyInput = json
+                    credentialStorageOverride = nil
+                    credentialStorageOverrideVisibleToken = nil
+                    credentialImportMessage = "Imported the signed-in OpenCode auth.json. The token is hidden below; continue and Save & Connect so OpenCode models are route-ready."
+                    isImportingCredential = false
+                    scheduleQuotaProbe()
+                }
+            } catch {
+                await MainActor.run {
+                    isImportingCredential = false
+                    credentialImportMessage = "Could not read ~/.local/share/opencode/auth.json. Sign in to OpenCode, or paste another account's opencode-go auth JSON."
+                }
+            }
+        }
+    }
+
+    // MARK: - External CLI Login
+
+    private func refreshExternalAuthStateIfNeeded() {
+        guard let method = selectedAuthMethod, method.usesExternalLogin else {
+            externalAuthInfo = nil
+            externalAuthMessage = nil
+            return
+        }
+
+        guard let cliType = externalCLIType(for: method) else {
+            externalAuthInfo = nil
+            externalAuthMessage = "OpenBurnBar does not know which local CLI handles this sign-in method."
+            return
+        }
+
+        let authInfo = CLIAuthDiscovery.discoverAuthState(for: cliType)
+        externalAuthInfo = authInfo
+        externalAuthMessage = externalAuthStatusSummary(for: authInfo)
+    }
+
+    private func externalCLIType(for method: BurnBarProviderAuthMethod) -> SwitcherCLIProfileType? {
+        let providerID = (selectedProviderID ?? activeProviderID ?? "").lowercased()
+        let methodID = method.id.lowercased()
+
+        if let cliType = externalCLIType(forProviderID: providerID) {
+            return cliType
+        }
+        if methodID.contains("codex") {
+            return .codex
+        }
+        if methodID.contains("claude") {
+            return .claude
+        }
+        if methodID.contains("opencode") {
+            return .opencode
+        }
+        return nil
+    }
+
+    private func openExternalLogin(for method: BurnBarProviderAuthMethod) {
+        guard let cliType = externalCLIType(for: method) else {
+            externalAuthMessage = "OpenBurnBar does not know which local CLI handles this sign-in method."
+            return
+        }
+        guard let executablePath = CLILaunchAdapter.executablePath(for: cliType) else {
+            externalAuthMessage = "\(cliType.displayName) is not installed."
+            return
+        }
+
+        let command = loginCommands(for: cliType, executablePath: executablePath).first
+        guard let command else {
+            externalAuthMessage = "No login command is available for \(cliType.displayName)."
+            return
+        }
+
+        isOpeningExternalLogin = true
+        do {
+            let scriptURL = try makeLoginScript(command: command, title: cliType.displayName)
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.open(
+                [scriptURL],
+                withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"),
+                configuration: configuration
+            ) { _, error in
+                Task { @MainActor in
+                    isOpeningExternalLogin = false
+                    if let error {
+                        externalAuthMessage = "Could not open Terminal: \(error.localizedDescription)"
+                    } else {
+                        externalAuthMessage = "Opened \(cliType.displayName) login. Finish sign-in, then refresh this check."
+                        refreshDashboardExternalAuthStates()
+                    }
+                }
+            }
+        } catch {
+            isOpeningExternalLogin = false
+            externalAuthMessage = "Could not prepare login command: \(error.localizedDescription)"
+        }
+    }
+
+    private func addExternalAccountLabel(for cliType: SwitcherCLIProfileType?) -> String {
+        guard let cliType else { return "Add OAuth Account" }
+        let existingCount = switcherProfiles.filter { $0.targetKind == .cli && $0.cliType == cliType }.count
+        let currentCount = dashboardExternalAuthStates[cliType.rawValue]?.isWizardConnected == true ? 1 : 0
+        return existingCount + currentCount > 0 ? "Add Another OAuth Account" : "Add OAuth Account"
+    }
+
+    private func startDifferentClaudeOAuthLogin(for method: BurnBarProviderAuthMethod) {
+        guard method.isClaudeOAuthBearer else { return }
+        Task {
+            await addExternalOAuthAccount(for: method)
+        }
+    }
+
+    private func addExternalOAuthAccount(for method: BurnBarProviderAuthMethod) async {
+        guard let providerID = selectedProviderID ?? activeProviderID,
+              let cliType = externalCLIType(for: method) else {
+            externalAccountActionMessage = "OpenBurnBar does not know which local CLI handles this sign-in method."
+            return
+        }
+
+        isAddingExternalAccount = true
+        externalAccountActionMessage = "Terminal will open an isolated \(cliType.displayName) login. Use a different account; this will not overwrite your current login."
+        defer { isAddingExternalAccount = false }
+
+        let existingProfiles = switcherProfiles.filter { $0.targetKind == .cli && $0.cliType == cliType }
+        let slotLabel = nextExternalSlotLabel(providerID: providerID, cliType: cliType)
+        let placeholder = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: cliType,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: slotLabel,
+                providerID: canonicalOAuthProviderID(for: providerID, cliType: cliType),
+                linkedHarnessIDs: [cliType.rawValue]
+            ),
+            sortKey: 0
+        )
+
+        let coordinator = SwitcherCLIAuthCoordinator()
+        let result = await coordinator.reconnect(
+            profile: placeholder,
+            context: SwitcherCLIAuthCoordinator.ReconnectContext(
+                providerSlotLabel: slotLabel,
+                existingAccountLabels: existingProfiles.map { externalAccountLabel(for: $0, cliType: cliType) }
+            )
+        )
+
+        switch result {
+        case .readyToPersist(let updatedProfile), .requiresConfirmation(let updatedProfile, _, _):
+            do {
+                let saved = try persistExternalOAuthProfile(updatedProfile, providerID: providerID, cliType: cliType)
+                let label = externalAccountLabel(for: saved, cliType: cliType)
+                externalAccountActionMessage = "Added \(label) as a separate \(cliType.displayName) login."
+                loadSwitcherProfiles()
+                refreshDashboardExternalAuthStates()
+                refreshExternalAuthStateIfNeeded()
+                if let provider = cliType.agentProvider {
+                    await quotaService.refresh(provider: provider, dataStore: dataStore)
+                }
+                if selectedAuthMethod?.isClaudeOAuthBearer == true,
+                   let configDirectory = saved.cliMetadata?.configDirectory {
+                    planLabel = planLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? label : planLabel
+                    importClaudeCodeOAuthBearer(
+                        configDirectory: configDirectory,
+                        accountLabel: label,
+                        allowDefaultKeychainFallback: true
+                    )
+                    externalAccountActionMessage = "Added \(label). Claude Code stores route tokens in macOS Keychain, so BurnBar is importing that freshly signed-in token now."
+                    return
+                }
+                activeProviderID = providerID
+                navigateToStep(.dashboard)
+            } catch {
+                externalAccountActionMessage = error.localizedDescription
+                saveError = error.localizedDescription
+            }
+        case .cancelled:
+            externalAccountActionMessage = "\(cliType.displayName) login was cancelled. No OAuth account was added."
+        case .failed(let message):
+            externalAccountActionMessage = message
+            saveError = message
+        }
+    }
+
+    private func reconnectExternalOAuthProfile(_ profile: SwitcherProfileRecord, providerID: String) {
+        guard let cliType = profile.cliType else { return }
+
+        Task {
+            isAddingExternalAccount = true
+            externalAccountActionMessage = "Opening \(cliType.displayName) login for \(externalAccountLabel(for: profile, cliType: cliType))."
+            defer { isAddingExternalAccount = false }
+
+            let coordinator = SwitcherCLIAuthCoordinator()
+            let result = await coordinator.reconnect(
+                profile: profile,
+                context: SwitcherCLIAuthCoordinator.ReconnectContext(
+                    providerSlotLabel: externalAccountLabel(for: profile, cliType: cliType),
+                    existingAccountLabels: switcherProfiles
+                        .filter { $0.id != profile.id && $0.targetKind == .cli && $0.cliType == cliType }
+                        .map { externalAccountLabel(for: $0, cliType: cliType) }
+                )
+            )
+
+            switch result {
+            case .readyToPersist(let updatedProfile), .requiresConfirmation(let updatedProfile, _, _):
+                do {
+                    let refreshed = normalizedExternalOAuthProfile(
+                        updatedProfile,
+                        providerID: providerID,
+                        cliType: cliType,
+                        preserveIDForUpdate: true
+                    )
+                    _ = try dataStore.switcherStore.update(refreshed)
+                    externalAccountActionMessage = "Reconnected \(externalAccountLabel(for: refreshed, cliType: cliType))."
+                    loadSwitcherProfiles()
+                    refreshDashboardExternalAuthStates()
+                    refreshExternalAuthStateIfNeeded()
+                    if let provider = cliType.agentProvider {
+                        await quotaService.refresh(provider: provider, dataStore: dataStore)
+                    }
+                } catch {
+                    externalAccountActionMessage = "Failed to update \(cliType.displayName) OAuth account: \(error.localizedDescription)"
+                }
+            case .cancelled:
+                externalAccountActionMessage = "\(cliType.displayName) reconnect was cancelled."
+            case .failed(let message):
+                externalAccountActionMessage = message
+            }
+        }
+    }
+
+    private func persistExternalOAuthProfile(
+        _ updatedProfile: SwitcherProfileRecord,
+        providerID: String,
+        cliType: SwitcherCLIProfileType
+    ) throws -> SwitcherProfileRecord {
+        let accountDescription = normalizedString(updatedProfile.cliMetadata?.accountDescription)
+        if let accountDescription,
+           let duplicate = duplicateExternalOAuthProfile(cliType: cliType, accountDescription: accountDescription, excludingID: updatedProfile.id) {
+            throw ProviderPlanWizardError.message("Already added: \(externalAccountLabel(for: duplicate, cliType: cliType)) is connected to \(accountDescription). Sign into a different \(cliType.displayName) account to add another OAuth profile.")
+        }
+
+        if currentDefaultAuthDuplicates(cliType: cliType, accountDescription: accountDescription) {
+            throw ProviderPlanWizardError.message("\(accountDescription ?? cliType.displayName) is already visible as the current local \(cliType.displayName) login. Sign into a different account to add another OAuth profile.")
+        }
+
+        let profile = normalizedExternalOAuthProfile(
+            updatedProfile,
+            providerID: providerID,
+            cliType: cliType,
+            preserveIDForUpdate: false
+        )
+        return try dataStore.switcherStore.create(profile)
+    }
+
+    private func normalizedExternalOAuthProfile(
+        _ profile: SwitcherProfileRecord,
+        providerID: String,
+        cliType: SwitcherCLIProfileType,
+        preserveIDForUpdate: Bool
+    ) -> SwitcherProfileRecord {
+        let metadata = profile.cliMetadata ?? SwitcherCLIProfileMetadata()
+        let accountDescription = normalizedString(metadata.accountDescription)
+        let displayLabel = accountDescription
+            ?? normalizedString(metadata.displayLabel)
+            ?? nextExternalSlotLabel(providerID: providerID, cliType: cliType)
+
+        return SwitcherProfileRecord(
+            id: profile.id,
+            targetKind: .cli,
+            cliType: cliType,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: metadata.workingDirectory,
+                additionalArgs: metadata.additionalArgs,
+                envKeysToPass: metadata.envKeysToPass,
+                displayLabel: displayLabel,
+                configDirectory: metadata.configDirectory,
+                accountDescription: metadata.accountDescription,
+                providerID: canonicalOAuthProviderID(for: providerID, cliType: cliType),
+                runtimeAccountID: metadata.runtimeAccountID,
+                subscriptionTierID: metadata.subscriptionTierID,
+                modelCapabilityClassID: metadata.modelCapabilityClassID,
+                linkedHarnessIDs: metadata.linkedHarnessIDs.isEmpty ? [cliType.rawValue] : metadata.linkedHarnessIDs,
+                neverAutoSwitch: metadata.neverAutoSwitch,
+                lastQuotaExhaustedAt: metadata.lastQuotaExhaustedAt,
+                exhaustedUntil: metadata.exhaustedUntil,
+                lastQuotaExhaustionDetail: metadata.lastQuotaExhaustionDetail,
+                isDisabled: metadata.isDisabled
+            ),
+            sortKey: preserveIDForUpdate ? profile.sortKey : 0,
+            createdAt: preserveIDForUpdate ? profile.createdAt : Date(),
+            updatedAt: Date()
+        )
+    }
+
+    private func duplicateExternalOAuthProfile(
+        cliType: SwitcherCLIProfileType,
+        accountDescription: String,
+        excludingID: String?
+    ) -> SwitcherProfileRecord? {
+        switcherProfiles.first { profile in
+            guard profile.id != excludingID,
+                  profile.targetKind == .cli,
+                  profile.cliType == cliType,
+                  let existing = normalizedString(profile.cliMetadata?.accountDescription) else {
+                return false
+            }
+            return existing.caseInsensitiveCompare(accountDescription) == .orderedSame
+        }
+    }
+
+    private func currentDefaultAuthDuplicates(cliType: SwitcherCLIProfileType, accountDescription: String?) -> Bool {
+        guard let accountDescription,
+              let current = dashboardExternalAuthStates[cliType.rawValue],
+              current.isWizardConnected,
+              let currentAccount = normalizedString(current.accountDescription) else {
+            return false
+        }
+        return currentAccount.caseInsensitiveCompare(accountDescription) == .orderedSame
+    }
+
+    private func nextExternalSlotLabel(providerID: String, cliType: SwitcherCLIProfileType) -> String {
+        let providerName = daemonManager.providerConfigurations
+            .first { $0.providerID == providerID }?.displayName ?? cliType.displayName
+        let count = switcherProfiles.filter { $0.targetKind == .cli && $0.cliType == cliType }.count
+        return count == 0 ? "\(providerName) OAuth primary" : "\(providerName) OAuth reserve #\(count)"
+    }
+
+    private func canonicalOAuthProviderID(for providerID: String, cliType: SwitcherCLIProfileType) -> ProviderID {
+        switch cliType {
+        case .codex:
+            return .openAI
+        case .claude:
+            return .anthropic
+        case .opencode:
+            return .openCode
+        }
+    }
+
+    private func normalizedString(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func normalizedQuotaIdentifier(_ value: String?) -> String? {
+        normalizedString(value)?.lowercased()
+    }
+
+    private func loginCommands(for cliType: SwitcherCLIProfileType, executablePath: String) -> [String] {
+        let candidates: [[String]]
+        switch cliType {
+        case .codex:
+            candidates = [["login"], ["auth", "login"]]
+        case .claude:
+            candidates = [["auth", "login"], ["login"]]
+        case .opencode:
+            candidates = []
+        }
+
+        return candidates.map { args in
+            ([executablePath] + args).map(shellEscape).joined(separator: " ")
+        }
+    }
+
+    private func makeLoginScript(command: String, title: String) throws -> URL {
+        let scriptURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))-\(UUID().uuidString).command")
+        let contents = """
+        #!/bin/zsh
+        \(command)
+        printf '\\nPress Enter to close...'
+        read
+        """
+        try contents.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+        return scriptURL
+    }
+
+    private func shellEscape(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+    }
+
+    private func externalAuthStatusSummary(for authInfo: CLIAuthInfo) -> String {
+        guard authInfo.isInstalled else {
+            return "\(authInfo.cliType.displayName) is not installed."
+        }
+
+        switch authInfo.authState {
+        case .authenticated:
+            if let accountDescription = authInfo.accountDescription {
+                return "Connected as \(accountDescription)."
+            }
+            return "Connected."
+        case .apiKeyPresent:
+            return "API key detected in the local CLI config."
+        case .notAuthenticated:
+            return "Installed, but not signed in yet."
+        case .notInstalled:
+            return "Not installed."
+        }
+    }
+
     // MARK: - Save & Delete
 
     private func savePlan() {
@@ -1883,61 +3352,99 @@ struct ProviderPlanWizardView: View {
 
         let label = planLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let apiKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !label.isEmpty, !apiKey.isEmpty else { return }
+        let storageCredential = credentialStorageOverrideVisibleToken == apiKey
+            ? (credentialStorageOverride ?? apiKey)
+            : apiKey
+        if method.usesExternalLogin {
+            refreshExternalAuthStateIfNeeded()
+            guard externalAuthInfo?.isWizardConnected == true else {
+                saveError = "Finish local sign-in, then refresh this check."
+                return
+            }
+            activeProviderID = providerID
+            navigateToStep(.dashboard)
+            return
+        }
+
+        guard !apiKey.isEmpty, (!method.storage.usesDaemonSlot || !label.isEmpty) else { return }
+        guard !method.validate(apiKey).isWarning else {
+            saveError = method.validate(apiKey).message ?? "Enter a valid credential before saving."
+            return
+        }
 
         isSaving = true
         saveError = nil
 
         Task {
-            await daemonManager.addProviderCredentialSlot(
-                providerID: providerID,
-                label: label,
-                apiKey: apiKey
-            )
+            do {
+                let newSlotID: String?
+                if method.storage.usesDaemonSlot {
+                    if let editingCredentialSlot,
+                       editingCredentialSlot.providerID == providerID {
+                        try await daemonManager.updateProviderCredentialSlotOrThrow(
+                            providerID: providerID,
+                            slotID: editingCredentialSlot.slotID,
+                            label: label,
+                            isEnabled: selectedStrategy != .backup,
+                            apiKey: storageCredential
+                        )
+                        newSlotID = editingCredentialSlot.slotID
+                    } else {
+                        newSlotID = try await daemonManager.addProviderCredentialSlotReturningID(
+                            providerID: providerID,
+                            label: label,
+                            apiKey: storageCredential,
+                            isEnabled: selectedStrategy != .backup
+                        )
+                    }
+                } else {
+                    newSlotID = nil
+                }
 
-            if let mirrorAccount = method.storage.mirrorAccountIdentifier {
-                await MainActor.run {
+                if let mirrorAccount = method.storage.mirrorAccountIdentifier {
                     do {
-                        try ProviderAPIKeyStore.shared.setAPIKey(apiKey, for: mirrorAccount)
+                        try await MainActor.run {
+                            try ProviderAPIKeyStore.shared.setAPIKey(storageCredential, for: mirrorAccount)
+                        }
                     } catch {
                         AppLogger.dataStore.silentFailure(
                             "ProviderPlanWizardView: failed to mirror credential to keychain",
                             error: error
                         )
+                        if !method.storage.usesDaemonSlot {
+                            throw error
+                        }
                     }
                 }
-            }
 
-            switch selectedStrategy {
-            case .auto:
-                break
-            case .preferred:
-                if let updated = daemonManager.providerConfigurations
-                    .first(where: { $0.providerID == providerID }),
-                   let newSlot = updated.credentialSlots.last {
-                    await daemonManager.setPreferredProviderCredentialSlot(
-                        providerID: providerID,
-                        slotID: newSlot.slotID
-                    )
+                if let newSlotID {
+                    switch selectedStrategy {
+                    case .auto:
+                        break
+                    case .preferred:
+                        try await daemonManager.setPreferredProviderCredentialSlotOrThrow(
+                            providerID: providerID,
+                            slotID: newSlotID
+                        )
+                    case .backup:
+                        break
+                    }
+
+                    await daemonManager.refreshProviderCredentialSlotQuotas(providerID: providerID)
                 }
-            case .backup:
-                if let updated = daemonManager.providerConfigurations
-                    .first(where: { $0.providerID == providerID }),
-                   let newSlot = updated.credentialSlots.last {
-                    await daemonManager.updateProviderCredentialSlot(
-                        providerID: providerID,
-                        slotID: newSlot.slotID,
-                        isEnabled: false
-                    )
+                await refreshGatewayAdvertisementState()
+
+                await MainActor.run {
+                    isSaving = false
+                    editingCredentialSlot = nil
+                    activeProviderID = providerID
+                    navigateToStep(.dashboard)
                 }
-            }
-
-            await daemonManager.refreshProviderCredentialSlotQuotas(providerID: providerID)
-
-            await MainActor.run {
-                isSaving = false
-                activeProviderID = providerID
-                navigateToStep(.dashboard)
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    saveError = error.localizedDescription
+                }
             }
         }
     }
@@ -1948,14 +3455,38 @@ struct ProviderPlanWizardView: View {
                 providerID: target.providerID,
                 slotID: target.slotID
             )
+            await refreshGatewayAdvertisementState()
             await MainActor.run { slotToDelete = nil }
+        }
+    }
+
+    private func deleteExternalAccount(_ target: ExternalAccountDeleteTarget) {
+        do {
+            try SwitcherAuthStore().deleteCredentials(forProfileID: target.profileID)
+            try dataStore.switcherStore.deleteProfile(id: target.profileID)
+            externalAccountToDelete = nil
+            externalAccountActionMessage = "Removed \(target.label)."
+            loadSwitcherProfiles()
+            refreshDashboardExternalAuthStates()
+            refreshExternalAuthStateIfNeeded()
+            if let provider = target.cliType.agentProvider {
+                Task { await quotaService.refresh(provider: provider, dataStore: dataStore) }
+            }
+        } catch {
+            externalAccountActionMessage = "Failed to remove \(target.label): \(error.localizedDescription)"
         }
     }
 }
 
 // MARK: - Provider Configuration Helpers
 
-private extension OpenBurnBarDaemonProviderConfiguration {
+extension OpenBurnBarDaemonProviderConfiguration {
+    var routeReadyCredentialSlots: [CredentialSlot] {
+        credentialSlots.filter { slot in
+            slot.isEnabled && slot.status == .ready
+        }
+    }
+
     var hasRoutingCapability: Bool {
         let providerID = self.providerID.lowercased()
         switch providerID {
@@ -1968,6 +3499,53 @@ private extension OpenBurnBarDaemonProviderConfiguration {
                 return catalog.capabilities.contains(.routing)
             }
             return false
+        }
+    }
+}
+
+private extension BurnBarProviderAuthMethod {
+    var usesExternalLogin: Bool {
+        kind == .browserLogin || kind == .localRuntime
+    }
+
+    var isClaudeOAuthBearer: Bool {
+        id == "anthropic-claude-oauth"
+    }
+
+    var isOpenCodeAuthJSON: Bool {
+        id == "opencode-auth-json"
+    }
+}
+
+private enum ProviderPlanWizardError: LocalizedError {
+    case message(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .message(let message):
+            return message
+        }
+    }
+}
+
+private extension CLIAuthInfo {
+    var isWizardConnected: Bool {
+        switch authState {
+        case .authenticated, .apiKeyPresent:
+            return true
+        case .notAuthenticated, .notInstalled:
+            return false
+        }
+    }
+
+    var wizardStateColor: Color {
+        switch authState {
+        case .authenticated, .apiKeyPresent:
+            return DesignSystem.Colors.success
+        case .notAuthenticated:
+            return DesignSystem.Colors.warning
+        case .notInstalled:
+            return DesignSystem.Colors.error
         }
     }
 }

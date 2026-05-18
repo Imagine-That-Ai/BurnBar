@@ -10,6 +10,10 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
     private var accountManager: FakeAccountManager!
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
+    private var fakeEncryptedCloudClient: FakeSessionLogEncryptedCloudClient!
+    private var fakeVaultKeyStore: FakeSessionLogVaultKeyStore!
+    private var fakeVaultKeyPublisher: FakeSessionLogVaultKeyPublisher!
+    private var fakeArchivedSessionMirror: FakeSessionLogArchivedSessionMirror!
     private var context: CloudSyncContext!
     private var sessionLogSync: SessionLogSyncService!
     private var downloadSync: DownloadSyncService!
@@ -20,13 +24,23 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         settingsManager.sessionLogCloudBackupEnabled = true
         fakeGateway = CloudSyncFirestoreFakeGateway()
+        fakeEncryptedCloudClient = FakeSessionLogEncryptedCloudClient()
+        fakeVaultKeyStore = FakeSessionLogVaultKeyStore()
+        fakeVaultKeyPublisher = FakeSessionLogVaultKeyPublisher()
+        fakeArchivedSessionMirror = FakeSessionLogArchivedSessionMirror()
         context = CloudSyncContext(
             dataStore: dataStore,
             accountManager: accountManager,
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway
         )
-        sessionLogSync = SessionLogSyncService(context: context)
+        sessionLogSync = SessionLogSyncService(
+            context: context,
+            encryptedCloudClient: fakeEncryptedCloudClient,
+            vaultKeyStore: fakeVaultKeyStore,
+            vaultKeyPublisher: fakeVaultKeyPublisher,
+            archivedSessionMirror: fakeArchivedSessionMirror
+        )
         downloadSync = DownloadSyncService(context: context)
     }
 
@@ -61,8 +75,13 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         let manifest = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/session_logs/\(docId)"))
         XCTAssertEqual(manifest["sessionId"] as? String, "session-kimi-1")
         XCTAssertEqual(manifest["model"] as? String, "unknown")
+        XCTAssertEqual(manifest["bodyStorage"] as? String, "firebase_storage_encrypted")
+        XCTAssertEqual(manifest["storagePath"] as? String, "session-logs/\(docId).json")
         XCTAssertNotNil(manifest["bodyHash"] as? String)
         XCTAssertEqual(manifest["chunkMetadataVersion"] as? Int, 1)
+        XCTAssertEqual(manifest["cloudSearchIndexVersion"] as? Int, 2)
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
 
         let chunk = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/session_logs/\(docId)/chunks/0"))
         XCTAssertEqual(chunk["uid"] as? String, "test-uid-1")
@@ -70,9 +89,11 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(chunk["deviceId"] as? String, "test-device-1")
         XCTAssertEqual(chunk["docId"] as? String, docId)
         XCTAssertEqual(chunk["schemaVersion"] as? Int, 1)
-        let terms = try XCTUnwrap(chunk["terms"] as? [String])
-        XCTAssertTrue(terms.contains("firebase"))
-        XCTAssertTrue(terms.contains("search"))
+        XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
+        XCTAssertNil(chunk["body"] as? String)
+        XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
+        XCTAssertFalse((chunk["tokenHashes"] as? [String] ?? []).isEmpty)
+        XCTAssertFalse((chunk["semanticHashes"] as? [String] ?? []).isEmpty)
     }
 
     func test_sessionLogUpload_skipsUnchangedBodyToAvoidExtraWrites() async throws {
@@ -207,5 +228,72 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
 
         let remote = remoteConversations.first!
         XCTAssertEqual(remote.fullText, body)
+    }
+}
+
+@MainActor
+private final class FakeSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
+    private(set) var uploadedBodies: [(data: Data, ticket: EncryptedSessionBlobUploadTicket)] = []
+    private(set) var searchIndexCommits: [(deviceId: String, indexVersion: Int, document: [String: Any], chunks: [[String: Any]])] = []
+
+    func beginEncryptedSessionBlobUpload(
+        documentID: String,
+        bodyHash: String,
+        byteCount: Int
+    ) async throws -> EncryptedSessionBlobUploadTicket {
+        EncryptedSessionBlobUploadTicket(
+            storagePath: "session-logs/\(documentID).json",
+            uploadURL: URL(string: "https://upload.invalid/\(documentID)")!
+        )
+    }
+
+    func uploadEncryptedBody(data: Data, ticket: EncryptedSessionBlobUploadTicket) async throws {
+        uploadedBodies.append((data, ticket))
+    }
+
+    func commitEncryptedSearchIndex(
+        deviceId: String,
+        indexVersion: Int,
+        document: [String: Any],
+        chunks: [[String: Any]]
+    ) async throws {
+        searchIndexCommits.append((deviceId, indexVersion, document, chunks))
+    }
+
+    func commitEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws {}
+
+    func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
+        [:]
+    }
+}
+
+@MainActor
+private final class FakeSessionLogVaultKeyStore: SessionLogVaultKeyProviding {
+    private var key = Data(repeating: 7, count: 32)
+
+    func loadKey(uid: String) throws -> Data? {
+        key
+    }
+
+    func getOrCreateKey(uid: String) throws -> Data {
+        key
+    }
+}
+
+@MainActor
+private final class FakeSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
+    private(set) var publishedKeys: [(uid: String, key: Data)] = []
+
+    func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws {
+        publishedKeys.append((uid, vaultKey))
+    }
+}
+
+@MainActor
+private final class FakeSessionLogArchivedSessionMirror: SessionLogArchivedSessionMirroring {
+    private(set) var mirrored: [(conversationID: String, cloudLogDocumentID: String?)] = []
+
+    func mirrorArchivedLog(_ conversation: ConversationRecord, cloudLogDocumentID: String?) async {
+        mirrored.append((conversation.id, cloudLogDocumentID))
     }
 }

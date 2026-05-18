@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Two credential shapes are supported, mirroring what
 /// `BurnBarAnthropicProviderExecutor` accepts on the gateway:
-///   1. **Console API keys** (`sk-ant-…`) sent via the `x-api-key` header.
+///   1. **Console API keys** (`sk-ant-api…`) sent via the `x-api-key` header.
 ///   2. **Pro/Team OAuth bearers** sent via `Authorization: Bearer …`.
 ///
 /// The probe issues a real `POST /v1/messages` with `max_tokens: 1` so the
@@ -96,7 +96,7 @@ struct AnthropicCredentialProbe: Sendable {
     /// Detect which header shape applies to a candidate credential.
     static func detectShape(_ rawCredential: String) -> Shape {
         let trimmed = rawCredential.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.hasPrefix("sk-ant-") ? .consoleAPIKey : .oauthBearer
+        return trimmed.lowercased().hasPrefix("sk-ant-api") ? .consoleAPIKey : .oauthBearer
     }
 
     /// Render a non-sensitive label for UI ("…ABCD").

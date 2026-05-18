@@ -490,8 +490,8 @@ private struct ProviderQuotaSettingsCard: View {
         case .ollama:
             providerSessionSetup(
                 provider: .ollama,
-                title: "Connect Ollama",
-                message: "Ollama Cloud quota uses an OpenBurnBar login session from ollama.com/settings. Refresh never reads browser stores or asks for your macOS system password."
+                title: "Sign in to Ollama Cloud",
+                message: "Ollama Cloud sign-in shows account and quota state. CLI proxy routing still needs an Ollama Cloud API key in Accounts, so BurnBar can call ollama.com/api for users."
             )
 
         case .kimi:
@@ -663,7 +663,9 @@ private struct ProviderQuotaSettingsCard: View {
             }
 
             credentialSaveIsError = false
-            credentialSaveMessage = "\(provider.displayName) login session saved."
+            credentialSaveMessage = provider == .ollama
+                ? "Ollama Cloud sign-in saved. Add an Ollama Cloud API key in Accounts to route CLI traffic."
+                : "\(provider.displayName) login session saved."
             await quotaService.refresh(provider: provider, dataStore: dataStore)
         } catch {
             credentialSaveIsError = true

@@ -1,5 +1,7 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarMedia
+import FirebaseAuth
 
 // MARK: - Hermes Square Root (Hermes Square §3 / §6.2)
 //
@@ -56,6 +58,14 @@ struct HermesSquareRoot: View {
     @State private var rollbackService = RollbackService.shared
     @State private var voiceIntentBanner: VoiceIntent?
     @State private var subscriptionTopicStore = AgentSubscriptionTopicStore.shared
+    /// Mercury Phase 8 — paired Mac peer presence + Live sheet plumbing.
+    /// The peer source polls `MediaControlStreamCoordinator.phase` and
+    /// (later) presence heartbeats; the registry's pinned-tile resolver
+    /// reads from `peer` to synthesize a `device://paired-mac/<id>`
+    /// identity.
+    @StateObject private var mercuryPeerSource = MercuryPeerSource()
+    @State private var mercuryAckBanner: HermesRealtimeRelayMirrorAck?
+    @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
 
     private var pinnedGrid: PinnedAgentGridConfig {
         PinnedAgentGridConfig.from(jsonString: pinnedJSON)
@@ -271,6 +281,20 @@ struct HermesSquareRoot: View {
                     ProjectDetailView(project: project, store: projectsStore)
                 } else {
                     Text("Project unavailable")
+                        .foregroundStyle(DesignSystemColors.textMuted)
+                }
+            case .mercuryLive(let connectionID):
+                if let coordinator = HermesIrohRelayTransport.shared.currentMediaControlCoordinator,
+                   let peer = mercuryPeerSource.peer {
+                    MercuryLiveSheet(
+                        connectionID: connectionID,
+                        peer: peer,
+                        controlStreamCoordinator: coordinator,
+                        fileTransferService: iOSFileTransferService.current,
+                        uidProvider: { Auth.auth().currentUser?.uid }
+                    )
+                } else {
+                    Text("Mercury unavailable")
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
             }
@@ -630,6 +654,12 @@ struct HermesSquareRoot: View {
     // MARK: Actions
 
     private func handlePinnedTap(uri: String) {
+        if uri.hasPrefix(AgentIdentityRegistry.pairedMacURIPrefix) {
+            let connectionID = String(uri.dropFirst(AgentIdentityRegistry.pairedMacURIPrefix.count))
+            navTarget = .mercuryLive(connectionID)
+            HapticBus.tabChange()
+            return
+        }
         guard let identity = registry.identity(for: uri) else { return }
         if let runtime = identity.runtimeID, visibleTiles.contains(runtime) {
             navTarget = .runtimeNative(runtime)
@@ -640,6 +670,11 @@ struct HermesSquareRoot: View {
     }
 
     private func handlePinnedLongPress(uri: String) {
+        if uri.hasPrefix(AgentIdentityRegistry.pairedMacURIPrefix) {
+            let connectionID = String(uri.dropFirst(AgentIdentityRegistry.pairedMacURIPrefix.count))
+            navTarget = .mercuryLive(connectionID)
+            return
+        }
         navTarget = .brandZone(uri)
     }
 
@@ -777,6 +812,9 @@ struct HermesSquareRoot: View {
         case runtimeThread(AssistantRuntimeID)
         case cloudSession(String)
         case projectMemory(String)
+        /// Mercury Phase 8 — paired Mac tile destination. Carries the
+        /// peer's iroh connection id, which doubles as the URI tail.
+        case mercuryLive(String)
     }
 
     // MARK: - Phase B helpers

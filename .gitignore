@@ -14,6 +14,7 @@
 
 # Build
 build/
+Vendor/OpenBurnBarIroh.xcframework/
 build_ios/
 DerivedData/
 *.ipa
@@ -87,6 +88,8 @@ GoogleService-Info.plist
 output/playwright/
 default.profraw
 firebase-debug.log
+firestore-rules-tests/node_modules/
+firestore-rules-tests/firestore-debug.log
 
 # BurnBar local MCP (Python venv)
 tools/burnbar-mcp/.venv/

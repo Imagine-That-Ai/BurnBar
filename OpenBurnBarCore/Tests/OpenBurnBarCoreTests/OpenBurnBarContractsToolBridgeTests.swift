@@ -175,5 +175,7 @@ final class BurnBarContractsToolBridgeTests: XCTestCase {
         XCTAssertTrue(methods.contains("daemon.browser.tooling.get"))
         XCTAssertTrue(methods.contains("daemon.browser.tooling.update"))
         XCTAssertTrue(methods.contains("daemon.browser.action"))
+        XCTAssertTrue(methods.contains("daemon.provider.credential_slot.upsert"))
+        XCTAssertTrue(methods.contains("daemon.provider.credential_slot.remove"))
     }
 }

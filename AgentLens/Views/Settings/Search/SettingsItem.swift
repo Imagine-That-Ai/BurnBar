@@ -100,11 +100,30 @@ enum SettingsPageRoute: Hashable, Codable {
     // Account
     case accountRoot
 
-    // Providers
-    case providersRoot
+    // Cloud
+    case cloudRoot
 
-    // Routing pools
+    // Agents (the unified Connections + Account Switcher + AI Environments tab).
+    case agentsRoot
+    case agentsAccounts
+    case agentsCLIs
+    case agentsRuntimes
+    case agentsModels
+    case agentsAdvanced
+
+    // Legacy aliases kept so existing deep links resolve. The router maps
+    // each of these onto the appropriate `.agents*` route at navigation
+    // time — they no longer have a dedicated UI surface.
+    case connectionsRoot
+    case providersRoot
     case routingPoolsRoot
+    case switcherRoot
+    case hermesRoot
+    case hermesChatEngines
+    case hermesGateway
+    case hermesPiAgent
+    case hermesRelay
+    case hermesPiRelay
 
     // Alerts
     case alertsRoot
@@ -115,16 +134,11 @@ enum SettingsPageRoute: Hashable, Codable {
     // Devices & Sync
     case devicesAndSyncRoot
 
-    // Account Switcher
-    case switcherRoot
+    // Media & Sharing
+    case mediaRoot
 
-    // Hermes / AI Environments
-    case hermesRoot
-    case hermesChatEngines
-    case hermesGateway
-    case hermesPiAgent
-    case hermesRelay
-    case hermesPiRelay
+    // Computer Use
+    case computerUseRoot
 }
 
 // MARK: - Anchor IDs
@@ -172,11 +186,26 @@ enum SettingsAnchor {
     static let accountSubscription = "account.subscription"
     static let accountDelete = "account.delete"
 
-    // Providers
-    static let providersAdd = "providers.add"
-    static let providersCLI = "providers.cliAuth"
-    static let providersLogSources = "providers.logSources"
-    static let providersOpenCode = "providers.cli.opencode"
+    // Cloud
+    static let cloudOverview = "cloud.overview"
+
+    // Agents (the unified Connections + Account Switcher + AI Environments tab).
+    static let agentsAccounts = "agents.accounts"
+    static let agentsCLIs = "agents.clis"
+    static let agentsRuntimes = "agents.runtimes"
+    static let agentsModels = "agents.models"
+    static let agentsAdvanced = "agents.advanced"
+
+    // Legacy anchors — every one aliases to an agents anchor so back-compat
+    // search and deep links keep working.
+    static let connectionsAccounts = agentsAccounts
+    static let connectionsApps = agentsCLIs
+    static let connectionsAdvanced = agentsAdvanced
+    static let providersAdd = agentsAccounts
+    static let providersCLI = agentsCLIs
+    static let providersLogSources = agentsAdvanced
+    static let providersOpenCode = agentsCLIs
+    static let routingPoolsOverview = agentsCLIs
 
     static func providerLogSource(_ persistedToken: String) -> String {
         "providers.logSource.\(persistedToken)"
@@ -185,9 +214,6 @@ enum SettingsAnchor {
     static func providerCLI(_ cliToken: String) -> String {
         "providers.cli.\(cliToken)"
     }
-
-    // Routing pools
-    static let routingPoolsOverview = "routingPools.overview"
 
     // Alerts
     static let alertsDailySpend = "alerts.dailySpend"
@@ -202,6 +228,12 @@ enum SettingsAnchor {
     static let cloudSyncToggle = "devices.cloudSync"
     static let trustedDevices = "devices.trusted"
     static let smartDisplays = "devices.smartDisplays"
+
+    // Media & Sharing
+    static let mediaPermissions = "media.permissions"
+
+    // Computer Use
+    static let computerUseReadiness = "computerUse.readiness"
 
     // Switcher
     static let switcherBrowser = "switcher.browser"

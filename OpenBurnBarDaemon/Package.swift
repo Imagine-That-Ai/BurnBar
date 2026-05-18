@@ -26,6 +26,7 @@ let package = Package(
             name: "OpenBurnBarDaemon",
             dependencies: [
                 .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
+                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
                 .product(name: "GRDB", package: "GRDB-SQLCipher"),
                 .product(name: "Sentry", package: "sentry-cocoa")
             ],

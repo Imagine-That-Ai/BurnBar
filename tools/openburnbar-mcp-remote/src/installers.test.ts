@@ -12,6 +12,50 @@ test("installers cover every required client", () => {
   assert.match(installer("generic"), /https:\/\/mcp\.burnbar\.ai\/mcp/);
 });
 
+test("codex installer emits hosted + local + http TOML blocks", () => {
+  const out = installer("codex");
+  assert.match(out, /\[mcp_servers\.openburnbar\]/);
+  assert.match(out, /command = "openburnbar-mcp-remote"/);
+  assert.match(out, /args = \["mcp", "serve"\]/);
+  assert.match(out, /# \[mcp_servers\.openburnbar-http\]/);
+  assert.match(out, /# url = "https:\/\/mcp\.burnbar\.ai\/mcp"/);
+  assert.match(out, /# bearer_token_env_var = "OPENBURNBAR_MCP_ACCESS_TOKEN"/);
+  assert.match(out, /\[mcp_servers\.openburnbar-local\]/);
+  assert.match(out, /server\.py/);
+  assert.match(out, /codex mcp add openburnbar -- openburnbar-mcp-remote mcp serve/);
+});
+
+test("codex installer keeps openburnbar-http commented out by default", () => {
+  const out = installer("codex");
+  const activeOpenburnbarHttp = out
+    .split(/\n/u)
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .some((line) => line.includes("[mcp_servers.openburnbar-http]"));
+  assert.equal(activeOpenburnbarHttp, false, "openburnbar-http block must remain commented");
+});
+
+test("codex installer balances [section] count with body lines", () => {
+  const out = installer("codex");
+  const activeSections = out
+    .split(/\n/u)
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .filter((line) => /^\[mcp_servers\./u.test(line));
+  assert.deepEqual(activeSections, [
+    "[mcp_servers.openburnbar]",
+    "[mcp_servers.openburnbar-local]"
+  ]);
+});
+
+test("non-codex installers stay byte-identical", () => {
+  assert.equal(installer("claude"), "claude mcp add openburnbar -- openburnbar-mcp-remote mcp serve");
+  for (const kind of ["droid", "kimi", "forge", "generic"] as const) {
+    const parsed = JSON.parse(installer(kind)) as { mcpServers: { openburnbar: { command: string; args: string[]; env: Record<string, string> } } };
+    assert.equal(parsed.mcpServers.openburnbar.command, "openburnbar-mcp-remote");
+    assert.deepEqual(parsed.mcpServers.openburnbar.args, ["mcp", "serve"]);
+    assert.equal(parsed.mcpServers.openburnbar.env.OPENBURNBAR_MCP_ENDPOINT, "https://mcp.burnbar.ai/mcp");
+  }
+});
+
 test("sealed result decrypt is no-op without a local vault key", () => {
   delete process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64;
   const input = JSON.stringify({ hits: [{ sealedTitle: { algorithm: "AES-256-GCM" } }] });

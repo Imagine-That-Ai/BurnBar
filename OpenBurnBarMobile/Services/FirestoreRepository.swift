@@ -625,14 +625,16 @@ final class FirestoreRepository {
 
     func fetchUsageSince(_ startDate: Date) async throws -> [TokenUsage] {
         let uid = try uid()
-        // `startTime` is written everywhere as a Firestore `Timestamp` (see
+        // `endTime` is written everywhere as a Firestore `Timestamp` (see
         // `UsageSyncService.swift` and `CloudSyncService.swift`). Comparing
         // against an ISO-8601 string here would cross Firestore's type-order
         // boundary and match zero documents, surfacing as an empty Pulse
-        // hero card for the 1M / 1H / 1D scopes.
+        // hero card for the 1M / 1H / 1D scopes. End time is the right live
+        // attribution field because gateway/session rows can keep a stable
+        // start time while their token totals advance.
         let snapshot = try await db.collection("users/\(uid)/usage")
-            .whereField("startTime", isGreaterThanOrEqualTo: Timestamp(date: startDate))
-            .order(by: "startTime", descending: true)
+            .whereField("endTime", isGreaterThanOrEqualTo: Timestamp(date: startDate))
+            .order(by: "endTime", descending: true)
             .getDocuments()
         return snapshot.documents.compactMap { doc -> TokenUsage? in
             decodeWithDocID(TokenUsage.self, from: doc.data(), docID: doc.documentID)
@@ -648,8 +650,8 @@ final class FirestoreRepository {
             return nil
         }
         return db.collection("users/\(uid)/usage")
-            .whereField("startTime", isGreaterThanOrEqualTo: Timestamp(date: startDate))
-            .order(by: "startTime", descending: true)
+            .whereField("endTime", isGreaterThanOrEqualTo: Timestamp(date: startDate))
+            .order(by: "endTime", descending: true)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
                 Task { @MainActor in

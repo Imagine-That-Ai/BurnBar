@@ -7,7 +7,403 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Computer Use (Phases 8–13, flagged off)
+- **Phase 8 substrate.** `MediaStreamClass` gains `control.surface.frame`,
+  `control.action.log`, `control.input`, `control.approval`; the four route
+  to the new `MediaStreamClass.Feature.computerUse` quota bucket.
+- **Cursor extension to `MediaPacketCodec`.** `MediaFrame.Flags.hasCursorMetadata`
+  (bit `0x08` — `0x04` was already taken by `.muted`) prefixes 4 trailing
+  bytes (`i16 cursorX`, `i16 cursorY`, big-endian) after the existing
+  18-byte header. Decoder ignores the bytes when the flag is absent so
+  the codec stays byte-identical for pre-Computer-Use senders.
+- **Wire frames.** Six new `HermesRealtimeRelayFrameType` cases
+  (`control.classify`, `control.action.log.entry`, `control.input.intent`,
+  `control.approval.{request,response}`, `control.denied`) carried by a
+  new `HermesRealtimeRelayControlPayload` sibling-of-`media` payload.
+- **OpenBurnBarComputerUseCore.** New cross-platform SwiftPM target with
+  session metadata, scope rules + matcher, built-in deny registry, audit
+  chain + logger + hasher (SHA-256, BLAKE3-swappable), action descriptors,
+  capability gate + budget envelope, and the pure Ed25519 signer/verifier
+  used by the Mac validator and iOS issuer. 50-test suite green.
+- **BurnBarToolKind extensions.** 13 new tool kinds (7 browser + 5 mac
+  input + 1 mac inspect) plus `BurnBarBrowserActionArguments`. Available
+  via `BurnBarToolKind.computerUseToolKinds` for daemon dispatch routing.
+- **Daemon.** `OpenBurnBarPlaywrightDriver` (long-lived Node subprocess
+  speaking newline-delimited JSON-RPC), `OpenBurnBarPlaywrightLifecycle`
+  (auto-install pinned at `playwright@1.49.1`), `ComputerUseRunCoordinator`
+  (capability gate + scope + approval flow + per-action audit append).
+  Node.js bridge script lives at
+  `OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js`.
+- **Mac.** `MacInputController` (CGEvent + display-bounds gating),
+  `MacAccessibilityInspector` (AX role probe + deny-region matcher),
+  `ComputerUsePanicHaltCoordinator` (global hotkey `⌃⌥⌘.`, NSWorkspace
+  auth-gate listeners, Remote Config kill-switch, Accessibility
+  revocation), `PhoneControlAuthorityValidator`.
+- **iOS.** `AgentWatchState` observable model, `PhoneControlAuthorityIssuer`
+  Ed25519 envelope builder.
+- **Cloud Functions.** `evaluateComputerUseBudget` (hourly), `recomputeComputerUseQuotaUsage`
+  (hourly), `rollupComputerUseDaily`. New types `ComputerUseSessionDoc`,
+  `ComputerUseActionDoc`, `ComputerUseQuotaUsageDoc`,
+  `ComputerUseSessionDailyRollupDoc`, `ComputerUseBudgetStatusDoc`,
+  `ComputerUseEntitlementDoc`.
+- **Firestore rules.** New `hasActiveHostedComputerUseEntitlement(userId)`
+  helper and gated rule blocks for `computer_use_sessions`,
+  `computer_use_actions`, `computer_use_quota_usage`. Operator-side
+  `ops/computer_use_budget_status` + `ops/computer_use_session_daily_rollups`
+  are read-only for authenticated users; server-only writes.
+- **Docs.** `docs/HERMES_COMPUTER_USE.md` (engineer/operator reference),
+  `docs/runbooks/computer-use-rollout-status.md` (phase ship log),
+  `docs/runbooks/computer-use-budget.md`, `docs/runbooks/computer-use-quota.md`,
+  `docs/runbooks/computer-use-app-store.md`,
+  `docs/runbooks/computer-use-audit-disputes.md`.
+- **Scripts.** `scripts/install-playwright.sh` reproducible recipe
+  (matching `OpenBurnBarPlaywrightLifecycle.pinnedPlaywrightVersion`).
+
+### Fixed
+- **Nest Hub Claude quota refreshes within a debounce window instead of
+  every 2 minutes.** The Smart Hub bridge was double-gating the auto-refresh
+  loop: an outer 60 s gate in `SmartHubBridgeController` plus the inner 60 s
+  gate in `ProviderQuotaService.refreshIfNeeded`. Tracing the interaction,
+  the second tick always landed inside the inner window and skipped — so
+  the effective cadence was ~120 s, not the advertised 60 s. The same
+  heartbeat also serialized the 5 s pump behind whatever-multi-second
+  `refreshAll` happened to be in flight, which froze the dashboard mid-refresh.
+  Now: the pump runs in its own task (so the Hub stays live during a refresh),
+  the auto-refresh runs in a second task that delegates to
+  `refreshIfNeeded` as the single source of truth for staleness, and a new
+  `ClaudeStatuslineWatcher` FS-event watcher fires
+  `ProviderQuotaService.refreshClaudeFromStatuslineHook` the moment Claude's
+  CLI rewrites the statusline snapshot. The hook path deliberately does
+  not bump `lastFetch`, so a chatty Claude session can no longer gate the
+  next all-provider tick and starve Codex/Cursor/etc. The watcher uses
+  exponential backoff (250 ms → 30 s) when the file is absent, so machines
+  without Claude installed don't burn syscalls on a 4 Hz reopen loop. It
+  also defends against future bridge variants that use atomic
+  `mv tmp → snapshot` writes by re-arming the FD on `.rename`/`.delete`
+  events; the current `cp`-based wrapper writes in place, but the
+  defensive path costs nothing and absorbs the change automatically.
+- **Factory Droid Max can route as a strict same-model failover provider.**
+  Factory is now in the daemon provider catalog with Standard and Droid Core
+  lanes separated. Gateway requests for Factory Standard models run through a
+  supervised read-only `droid exec` executor, reject silent Droid Core fallback,
+  and fail over to another exact same-model route when Standard Usage is
+  exhausted.
+- **OpenCode credential entry accepts real route-key formats.** The Accounts
+  wizard no longer treats OpenCode auth JSON as a generic JWT session token;
+  it accepts the `opencode-go` object, the full `auth.json`, or the bare route
+  key, and the live quota hint now points users to local CLI stats instead of
+  the hosted per-plan quota path.
+- **Catalog provider accounts use their real logos and account rows.** DeepSeek,
+  Alibaba/Qwen, Meta, Mistral, xAI/Grok, and Cohere no longer borrow unrelated
+  agent logos, and daemon keychain slots now appear immediately in the Accounts
+  list even before a cloud `provider_accounts` row exists.
+- **Droid model sync is now a first-class proxy-catalog action.** The
+  Settings → Agents → CLIs and Models proxy catalog panels expose **Sync to
+  Droid**, which rewrites Factory/Droid custom models from the live
+  route-ready `/v1/models` list and preserves cloud-suffixed model IDs such as
+  `kimi-k2.6:cloud`.
+- **Proxy model advertising can be controlled per model.** The Settings →
+  Agents → Models and CLIs catalog rows now expose a per-model advertise
+  toggle; disabled models stay visible in Settings but disappear from the
+  public `/v1/models` route list and from Droid sync until re-enabled.
+- **Hermes Square now opens from the iPad sidebar.** The iPad Hermes
+  destination uses the shared `HermesSquareSplitLayout` with the live mobile
+  mission host instead of falling back to the legacy conversation list, so
+  iPad gets the same Square inbox, pinned grid, approvals, missions, search,
+  and detail layout as the compact mobile surface.
+- **macOS Google SSO keychain recovery.** Firebase Auth access-group binding
+  now retries after clearing stale default Firebase Auth keychain rows, including
+  the current `firebase_auth_1_<app>_firebase_user` row used by Firebase 11.x.
+  This prevents Google sign-in from completing the browser handoff but leaving
+  Settings stuck on "Anonymous Account" with the generic Firebase keychain error.
+- **Android Hermes relay wire-protocol parity with iOS / macOS.** The first
+  pass shipped Android crypto that derived per-request keys directly from a
+  static ECDH shared secret and put that raw secret in the `wrappedKey`
+  field. That diverges from the Mac/iOS contract on every wire-visible
+  surface — AAD strings, per-request symmetric key + ECIES key wrap, JSON
+  field names, chunk kinds — so Mac ⇄ Android decryption silently failed.
+  `HermesRelayCrypto.kt`, `HermesIrohRelayTransport.kt`, and
+  `HermesRelayClient.kt` now port iOS' `wrapSymmetricKey`/
+  `unwrapSymmetricKey` (X9.63 ephemeral pub || sealed key, HKDF-derived
+  wrapping key under `OpenBurnBar-HermesRelay-KeyWrap-v1|<keyAAD>`),
+  canonical `requestAAD` / `keyAAD` / `chunkAAD` shapes, camel-cased
+  Firestore envelope (`connectionId`, `payloadCiphertext`, `wrappedKey`,
+  `relayEncryption`, `relayKeyVersion`, `expireAt`, `schemaVersion`), and
+  the `sse | data | error` chunk-kind enum. A deterministic Swift fixture
+  (`OpenBurnBarCore/Tests/.../Fixtures/HermesRelayWireVector.json`) is
+  pinned into the Android test resources and replayed by the new
+  `HermesRelayWireVectorTest` so a future drift fails CI on both
+  platforms.
+
+### Changed
+- **Mobile-selected agent models now bind across Hermes, Pi, OpenClaw, Codex,
+  and Claude missions.** `cli_agent_mission_requests` carries the selected
+  `requestedModelID`, the trusted Mac records `selectedModelID`, Pi/OpenClaw
+  launch with explicit `--model` arguments, Codex/Claude/Hermes set the chat
+  session model before send, and shell-backed direct missions now use
+  non-interactive login shells so GUI-launched Pi jobs do not stop before
+  spawning.
+- **Android reaches full Hermes Square + iroh transport + Mercury Media
+  parity with iOS.** Android now ships the entire Hermes surface that
+  iOS does — Hermes Square (approval inbox, fan-out group cards, pinned
+  grid, Project Memory wiki, active missions, rollback, conversations,
+  subscriptions, 5-tab Discover, voice intent banner, brand zones with
+  parallax + dispatch / forward / subscribe, tablet split layout,
+  upgraded voice sheet with sine breath-pulse), Hermes messaging (atom /
+  mention / code rich bubbles, the 7-case `HermesChatMessageOutcome`
+  chrome, mercury-stroked tool cards with capability grouping, mercury
+  thinking dots + caret, streaming-tick mirror for live Hermes
+  responses, the 5-tool catalog with in-app `HermesAtomNavigator`
+  routing, the empty-response fallback path), iroh transport
+  (`:openburnbar-iroh-relay` Kotlin library mirroring `OpenBurnBarIrohRelay`
+  1:1 — protocol, frame codec, Ed25519 pairing verifier via Tink,
+  loopback transport, JNI/UniFFI backend reflection bridge, `IrohJniTransport`,
+  `HermesIrohRelayTransport`, `HermesCompositeRelayTransport` cascade
+  with kill-switch and Firestore fallback), and Mercury Media (file
+  transfer over iroh-blobs through `AndroidFileTransferService`,
+  `MediaControlStreamCoordinator` with exponential-backoff supervisor,
+  `AttachmentSaver` routing through MediaStore + SAF with per-partner
+  save preferences, HEVC screen-share viewer with PiP, CameraX +
+  `MediaCodec` 1:1 video pipeline, libopus audio pipeline over the new
+  `openburnbar/mercury/audio/1` QUIC datagram ALPN, `CallSessionCoordinator`,
+  `MediaSessionForegroundService` with `microphone|camera|mediaProjection|phoneCall`
+  granular foreground service types, `IncomingCallActivity` +
+  `MercuryFcmService` driving a CallStyle full-screen incoming sheet
+  with `MANAGE_OWN_CALLS` ConnectionService surface, `AndroidMediaCapabilityGate`
+  read-only mirror of Mac authority, and `MediaAnalyticsLogger` routing
+  to the existing `iroh_audit_events` rollup). Rust crate gains a new
+  `datagrams.rs` UniFFI surface (`IrohDatagramChannel`, `mercury_audio_alpn`,
+  `MERCURY_AUDIO_ALPN`); `scripts/build-iroh-android-aar.sh` builds
+  `Vendor/openburnbar-iroh.aar` (arm64-v8a, x86_64, armeabi-v7a, x86)
+  with auto-installed NDK + cargo-ndk + UniFFI Kotlin bindgen, and
+  `scripts/build_opus_android.sh` builds `Vendor/opus-android.aar` from
+  libopus 1.5 for the four ABIs. CI workflows
+  `.github/workflows/build-iroh-android-aar.yml` (and the existing
+  iroh-xcframework workflow) ensure the binaries are reproducible.
+  Cloud Functions gains an FCM Android branch in `functions/src/fcmAndroidSender.ts`
+  with high-priority data-message routing and a `voipPush.ts`
+  `resolveFanOut` helper that picks the freshest channel per device.
+  Tests: 253 JVM unit tests green (`:app:testDebugUnitTest`),
+  full Compose instrumented suite compiles green, the iroh-relay
+  library's own suite is 14/14 green. Docs:
+  `docs/runbooks/android-iroh-transport.md`,
+  `docs/runbooks/android-mercury-media.md`,
+  `docs/runbooks/iroh-rollout-status.md`,
+  `docs/runbooks/media-rollout-status.md`,
+  `docs/runbooks/wss-retirement-checklist.md` all updated. Three new
+  DESIGN.md decision-log entries (Android Mercury incoming-call sheet,
+  per-partner save preferences over MediaStore + SAF, Android iroh
+  transport over UniFFI/JNI AAR).
+- **Codex CLI is wired as a first-class MCP client.**
+  `openburnbar mcp install codex` now emits a complete
+  `~/.codex/config.toml` block with three options — stdio shim over the
+  hosted MCP (recommended; preserves local sealed-content decrypt and
+  pins MCP-Protocol-Version 2025-11-25), native streamable HTTP for
+  users whose Codex build negotiates that version, and the local Python
+  stdio MCP. Quick-add via `codex mcp add openburnbar -- openburnbar-mcp-remote mcp serve`
+  still works. New onboarding doc at
+  [`docs/CODEX_AGENT_ONBOARDING.md`](docs/CODEX_AGENT_ONBOARDING.md);
+  Codex section added to
+  [`tools/openburnbar-mcp/README.md`](tools/openburnbar-mcp/README.md).
+  Installer covered by `installers.test.ts` (4 cases).
+- **Project Memory detail sheets adopt the Editorial Observatory voice
+  used by the iOS Intelligence Brief.** The hero card, page rows, visual
+  tiles, and citation chips on the macOS Projects hub now open into four
+  full editorial sheets (`ProjectMemoryHeroDetailSheet`,
+  `ProjectMemoryPageDetailSheet`, `ProjectMemoryVisualDetailSheet`,
+  `CitationInsightSheet`) with eyebrow + subtitle + 22pt headline + mono
+  meta strip + mercury hairline hero, numbered 01/02/03 section rows
+  with severity-bar leading edge and footnote-chip citations, a live
+  Hermes "Reading" card streaming the model's response in real time
+  via a new `streamingTick` on `ChatSessionController`, Swift Charts
+  visuals with annotations, evidence callouts that explain empty
+  sentinels instead of rendering empty bodies, cascade-in motion (with
+  `accessibilityReduceMotion` opt-out), and "Continue in chat" footers
+  that pipe directly into the existing chat panel. Citation chips and
+  the hero card are now fully tappable surfaces. Covered by
+  `ProjectMemoryDetailSheetTests` (10 cases).
+
 ### Added
+- **Mercury media (all 7 phases — source-complete, off by default).**
+  Mac ⇄ iPhone/iPad file transfer, screen share, and 1:1 video calling
+  layered on the existing iroh QUIC mesh as new in-band stream classes.
+  Plan of record: `plans/2026-05-15-mercury-media-master-plan.md`.
+  Per-phase rollout log: `docs/runbooks/media-rollout-status.md`. Real
+  phase activation requires per-phase TestFlight + App Store review +
+  device-matrix soak.
+    * **Phase 1a (substrate):** `OpenBurnBarMedia` SwiftPM target with
+      stream classes, packet codec, frame envelope, bitrate controller,
+      capability gate, budget envelope, telemetry buckets;
+      `HermesRealtimeRelayFrame` extended with `media.classify`,
+      `media.blob.advertise`, `media.blob.ack`; stream-class dispatch
+      across Mac iroh + iOS iroh + WSS legacy paths; `iroh-blobs = "0.92"`
+      pulled into Cargo.toml; `crates/openburnbar-iroh/src/blobs.rs`
+      module; 5 cargo tests + 28 OpenBurnBarMedia XCTests.
+    * **Phase 1b (file transfer end-to-end):** `IrohBlobNode` UniFFI
+      object owning its own iroh `Endpoint` + `FsStore` + `Router`
+      pinned to `iroh_blobs::ALPN`; `IrohBlobBackend` Swift protocol +
+      xcframework-gated bridge; `MediaFileTransferService` actor;
+      `IrohBlobKeyStore` (Mac + iOS) with separate Keychain entry;
+      `MacFileTransferService` + `iOSFileTransferService` adapters with
+      chat-stream advertise/ack flow; `MediaFrameDispatcher` /
+      `IrohMediaFrameDispatcher` typealiases on Mac + iOS dispatch
+      sites; xcframework reshipped via `scripts/build-iroh-xcframework.sh`;
+      7 new MediaFileTransferServiceTests.
+    * **Phase 2 (file UI + SKU + Cloud Functions):** iOS
+      `MediaPartnerSavePreferenceStore` + `AttachmentSaver` (Decision 3);
+      iOS `PerPartnerSavePreferencesView`; Mac `AttachmentChipRow` +
+      `PaperclipButton`; iOS `AttachmentBubble` + `PaperclipButton`;
+      Mac `MacMediaCapabilityGate` (Decision 2 — Mac is source of
+      truth); Cloud Functions `mediaQuota.recomputeMediaQuotaUsage`
+      (hourly), `mediaSku.grantMediaGrandfather`,
+      `mediaSku.validateMediaPurchase`, `mediaMonitoring.rollupMediaSessionDaily`;
+      `firestore.rules` `hasActiveHostedMediaEntitlement` helper +
+      gates for `media_quota_usage`, `media_session_events`,
+      `media_attachment_manifests`, `ops/media_budget_status`,
+      `ops/media_session_daily_rollups`; 6 new
+      `MediaPartnerSavePreferenceStoreTests`.
+    * **Phase 3 (Mac → iOS screen share):** Mac `ScreenCapturePipeline`
+      (ScreenCaptureKit), `VideoEncoder` (VTCompressionSession HEVC +
+      H.264 fallback), `MediaSessionCoordinator` orchestrator; iOS
+      `VideoReceivePipeline` (VTDecompressionSession +
+      AVSampleBufferDisplayLayer) + `ScreenShareViewerView` (full-bleed
+      + three-finger-tap stats overlay); Mac UI `StartMirrorButton` +
+      `MercuryRing` + `MediaPermissionsView`.
+    * **Phase 4 (Mac ⇄ iOS audio):** Mac `MicrophoneCapturePipeline`
+      (AVAudioEngine + Voice-Processing IO) + `AudioEncoder` (Apple's
+      built-in `kAudioFormatOpus` instead of vendoring libopus — same
+      wire profile, no third-party binary); iOS
+      `MicrophoneCaptureService` + `AudioReceivePipeline` (60 ms jitter
+      buffer + AirPods route-change handler); mute via
+      `MediaFrame.Flags.muted` in-band.
+    * **Phase 5 (video + CallKit + budget):** Mac `CameraCapturePipeline`
+      + `VoIPCallTrigger` (Firebase Functions callable wrapper); iOS
+      `CameraCaptureService`, `VoIPCallService` (PKPushRegistry +
+      CXProvider + CXCallController), `MercuryCallTransitionController`
+      (Decision 1 — app-active → Mercury sheet, app-background → direct
+      CallHUD); Mac `IncomingCallSheet` + `CallHUD`; iOS
+      `MercuryIncomingSheet` + `CallHUDView` + `SelfPiPView` (88×128
+      drag-to-corner); Cloud Functions `voipPush.triggerVoIPCall`
+      (verifies Mac entitlement per Decision 2, writes
+      `voip_outbound`); `mediaBudget.evaluateMediaBudget` (hourly,
+      $600 soft / $1000 hard cap per Decision 4, writes
+      `ops/media_budget_status/current`).
+    * **Phase 6 (iPad multicam + PiP):** iOS
+      `iPadMultiCamCaptureService` (AVCaptureMultiCamSession with
+      single-cam fallback), `ScreenSharePiPController`
+      (AVPictureInPictureController), iOS `MediaSettingsView` with
+      back-camera toggle + stats overlay toggle.
+    * **Phase 7 (macOS PiP + WSS retirement):** Mac
+      `ScreenShareViewerWindow` — `NSPanel` `.floating` +
+      `.canJoinAllSpaces + .fullScreenAuxiliary` for cross-Spaces /
+      fullscreen-app overlay with mercury hairline border;
+      `docs/runbooks/wss-retirement-checklist.md` — 14-day gate
+      criteria + 10-step decommission sequence + 7-day rollback window.
+  Verification: `swift test` 687 tests, 0 failures, 2 skipped (was 641
+  before the rollout — 46 new tests across all phases). `cargo test`
+  5 tests, 0 failures. `npx tsc --noEmit` in `functions/` clean.
+  Documentation refreshed: `docs/HERMES_MEDIA_TRANSPORT.md`,
+  `docs/runbooks/media-rollout-status.md`,
+  `docs/runbooks/media-quota.md`, `docs/runbooks/media-budget.md`,
+  `docs/runbooks/media-device-matrix/README.md`,
+  `docs/runbooks/wss-retirement-checklist.md`.
+- **Mercury media (Phase 1a — substrate, off by default).** Lays the
+  forward-compatible foundation for Mac ⇄ iPhone/iPad file transfer,
+  screen share, and 1:1 video calling — all layered on the existing iroh
+  QUIC mesh as new in-band stream classes (no ALPN bump). Plan of record:
+  `plans/2026-05-15-mercury-media-master-plan.md`. This entry covers the
+  substrate that ships in Phase 1a; the multi-ALPN endpoint router,
+  `publish_blob`/`fetch_blob` UniFFI methods, xcframework reship, and
+  Mac/iOS attachment UI land in Phase 1b. Touches:
+    * **New SwiftPM target** `OpenBurnBarMedia` in `OpenBurnBarCore/Package.swift`
+      — pure-Swift substrate (`MediaStreamClass`, `MediaPacketCodec`,
+      `MediaFrame`, `BitrateController`, `MediaSessionMetadata`,
+      `MediaCapabilityGate` protocol, `MediaBudgetEnvelope`).
+    * **Frame protocol extension** in `OpenBurnBarCore` —
+      `HermesRealtimeRelayFrameType` adds `media.classify`,
+      `media.blob.advertise`, `media.blob.ack` cases. New optional
+      `media: HermesRealtimeRelayMediaPayload?` field on
+      `HermesRealtimeRelayFrame`. Wire is byte-identical to pre-rollout
+      for chat-only frames; older decoders skip unknown frame types.
+    * **Stream-class dispatch** wired on Mac
+      (`AgentLens/Services/IrohRelay/IrohRelayRequestHandler.swift`),
+      iOS (`OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift`),
+      and the WSS legacy paths (`HermesRealtimeRelayHostClient.swift`,
+      `HermesService.swift`) so every existing exhaustive switch handles
+      the new cases without a build break.
+    * **Rust crate** `crates/openburnbar-iroh/` — adds `iroh-blobs = "0.92"`
+      (the line that targets `iroh ^0.91`), creates `src/blobs.rs`
+      exposing `parse_blob_ticket`, `iroh_blobs_alpn`,
+      `iroh_blobs_crate_version`, `BlobTicketBytes`, `BlobTransferStats`
+      via UniFFI. 5 cargo unit tests cover ticket round-trip, garbage
+      rejection, whitespace trimming, ALPN identity, version exposure.
+    * **Cloud Functions schema** `functions/src/types.ts` —
+      `MediaSessionEventDoc`, `MediaQuotaUsageDoc`,
+      `MediaAttachmentManifestDoc`, `MediaSessionDailyRollupDoc`,
+      `MediaBudgetStatusDoc`. Compile-only in Phase 1, no server writes
+      yet.
+    * **Documentation**: new `docs/HERMES_MEDIA_TRANSPORT.md` (architecture
+      spec), `docs/runbooks/media-rollout-status.md` (phase log),
+      `docs/runbooks/media-quota.md` (operator quota runbook),
+      `docs/runbooks/media-budget.md` (n0 hosted-relay $600 soft / $1000
+      hard cap operations), `docs/runbooks/media-device-matrix/README.md`.
+      `docs/HERMES_IROH_TRANSPORT.md` extended with a "Media stream
+      classes" section.
+  28 new XCTests + 5 new cargo tests; existing 641 OpenBurnBarCore +
+  IrohRelay tests still pass with 0 regressions. See
+  `docs/runbooks/media-rollout-status.md` for the Phase 1b queue.
+- **Hermes iroh production monitoring rollups.** Added the scheduled
+  `rollupIrohTransportDaily` Function to summarize daily
+  `iroh_audit_events` into operator telemetry for rollout gates, with focused
+  Functions test coverage and a secrets/rotation runbook.
+- **Hermes Realtime Relay → iroh peer-to-peer transport (all 7 phases).**
+  Migrates the Hermes relay off Cloud Run + Memorystore + WSS onto an
+  [iroh](https://www.iroh.computer/) QUIC mesh between the Mac and
+  iOS/iPadOS clients. Same `HermesRelayCrypto` envelope, same
+  `HermesRealtimeRelayFrame` wire JSON, holepunched QUIC peer-to-peer with
+  iroh relay fallback. Touches:
+    * **Rust crate** `crates/openburnbar-iroh/` — UniFFI surface around
+      `iroh-net` (bootstrap/identity/connect/accept/send/recv/shutdown/close),
+      now accepts a `relay_url` to pin a hosted relay (Phase 6).
+    * **xcframework build** — `scripts/build-iroh-xcframework.sh` builds for
+      macOS arm64 + iOS arm64 + iOS Simulator (arm64/x86_64);
+      `.github/workflows/iroh-xcframework.yml` publishes the artifact.
+    * **SwiftPM target** `OpenBurnBarIrohRelay` — frame codec, transport
+      protocol, in-process loopback transport, xcframework-backed transport
+      (`IrohXcframeworkTransport`), Ed25519 pairing primitives
+      (`IrohPairingSignature` + `IrohPairingPublisher` +
+      `IrohPairingDirectory`), and the encrypted echo path
+      (`HermesIrohEcho`).
+    * **Mac adapter** `AgentLens/Services/IrohRelay/HermesIrohRelayHostClient`
+      — drop-in for `HermesRealtimeRelayHostClient` over the iroh transport
+      with Keychain-backed `IrohRelayKeyStore` + `IrohPairingKeyStore` and
+      a pairing-record heartbeat.
+    * **iOS adapter** `OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport`
+      — conforms to `HermesRelayTransporting`, fetches + verifies the Mac's
+      signed pairing record, dials the iroh `NodeId`, falls back to WSS on
+      any iroh failure.
+    * **Composite chain** `HermesCompositeRelayTransport` becomes
+      iroh → WSS → Firestore, with cascade reasons surfaced through the
+      audit log.
+    * **Schema** `functions/src/types.ts` — `IrohPairingRecordDoc`,
+      `IrohTransportAuditEventDoc`, freshness constants, canonical AAD
+      string.
+    * **Rules** `firestore.rules` — gates `/users/{uid}/iroh_pairing/*`
+      (owner write, ≤24h freshness window) and
+      `/users/{uid}/iroh_audit_events/*` (append-only).
+    * **Feature flag** `SettingsManager.hermesIrohTransportEnabled` — sticky
+      per-device, default off, can be flipped per cohort via Remote Config.
+    * **Hosted relay cutover** `scripts/cutover-n0-hosted-relay.sh` —
+      provisions the n0 hosted relay through the services API and rolls
+      out the relay URL via Firebase Remote Config.
+    * **Retirement runbook** `docs/HERMES_IROH_RETIREMENT.md` — Phase 7
+      gates, decommissioning steps, rollback playbook, and cost analysis.
+  27 unit tests cover the wire format, pairing signatures, transport
+  primitives, the xcframework adapter (against a fake backend), the
+  Firestore-backed publisher (against an in-memory directory), and the
+  encrypted echo round trip; all green on macOS arm64. See
+  [`docs/HERMES_IROH_TRANSPORT.md`](docs/HERMES_IROH_TRANSPORT.md) and
+  [`docs/HERMES_IROH_RETIREMENT.md`](docs/HERMES_IROH_RETIREMENT.md).
 - **Hermes Square now searches across all assistant runtimes and archived CLI
   sessions.** Codex, Claude Code, and OpenClaw are enabled as first-class mobile
   runtimes alongside Hermes and Pi. macOS publishes encrypted Codex/Claude/OpenClaw
@@ -121,6 +517,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `HostedFallbackTests.swift`.
 
 ### Fixed
+- **Hermes iroh Phase A build path is reproducible across local and CI builds.**
+  The xcframework script now uses the rustup toolchain explicitly, generates a
+  pinned UniFFI Swift helper instead of installing a non-existent global crate,
+  and normalizes the generated modulemap for static-library xcframework slices.
+  `OpenBurnBarCore` conditionally wires the UniFFI binary target only when
+  `Vendor/OpenBurnBarIroh.xcframework` exists, so fresh checkouts still compile
+  the relay package while release/local artifact builds use the real iroh FFI.
+  macOS, iOS device, iOS Simulator, SwiftPM, and Functions gates are green
+  locally; the final Phase A gate is the GitHub xcframework workflow after push.
 - **Pulse 1M / 1H / 1D hero stopped showing $0.00 on iOS, iPad, and Android.**
   `FirestoreRepository.fetchUsageSince` and `listenToUsageSince` (Swift + Kotlin)
   filtered `startTime` against an ISO-8601 *string* cutoff, but every writer
@@ -415,14 +820,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bearers (sent via `Authorization: Bearer`) and never logs the secret.
   Codex's ChatGPT-auth mode is honestly documented as
   **track-only, not routed**.
-- **VibeProxy-style routed client setup and failover proof.** Routing pools
+- **OpenBurnBar-native routed client setup and failover proof.** Routing pools
   now starts with a setup checklist, a one-click loopback gateway default
   (`127.0.0.1:8317`), and explicit client rows for Codex CLI, Droid/Factory,
   Forge CLI, and Claude Code. Local loopback clients can be wired with the
   harmless `openburnbar-local` placeholder when gateway auth is intentionally
-  off, matching the VibeProxy local-proxy convention. Droid/Factory sync now
-  writes Factory custom models with `provider: "openai"` and the local
-  `/v1` gateway shape VibeProxy documents, while Forge gets a sentinel-fenced
+  off. Droid/Factory sync now writes Factory custom models with
+  `provider: "openai"` and the local `/v1` Hydrant gateway shape, while Forge
+  gets a sentinel-fenced
   `[[providers]]` block in `~/forge/.forge.toml` with chat-completions and
   models URLs. Gateway tests now explicitly simulate quota exhaustion for
   Codex, Droid, Forge, and Claude Code and prove each request retries the
@@ -701,7 +1106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   field Factory actually exposes lands in the popover, and so the headline
   burn number reflects what's truly billed against the plan:
   - **Lane-aware filtering (CRITICAL correctness fix).** Sessions with
-    `providerLock != "factory"` are user-configured proxies (VibeProxy,
+    `providerLock != "factory"` are user-configured proxies (third-party proxy,
     OpenCode-Go, localhost Ollama, BYOK keys, …) routed through
     `config.json.custom_models[]`. They never touch Factory's billing,
     but the old reader summed every session into the Pro monthly cap.
@@ -744,7 +1149,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     surfaces `trial` / `past_due` / `canceled` states from the Orb
     subscription block when not `active`.
   - **Tests:** Seven new `ProviderQuotaServiceTests` cover the proxy
-    filter (multi-session fixture with VibeProxy + anthropic + factory
+    filter (multi-session fixture with custom-proxy + anthropic + factory
     rows), the Droid Core classification, the plan auto-detection
     matrix (Pro / Plus / Max / ultra-alias / Enterprise →
     `.unknown` / casing), the classifier's `custom:` and `:cloud-N`

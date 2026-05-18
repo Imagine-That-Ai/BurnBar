@@ -7,87 +7,149 @@ extension AccountSwitcherSettingsView {
         withReconnectConfirmation(
             appliedTo: withPendingCLIAccountAlert(
                 appliedTo: withDeleteProfileAlert(
-                    appliedTo: SettingsDeepLinkScrollContainer(route: .switcherRoot) { _ in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                                // OAuth boundary messaging (VAL-SETTINGS-007, VAL-SETTINGS-016)
-                                boundaryMessagingCard
-                                if let error {
-                                    errorBanner(error)
-                                }
-
-                                if isLoading {
-                                    loadingView
-                                } else if profiles.isEmpty {
-                                    emptyStateView
-                                } else {
-                                    profileListView
-                                }
-                            }
-                            .padding(DesignSystem.Spacing.lg)
+                    appliedTo: bodyCore
+                        .onAppear {
+                            loadProfiles()
+                            refreshQuotaSnapshotsIfNeeded()
                         }
-                    }
-                    .background(settingsBackground)
-                    .scrollContentBackground(.hidden)
-                    .onAppear {
-                        loadProfiles()
-                        refreshQuotaSnapshotsIfNeeded()
-                    }
-                    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                        enrichAndReload()
-                        refreshQuotaSnapshotsIfNeeded()
-                    }
-                    .sheet(isPresented: $showingCreateSheet) {
-                        createProfileSheet
-                    }
-                    .sheet(isPresented: $showingEditSheet) {
-                        if let profile = profileToEdit {
-                            editProfileSheet(profile: profile)
+                        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                            enrichAndReload()
+                            refreshQuotaSnapshotsIfNeeded()
                         }
-                    }
-                    .sheet(isPresented: Binding(
-                        get: { profileForAccountChange != nil },
-                        set: { isPresented in
-                            if !isPresented {
-                                profileForAccountChange = nil
+                        .sheet(isPresented: $showingCreateSheet) {
+                            createProfileSheet
+                        }
+                        .sheet(isPresented: $showingEditSheet) {
+                            if let profile = profileToEdit {
+                                editProfileSheet(profile: profile)
                             }
                         }
-                    )) {
-                        if let profile = profileForAccountChange {
-                            AccountDestinationPickerSheet(
-                                profileName: profile.displayName,
-                                destinations: availableAccountChangeDestinations(for: profile),
-                                onSelect: { destination in
-                                    openAccountChangeDestination(destination, for: profile)
+                        .sheet(isPresented: Binding(
+                            get: { profileForAccountChange != nil },
+                            set: { isPresented in
+                                if !isPresented {
+                                    profileForAccountChange = nil
+                                }
+                            }
+                        )) {
+                            if let profile = profileForAccountChange {
+                                AccountDestinationPickerSheet(
+                                    profileName: profile.displayName,
+                                    destinations: availableAccountChangeDestinations(for: profile),
+                                    onSelect: { destination in
+                                        openAccountChangeDestination(destination, for: profile)
+                                    },
+                                    onCancel: {
+                                        profileForAccountChange = nil
+                                    }
+                                )
+                            }
+                        }
+                        .sheet(item: $pendingCLIAddRequest) { request in
+                            CLIReserveAddSheet(
+                                request: request,
+                                quotaSnapshotLookup: { profile in
+                                    exactCLIProfileQuotaSnapshot(for: profile)
+                                },
+                                resultMessage: cliAddResultMessage,
+                                isLaunching: connectingProviderKey == request.providerKey,
+                                onLaunch: {
+                                    Task { @MainActor in
+                                        await addConfirmedCLIAccount(request)
+                                    }
                                 },
                                 onCancel: {
-                                    profileForAccountChange = nil
+                                    pendingCLIAddRequest = nil
+                                    cliAddResultMessage = nil
                                 }
                             )
                         }
-                    }
-                    .sheet(item: $pendingCLIAddRequest) { request in
-                        CLIReserveAddSheet(
-                            request: request,
-                            quotaLookup: { provider in
-                                quotaService.snapshot(for: provider)
-                            },
-                            resultMessage: cliAddResultMessage,
-                            isLaunching: connectingProviderKey == request.providerKey,
-                            onLaunch: {
-                                Task { @MainActor in
-                                    await addConfirmedCLIAccount(request)
-                                }
-                            },
-                            onCancel: {
-                                pendingCLIAddRequest = nil
-                                cliAddResultMessage = nil
-                            }
-                        )
-                    }
                 )
             )
         )
+    }
+
+    /// Body shape changes based on `mode`. `.all` renders the legacy
+    /// standalone tab. `.cliOnly` / `.browserOnly` produce embeddable
+    /// content (no outer ScrollView, no boundary card) that the new Agents
+    /// tab folds into its CLIs and Advanced detail pages.
+    @ViewBuilder
+    private var bodyCore: some View {
+        switch mode {
+        case .all:
+            SettingsDeepLinkScrollContainer(route: .switcherRoot) { _ in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                        // OAuth boundary messaging (VAL-SETTINGS-007, VAL-SETTINGS-016)
+                        boundaryMessagingCard
+                        if let error {
+                            errorBanner(error)
+                        }
+
+                        if isLoading {
+                            loadingView
+                        } else if profiles.isEmpty {
+                            emptyStateView
+                        } else {
+                            profileListView
+                        }
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                }
+            }
+            .background(settingsBackground)
+            .scrollContentBackground(.hidden)
+        case .cliOnly, .browserOnly:
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                if let error {
+                    errorBanner(error)
+                }
+                if isLoading {
+                    loadingView
+                } else if filteredProfileGroups.isEmpty {
+                    embeddedEmptyState
+                } else {
+                    ForEach(filteredProfileGroups, id: \.key) { group in
+                        providerSection(group)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Subset of profile groups visible for the current `mode`. The full set
+    /// (`profileGroups`) lives in this same extension; embedded modes simply
+    /// filter to the right half.
+    var filteredProfileGroups: [ProfileGroup] {
+        switch mode {
+        case .all: return profileGroups
+        case .cliOnly: return profileGroups.filter { $0.cliType != nil }
+        case .browserOnly: return profileGroups.filter { $0.browserType != nil }
+        }
+    }
+
+    @ViewBuilder
+    var embeddedEmptyState: some View {
+        let copy: String = {
+            switch mode {
+            case .cliOnly:
+                return "No CLI profiles yet. Use the Connect button above on any CLI row to authenticate it, or add another profile inline once a CLI is connected."
+            case .browserOnly:
+                return "No browser profiles yet. Use the Switcher dashboard's add flow to register a Chrome or Safari profile and BurnBar will surface it here."
+            case .all:
+                return ""
+            }
+        }()
+        Text(copy)
+            .font(DesignSystem.Typography.tiny)
+            .foregroundStyle(DesignSystem.Colors.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.25))
+            )
     }
 
     // MARK: - Background
@@ -653,6 +715,9 @@ extension AccountSwitcherSettingsView {
                                 quotaLookup: { provider in
                                     quotaService.snapshot(for: provider)
                                 },
+                                cliQuotaSnapshot: exactCLIProfileQuotaSnapshot(for: item.profile),
+                                liveCLIAuthInfo: liveCLIAuthInfo(for: item.profile),
+                                allowProviderQuotaFallback: false,
                                 isActive: activeProfileID == item.profile.id,
                                 isChangingAccount: reconnectingCLIProfileID == item.profile.id || connectingProviderKey == item.profile.id,
                                 canMoveUp: groupIndex > 0,
@@ -697,6 +762,32 @@ extension AccountSwitcherSettingsView {
         return "One account is live. Add another to keep a reserve ready."
     }
 
+    func exactCLIProfileQuotaSnapshot(for profile: SwitcherProfileRecord) -> ProviderQuotaSnapshot? {
+        guard profile.targetKind == .cli,
+              let cliType = profile.cliType,
+              let provider = cliType.agentProvider else {
+            return nil
+        }
+
+        let normalizedProfileID = normalizedQuotaIdentifier(profile.id)
+        let normalizedSourceIDs = Set([
+            "switcher-cli:\(cliType.rawValue):\(profile.id)",
+            "switcher:\(profile.id)",
+        ].compactMap(normalizedQuotaIdentifier))
+        return quotaService.snapshots(for: provider.providerID).first { snapshot in
+            normalizedQuotaIdentifier(snapshot.accountID) == normalizedProfileID
+                || normalizedQuotaIdentifier(snapshot.sourceId).map { normalizedSourceIDs.contains($0) } == true
+        }
+    }
+
+    private func normalizedQuotaIdentifier(_ value: String?) -> String? {
+        guard let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else {
+            return nil
+        }
+        return normalized.lowercased()
+    }
+
     func beginCLIAdd(for group: ProfileGroup) {
         guard let cliType = group.cliType else { return }
         cliAddResultMessage = nil
@@ -721,11 +812,10 @@ extension AccountSwitcherSettingsView {
     func isConnectedProfile(_ profile: SwitcherProfileRecord) -> Bool {
         switch profile.targetKind {
         case .cli:
-            if let accountDescription = profile.cliMetadata?.accountDescription,
-               !accountDescription.isEmpty {
-                return true
-            }
-            return false
+            guard !profile.isDisabled else { return false }
+            if normalizedString(profile.cliMetadata?.accountDescription) != nil { return true }
+            guard let authInfo = liveCLIAuthInfo(for: profile) else { return false }
+            return isConnected(authInfo)
         case .browser:
             if let email = profile.browserMetadata?.accountEmail,
                !email.isEmpty {
@@ -733,6 +823,48 @@ extension AccountSwitcherSettingsView {
             }
             return !(profile.browserMetadata?.serviceIdentities.isEmpty ?? true)
         }
+    }
+
+    func liveCLIAuthInfo(for profile: SwitcherProfileRecord) -> CLIAuthInfo? {
+        guard profile.targetKind == .cli,
+              let cliType = profile.cliType else {
+            return nil
+        }
+
+        if let configDirectory = normalizedString(profile.cliMetadata?.configDirectory) {
+            let scoped = CLIAuthDiscovery.discoverAuthState(
+                for: cliType,
+                configDirectoryOverride: configDirectory
+            )
+            if isConnected(scoped) || normalizedString(scoped.accountDescription) != nil {
+                return scoped
+            }
+        }
+
+        guard let current = liveCLIAuthStates[cliType] else { return nil }
+        if let profileDirectory = normalizedString(profile.cliMetadata?.configDirectory),
+           let currentDirectory = normalizedString(current.configDirectory),
+           profileDirectory != currentDirectory {
+            return nil
+        }
+        return current
+    }
+
+    func isConnected(_ authInfo: CLIAuthInfo) -> Bool {
+        switch authInfo.authState {
+        case .authenticated, .apiKeyPresent:
+            return true
+        case .notAuthenticated, .notInstalled:
+            return false
+        }
+    }
+
+    func normalizedString(_ value: String?) -> String? {
+        guard let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else {
+            return nil
+        }
+        return normalized
     }
 
     // MARK: - Create Profile Sheet
@@ -794,7 +926,7 @@ extension AccountSwitcherSettingsView {
 
 private struct CLIReserveAddSheet: View {
     let request: AccountSwitcherSettingsView.PendingCLIAddRequest
-    let quotaLookup: (AgentProvider) -> ProviderQuotaSnapshot?
+    let quotaSnapshotLookup: (SwitcherProfileRecord) -> ProviderQuotaSnapshot?
     let resultMessage: String?
     let isLaunching: Bool
     let onLaunch: () -> Void
@@ -944,7 +1076,7 @@ private struct CLIReserveAddSheet: View {
         let account = profile.cliMetadata?.accountDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? profile.cliMetadata!.accountDescription!
             : "Account label unavailable"
-        let windows = cliQuotaWindowDisplays(for: profile, quotaLookup: quotaLookup) ?? []
+        let windows = cliQuotaWindowDisplays(for: profile, snapshot: quotaSnapshotLookup(profile)) ?? []
 
         return VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
             HStack(spacing: DesignSystem.Spacing.sm) {

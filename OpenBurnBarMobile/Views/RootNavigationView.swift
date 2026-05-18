@@ -1,5 +1,8 @@
 import SwiftUI
 import OpenBurnBarCore
+#if DEBUG
+import OSLog
+#endif
 
 // MARK: - Root Navigation View (iPad)
 //
@@ -8,6 +11,10 @@ import OpenBurnBarCore
 // block, a permanent sync pill, and an inline Hermes shortcut.
 
 struct RootNavigationView: View {
+    #if DEBUG
+    private static let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
+    #endif
+
     let authStore: AuthStore
     let syncHealthStore: CloudSyncHealthStore
     let providerSummaryStore: ProviderSummaryStore
@@ -15,12 +22,17 @@ struct RootNavigationView: View {
     let transferStore: CredentialTransferStore
 
     @State private var selection: SidebarDestination = .pulse
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var didApplyScreenshotRoute = false
+    #if DEBUG
+    @State private var didApplyHermesE2EPrompt = false
+    #endif
     @State private var router = PulseRouter()
     @State private var hermesService = HermesService()
     @State private var motionStore = MotionStore()
     @State private var insightsDashboardStore = DashboardStore()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
+    @State private var missionConsoleHost = MobileMissionConsoleHost()
     @State private var showHermesSheet = false
     @State private var subscriptionStore = HostedQuotaSubscriptionStore()
 
@@ -79,7 +91,7 @@ struct RootNavigationView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
                 sidebar
                     .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
             } detail: {
@@ -90,9 +102,16 @@ struct RootNavigationView: View {
         .environment(\.motionStore, motionStore)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
+        .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task { missionActivityCenter.start() }
+        .task { missionConsoleHost.start() }
         .onAppear {
             applyScreenshotRouteIfNeeded()
+            applyHermesE2EPromptIfNeeded()
+            updateColumnVisibility(for: selection, animated: false)
+        }
+        .onChange(of: selection) { _, destination in
+            updateColumnVisibility(for: destination)
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
@@ -274,30 +293,41 @@ struct RootNavigationView: View {
 
     @ViewBuilder
     private var detail: some View {
-        NavigationStack {
-            Group {
-                switch selection {
-                case .pulse:    PulseView(router: router)
-                case .burn:     BurnView()
-                case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
-                case .streams:  StreamsView()
-                case .hermes:   HermesConversationListView(service: hermesService)
-                case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
-                case .settings: SettingsHubView(authStore: authStore)
-                case .devices:  iPadDevicesSettingsView()
-                case .providers: ProviderConnectionsView(showsDoneButton: false)
+        if selection == .hermes {
+            HermesSquareSplitLayout(
+                hermesService: hermesService,
+                missionHost: missionConsoleHost
+            )
+        } else {
+            NavigationStack {
+                Group {
+                    switch selection {
+                    case .pulse:    PulseView(router: router)
+                    case .burn:     BurnView()
+                    case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
+                    case .streams:  StreamsView()
+                    case .hermes:   EmptyView()
+                    case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
+                    case .settings: SettingsHubView(authStore: authStore)
+                    case .devices:  iPadDevicesSettingsView()
+                    case .providers: ProviderConnectionsView(showsDoneButton: false)
+                    }
                 }
-            }
-            .navigationDestination(for: YouRoute.self) { route in
-                switch route {
-                case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
-                case .settings: SettingsHubView(authStore: authStore)
-                case .devices:  iPadDevicesSettingsView()
-                case .providers: ProviderConnectionsView(showsDoneButton: false)
+                .navigationDestination(for: YouRoute.self) { route in
+                    switch route {
+                    case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
+                    case .settings: SettingsHubView(authStore: authStore)
+                    case .devices:  iPadDevicesSettingsView()
+                    case .providers: ProviderConnectionsView(showsDoneButton: false)
+                    case .computerUse: AgentWatchScreen(
+                        authUID: authStore.currentIdentity?.uid,
+                        hermesService: hermesService
+                    )
+                    }
                 }
-            }
-            .navigationDestination(for: TokenUsage.self) { usage in
-                SessionDetailView(usage: usage)
+                .navigationDestination(for: TokenUsage.self) { usage in
+                    SessionDetailView(usage: usage)
+                }
             }
         }
     }
@@ -315,6 +345,18 @@ struct RootNavigationView: View {
         case .provider: selection = .burn
         }
         router.clear()
+    }
+
+    private func updateColumnVisibility(for destination: SidebarDestination, animated: Bool = true) {
+        let nextVisibility: NavigationSplitViewVisibility = destination == .hermes ? .detailOnly : .automatic
+        guard columnVisibility != nextVisibility else { return }
+        if animated {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                columnVisibility = nextVisibility
+            }
+        } else {
+            columnVisibility = nextVisibility
+        }
     }
 
     private func applyScreenshotRouteIfNeeded() {
@@ -364,6 +406,67 @@ struct RootNavigationView: View {
         case .unknown: return MobileTheme.Colors.textMuted
         }
     }
+
+    private func applyHermesE2EPromptIfNeeded() {
+        #if DEBUG
+        guard !didApplyHermesE2EPrompt else {
+            print("OpenBurnBarMobile Hermes E2E RootNavigation skip alreadyApplied")
+            Self.hermesE2ELogger.debug("Skipping Hermes E2E prompt because it was already applied")
+            return
+        }
+        let prompt = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_PROMPT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let prompt, !prompt.isEmpty else {
+            print("OpenBurnBarMobile Hermes E2E RootNavigation skip emptyPrompt")
+            Self.hermesE2ELogger.debug("Skipping Hermes E2E prompt because OPENBURNBAR_E2E_HERMES_PROMPT is empty")
+            return
+        }
+        guard authStore.currentIdentity?.uid != nil else {
+            print("OpenBurnBarMobile Hermes E2E RootNavigation skip authState=\(authStateLabel(authStore.state))")
+            Self.hermesE2ELogger.info("Skipping Hermes E2E prompt because auth state is \(authStateLabel(authStore.state), privacy: .public)")
+            return
+        }
+        let modelID = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_MODEL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedModelID = (modelID?.isEmpty == false) ? modelID! : "default"
+        print("OpenBurnBarMobile Hermes E2E RootNavigation apply promptCharacters=\(prompt.count) model=\(selectedModelID)")
+        Self.hermesE2ELogger.info("Applying Hermes E2E prompt promptCharacters=\(prompt.count, privacy: .public) model=\(selectedModelID, privacy: .public)")
+        didApplyHermesE2EPrompt = true
+        selection = .hermes
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await hermesService.refreshRuntime()
+            hermesService.startNewSession()
+            if let modelID, !modelID.isEmpty {
+                print("OpenBurnBarMobile Hermes E2E RootNavigation selectingModel=\(modelID)")
+                Self.hermesE2ELogger.info("Selecting Hermes E2E model \(modelID, privacy: .public)")
+                hermesService.selectModelIDForAutomation(modelID)
+            }
+            print("OpenBurnBarMobile Hermes E2E RootNavigation send")
+            Self.hermesE2ELogger.info("Sending Hermes E2E prompt through selected mobile harness")
+            hermesService.sendMessage(prompt)
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private func authStateLabel(_ state: AuthState) -> String {
+        switch state {
+        case .signedOut:
+            return "signedOut"
+        case .signingIn:
+            return "signingIn"
+        case .signedIn:
+            return "signedIn"
+        case .deletingAccount:
+            return "deletingAccount"
+        case .firebaseUnavailable:
+            return "firebaseUnavailable"
+        case .firestoreUnavailable:
+            return "firestoreUnavailable"
+        }
+    }
+    #endif
 }
 
 #Preview {

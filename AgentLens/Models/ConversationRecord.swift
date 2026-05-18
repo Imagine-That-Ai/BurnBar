@@ -246,6 +246,7 @@ struct ChatThreadSummary: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
     let preview: String
+    let attachments: [HermesAttachment]
     let messageCount: Int
     let createdAt: Date
     let updatedAt: Date

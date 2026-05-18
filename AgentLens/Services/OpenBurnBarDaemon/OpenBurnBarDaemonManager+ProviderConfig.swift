@@ -4,9 +4,14 @@ import OpenBurnBarCore
 extension OpenBurnBarDaemonManager {
 
     func setRouterMode(_ mode: ProviderRouterMode) async {
-        guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before router mode can be updated."
-            return
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before router mode can be updated."
+                return
+            }
         }
 
         await performBusyWork {
@@ -29,9 +34,14 @@ extension OpenBurnBarDaemonManager {
         baseURL: String? = nil,
         preferredModelIDs: [String]? = nil
     ) async {
-        guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider settings can be updated."
-            return
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before provider settings can be updated."
+                return
+            }
         }
 
         await performBusyWork {
@@ -62,45 +72,92 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
-    func addProviderCredentialSlot(
+    func setProviderModelAdvertisement(
         providerID: String,
-        label: String,
-        apiKey: String
+        modelID: String,
+        isEnabled: Bool
     ) async {
-        guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            return
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before model advertising can be updated."
+                return
+            }
         }
 
         await performBusyWork {
-            let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
-            let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !normalizedLabel.isEmpty, !normalizedKey.isEmpty else {
-                throw OpenBurnBarDaemonManagerError.rpcError("Plan label and API key are required.")
-            }
-
-            let slotID = UUID().uuidString
-            let newSlot = BurnBarProviderCredentialSlot(
-                slotID: slotID,
-                label: normalizedLabel,
-                isEnabled: true,
-                status: .ready
-            )
-
             try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
                 var mutable = settings
-                mutable.credentialSlots.append(newSlot)
-                if mutable.preferredCredentialSlotID == nil {
-                    mutable.preferredCredentialSlotID = slotID
-                }
+                mutable.setModelAdvertisement(modelID: modelID, isEnabled: isEnabled)
                 return mutable
             }
-
-            try Self.providerRuntimeSecrets.set(
-                normalizedKey,
-                for: slotSecretAccount(providerID: providerID, slotID: slotID)
-            )
         }
+    }
+
+    func addProviderCredentialSlot(
+        providerID: String,
+        label: String,
+        apiKey: String,
+        isEnabled: Bool = true
+    ) async {
+        do {
+            _ = try await addProviderCredentialSlotReturningID(
+                providerID: providerID,
+                label: label,
+                apiKey: apiKey,
+                isEnabled: isEnabled
+            )
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func addProviderCredentialSlotReturningID(
+        providerID: String,
+        label: String,
+        apiKey: String,
+        isEnabled: Bool = true
+    ) async throws -> String {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            // The supervisor may be in crash-loop backoff while the daemon is
+            // actually healthy. Force a re-probe before refusing the operation.
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                throw OpenBurnBarDaemonManagerError.rpcError(
+                    "OpenBurnBar daemon must be healthy before provider plans can be updated."
+                )
+            }
+        }
+
+        let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedLabel.isEmpty, !normalizedKey.isEmpty else {
+            throw OpenBurnBarDaemonManagerError.rpcError("Plan label and API key are required.")
+        }
+
+        let slotID = UUID().uuidString
+        try await performRequiredBusyWork {
+            let socketURL = paths.socketURL
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.upsertProviderCredentialSlot(
+                    BurnBarProviderCredentialSlotUpsertRequest(
+                        providerID: providerID,
+                        slotID: slotID,
+                        label: normalizedLabel,
+                        apiKey: normalizedKey,
+                        isEnabled: isEnabled
+                    ),
+                    at: socketURL
+                )
+            }
+        }
+
+        return slotID
     }
 
     func updateProviderCredentialSlot(
@@ -110,46 +167,143 @@ extension OpenBurnBarDaemonManager {
         isEnabled: Bool? = nil,
         apiKey: String? = nil
     ) async {
-        guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            return
+        do {
+            try await updateProviderCredentialSlotOrThrow(
+                providerID: providerID,
+                slotID: slotID,
+                label: label,
+                isEnabled: isEnabled,
+                apiKey: apiKey
+            )
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func updateProviderCredentialSlotOrThrow(
+        providerID: String,
+        slotID: String,
+        label: String? = nil,
+        isEnabled: Bool? = nil,
+        apiKey: String? = nil
+    ) async throws {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                throw OpenBurnBarDaemonManagerError.rpcError(
+                    "OpenBurnBar daemon must be healthy before provider plans can be updated."
+                )
+            }
         }
 
-        await performBusyWork {
-            try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
-                var mutable = settings
-                guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
-                    throw OpenBurnBarDaemonManagerError.rpcError("Credential slot '\(slotID)' was not found.")
-                }
-
-                var slot = mutable.credentialSlots[index]
-                if let label {
-                    let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        slot.label = trimmed
-                    }
-                }
-                if let isEnabled {
-                    slot.isEnabled = isEnabled
-                    slot.status = isEnabled ? .ready : .disabled
-                    if !isEnabled, mutable.preferredCredentialSlotID == slotID {
-                        mutable.preferredCredentialSlotID = mutable.credentialSlots.first(where: { $0.slotID != slotID && $0.isEnabled })?.slotID
-                    }
-                }
-                slot.updatedAt = Date()
-                mutable.credentialSlots[index] = slot
-                return mutable
+        try await performRequiredBusyWork {
+            let socketURL = paths.socketURL
+            let currentSnapshot = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.config(at: socketURL)
             }
+            let existingSlot = currentSnapshot
+                .providerSettings(id: providerID)?
+                .credentialSlots
+                .first { $0.slotID == slotID }
 
             if let apiKey {
                 let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                if normalizedKey.isEmpty {
-                    try Self.providerRuntimeSecrets.delete(account: slotSecretAccount(providerID: providerID, slotID: slotID))
-                } else {
-                    try Self.providerRuntimeSecrets.set(
-                        normalizedKey,
-                        for: slotSecretAccount(providerID: providerID, slotID: slotID)
-                    )
+                if !normalizedKey.isEmpty {
+                    try? Self.providerRuntimeSecrets.delete(account: slotSecretAccount(providerID: providerID, slotID: slotID))
+                    _ = try await daemonRPC {
+                        try OpenBurnBarDaemonSocketClient.upsertProviderCredentialSlot(
+                            BurnBarProviderCredentialSlotUpsertRequest(
+                                providerID: providerID,
+                                slotID: slotID,
+                                label: {
+                                    let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if let trimmed, !trimmed.isEmpty { return trimmed }
+                                    return existingSlot?.label ?? "Plan"
+                                }(),
+                                apiKey: normalizedKey,
+                                isEnabled: isEnabled ?? existingSlot?.isEnabled ?? true
+                            ),
+                            at: socketURL
+                        )
+                    }
+                    return
+                }
+            }
+
+            var snapshot = currentSnapshot
+            guard let providerIndex = snapshot.providers.firstIndex(where: { $0.providerID == providerID }) else {
+                throw OpenBurnBarDaemonManagerError.rpcError("Provider '\(providerID)' is not available in daemon config.")
+            }
+
+            var settings = snapshot.providers[providerIndex]
+            guard let index = settings.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
+                throw OpenBurnBarDaemonManagerError.rpcError("Credential slot '\(slotID)' was not found.")
+            }
+
+            var slot = settings.credentialSlots[index]
+            if let label {
+                let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    slot.label = trimmed
+                }
+            }
+            if let isEnabled {
+                slot.isEnabled = isEnabled
+                slot.status = isEnabled ? .ready : .disabled
+                if !isEnabled, settings.preferredCredentialSlotID == slotID {
+                    settings.preferredCredentialSlotID = settings.credentialSlots.first(where: { $0.slotID != slotID && $0.isEnabled })?.slotID
+                }
+            }
+            if apiKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                slot.status = .missingSecret
+                slot.lastStatusMessage = "Missing API key"
+            }
+            slot.updatedAt = Date()
+            settings.credentialSlots[index] = slot
+            snapshot.providers[providerIndex] = settings
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+            }
+        }
+    }
+
+    func repairProviderCredentialSlotSecrets(providerID targetProviderID: String? = nil) async {
+        guard case .healthy = status else { return }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            let snapshot = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.config(at: socketURL)
+            }
+
+            for settings in snapshot.providers {
+                if let targetProviderID, settings.providerID != targetProviderID {
+                    continue
+                }
+
+                for slot in settings.credentialSlots {
+                    let account = slotSecretAccount(providerID: settings.providerID, slotID: slot.slotID)
+                    guard let apiKey = try Self.providerRuntimeSecrets.string(for: account)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                        !apiKey.isEmpty else {
+                        continue
+                    }
+
+                    try? Self.providerRuntimeSecrets.delete(account: account)
+                    _ = try await daemonRPC {
+                        try OpenBurnBarDaemonSocketClient.upsertProviderCredentialSlot(
+                            BurnBarProviderCredentialSlotUpsertRequest(
+                                providerID: settings.providerID,
+                                slotID: slot.slotID,
+                                label: slot.label,
+                                apiKey: apiKey,
+                                isEnabled: slot.isEnabled
+                            ),
+                            at: socketURL
+                        )
+                    }
                 }
             }
         }
@@ -159,21 +313,84 @@ extension OpenBurnBarDaemonManager {
         providerID: String,
         slotID: String
     ) async {
-        guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            return
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
+                return
+            }
         }
 
         await performBusyWork {
-            try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
-                var mutable = settings
-                mutable.credentialSlots.removeAll { $0.slotID == slotID }
-                if mutable.preferredCredentialSlotID == slotID {
-                    mutable.preferredCredentialSlotID = mutable.credentialSlots.first(where: { $0.isEnabled })?.slotID
-                }
-                return mutable
+            let socketURL = paths.socketURL
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.removeProviderCredentialSlot(
+                    BurnBarProviderCredentialSlotRemoveRequest(
+                        providerID: providerID,
+                        slotID: slotID
+                    ),
+                    at: socketURL
+                )
             }
-            try Self.providerRuntimeSecrets.delete(account: slotSecretAccount(providerID: providerID, slotID: slotID))
+            try? Self.providerRuntimeSecrets.delete(account: slotSecretAccount(providerID: providerID, slotID: slotID))
+        }
+    }
+
+    func setProviderModelVariant(
+        providerID: String,
+        variant: BurnBarModelVariant
+    ) async {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before model variants can be updated."
+                return
+            }
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.upsertProviderModelVariant(
+                    BurnBarProviderModelVariantUpsertRequest(
+                        providerID: providerID,
+                        variant: variant
+                    ),
+                    at: socketURL
+                )
+            }
+        }
+    }
+
+    func removeProviderModelVariant(
+        providerID: String,
+        variantID: String
+    ) async {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before model variants can be updated."
+                return
+            }
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.removeProviderModelVariant(
+                    BurnBarProviderModelVariantRemoveRequest(
+                        providerID: providerID,
+                        variantID: variantID
+                    ),
+                    at: socketURL
+                )
+            }
         }
     }
 
@@ -181,12 +398,29 @@ extension OpenBurnBarDaemonManager {
         providerID: String,
         slotID: String?
     ) async {
-        guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            return
+        do {
+            try await setPreferredProviderCredentialSlotOrThrow(providerID: providerID, slotID: slotID)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func setPreferredProviderCredentialSlotOrThrow(
+        providerID: String,
+        slotID: String?
+    ) async throws {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                throw OpenBurnBarDaemonManagerError.rpcError(
+                    "OpenBurnBar daemon must be healthy before provider plans can be updated."
+                )
+            }
         }
 
-        await performBusyWork {
+        try await performRequiredBusyWork {
             try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
                 var mutable = settings
                 if let slotID {
@@ -255,8 +489,10 @@ extension OpenBurnBarDaemonManager {
                             }
                         }
                     } else {
-                        slot.status = .missingSecret
-                        slot.lastStatusMessage = "Missing API key"
+                        // New provider slots are daemon-owned. The app process cannot read
+                        // those secrets, so a miss in the old app-side keychain namespace
+                        // must not be treated as a missing daemon credential.
+                        continue
                     }
 
                     slot.updatedAt = Date()

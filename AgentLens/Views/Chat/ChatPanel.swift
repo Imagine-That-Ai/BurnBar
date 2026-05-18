@@ -208,8 +208,6 @@ struct ChatPanel: View {
         let modeColor: Color = backend == .hermes
             ? DesignSystem.Colors.hermesAureate
             : (backend == .piAgent ? DesignSystem.Colors.whimsy : DesignSystem.Colors.whimsy)
-        let modeGlyph = backend.glyph
-        let usesGlyph = backend == .hermes || backend == .piAgent
 
         return Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -217,10 +215,8 @@ struct ChatPanel: View {
             }
         } label: {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                if usesGlyph {
-                    Text(modeGlyph)
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(modeColor)
+                if let provider = backend.agentProvider {
+                    ProviderLogoView(provider: provider, size: 16, useFallbackColor: false)
                 } else {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
                         .font(.system(size: 12, weight: .medium))
@@ -746,6 +742,8 @@ struct ChatPanel: View {
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .lineLimit(2)
+
+                MacAttachmentSummaryStrip(attachments: thread.attachments)
 
                 Text("\(thread.messageCount) msgs · \(thread.lastActivityAt.formatted(date: .abbreviated, time: .shortened))")
                     .font(DesignSystem.Typography.tiny)

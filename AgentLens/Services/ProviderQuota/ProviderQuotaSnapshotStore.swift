@@ -37,7 +37,7 @@ struct ProviderQuotaSnapshotStore {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let snapshots = try decoder.decode([ProviderQuotaSnapshot].self, from: data)
-            let dict = snapshots.reduce(into: [AgentProvider: ProviderQuotaSnapshot]()) { result, snapshot in
+            let dict = snapshots.filter(Self.isProviderLevelSnapshot).reduce(into: [AgentProvider: ProviderQuotaSnapshot]()) { result, snapshot in
                 guard let existing = result[snapshot.provider] else {
                     result[snapshot.provider] = snapshot
                     return
@@ -103,6 +103,18 @@ struct ProviderQuotaSnapshotStore {
             return "\(snapshot.providerID.rawValue):\(accountID)"
         }
         return "\(snapshot.providerID.rawValue):\(snapshot.sourceId)"
+    }
+
+    /// Provider fallbacks must stay provider-level. A persisted account snapshot
+    /// can be newer than the default provider snapshot, but promoting it here
+    /// makes unrelated accounts display that account's quota after app restart.
+    private static func isProviderLevelSnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
+        if let accountID = snapshot.accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accountID.isEmpty {
+            return false
+        }
+        let sourceID = snapshot.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return sourceID.isEmpty || sourceID == "default"
     }
 
     func loadPersistedRoutingEvents(limit: Int? = nil) -> ProviderQuotaPersistenceLoadResult<[ProviderRoutingDecisionEvent]> {

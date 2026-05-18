@@ -143,6 +143,135 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func test_installedDaemonBinaryNeedsRefreshDetectsStaleInstalledDaemon() throws {
+        let harness = try makeRuntimePathsHarness(name: "stale-daemon")
+        defer { harness.cleanup() }
+
+        let sourceBinaryURL = harness.rootURL.appendingPathComponent("source-openburnbar-daemon", isDirectory: false)
+        try "#!/bin/sh\nexit 0\necho fresh\n".write(to: sourceBinaryURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sourceBinaryURL.path)
+
+        try "#!/bin/sh\nexit 0\n".write(to: harness.paths.installedBinaryURL, atomically: true, encoding: .utf8)
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { sourceBinaryURL }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+
+        XCTAssertTrue(manager.installedDaemonBinaryNeedsRefresh())
+
+        try FileManager.default.removeItem(at: harness.paths.installedBinaryURL)
+        try FileManager.default.copyItem(at: sourceBinaryURL, to: harness.paths.installedBinaryURL)
+        let sourceAttributes = try FileManager.default.attributesOfItem(atPath: sourceBinaryURL.path)
+        if let sourceModifiedAt = sourceAttributes[.modificationDate] as? Date {
+            try FileManager.default.setAttributes(
+                [.modificationDate: sourceModifiedAt],
+                ofItemAtPath: harness.paths.installedBinaryURL.path
+            )
+        }
+
+        XCTAssertFalse(manager.installedDaemonBinaryNeedsRefresh())
+    }
+
+    func test_daemonBinaryResolverPrefersBundledHelperOverBuildProductSibling() throws {
+        let harness = try makeRuntimePathsHarness(name: "binary-resolver-helper")
+        defer { harness.cleanup() }
+
+        let appBundleURL = harness.rootURL.appendingPathComponent("OpenBurnBar.app", isDirectory: true)
+        let helpersURL = appBundleURL.appendingPathComponent("Contents/Helpers", isDirectory: true)
+        try FileManager.default.createDirectory(at: helpersURL, withIntermediateDirectories: true)
+
+        let helperURL = helpersURL.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false)
+        try "#!/bin/sh\necho bundled\n".write(to: helperURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helperURL.path)
+
+        let siblingURL = appBundleURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("OpenBurnBarDaemon", isDirectory: false)
+        try "#!/bin/sh\necho sibling\n".write(to: siblingURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: siblingURL.path)
+
+        XCTAssertEqual(
+            OpenBurnBarDaemonBinaryResolver.resolve(appBundleURL: appBundleURL, fileManager: .default),
+            helperURL
+        )
+    }
+
+    @MainActor
+    func test_refreshInstalledDaemonIfNeededRepairsStaleInstalledDaemon() async throws {
+        let harness = try makeRuntimePathsHarness(name: "refresh-stale-daemon")
+        defer { harness.cleanup() }
+
+        let sourceBinaryURL = harness.rootURL.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false)
+        try "#!/bin/sh\nexit 0\necho fresh\n".write(to: sourceBinaryURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sourceBinaryURL.path)
+        let sourceBundleURL = harness.rootURL.appendingPathComponent(
+            OpenBurnBarDaemonManager.resourceBundleName,
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: sourceBundleURL, withIntermediateDirectories: true)
+
+        try "#!/bin/sh\nexit 0\necho stale\n".write(to: harness.paths.installedBinaryURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: harness.paths.installedBinaryURL.path)
+
+        var launchctlCalls: [[String]] = []
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: OpenBurnBarDaemonDependencies(
+                fileManager: .default,
+                runProcess: { _, arguments in
+                    launchctlCalls.append(arguments)
+                    return ""
+                },
+                resolveDaemonBinary: { sourceBinaryURL },
+                requestHealth: { _ in
+                    BurnBarHealthResponse(
+                        ok: true,
+                        daemonVersion: "fresh-daemon",
+                        protocolVersion: BurnBarProtocolVersion.current,
+                        socketPath: harness.paths.socketURL.path
+                    )
+                },
+                requestConfig: { _ in BurnBarProviderConfigurationSnapshot(providers: []) },
+                updateConfig: { _, snapshot in snapshot },
+                requestRecentUsage: { _, _ in [] },
+                requestControllerProjects: { _ in [] },
+                upsertControllerProject: { _, project in project },
+                recordControllerReviewRun: { _, run in
+                    BurnBarControllerReviewRunRecordResponse(
+                        run: run,
+                        summary: BurnBarControllerSummary(
+                            updatedAt: Date(),
+                            counts: BurnBarControllerCounts(
+                                projectCount: 0,
+                                pendingQuestionCount: 0,
+                                openFollowupCount: 0,
+                                activeMissionCount: 0,
+                                staleProjectCount: 0
+                            ),
+                            freshness: .missing
+                        )
+                    )
+                }
+            ),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+
+        let didRefresh = await manager.refreshInstalledDaemonIfNeededForCurrentAppBuild()
+        XCTAssertTrue(didRefresh)
+        XCTAssertFalse(manager.installedDaemonBinaryNeedsRefresh())
+        XCTAssertEqual(
+            try Data(contentsOf: harness.paths.installedBinaryURL),
+            try Data(contentsOf: sourceBinaryURL)
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: harness.paths.daemonDirectory.appendingPathComponent(OpenBurnBarDaemonManager.resourceBundleName).path))
+        XCTAssertTrue(
+            launchctlCalls.contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) })
+        )
+    }
+
     func test_usageSync_readsProviderConfigurationSnapshot() throws {
         let harness = try makeRuntimePathsHarness(name: "provider-config")
         defer { harness.cleanup() }
@@ -157,6 +286,56 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(snapshot.providerConfigurations.first?.isEnabled, true)
         XCTAssertEqual(snapshot.providerConfigurations.first?.preferredModelIDs, ["glm-5", "glm-5-turbo"])
         XCTAssertEqual(snapshot.providerConfigurations.last?.baseURL, "https://api.minimax.io/v1")
+    }
+
+    func test_usageSync_keepsCatalogOnlyProviderIdentityUnmappedForBranding() throws {
+        let harness = try makeRuntimePathsHarness(name: "catalog-provider-branding")
+        defer { harness.cleanup() }
+
+        let configJSON = """
+        {
+          "providers" : [
+            {
+              "baseURL" : "https://api.cohere.com/v1",
+              "isEnabled" : true,
+              "preferredModelIDs" : [
+                "command-a"
+              ],
+              "providerID" : "cohere"
+            }
+          ]
+        }
+        """
+        try configJSON.write(to: harness.paths.providerConfigURL, atomically: true, encoding: .utf8)
+
+        let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        let snapshot = service.refreshState()
+        let configuration = try XCTUnwrap(snapshot.providerConfigurations.first)
+
+        XCTAssertEqual(configuration.providerID, "cohere")
+        XCTAssertNil(configuration.provider)
+        XCTAssertEqual(configuration.displayName, "Cohere")
+        XCTAssertEqual(configuration.brand.bundledLogoCandidates.first, "CohereLogo")
+    }
+
+    func test_providerQuotaRefreshDoesNotMarkDaemonOwnedSlotMissingWhenAppSecretMirrorIsAbsent() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: projectRoot.appendingPathComponent("AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ProviderConfig.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            source.contains("New provider slots are daemon-owned."),
+            "Quota refresh must treat app-side keychain misses as unknown daemon-owned credentials, not missing credentials."
+        )
+        XCTAssertFalse(
+            source.contains("} else {\n                        slot.status = .missingSecret\n                        slot.lastStatusMessage = \"Missing API key\""),
+            "The post-save quota refresh path must not overwrite daemon-owned credential slots as missing when the app-side mirror is empty."
+        )
     }
 
     func test_usageSync_importsDaemonUsageIntoLocalShape() throws {
@@ -251,6 +430,55 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(estimateRow.provider, .hermes)
         XCTAssertEqual(estimateRow.projectName, "Hermes (proxy)")
         XCTAssertEqual(estimateRow.provenanceMethod, .heuristicEstimate)
+    }
+
+    @MainActor
+    func test_managerUploadsPendingUsageAfterDaemonImport() async throws {
+        let harness = try makeRuntimePathsHarness(name: "daemon-import-cloud-upload")
+        defer { harness.cleanup() }
+
+        try fallbackUsageLines().write(to: harness.paths.usageLedgerURL, atomically: true, encoding: .utf8)
+        let store = try makeInMemoryStore()
+        var uploadCalls = 0
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: OpenBurnBarDaemonDependencies(
+                fileManager: .default,
+                runProcess: { _, _ in "" },
+                resolveDaemonBinary: { nil },
+                requestHealth: { _ in throw POSIXError(.ECONNREFUSED) },
+                requestConfig: { _ in BurnBarProviderConfigurationSnapshot(providers: []) },
+                updateConfig: { _, snapshot in snapshot },
+                requestRecentUsage: { _, _ in [] },
+                requestControllerProjects: { _ in [] },
+                upsertControllerProject: { _, project in project },
+                recordControllerReviewRun: { _, run in
+                    BurnBarControllerReviewRunRecordResponse(
+                        run: run,
+                        summary: BurnBarControllerSummary(
+                            updatedAt: Date(),
+                            counts: BurnBarControllerCounts(
+                                projectCount: 0,
+                                pendingQuestionCount: 0,
+                                openFollowupCount: 0,
+                                activeMissionCount: 0,
+                                staleProjectCount: 0
+                            ),
+                            freshness: .missing
+                        )
+                    )
+                }
+            ),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default),
+            uploadPendingUsageAfterImport: { uploadCalls += 1 }
+        )
+
+        manager.dataStore = store
+        await manager.refreshHealth()
+
+        XCTAssertEqual(uploadCalls, 1)
+        XCTAssertEqual(try store.fetchUnsynced().count, 2)
     }
 
     @MainActor
@@ -480,6 +708,43 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     private func jsonObject(for event: BurnBarUsageEvent, encoder: JSONEncoder) throws -> Any {
         let data = try encoder.encode(event)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data))
+    }
+
+    private func daemonDependencies(resolveDaemonBinary: @escaping () -> URL?) -> OpenBurnBarDaemonDependencies {
+        OpenBurnBarDaemonDependencies(
+            fileManager: .default,
+            runProcess: { _, _ in "" },
+            resolveDaemonBinary: resolveDaemonBinary,
+            requestHealth: { _ in
+                BurnBarHealthResponse(
+                    ok: true,
+                    daemonVersion: "test-daemon",
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    socketPath: "/tmp/openburnbar-test.sock"
+                )
+            },
+            requestConfig: { _ in BurnBarProviderConfigurationSnapshot(providers: []) },
+            updateConfig: { _, snapshot in snapshot },
+            requestRecentUsage: { _, _ in [] },
+            requestControllerProjects: { _ in [] },
+            upsertControllerProject: { _, project in project },
+            recordControllerReviewRun: { _, run in
+                BurnBarControllerReviewRunRecordResponse(
+                    run: run,
+                    summary: BurnBarControllerSummary(
+                        updatedAt: Date(),
+                        counts: BurnBarControllerCounts(
+                            projectCount: 0,
+                            pendingQuestionCount: 0,
+                            openFollowupCount: 0,
+                            activeMissionCount: 0,
+                            staleProjectCount: 0
+                        ),
+                        freshness: .missing
+                    )
+                )
+            }
+        )
     }
 
     private func fallbackConfigJSON() -> String {

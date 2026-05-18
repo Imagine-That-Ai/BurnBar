@@ -75,7 +75,7 @@ public struct AgentInsightsView: View {
             if let bundle = viewModel.bundle {
                 content(bundle: bundle)
             } else if viewModel.loadState == .failed {
-                errorState
+                errorState(message: viewModel.errorMessage)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -148,7 +148,7 @@ public struct AgentInsightsView: View {
                 if let onShowAudit = actions.onShowAudit, !bundle.auditTrail.isEmpty {
                     auditAffordance(count: bundle.auditTrail.count, action: onShowAudit)
                 }
-                refreshFooter
+                refreshFooter(bundle: bundle)
             }
             .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
             .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
@@ -181,27 +181,25 @@ public struct AgentInsightsView: View {
     }
 
     @ViewBuilder
-    private var refreshFooter: some View {
-        if let bundle = viewModel.bundle {
-            HStack {
-                Spacer()
-                Text("Generated \(bundle.generatedAt.formatted(.relative(presentation: .named)))")
-                    .font(UnifiedDesignSystem.Typography.tiny)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                Spacer()
-            }
-            .padding(.top, UnifiedDesignSystem.Spacing.sm)
+    private func refreshFooter(bundle: AgentInsightsBundle) -> some View {
+        HStack {
+            Spacer()
+            Text("Generated \(bundle.generatedAt.formatted(.relative(presentation: .named)))")
+                .font(UnifiedDesignSystem.Typography.tiny)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+            Spacer()
         }
+        .padding(.top, UnifiedDesignSystem.Spacing.sm)
     }
 
-    private var errorState: some View {
+    private func errorState(message: String?) -> some View {
         VStack(spacing: UnifiedDesignSystem.Spacing.md) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 36, weight: .light))
                 .foregroundStyle(UnifiedDesignSystem.Colors.error)
             Text("Couldn't load Insights")
                 .font(UnifiedDesignSystem.Typography.title)
-            if let message = viewModel.errorMessage {
+            if let message {
                 Text(message)
                     .font(UnifiedDesignSystem.Typography.caption)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)

@@ -352,25 +352,9 @@ final class OpenBurnBarDaemonUsageSyncService {
     }
 
     private func agentProvider(for providerID: String) -> AgentProvider? {
-        switch providerID.lowercased() {
-        case "zai":       return .zai
-        case "minimax":   return .minimax
-        case "ollama":    return .ollama
-        case "openai":    return .openAI
-        case "anthropic": return .claudeCode
-        case "google":    return .geminiCLI
-        case "deepseek":  return .kimi
-        case "mistral":   return .cline
-        case "meta":      return .forgeDev
-        case "cohere":    return .augment
-        case "xai":       return .kiloCode
-        case "amazon":    return .rooCode
-        case "alibaba":   return .rooCode
-        case "moonshot":  return .kimi
-        case "hermes":    return .hermes
-        case "misc":      return nil
-        default:          return nil
-        }
+        let normalized = ProviderID.normalize(providerID)
+        return AgentProvider.fromProviderID(ProviderID(rawValue: normalized))
+            ?? AgentProvider.fromCatalogProviderID(normalized)
     }
 
     private func providerSortOrder(_ provider: AgentProvider?) -> Int {

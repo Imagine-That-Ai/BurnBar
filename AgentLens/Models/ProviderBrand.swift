@@ -8,12 +8,17 @@ struct ProviderBrand: Hashable, Identifiable {
     let id: String
     let displayName: String
     let bundledLogoName: String
+    let bundledLogoCandidates: [String]
     let accentColor: Color
     let iconName: String
 
     /// Whether this brand has a real bundled logo (vs just an SF Symbol).
     var hasBundledLogo: Bool {
-        NSImage(named: bundledLogoName) != nil
+        resolvedBundledLogoName != nil
+    }
+
+    var resolvedBundledLogoName: String? {
+        bundledLogoCandidates.first { NSImage(named: $0) != nil }
     }
 
     /// Build a brand from an `AgentProvider` (switcher surface).
@@ -21,6 +26,7 @@ struct ProviderBrand: Hashable, Identifiable {
         self.id = provider.rawValue
         self.displayName = provider.displayName
         self.bundledLogoName = provider.bundledLogoName
+        self.bundledLogoCandidates = [provider.bundledLogoName]
         self.accentColor = DesignSystem.Colors.primary(for: provider)
         self.iconName = provider.iconName
     }
@@ -30,6 +36,10 @@ struct ProviderBrand: Hashable, Identifiable {
         self.id = catalogProvider.id
         self.displayName = catalogProvider.displayName
         self.bundledLogoName = catalogProvider.bundledLogoName
+        self.bundledLogoCandidates = Self.logoAssetCandidates(
+            for: catalogProvider.id,
+            registeredLogoName: catalogProvider.bundledLogoName
+        )
         self.accentColor = Self.colorForProviderID(catalogProvider.id)
         self.iconName = Self.iconForProviderID(catalogProvider.id)
     }
@@ -40,11 +50,20 @@ struct ProviderBrand: Hashable, Identifiable {
         if let catalogProvider = BurnBarCatalogLoader.bundledCatalog.provider(id: providerID) {
             self.displayName = catalogProvider.displayName
             self.bundledLogoName = catalogProvider.bundledLogoName
+            self.bundledLogoCandidates = Self.logoAssetCandidates(
+                for: catalogProvider.id,
+                registeredLogoName: catalogProvider.bundledLogoName
+            )
             self.accentColor = Self.colorForProviderID(providerID)
             self.iconName = Self.iconForProviderID(providerID)
         } else {
             self.displayName = providerID.capitalized
-            self.bundledLogoName = "\(providerID.capitalized)Logo"
+            self.bundledLogoName = BurnBarCatalogProvider.bundledLogoName(forProviderID: providerID)
+                ?? "\(providerID.capitalized)Logo"
+            self.bundledLogoCandidates = Self.logoAssetCandidates(
+                for: providerID,
+                registeredLogoName: self.bundledLogoName
+            )
             self.accentColor = DesignSystem.Colors.textSecondary
             self.iconName = "cube.transparent"
         }
@@ -54,11 +73,84 @@ struct ProviderBrand: Hashable, Identifiable {
 // MARK: - Provider Brand Registry
 
 extension ProviderBrand {
+    /// Asset names worth probing for a provider ID. Real brand marks are tried
+    /// before older synthetic `*ProviderLogo` placeholders, while the catalog's
+    /// registered logo remains a stable fallback for future providers.
+    static func logoAssetCandidates(
+        for providerID: String,
+        registeredLogoName: String? = nil
+    ) -> [String] {
+        let normalized = providerID
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var candidates: [String] = []
+
+        switch normalized {
+        case "anthropic", "claude", "claude-code":
+            candidates.append(contentsOf: ["AnthropicLogo", "ClaudeCodeLogo"])
+        case "openai", "open-ai", "codex":
+            candidates.append(contentsOf: ["OpenAILogo", "CodexLogo"])
+        case "opencode", "open-code":
+            candidates.append("OpenCodeLogo")
+        case "google", "gemini", "gemini-cli":
+            candidates.append(contentsOf: ["GoogleLogo", "GeminiCLILogo"])
+        case "xai", "grok", "x-ai":
+            candidates.append("GrokLogo")
+        case "deepseek", "deep-seek":
+            candidates.append(contentsOf: ["DeepSeekLogo", "DeepSeekProviderLogo"])
+        case "mistral":
+            candidates.append(contentsOf: ["MistralLogo", "MistralProviderLogo"])
+        case "meta", "llama":
+            candidates.append(contentsOf: ["MetaLogo", "MetaProviderLogo"])
+        case "cohere":
+            candidates.append(contentsOf: ["CohereLogo", "CohereProviderLogo"])
+        case "amazon", "aws", "bedrock":
+            candidates.append(contentsOf: ["AmazonLogo", "AmazonProviderLogo"])
+        case "alibaba", "qwen", "dashscope":
+            candidates.append(contentsOf: ["QwenLogo", "AlibabaLogo", "AlibabaProviderLogo"])
+        case "zai", "z-ai", "z.ai", "glm":
+            candidates.append(contentsOf: ["ZaiLogo", "ZaiProviderLogo"])
+        case "minimax", "mini-max":
+            candidates.append("MiniMaxLogo")
+        case "moonshot", "kimi":
+            candidates.append(contentsOf: ["KimiLogo", "MoonshotLogo", "KimiProviderLogo"])
+        case "mlx":
+            candidates.append("MLXLogo")
+        case "ollama":
+            candidates.append("OllamaLogo")
+        case "perplexity":
+            candidates.append("PerplexityLogo")
+        case "apple":
+            candidates.append("AppleLogo")
+        default:
+            break
+        }
+
+        if let registeredLogoName,
+           !registeredLogoName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            candidates.append(registeredLogoName)
+        }
+        if let registered = BurnBarCatalogProvider.bundledLogoName(forProviderID: normalized) {
+            candidates.append(registered)
+        }
+        if !normalized.isEmpty {
+            let conventional = normalized
+                .split(separator: "-")
+                .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+                .joined() + "Logo"
+            candidates.append(conventional)
+        }
+
+        var seen = Set<String>()
+        return candidates.filter { seen.insert($0).inserted }
+    }
+
     /// Deterministic accent color for any provider ID.
     static func colorForProviderID(_ id: String) -> Color {
         switch id.lowercased() {
         case "anthropic":   return Color(hex: "CC785C")
         case "openai":      return Color(hex: "00A67E")
+        case "factory":     return Color(hex: "F97316")
         case "google":      return Color(hex: "4285F4")
         case "xai":         return Color(hex: "1A1A2E")
         case "deepseek":    return Color(hex: "6366F1")
@@ -81,6 +173,7 @@ extension ProviderBrand {
         switch id.lowercased() {
         case "anthropic":   return "bubble.left.and.bubble.right.fill"
         case "openai":      return "hammer.fill"
+        case "factory":     return "gearshape.2.fill"
         case "google":      return "diamond.fill"
         case "xai":         return "bolt.fill"
         case "deepseek":    return "brain.head.profile"
@@ -118,8 +211,8 @@ struct CatalogProviderLogoView: View {
 
     var body: some View {
         Group {
-            if brand.hasBundledLogo {
-                Image(brand.bundledLogoName)
+            if let logoName = brand.resolvedBundledLogoName {
+                Image(logoName)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
             } else {

@@ -70,6 +70,38 @@ final class ChatSessionControllerAttachmentTests: XCTestCase {
         XCTAssertNotNil(controller.attachmentError)
     }
 
+    func test_openOrCreateChatThread_usesMobileThreadIDAndRestoresMessages() throws {
+        let harness = try OpenBurnBarSearchIntegrationHarness(name: "mobile-chat-continuity")
+        defer { harness.cleanup() }
+
+        let controller = ChatSessionController(
+            dataStore: harness.dataStore,
+            searchService: ControlledChatSessionSearchProvider(responses: [:])
+        )
+        let mobileThreadID = "mobile-codex-ios_123"
+
+        controller.openOrCreateChatThread(id: mobileThreadID)
+
+        XCTAssertEqual(controller.activeThreadID, mobileThreadID)
+        XCTAssertTrue(try harness.dataStore.chatThreadExists(id: mobileThreadID))
+
+        let userMessage = ChatMessageRecord(
+            id: "u1",
+            role: .user,
+            content: "Keep this context.",
+            timestamp: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        try harness.dataStore.saveChatMessage(userMessage, threadID: mobileThreadID)
+
+        controller.startNewChatThread()
+        XCTAssertNotEqual(controller.activeThreadID, mobileThreadID)
+
+        controller.openOrCreateChatThread(id: mobileThreadID)
+
+        XCTAssertEqual(controller.activeThreadID, mobileThreadID)
+        XCTAssertEqual(controller.messages.map(\.content), ["Keep this context."])
+    }
+
     // MARK: - Helpers
 
     private func writeTempFile(named name: String, data: Data) throws -> URL {

@@ -83,6 +83,66 @@ final class BurnBarDaemonServerTests: XCTestCase {
         await server.stop()
     }
 
+    func testProviderCredentialSlotUpsertRPCWritesDaemonReadableSecret() async throws {
+        let socketPath = makeSocketPath(name: "provider-slot")
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-provider-slot-rpc-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let secretStore = BurnBarInMemorySecretStore()
+        let configStore = BurnBarConfigStore(
+            fileURL: rootURL.appendingPathComponent("provider-config.json"),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: secretStore,
+            logger: BurnBarDaemonLogger(category: "server-tests")
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
+            logger: BurnBarDaemonLogger(category: "server-tests"),
+            configStore: configStore
+        )
+
+        try await server.start()
+        defer { Task { await server.stop() } }
+
+        let response: BurnBarRPCResponseEnvelope<BurnBarProviderCredentialSlotMutationResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "slot-upsert",
+                method: .providerCredentialSlotUpsert,
+                authToken: "test-token",
+                params: BurnBarProviderCredentialSlotUpsertRequest(
+                    providerID: "anthropic",
+                    slotID: "icloud",
+                    label: "iCloud",
+                    apiKey: "oauth-test-token",
+                    isEnabled: true
+                )
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(response.error)
+        XCTAssertEqual(response.result?.slot?.slotID, "icloud")
+        XCTAssertEqual(response.result?.snapshot.providerSettings(id: "anthropic")?.preferredCredentialSlotID, "icloud")
+
+        let resolved = try await configStore.resolvedConfiguration(for: "anthropic")
+        XCTAssertEqual(resolved.credentialSlots.first?.apiKey, "oauth-test-token")
+
+        let removeResponse: BurnBarRPCResponseEnvelope<BurnBarProviderCredentialSlotMutationResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "slot-remove",
+                method: .providerCredentialSlotRemove,
+                authToken: "test-token",
+                params: BurnBarProviderCredentialSlotRemoveRequest(providerID: "anthropic", slotID: "icloud")
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(removeResponse.error)
+        let removed = try await configStore.resolvedConfiguration(for: "anthropic")
+        XCTAssertTrue(removed.credentialSlots.isEmpty)
+    }
+
     func testDaemonSocketAuthRequiresMatchingToken() async throws {
         let socketPath = makeSocketPath(name: "socket-auth")
         let server = BurnBarDaemonServer(

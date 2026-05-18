@@ -95,11 +95,17 @@ struct SettingsSearchResultsView: View {
 
     private func pageDisplayName(_ route: SettingsPageRoute) -> String {
         switch route {
-        case .generalRoot, .daemonRoot, .accountRoot, .providersRoot,
-             .routingPoolsRoot,
+        case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot,
+             .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
-             .switcherRoot, .hermesRoot:
+             .switcherRoot, .hermesRoot, .agentsRoot, .mediaRoot,
+             .computerUseRoot:
             return ""
+        case .agentsAccounts: return "Accounts"
+        case .agentsCLIs: return "CLIs"
+        case .agentsRuntimes: return "Runtimes"
+        case .agentsModels: return "Models"
+        case .agentsAdvanced: return "Advanced"
         case .operatorModel: return "Operator Model"
         case .appearance: return "Appearance"
         case .defaultView: return "Dashboard Defaults"

@@ -9,9 +9,9 @@ import OpenBurnBarCore
 // authoritative stores; does not own conversation state.
 //
 // Sources:
-//   • `MobileChatHistoryStore` (Hermes + Pi threads, on-device)
-//   • `CLIAgentChatReader` (Codex / Claude / OpenClaw mirrored sessions
-//     from Firestore)
+//   • `MobileChatHistoryStore` (native mobile chat threads, including
+//     Hermes, Pi, Codex, Claude, and OpenClaw)
+//   • `CLIAgentChatReader` (Mac-mirrored CLI sessions from Firestore)
 //   • `MobileMissionConsoleHost` (active missions awaiting attention)
 //   • `SubscriptionInboxPost` (planned for Phase B/C)
 //
@@ -52,15 +52,20 @@ final class ThreadInboxStore {
 
         var merged: [ThreadInboxItem] = []
 
+        var mobileCLIThreadIDs = Set<String>()
         if let history = historyStore {
             merged.append(contentsOf: itemsFromHistory(history))
+            mobileCLIThreadIDs = Set(history.threads.compactMap { thread in
+                guard Self.cliRuntime(from: thread.runtime) != nil else { return nil }
+                return thread.id
+            })
         }
         if let cli = cliReader {
             // Make sure we have a recent snapshot — refresh is cheap and
             // idempotent. Cooperative with the Firestore listener already
             // running inside the reader.
             await cli.refresh()
-            merged.append(contentsOf: itemsFromCLIReader(cli))
+            merged.append(contentsOf: itemsFromCLIReader(cli, excludingThreadIDs: mobileCLIThreadIDs))
         }
         if let host = missionHost {
             merged.append(contentsOf: itemsFromMissionHost(host))
@@ -73,9 +78,10 @@ final class ThreadInboxStore {
     // MARK: - Builders
 
     private func itemsFromHistory(_ history: MobileChatHistoryStore) -> [ThreadInboxItem] {
-        // `MobileChatHistoryStore.threads` is the source of truth for both
-        // Hermes and Pi sessions. We project each into a thread inbox
-        // item using the same shape regardless of runtime.
+        // `MobileChatHistoryStore.threads` is the source of truth for native
+        // mobile assistant sessions. We project each into a thread inbox item
+        // using the same shape regardless of whether execution is on-device or
+        // Mac-backed.
         history.threads.compactMap { thread -> ThreadInboxItem? in
             let agentURI: String
             let source: ThreadInboxItem.Source
@@ -86,6 +92,10 @@ final class ThreadInboxStore {
             case "pi":
                 agentURI = AgentIdentity.builtInURI(.pi)
                 source = .pi
+            case "codex", "claude", "openclaw":
+                guard let runtime = Self.cliRuntime(from: thread.runtime) else { return nil }
+                agentURI = AgentIdentity.builtInURI(runtime)
+                source = .cliMirror
             default:
                 return nil
             }
@@ -98,13 +108,15 @@ final class ThreadInboxStore {
                 unreadCount: 0,
                 needsAttention: false,
                 source: source,
-                liveMissionID: nil
+                liveMissionID: nil,
+                attachments: thread.recentAttachmentPreviews
             )
         }
     }
 
-    private func itemsFromCLIReader(_ reader: CLIAgentChatReader) -> [ThreadInboxItem] {
+    private func itemsFromCLIReader(_ reader: CLIAgentChatReader, excludingThreadIDs excludedIDs: Set<String> = []) -> [ThreadInboxItem] {
         reader.sessions.compactMap { record -> ThreadInboxItem? in
+            guard !excludedIDs.contains(record.id) else { return nil }
             let runtime: AssistantRuntimeID
             switch record.agent {
             case .claude:   runtime = .claude
@@ -137,6 +149,15 @@ final class ThreadInboxStore {
                     }.joined(separator: " ")
                 ].joined(separator: " ")
             )
+        }
+    }
+
+    private static func cliRuntime(from rawRuntime: String) -> AssistantRuntimeID? {
+        switch rawRuntime.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "codex": return .codex
+        case "claude": return .claude
+        case "openclaw": return .openClaw
+        default: return nil
         }
     }
 

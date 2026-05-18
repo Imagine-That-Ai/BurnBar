@@ -667,6 +667,12 @@ final class HermesService {
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
     private let selectedModelDefaultsKey = "hermes.selectedModelID"
     private let favoriteModelsDefaultsKey = "hermes.favoriteModelIDs"
+    private var selectedModelWasExplicit = false
+    private let remoteRelayChatCompletionTimeout: TimeInterval = 360
+    private let remoteRelayControlPlaneTimeout: TimeInterval = 90
+    private static let localHermesSelectedMessage =
+        "This iPhone/iPad is still using Local Hermes, so localhost points at this device, not your Mac. " +
+        "Select the Mac Remote Relay or add a reachable LAN/VPN Hermes URL, then refresh."
     /// Catalog of `MobileTool` implementations the chat surface advertises to
     /// the upstream LLM. Defaults to the canonical production set; tests
     /// inject custom catalogs (empty for "no tools" runs, fakes for
@@ -693,12 +699,17 @@ final class HermesService {
         connections.filter { connection in
             connection.mode == .relayLink
                 && connection.status == .online
-                && Self.hasUsableRelayEncryption(connection)
+                && Self.canAttemptRelayConnection(connection)
         }
     }
 
     var suggestedRelayConnection: HermesConnectionRecord? {
         relayConnections.sorted { lhs, rhs in
+            let lhsFresh = Self.isRelayConnectionFresh(lhs)
+            let rhsFresh = Self.isRelayConnectionFresh(rhs)
+            if lhsFresh != rhsFresh {
+                return lhsFresh
+            }
             let lhsLastSeen = lhs.lastSeenAt ?? lhs.updatedAt
             let rhsLastSeen = rhs.lastSeenAt ?? rhs.updatedAt
             return lhsLastSeen > rhsLastSeen
@@ -730,7 +741,12 @@ final class HermesService {
         self.defaults = defaults
         self.history = history
         self.toolCatalog = toolCatalog
-        self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
+        self.selectedModelWasExplicit = self.selectedModelID?.nilIfBlank != nil
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         history.loadFromDiskIfNeeded()
     }
@@ -775,7 +791,7 @@ final class HermesService {
         _ = await (connectionRefresh, reachabilityRefresh, modelRefresh, sessionRefresh, profileRefresh, jobRefresh)
     }
 
-    func refreshConnections(generation: Int? = nil) async {
+    func refreshConnections(generation: Int? = nil, refreshSelectedConnection: Bool = true) async {
         do {
             var remoteConnections = try await connectionRepository.listHermesConnections()
             if remoteConnections.isEmpty {
@@ -783,15 +799,22 @@ final class HermesService {
             }
             guard generation == nil || generation == runtimeGeneration else { return }
             connections = [HermesConnectionRecord.localDefault] + remoteConnections
+            #if DEBUG
+            print("OpenBurnBarMobile Hermes E2E connections loaded total=\(connections.count) relayUsable=\(relayConnections.count) selected=\(selectedConnection.id) selectedMode=\(selectedConnection.mode.rawValue)")
+            #endif
             let persistedID = defaults.string(forKey: selectedConnectionDefaultsKey)
             let targetID = selectedConnection.id == HermesConnectionRecord.localDefault.id ? persistedID : selectedConnection.id
             if let targetID,
                let current = connections.first(where: { $0.id == targetID }),
                current.mode == .relayLink {
-                if Self.hasUsableRelayEncryption(current), current.id == selectedConnection.id {
+                if Self.canAttemptRelayConnection(current), current.id == selectedConnection.id {
                     selectedConnection = current
+                } else if Self.canAttemptRelayConnection(current) {
+                    _ = selectConnection(current, refresh: refreshSelectedConnection)
                 } else if Self.hasUsableRelayEncryption(current) {
-                    _ = selectConnection(current)
+                    selectedConnection = .localDefault
+                    defaults.removeObject(forKey: selectedConnectionDefaultsKey)
+                    runtimeErrorText = "That Mac relay stopped checking in. Open or restart OpenBurnBar on the Mac, then refresh."
                 } else {
                     selectedConnection = .localDefault
                     defaults.removeObject(forKey: selectedConnectionDefaultsKey)
@@ -804,7 +827,7 @@ final class HermesService {
                     selectedConnection = current
                     baseURL = endpoint
                 } else {
-                    _ = selectConnection(current)
+                    _ = selectConnection(current, refresh: refreshSelectedConnection)
                 }
             } else if let current = connections.first(where: { $0.id == selectedConnection.id }) {
                 selectedConnection = current
@@ -827,6 +850,11 @@ final class HermesService {
                 runtimeErrorText = lastError
                 return false
             }
+            guard connection.status == .online else {
+                lastError = "That Mac relay stopped checking in. Open or restart OpenBurnBar on the Mac, then refresh."
+                runtimeErrorText = lastError
+                return false
+            }
             endpoint = nil
         } else if let validated = Self.validatedEndpointURL(connection.endpointURL ?? "") {
             endpoint = validated
@@ -838,7 +866,12 @@ final class HermesService {
         runtimeGeneration += 1
         selectedConnection = connection
         selectedSessionID = nil
-        selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
+        selectedModelWasExplicit = selectedModelID?.nilIfBlank != nil
         sessions = []
         profiles = []
         modelOptions = []
@@ -847,6 +880,8 @@ final class HermesService {
         if let endpoint {
             baseURL = endpoint
         }
+        runtimeErrorText = nil
+        lastError = nil
         defaults.set(connection.id, forKey: selectedConnectionDefaultsKey)
         if refresh {
             Task { @MainActor in
@@ -1189,9 +1224,85 @@ final class HermesService {
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
-        selectedModelID = option.modelID
-        defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+        let raw = option.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requested = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(raw)
+        let resolved = !modelOptions.isEmpty
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(raw, in: modelOptions)
+            : requested
+        if !modelOptions.isEmpty, resolved == nil {
+            let message = "Selected Hermes model '\(option.modelID)' is not advertised by this Mac relay. Pick a live model from the relay list or refresh/restart the Mac Hermes gateway."
+            lastError = message
+            runtimeErrorText = message
+            return
+        }
+        let modelID = resolved ?? requested
+        selectedModelID = modelID
+        selectedModelWasExplicit = true
+        defaults.set(modelID, forKey: selectedModelDefaultsKey)
+        runtimeErrorText = nil
+        lastError = nil
     }
+
+    func clearSelectedModel() {
+        selectedModelID = nil
+        selectedModelWasExplicit = false
+        defaults.removeObject(forKey: selectedModelDefaultsKey)
+    }
+
+    private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
+        guard let stored = stored?.nilIfBlank else { return nil }
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(stored)
+        if canonical != stored {
+            defaults.set(canonical, forKey: key)
+        }
+        return canonical
+    }
+
+    private func canonicalizedSelectedModelID(_ modelID: String) -> String {
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(modelID)
+        persistResolvedSelectedModelID(canonical)
+        return canonical
+    }
+
+    private func persistResolvedSelectedModelID(_ modelID: String) {
+        guard selectedModelID != modelID else { return }
+        selectedModelID = modelID
+        if selectedModelWasExplicit {
+            defaults.set(modelID, forKey: selectedModelDefaultsKey)
+        }
+    }
+
+    #if DEBUG
+    func selectModelIDForAutomation(_ modelID: String) {
+        guard let trimmed = modelID.nilIfBlank else { return }
+        if trimmed.lowercased() == "auto" || trimmed.lowercased() == "default" {
+            selectedModelID = Self.preferredRouteEligibleModelID(
+                in: modelOptions,
+                favorites: favoriteModelOptions
+            )
+            selectedModelWasExplicit = selectedModelID != nil
+            if selectedModelID == nil, !modelOptions.isEmpty {
+                lastError = HermesServiceError.noRouteEligibleModel.localizedDescription
+                runtimeErrorText = lastError
+            }
+            return
+        }
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(trimmed)
+        let resolved = !modelOptions.isEmpty
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(trimmed, in: modelOptions)
+            : canonical
+        guard modelOptions.isEmpty || resolved != nil else {
+            lastError = "Selected Hermes model '\(trimmed)' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
+            runtimeErrorText = lastError
+            return
+        }
+        selectedModelID = resolved ?? canonical
+        selectedModelWasExplicit = true
+        if let selectedModelID {
+            defaults.set(selectedModelID, forKey: selectedModelDefaultsKey)
+        }
+    }
+    #endif
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
         favoriteModelIDs.contains(option.modelID)
@@ -1211,6 +1322,36 @@ final class HermesService {
             partialResult[option.modelID] = option
         }
         return favoriteModelIDs.compactMap { optionsByID[$0] }
+    }
+
+    func validatedModelIDForMissionDispatch() throws -> String? {
+        guard let selectedModelID = selectedModelID?.nilIfBlank else {
+            guard !modelOptions.isEmpty else { return nil }
+            guard let routeEligibleModelID = Self.preferredRouteEligibleModelID(
+                in: modelOptions,
+                favorites: favoriteModelOptions
+            ) else {
+                throw HermesServiceError.noRouteEligibleModel
+            }
+            return routeEligibleModelID
+        }
+        if modelOptions.isEmpty {
+            if selectedConnection.mode == .relayLink {
+                return canonicalizedSelectedModelID(selectedModelID)
+            }
+            if selectedModelWasExplicit {
+                if selectedConnection.id == HermesConnectionRecord.localDefault.id {
+                    throw HermesServiceError.relayUnavailable(Self.localHermesSelectedMessage)
+                }
+                throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
+            }
+        } else if let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+            persistResolvedSelectedModelID(resolved)
+            return resolved
+        } else {
+            throw HermesServiceError.selectedModelUnavailable(selectedModelID)
+        }
+        return canonicalizedSelectedModelID(selectedModelID)
     }
 
     /// Retry the most recent user turn. Strips any assistant messages
@@ -1245,7 +1386,13 @@ final class HermesService {
         // and let the model describe / OCR it.
         guard (!trimmed.isEmpty || !attachments.isEmpty), !isStreaming else { return }
 
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) suggested=\(suggestedRelayConnection?.id ?? "none") selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
+        #endif
         preferSuggestedRelayWhenLocalHostIsOffline()
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E sendMessage afterPrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
+        #endif
 
         // Mint a local session id for brand-new chats so we can mirror the
         // transcript even when the host or relay never assigns one.
@@ -1279,15 +1426,48 @@ final class HermesService {
     }
 
     private func preferSuggestedRelayWhenLocalHostIsOffline() {
-        guard selectedConnection.id == HermesConnectionRecord.localDefault.id,
-              !isReachable,
-              let relay = suggestedRelayConnection else {
+        guard selectedConnection.id == HermesConnectionRecord.localDefault.id else {
+            #if DEBUG
+            print("OpenBurnBarMobile Hermes E2E relayPrefer skip selectedIsNotLocal selected=\(selectedConnection.id)")
+            #endif
             return
         }
+        guard !isReachable else {
+            #if DEBUG
+            print("OpenBurnBarMobile Hermes E2E relayPrefer skip localMarkedReachable")
+            #endif
+            return
+        }
+        guard let relay = suggestedRelayConnection else {
+            #if DEBUG
+            print("OpenBurnBarMobile Hermes E2E relayPrefer skip noSuggestedRelay connectionCount=\(connections.count)")
+            #endif
+            return
+        }
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E relayPrefer selecting relay=\(relay.id) advertisedModel=\(relay.advertisedModel ?? "nil")")
+        #endif
         _ = selectConnection(relay, refresh: false)
     }
 
+    private func refreshRelayDiscoveryBeforeLocalSendIfNeeded() async {
+        guard selectedConnection.id == HermesConnectionRecord.localDefault.id else { return }
+        guard !isReachable else { return }
+
+        if suggestedRelayConnection == nil {
+            await refreshConnections(refreshSelectedConnection: false)
+        }
+
+        preferSuggestedRelayWhenLocalHostIsOffline()
+    }
+
     private func streamCompletion(context: String?, iteration: Int = 0) async throws {
+        if iteration == 0 {
+            await refreshRelayDiscoveryBeforeLocalSendIfNeeded()
+        }
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamCompletion selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) requestedModel=\(activeRequestedModelID ?? "nil") modelOptions=\(modelOptions.count)")
+        #endif
         if selectedConnection.mode == .relayLink {
             try await streamRelayCompletion(context: context, iteration: iteration)
             return
@@ -1357,7 +1537,7 @@ final class HermesService {
     }
 
     private func completionRequestBody(context: String?) throws -> Data {
-        let model = selectedModelID ?? selectedConnection.advertisedModel ?? "hermes"
+        let model = try activeModelIDForRequest()
 
         // Build encoder messages from history. We load attachment bytes for
         // each user message that carries attachments so the encoder can emit
@@ -1472,7 +1652,11 @@ final class HermesService {
     }
 
     private func streamRelayCompletion(context: String?, iteration: Int = 0) async throws {
+        await ensureRelayModelCatalogLoadedBeforeSend()
         let body = try completionRequestBody(context: context)
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamRelayCompletion start connection=\(selectedConnection.id) requestedModel=\(activeRequestedModelID ?? "nil") bodyBytes=\(body.count)")
+        #endif
         isReachable = true
 
         var assistantMessage = HermesChatMessage(
@@ -1487,10 +1671,13 @@ final class HermesService {
 
         try await relayTransport.sendStreaming(
             relayPayload(operation: .chatCompletions, method: "POST", path: "/v1/chat/completions", body: body),
-            timeout: 120
+            timeout: remoteRelayChatCompletionTimeout
         ) { event in
             self.processSSEPayload(event, into: &assistantMessage)
         }
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamRelayCompletion finished connection=\(selectedConnection.id)")
+        #endif
 
         assistantMessage.isStreaming = false
         assistantMessage.toolCalls = assistantMessage.toolCalls.map {
@@ -1517,6 +1704,14 @@ final class HermesService {
             messages[index] = assistantMessage
         }
         try await runToolUseIterationIfNeeded(after: assistantMessage, context: context, iteration: iteration)
+    }
+
+    private func ensureRelayModelCatalogLoadedBeforeSend() async {
+        guard selectedConnection.mode == .relayLink, modelOptions.isEmpty else { return }
+        if selectedModelID?.nilIfBlank != nil {
+            return
+        }
+        await loadModels(generation: runtimeGeneration)
     }
 
     /// Shared post-stream step: if the assistant turn produced tool
@@ -1698,6 +1893,17 @@ final class HermesService {
             self.lastError = messageText
             message.text = messageText
             message.isError = true
+            message.outcome = .empty
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                messages[index] = message
+            }
+            return
+        }
+        if let upstreamError = streamingUpstreamErrorMessage(from: json) {
+            self.lastError = upstreamError
+            message.text = upstreamError
+            message.isError = true
+            message.outcome = .empty
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
                 messages[index] = message
             }
@@ -1928,6 +2134,35 @@ final class HermesService {
         }
     }
 
+    private func streamingUpstreamErrorMessage(from json: [String: Any]) -> String? {
+        if let hermes = json["hermes"] as? [String: Any],
+           boolValue(hermes["failed"]) == true
+            || boolValue(hermes["completed"]) == false && stringValue(hermes["error"]) != nil {
+            let message = stringValue(hermes["error"])
+                ?? stringValue(hermes["message"])
+                ?? "Hermes reported that the upstream model request failed."
+            return HermesServiceError.upstreamModelErrorMessage(from: message)
+                ?? "Hermes upstream model failed: \(message)"
+        }
+        guard let choices = json["choices"] as? [[String: Any]] else {
+            return nil
+        }
+        for choice in choices {
+            let finishReason = stringValue(choice["finish_reason"])
+                ?? stringValue(choice["finishReason"])
+            guard finishReason?.lowercased() == "error" else { continue }
+            let message = visibleContent(from: choice["delta"] as? [String: Any])
+                ?? visibleContent(from: choice["message"] as? [String: Any])
+                ?? stringValue(choice["text"])
+                ?? stringValue(json["error"])
+                ?? stringValue(json["message"])
+                ?? "Hermes reported that the upstream model request failed."
+            return HermesServiceError.upstreamModelErrorMessage(from: message)
+                ?? "Hermes upstream model failed: \(message)"
+        }
+        return nil
+    }
+
     private func visibleContentValue(_ raw: Any?) -> String? {
         if let value = raw as? String {
             return value.isEmpty ? nil : value
@@ -2005,6 +2240,10 @@ final class HermesService {
             displayText = "Connection error: \(error.localizedDescription)"
         }
 
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamError selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) error=\(error.localizedDescription) display=\(displayText)")
+        #endif
+
         let errorMessage = HermesChatMessage(
             role: .assistant,
             text: displayText,
@@ -2020,10 +2259,12 @@ final class HermesService {
 
     private var activeModelName: String? {
         if let selectedModelID,
-           let option = modelOptions.first(where: { $0.modelID == selectedModelID }) {
+           let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions),
+           let option = modelOptions.first(where: { $0.modelID == resolved }) {
             return option.displayName.nilIfBlank ?? option.modelID.nilIfBlank
         }
-        return selectedModelID?.nilIfBlank ?? selectedConnection.advertisedModel?.nilIfBlank
+        return selectedModelID?.nilIfBlank.map(AssistantModelIDCanonicalizer.canonicalizedPersistedSelection)
+            ?? selectedConnection.advertisedModel?.nilIfBlank
     }
 
     /// Raw model id we send in the `"model"` field of the chat completion
@@ -2031,17 +2272,62 @@ final class HermesService {
     /// honest about what we asked for, even if the server reports something
     /// else back.
     private var activeRequestedModelID: String? {
-        selectedModelID?.nilIfBlank
+        selectedModelID?.nilIfBlank.map(canonicalizedSelectedModelID)
             ?? selectedConnection.advertisedModel?.nilIfBlank
+    }
+
+    private func activeModelIDForRequest() throws -> String {
+        if let selectedModelID = selectedModelID?.nilIfBlank {
+            if modelOptions.isEmpty {
+                if selectedConnection.mode == .relayLink {
+                    return canonicalizedSelectedModelID(selectedModelID)
+                }
+                if selectedModelWasExplicit {
+                    if selectedConnection.id == HermesConnectionRecord.localDefault.id {
+                        throw HermesServiceError.relayUnavailable(Self.localHermesSelectedMessage)
+                    }
+                    throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
+                }
+            } else if let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+                persistResolvedSelectedModelID(resolved)
+                return resolved
+            } else {
+                throw HermesServiceError.selectedModelUnavailable(selectedModelID)
+            }
+            return canonicalizedSelectedModelID(selectedModelID)
+        }
+        if !modelOptions.isEmpty {
+            guard let routeEligibleModelID = Self.preferredRouteEligibleModelID(
+                in: modelOptions,
+                favorites: favoriteModelOptions
+            ) else {
+                throw HermesServiceError.noRouteEligibleModel
+            }
+            return routeEligibleModelID
+        }
+        return selectedConnection.advertisedModel?.nilIfBlank ?? "hermes"
+    }
+
+    private func relayConnectionAlreadyAdvertises(modelID: String) -> Bool {
+        guard selectedConnection.mode == .relayLink,
+              let advertised = selectedConnection.advertisedModel?.nilIfBlank else {
+            return false
+        }
+        return AssistantModelIDCanonicalizer.canonicalized(advertised) == AssistantModelIDCanonicalizer.canonicalized(modelID)
     }
 
     func checkReachability(generation: Int? = nil) async {
         do {
             guard generation == nil || generation == runtimeGeneration else { return }
             if selectedConnection.mode == .relayLink {
+                guard Self.canAttemptRelayConnection(selectedConnection) else {
+                    isReachable = false
+                    runtimeErrorText = "That Mac relay stopped checking in. Open or restart OpenBurnBar on the Mac, then refresh."
+                    return
+                }
                 _ = try await relayTransport.sendUnary(
                     relayPayload(operation: .models, method: "GET", path: "/v1/models"),
-                    timeout: 20
+                    timeout: remoteRelayControlPlaneTimeout
                 )
                 guard generation == nil || generation == runtimeGeneration else { return }
                 isReachable = true
@@ -2082,7 +2368,7 @@ final class HermesService {
             if selectedConnection.mode == .relayLink {
                 data = try await relayTransport.sendUnary(
                     relayPayload(operation: .models, method: "GET", path: "/v1/models"),
-                    timeout: 20
+                    timeout: remoteRelayControlPlaneTimeout
                 )
             } else {
                 let (directData, response) = try await urlSession.data(for: makeRequest(path: "/v1/models", timeout: 8))
@@ -2100,10 +2386,32 @@ final class HermesService {
                 )
             }
             modelOptions = options
-            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
-                self.selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+            if let selectedModelID,
+               let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+                persistResolvedSelectedModelID(resolved)
+                runtimeErrorText = nil
+            } else if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+                if selectedModelWasExplicit {
+                    runtimeErrorText = "Selected Hermes model '\(selectedModelID)' is not advertised by this Mac relay. Pick a listed model or refresh the Mac provider catalog."
+                } else {
+                    self.selectedModelID = Self.preferredRouteEligibleModelID(
+                        in: modelOptions,
+                        favorites: favoriteModelOptions
+                    )
+                    selectedModelWasExplicit = false
+                    runtimeErrorText = self.selectedModelID == nil && !modelOptions.isEmpty
+                        ? HermesServiceError.noRouteEligibleModel.localizedDescription
+                        : nil
+                }
             } else if selectedModelID == nil {
-                selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                selectedModelID = Self.preferredRouteEligibleModelID(
+                    in: modelOptions,
+                    favorites: favoriteModelOptions
+                )
+                selectedModelWasExplicit = false
+                runtimeErrorText = selectedModelID == nil && !modelOptions.isEmpty
+                    ? HermesServiceError.noRouteEligibleModel.localizedDescription
+                    : nil
             }
         } catch {
             guard generation == runtimeGeneration else { return }
@@ -2142,7 +2450,16 @@ final class HermesService {
                 providerID: provider.id,
                 providerName: provider.name,
                 modelID: model.id,
-                displayName: model.displayName ?? model.name ?? providerDisplayName(forModelID: model.id)
+                displayName: model.displayName ?? model.name ?? providerDisplayName(forModelID: model.id),
+                accountID: model.accountID,
+                accountLabel: model.accountLabel,
+                sourceID: model.sourceID,
+                sourceKind: model.sourceKind,
+                capabilities: model.capabilities ?? [],
+                quotaState: model.quotaState,
+                routeEligible: model.routeEligible,
+                lastRefreshAt: model.lastRefreshAt,
+                lastError: model.lastError
             )
         }
     }
@@ -2208,6 +2525,25 @@ final class HermesService {
             merged.append(option)
         }
         return merged
+    }
+
+    private static func isLocalOnlyModelOption(_ option: HermesRuntimeModelOption) -> Bool {
+        let text = "\(option.providerID) \(option.providerName) \(option.modelID) \(option.displayName)"
+            .lowercased()
+        return text.contains("ollama")
+            || text.contains("lmstudio")
+            || text.contains("lm studio")
+            || text.contains("local")
+    }
+
+    private static func preferredRouteEligibleModelID(
+        in options: [HermesRuntimeModelOption],
+        favorites: [HermesRuntimeModelOption]
+    ) -> String? {
+        favorites.first { $0.isRouteEligible && !isLocalOnlyModelOption($0) }?.modelID
+            ?? favorites.first { $0.isRouteEligible }?.modelID
+            ?? options.first { $0.isRouteEligible && !isLocalOnlyModelOption($0) }?.modelID
+            ?? options.first { $0.isRouteEligible }?.modelID
     }
 
     private func loadSessions(generation: Int) async {
@@ -2301,6 +2637,35 @@ final class HermesService {
             operation: operation,
             method: method,
             path: path,
+            sessionID: sessionID,
+            body: body
+        )
+    }
+
+    func macRelayPayloadForCLIAgentChat(
+        body: Data,
+        sessionID: String
+    ) async throws -> HermesRelayPayload {
+        if selectedConnection.mode != .relayLink || suggestedRelayConnection == nil {
+            await refreshConnections(refreshSelectedConnection: false)
+        }
+        if selectedConnection.mode != .relayLink {
+            _ = connectToSuggestedRelay(refresh: false)
+        }
+        guard selectedConnection.mode == .relayLink else {
+            throw HermesServiceError.relayUnavailable(
+                "No paired Mac relay is available for Codex or Claude chat. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay."
+            )
+        }
+        guard selectedConnection.capabilities.contains("cli_agent_chat") else {
+            throw HermesServiceError.relayUnavailable(
+                "Your Mac relay is online but does not advertise Codex/Claude chat yet. Update or restart OpenBurnBar on the Mac."
+            )
+        }
+        return relayPayload(
+            operation: .cliAgentChat,
+            method: "POST",
+            path: "/v1/cli-agent/chat",
             sessionID: sessionID,
             body: body
         )
@@ -2592,8 +2957,9 @@ final class HermesService {
 
     private func boolValue(_ value: Any?) -> Bool? {
         if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
         if let value = value as? String {
-            switch value.lowercased() {
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
             case "true", "yes", "1": return true
             case "false", "no", "0": return false
             default: return nil
@@ -2649,6 +3015,22 @@ final class HermesService {
             && (connection.relayPublicKey?.isEmpty == false)
     }
 
+    private nonisolated static let relayFreshnessWindow: TimeInterval = 3 * 60
+
+    private static func canAttemptRelayConnection(_ connection: HermesConnectionRecord) -> Bool {
+        connection.mode == .relayLink
+            && connection.status == .online
+            && hasUsableRelayEncryption(connection)
+    }
+
+    static func isRelayConnectionFresh(_ connection: HermesConnectionRecord, now: Date = Date()) -> Bool {
+        guard connection.mode == .relayLink else { return true }
+        let heartbeat = connection.realtimeRelayLastSeenAt
+            ?? connection.lastSeenAt
+            ?? connection.updatedAt
+        return now.timeIntervalSince(heartbeat) <= relayFreshnessWindow
+    }
+
     private static func encodeStringArray(_ values: [String]) -> String {
         guard let data = try? JSONEncoder().encode(values),
               let text = String(data: data, encoding: .utf8) else {
@@ -2669,25 +3051,68 @@ final class HermesService {
 
 @MainActor
 final class HermesCompositeRelayTransport: HermesRelayTransporting {
+    /// `UserDefaults` key the iOS feature toggle writes. The OpenBurnBar Mac
+    /// app sets the same key via `SettingsManager.hermesIrohTransportEnabled`.
+    /// When false (the v1 default) the cascade skips iroh entirely and goes
+    /// straight to WSS so users on older builds never see the iroh dial
+    /// timeout latency.
+    static let irohEnabledDefaultsKey = "hermes_iroh_transport_enabled"
+
     static let shared = HermesCompositeRelayTransport(
-        realtime: HermesRealtimeRelayTransport.shared,
+        primary: HermesIrohRelayTransport.shared,
+        secondary: HermesRealtimeRelayTransport.shared,
         fallback: FirestoreHermesRelayTransport.shared
     )
 
-    private let realtime: HermesRelayTransporting
+    private let primary: HermesRelayTransporting
+    private let secondary: HermesRelayTransporting
     private let fallback: HermesRelayTransporting
+    private let irohEnabled: @Sendable () -> Bool
 
-    init(realtime: HermesRelayTransporting, fallback: HermesRelayTransporting) {
-        self.realtime = realtime
+    /// Three-tier fallback chain. The primary is the iroh peer-to-peer
+    /// transport; failures cascade to the WSS relay and finally to the
+    /// Firestore long-poll transport. Cascade reasons are surfaced through
+    /// `FirestoreIrohAuditLogger` so the user's audit log shows when iroh
+    /// falls back to WSS.
+    init(
+        primary: HermesRelayTransporting,
+        secondary: HermesRelayTransporting,
+        fallback: HermesRelayTransporting,
+        irohEnabled: @escaping @Sendable () -> Bool = {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["OPENBURNBAR_ENABLE_IROH_TRANSPORT"] == "1" {
+                return true
+            }
+            #endif
+            return UserDefaults.standard.bool(forKey: HermesCompositeRelayTransport.irohEnabledDefaultsKey)
+        }
+    ) {
+        self.primary = primary
+        self.secondary = secondary
         self.fallback = fallback
+        self.irohEnabled = irohEnabled
     }
 
     func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
-        do {
-            return try await realtime.sendUnary(payload, timeout: timeout)
-        } catch {
-            return try await fallback.sendUnary(payload, timeout: timeout)
+        if irohEnabled() {
+            do {
+                return try await primary.sendUnary(payload, timeout: timeout)
+            } catch {
+                if HermesServiceError.shouldStopRelayFallback(error) {
+                    throw error
+                }
+                await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
+            }
         }
+        do {
+            return try await secondary.sendUnary(payload, timeout: timeout)
+        } catch {
+            if HermesServiceError.shouldStopRelayFallback(error) {
+                throw error
+            }
+            await Self.recordFallback(payload: payload, error: error, hop: "wss-to-firestore")
+        }
+        return try await fallback.sendUnary(payload, timeout: timeout)
     }
 
     func sendStreaming(
@@ -2695,11 +3120,42 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
         timeout: TimeInterval,
         onSSEEvent: @escaping @MainActor (String) -> Void
     ) async throws {
-        do {
-            try await realtime.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
-        } catch {
-            try await fallback.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+        if irohEnabled() {
+            do {
+                try await primary.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+                return
+            } catch {
+                if HermesServiceError.shouldStopRelayFallback(error) {
+                    throw error
+                }
+                await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
+            }
         }
+        do {
+            try await secondary.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+            return
+        } catch {
+            if HermesServiceError.shouldStopRelayFallback(error) {
+                throw error
+            }
+            await Self.recordFallback(payload: payload, error: error, hop: "wss-to-firestore")
+        }
+        try await fallback.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+    }
+
+    private static func recordFallback(payload: HermesRelayPayload, error: Error, hop: String) async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        await FirestoreIrohAuditLogger.shared.record(
+            event: .fallbackToWss,
+            uid: uid,
+            connectionId: payload.connectionID,
+            transport: hop == "iroh-to-wss" ? .wss : .firestore,
+            rttMillis: nil,
+            detail: [
+                "hop": hop,
+                "error": String(error.localizedDescription.prefix(256))
+            ]
+        )
     }
 }
 
@@ -2722,7 +3178,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
             case .data:
                 fragments[chunk.sequence] = chunk.data ?? chunk.text ?? ""
             case .error:
-                throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes realtime relay failed.")
+                throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes realtime relay failed.")
             case .sse:
                 break
             }
@@ -2746,7 +3202,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                     onSSEEvent(data)
                 }
             case .error:
-                throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes realtime relay stream failed.")
+                throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes realtime relay stream failed.")
             case .data:
                 break
             }
@@ -2841,7 +3297,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
             case .responseComplete:
                 return
             case .responseError:
-                throw HermesServiceError.relayUnavailable(frame.payload?.error ?? "Hermes realtime relay failed.")
+                throw HermesServiceError.relayFailure(frame.payload?.error, fallback: "Hermes realtime relay failed.")
             case .ping:
                 try await task.send(.data(encoder.encode(HermesRealtimeRelayFrame(
                     type: .pong,
@@ -2850,6 +3306,20 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                     requestId: requestID
                 ))))
             case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong:
+                break
+            case .mediaClassify,
+                 .mediaBlobAdvertise,
+                 .mediaBlobAck,
+                 .mediaMirrorRequest,
+                 .mediaMirrorAck,
+                 .mediaPresenceHeartbeat:
+                // Mercury media frames are iroh-transport-only and never
+                // appear on the WSS dialer's chat response stream.
+                break
+            case .controlClassify, .controlActionLogEntry, .controlInputIntent,
+                 .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
+                // Computer Use control frames are handled by the control
+                // plane; chat relay responses ignore them.
                 break
             }
         }
@@ -3026,7 +3496,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                     case .data:
                         fragments[chunk.sequence] = chunk.data ?? chunk.text ?? ""
                     case .error:
-                        throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes relay request failed.")
+                        throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes relay request failed.")
                     case .sse:
                         break
                     }
@@ -3060,7 +3530,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                             onSSEEvent(data)
                         }
                     case .error:
-                        throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes relay stream failed.")
+                        throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes relay stream failed.")
                     case .data:
                         break
                     }
@@ -3189,7 +3659,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                 try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
             case .failed:
                 let error = requestData["error"] as? String
-                throw HermesServiceError.relayUnavailable(error ?? "Remote Hermes relay failed.")
+                throw HermesServiceError.relayFailure(error, fallback: "Remote Hermes relay failed.")
             case .cancelled, .expired:
                 throw HermesServiceError.relayUnavailable("Remote Hermes relay request was \(status.rawValue).")
             case .pending, .claimed, .streaming:
@@ -3291,6 +3761,10 @@ enum HermesServiceError: LocalizedError {
     case decodingFailed
     case invalidURL
     case keychain(OSStatus)
+    case selectedModelUnavailable(String)
+    case selectedModelCatalogUnavailable(String)
+    case noRouteEligibleModel
+    case upstreamModelError(String)
     case relayUnavailable(String)
     case relayTimeout
 
@@ -3309,11 +3783,86 @@ enum HermesServiceError: LocalizedError {
             return "Use HTTPS, or HTTP only for localhost/private LAN Hermes hosts."
         case .keychain(let status):
             return "Could not update the Hermes API key in Keychain (\(status))."
+        case .selectedModelUnavailable(let modelID):
+            return "Selected Hermes model '\(modelID)' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
+        case .selectedModelCatalogUnavailable(let modelID):
+            return "Selected Hermes model '\(modelID)' has not been verified against this Mac relay's model catalog yet. Refresh the Mac Hermes gateway before sending, so the selected model is not silently rerouted."
+        case .noRouteEligibleModel:
+            return "No route-eligible Hermes model is currently advertised by this Mac relay. Add or enable a provider account with available quota, then refresh the Mac Hermes gateway."
+        case .upstreamModelError(let message):
+            return message
         case .relayUnavailable(let message):
             return message
         case .relayTimeout:
-            return "Remote Hermes relay timed out. Keep OpenBurnBar running on your Mac and try again."
+            return "Remote Hermes relay timed out before the selected Mac harness completed. No fallback was attempted, so the selected model is not silently rerouted."
         }
+    }
+
+    var stopsRelayFallback: Bool {
+        switch self {
+        case .selectedModelUnavailable,
+             .selectedModelCatalogUnavailable,
+             .noRouteEligibleModel,
+             .upstreamModelError,
+             .relayTimeout:
+            return true
+        case .invalidResponse,
+             .httpStatus,
+             .decodingFailed,
+             .invalidURL,
+             .keychain,
+             .relayUnavailable:
+            return false
+        }
+    }
+
+    static func relayFailure(_ message: String?, fallback: String) -> HermesServiceError {
+        let raw = message?.nilIfBlank ?? fallback
+        if let upstream = upstreamModelErrorMessage(from: raw) {
+            return .upstreamModelError(upstream)
+        }
+        return .relayUnavailable(raw)
+    }
+
+    static func shouldStopRelayFallback(_ error: Error) -> Bool {
+        (error as? HermesServiceError)?.stopsRelayFallback ?? false
+    }
+
+    static func upstreamModelErrorMessage(from raw: String?) -> String? {
+        guard let message = raw?.nilIfBlank else { return nil }
+        let lower = message.lowercased()
+        if lower.hasPrefix("hermes upstream model") {
+            return message
+        }
+
+        let modelOrQuotaSignal = lower.contains("model")
+            || lower.contains("quota")
+            || lower.contains("limit")
+            || lower.contains("route")
+            || lower.contains("account")
+            || lower.contains("provider")
+            || lower.contains("auth")
+        guard modelOrQuotaSignal else { return nil }
+
+        let upstreamSignals = [
+            "weekly/monthly limit exhausted",
+            "limit exhausted",
+            "quota",
+            "insufficient_quota",
+            "rate limit",
+            "model_not_found",
+            "model not found",
+            "does not exist",
+            "unsupported model",
+            "no eligible openai-compatible route",
+            "no eligible route",
+            "add or enable an openai-family account",
+            "api call failed after"
+        ]
+        guard upstreamSignals.contains(where: { lower.contains($0) }) else {
+            return nil
+        }
+        return "Hermes upstream model failed: \(message)"
     }
 }
 
@@ -3383,6 +3932,15 @@ private struct OpenAIModel: Decodable {
     var providerName: String?
     var displayName: String?
     var name: String?
+    var accountID: String?
+    var accountLabel: String?
+    var sourceID: String?
+    var sourceKind: String?
+    var capabilities: [String]?
+    var quotaState: String?
+    var routeEligible: Bool?
+    var lastRefreshAt: Date?
+    var lastError: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -3391,6 +3949,15 @@ private struct OpenAIModel: Decodable {
         case providerName = "provider_name"
         case displayName = "display_name"
         case name
+        case accountID = "account_id"
+        case accountLabel = "account_label"
+        case sourceID = "source_id"
+        case sourceKind = "source_kind"
+        case capabilities
+        case quotaState = "quota_state"
+        case routeEligible = "route_eligible"
+        case lastRefreshAt = "last_refresh_at"
+        case lastError = "last_error"
     }
 }
 

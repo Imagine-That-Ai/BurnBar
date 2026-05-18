@@ -139,7 +139,11 @@ public struct BurnBarContextSelector {
                     tool: .searchWorkspace,
                     arguments: .object(["query": .string(query)])
                 )
-            case .applyPatch, .runTerminal:
+            case .applyPatch, .runTerminal,
+                 .browserClick, .browserFill, .browserGoto, .browserKey,
+                 .browserSelect, .browserScreenshot, .browserExtract,
+                 .macInputClick, .macInputType, .macInputKey,
+                 .macInputShortcut, .macInputDragDrop, .macInputScroll, .macInspectAccessibility:
                 guard let arguments = intent.toolArguments else {
                     return nil
                 }

@@ -1,9 +1,14 @@
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import Foundation
 
 public typealias BurnBarBrowserFetcher = @Sendable (_ url: URL) async throws -> (Data, HTTPURLResponse)
 public typealias BurnBarBrowserOpener = @Sendable (_ url: URL) throws -> Void
 public typealias BurnBarExecutableLocator = @Sendable (_ executableName: String) -> String?
+public typealias BurnBarPlaywrightBrowserActionExecutor = @Sendable (
+    _ action: BurnBarBrowserActionKind,
+    _ arguments: BurnBarBrowserActionArguments
+) async throws -> OpenBurnBarPlaywrightDriver.Response
 
 private struct BurnBarStoredBrowserToolingFile: Codable, Hashable {
     var updatedAt: Date
@@ -17,17 +22,20 @@ public actor BurnBarBrowserToolService {
     private let fetcher: BurnBarBrowserFetcher
     private let opener: BurnBarBrowserOpener
     private let locateExecutable: BurnBarExecutableLocator
+    private let playwrightExecutor: BurnBarPlaywrightBrowserActionExecutor?
     private let logger: BurnBarDaemonLogger
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     private var cachedState: BurnBarStoredBrowserToolingFile?
+    private var playwrightDriver: OpenBurnBarPlaywrightDriver?
 
     public init(
         fileURL: URL = BurnBarDaemonPaths.defaultBrowserToolingURL,
         fetcher: BurnBarBrowserFetcher? = nil,
         opener: BurnBarBrowserOpener? = nil,
         locateExecutable: BurnBarExecutableLocator? = nil,
+        playwrightExecutor: BurnBarPlaywrightBrowserActionExecutor? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "browser-tooling")
     ) {
         self.fileURL = fileURL
@@ -53,7 +61,14 @@ public actor BurnBarBrowserToolService {
             }
         }
         self.locateExecutable = locateExecutable ?? { name in
-            let candidates = ["/opt/homebrew/bin/\(name)", "/usr/local/bin/\(name)", "/usr/bin/\(name)"]
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            let candidates = [
+                "/opt/homebrew/bin/\(name)",
+                "/usr/local/bin/\(name)",
+                "\(home)/.local/bin/\(name)",
+                "\(home)/.nvm/versions/node/v20.20.2/bin/\(name)",
+                "/usr/bin/\(name)"
+            ]
             if let direct = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
                 return direct
             }
@@ -73,6 +88,7 @@ public actor BurnBarBrowserToolService {
                 return nil
             }
         }
+        self.playwrightExecutor = playwrightExecutor
         self.logger = logger
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
@@ -220,9 +236,249 @@ public actor BurnBarBrowserToolService {
                     links: links,
                     recordedAt: Date()
                 )
-            case .openExternal:
+            case .openExternal,
+                 .click, .fill, .goto, .key, .select, .screenshot, .extract:
                 fatalError("Handled above.")
             }
+        case .click, .fill, .goto, .key, .select, .screenshot, .extract:
+            guard engine == .playwright else {
+                return BurnBarBrowserActionResponse(
+                    action: request.action,
+                    engine: engine,
+                    ok: false,
+                    summary: "\(selectedEngine.displayName) cannot run interactive browser actions.",
+                    detail: "Choose Playwright for \(request.action.rawValue).",
+                    recordedAt: Date()
+                )
+            }
+            let arguments = request.arguments ?? BurnBarBrowserActionArguments(url: request.url)
+            let response = try await executePlaywrightAction(request.action, arguments: arguments)
+            return browserResponse(
+                from: response,
+                action: request.action,
+                engine: engine
+            )
+        }
+    }
+
+    private func executePlaywrightAction(
+        _ action: BurnBarBrowserActionKind,
+        arguments: BurnBarBrowserActionArguments
+    ) async throws -> OpenBurnBarPlaywrightDriver.Response {
+        if let playwrightExecutor {
+            return try await playwrightExecutor(action, arguments)
+        }
+
+        let driver = try await playwrightDriverForDefaultSession()
+        switch action {
+        case .click:
+            return try await driver.click(
+                selector: arguments.selector,
+                positionX: arguments.positionX,
+                positionY: arguments.positionY,
+                timeoutMillis: arguments.timeoutMillis
+            )
+        case .fill:
+            guard let selector = arguments.selector, let text = arguments.text else {
+                return OpenBurnBarPlaywrightDriver.Response(
+                    id: -1,
+                    ok: false,
+                    result: nil,
+                    error: "fill requires selector and text",
+                    elapsedMillis: nil
+                )
+            }
+            return try await driver.fill(selector: selector, text: text, timeoutMillis: arguments.timeoutMillis)
+        case .goto:
+            guard let url = arguments.url else {
+                return OpenBurnBarPlaywrightDriver.Response(
+                    id: -1,
+                    ok: false,
+                    result: nil,
+                    error: "goto requires url",
+                    elapsedMillis: nil
+                )
+            }
+            return try await driver.goto(url: url, timeoutMillis: arguments.timeoutMillis)
+        case .key:
+            guard let key = arguments.key else {
+                return OpenBurnBarPlaywrightDriver.Response(
+                    id: -1,
+                    ok: false,
+                    result: nil,
+                    error: "key requires key",
+                    elapsedMillis: nil
+                )
+            }
+            return try await driver.key(key)
+        case .select:
+            guard let selector = arguments.selector, let value = arguments.value else {
+                return OpenBurnBarPlaywrightDriver.Response(
+                    id: -1,
+                    ok: false,
+                    result: nil,
+                    error: "select requires selector and value",
+                    elapsedMillis: nil
+                )
+            }
+            return try await driver.select(selector: selector, value: value)
+        case .screenshot:
+            return try await driver.screenshot()
+        case .extract:
+            return try await driver.extract(selector: arguments.selector)
+        case .openExternal, .fetchDocument, .extractLinks:
+            return OpenBurnBarPlaywrightDriver.Response(
+                id: -1,
+                ok: false,
+                result: nil,
+                error: "unsupported Playwright action \(action.rawValue)",
+                elapsedMillis: nil
+            )
+        }
+    }
+
+    private func playwrightDriverForDefaultSession() async throws -> OpenBurnBarPlaywrightDriver {
+        if let playwrightDriver {
+            return playwrightDriver
+        }
+        guard let nodePath = locateExecutable("node") else {
+            throw OpenBurnBarPlaywrightDriver.DriverError.binaryNotFound
+        }
+        let bridgeScriptURL = Self.defaultBridgeScriptURL()
+        guard FileManager.default.fileExists(atPath: bridgeScriptURL.path) else {
+            throw OpenBurnBarPlaywrightDriver.DriverError.bridgeScriptMissing
+        }
+        let sessionId = ComputerUseSessionID("daemon-browser-tool-service")
+        let userDataDirectory = BurnBarDaemonPaths.supportDirectoryURL
+            .appendingPathComponent("browser-tool-service", isDirectory: true)
+            .appendingPathComponent("playwright-profile", isDirectory: true)
+        let driver = OpenBurnBarPlaywrightDriver(
+            configuration: OpenBurnBarPlaywrightDriver.Configuration(
+                nodeExecutablePath: nodePath,
+                bridgeScriptPath: bridgeScriptURL,
+                userDataDirectory: userDataDirectory,
+                headless: false
+            ),
+            sessionId: sessionId,
+            logger: logger
+        )
+        try await driver.start()
+        playwrightDriver = driver
+        return driver
+    }
+
+    private func browserResponse(
+        from response: OpenBurnBarPlaywrightDriver.Response,
+        action: BurnBarBrowserActionKind,
+        engine: BurnBarBrowserEngineKind
+    ) -> BurnBarBrowserActionResponse {
+        let resultObject: [String: BurnBarJSONValue]
+        if case let .object(object)? = response.result {
+            resultObject = object
+        } else {
+            resultObject = [:]
+        }
+        let elapsed = response.elapsedMillis.map { "\($0) ms" }
+        guard response.ok else {
+            return BurnBarBrowserActionResponse(
+                action: action,
+                engine: engine,
+                ok: false,
+                summary: "Playwright \(action.rawValue) failed.",
+                detail: [response.error, elapsed].compactMap { $0 }.joined(separator: " · "),
+                recordedAt: Date()
+            )
+        }
+
+        switch action {
+        case .goto:
+            let finalURL = resultObject.stringValue(forKey: "finalURL")
+                ?? resultObject.stringValue(forKey: "url")
+                ?? "page"
+            let status = resultObject.intValue(forKey: "status")
+            return BurnBarBrowserActionResponse(
+                action: action,
+                engine: engine,
+                ok: true,
+                summary: status.map { "Opened \(finalURL) (HTTP \($0))." } ?? "Opened \(finalURL).",
+                detail: elapsed,
+                recordedAt: Date()
+            )
+        case .extract:
+            let text = resultObject.stringValue(forKey: "text")
+            return BurnBarBrowserActionResponse(
+                action: action,
+                engine: engine,
+                ok: true,
+                summary: "Extracted page content.",
+                detail: elapsed,
+                document: text,
+                recordedAt: Date()
+            )
+        case .screenshot:
+            let bytes = resultObject.intValue(forKey: "sizeBytes")
+            let base64 = resultObject.stringValue(forKey: "base64")
+            return BurnBarBrowserActionResponse(
+                action: action,
+                engine: engine,
+                ok: true,
+                summary: bytes.map { "Captured screenshot (\($0) bytes)." } ?? "Captured screenshot.",
+                detail: elapsed,
+                document: base64,
+                recordedAt: Date()
+            )
+        case .click:
+            let selector = resultObject.stringValue(forKey: "selector")
+            return BurnBarBrowserActionResponse(
+                action: action,
+                engine: engine,
+                ok: true,
+                summary: selector.map { "Clicked \($0)." } ?? "Clicked page coordinates.",
+                detail: elapsed,
+                recordedAt: Date()
+            )
+        case .fill:
+            let selector = resultObject.stringValue(forKey: "selector")
+            let charCount = resultObject.intValue(forKey: "charCount")
+            let target = selector ?? "field"
+            return BurnBarBrowserActionResponse(
+                action: action,
+                engine: engine,
+                ok: true,
+                summary: charCount.map { "Filled \(target) with \($0) character\($0 == 1 ? "" : "s")." } ?? "Filled \(target).",
+                detail: elapsed,
+                recordedAt: Date()
+            )
+        case .key:
+            let combo = resultObject.stringValue(forKey: "combo") ?? "key"
+            return BurnBarBrowserActionResponse(
+                action: action,
+                engine: engine,
+                ok: true,
+                summary: "Pressed \(combo).",
+                detail: elapsed,
+                recordedAt: Date()
+            )
+        case .select:
+            let selector = resultObject.stringValue(forKey: "selector") ?? "select"
+            let value = resultObject.stringValue(forKey: "value") ?? "value"
+            return BurnBarBrowserActionResponse(
+                action: action,
+                engine: engine,
+                ok: true,
+                summary: "Selected \(value) in \(selector).",
+                detail: elapsed,
+                recordedAt: Date()
+            )
+        case .openExternal, .fetchDocument, .extractLinks:
+            return BurnBarBrowserActionResponse(
+                action: action,
+                engine: engine,
+                ok: true,
+                summary: "Browser action completed.",
+                detail: elapsed,
+                recordedAt: Date()
+            )
         }
     }
 
@@ -268,6 +524,23 @@ public actor BurnBarBrowserToolService {
         }
     }
 
+    private static func defaultBridgeScriptURL() -> URL {
+        if let override = ProcessInfo.processInfo.environment["OPENBURNBAR_PLAYWRIGHT_BRIDGE"],
+           !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: false)
+        }
+        let fm = FileManager.default
+        let cwd = URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true)
+        let candidates = [
+            Bundle.main.resourceURL?
+                .appendingPathComponent("PlaywrightBridge", isDirectory: true)
+                .appendingPathComponent("openburnbar-playwright-bridge.js", isDirectory: false),
+            cwd.appendingPathComponent("OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js"),
+            cwd.appendingPathComponent("Resources/PlaywrightBridge/openburnbar-playwright-bridge.js")
+        ].compactMap { $0 }
+        return candidates.first(where: { fm.fileExists(atPath: $0.path) }) ?? candidates[0]
+    }
+
     private func status(for kind: BurnBarBrowserEngineKind, executablePath: String?) -> BurnBarBrowserToolStatus {
         switch kind {
         case .urlSession:
@@ -286,7 +559,7 @@ public actor BurnBarBrowserToolService {
         case .systemBrowser:
             return executablePath == nil ? "System browser launcher is unavailable." : "Uses /usr/bin/open to launch URLs."
         case .playwright:
-            return executablePath == nil ? "Install Playwright CLI to expose future browser automation." : "Detected for future browser automation."
+            return executablePath == nil ? "Install Playwright CLI to enable Computer Use browser automation." : "Ready for Computer Use browser automation."
         case .lightpanda:
             return executablePath == nil ? "Install Lightpanda to expose lightweight browser automation." : "Detected for future browser automation."
         }
@@ -317,7 +590,9 @@ public actor BurnBarBrowserToolService {
         switch kind {
         case .systemBrowser, .urlSession:
             return true
-        case .playwright, .lightpanda:
+        case .playwright:
+            return true
+        case .lightpanda:
             return false
         }
     }

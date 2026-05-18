@@ -1,11 +1,12 @@
+import CryptoKit
 import Foundation
 
 // MARK: - Claude OAuth Usage Fetcher
 
 /// Calls `https://api.anthropic.com/api/oauth/usage` to retrieve the
-/// exact `rate_limits` payload Claude Code's statusline uses when
-/// credentials are explicitly injected by tests or self-hosted
-/// integrations. Production OpenBurnBar does not discover Claude OAuth
+/// exact usage payload Claude Code's statusline uses when credentials are
+/// explicitly injected by tests, route credential slots, or configured CLI
+/// profiles. Provider-level production refresh does not discover Claude OAuth
 /// credentials from third-party credential stores.
 ///
 /// ## Rate limit reality (read this before changing the cooldowns)
@@ -44,7 +45,7 @@ import Foundation
 ///   "fetchedAt": "2026-05-11T02:55:00Z",
 ///   "fiveHourResetsAt": "2026-05-11T07:55:00Z",
 ///   "sevenDayResetsAt": "2026-05-18T02:55:00Z",
-///   "payload": { ... raw rate_limits JSON ... }
+///   "payload": { ... raw usage-window JSON ... }
 /// }
 /// ```
 ///
@@ -70,6 +71,26 @@ struct ClaudeOAuthUsageFetcher {
         self.cacheURL = cacheURL
         self.fileManager = FileManagerSendableBox(fileManager)
         self.minimumLivePollInterval = minimumLivePollInterval
+    }
+
+    static func scopedCacheURL(
+        baseURL: URL,
+        credentials: ClaudeOAuthCredentials
+    ) -> URL {
+        let stableSecret = credentials.refreshToken ?? credentials.accessToken
+        let identity = [
+            credentials.organizationUuid ?? "",
+            credentials.subscriptionType,
+            credentials.rateLimitTier,
+            stableSecret,
+        ].joined(separator: "|")
+        let digest = SHA256.hash(data: Data(identity.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return baseURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("ClaudeOAuthUsage", isDirectory: true)
+            .appendingPathComponent("usage-\(digest.prefix(24)).json", isDirectory: false)
     }
 
     // MARK: - Public API
@@ -334,8 +355,9 @@ struct ClaudeOAuthUsageFetcher {
     /// failure). Persists across process restarts so a fresh launch
     /// after a 429 doesn't immediately re-trigger the wall.
     private var attemptMarkerURL: URL {
-        cacheURL.deletingLastPathComponent()
-            .appendingPathComponent("oauth-usage-last-attempt.json")
+        let markerName = cacheURL.deletingPathExtension().lastPathComponent
+        return cacheURL.deletingLastPathComponent()
+            .appendingPathComponent("\(markerName)-last-attempt.json", isDirectory: false)
     }
 
     private func readLastFetchAttempt() -> Date? {
@@ -422,7 +444,10 @@ struct ClaudeRateLimits: Sendable, Equatable {
         var parsed: [String: Window] = [:]
         for (key, value) in dictionary {
             guard let payload = value as? [String: Any] else { continue }
-            let used = Self.firstNumber(in: payload, keys: ["used_percentage", "usedPercent", "percentage"])
+            let used = Self.firstNumber(
+                in: payload,
+                keys: ["used_percentage", "usedPercent", "percentage", "utilization", "used"]
+            )
             let remaining = Self.firstNumber(in: payload, keys: ["remaining_percentage", "remainingPercent"])
                 ?? used.map { max(0, 100 - $0) }
             let reset = Self.firstDate(in: payload, keys: ["resets_at", "reset_at", "resetTime"])
@@ -452,11 +477,13 @@ struct ClaudeRateLimits: Sendable, Equatable {
 
     private static func firstDate(in payload: [String: Any], keys: [String]) -> Date? {
         let iso = ISO8601DateFormatter()
+        let isoWithFractionalSeconds = ISO8601DateFormatter()
+        isoWithFractionalSeconds.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         for key in keys {
             if let v = payload[key] as? Double { return Date(timeIntervalSince1970: v) }
             if let v = payload[key] as? Int { return Date(timeIntervalSince1970: Double(v)) }
             if let s = payload[key] as? String {
-                if let parsed = iso.date(from: s) { return parsed }
+                if let parsed = iso.date(from: s) ?? isoWithFractionalSeconds.date(from: s) { return parsed }
                 if let unix = Double(s) { return Date(timeIntervalSince1970: unix) }
             }
         }

@@ -10,17 +10,26 @@ import Foundation
 ///    turn. Most current data when present; only works after the user
 ///    runs `claude` with the bridge installed.
 /// 2. **Explicit OAuth `/api/oauth/usage`** — used only when a caller
-///    injects Claude OAuth credentials. The production default reader
-///    returns `nil`, so OpenBurnBar never reads Claude Code's Keychain
-///    item or credentials file and cannot trigger a Keychain prompt.
+///    injects Claude OAuth credentials from tests, route credential slots, or
+///    intentionally configured CLI profiles. The provider-level production
+///    default reader returns `nil`, so OpenBurnBar never reads Claude Code's
+///    global Keychain item and cannot trigger a Keychain prompt.
 /// 3. **JSONL token counting + plan cap** — sums real assistant-turn
 ///    tokens from `~/.claude/projects/**/*.jsonl`. If explicit OAuth
-///    credentials were injected by tests/self-hosted integrations, their
-///    plan tier can annotate JSONL buckets with plan caps.
+///    credentials were injected by tests, route credential slots, or CLI
+///    profiles, their plan tier can annotate JSONL buckets with plan caps.
 /// 4. **Plan-only snapshot** — only for explicitly injected credentials.
 struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private enum ScannerPolicy {
         static let maxLineBytes = 2 * 1024 * 1024
+    }
+
+    private enum StatuslinePolicy {
+        /// Claude's status line payload is a live hook emission, not an
+        /// authoritative long-lived cache. The 5h window moves even when
+        /// OpenBurnBar is the only thing refreshing, so old hook output must
+        /// not pin quota UI to stale percentages.
+        static let maxSnapshotAge: TimeInterval = 15 * 60
     }
 
     /// Anthropic's published 5-hour / 7-day token allowances per plan
@@ -47,6 +56,11 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     }
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+        let usesScopedConfig = Self.hasScopedClaudeConfig(environment: context.environment)
+        let routeCredentialScope = Self.hasRouteCredentialScope(environment: context.environment)
+        let switcherProfileScope = Self.hasSwitcherProfileScope(environment: context.environment)
+        let accountScopedQuota = routeCredentialScope || switcherProfileScope
+        let workingCredentials = context.claudeCredentialsReader.load()
         let bridgeStatus = context.refreshClaudeBridgeStatus()
 
         // Auto-install the statusline bridge on the first refresh that
@@ -54,7 +68,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         // no UI prompts. If installation fails (permissions, etc.) we
         // fall through to OAuth / JSONL paths so the user still gets
         // a usable snapshot.
-        if shouldAutoInstallBridge(for: bridgeStatus, context: context) {
+        if !usesScopedConfig, shouldAutoInstallBridge(for: bridgeStatus, context: context) {
             // Record the attempt BEFORE installing so a thrown error
             // doesn't leave us in a retry loop. Worst case the user
             // can manually install via Settings.
@@ -68,10 +82,48 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             ? context.refreshClaudeBridgeStatus()
             : bridgeStatus
 
+        // Explicit Claude credentials belong to a specific configured
+        // account. They must be queried before the global local statusline
+        // bridge, otherwise one shared Claude hook payload can overwrite every
+        // account card with the same stale percentage.
+        if let credentials = workingCredentials, credentials.canCallUsageEndpoint(now: Date()) {
+            let fetcher = ClaudeOAuthUsageFetcher(
+                session: context.session,
+                cacheURL: ClaudeOAuthUsageFetcher.scopedCacheURL(
+                    baseURL: context.appPaths.claudeOAuthUsageCacheURL,
+                    credentials: credentials
+                ),
+                fileManager: context.fileManager
+            )
+            let result = await fetcher.fetchRateLimits(
+                credentials: credentials
+            )
+            if let rateLimits = result.rateLimits, !rateLimits.isEmpty {
+                let buckets = claudeQuotaBuckets(from: rateLimits)
+                if !buckets.isEmpty {
+                    let freshness = result.sourceWasCache ? " (cached)" : ""
+                    let plan = result.refreshedCredentials?.planDisplayName ?? credentials.planDisplayName
+                    return ProviderQuotaSnapshot(
+                        provider: .claudeCode,
+                        fetchedAt: result.fetchedAt ?? Date(),
+                        source: .officialAPI,
+                        confidence: .exact,
+                        managementURL: "https://claude.ai/settings/usage",
+                        statusMessage: "Claude \(plan) quota from Anthropic OAuth usage endpoint\(freshness).",
+                        buckets: buckets
+                    )
+                }
+            }
+        }
+
         // 1. Statusline bridge — most current when the CLI has fired
         //    at least once. Returns immediately if a fresh payload is
         //    available.
-        if postInstallStatus.state == .ready,
+        if workingCredentials == nil,
+           !accountScopedQuota,
+           !usesScopedConfig,
+           postInstallStatus.state == .ready,
+           Self.isFreshStatuslineSnapshot(postInstallStatus.lastPayloadAt),
            let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
            let rateLimitsDict = payload["rate_limits"] as? [String: Any] {
             let rateLimits = ClaudeRateLimits(from: rateLimitsDict)
@@ -97,58 +149,48 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             }
         }
 
-        if claudeAPIBillingOverrideDetected(environment: context.environment) {
+        if workingCredentials == nil,
+           !accountScopedQuota,
+           claudeAPIBillingOverrideDetected(environment: context.environment) {
+            if let staleSnapshot = staleStatuslineSnapshotIfAvailable(
+                status: postInstallStatus,
+                context: context,
+                messagePrefix: "Stale last known Claude Code quota from the local status line JSON bridge. ANTHROPIC_API_KEY is set for this app process, so API billing may be active and OpenBurnBar cannot refresh Claude plan quota until Claude Code emits a fresh status line payload."
+            ) {
+                return staleSnapshot
+            }
+
             return unavailableSnapshot(
                 for: .claudeCode,
                 source: .unavailable,
-                message: "ANTHROPIC_API_KEY is set for this app process. Claude Code may be using API billing instead of a Claude plan, so OpenBurnBar will only report exact local CLI quota snapshots."
+                message: "ANTHROPIC_API_KEY is set for this app process. Claude Code may be using API billing instead of a Claude plan, so OpenBurnBar will only report exact local CLI quota snapshots. Run a Claude Code CLI prompt to emit a fresh status line quota payload."
             )
         }
 
-        // 2. Explicit OAuth `/api/oauth/usage`. Production injects
-        //    `NoClaudeCredentialsReader`, so this never reads Claude
-        //    Code's third-party Keychain item or credentials file. That
-        //    keeps refresh prompt-free and avoids surprise credential
-        //    access.
-        let workingCredentials = context.claudeCredentialsReader.load()
-        if let credentials = workingCredentials, credentials.canCallUsageEndpoint(now: Date()) {
-            let fetcher = ClaudeOAuthUsageFetcher(
-                session: context.session,
-                cacheURL: context.appPaths.claudeOAuthUsageCacheURL,
-                fileManager: context.fileManager
-            )
-            let result = await fetcher.fetchRateLimits(
-                credentials: credentials
-            )
-            if let rateLimits = result.rateLimits, !rateLimits.isEmpty {
-                let buckets = claudeQuotaBuckets(from: rateLimits)
-                if !buckets.isEmpty {
-                    let freshness = result.sourceWasCache ? " (cached)" : ""
-                    // Reflect refreshed plan info when the token was
-                    // refreshed mid-call (rare, but the new pair may
-                    // ship updated subscriptionType claims).
-                    let plan = result.refreshedCredentials?.planDisplayName ?? credentials.planDisplayName
-                    return ProviderQuotaSnapshot(
-                        provider: .claudeCode,
-                        fetchedAt: result.fetchedAt ?? Date(),
-                        source: .officialAPI,
-                        confidence: .exact,
-                        managementURL: "https://claude.ai/settings/usage",
-                        statusMessage: "Claude \(plan) quota from Anthropic OAuth usage endpoint\(freshness).",
-                        buckets: buckets
-                    )
-                }
-            }
-        }
+        // 2. Explicit OAuth `/api/oauth/usage`. Provider-level production
+        //    injects `NoClaudeCredentialsReader`, while account/profile paths
+        //    inject only credentials that were already configured for that
+        //    exact account scope.
+        // This path is handled before the statusline bridge so explicit
+        // account snapshots cannot inherit another account's local hook data.
 
         // 3. JSONL-based token counting from local Claude project
         //    files. Real per-message tokens from
         //    `~/.claude/projects/**/*.jsonl`. When an explicit
         //    credential injection knows the plan tier, annotate the
         //    buckets with the published cap.
+        if routeCredentialScope, workingCredentials != nil {
+            return unavailableSnapshot(
+                for: .claudeCode,
+                source: .officialAPI,
+                message: "No current Claude quota returned for this account's stored credential. OpenBurnBar will not reuse another Claude account's statusline, JSONL, or cache data."
+            )
+        }
+
         let jsonlWindows = (try? Self.scanJSONLTokenWindows(
             homeDirectoryURL: context.homeDirectoryURL,
-            fileManager: context.fileManager
+            fileManager: context.fileManager,
+            environment: context.environment
         )) ?? JSONLTokenWindows(fiveHourTokens: 0, sevenDayTokens: 0, latestTimestamp: nil, filesScanned: 0)
 
         if jsonlWindows.fiveHourTokens > 0 || jsonlWindows.sevenDayTokens > 0 {
@@ -159,10 +201,35 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
+        if workingCredentials == nil,
+           !accountScopedQuota,
+           !usesScopedConfig,
+           let staleSnapshot = staleStatuslineSnapshotIfAvailable(
+            status: postInstallStatus,
+            context: context,
+            messagePrefix: "Stale last known Claude Code quota from the local status line JSON bridge. Refresh did not find a newer OAuth or local-session quota signal."
+        ) {
+            return staleSnapshot
+        }
+
         // 4. Plan-only snapshot for explicit credentials. This is not
         //    reached in production default mode because OpenBurnBar no
         //    longer discovers Claude credentials on its own.
         if let credentials = workingCredentials {
+            if routeCredentialScope {
+                return unavailableSnapshot(
+                    for: .claudeCode,
+                    source: .officialAPI,
+                    message: "No current Claude quota returned for this account's stored credential. OpenBurnBar will not reuse another Claude account's statusline or cache data."
+                )
+            }
+            if switcherProfileScope {
+                return unavailableSnapshot(
+                    for: .claudeCode,
+                    source: .officialAPI,
+                    message: "No current Claude quota returned for this Claude profile's OAuth credential. OpenBurnBar will not reuse another Claude account's statusline or cache data."
+                )
+            }
             let badgeBucket = ProviderQuotaBucket(
                 key: "claude-plan-badge",
                 label: "Plan: \(credentials.planDisplayName)",
@@ -183,6 +250,14 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 managementURL: "https://claude.ai/settings/usage",
                 statusMessage: "Claude \(credentials.planDisplayName) detected from explicitly supplied credentials. Run any Claude Code prompt to capture local rate-limit percentages.",
                 buckets: [badgeBucket]
+            )
+        }
+
+        if accountScopedQuota {
+            return unavailableSnapshot(
+                for: .claudeCode,
+                source: .unavailable,
+                message: "No current Claude quota signal is available for this account. OpenBurnBar will not reuse another Claude account's statusline or cache data."
             )
         }
 
@@ -259,6 +334,57 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         context.appPaths.claudeStatuslineSnapshotURL
             .deletingLastPathComponent()
             .appendingPathComponent("claude-bridge-auto-install-attempted.json")
+    }
+
+    private static func isFreshStatuslineSnapshot(
+        _ lastPayloadAt: Date?,
+        now: Date = Date()
+    ) -> Bool {
+        guard let lastPayloadAt else { return false }
+        return now.timeIntervalSince(lastPayloadAt) <= StatuslinePolicy.maxSnapshotAge
+    }
+
+    private func staleStatuslineSnapshotIfAvailable(
+        status: ClaudeQuotaBridgeStatus,
+        context: ProviderQuotaAdapterContext,
+        messagePrefix: String
+    ) -> ProviderQuotaSnapshot? {
+        guard status.state == .ready,
+              let lastPayloadAt = status.lastPayloadAt,
+              !Self.isFreshStatuslineSnapshot(lastPayloadAt),
+              let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
+              let rateLimitsDict = payload["rate_limits"] as? [String: Any] else {
+            return nil
+        }
+
+        let buckets = claudeQuotaBuckets(from: ClaudeRateLimits(from: rateLimitsDict))
+        guard !buckets.isEmpty else { return nil }
+
+        let formatted = lastPayloadAt.formatted(date: .abbreviated, time: .shortened)
+        return ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: lastPayloadAt,
+            source: .localCLI,
+            confidence: .estimated,
+            managementURL: "https://code.claude.com/docs/en/statusline",
+            statusMessage: "\(messagePrefix) Last payload: \(formatted).",
+            buckets: buckets.map(Self.markBucketEstimated)
+        )
+    }
+
+    private static func markBucketEstimated(_ bucket: ProviderQuotaBucket) -> ProviderQuotaBucket {
+        ProviderQuotaBucket(
+            key: bucket.key,
+            label: bucket.label,
+            windowKind: bucket.windowKind,
+            usedValue: bucket.usedValue,
+            limitValue: bucket.limitValue,
+            remainingValue: bucket.remainingValue,
+            usedPercent: bucket.usedPercent,
+            resetsAt: bucket.resetsAt,
+            unit: bucket.unit,
+            isEstimated: true
+        )
     }
 
     // MARK: - JSONL → Plan-Capped Snapshot
@@ -365,13 +491,14 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private static func scanJSONLTokenWindows(
         homeDirectoryURL: URL,
         fileManager: FileManager,
+        environment: [String: String],
         now: Date = Date()
     ) throws -> JSONLTokenWindows {
         let calendar = Calendar.current
         let fiveHoursAgo = calendar.date(byAdding: .hour, value: -5, to: now) ?? now
         let sevenDaysAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
         let files = findJSONLFiles(
-            in: claudeProjectDirectories(homeDirectoryURL: homeDirectoryURL),
+            in: claudeProjectDirectories(homeDirectoryURL: homeDirectoryURL, environment: environment),
             fileManager: fileManager
         )
 
@@ -405,28 +532,65 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         )
     }
 
-    private static func claudeProjectDirectories(homeDirectoryURL: URL) -> [URL] {
-        var dirs: [URL] = []
-
-        if let env = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !env.isEmpty {
-            for part in env.split(separator: ",") {
-                let raw = String(part).trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !raw.isEmpty else { continue }
-                let url = URL(fileURLWithPath: raw)
-                if url.lastPathComponent == "projects" {
-                    dirs.append(url)
-                } else {
-                    dirs.append(url.appendingPathComponent("projects", isDirectory: true))
-                }
-            }
+    private static func claudeProjectDirectories(
+        homeDirectoryURL: URL,
+        environment: [String: String]
+    ) -> [URL] {
+        let scopedDirectories = scopedClaudeProjectDirectories(environment: environment)
+        if !scopedDirectories.isEmpty {
+            return scopedDirectories
         }
 
+        var dirs: [URL] = []
         dirs.append(homeDirectoryURL.appendingPathComponent(".config/claude/projects", isDirectory: true))
         dirs.append(homeDirectoryURL.appendingPathComponent(".claude/projects", isDirectory: true))
 
         return dirs
+    }
+
+    private static func hasScopedClaudeConfig(environment: [String: String]) -> Bool {
+        quotaNonEmpty(environment["CLAUDE_CONFIG_DIR"]) != nil
+            || quotaNonEmpty(environment["CLAUDE_CONFIG_PATH"]) != nil
+    }
+
+    private static func hasRouteCredentialScope(environment: [String: String]) -> Bool {
+        quotaNonEmpty(environment["OPENBURNBAR_QUOTA_ACCOUNT_ID"]) != nil
+    }
+
+    private static func hasSwitcherProfileScope(environment: [String: String]) -> Bool {
+        quotaNonEmpty(environment["OPENBURNBAR_QUOTA_SWITCHER_PROFILE_ID"]) != nil
+    }
+
+    private static func scopedClaudeProjectDirectories(environment: [String: String]) -> [URL] {
+        let rawValues = [
+            environment["CLAUDE_CONFIG_DIR"],
+            environment["CLAUDE_CONFIG_PATH"]
+        ]
+
+        var directories: [URL] = []
+        var seen = Set<String>()
+        for value in rawValues {
+            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else {
+                continue
+            }
+
+            for part in value.split(separator: ",") {
+                let raw = String(part).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !raw.isEmpty else { continue }
+                var url = URL(fileURLWithPath: raw)
+                if url.pathExtension.lowercased() == "json" {
+                    url.deleteLastPathComponent()
+                }
+                let projectURL = url.lastPathComponent == "projects"
+                    ? url
+                    : url.appendingPathComponent("projects", isDirectory: true)
+                let path = projectURL.standardizedFileURL.path
+                guard seen.insert(path).inserted else { continue }
+                directories.append(projectURL)
+            }
+        }
+        return directories
     }
 
     private static func findJSONLFiles(in directories: [URL], fileManager: FileManager) -> [URL] {

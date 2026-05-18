@@ -269,6 +269,7 @@ private struct HermesMobileSetupWizardView: View {
 struct HermesConversationListView: View {
     @Bindable var service: HermesService
     let dashboardSnapshot: DashboardStore?
+    let onSelectExistingThreadInSplit: ((String) -> Void)?
 
     @State private var showConnectionSheet = false
     @State private var showRuntimeSheet = false
@@ -281,9 +282,14 @@ struct HermesConversationListView: View {
     @State private var presentedChatRoute: PresentedHermesChatRoute?
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
 
-    init(service: HermesService, dashboardSnapshot: DashboardStore? = nil) {
+    init(
+        service: HermesService,
+        dashboardSnapshot: DashboardStore? = nil,
+        onSelectExistingThreadInSplit: ((String) -> Void)? = nil
+    ) {
         self.service = service
         self.dashboardSnapshot = dashboardSnapshot
+        self.onSelectExistingThreadInSplit = onSelectExistingThreadInSplit
     }
 
     var body: some View {
@@ -774,6 +780,11 @@ struct HermesConversationListView: View {
 
     private func openChat(_ route: HermesChatRoute) {
         HapticBus.sheetOpen()
+        if case .existing(let sessionID) = route,
+           let onSelectExistingThreadInSplit {
+            onSelectExistingThreadInSplit(sessionID)
+            return
+        }
         presentedChatRoute = PresentedHermesChatRoute(route: route)
     }
 }
@@ -811,6 +822,8 @@ private struct OnDeviceHermesRow: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
             }
+
+            MobileAttachmentSummaryStrip(attachments: thread.recentAttachmentPreviews)
 
             Text("\(thread.messageCount) messages")
                 .font(MobileTheme.Typography.tiny)
@@ -2576,9 +2589,19 @@ struct HermesModelPickerRow: View {
                             .font(MobileTheme.Typography.tiny)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .lineLimit(1)
+                        if let detail = option.liveCatalogDetailText {
+                            Text(detail)
+                                .font(MobileTheme.Typography.tiny)
+                                .foregroundStyle(option.isRouteEligible ? MobileTheme.Colors.textSecondary : MobileTheme.error)
+                                .lineLimit(1)
+                        }
                     }
                     Spacer()
-                    if isSelected {
+                    if !option.isRouteEligible {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(MobileTheme.error)
+                    } else if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 18, weight: .bold))
                             .foregroundStyle(MobileTheme.success)
@@ -2588,6 +2611,8 @@ struct HermesModelPickerRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Use \(option.displayName)")
             .accessibilityValue(isSelected ? "Selected" : option.providerName)
+            .disabled(!option.isRouteEligible)
+            .opacity(option.isRouteEligible ? 1 : 0.62)
 
             Button(action: onToggleFavorite) {
                 Image(systemName: isFavorite ? "star.fill" : "star")
@@ -2615,7 +2640,11 @@ struct HermesModelPickerRow: View {
 extension HermesService {
     var selectedModelOption: HermesRuntimeModelOption? {
         guard let selectedModelID else { return nil }
-        return modelOptions.first { $0.modelID == selectedModelID }
+        let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(
+            selectedModelID,
+            in: modelOptions
+        ) ?? selectedModelID
+        return modelOptions.first { $0.modelID == resolved }
     }
 }
 

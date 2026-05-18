@@ -32,7 +32,7 @@ enum class PulseTimelineScope(
 ) {
     MINUTE("1M", "LIVE · MINUTE", "today", "today"),
     HOUR("1H", "LAST HOUR · LIVE", "today", "today"),
-    DAY("1D", "TODAY · LIVE", "today", "7d"),
+    DAY("1D", "LAST 24H · LIVE", "today", "7d"),
     WEEK("7D", "7 DAYS", "7d", "30d"),
     MONTH("30D", "30 DAYS", "30d", "90d");
 }

@@ -8,14 +8,14 @@ import ViewInspector
 @MainActor
 final class DashboardWorkspaceNavStripTests: XCTestCase {
 
-    func test_rendersFiveNavButtons() throws {
+    func test_rendersSixNavButtons() throws {
         let view = DashboardWorkspaceNavStrip(
             currentRoute: .overview,
             onNavigate: { _ in }
         )
         let sut = try view.inspect()
         let buttons = try sut.findAll(ViewType.Button.self)
-        XCTAssertEqual(buttons.count, 5, "Should render 5 workspace nav buttons (chat + database + projects + missions + session logs)")
+        XCTAssertEqual(buttons.count, 6, "Should render 6 workspace nav buttons (chat + quota + database + projects + missions + session logs)")
     }
 
     func test_chatButtonNavigatesToChat() throws {
@@ -30,7 +30,7 @@ final class DashboardWorkspaceNavStripTests: XCTestCase {
         XCTAssertEqual(navigatedRoute, .chat)
     }
 
-    func test_databaseButtonNavigatesToDatabase() throws {
+    func test_quotaButtonNavigatesToQuota() throws {
         var navigatedRoute: DashboardMainRoute?
         let view = DashboardWorkspaceNavStrip(
             currentRoute: .overview,
@@ -39,6 +39,18 @@ final class DashboardWorkspaceNavStripTests: XCTestCase {
         let sut = try view.inspect()
         let buttons = try sut.findAll(ViewType.Button.self)
         try buttons[1].tap()
+        XCTAssertEqual(navigatedRoute, .quota)
+    }
+
+    func test_databaseButtonNavigatesToDatabase() throws {
+        var navigatedRoute: DashboardMainRoute?
+        let view = DashboardWorkspaceNavStrip(
+            currentRoute: .overview,
+            onNavigate: { navigatedRoute = $0 }
+        )
+        let sut = try view.inspect()
+        let buttons = try sut.findAll(ViewType.Button.self)
+        try buttons[2].tap()
         XCTAssertEqual(navigatedRoute, .database)
     }
 
@@ -50,7 +62,7 @@ final class DashboardWorkspaceNavStripTests: XCTestCase {
         )
         let sut = try view.inspect()
         let buttons = try sut.findAll(ViewType.Button.self)
-        try buttons[2].tap()
+        try buttons[3].tap()
         XCTAssertEqual(navigatedRoute, .projects)
     }
 
@@ -62,7 +74,7 @@ final class DashboardWorkspaceNavStripTests: XCTestCase {
         )
         let sut = try view.inspect()
         let buttons = try sut.findAll(ViewType.Button.self)
-        try buttons[3].tap()
+        try buttons[4].tap()
         XCTAssertEqual(navigatedRoute, .missions)
     }
 
@@ -74,7 +86,7 @@ final class DashboardWorkspaceNavStripTests: XCTestCase {
         )
         let sut = try view.inspect()
         let buttons = try sut.findAll(ViewType.Button.self)
-        try buttons[4].tap()
+        try buttons[5].tap()
         XCTAssertEqual(navigatedRoute, .sessionLogs)
     }
 }

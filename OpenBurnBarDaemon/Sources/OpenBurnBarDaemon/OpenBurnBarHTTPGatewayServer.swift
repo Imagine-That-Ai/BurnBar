@@ -11,13 +11,16 @@ import Network
 /// TCP handling — no hand-rolled `socket()`/`bind()`/`listen()`/`accept()` calls.
 public actor BurnBarHTTPGatewayServer {
     private static let maxHeaderBytes = 16 * 1024
-    private static let maxBodyBytes = 1 * 1024 * 1024
+    private static let maxBodyBytes = 64 * 1024 * 1024
 
     private let configuration: BurnBarGatewayConfiguration
     private let configStore: BurnBarConfigStore
     private let usageRecorder: BurnBarUsageRecorder?
     private let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     private let anthropicExecutor: BurnBarAnthropicProviderExecutor
+    private let factoryExecutor: FactoryDroidProviderExecutor
+    private let modelHealthStore: BurnBarGatewayModelHealthStore
+    private let modelCatalogSession: URLSession
     private let logger: BurnBarDaemonLogger
     private let rateLimiter: BurnBarRateLimiter?
     private var listener: NWListener?
@@ -28,6 +31,9 @@ public actor BurnBarHTTPGatewayServer {
         usageRecorder: BurnBarUsageRecorder? = nil,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
+        factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
+        modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
+        modelCatalogSession: URLSession = .shared,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
@@ -36,6 +42,9 @@ public actor BurnBarHTTPGatewayServer {
         self.usageRecorder = usageRecorder
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
+        self.factoryExecutor = factoryExecutor
+        self.modelHealthStore = modelHealthStore
+        self.modelCatalogSession = modelCatalogSession
         self.logger = logger
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
@@ -293,8 +302,14 @@ public actor BurnBarHTTPGatewayServer {
         case ("GET", "/v1/models"):
             return await handleModels()
 
+        case ("GET", "/v1/models/catalog"):
+            return await handleModels(includeUnadvertised: true)
+
         case ("POST", "/v1/chat/completions"):
             return await handleChatCompletions(body: request.body)
+
+        case ("POST", "/v1/responses"):
+            return await handleResponses(body: request.body)
 
         case ("POST", "/v1/messages"):
             return await handleAnthropicMessages(body: request.body)
@@ -306,20 +321,341 @@ public actor BurnBarHTTPGatewayServer {
 
     // MARK: - /v1/models
 
-    private func handleModels() async -> GatewayHTTPResponse {
+    private func handleModels(includeUnadvertised: Bool = false) async -> GatewayHTTPResponse {
         do {
-            let configurations = try await configStore.resolvedConfigurations()
-            let enabledConfigs = configurations.filter { $0.settings.isEnabled && $0.hasCredential }
-            var models: [ModelDescriptor] = []
-            for config in enabledConfigs {
-                for model in config.preferredModels {
-                    models.append(ModelDescriptor(id: model.id, ownedBy: config.provider.id))
+            let catalog = configStore.catalogSupport.catalog
+            let snapshot = try await BurnBarLiveModelCatalog(
+                configStore: configStore,
+                session: modelCatalogSession
+            ).snapshot()
+            var entries: [GatewayModelCatalogEntry] = []
+            for model in snapshot.models {
+                let canAdvertise = await canAdvertiseModel(model, catalog: catalog)
+                let advertised = model.routeEligible && model.advertisementEnabled && canAdvertise
+                if advertised || (includeUnadvertised && (model.routeEligible || !model.advertisementEnabled)) {
+                    entries.append(GatewayModelCatalogEntry(model: model, advertised: advertised))
                 }
+            }
+            let groups = groupedModelCatalogEntries(entries)
+            let duplicateModelIDs = duplicateAdvertisedModelIDs(in: groups)
+            let models = groups.map { group in
+                ModelDescriptor(
+                    group: group,
+                    advertisedID: gatewayRouteModelID(for: group, duplicateModelIDs: duplicateModelIDs)
+                )
             }
             return jsonResponse(status: 200, body: encodeBody(ModelsResponse(data: models)))
         } catch {
             logger.error("gateway_models_error", metadata: ["error": "\(error)"])
             return jsonResponse(status: 500, body: errorBody("internal error"))
+        }
+    }
+
+    private func canAdvertiseModel(
+        _ model: BurnBarLiveAdvertisedModel,
+        catalog: BurnBarCatalog
+    ) async -> Bool {
+        let formatFamily = advertisedFormatFamily(for: model, catalog: catalog)
+        if let failure = await modelHealthStore.activeFailure(
+            modelID: model.id,
+            providerID: model.providerID,
+            accountID: model.accountID,
+            formatFamily: formatFamily
+        ) {
+            logger.warning(
+                "gateway_models_route_recently_failed",
+                metadata: [
+                    "model": model.id,
+                    "provider": model.providerID,
+                    "account": model.accountID,
+                    "status": "\(failure.statusCode)",
+                    "blocked_until": "\(failure.blockedUntil)"
+                ]
+            )
+            return false
+        }
+        return true
+    }
+
+    private func canRouteAdvertisedModel(
+        _ model: BurnBarLiveAdvertisedModel,
+        router: BurnBarProviderRouter,
+        catalog: BurnBarCatalog
+    ) async -> Bool {
+        guard await canAdvertiseModel(model, catalog: catalog) else { return false }
+
+        let formatFamily = advertisedFormatFamily(for: model, catalog: catalog)
+        let expectedRouteKey = routeKey(
+            providerID: model.providerID,
+            slotID: model.accountID == "legacy" ? nil : model.accountID
+        )
+        do {
+            let ranking = try await router.scoreAndRankRoutes(
+                modelName: model.id,
+                requestedFormatFamily: formatFamily,
+                requiredCapabilityClassID: capabilityClassID(forModelName: model.id, providerID: model.providerID, catalog: catalog)
+            )
+            return ranking.rankedRoutes.contains { rankedRoute in
+                routeKey(
+                    providerID: rankedRoute.route.providerID,
+                    slotID: rankedRoute.route.credentialSlotID
+                ) == expectedRouteKey
+            }
+        } catch {
+            logger.warning(
+                "gateway_models_route_unavailable",
+                metadata: [
+                    "model": model.id,
+                    "provider": model.providerID,
+                    "account": model.accountID,
+                    "error": "\(error)"
+                ]
+            )
+            return false
+        }
+    }
+
+    /// Detect when the inbound wire id refers to a thinking-level variant
+    /// (e.g. `claude-opus-4-7-xhigh`) and resolve it back to the base model
+    /// the router knows how to score, alongside the variant struct that the
+    /// executors will use to inject thinking/reasoning config.
+    private func resolveVariant(
+        forRequestedModel requestedModel: GatewayRequestedModel
+    ) async -> (GatewayRequestedModel, BurnBarModelVariant)? {
+        guard let snapshot = try? await configStore.snapshot() else { return nil }
+        let requested = requestedModel.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requested.isEmpty else { return nil }
+
+        let providersToScan: [BurnBarProviderSettings]
+        if let providerID = requestedModel.providerID {
+            providersToScan = snapshot.providers.filter {
+                $0.providerID.caseInsensitiveCompare(providerID) == .orderedSame
+            }
+        } else {
+            providersToScan = snapshot.providers
+        }
+
+        for provider in providersToScan {
+            if let variant = provider.modelVariants.first(where: {
+                $0.variantID.caseInsensitiveCompare(requested) == .orderedSame
+            }) {
+                let rewritten = GatewayRequestedModel(
+                    originalID: requestedModel.originalID,
+                    modelID: variant.baseModelID,
+                    providerID: requestedModel.providerID ?? provider.providerID,
+                    accountID: requestedModel.accountID
+                )
+                return (rewritten, variant)
+            }
+        }
+        return nil
+    }
+
+    private func advertisedRouteKeysByFamily(for requestedModel: GatewayRequestedModel) async throws -> [BurnBarProviderFormatFamily: Set<String>] {
+        let normalizedModelID = requestedModel.modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalizedModelID.isEmpty == false else { return [:] }
+
+        let catalog = configStore.catalogSupport.catalog
+        let snapshot = try await BurnBarLiveModelCatalog(
+            configStore: configStore,
+            session: modelCatalogSession
+        ).snapshot()
+
+        var routeKeysByFamily: [BurnBarProviderFormatFamily: Set<String>] = [:]
+        for model in snapshot.models where model.routeEligible && model.advertisementEnabled {
+            if let providerID = requestedModel.providerID,
+               model.providerID.caseInsensitiveCompare(providerID) != .orderedSame {
+                continue
+            }
+            if let accountID = requestedModel.accountID,
+               model.accountID.caseInsensitiveCompare(accountID) != .orderedSame {
+                continue
+            }
+            guard advertisedModel(model.id, matchesRequestedModelID: normalizedModelID, providerID: model.providerID, catalog: catalog) else {
+                continue
+            }
+            guard await canAdvertiseModel(model, catalog: catalog) else {
+                continue
+            }
+            let family = advertisedFormatFamily(for: model, catalog: catalog)
+            routeKeysByFamily[family, default: []].insert(
+                routeKey(providerID: model.providerID, slotID: model.accountID == "legacy" ? nil : model.accountID)
+            )
+        }
+        return routeKeysByFamily
+    }
+
+    private struct GatewayModelCatalogEntry {
+        let model: BurnBarLiveAdvertisedModel
+        let advertised: Bool
+    }
+
+    private struct GatewayModelCatalogGroup {
+        let providerID: String
+        let normalizedModelID: String
+        var entries: [GatewayModelCatalogEntry]
+
+        var representative: BurnBarLiveAdvertisedModel {
+            entries.first(where: { $0.advertised })?.model ?? entries[0].model
+        }
+
+        var advertised: Bool {
+            entries.contains { $0.advertised }
+        }
+    }
+
+    private func groupedModelCatalogEntries(_ entries: [GatewayModelCatalogEntry]) -> [GatewayModelCatalogGroup] {
+        var groupsByKey: [String: GatewayModelCatalogGroup] = [:]
+        for entry in entries {
+            let providerID = entry.model.providerID.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedModelID = entry.model.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !providerID.isEmpty, !normalizedModelID.isEmpty else { continue }
+            let key = "\(providerID.lowercased())|\(normalizedModelID)"
+            if var group = groupsByKey[key] {
+                group.entries.append(entry)
+                groupsByKey[key] = group
+            } else {
+                groupsByKey[key] = GatewayModelCatalogGroup(
+                    providerID: providerID,
+                    normalizedModelID: normalizedModelID,
+                    entries: [entry]
+                )
+            }
+        }
+        return groupsByKey.values.sorted { lhs, rhs in
+            let lhsModel = lhs.representative
+            let rhsModel = rhs.representative
+            let providerOrder = lhsModel.providerName.localizedCaseInsensitiveCompare(rhsModel.providerName)
+            if providerOrder != .orderedSame {
+                return providerOrder == .orderedAscending
+            }
+            let displayOrder = lhsModel.displayName.localizedCaseInsensitiveCompare(rhsModel.displayName)
+            if displayOrder != .orderedSame {
+                return displayOrder == .orderedAscending
+            }
+            return lhsModel.id.localizedCaseInsensitiveCompare(rhsModel.id) == .orderedAscending
+        }
+    }
+
+    private func duplicateAdvertisedModelIDs(in groups: [GatewayModelCatalogGroup]) -> Set<String> {
+        let counts = Dictionary(grouping: groups) {
+            $0.representative.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        return Set(counts.compactMap { key, rows in
+            key.isEmpty || rows.count < 2 ? nil : key
+        })
+    }
+
+    private func gatewayRouteModelID(
+        for group: GatewayModelCatalogGroup,
+        duplicateModelIDs: Set<String>
+    ) -> String {
+        let rawID = group.representative.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard duplicateModelIDs.contains(rawID.lowercased()) else {
+            return rawID
+        }
+        return "\(group.providerID)/\(rawID)"
+    }
+
+    private struct GatewayRequestedModel {
+        let originalID: String
+        let modelID: String
+        let providerID: String?
+        let accountID: String?
+    }
+
+    private func gatewayRequestedModel(from rawID: String) -> GatewayRequestedModel {
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmed.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 2,
+              configStore.catalogSupport.provider(id: parts[0]) != nil else {
+            return GatewayRequestedModel(originalID: trimmed, modelID: trimmed, providerID: nil, accountID: nil)
+        }
+
+        if parts.count >= 3 {
+            let modelID = parts.dropFirst(2).joined(separator: "/")
+            if !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return GatewayRequestedModel(
+                    originalID: trimmed,
+                    modelID: modelID,
+                    providerID: parts[0],
+                    accountID: parts[1]
+                )
+            }
+        }
+
+        let modelID = parts.dropFirst().joined(separator: "/")
+        guard !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return GatewayRequestedModel(originalID: trimmed, modelID: trimmed, providerID: nil, accountID: nil)
+        }
+        return GatewayRequestedModel(originalID: trimmed, modelID: modelID, providerID: parts[0], accountID: nil)
+    }
+
+    private func advertisedFormatFamily(
+        for model: BurnBarLiveAdvertisedModel,
+        catalog: BurnBarCatalog
+    ) -> BurnBarProviderFormatFamily {
+        if model.capabilities.contains(BurnBarProviderFormatFamily.anthropic.rawValue) {
+            return .anthropic
+        }
+        if model.capabilities.contains(BurnBarProviderFormatFamily.openaiCompat.rawValue) {
+            return .openaiCompat
+        }
+        return catalog.provider(id: model.providerID)?.formatFamily ?? .openaiCompat
+    }
+
+    private func preferredGatewayFormatFamilies(
+        for modelID: String,
+        advertised: [BurnBarProviderFormatFamily: Set<String>]
+    ) -> [BurnBarProviderFormatFamily] {
+        let normalized = modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let baseOrder: [BurnBarProviderFormatFamily] = normalized.contains("claude") || normalized.contains("anthropic")
+            ? [.anthropic, .openaiCompat]
+            : [.openaiCompat, .anthropic]
+        return baseOrder.filter { advertised[$0]?.isEmpty == false }
+    }
+
+    private func singleAdvertisedProviderID(
+        in advertised: [BurnBarProviderFormatFamily: Set<String>]
+    ) -> String? {
+        var providerIDs: Set<String> = []
+        for routeKeys in advertised.values {
+            for routeKey in routeKeys {
+                let providerID = routeKey
+                    .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+                    .first
+                    .map(String.init)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if let providerID, !providerID.isEmpty {
+                    providerIDs.insert(providerID)
+                }
+            }
+        }
+        return providerIDs.count == 1 ? providerIDs.first : nil
+    }
+
+    private func advertisedModel(
+        _ advertisedModelID: String,
+        matchesRequestedModelID normalizedRequestedModelID: String,
+        providerID: String,
+        catalog: BurnBarCatalog
+    ) -> Bool {
+        let normalizedAdvertisedModelID = advertisedModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedAdvertisedModelID.isEmpty else { return false }
+        if normalizedAdvertisedModelID == normalizedRequestedModelID {
+            return true
+        }
+
+        if normalizedAdvertisedModelID.hasSuffix(":cloud") != normalizedRequestedModelID.hasSuffix(":cloud") {
+            return false
+        }
+
+        return catalog.models(forProviderID: providerID).contains { model in
+            let explicitModelIDs = Set(([model.id] + model.aliases).map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            })
+            return explicitModelIDs.contains(normalizedRequestedModelID)
+                && explicitModelIDs.contains(normalizedAdvertisedModelID)
         }
     }
 
@@ -345,95 +681,297 @@ public actor BurnBarHTTPGatewayServer {
         guard modelID.isEmpty == false else {
             return jsonResponse(status: 400, body: errorBody("model field required"))
         }
+        var requestedModel = gatewayRequestedModel(from: modelID)
+        var resolvedVariant: BurnBarModelVariant?
+        if let (rewritten, variant) = await resolveVariant(forRequestedModel: requestedModel) {
+            requestedModel = rewritten
+            resolvedVariant = variant
+        }
 
         do {
+            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: requestedModel)
+            guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
+                return noEligibleRouteResponse(modelID: modelID)
+            }
+
             let router = BurnBarProviderRouter(
                 configStore: configStore,
                 logger: BurnBarDaemonLogger(category: "gateway-router"),
-                routingEventStore: BurnBarProviderRoutingDecisionEventStore()
+                routingEventStore: BurnBarProviderRoutingDecisionEventStore(),
+                allowDynamicOpenAICompatibleModels: true
             )
-            let catalog = await configStore.catalogSupport.catalog
-            let resolvedCapabilityClassID = catalog
-                .capabilityClassID(forModelName: modelID)
-            let ranking = try await router.scoreAndRankRoutes(
-                modelName: modelID,
-                requestedFormatFamily: .openaiCompat,
-                requiredCapabilityClassID: resolvedCapabilityClassID
+            let catalog = configStore.catalogSupport.catalog
+            let effectiveProviderID = requestedModel.providerID
+                ?? singleAdvertisedProviderID(in: advertisedRouteKeysByFamily)
+            let resolvedCapabilityClassID = capabilityClassID(
+                forModelName: requestedModel.modelID,
+                providerID: effectiveProviderID,
+                catalog: catalog
             )
-            await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
-            let rankedRoutes = ranking.rankedRoutes.map(\.route)
-            guard rankedRoutes.isEmpty == false else {
-                return jsonResponse(
-                    status: 503,
-                    body: errorBody(
-                        "no eligible OpenAI-compatible route for \(modelID). Add or enable an OpenAI-family account (OpenAI, Z.ai, MiniMax, Kimi, Ollama, …) to serve /v1/chat/completions."
-                    )
-                )
-            }
-
-            // When the router pre-filtered by capability class, use its reported
-            // blocked routes. Otherwise, discover the class from the top-ranked
-            // route and compute blocked alternatives post-hoc.
-            let selectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
-            let routes: [BurnBarProviderRoute]
-            let blockedCapabilityAlternatives: [BurnBarProviderRoute]
-            if let classID = selectedCapabilityClassID {
-                routes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
-                if !ranking.blockedCapabilityClassRoutes.isEmpty {
-                    blockedCapabilityAlternatives = ranking.blockedCapabilityClassRoutes
-                } else {
-                    blockedCapabilityAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
-                }
-            } else {
-                routes = rankedRoutes
-                blockedCapabilityAlternatives = []
-            }
-
             var lastError: Error?
-            for (index, route) in routes.enumerated() {
-                if let slotID = route.credentialSlotID {
-                    try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+            var lastFailedRoute: BurnBarProviderRoute?
+            for formatFamily in preferredGatewayFormatFamilies(for: requestedModel.modelID, advertised: advertisedRouteKeysByFamily) {
+                guard let advertisedRouteKeys = advertisedRouteKeysByFamily[formatFamily], !advertisedRouteKeys.isEmpty else {
+                    continue
                 }
 
-                do {
-                    let response = try await providerExecutor.proxyChatCompletions(
-                        body: bodyData,
-                        route: route
-                    )
-                    await router.markRouteSuccess(route)
-                    await recordUsageIfAvailable(response.usage, route: route)
-                    return GatewayHTTPResponse(
-                        status: response.statusCode,
-                        headers: ["Content-Type": response.contentType],
-                        body: response.body
-                    )
-                } catch {
-                    lastError = error
-                    await router.markRouteFailure(route, error: error)
-                    let hasMoreCandidates = index < routes.count - 1
-                    if shouldFailOverProviderError(error), hasMoreCandidates {
-                        continue
-                    }
-                    break
-                }
-            }
-
-            if !blockedCapabilityAlternatives.isEmpty,
-               let lastError,
-               shouldFailOverProviderError(lastError) {
-                let classLabel = selectedCapabilityClassID ?? modelID
-                return jsonResponse(
-                    status: 503,
-                    body: errorBody(
-                        "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
-                    )
+                let ranking = try await router.scoreAndRankRoutes(
+                    modelName: requestedModel.modelID,
+                    preferredProviderID: effectiveProviderID,
+                    requestedFormatFamily: formatFamily,
+                    requiredCapabilityClassID: resolvedCapabilityClassID
                 )
+                await router.persistDecisionIfNeeded(ranking: ranking, modelName: requestedModel.modelID)
+                let rankedRoutes = ranking.rankedRoutes
+                    .map(\.route)
+                    .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
+                guard rankedRoutes.isEmpty == false else {
+                    continue
+                }
+
+                // When the router pre-filtered by capability class, use its reported
+                // blocked routes. Otherwise, discover the class from the top-ranked
+                // route and compute blocked alternatives post-hoc.
+                let selectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
+                let routes: [BurnBarProviderRoute]
+                let blockedCapabilityAlternatives: [BurnBarProviderRoute]
+                if let classID = selectedCapabilityClassID {
+                    routes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
+                    if !ranking.blockedCapabilityClassRoutes.isEmpty {
+                        blockedCapabilityAlternatives = ranking.blockedCapabilityClassRoutes
+                    } else {
+                        blockedCapabilityAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
+                    }
+                } else {
+                    routes = rankedRoutes
+                    blockedCapabilityAlternatives = []
+                }
+
+                for (index, route) in routes.enumerated() {
+                    if let slotID = route.credentialSlotID {
+                        try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+                    }
+
+                    do {
+                        let response = try await proxyChatCompletions(
+                            body: bodyData,
+                            route: route,
+                            formatFamily: formatFamily,
+                            variant: resolvedVariant
+                        )
+                        await router.markRouteSuccess(route)
+                        await modelHealthStore.recordSuccess(
+                            modelID: requestedModel.originalID,
+                            formatFamily: formatFamily,
+                            route: route
+                        )
+                        await recordUsageIfAvailable(response.usage, route: route)
+                        return GatewayHTTPResponse(
+                            status: response.statusCode,
+                            headers: ["Content-Type": response.contentType],
+                            body: response.body
+                        )
+                    } catch {
+                        lastError = error
+                        lastFailedRoute = route
+                        await modelHealthStore.recordFailure(
+                            modelID: requestedModel.originalID,
+                            formatFamily: formatFamily,
+                            route: route,
+                            error: error
+                        )
+                        await router.markRouteFailure(route, error: error)
+                        let hasMoreCandidates = index < routes.count - 1
+                        if shouldFailOverProviderError(error), hasMoreCandidates {
+                            continue
+                        }
+                        break
+                    }
+                }
+
+                if !blockedCapabilityAlternatives.isEmpty,
+                   let lastError,
+                   shouldFailOverProviderError(lastError) {
+                    let classLabel = selectedCapabilityClassID ?? modelID
+                    return jsonResponse(
+                        status: 503,
+                        body: errorBody(
+                            "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
+                        )
+                    )
+                }
+
+                if let lastError {
+                    return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
+                }
             }
 
-            let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
-            return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
+            if let lastError {
+                return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
+            }
+            return noEligibleRouteResponse(modelID: modelID)
+        } catch let error as BurnBarProviderRouterError {
+            logger.error("gateway_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            return noEligibleRouteResponse(modelID: modelID)
         } catch {
             logger.error("gateway_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
+        }
+    }
+
+    // MARK: - /v1/responses
+
+    private func handleResponses(body: String?) async -> GatewayHTTPResponse {
+        guard let body, !body.isEmpty else {
+            return jsonResponse(status: 400, body: errorBody("request body required"))
+        }
+
+        guard let bodyData = body.data(using: .utf8) else {
+            return jsonResponse(status: 400, body: errorBody("request body must be valid UTF-8"))
+        }
+
+        let responsesRequest: ResponsesRequest
+        do {
+            responsesRequest = try JSONDecoder().decode(ResponsesRequest.self, from: bodyData)
+        } catch {
+            return jsonResponse(status: 400, body: errorBody("invalid JSON request body"))
+        }
+
+        let modelID = responsesRequest.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard modelID.isEmpty == false else {
+            return jsonResponse(status: 400, body: errorBody("model field required"))
+        }
+        var requestedModel = gatewayRequestedModel(from: modelID)
+        var resolvedVariant: BurnBarModelVariant?
+        if let (rewritten, variant) = await resolveVariant(forRequestedModel: requestedModel) {
+            requestedModel = rewritten
+            resolvedVariant = variant
+        }
+
+        do {
+            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: requestedModel)
+            guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
+                return noEligibleRouteResponse(modelID: modelID)
+            }
+
+            let router = BurnBarProviderRouter(
+                configStore: configStore,
+                logger: BurnBarDaemonLogger(category: "gateway-router-responses"),
+                routingEventStore: BurnBarProviderRoutingDecisionEventStore(),
+                allowDynamicOpenAICompatibleModels: true
+            )
+            let catalog = configStore.catalogSupport.catalog
+            let effectiveProviderID = requestedModel.providerID
+                ?? singleAdvertisedProviderID(in: advertisedRouteKeysByFamily)
+            let resolvedCapabilityClassID = capabilityClassID(
+                forModelName: requestedModel.modelID,
+                providerID: effectiveProviderID,
+                catalog: catalog
+            )
+            var lastError: Error?
+            var lastFailedRoute: BurnBarProviderRoute?
+            for formatFamily in preferredGatewayFormatFamilies(for: requestedModel.modelID, advertised: advertisedRouteKeysByFamily) {
+                guard let advertisedRouteKeys = advertisedRouteKeysByFamily[formatFamily], !advertisedRouteKeys.isEmpty else {
+                    continue
+                }
+
+                let ranking = try await router.scoreAndRankRoutes(
+                    modelName: requestedModel.modelID,
+                    preferredProviderID: effectiveProviderID,
+                    requestedFormatFamily: formatFamily,
+                    requiredCapabilityClassID: resolvedCapabilityClassID
+                )
+                await router.persistDecisionIfNeeded(ranking: ranking, modelName: requestedModel.modelID)
+                let rankedRoutes = ranking.rankedRoutes
+                    .map(\.route)
+                    .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
+                guard rankedRoutes.isEmpty == false else {
+                    continue
+                }
+
+                let selectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
+                let routes: [BurnBarProviderRoute]
+                let blockedCapabilityAlternatives: [BurnBarProviderRoute]
+                if let classID = selectedCapabilityClassID {
+                    routes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
+                    if !ranking.blockedCapabilityClassRoutes.isEmpty {
+                        blockedCapabilityAlternatives = ranking.blockedCapabilityClassRoutes
+                    } else {
+                        blockedCapabilityAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
+                    }
+                } else {
+                    routes = rankedRoutes
+                    blockedCapabilityAlternatives = []
+                }
+
+                for (index, route) in routes.enumerated() {
+                    if let slotID = route.credentialSlotID {
+                        try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+                    }
+
+                    do {
+                        let response = try await proxyResponses(
+                            body: bodyData,
+                            route: route,
+                            formatFamily: formatFamily,
+                            variant: resolvedVariant
+                        )
+                        await router.markRouteSuccess(route)
+                        await modelHealthStore.recordSuccess(
+                            modelID: requestedModel.originalID,
+                            formatFamily: formatFamily,
+                            route: route
+                        )
+                        await recordUsageIfAvailable(response.usage, route: route)
+                        return GatewayHTTPResponse(
+                            status: response.statusCode,
+                            headers: ["Content-Type": response.contentType],
+                            body: response.body
+                        )
+                    } catch {
+                        lastError = error
+                        lastFailedRoute = route
+                        await modelHealthStore.recordFailure(
+                            modelID: requestedModel.originalID,
+                            formatFamily: formatFamily,
+                            route: route,
+                            error: error
+                        )
+                        await router.markRouteFailure(route, error: error)
+                        let hasMoreCandidates = index < routes.count - 1
+                        if shouldFailOverProviderError(error), hasMoreCandidates {
+                            continue
+                        }
+                        break
+                    }
+                }
+
+                if !blockedCapabilityAlternatives.isEmpty,
+                   let lastError,
+                   shouldFailOverProviderError(lastError) {
+                    let classLabel = selectedCapabilityClassID ?? modelID
+                    return jsonResponse(
+                        status: 503,
+                        body: errorBody(
+                            "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
+                        )
+                    )
+                }
+
+                if let lastError {
+                    return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
+                }
+            }
+
+            if let lastError {
+                return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
+            }
+            return noEligibleRouteResponse(modelID: modelID)
+        } catch let error as BurnBarProviderRouterError {
+            logger.error("gateway_responses_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            return noEligibleRouteResponse(modelID: modelID)
+        } catch {
+            logger.error("gateway_responses_route_error", metadata: ["model": modelID, "error": "\(error)"])
             return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
         }
     }
@@ -460,6 +998,12 @@ public actor BurnBarHTTPGatewayServer {
         guard modelID.isEmpty == false else {
             return jsonResponse(status: 400, body: errorBody("model field required"))
         }
+        var requestedModel = gatewayRequestedModel(from: modelID)
+        var resolvedVariant: BurnBarModelVariant?
+        if let (rewritten, variant) = await resolveVariant(forRequestedModel: requestedModel) {
+            requestedModel = rewritten
+            resolvedVariant = variant
+        }
 
         do {
             let router = BurnBarProviderRouter(
@@ -467,16 +1011,25 @@ public actor BurnBarHTTPGatewayServer {
                 logger: BurnBarDaemonLogger(category: "gateway-router-anthropic"),
                 routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
-            let catalog = await configStore.catalogSupport.catalog
-            let resolvedCapabilityClassID = catalog
-                .capabilityClassID(forModelName: modelID)
+            let catalog = configStore.catalogSupport.catalog
+            let resolvedCapabilityClassID = capabilityClassID(
+                forModelName: requestedModel.modelID,
+                providerID: requestedModel.providerID,
+                catalog: catalog
+            )
             let ranking = try await router.scoreAndRankRoutes(
-                modelName: modelID,
+                modelName: requestedModel.modelID,
+                preferredProviderID: requestedModel.providerID,
                 requestedFormatFamily: .anthropic,
                 requiredCapabilityClassID: resolvedCapabilityClassID
             )
-            await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
-            let rankedRoutes = ranking.rankedRoutes.map(\.route)
+            await router.persistDecisionIfNeeded(ranking: ranking, modelName: requestedModel.modelID)
+            let rankedRoutes = ranking.rankedRoutes
+                .map(\.route)
+                .filter {
+                    guard let accountID = requestedModel.accountID else { return true }
+                    return $0.credentialSlotID?.caseInsensitiveCompare(accountID) == .orderedSame
+                }
             guard rankedRoutes.isEmpty == false else {
                 return jsonResponse(
                     status: 503,
@@ -502,6 +1055,7 @@ public actor BurnBarHTTPGatewayServer {
             }
 
             var lastError: Error?
+            var lastFailedRoute: BurnBarProviderRoute?
             for (index, route) in anthropicRoutes.enumerated() {
                 if let slotID = route.credentialSlotID {
                     try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
@@ -510,9 +1064,15 @@ public actor BurnBarHTTPGatewayServer {
                 do {
                     let response = try await anthropicExecutor.proxyMessages(
                         body: bodyData,
-                        route: route
+                        route: route,
+                        variant: resolvedVariant
                     )
                     await router.markRouteSuccess(route)
+                    await modelHealthStore.recordSuccess(
+                        modelID: requestedModel.originalID,
+                        formatFamily: .anthropic,
+                        route: route
+                    )
                     await recordUsageIfAvailable(response.usage, route: route)
                     return GatewayHTTPResponse(
                         status: response.statusCode,
@@ -521,6 +1081,13 @@ public actor BurnBarHTTPGatewayServer {
                     )
                 } catch {
                     lastError = error
+                    lastFailedRoute = route
+                    await modelHealthStore.recordFailure(
+                        modelID: requestedModel.originalID,
+                        formatFamily: .anthropic,
+                        route: route,
+                        error: error
+                    )
                     await router.markRouteFailure(route, error: error)
                     let hasMoreCandidates = index < anthropicRoutes.count - 1
                     if shouldFailOverProviderError(error), hasMoreCandidates {
@@ -542,12 +1109,75 @@ public actor BurnBarHTTPGatewayServer {
                 )
             }
 
-            let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
-            return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
+            if let lastError {
+                return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
+            }
+            return noEligibleRouteResponse(modelID: modelID)
         } catch {
             logger.error("gateway_anthropic_route_error", metadata: ["model": modelID, "error": "\(error)"])
             return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
         }
+    }
+
+    private func providerFailureResponse(
+        _ error: Error,
+        modelID: String,
+        route: BurnBarProviderRoute?
+    ) -> GatewayHTTPResponse {
+        if let providerError = error as? BurnBarProviderExecutorError,
+           case .upstreamError(let statusCode, let body) = providerError {
+            if let route {
+                let contextualMessage = BurnBarGatewayModelHealthStore.routeFailureMessage(
+                    modelID: modelID,
+                    statusCode: statusCode,
+                    body: body,
+                    route: route
+                )
+                if shouldPreferContextualProviderError(body: body, statusCode: statusCode) {
+                    return jsonResponse(status: statusCode, body: errorBody(contextualMessage))
+                }
+            }
+            let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedBody.isEmpty {
+                return GatewayHTTPResponse(
+                    status: statusCode,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(trimmedBody.utf8)
+                )
+            }
+            return jsonResponse(
+                status: statusCode,
+                body: errorBody("upstream provider returned HTTP \(statusCode)")
+            )
+        }
+        return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
+    }
+
+    private func shouldPreferContextualProviderError(body: String, statusCode: Int) -> Bool {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        guard let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any] else {
+            return false
+        }
+        let message = ((dictionary["error"] as? [String: Any])?["message"] as? String)
+            ?? (dictionary["message"] as? String)
+            ?? (dictionary["error"] as? String)
+            ?? ""
+        let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return statusCode == 429 && (normalizedMessage.isEmpty || normalizedMessage == "error")
+    }
+
+    private func noEligibleRouteResponse(modelID: String) -> GatewayHTTPResponse {
+        jsonResponse(
+            status: 503,
+            body: errorBody("No eligible route for \(modelID). Add or enable an account/provider that serves this model.")
+        )
+    }
+
+    private func routeKey(providerID: String, slotID: String?) -> String {
+        "\(providerID)#\(slotID ?? "legacy")"
     }
 
     private func recordUsageIfAvailable(
@@ -583,6 +1213,40 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
+    private func proxyChatCompletions(
+        body: Data,
+        route: BurnBarProviderRoute,
+        formatFamily: BurnBarProviderFormatFamily,
+        variant: BurnBarModelVariant?
+    ) async throws -> BurnBarProviderProxyResponse {
+        if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
+            return try await factoryExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
+        }
+        switch formatFamily {
+        case .openaiCompat:
+            return try await providerExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
+        case .anthropic:
+            return try await anthropicExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
+        }
+    }
+
+    private func proxyResponses(
+        body: Data,
+        route: BurnBarProviderRoute,
+        formatFamily: BurnBarProviderFormatFamily,
+        variant: BurnBarModelVariant?
+    ) async throws -> BurnBarProviderProxyResponse {
+        if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
+            return try await factoryExecutor.proxyResponses(body: body, route: route, variant: variant)
+        }
+        switch formatFamily {
+        case .openaiCompat:
+            return try await providerExecutor.proxyResponses(body: body, route: route, variant: variant)
+        case .anthropic:
+            return try await anthropicExecutor.proxyResponses(body: body, route: route, variant: variant)
+        }
+    }
+
     private func shouldFailOverProviderError(_ error: Error) -> Bool {
         if let providerError = error as? BurnBarProviderExecutorError {
             switch providerError {
@@ -604,6 +1268,59 @@ public actor BurnBarHTTPGatewayServer {
         return description.contains("quota")
             || description.contains("rate limit")
             || description.contains("429")
+    }
+
+    private func capabilityClassID(
+        forModelName modelName: String,
+        providerID requestedProviderID: String?,
+        catalog: BurnBarCatalog
+    ) -> String? {
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let providerID = requestedProviderID ?? (normalized.contains(":cloud") || normalized.contains("-cloud") ? "ollama" : nil)
+        if providerID?.caseInsensitiveCompare("ollama") == .orderedSame,
+           let cloudModelID = ollamaCloudWireModelID(from: modelName) {
+            return cloudModelID.lowercased()
+        }
+        if let providerID,
+           let provider = catalog.provider(id: providerID) {
+            if let exactModel = provider.models.first(where: { model in
+                model.id.lowercased() == normalized
+                    || model.aliases.contains(where: { $0.lowercased() == normalized })
+            }) {
+                let classID = exactModel.capabilityClassID?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let classID, !classID.isEmpty {
+                    return classID.lowercased()
+                }
+                let matchedAlias = exactModel.aliases.contains { $0.lowercased() == normalized }
+                if matchedAlias && !exactModel.id.lowercased().hasSuffix("-family") {
+                    return normalized
+                }
+                return exactModel.id.lowercased()
+            }
+
+            // Provider-qualified gateway IDs come from the live advertised
+            // catalog. If the static catalog only has a broad matcher, keep
+            // the requested live model as its own class so same-tier routing
+            // cannot downgrade it to an older family/default model.
+            return normalized
+        }
+        return catalog.capabilityClassID(forModelName: modelName, providerID: providerID)
+    }
+
+    private func ollamaCloudWireModelID(from modelName: String) -> String? {
+        let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercased = trimmed.lowercased()
+        if lowercased.hasSuffix(":cloud") {
+            let candidate = String(trimmed.dropLast(":cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return candidate.isEmpty ? nil : candidate
+        }
+        if lowercased.hasSuffix("-cloud") {
+            let candidate = String(trimmed.dropLast("-cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return candidate.isEmpty ? nil : candidate
+        }
+        return nil
     }
 
     // MARK: - HTTP I/O (NWConnection)
@@ -810,21 +1527,356 @@ public actor BurnBarHTTPGatewayServer {
     private struct ModelsResponse: Encodable {
         let object = "list"
         let data: [ModelDescriptor]
+        let models: [CodexModelDescriptor]
+
+        init(data: [ModelDescriptor]) {
+            self.data = data
+            self.models = data.map(CodexModelDescriptor.init(model:))
+        }
     }
 
     private struct ModelDescriptor: Encodable {
         let id: String
         let object = "model"
         let ownedBy: String
+        let providerID: String
+        let providerName: String
+        let accountID: String
+        let accountLabel: String
+        let sourceID: String
+        let sourceKind: String
+        let servedBy: String
+        let usageLane: String?
+        let nativeStreaming: Bool
+        let displayName: String
+        let capabilities: [String]
+        let formatFamily: String
+        let servedEndpoints: [String]
+        let quotaState: String
+        let accountCount: Int
+        let enabled: Bool
+        let advertisementEnabled: Bool
+        let advertised: Bool
+        let routeEligible: Bool
+        let lastRefreshAt: Date?
+        let lastError: String?
+        let baseModelID: String?
+        let thinkingLevel: String?
+
+        init(group: GatewayModelCatalogGroup, advertisedID: String, advertised: Bool? = nil) {
+            let representative = group.representative
+            let entries = group.entries
+            let models = entries.map(\.model)
+            let accountIDs = Self.uniqueNonEmpty(models.map(\.accountID))
+            let accountLabels = Self.uniqueNonEmpty(models.map(\.accountLabel))
+            let accountCount = max(1, accountIDs.count)
+            let capabilities = Self.mergedCapabilities(from: models)
+            let formatFamily = Self.formatFamily(from: capabilities)
+
+            self.id = advertisedID
+            self.ownedBy = representative.providerID
+            self.providerID = representative.providerID
+            self.providerName = representative.providerName
+            self.accountID = accountCount > 1 ? "auto" : representative.accountID
+            self.accountLabel = Self.accountLabel(
+                representative: representative,
+                accountLabels: accountLabels,
+                accountCount: accountCount
+            )
+            self.sourceID = accountCount > 1
+                ? "\(representative.providerID)#auto"
+                : representative.sourceID
+            self.sourceKind = Self.sourceKind(from: models)
+            self.servedBy = Self.servedBy(from: models)
+            self.usageLane = Self.usageLane(from: models)
+            self.nativeStreaming = !models.allSatisfy { Self.isFactoryModel($0) }
+            self.displayName = Self.displayName(
+                representative: representative,
+                accountLabels: accountLabels
+            )
+            self.capabilities = capabilities
+            self.formatFamily = formatFamily.rawValue
+            self.servedEndpoints = Self.servedEndpoints(for: formatFamily)
+            self.quotaState = Self.quotaState(from: entries).rawValue
+            self.accountCount = accountCount
+            self.enabled = models.contains { $0.enabled }
+            self.advertisementEnabled = models.contains { $0.advertisementEnabled }
+            self.advertised = advertised ?? group.advertised
+            self.routeEligible = models.contains { $0.routeEligible }
+            self.lastRefreshAt = models.compactMap(\.lastRefreshAt).sorted().last
+            self.lastError = models.compactMap(\.lastError).first
+            self.baseModelID = models.compactMap(\.baseModelID).first
+            self.thinkingLevel = models.compactMap(\.thinkingLevel).first
+        }
+
+        private static func formatFamily(from capabilities: [String]) -> BurnBarProviderFormatFamily {
+            if capabilities.contains(BurnBarProviderFormatFamily.anthropic.rawValue) {
+                return .anthropic
+            }
+            return .openaiCompat
+        }
+
+        private static func servedEndpoints(for formatFamily: BurnBarProviderFormatFamily) -> [String] {
+            switch formatFamily {
+            case .openaiCompat:
+                return ["/v1/models", "/v1/chat/completions", "/v1/responses"]
+            case .anthropic:
+                return ["/v1/models", "/v1/messages", "/v1/chat/completions", "/v1/responses"]
+            }
+        }
+
+        private static func mergedCapabilities(from models: [BurnBarLiveAdvertisedModel]) -> [String] {
+            var seen: Set<String> = []
+            var merged: [String] = []
+            for capability in models.flatMap(\.capabilities) {
+                let normalized = capability.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !normalized.isEmpty, seen.insert(normalized).inserted else { continue }
+                merged.append(capability)
+            }
+            return merged
+        }
+
+        private static func quotaState(from entries: [GatewayModelCatalogEntry]) -> BurnBarLiveModelQuotaState {
+            if let advertised = entries.first(where: { $0.advertised })?.model.quotaState {
+                return advertised
+            }
+            if let eligible = entries.first(where: { $0.model.routeEligible })?.model.quotaState {
+                return eligible
+            }
+            return entries.first?.model.quotaState ?? .unknown
+        }
+
+        private static func sourceKind(from models: [BurnBarLiveAdvertisedModel]) -> String {
+            let sourceKinds = uniqueNonEmpty(models.map(\.sourceKind))
+            return sourceKinds.count == 1 ? sourceKinds[0] : "gateway_failover_pool"
+        }
+
+        private static func servedBy(from models: [BurnBarLiveAdvertisedModel]) -> String {
+            if models.allSatisfy({ isFactoryModel($0) }) {
+                return "Factory Droid CLI"
+            }
+            let providerNames = uniqueNonEmpty(models.map(\.providerName))
+            return providerNames.count == 1 ? providerNames[0] : "OpenBurnBar failover pool"
+        }
+
+        private static func usageLane(from models: [BurnBarLiveAdvertisedModel]) -> String? {
+            guard models.allSatisfy({ isFactoryModel($0) }) else { return nil }
+            let lanes = uniqueNonEmpty(models.map { model in
+                FactoryDroidProviderExecutor.isStandardModel(model.baseModelID ?? model.id)
+                    ? "standard"
+                    : "droid_core"
+            })
+            return lanes.count == 1 ? lanes[0] : "mixed"
+        }
+
+        private static func isFactoryModel(_ model: BurnBarLiveAdvertisedModel) -> Bool {
+            model.providerID.caseInsensitiveCompare("factory") == .orderedSame
+        }
+
+        private static func accountLabel(
+            representative: BurnBarLiveAdvertisedModel,
+            accountLabels: [String],
+            accountCount: Int
+        ) -> String {
+            guard accountCount > 1 else {
+                return representative.accountLabel
+            }
+            return "Auto failover (\(accountCount) accounts)"
+        }
+
+        private static func displayName(
+            representative: BurnBarLiveAdvertisedModel,
+            accountLabels: [String]
+        ) -> String {
+            var displayName = representative.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if displayName.isEmpty {
+                displayName = representative.id
+            }
+            for label in accountLabels where !label.isEmpty {
+                let suffix = " (\(label))"
+                if displayName.hasSuffix(suffix) {
+                    displayName.removeLast(suffix.count)
+                    displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            return displayName
+        }
+
+        private static func uniqueNonEmpty(_ values: [String]) -> [String] {
+            var seen: Set<String> = []
+            var unique: [String] = []
+            for value in values {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalized = trimmed.lowercased()
+                guard !trimmed.isEmpty, seen.insert(normalized).inserted else { continue }
+                unique.append(trimmed)
+            }
+            return unique
+        }
 
         enum CodingKeys: String, CodingKey {
             case id
             case object
             case ownedBy = "owned_by"
+            case providerID = "provider_id"
+            case providerName = "provider_name"
+            case accountID = "account_id"
+            case accountLabel = "account_label"
+            case sourceID = "source_id"
+            case sourceKind = "source_kind"
+            case servedBy = "served_by"
+            case usageLane = "usage_lane"
+            case nativeStreaming = "native_streaming"
+            case displayName = "display_name"
+            case capabilities
+            case formatFamily = "format_family"
+            case servedEndpoints = "served_endpoints"
+            case quotaState = "quota_state"
+            case accountCount = "account_count"
+            case enabled
+            case advertisementEnabled = "advertisement_enabled"
+            case advertised
+            case routeEligible = "route_eligible"
+            case lastRefreshAt = "last_refresh_at"
+            case lastError = "last_error"
+            case baseModelID = "base_model_id"
+            case thinkingLevel = "thinking_level"
+        }
+    }
+
+    private struct CodexModelDescriptor: Encodable {
+        let slug: String
+        let displayName: String
+        let description: String?
+        let defaultReasoningLevel: String?
+        let supportedReasoningLevels: [ReasoningLevel]
+        let shellType: String
+        let visibility: String
+        let supportedInAPI: Bool
+        let priority: Int
+        let additionalSpeedTiers: [String]
+        let serviceTiers: [String]
+        let availabilityNux: String?
+        let upgrade: String?
+        let baseInstructions: String
+        let modelMessages: String?
+        let supportsReasoningSummaries: Bool
+        let defaultReasoningSummary: String
+        let supportVerbosity: Bool
+        let defaultVerbosity: String?
+        let applyPatchToolType: String?
+        let webSearchToolType: String
+        let truncationPolicy: TruncationPolicy
+        let supportsParallelToolCalls: Bool
+        let supportsImageDetailOriginal: Bool
+        let contextWindow: Int
+        let maxContextWindow: Int?
+        let autoCompactTokenLimit: Int?
+        let effectiveContextWindowPercent: Int
+        let experimentalSupportedTools: [String]
+        let inputModalities: [String]
+        let supportsSearchTool: Bool
+
+        init(model: ModelDescriptor) {
+            self.slug = model.id
+            self.displayName = model.displayName
+            if model.accountCount > 1 {
+                self.description = "\(model.providerName) via OpenBurnBar auto failover across \(model.accountCount) accounts"
+            } else {
+                self.description = "\(model.providerName) via OpenBurnBar"
+            }
+            self.defaultReasoningLevel = nil
+            self.supportedReasoningLevels = []
+            self.shellType = "shell_command"
+            self.visibility = "list"
+            self.supportedInAPI = true
+            self.priority = 10_000
+            self.additionalSpeedTiers = []
+            self.serviceTiers = []
+            self.availabilityNux = nil
+            self.upgrade = nil
+            self.baseInstructions = "You are Codex, a coding agent."
+            self.modelMessages = nil
+            self.supportsReasoningSummaries = false
+            self.defaultReasoningSummary = "auto"
+            self.supportVerbosity = false
+            self.defaultVerbosity = nil
+            self.applyPatchToolType = nil
+            self.webSearchToolType = "text"
+            self.truncationPolicy = TruncationPolicy(mode: "tokens", limit: 65_536)
+            self.supportsParallelToolCalls = false
+            self.supportsImageDetailOriginal = false
+            self.contextWindow = Self.contextWindow(for: model)
+            self.maxContextWindow = Self.contextWindow(for: model)
+            self.autoCompactTokenLimit = nil
+            self.effectiveContextWindowPercent = 95
+            self.experimentalSupportedTools = []
+            self.inputModalities = ["text"]
+            self.supportsSearchTool = false
+        }
+
+        private static func contextWindow(for model: ModelDescriptor) -> Int {
+            let id = model.id.lowercased()
+            if model.formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue,
+               id.contains("opus") {
+                return 1_000_000
+            }
+            if model.formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue {
+                return 200_000
+            }
+            return 65_536
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case slug
+            case displayName = "display_name"
+            case description
+            case defaultReasoningLevel = "default_reasoning_level"
+            case supportedReasoningLevels = "supported_reasoning_levels"
+            case shellType = "shell_type"
+            case visibility
+            case supportedInAPI = "supported_in_api"
+            case priority
+            case additionalSpeedTiers = "additional_speed_tiers"
+            case serviceTiers = "service_tiers"
+            case availabilityNux = "availability_nux"
+            case upgrade
+            case baseInstructions = "base_instructions"
+            case modelMessages = "model_messages"
+            case supportsReasoningSummaries = "supports_reasoning_summaries"
+            case defaultReasoningSummary = "default_reasoning_summary"
+            case supportVerbosity = "support_verbosity"
+            case defaultVerbosity = "default_verbosity"
+            case applyPatchToolType = "apply_patch_tool_type"
+            case webSearchToolType = "web_search_tool_type"
+            case truncationPolicy = "truncation_policy"
+            case supportsParallelToolCalls = "supports_parallel_tool_calls"
+            case supportsImageDetailOriginal = "supports_image_detail_original"
+            case contextWindow = "context_window"
+            case maxContextWindow = "max_context_window"
+            case autoCompactTokenLimit = "auto_compact_token_limit"
+            case effectiveContextWindowPercent = "effective_context_window_percent"
+            case experimentalSupportedTools = "experimental_supported_tools"
+            case inputModalities = "input_modalities"
+            case supportsSearchTool = "supports_search_tool"
+        }
+
+        struct ReasoningLevel: Encodable {
+            let effort: String
+            let description: String
+        }
+
+        struct TruncationPolicy: Encodable {
+            let mode: String
+            let limit: Int
         }
     }
 
     private struct ChatCompletionsRequest: Decodable {
+        let model: String
+    }
+
+    private struct ResponsesRequest: Decodable {
         let model: String
     }
 

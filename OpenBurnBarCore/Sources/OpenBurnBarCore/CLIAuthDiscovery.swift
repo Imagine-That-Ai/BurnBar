@@ -249,9 +249,35 @@ public enum CLIAuthDiscovery {
         return runCommand(
             executablePath: executablePath,
             arguments: ["auth", "status", "--json"],
-            environment: ["CLAUDE_CONFIG_PATH": configDirectory],
+            environment: claudeStatusEnvironment(configDirectory: configDirectory),
             timeout: 3.5
         )
+    }
+
+    static func claudeStatusEnvironment(configDirectory: String) -> [String: String] {
+        #if os(macOS)
+        let defaultDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude", isDirectory: true)
+            .standardizedFileURL
+            .path
+        #else
+        let defaultDirectory = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            .appendingPathComponent(".claude", isDirectory: true)
+            .standardizedFileURL
+            .path
+        #endif
+        let requestedDirectory = URL(fileURLWithPath: configDirectory, isDirectory: true)
+            .standardizedFileURL
+            .path
+
+        if requestedDirectory == defaultDirectory {
+            return ["CLAUDE_CONFIG_PATH": requestedDirectory]
+        }
+
+        return [
+            "CLAUDE_CONFIG_DIR": requestedDirectory,
+            "CLAUDE_CONFIG_PATH": requestedDirectory
+        ]
     }
 
     /// Prefers explicit CLI-reported auth state, then falls back to filesystem heuristics.

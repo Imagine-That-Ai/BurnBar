@@ -55,6 +55,54 @@ final class ChatBackendSettings {
         didSet { persistence.set(hermesRealtimeRelayURL, forKey: "hermesRealtimeRelayURL") }
     }
 
+    /// Feature flag for the iroh peer-to-peer transport. Off by default so
+    /// existing WSS-based relay traffic is untouched; flipping this on makes
+    /// `HermesRelayHostService` publish a signed `iroh_pairing` record and
+    /// makes `HermesService` prefer the iroh transport with WSS fallback.
+    /// See `docs/HERMES_IROH_TRANSPORT.md`.
+    var hermesIrohTransportEnabled: Bool = false {
+        didSet { persistence.set(hermesIrohTransportEnabled, forKey: "hermesIrohTransportEnabled") }
+    }
+
+    /// Mercury Phase 1 — gates the inbound `media.blob.advertise` dispatch
+    /// path on the Mac iroh accept loop. Off by default until the rollout
+    /// punch list in `docs/runbooks/media-rollout-status.md` is cleared.
+    /// Mirrored to iOS via Remote Config (`media_blob_transfer_enabled`).
+    var mediaBlobTransferEnabled: Bool = false {
+        didSet { persistence.set(mediaBlobTransferEnabled, forKey: "mediaBlobTransferEnabled") }
+    }
+
+    /// Computer Use rollout flags. Defaults stay off until each phase clears
+    /// the rollout gates in `docs/runbooks/computer-use-rollout-status.md`.
+    /// Remote Config uses the snake_case names documented in the master plan.
+    var computerUseWatchEnabled: Bool = false {
+        didSet { persistence.set(computerUseWatchEnabled, forKey: "computerUseWatchEnabled") }
+    }
+
+    var computerUseBrowserEnabled: Bool = false {
+        didSet { persistence.set(computerUseBrowserEnabled, forKey: "computerUseBrowserEnabled") }
+    }
+
+    var computerUseSystemEnabled: Bool = false {
+        didSet { persistence.set(computerUseSystemEnabled, forKey: "computerUseSystemEnabled") }
+    }
+
+    var computerUsePhoneControlEnabled: Bool = false {
+        didSet { persistence.set(computerUsePhoneControlEnabled, forKey: "computerUsePhoneControlEnabled") }
+    }
+
+    var computerUseTrustedScopesEnabled: Bool = false {
+        didSet { persistence.set(computerUseTrustedScopesEnabled, forKey: "computerUseTrustedScopesEnabled") }
+    }
+
+    var computerUseAuditExportEnabled: Bool = false {
+        didSet { persistence.set(computerUseAuditExportEnabled, forKey: "computerUseAuditExportEnabled") }
+    }
+
+    var computerUseKillSwitch: Bool = false {
+        didSet { persistence.set(computerUseKillSwitch, forKey: "computerUseKillSwitch") }
+    }
+
     var launchHermesWithOpenBurnBar: Bool = false {
         didSet { persistence.set(launchHermesWithOpenBurnBar, forKey: "launchHermesWithOpenBurnBar") }
     }
@@ -195,6 +243,15 @@ final class ChatBackendSettings {
             forKey: "hermesRealtimeRelayURL",
             defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
         )
+        self.hermesIrohTransportEnabled = persistence.bool(forKey: "hermesIrohTransportEnabled")
+        self.mediaBlobTransferEnabled = persistence.bool(forKey: "mediaBlobTransferEnabled")
+        self.computerUseWatchEnabled = persistence.bool(forKey: "computerUseWatchEnabled")
+        self.computerUseBrowserEnabled = persistence.bool(forKey: "computerUseBrowserEnabled")
+        self.computerUseSystemEnabled = persistence.bool(forKey: "computerUseSystemEnabled")
+        self.computerUsePhoneControlEnabled = persistence.bool(forKey: "computerUsePhoneControlEnabled")
+        self.computerUseTrustedScopesEnabled = persistence.bool(forKey: "computerUseTrustedScopesEnabled")
+        self.computerUseAuditExportEnabled = persistence.bool(forKey: "computerUseAuditExportEnabled")
+        self.computerUseKillSwitch = persistence.bool(forKey: "computerUseKillSwitch")
         self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")
         self.piAgentGatewayBaseURL = persistence.string(forKey: "piAgentGatewayBaseURL", defaultValue: "http://127.0.0.1:8765")
         self.piAgentBearerToken = secretPersistence.load(
@@ -275,10 +332,7 @@ final class ChatBackendSettings {
         guard let advertised = gatewayAdvertisedModel?.trimmingCharacters(in: .whitespacesAndNewlines), !advertised.isEmpty else {
             return "hermes"
         }
-        if advertised.range(of: "minimax", options: .caseInsensitive) != nil {
-            return CLIBridge.normalizedCodexModel("gpt-5.5")
-        }
-        return "hermes"
+        return advertised
     }
 
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String {

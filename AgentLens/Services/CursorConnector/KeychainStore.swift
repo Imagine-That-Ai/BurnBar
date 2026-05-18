@@ -3,18 +3,27 @@ import LocalAuthentication
 import Security
 
 #if os(macOS)
-// Legacy macOS keychain items can still present ACL prompts even when a query uses
-// a non-interactive LAContext, so disable keychain UI at the process level too.
+// Legacy login-keychain ACL items can still show a password prompt even when
+// the query uses a non-interactive LAContext. Keep Security.framework UI
+// disabled around background reads so missing/locked secrets fail closed.
+@inline(__always)
+@_silgen_name("SecKeychainGetUserInteractionAllowed")
+private func obbSecKeychainGetUserInteractionAllowed(_ allowed: UnsafeMutablePointer<DarwinBoolean>) -> OSStatus
+
+@inline(__always)
+@_silgen_name("SecKeychainSetUserInteractionAllowed")
+private func obbSecKeychainSetUserInteractionAllowed(_ allowed: Bool) -> OSStatus
+
 private func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
     var previousAllowed = DarwinBoolean(true)
-    let readStatus = SecKeychainGetUserInteractionAllowed(&previousAllowed)
-    let disableStatus = SecKeychainSetUserInteractionAllowed(false)
+    let readStatus = obbSecKeychainGetUserInteractionAllowed(&previousAllowed)
+    let disableStatus = obbSecKeychainSetUserInteractionAllowed(false)
     defer {
         if disableStatus == errSecSuccess {
             if readStatus == errSecSuccess {
-                _ = SecKeychainSetUserInteractionAllowed(previousAllowed.boolValue)
+                _ = obbSecKeychainSetUserInteractionAllowed(previousAllowed.boolValue)
             } else {
-                _ = SecKeychainSetUserInteractionAllowed(true)
+                _ = obbSecKeychainSetUserInteractionAllowed(true)
             }
         }
     }
@@ -50,7 +59,9 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
             kSecValueData as String: value,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
-        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        let updateStatus = withKeychainInteractionDisabled {
+            SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        }
         if updateStatus == errSecSuccess { return }
         if updateStatus != errSecItemNotFound {
             throw KeychainStoreError.unhandled(updateStatus)
@@ -59,7 +70,9 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
         var createQuery = query
         createQuery[kSecValueData as String] = value
         createQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        let addStatus = SecItemAdd(createQuery as CFDictionary, nil)
+        let addStatus = withKeychainInteractionDisabled {
+            SecItemAdd(createQuery as CFDictionary, nil)
+        }
         guard addStatus == errSecSuccess else {
             throw KeychainStoreError.unhandled(addStatus)
         }
@@ -114,7 +127,9 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        let status = SecItemDelete(query as CFDictionary)
+        let status = withKeychainInteractionDisabled {
+            SecItemDelete(query as CFDictionary)
+        }
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainStoreError.unhandled(status)
         }

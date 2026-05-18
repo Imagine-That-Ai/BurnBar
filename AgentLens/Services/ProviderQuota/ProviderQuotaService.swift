@@ -2,6 +2,69 @@ import Foundation
 import GRDB
 import OpenBurnBarCore
 
+struct DaemonCredentialSlotAccountProjection {
+    static func accounts(
+        from configurations: [OpenBurnBarDaemonProviderConfiguration],
+        now: Date = Date()
+    ) -> [ProviderAccountDoc] {
+        configurations.flatMap { configuration -> [ProviderAccountDoc] in
+            let providerID = ProviderID(rawValue: configuration.providerID)
+            let defaultSlotID = configuration.preferredCredentialSlotID
+                ?? configuration.credentialSlots.first(where: \.isEnabled)?.slotID
+
+            return configuration.credentialSlots.enumerated().map { index, slot in
+                let isEnabled = configuration.isEnabled && slot.isEnabled
+                let status = accountStatus(for: slot.status, isEnabled: isEnabled)
+                let hasRefreshState = slot.lastQuotaRemainingPercent != nil
+                    || slot.lastQuotaResetsAt != nil
+                    || slot.lastStatusMessage != nil
+                    || slot.lastSelectedAt != nil
+                let updatedAt = slot.updatedAt
+
+                return ProviderAccountDoc(
+                    id: accountID(providerID: providerID, slotID: slot.slotID),
+                    providerID: providerID,
+                    label: slot.label,
+                    identityHint: "Daemon credential slot",
+                    status: status,
+                    credentialKind: .bearer,
+                    storageScope: .deviceKeychain,
+                    redactedLabel: "Stored in Mac Keychain",
+                    isDefault: slot.slotID == defaultSlotID,
+                    sortKey: slot.slotID == defaultSlotID ? 0 : Double(index + 1),
+                    lastValidatedAt: slot.status == .ready ? updatedAt : nil,
+                    lastRefreshAt: hasRefreshState ? updatedAt : nil,
+                    lastErrorCode: status == .connected ? nil : slot.status.rawValue,
+                    schemaVersion: 1,
+                    createdAt: updatedAt,
+                    updatedAt: now
+                )
+            }
+        }
+    }
+
+    static func accountID(providerID: ProviderID, slotID: String) -> String {
+        "\(providerID.rawValue)-\(ProviderID.normalize(slotID))"
+    }
+
+    private static func accountStatus(
+        for slotStatus: BurnBarProviderCredentialSlotStatus,
+        isEnabled: Bool
+    ) -> ProviderAccountStatus {
+        guard isEnabled else { return .disabled }
+        switch slotStatus {
+        case .ready:
+            return .connected
+        case .coolingDown, .exhausted:
+            return .stale
+        case .disabled:
+            return .disabled
+        case .missingSecret:
+            return .error
+        }
+    }
+}
+
 // MARK: - Quota Service
 
 @Observable
@@ -46,6 +109,7 @@ final class ProviderQuotaService {
     private var routingEventsDirty = false
     private nonisolated(unsafe) var automaticRefreshTask: Task<Void, Never>?
     private nonisolated(unsafe) var apiKeyChangeObserver: NSObjectProtocol?
+    private var claudeStatuslineWatcher: ClaudeStatuslineWatcher?
 
     init(
         settingsManager: SettingsManager = .shared,
@@ -114,6 +178,8 @@ final class ProviderQuotaService {
         if let apiKeyChangeObserver {
             NotificationCenter.default.removeObserver(apiKeyChangeObserver)
         }
+        // Note: claudeStatuslineWatcher cancels its dispatch source in
+        // its own deinit when the strong reference drops here.
     }
 
     func snapshot(for provider: AgentProvider) -> ProviderQuotaSnapshot? {
@@ -121,11 +187,56 @@ final class ProviderQuotaService {
     }
 
     func snapshot(accountID: String) -> ProviderQuotaSnapshot? {
-        snapshotsByAccountID.values.first { $0.accountID == accountID }
+        accountSnapshot(providerID: nil, accountID: accountID)
+    }
+
+    func snapshot(providerID: ProviderID, accountID: String) -> ProviderQuotaSnapshot? {
+        accountSnapshot(providerID: providerID, accountID: accountID)
+    }
+
+    private func accountSnapshot(providerID: ProviderID?, accountID: String) -> ProviderQuotaSnapshot? {
+        guard let normalizedAccountID = Self.normalizedSnapshotIdentifier(accountID) else {
+            return nil
+        }
+        return snapshotsByAccountID.values
+            .filter { snapshot in
+                guard Self.normalizedSnapshotIdentifier(snapshot.accountID) == normalizedAccountID else {
+                    return false
+                }
+                guard let providerID else { return true }
+                return snapshot.providerID == providerID
+            }
+            .max { $0.fetchedAt < $1.fetchedAt }
     }
 
     func snapshots(for provider: AgentProvider) -> [ProviderQuotaSnapshot] {
-        snapshots(for: provider.providerID)
+        let providerIDs = Self.snapshotProviderIDs(for: provider)
+        var snapshotsByIdentity: [String: ProviderQuotaSnapshot] = [:]
+
+        for snapshot in providerIDs.flatMap({ snapshots(for: $0) }) {
+            let key = [
+                snapshot.providerID.rawValue,
+                snapshot.accountID?.lowercased() ?? "",
+                snapshot.sourceId.lowercased()
+            ].joined(separator: ":")
+            guard let incumbent = snapshotsByIdentity[key] else {
+                snapshotsByIdentity[key] = snapshot
+                continue
+            }
+            if snapshot.fetchedAt > incumbent.fetchedAt {
+                snapshotsByIdentity[key] = snapshot
+            }
+        }
+
+        return snapshotsByIdentity.values.sorted { lhs, rhs in
+            let lhsLabel = lhs.accountLabel ?? lhs.accountID ?? lhs.sourceId
+            let rhsLabel = rhs.accountLabel ?? rhs.accountID ?? rhs.sourceId
+            let labelOrder = lhsLabel.localizedCaseInsensitiveCompare(rhsLabel)
+            if labelOrder != .orderedSame {
+                return labelOrder == .orderedAscending
+            }
+            return lhs.fetchedAt > rhs.fetchedAt
+        }
     }
 
     func snapshots(for providerID: ProviderID) -> [ProviderQuotaSnapshot] {
@@ -136,7 +247,9 @@ final class ProviderQuotaService {
         // panel renders the same account twice with subtly different bucket
         // values. Group by the most-specific identifier we can extract and
         // keep the freshest record per group.
-        let candidates = snapshotsByAccountID.values.filter { $0.providerID == providerID }
+        let candidates = snapshotsByAccountID.values.filter {
+            $0.providerID == providerID && Self.isAccountLevelSnapshot($0)
+        }
 
         func accountKey(_ snap: ProviderQuotaSnapshot) -> String {
             if let id = snap.accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -189,6 +302,17 @@ final class ProviderQuotaService {
                 return labelOrder == .orderedAscending
             }
             return lhs.fetchedAt > rhs.fetchedAt
+        }
+    }
+
+    private static func snapshotProviderIDs(for provider: AgentProvider) -> [ProviderID] {
+        switch provider {
+        case .kimi:
+            return [provider.providerID, ProviderID(rawValue: "moonshot")]
+        case .claudeCode:
+            return [provider.providerID, ProviderID(rawValue: "anthropic")]
+        default:
+            return [provider.providerID]
         }
     }
 
@@ -342,6 +466,8 @@ final class ProviderQuotaService {
             }
         }
 
+        startClaudeStatuslineWatcher(dataStore: dataStore)
+
         guard apiKeyChangeObserver == nil else { return }
         apiKeyChangeObserver = NotificationCenter.default.addObserver(
             forName: ProviderAPIKeyStore.didChangeNotification,
@@ -365,10 +491,37 @@ final class ProviderQuotaService {
     func stopAutomaticRefresh() {
         automaticRefreshTask?.cancel()
         automaticRefreshTask = nil
+        stopClaudeStatuslineWatcher()
         if let apiKeyChangeObserver {
             NotificationCenter.default.removeObserver(apiKeyChangeObserver)
             self.apiKeyChangeObserver = nil
         }
+    }
+
+    /// Arms an FS-event watcher on Claude Code's statusline snapshot file.
+    /// When the statusline bridge writes a fresh payload, we re-read the
+    /// Claude snapshot immediately instead of waiting for the next
+    /// auto-refresh tick — which dropped Nest Hub freshness from "up to
+    /// two minutes stale" to "as fast as Claude can write the hook".
+    ///
+    /// Idempotent. Calling twice replaces the existing watcher.
+    func startClaudeStatuslineWatcher(dataStore: DataStore) {
+        claudeStatuslineWatcher?.stop()
+        let url = appPaths.claudeStatuslineSnapshotURL
+        let watcher = ClaudeStatuslineWatcher(url: url) { [weak self, weak dataStore] in
+            guard let self, let dataStore else { return }
+            Task { @MainActor [weak self, weak dataStore] in
+                guard let self, let dataStore else { return }
+                await self.refreshClaudeFromStatuslineHook(dataStore: dataStore)
+            }
+        }
+        watcher.start()
+        claudeStatuslineWatcher = watcher
+    }
+
+    func stopClaudeStatuslineWatcher() {
+        claudeStatuslineWatcher?.stop()
+        claudeStatuslineWatcher = nil
     }
 
     func refreshAll(dataStore: DataStore) async {
@@ -386,7 +539,10 @@ final class ProviderQuotaService {
         for (provider, snapshot) in batch.providerSnapshots {
             upsertSnapshot(snapshot, for: provider)
         }
-        upsertAccountSnapshots(batch.accountSnapshots)
+        replaceAccountSnapshots(
+            batch.accountSnapshots,
+            pruningManagedAccountSnapshotsFor: Set(refreshProviders)
+        )
         persistDaemonCredentialSlotAccounts(dataStore: dataStore)
         refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
 
@@ -405,7 +561,10 @@ final class ProviderQuotaService {
             let snapshot = try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
             upsertSnapshot(snapshot, for: provider)
             let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(for: provider, dataStoreActor: dataStore.actor)
-            upsertAccountSnapshots(accountSnapshots)
+            replaceAccountSnapshots(
+                accountSnapshots,
+                pruningManagedAccountSnapshotsFor: [provider]
+            )
             persistDaemonCredentialSlotAccounts(dataStore: dataStore, providers: [provider])
             refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest(provider: provider))
             errors.removeValue(forKey: provider)
@@ -434,6 +593,36 @@ final class ProviderQuotaService {
         }
     }
 
+    /// Re-reads only the Claude snapshot in response to a statusline hook
+    /// write. Deliberately does NOT bump `lastFetch`: a Claude-only refresh
+    /// must not gate the next all-provider auto-refresh tick, otherwise a
+    /// chatty Claude session could starve Codex/Cursor/etc. of updates.
+    /// Skipped silently while a full `refreshAll` is already in flight to
+    /// avoid stomping its outputs mid-flight.
+    func refreshClaudeFromStatuslineHook(dataStore: DataStore) async {
+        guard Self.supportedProviders.contains(.claudeCode) else { return }
+        guard !isFetching else { return }
+        activeProviders.insert(.claudeCode)
+        defer { activeProviders.remove(.claudeCode) }
+
+        do {
+            let context = makeContext(dataStore: dataStore)
+            let snapshot = try await quotaRefreshActor.fetchSnapshot(for: .claudeCode, context: context)
+            upsertSnapshot(snapshot, for: .claudeCode)
+            let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(for: .claudeCode, dataStoreActor: dataStore.actor)
+            replaceAccountSnapshots(
+                accountSnapshots,
+                pruningManagedAccountSnapshotsFor: [.claudeCode]
+            )
+            errors.removeValue(forKey: .claudeCode)
+            refreshClaudeBridgeStatus()
+            persistSnapshots()
+            OpenBurnBarMetrics.counter(name: "quota_refresh_success", labels: ["provider": "claudeCode-hook"])
+        } catch {
+            OpenBurnBarMetrics.counter(name: "quota_refresh_failure", labels: ["provider": "claudeCode-hook"])
+        }
+    }
+
     private func currentRoutingRequest(provider: AgentProvider? = nil) -> ProviderRoutingRequest {
         let mode = OpenBurnBarDaemonManager.shared.routerMode
         return ProviderRoutingRequest(
@@ -457,7 +646,7 @@ final class ProviderQuotaService {
         apiKeyOverride: String
     ) async throws -> ProviderQuotaSnapshot {
         switch provider {
-        case .minimax, .zai, .copilot, .ollama, .kimi:
+        case .minimax, .zai, .deepSeek, .copilot, .ollama, .kimi:
             let scratchDataStore = try makeScratchDataStore()
             let context = makeContext(dataStore: scratchDataStore, apiKeyOverrides: [provider: apiKeyOverride])
             return try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
@@ -468,7 +657,7 @@ final class ProviderQuotaService {
                 source: .unavailable,
                 confidence: .unavailable,
                 managementURL: nil,
-                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, Kimi, Copilot, and Ollama Cloud.",
+                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, DeepSeek, Kimi, Copilot, and Ollama Cloud.",
                 buckets: []
             )
         }
@@ -562,7 +751,7 @@ final class ProviderQuotaService {
 
     private func routingCandidate(for account: ProviderAccountDoc) -> ProviderRoutingCandidate {
         let slot = daemonSlot(forAccount: account)
-        let snapshot = snapshotsByAccountID[account.id]
+        let snapshot = accountSnapshot(providerID: account.providerID, accountID: account.id)
         let quotaState = routingQuotaState(account: account, snapshot: snapshot, slot: slot)
         let cooldownUntil = slot?.cooldownUntil
 
@@ -761,8 +950,12 @@ final class ProviderQuotaService {
             return "ollama"
         case .openCode:
             return "opencode"
+        case .deepSeek:
+            return "deepseek"
         case .kimi:
             return "moonshot"
+        case .claudeCode:
+            return "anthropic"
         default:
             return nil
         }
@@ -785,6 +978,8 @@ final class ProviderQuotaService {
             identifiers.append("kimi_auth_token")
         case .openCode:
             identifiers.append(contentsOf: ["opencode", "open_code", "opencode_auth_json"])
+        case .deepSeek:
+            identifiers.append(contentsOf: ["deepseek", "deep_seek"])
         default:
             break
         }
@@ -821,7 +1016,9 @@ final class ProviderQuotaService {
     }
 
     private func upsertSnapshot(_ snapshot: ProviderQuotaSnapshot, for provider: AgentProvider? = nil) {
-        snapshotsByProvider[provider ?? snapshot.provider] = snapshot
+        if Self.normalizedSnapshotIdentifier(snapshot.accountID) == nil {
+            snapshotsByProvider[provider ?? snapshot.provider] = snapshot
+        }
         snapshotsByAccountID[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)] = snapshot
     }
 
@@ -829,6 +1026,24 @@ final class ProviderQuotaService {
         for (key, snapshot) in snapshots {
             snapshotsByAccountID[key] = snapshot
         }
+    }
+
+    private func replaceAccountSnapshots(
+        _ snapshots: [String: ProviderQuotaSnapshot],
+        pruningManagedAccountSnapshotsFor providers: Set<AgentProvider>
+    ) {
+        let providerIDs = Set(providers.map(\.providerID))
+        let replacementKeys = Set(snapshots.keys)
+
+        snapshotsByAccountID = snapshotsByAccountID.filter { key, snapshot in
+            guard providerIDs.contains(snapshot.providerID),
+                  Self.isManagedAccountSnapshot(snapshot) else {
+                return true
+            }
+            return replacementKeys.contains(key)
+        }
+
+        upsertAccountSnapshots(snapshots)
     }
 
     private func persistDaemonCredentialSlotAccounts(
@@ -902,61 +1117,20 @@ final class ProviderQuotaService {
     }
 
     private func daemonCredentialSlotAccounts(providers: Set<AgentProvider>? = nil) -> [ProviderAccountDoc] {
-        let now = Date()
-        return OpenBurnBarDaemonManager.shared.providerConfigurations.flatMap { configuration -> [ProviderAccountDoc] in
-            guard let provider = Self.quotaCapableProvider(forProviderID: configuration.providerID),
-                  providers?.contains(provider) ?? true else {
-                return []
+        let allowedProviderIDs = Set(
+            OpenBurnBarDaemonManager.shared.providerConfigurations.compactMap { configuration -> ProviderID? in
+                guard let provider = Self.quotaCapableProvider(forProviderID: configuration.providerID),
+                      providers?.contains(provider) ?? true else {
+                    return nil
+                }
+                return ProviderID(rawValue: configuration.providerID)
             }
+        )
+        guard !allowedProviderIDs.isEmpty else { return [] }
 
-            let providerID = ProviderID(rawValue: configuration.providerID)
-            let defaultSlotID = configuration.preferredCredentialSlotID
-                ?? configuration.credentialSlots.first(where: \.isEnabled)?.slotID
-
-            return configuration.credentialSlots.enumerated().map { index, slot in
-                let accountID = "\(providerID.rawValue)-\(ProviderID.normalize(slot.slotID))"
-                let isEnabled = configuration.isEnabled && slot.isEnabled
-                let status = Self.accountStatus(for: slot.status, isEnabled: isEnabled)
-                let hasQuotaState = slot.lastQuotaRemainingPercent != nil
-                    || slot.lastQuotaResetsAt != nil
-                    || slot.lastStatusMessage != nil
-                let updatedAt = slot.updatedAt
-
-                return ProviderAccountDoc(
-                    id: accountID,
-                    providerID: providerID,
-                    label: slot.label,
-                    status: status,
-                    credentialKind: .bearer,
-                    storageScope: .deviceKeychain,
-                    redactedLabel: "Stored in Mac Keychain",
-                    isDefault: slot.slotID == defaultSlotID,
-                    sortKey: slot.slotID == defaultSlotID ? 0 : Double(index + 1),
-                    lastRefreshAt: hasQuotaState ? updatedAt : nil,
-                    lastErrorCode: status == .connected ? nil : slot.status.rawValue,
-                    schemaVersion: 1,
-                    createdAt: updatedAt,
-                    updatedAt: now
-                )
-            }
-        }
-    }
-
-    private static func accountStatus(
-        for slotStatus: BurnBarProviderCredentialSlotStatus,
-        isEnabled: Bool
-    ) -> ProviderAccountStatus {
-        guard isEnabled else { return .disabled }
-        switch slotStatus {
-        case .ready:
-            return .connected
-        case .coolingDown, .exhausted:
-            return .stale
-        case .disabled:
-            return .disabled
-        case .missingSecret:
-            return .error
-        }
+        return DaemonCredentialSlotAccountProjection
+            .accounts(from: OpenBurnBarDaemonManager.shared.providerConfigurations)
+            .filter { allowedProviderIDs.contains($0.providerID) }
     }
 
     private static func quotaCapableProvider(forProviderID providerID: String) -> AgentProvider? {
@@ -969,13 +1143,45 @@ final class ProviderQuotaService {
             return .ollama
         case "openai":
             return .openAI
+        case "anthropic", "claude", "claude-code":
+            return .claudeCode
         case "opencode", "open-code":
             return .openCode
+        case "deepseek", "deep-seek":
+            return .deepSeek
         case "moonshot", "kimi":
             return .kimi
         default:
             return nil
         }
+    }
+
+    private static func normalizedSnapshotIdentifier(_ value: String?) -> String? {
+        guard let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else {
+            return nil
+        }
+        return normalized.lowercased()
+    }
+
+    private static func isAccountLevelSnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
+        if normalizedSnapshotIdentifier(snapshot.accountID) != nil {
+            return true
+        }
+        guard let sourceID = normalizedSnapshotIdentifier(snapshot.sourceId) else {
+            return false
+        }
+        return sourceID != "default"
+    }
+
+    private static func isManagedAccountSnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
+        guard isAccountLevelSnapshot(snapshot),
+              let sourceID = normalizedSnapshotIdentifier(snapshot.sourceId) else {
+            return false
+        }
+        return sourceID.hasPrefix("switcher-cli:")
+            || sourceID.hasPrefix("switcher:")
+            || sourceID.hasPrefix("provider:")
     }
 
     // MARK: - Persistence
@@ -1046,5 +1252,235 @@ private struct ProviderQuotaPersistenceLoadError: LocalizedError {
 
     var errorDescription: String? {
         message
+    }
+}
+
+// MARK: - Cumulative across accounts
+//
+// When the user has multiple accounts on the same provider, collapse the
+// per-account snapshots into one synthetic snapshot whose buckets are
+// summed by `(key, windowKind)`. Pure derivation — the cumulative
+// snapshot is never persisted, never synced to Firestore. It exists only
+// to feed the UI when `SettingsManager.cumulativeAcrossAccounts` is on.
+
+extension ProviderQuotaService {
+
+    /// Returns the cumulative snapshot for `provider`, or nil when there
+    /// is nothing meaningful to merge (zero or one account, no displayable
+    /// signal, or every input bucket dropped during normalization).
+    func cumulativeSnapshot(for provider: AgentProvider, now: Date = Date()) -> ProviderQuotaSnapshot? {
+        Self.cumulativeSnapshot(
+            provider: provider,
+            from: snapshots(for: provider),
+            now: now
+        )
+    }
+
+    /// Pure-logic variant: given an explicit input list of per-account
+    /// snapshots, produce the cumulative snapshot. Used by tests and by
+    /// the convenience instance method above. Returns nil when there is
+    /// nothing meaningful to merge.
+    static func cumulativeSnapshot(
+        provider: AgentProvider,
+        from inputs: [ProviderQuotaSnapshot],
+        now: Date = Date()
+    ) -> ProviderQuotaSnapshot? {
+        // `.localOnly`-scope sources are device-only scrape caches (Codex
+        // rollout, etc.) — adding them across accounts double-counts the
+        // same machine's usage. Drop them from the sum.
+        let candidateSnapshots = inputs.filter { $0.accountStorageScope != .localOnly }
+        guard candidateSnapshots.count > 1 else { return nil }
+
+        // Prefer fresh snapshots. If every account is stale, fall back to
+        // the freshest single snapshot and tag the result so the UI can
+        // show "stale merged" instead of silently dropping data.
+        let freshSnapshots = candidateSnapshots.filter { !$0.isStale(relativeTo: now) }
+        let mergedInputs: [ProviderQuotaSnapshot]
+        let staleFallback: Bool
+        if freshSnapshots.isEmpty {
+            staleFallback = true
+            if let freshest = candidateSnapshots.max(by: { $0.fetchedAt < $1.fetchedAt }) {
+                mergedInputs = [freshest]
+            } else {
+                return nil
+            }
+        } else {
+            staleFallback = false
+            mergedInputs = freshSnapshots
+        }
+
+        let mergedBuckets = mergeBuckets(across: mergedInputs)
+        guard !mergedBuckets.isEmpty else { return nil }
+
+        let fetchedAt = mergedInputs.map(\.fetchedAt).min() ?? now
+        let confidence: ProviderQuotaConfidence = staleFallback
+            ? .unavailable
+            : worstConfidence(among: mergedInputs)
+        let managementURL = mergedInputs.compactMap(\.managementURL).first
+        let accountCount = candidateSnapshots.count
+        let statusMessage: String = {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .abbreviated
+            let relative = formatter.localizedString(for: fetchedAt, relativeTo: now)
+            if staleFallback {
+                return "Stale data merged across \(accountCount) accounts — last fetch \(relative)"
+            }
+            return "Combined \(accountCount) accounts — oldest fetch \(relative)"
+        }()
+
+        return ProviderQuotaSnapshot(
+            provider: provider,
+            providerID: provider.providerID,
+            accountID: nil,
+            accountLabel: "All accounts (\(accountCount))",
+            accountStorageScope: .cloudRefreshable,
+            fetchedAt: fetchedAt,
+            source: dominantSourceKind(among: mergedInputs),
+            sourceId: "cumulative:\(provider.providerID.rawValue)",
+            confidence: confidence,
+            managementURL: managementURL,
+            statusMessage: statusMessage,
+            buckets: mergedBuckets,
+            schemaVersion: mergedInputs.first?.schemaVersion ?? 2
+        )
+    }
+
+    /// Single switchboard every UI surface reads from. When the
+    /// `cumulativeAcrossAccounts` toggle is on and the provider has more
+    /// than one account, returns the cumulative snapshot wrapped in a
+    /// one-element array. Otherwise returns the per-account list from
+    /// `snapshots(for:)`.
+    func displaySnapshots(
+        for provider: AgentProvider,
+        cumulative: Bool,
+        now: Date = Date()
+    ) -> [ProviderQuotaSnapshot] {
+        guard cumulative else { return snapshots(for: provider) }
+        if let combined = cumulativeSnapshot(for: provider, now: now) {
+            return [combined]
+        }
+        return snapshots(for: provider)
+    }
+
+    /// Single-snapshot variant for surfaces that show one summary per
+    /// provider (popover strip, menu bar). When `cumulative` is on AND
+    /// the provider has multiple accounts, returns the merged snapshot.
+    /// Otherwise falls back to `snapshot(for:)` (the existing
+    /// provider-level snapshot).
+    func primaryDisplaySnapshot(
+        for provider: AgentProvider,
+        cumulative: Bool,
+        now: Date = Date()
+    ) -> ProviderQuotaSnapshot? {
+        if cumulative, let combined = cumulativeSnapshot(for: provider, now: now) {
+            return combined
+        }
+        return snapshot(for: provider)
+    }
+
+    // MARK: - Helpers
+
+    /// Group inputs' displayable buckets by `(key, windowKind)` and sum
+    /// them into one bucket per group. Buckets without a unit match are
+    /// dropped (mismatched units would produce nonsense sums).
+    static func mergeBuckets(across snapshots: [ProviderQuotaSnapshot]) -> [ProviderQuotaBucket] {
+        struct GroupKey: Hashable {
+            let key: String
+            let windowKind: ProviderQuotaWindowKind
+        }
+        var groups: [GroupKey: [ProviderQuotaBucket]] = [:]
+        for snapshot in snapshots {
+            for bucket in snapshot.displayableQuotaBuckets {
+                let groupKey = GroupKey(key: bucket.key, windowKind: bucket.windowKind)
+                groups[groupKey, default: []].append(bucket)
+            }
+        }
+
+        return groups.compactMap { (groupKey, members) -> ProviderQuotaBucket? in
+            guard let first = members.first else { return nil }
+            // Require unit consistency. If one input is requests and another
+            // is tokens for the same key (shouldn't happen, but) we cannot
+            // sum them.
+            let units = Set(members.map(\.unit))
+            guard units.count == 1, let unit = units.first else { return nil }
+
+            let usedValues = members.compactMap(\.usedValue)
+            let limitValues = members.compactMap(\.limitValue)
+            let remainingValues = members.compactMap(\.remainingValue)
+
+            let usedSum = usedValues.isEmpty ? nil : usedValues.reduce(0, +)
+            let limitSum = limitValues.isEmpty ? nil : limitValues.reduce(0, +)
+            let remainingSum: Double? = {
+                if !remainingValues.isEmpty { return remainingValues.reduce(0, +) }
+                if let usedSum, let limitSum {
+                    return max(limitSum - usedSum, 0)
+                }
+                return nil
+            }()
+
+            // Always recompute usedPercent from the summed totals — never
+            // average raw percents (a 90%-used small bucket and a 10%-used
+            // large bucket are NOT 50% combined).
+            let usedPercent: Double? = {
+                if let usedSum, let limitSum, limitSum > 0 {
+                    return min(max((usedSum / limitSum) * 100, 0), 100)
+                }
+                let rawPercents = members.compactMap(\.usedPercent)
+                guard !rawPercents.isEmpty else { return nil }
+                return rawPercents.reduce(0, +) / Double(rawPercents.count)
+            }()
+
+            // Earliest reset = soonest moment new capacity arrives.
+            let resetsAt = members.compactMap(\.resetsAt).min()
+
+            return ProviderQuotaBucket(
+                key: groupKey.key,
+                label: first.label,
+                windowKind: groupKey.windowKind,
+                usedValue: usedSum,
+                limitValue: limitSum,
+                remainingValue: remainingSum,
+                usedPercent: usedPercent,
+                resetsAt: resetsAt,
+                unit: unit,
+                isEstimated: members.contains(where: \.isEstimated)
+            )
+        }
+        // Stable order: hourly window first, then daily, weekly, etc.
+        .sorted { lhs, rhs in
+            Self.windowKindOrder(lhs.windowKind) < Self.windowKindOrder(rhs.windowKind)
+        }
+    }
+
+    private static func windowKindOrder(_ kind: ProviderQuotaWindowKind) -> Int {
+        switch kind {
+        case .rollingHours: return 0
+        case .daily:        return 1
+        case .weekly:       return 2
+        case .rollingDays:  return 3
+        case .monthly:      return 4
+        case .lifetime:     return 5
+        case .custom:       return 6
+        }
+    }
+
+    private static func worstConfidence(among snapshots: [ProviderQuotaSnapshot]) -> ProviderQuotaConfidence {
+        // `unavailable` worst, then `estimated`, then `exact`.
+        if snapshots.contains(where: { $0.confidence == .unavailable }) { return .unavailable }
+        if snapshots.contains(where: { $0.confidence == .estimated }) { return .estimated }
+        return .exact
+    }
+
+    /// Pick a representative source kind for the merged envelope. Prefers
+    /// `officialAPI` > `localCLI` > `localSession` > `manualEstimate` >
+    /// `unavailable`.
+    private static func dominantSourceKind(among snapshots: [ProviderQuotaSnapshot]) -> ProviderQuotaSourceKind {
+        let order: [ProviderQuotaSourceKind] = [
+            .officialAPI, .localCLI, .localSession, .manualEstimate, .unavailable
+        ]
+        for kind in order where snapshots.contains(where: { $0.source == kind }) {
+            return kind
+        }
+        return .unavailable
     }
 }

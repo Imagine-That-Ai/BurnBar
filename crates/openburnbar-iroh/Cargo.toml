@@ -1,0 +1,57 @@
+[package]
+name = "openburnbar-iroh"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0 OR MIT"
+description = "iroh QUIC transport binding for OpenBurnBar (Hermes + Pi)"
+publish = false
+
+# Reproducible builds inside an Xcode + UniFFI Swift pipeline require both a
+# staticlib (linked into the .xcframework binary) and a cdylib (used by the
+# uniffi-bindgen CLI at host time to introspect the library).
+[lib]
+name = "openburnbar_iroh"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+# Iroh is the QUIC + NAT-traversal stack. Pinning an exact minor for now so
+# the xcframework build is bit-stable; planned upgrade cycles will bump this
+# deliberately, validated against `OpenBurnBarIroh` Swift integration tests.
+iroh = { version = "0.91", default-features = false }
+
+# iroh-blobs: content-addressed BLAKE3 file transfer over the same
+# `Endpoint`. Carries Mercury Phase 1 file transfer (see
+# `plans/2026-05-15-mercury-media-master-plan.md` § B.2). Pinned to ^0.92
+# because that release line targets `iroh ^0.91` — bumping requires an
+# iroh major bump in lockstep, which the xcframework CI workflow enforces.
+iroh-blobs = "0.92"
+
+# Async runtime + utilities used by iroh.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
+thiserror = "1"
+# Matches iroh 0.91's pinned rand. Used by `SecretKey::generate(&mut OsRng)`
+# when Swift asks us for a cold-start identity.
+rand = "0.8"
+
+# UniFFI surface used by `OpenBurnBarIroh` Swift package. The proc-macro
+# attribute path (`#[uniffi::export]`) is the modern, scaffolding-free way to
+# expose Rust APIs — no .udl file required.
+uniffi = { version = "0.28", features = ["cli"] }
+
+# Ed25519 pairing signatures live in OpenBurnBarCore (Swift CryptoKit). The
+# Rust side only needs the iroh secret-key representation, which iroh exposes
+# directly. We deliberately do NOT re-derive Ed25519 here so there is one
+# canonical signer (Swift) and one canonical verifier (Swift) per role.
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.dev]
+panic = "abort"

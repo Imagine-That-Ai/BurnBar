@@ -5,6 +5,7 @@ import OpenBurnBarCore
 
 @MainActor
 protocol HermesRealtimeRelayHosting: AnyObject {
+    var isReady: Bool { get }
     var publishableRelayURLString: String? { get }
 
     @discardableResult
@@ -25,6 +26,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
     private var activeRequestTasks: [String: Task<Void, Never>] = [:]
     private var readyUID: String?
     private var readyConnectionID: String?
+    var cliChatDispatcher: CLIAgentRelayChatDispatcher?
 
     init(
         accountManager: AccountManager = .shared,
@@ -80,7 +82,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                 type: .hostRegister,
                 uid: uid,
                 connectionId: connectionID,
-                payload: HermesRealtimeRelayPayload(capabilities: ["chat_completions", "remote_relay", HermesRealtimeRelayProtocol.capability])
+                payload: HermesRealtimeRelayPayload(capabilities: ["chat_completions", "cli_agent_chat", "remote_relay", HermesRealtimeRelayProtocol.capability])
             )
             try await socket.send(.data(encoder.encode(frame)))
             try await waitForHostReady(uid: uid, connectionID: connectionID, socket: socket)
@@ -140,6 +142,14 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                     ))))
                 case .hostReady, .pong, .hostRegister, .responseChunk, .responseComplete, .responseError:
                     break
+                case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck,
+                     .mediaMirrorRequest, .mediaMirrorAck, .mediaPresenceHeartbeat,
+                     .controlClassify, .controlActionLogEntry, .controlInputIntent,
+                     .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
+                    // Mercury media and computer-control frames ride the iroh
+                    // transport, not WSS. If a peer sends one here it is
+                    // either a misrouted frame or an old-format probe; ignore.
+                    break
                 }
             } catch {
                 if Task.isCancelled || (error as NSError).code == NSURLErrorCancelled {
@@ -191,6 +201,17 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                 )
                 return
             }
+            if operation == .cliAgentChat {
+                try await forwardCLIAgentChat(
+                    payload: encryptedPayload,
+                    uid: uid,
+                    connectionID: connectionID,
+                    requestID: requestID,
+                    keyData: keyData,
+                    socket: socket
+                )
+                return
+            }
 
             let body = try await forwardUnary(operation: operation, payload: encryptedPayload)
             var sequence = 0
@@ -212,6 +233,45 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         } catch {
             await sendError(error.localizedDescription, frame: frame, socket: socket)
         }
+    }
+
+    private func forwardCLIAgentChat(
+        payload: HermesRelayEncryptedRequestPayload,
+        uid: String,
+        connectionID: String,
+        requestID: String,
+        keyData: Data,
+        socket: URLSessionWebSocketTask
+    ) async throws {
+        guard let cliChatDispatcher else {
+            throw HermesRealtimeRelayHostError.cliAgentChatUnavailable
+        }
+        guard let body = payload.body?.data(using: .utf8) else {
+            throw HermesRealtimeRelayHostError.invalidPath
+        }
+        let request = try decoder.decode(CLIAgentRelayChatRequest.self, from: body)
+        let sequencer = CLIAgentRelayChunkSequencer()
+        try await cliChatDispatcher(request) { [encoder] event in
+            let data = try encoder.encode(event)
+            let sequence = await sequencer.next()
+            try await self.sendChunk(
+                data: String(data: data, encoding: .utf8) ?? "{}",
+                sequence: sequence,
+                kind: .sse,
+                uid: uid,
+                connectionID: connectionID,
+                requestID: requestID,
+                keyData: keyData,
+                socket: socket
+            )
+        }
+        try await sendComplete(
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            chunkCount: await sequencer.count(),
+            socket: socket
+        )
     }
 
     private func forwardStreamingChat(
@@ -271,8 +331,6 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
               (200..<300).contains(statusCode) else {
             throw HermesRealtimeRelayHostError.invalidResponse
         }
-        // Models enrichment happens server-side in CloudSyncService;
-        // the realtime relay host client returns the raw body verbatim.
         return String(data: body, encoding: .utf8) ?? ""
     }
 
@@ -281,6 +339,8 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         switch operation {
         case .chatCompletions:
             path = "v1/chat/completions"
+        case .cliAgentChat:
+            throw HermesRealtimeRelayHostError.invalidPath
         case .models:
             path = "v1/models"
         case .sessions:
@@ -295,13 +355,19 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
             }
             path = "api/sessions/\(sessionID)"
         }
-        guard let url = URL(string: path, relativeTo: hermesBaseURLWithTrailingSlash())?.absoluteURL else {
+        let useBurnBarGateway = Self.usesBurnBarGateway(operation)
+        let base = useBurnBarGateway
+            ? burnBarGatewayBaseURLWithTrailingSlash()
+            : hermesBaseURLWithTrailingSlash()
+        guard let url = URL(string: path, relativeTo: base)?.absoluteURL else {
             throw HermesRealtimeRelayHostError.invalidPath
         }
-        var request = URLRequest(url: url, timeoutInterval: operation == .chatCompletions ? 120 : 20)
+        var request = URLRequest(url: url, timeoutInterval: operation == .chatCompletions ? 600 : 20)
         request.httpMethod = operation == .chatCompletions ? "POST" : "GET"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = useBurnBarGateway
+            ? settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            : settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -312,6 +378,15 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
             request.httpBody = body
         }
         return request
+    }
+
+    private static func usesBurnBarGateway(_ operation: HermesRelayOperation) -> Bool {
+        switch operation {
+        case .chatCompletions, .models:
+            return true
+        case .cliAgentChat, .sessions, .profiles, .jobs, .sessionDetail:
+            return false
+        }
     }
 
     private func sendChunk(
@@ -459,6 +534,15 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         if url.absoluteString.hasSuffix("/") { return url }
         return URL(string: "\(url.absoluteString)/") ?? url
     }
+
+    private func burnBarGatewayBaseURLWithTrailingSlash() -> URL {
+        let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
+        let port = max(settingsManager.gatewayPort, 1)
+        let url = URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+        if url.absoluteString.hasSuffix("/") { return url }
+        return URL(string: "\(url.absoluteString)/") ?? url
+    }
 }
 
 private enum HermesRealtimeRelayHostError: LocalizedError {
@@ -466,6 +550,7 @@ private enum HermesRealtimeRelayHostError: LocalizedError {
     case invalidPath
     case invalidResponse
     case registrationTimedOut
+    case cliAgentChatUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -477,6 +562,8 @@ private enum HermesRealtimeRelayHostError: LocalizedError {
             return "Hermes returned an invalid realtime relay response."
         case .registrationTimedOut:
             return "Realtime Hermes relay registration timed out."
+        case .cliAgentChatUnavailable:
+            return "Codex and Claude chat relay is not available on this Mac yet."
         }
     }
 }

@@ -843,6 +843,38 @@ final class SharedArtifactCloudCodecTests: XCTestCase {
 }
 
 final class HermesRelayHostServiceTests: XCTestCase {
+    @MainActor
+    func test_hermesRelayHostFanoutTreatsIrohPrimaryAsReadyWhenWSSFallbackUnavailable() async {
+        let primary = StubRealtimeRelayHost(startResult: true, readyAfterStart: true)
+        let fallback = StubRealtimeRelayHost(startResult: false, readyAfterStart: false)
+        let fanout = HermesRelayHostFanout(primary: primary, fallback: fallback)
+
+        let started = await fanout.start(uid: "uid", connectionID: "relay-mac")
+
+        XCTAssertTrue(started)
+        XCTAssertTrue(fanout.isReady)
+        XCTAssertNil(fanout.publishableRelayURLString)
+        XCTAssertEqual(primary.startCallCount, 1)
+        XCTAssertEqual(fallback.startCallCount, 1)
+    }
+
+    @MainActor
+    func test_hermesRelayHostFanoutStillPublishesFallbackWSSURLWhenAvailable() async {
+        let primary = StubRealtimeRelayHost(startResult: true, readyAfterStart: true)
+        let fallback = StubRealtimeRelayHost(
+            startResult: true,
+            readyAfterStart: true,
+            publishableRelayURLString: "wss://relay.example.test/hermes"
+        )
+        let fanout = HermesRelayHostFanout(primary: primary, fallback: fallback)
+
+        let started = await fanout.start(uid: "uid", connectionID: "relay-mac")
+
+        XCTAssertTrue(started)
+        XCTAssertTrue(fanout.isReady)
+        XCTAssertEqual(fanout.publishableRelayURLString, "wss://relay.example.test/hermes")
+    }
+
     func test_relayDataFragments_preservesLargePayloadWithoutTruncation() {
         let payload = String(repeating: "abcdef", count: 25_000)
 
@@ -905,4 +937,34 @@ final class HermesRelayHostServiceTests: XCTestCase {
     // documentation until the new entry points land. Disabled so the
     // active test suite continues to compile without referencing the
     // removed static methods.
+}
+
+@MainActor
+private final class StubRealtimeRelayHost: HermesRealtimeRelayHosting {
+    private(set) var isReady = false
+    private(set) var startCallCount = 0
+    private let startResult: Bool
+    private let readyAfterStart: Bool
+    let publishableRelayURLString: String?
+
+    init(
+        startResult: Bool,
+        readyAfterStart: Bool,
+        publishableRelayURLString: String? = nil
+    ) {
+        self.startResult = startResult
+        self.readyAfterStart = readyAfterStart
+        self.publishableRelayURLString = publishableRelayURLString
+    }
+
+    @discardableResult
+    func start(uid: String, connectionID: String) async -> Bool {
+        startCallCount += 1
+        isReady = readyAfterStart
+        return startResult
+    }
+
+    func stop() {
+        isReady = false
+    }
 }

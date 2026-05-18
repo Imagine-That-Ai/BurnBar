@@ -64,6 +64,58 @@ enum OpenBurnBarDaemonSocketClient {
         return result.snapshot
     }
 
+    static func upsertProviderCredentialSlot(
+        _ request: BurnBarProviderCredentialSlotUpsertRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderCredentialSlotMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerCredentialSlotUpsert,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func removeProviderCredentialSlot(
+        _ request: BurnBarProviderCredentialSlotRemoveRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderCredentialSlotMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerCredentialSlotRemove,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func upsertProviderModelVariant(
+        _ request: BurnBarProviderModelVariantUpsertRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderModelVariantMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerModelVariantUpsert,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func removeProviderModelVariant(
+        _ request: BurnBarProviderModelVariantRemoveRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderModelVariantMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerModelVariantRemove,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
     static func recentUsage(
         at socketURL: URL,
         limit: Int = 20
@@ -169,6 +221,84 @@ enum OpenBurnBarDaemonSocketClient {
             ),
             socketURL: socketURL
         ) as BurnBarBrowserActionResponse
+    }
+
+    static func startComputerUseSession(
+        _ request: ComputerUseSessionStartRequest,
+        at socketURL: URL
+    ) throws -> ComputerUseSessionStartResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUseSessionStart,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as ComputerUseSessionStartResponse
+    }
+
+    static func invokeComputerUse(
+        _ request: ComputerUseInvokeRequest,
+        at socketURL: URL
+    ) throws -> ComputerUseInvokeResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUseInvoke,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as ComputerUseInvokeResponse
+    }
+
+    static func pendingComputerUseApprovals(
+        _ request: ComputerUseApprovalPendingRequest,
+        at socketURL: URL
+    ) throws -> ComputerUseApprovalPendingResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUseApprovalPending,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as ComputerUseApprovalPendingResponse
+    }
+
+    static func respondToComputerUseApproval(
+        _ request: ComputerUseApprovalRespondRequest,
+        at socketURL: URL
+    ) throws -> ComputerUseApprovalRespondResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUseApprovalRespond,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as ComputerUseApprovalRespondResponse
+    }
+
+    static func panicHaltComputerUse(
+        _ request: ComputerUsePanicHaltRequest,
+        at socketURL: URL
+    ) throws -> ComputerUsePanicHaltResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUsePanicHalt,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as ComputerUsePanicHaltResponse
+    }
+
+    static func exportComputerUseAudit(
+        _ request: ComputerUseAuditExportRequest,
+        at socketURL: URL
+    ) throws -> ComputerUseAuditExportResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUseAuditExport,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as ComputerUseAuditExportResponse
     }
 
     static func updateNotificationConfig(

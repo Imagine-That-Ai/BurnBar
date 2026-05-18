@@ -10,6 +10,14 @@ import Sentry
 @main
 struct OpenBurnBarDaemonExecutable {
     static func main() async throws {
+        // Disable the shared URLCache disk store. URLSession.shared uses a
+        // persistent disk cache at ~/Library/Caches/OpenBurnBarDaemon/Cache.db
+        // that is prone to SQLite WAL corruption when the daemon is restarted
+        // by launchd while the cache is still active.  A nil URLCache forces
+        // all URLSession.shared requests to use an in-memory or no-cache policy,
+        // preventing the disk I/O error loop that blocks the socket RPC thread.
+        URLCache.shared = URLCache(memoryCapacity: 4 * 1024 * 1024, diskCapacity: 0)
+
         #if canImport(Sentry)
         configureSentryIfAvailable()
         #endif

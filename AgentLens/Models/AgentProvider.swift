@@ -65,7 +65,7 @@ extension AgentProvider {
         // doesn't crash when an OpenAI account row is iterated; the parser
         // never matches files under it because the OpenAI adapter pulls
         // remotely instead of parsing local logs.
-        case .openAI: return "~/.codex"
+        case .openAI, .deepSeek: return "~/.codex"
         case .codex: return "~/.codex"
         case .openCode: return "~/.local/share/opencode"
         case .zai: return "~/.factory/sessions"
@@ -100,6 +100,7 @@ extension AgentProvider {
         // not local log files. Pin a non-matching pattern so the file
         // watcher never spuriously reads files for this provider.
         case .openAI: return "openai-no-local-logs"
+        case .deepSeek: return "deepseek-no-local-logs"
         case .codex: return "state_5.sqlite"
         case .openCode: return "opencode.db"
         case .zai: return "*.jsonl"
@@ -125,7 +126,7 @@ extension AgentProvider {
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
-        case .openAI:
+        case .openAI, .deepSeek:
             return .supported
         case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent:
             return .partial
@@ -141,7 +142,7 @@ extension AgentProvider {
         case .factory, .claudeCode, .codex, .openCode, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw, .piAgent:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
-        case .openAI:
+        case .openAI, .deepSeek:
             return .exact
         case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama:
             return .estimated

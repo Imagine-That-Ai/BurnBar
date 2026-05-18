@@ -2,6 +2,20 @@ import Foundation
 import Observation
 import OpenBurnBarCore
 
+enum OpenClawServiceError: LocalizedError {
+    case selectedModelUnavailable(String)
+    case selectedModelCatalogUnavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .selectedModelUnavailable(let modelID):
+            return "Selected OpenClaw model '\(modelID)' is not available on this Mac OpenClaw harness. Pick another model or refresh/restart the Mac OpenClaw gateway."
+        case .selectedModelCatalogUnavailable(let modelID):
+            return "Selected OpenClaw model '\(modelID)' has not been verified against this Mac OpenClaw harness catalog yet. Refresh the Mac OpenClaw gateway before sending, so the selected model is not silently rerouted."
+        }
+    }
+}
+
 // MARK: - OpenClaw Service
 //
 // Minimal mobile-side discovery client for the OpenClaw harness running on
@@ -52,12 +66,18 @@ final class OpenClawService {
     private let bearerDefaultsKey = "openClaw.bearerToken"
     private let selectedModelDefaultsKey = "openClaw.selectedModelID"
     private let favoriteModelsDefaultsKey = "openClaw.favoriteModelIDs"
+    private var selectedModelWasExplicit = false
 
     init(urlSession: URLSession = .shared,
          defaults: UserDefaults = .standard) {
         self.urlSession = urlSession
         self.defaults = defaults
-        self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
+        self.selectedModelWasExplicit = self.selectedModelID?.nonEmpty != nil
         self.favoriteModelIDs = Self.decodeStringArray(
             defaults.string(forKey: favoriteModelsDefaultsKey)
         )
@@ -80,8 +100,36 @@ final class OpenClawService {
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
-        selectedModelID = option.modelID
-        defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+        let raw = option.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requested = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(raw)
+        let resolved = !modelOptions.isEmpty
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(raw, in: modelOptions)
+            : requested
+        let modelID = resolved ?? requested
+        selectedModelID = modelID
+        selectedModelWasExplicit = true
+        defaults.set(modelID, forKey: selectedModelDefaultsKey)
+    }
+
+    func clearSelectedModel() {
+        selectedModelID = nil
+        selectedModelWasExplicit = false
+        defaults.removeObject(forKey: selectedModelDefaultsKey)
+    }
+
+    func validatedModelIDForMissionDispatch() throws -> String? {
+        guard let selectedModelID = selectedModelID?.nonEmpty else { return nil }
+        if selectedModelWasExplicit {
+            guard !modelOptions.isEmpty else {
+                throw OpenClawServiceError.selectedModelCatalogUnavailable(selectedModelID)
+            }
+            guard let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) else {
+                throw OpenClawServiceError.selectedModelUnavailable(selectedModelID)
+            }
+            persistResolvedSelectedModelID(resolved)
+            return resolved
+        }
+        return canonicalizedSelectedModelID(selectedModelID)
     }
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
@@ -100,7 +148,10 @@ final class OpenClawService {
 
     var selectedModelOption: HermesRuntimeModelOption? {
         guard let selectedModelID else { return nil }
-        return modelOptions.first { $0.modelID == selectedModelID }
+        guard let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) else {
+            return nil
+        }
+        return modelOptions.first { $0.modelID == resolved }
     }
 
     // MARK: - HTTP
@@ -140,11 +191,50 @@ final class OpenClawService {
         do {
             let (data, _) = try await urlSession.data(for: request)
             modelOptions = Self.parseModels(data: data)
-            if selectedModelID == nil {
-                selectedModelID = modelOptions.first?.modelID
+            if let selectedModelID,
+               let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+                persistResolvedSelectedModelID(resolved)
+                runtimeErrorText = nil
+            } else if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+                if selectedModelWasExplicit {
+                    runtimeErrorText = "Selected OpenClaw model '\(selectedModelID)' is not advertised by this Mac OpenClaw harness. Pick a listed model or refresh the Mac provider catalog."
+                } else {
+                    self.selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
+                        ?? modelOptions.first { $0.isRouteEligible }?.modelID
+                        ?? modelOptions.first?.modelID
+                    selectedModelWasExplicit = false
+                }
+            } else if selectedModelID == nil {
+                selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
+                    ?? modelOptions.first { $0.isRouteEligible }?.modelID
+                    ?? modelOptions.first?.modelID
+                selectedModelWasExplicit = false
             }
         } catch {
             runtimeErrorText = "Failed to list OpenClaw models: \(error.localizedDescription)"
+        }
+    }
+
+    private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
+        guard let stored = stored?.nonEmpty else { return nil }
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(stored)
+        if canonical != stored {
+            defaults.set(canonical, forKey: key)
+        }
+        return canonical
+    }
+
+    private func canonicalizedSelectedModelID(_ modelID: String) -> String {
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(modelID)
+        persistResolvedSelectedModelID(canonical)
+        return canonical
+    }
+
+    private func persistResolvedSelectedModelID(_ modelID: String) {
+        guard selectedModelID != modelID else { return }
+        selectedModelID = modelID
+        if selectedModelWasExplicit {
+            defaults.set(modelID, forKey: selectedModelDefaultsKey)
         }
     }
 
@@ -157,13 +247,25 @@ final class OpenClawService {
         let raw = (object["data"] as? [[String: Any]]) ?? []
         return raw.compactMap { entry in
             guard let id = entry["id"] as? String, !id.isEmpty else { return nil }
-            let provider = (entry["owned_by"] as? String) ?? "openclaw"
+            let provider = (entry["provider_id"] as? String)
+                ?? (entry["owned_by"] as? String)
+                ?? "openclaw"
+            let providerName = (entry["provider_name"] as? String)
+                ?? provider.capitalized
             let displayName = (entry["display_name"] as? String) ?? id
             return HermesRuntimeModelOption(
                 providerID: provider,
-                providerName: provider.capitalized,
+                providerName: providerName,
                 modelID: id,
-                displayName: displayName
+                displayName: displayName,
+                accountID: entry["account_id"] as? String,
+                accountLabel: entry["account_label"] as? String,
+                sourceID: entry["source_id"] as? String,
+                sourceKind: entry["source_kind"] as? String,
+                capabilities: entry["capabilities"] as? [String] ?? [],
+                quotaState: entry["quota_state"] as? String,
+                routeEligible: entry["route_eligible"] as? Bool,
+                lastError: entry["last_error"] as? String
             )
         }
     }

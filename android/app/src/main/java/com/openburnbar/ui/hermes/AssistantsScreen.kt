@@ -39,6 +39,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,14 +65,29 @@ import kotlinx.coroutines.launch
 // iOS so the flow is usable before native Android runtimes ship.
 
 @Composable
-fun AssistantsScreen() {
+fun AssistantsScreen(
+    initialRuntime: AssistantRuntimeID? = null
+) {
     val context = LocalContext.current
     val tilePrefs = remember { loadChatTilePreferences(context).sanitized() }
     val visibleTiles = tilePrefs.orderedVisibleTiles().ifEmpty { listOf(AssistantRuntimeID.HERMES) }
 
-    var rawRuntime by rememberSaveable { mutableStateOf(visibleTiles.first().token) }
+    val seedToken = initialRuntime?.takeIf { visibleTiles.contains(it) }?.token
+        ?: visibleTiles.first().token
+    var rawRuntime by rememberSaveable { mutableStateOf(seedToken) }
     val parsed = AssistantRuntimeID.fromToken(rawRuntime)
     val runtime = if (visibleTiles.contains(parsed)) parsed else visibleTiles.first()
+
+    // When the route arrives with a different `initialRuntime` (e.g. user
+    // taps a Pi pinned agent after the screen already saved Hermes), honor
+    // the new request. Read once per identity so manual pill changes
+    // survive recompositions.
+    LaunchedEffect(initialRuntime) {
+        val target = initialRuntime?.takeIf { visibleTiles.contains(it) }
+        if (target != null && target.token != rawRuntime) {
+            rawRuntime = target.token
+        }
+    }
     val historyStore = remember { AssistantChatHistoryStore.shared(context.applicationContext) }
     LaunchedEffect(historyStore) { historyStore.bootstrap() }
     val piService = remember { PiService().apply { bindHistoryStore(historyStore) } }
@@ -108,7 +126,10 @@ fun AssistantsScreen() {
             AssistantRuntimeID.PI -> PiAssistantView(piService = piService)
             AssistantRuntimeID.CODEX,
             AssistantRuntimeID.CLAUDE,
-            AssistantRuntimeID.OPEN_CLAW -> AssistantTileBridgeView(runtime = runtime)
+            AssistantRuntimeID.OPEN_CLAW -> CliAgentChatView(
+                runtime = runtime,
+                historyStore = historyStore,
+            )
         }
     }
 }
@@ -132,20 +153,28 @@ fun AssistantRuntimePill(
             visible.forEach { runtime ->
                 val isActive = selection == runtime
                 val activeBrush = gradientForRuntime(runtime)
+                // Logo-only pill — names were getting truncated at this
+                // width ("He rm", "Co de"), which looked worse than no
+                // name at all. The provider logo is the recognizable
+                // affordance; accessibility label carries the full name
+                // for TalkBack.
                 Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .weight(1f)
                         .height(36.dp)
                         .clip(RoundedCornerShape(percent = 50))
                         .background(if (isActive) activeBrush else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
-                        .clickable { onSelect(runtime) },
-                    contentAlignment = Alignment.Center
+                        .clickable { onSelect(runtime) }
+                        .semantics {
+                            contentDescription = runtime.displayName
+                            if (isActive) selected = true
+                        },
                 ) {
-                    Text(
-                        text = "${runtime.glyph}  ${runtime.displayName}",
-                        color = if (isActive) foregroundForRuntime(runtime) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
+                    com.openburnbar.ui.components.ProviderLogo(
+                        runtime = runtime,
+                        size = 22.dp,
+                        circular = true,
                     )
                 }
             }

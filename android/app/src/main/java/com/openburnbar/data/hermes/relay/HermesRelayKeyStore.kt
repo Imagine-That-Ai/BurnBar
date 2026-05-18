@@ -3,9 +3,11 @@ package com.openburnbar.data.hermes.relay
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
+import com.openburnbar.irohrelay.IrohSecretKeyMaterial
 import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.PrivateKey
+import java.security.SecureRandom
 import java.security.spec.PKCS8EncodedKeySpec
 
 /**
@@ -39,6 +41,37 @@ class HermesRelayKeyStore(context: Context) {
         return HermesRelayCrypto.encodeUncompressedPublicKey(publicKey)
     }
 
+    /**
+     * 32-byte iroh secret used to bootstrap the local iroh endpoint.
+     * Generated lazily on first use and persisted alongside the relay
+     * ECDH keypair. The iroh secret is INDEPENDENT from the relay
+     * ECDH keypair — different algorithm (Curve25519 vs P-256), different
+     * use (NodeId vs E2E sealing), so we never reuse bytes.
+     */
+    fun irohSecretKeyMaterial(): IrohSecretKeyMaterial {
+        val stored = prefs.getString(KEY_IROH_SECRET, null)
+        val raw = if (stored != null) {
+            try {
+                Base64.decode(stored, Base64.NO_WRAP).also {
+                    if (it.size != 32) throw IllegalStateException("iroh secret length != 32")
+                }
+            } catch (_: Throwable) {
+                generateIrohSecretAndStore()
+            }
+        } else {
+            generateIrohSecretAndStore()
+        }
+        return IrohSecretKeyMaterial(raw)
+    }
+
+    private fun generateIrohSecretAndStore(): ByteArray {
+        val bytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        prefs.edit()
+            .putString(KEY_IROH_SECRET, Base64.encodeToString(bytes, Base64.NO_WRAP))
+            .apply()
+        return bytes
+    }
+
     private fun generateAndStore(): KeyPair {
         val kp = HermesRelayCrypto.generateEphemeralKeyPair()
         val privateBytes = kp.private.encoded
@@ -64,7 +97,9 @@ class HermesRelayKeyStore(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "hermes_relay_keys"
-        private const val KEY_PRIVATE_PKCS8 = "client_private_pkcs8_b64"
-        private const val KEY_PUBLIC_X963 = "client_public_x963_b64"
+        private const val KEY_PRIVATE_PKCS8 = "************************"
+        private const val KEY_PUBLIC_X963 = "**********************"
+        /** Persisted as a base64-encoded 32-byte secret; ed25519 surface form. */
+        private const val KEY_IROH_SECRET = "iroh_secret_v1"
     }
 }

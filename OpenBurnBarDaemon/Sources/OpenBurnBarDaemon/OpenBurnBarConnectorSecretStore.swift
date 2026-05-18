@@ -40,17 +40,15 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
         let context = LAContext()
         context.interactionNotAllowed = true
         let account = "connector.\(connector.rawValue).credential"
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationContext as String: context,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
-        if #unavailable(macOS 11.0) {
-            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
-        }
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {
             SecItemCopyMatching(query as CFDictionary, &item)
@@ -82,12 +80,16 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
                 kSecValueData as String: data,
                 kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             ]
-            let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            let updateStatus = withKeychainUserInteractionDisabled {
+                SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            }
             if updateStatus == errSecItemNotFound {
                 var createQuery = query
                 createQuery[kSecValueData as String] = data
                 createQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-                let addStatus = SecItemAdd(createQuery as CFDictionary, nil)
+                let addStatus = withKeychainUserInteractionDisabled {
+                    SecItemAdd(createQuery as CFDictionary, nil)
+                }
                 guard addStatus == errSecSuccess else {
                     throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus))
                 }
@@ -95,7 +97,9 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(updateStatus))
             }
         } else {
-            let deleteStatus = SecItemDelete(query as CFDictionary)
+            let deleteStatus = withKeychainUserInteractionDisabled {
+                SecItemDelete(query as CFDictionary)
+            }
             guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }

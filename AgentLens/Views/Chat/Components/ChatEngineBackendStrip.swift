@@ -19,26 +19,27 @@ struct ChatEngineBackendStrip: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             } else if enabledChatBackendsForHeader.count == 1, let only = enabledChatBackendsForHeader.first {
-                Text(only.shortLabel)
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
+                backendIcon(for: only, size: 13)
+                    .frame(width: 18, height: 18)
+                    .accessibilityLabel(only.displayName)
+                    .popoverTooltip(only.displayName)
+                    .padding(.horizontal, 6)
+                .padding(.vertical, 3)
             } else {
                 HStack(spacing: 2) {
                     ForEach(enabledChatBackendsForHeader) { backend in
                         Button {
                             handleBackendTap(backend)
                         } label: {
-                            HStack(spacing: 3) {
+                            HStack(spacing: 2) {
                                 if shouldShowPlayAffordance(for: backend) {
                                     Image(systemName: "play.fill")
                                         .font(.system(size: 7, weight: .bold))
                                 }
-                                Text("\(backend.glyph) \(backend.shortLabel)")
+                                backendIcon(for: backend, size: 12)
                             }
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
-                            .padding(.horizontal, 6)
+                            .frame(width: shouldShowPlayAffordance(for: backend) ? 24 : 18, height: 18)
+                            .padding(.horizontal, 3)
                             .padding(.vertical, 3)
                             .background {
                                 if controller.chatBackend == backend {
@@ -53,6 +54,8 @@ struct ChatEngineBackendStrip: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(backend.displayName)
+                        .popoverTooltip(backend.displayName)
                         .disabled(isBackendUnavailable(backend))
                         .opacity(isBackendUnavailable(backend) ? 0.4 : 1)
                     }
@@ -64,6 +67,16 @@ struct ChatEngineBackendStrip: View {
         }
         .animation(DesignSystem.Animation.snappy, value: controller.chatBackend)
         .animation(DesignSystem.Animation.snappy, value: enabledChatBackendsForHeader)
+    }
+
+    @ViewBuilder
+    private func backendIcon(for backend: ChatBackendID, size: CGFloat) -> some View {
+        if let provider = backend.agentProvider {
+            ProviderLogoView(provider: provider, size: size, useFallbackColor: false)
+        } else {
+            Text(backend.glyph)
+                .font(.system(size: size, weight: .semibold, design: .rounded))
+        }
     }
 
     private func shouldShowPlayAffordance(for backend: ChatBackendID) -> Bool {
@@ -86,15 +99,13 @@ struct ChatEngineBackendStrip: View {
             return
         }
         if backend == .hermes && controller.hermesAvailable == false {
+            controller.setChatBackend(.hermes)
             Task {
                 await hermesRuntimeLauncher.openHermesAndGateway(
                     baseURL: resolvedHermesGatewayBaseURL,
                     bearerToken: resolvedHermesBearerToken
                 )
                 await controller.probeHermesAvailability()
-                if controller.hermesAvailable {
-                    controller.setChatBackend(.hermes)
-                }
             }
             return
         }

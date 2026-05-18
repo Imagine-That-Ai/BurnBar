@@ -218,7 +218,7 @@ struct PulseLiveCostCurve: View {
         switch scope {
         case .minute: return "AWAITING THIS MINUTE'S BURN"
         case .hour:   return "AWAITING THIS HOUR'S BURN"
-        case .day:    return "AWAITING TODAY'S FIRST BURN"
+        case .day:    return "NO BURN IN LAST 24H"
         case .week:   return "NO DATA THIS WEEK YET"
         case .month:  return "NO DATA THIS MONTH YET"
         }
@@ -269,12 +269,7 @@ struct PulseLiveCostCurve: View {
         case .hour:
             return now.addingTimeInterval(-3_600)...now
         case .day:
-            let start = Calendar.current.startOfDay(for: now)
-            // Day always uses startOfDay → now (live), with the chart
-            // extending to the end-of-day so the curve "reaches" toward
-            // midnight. This makes the trailing edge feel anchored.
-            let end = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? now.addingTimeInterval(86_400)
-            return start...end
+            return now.addingTimeInterval(-86_400)...now
         case .week:
             let weekAgo = Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: now)) ?? now
             return weekAgo...now
@@ -320,8 +315,8 @@ struct PulseLiveCostCurve: View {
 
         // Filter + sort relevant usages once.
         let relevant = usages
-            .filter { domain.contains($0.startTime) }
-            .sorted { $0.startTime < $1.startTime }
+            .filter { domain.contains(eventDate(for: $0)) }
+            .sorted { eventDate(for: $0) < eventDate(for: $1) }
 
         var samples: [Sample] = []
         samples.reserveCapacity(bucketCount + 1)
@@ -334,7 +329,7 @@ struct PulseLiveCostCurve: View {
 
         for bucketIdx in 1...bucketCount {
             let bucketEnd = lower.addingTimeInterval(Double(bucketIdx) * stride)
-            while cursorIdx < relevant.count, relevant[cursorIdx].startTime <= bucketEnd {
+            while cursorIdx < relevant.count, eventDate(for: relevant[cursorIdx]) <= bucketEnd {
                 cumulative += metricValue(for: relevant[cursorIdx])
                 cursorIdx += 1
             }
@@ -366,6 +361,10 @@ struct PulseLiveCostCurve: View {
         case .currency: return max(0, usage.costUSD)
         case .tokens:   return Double(max(0, usage.totalTokens))
         }
+    }
+
+    private func eventDate(for usage: TokenUsage) -> Date {
+        max(usage.startTime, usage.endTime)
     }
 
     // MARK: - Animation

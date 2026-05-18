@@ -1,0 +1,79 @@
+name: OpenBurnBarIroh xcframework
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/openburnbar-iroh/**"
+      - "scripts/build-iroh-xcframework.sh"
+      - ".github/workflows/iroh-xcframework.yml"
+      - "OpenBurnBarCore/Package.swift"
+  pull_request:
+    paths:
+      - "crates/openburnbar-iroh/**"
+      - "scripts/build-iroh-xcframework.sh"
+      - ".github/workflows/iroh-xcframework.yml"
+      - "OpenBurnBarCore/Package.swift"
+  workflow_dispatch:
+
+concurrency:
+  group: iroh-xcframework-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    env:
+      # The iroh services API key is required for production relay
+      # provisioning (scripts/deploy-iroh-relay.sh). The xcframework build
+      # does NOT need it — we declare it here so CI consumers downstream
+      # (release.yml) can read it without re-plumbing the secret.
+      IROH_SERVICES_API_SECRET: ${{ secrets.IROH_SERVICES_API_SECRET }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/openburnbar-iroh/target
+          key: iroh-xcframework-${{ runner.os }}-${{ hashFiles('crates/openburnbar-iroh/Cargo.toml') }}
+          restore-keys: |
+            iroh-xcframework-${{ runner.os }}-
+
+      - name: Host-side cargo check (sanity)
+        run: cargo check -p openburnbar-iroh
+        working-directory: crates/openburnbar-iroh
+
+      - name: Build xcframework
+        run: ./scripts/build-iroh-xcframework.sh
+
+      - name: Inspect xcframework
+        run: |
+          set -euo pipefail
+          ls -la Vendor/OpenBurnBarIroh.xcframework
+          find Vendor/OpenBurnBarIroh.xcframework -maxdepth 3 -type f | head -50
+          file Vendor/OpenBurnBarIroh.xcframework/*/libopenburnbar_iroh.a | head -5 || true
+
+      - name: Upload xcframework artifact
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4
+        with:
+          name: OpenBurnBarIroh.xcframework
+          path: Vendor/OpenBurnBarIroh.xcframework
+          if-no-files-found: error
+          retention-days: 14

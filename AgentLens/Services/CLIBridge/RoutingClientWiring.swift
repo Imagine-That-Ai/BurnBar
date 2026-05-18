@@ -5,22 +5,25 @@ import Foundation
 /// Identifies which routed-client target a wiring action applies to.
 ///
 /// The router runs locally on the user's Mac at `127.0.0.1:<gatewayPort>`.
-/// Each target speaks a single wire format, so it can only consume one
-/// pool's accounts:
+/// Each target speaks one local gateway endpoint shape. The gateway may
+/// satisfy that endpoint with a native upstream or with an explicit
+/// compatibility bridge, but the advertised model row must say which local
+/// endpoints it actually serves.
 ///
 ///   - `.claudeCode` — Anthropic Messages shape (`/v1/messages`). Reads
 ///     `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` and lives at
 ///     `~/.claude/settings.json` (`env` block).
-///   - `.codex` — OpenAI Chat Completions shape (`/v1/chat/completions`).
-///     Reads `OPENAI_BASE_URL` + `OPENAI_API_KEY` and lives at
-///     `~/.codex/config.toml` (sentinel-fenced `[model_providers.…]` block).
+///   - `.codex` — OpenAI Responses shape (`/v1/responses`). Reads the
+///     configured provider `env_key` and lives at `~/.codex/config.toml`
+///     (sentinel-fenced `[model_providers.…]` block).
 ///   - `.opencode` — OpenAI-compatible provider entry in
 ///     `~/.config/opencode/opencode.json`.
 ///   - `.forge` — OpenAI Chat Completions shape (`/v1/chat/completions`).
-///     Reads a Forge `[[providers]]` entry at `~/forge/.forge.toml`, matching
-///     the VibeProxy provider shape Forge already supports locally.
-///   - `.droid` — Factory Droid custom-model override in
-///     `~/.factory/settings.local.json` (`customModels` entries).
+///     Reads an OpenBurnBar-owned Forge `[[providers]]` entry at
+///     `~/forge/.forge.toml`.
+///   - `.droid` — Factory Droid custom-model overrides in
+///     `~/.factory/settings.local.json`, `~/.factory/settings.json`, and
+///     `~/.factory/config.json` (`customModels` / `custom_models` entries).
 enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     case claudeCode
     case codex
@@ -40,11 +43,11 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Which routing pool this client feeds.
+    /// Which local endpoint family this client feeds.
     var poolDisplayName: String {
         switch self {
-        case .claudeCode: return "Anthropic-family"
-        case .codex, .opencode, .forge, .droid: return "OpenAI-family"
+        case .claudeCode: return "Anthropic Messages"
+        case .codex, .opencode, .forge, .droid: return "OpenAI-style gateway"
         }
     }
 }
@@ -73,8 +76,8 @@ struct RoutingClientGateway: Sendable {
     }
 
     /// Local loopback gateways may intentionally run without auth. CLI tools
-    /// still expect an API-key string, so we give them the same harmless
-    /// placeholder VibeProxy uses for local custom model wiring.
+    /// still expect an API-key string, so we give them a harmless
+    /// OpenBurnBar-local placeholder.
     var effectiveClientToken: String {
         authToken.isEmpty ? "openburnbar-local" : authToken
     }
@@ -96,6 +99,76 @@ struct RoutingClientGateway: Sendable {
             ? "127.0.0.1"
             : host
         return "http://\(normalizedHost):\(port)"
+    }
+}
+
+struct RoutingClientAdvertisedModel: Sendable, Equatable {
+    let id: String
+    let displayName: String
+    let providerID: String
+    let providerName: String
+    let formatFamily: String
+    let servedEndpoints: [String]
+    let capabilities: [String]
+    let routeEligible: Bool
+
+    init(
+        id: String,
+        displayName: String,
+        providerID: String,
+        providerName: String,
+        formatFamily: String = "openai_compat",
+        servedEndpoints: [String] = ["/v1/chat/completions", "/v1/responses"],
+        capabilities: [String] = [],
+        routeEligible: Bool
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.providerID = providerID
+        self.providerName = providerName
+        self.formatFamily = formatFamily
+        self.servedEndpoints = servedEndpoints
+        self.capabilities = capabilities
+        self.routeEligible = routeEligible
+    }
+
+    var isGatewayServedModelCandidate: Bool {
+        guard routeEligible else { return false }
+        return servedEndpoints.isEmpty
+            || servedEndpoints.contains("/v1/chat/completions")
+            || servedEndpoints.contains("/v1/responses")
+    }
+
+    /// Factory Droid has distinct BYOK provider adapters. BurnBar's gateway
+    /// supports both `/v1/responses` and `/v1/chat/completions`, so models
+    /// served by OpenAI-owned upstream accounts should use Factory's `openai`
+    /// adapter while the rest of BurnBar's gateway-served catalog stays on
+    /// the generic chat-completions adapter. Provider identity, not the model
+    /// string alone, is the safe discriminator: non-OpenAI providers can
+    /// legitimately serve models with `gpt` in the name.
+    var droidProviderType: String {
+        let providerText = "\(providerID) \(providerName)".lowercased()
+        let modelText = id.lowercased()
+        if formatFamily.lowercased() == "anthropic"
+            || capabilities.map({ $0.lowercased() }).contains("anthropic")
+            || servedEndpoints.contains("/v1/messages")
+            || providerText.contains("anthropic")
+            || providerText.contains("claude")
+            || modelText.contains("claude")
+            || modelText.contains("anthropic") {
+            return "anthropic"
+        }
+        if providerText.contains("openai") || providerText.contains("azure openai") {
+            return "openai"
+        }
+        return "generic-chat-completion-api"
+    }
+
+    /// Factory Droid's BYOK adapters expect different base URL shapes:
+    /// Anthropic points at the host root and appends `/v1/messages`, while
+    /// OpenAI and generic chat-completions adapters point at `/v1`.
+    func droidBaseURL(gateway: RoutingClientGateway) -> String {
+        droidProviderType == "anthropic" ? gateway.baseURL : "\(gateway.baseURL)/v1"
     }
 }
 
@@ -123,9 +196,9 @@ enum RoutingClientWiringError: LocalizedError, Sendable, Equatable {
         case .probeFailed(let detail):
             return "Probe failed: \(detail)"
         case .alreadyEnabled:
-            return "This client is already wired through the Hydrant."
+            return "This client is already wired through the OpenBurnBar gateway."
         case .notEnabled:
-            return "This client is not currently wired through the Hydrant."
+            return "This client is not currently wired through the OpenBurnBar gateway."
         }
     }
 }
@@ -148,6 +221,30 @@ enum RoutingClientWiringProbe: Sendable, Equatable {
     case failed(status: Int, message: String)
 }
 
+enum RoutingClientModelSyncStatus: Sendable, Equatable {
+    case notWired
+    case current(modelIDs: [String])
+    case stale(installedModelIDs: [String], expectedModelIDs: [String])
+
+    var isCurrent: Bool {
+        if case .current = self { return true }
+        return false
+    }
+
+    var userMessage: String {
+        switch self {
+        case .notWired:
+            return "Droid is not wired through OpenBurnBar yet."
+        case .current:
+            return "Droid models match BurnBar's live catalog."
+        case .stale(let installedModelIDs, let expectedModelIDs):
+            let installed = installedModelIDs.isEmpty ? "none" : installedModelIDs.joined(separator: ", ")
+            let expected = expectedModelIDs.isEmpty ? "none" : expectedModelIDs.joined(separator: ", ")
+            return "Droid's BurnBar model list is stale. Installed: \(installed). Live now: \(expected). Press Sync models to rewrite Droid from /v1/models."
+        }
+    }
+}
+
 // MARK: - Service
 
 /// Reusable wiring service for routed CLI clients. Surfaces (Settings cards,
@@ -168,8 +265,6 @@ struct RoutingClientWiring {
 
     private static let sentinelStart = "# openburnbar:routing — start"
     private static let sentinelEnd = "# openburnbar:routing — end"
-    private static let droidDefaultModels = ["gpt-5.5", "gpt-5", "gpt-5.4-nano"]
-
     /// Probe model used by `probe(target: .claudeCode, …)`. Mirrors
     /// `AnthropicCredentialProbe.defaultProbeModel` — keep in lockstep.
     private static let anthropicProbeModel = "claude-haiku-4-5"
@@ -193,20 +288,21 @@ struct RoutingClientWiring {
     @discardableResult
     func wire(
         target: RoutingClientWiringTarget,
-        gateway: RoutingClientGateway
+        gateway: RoutingClientGateway,
+        advertisedModels: [RoutingClientAdvertisedModel] = []
     ) throws -> RoutingClientWiringChange {
         try assertGatewayConfigured(gateway)
         switch target {
         case .claudeCode:
             return try wireClaudeCode(gateway: gateway)
         case .codex:
-            return try wireCodex(gateway: gateway)
+            return try wireCodex(gateway: gateway, advertisedModels: advertisedModels)
         case .opencode:
-            return try wireOpenCode(gateway: gateway)
+            return try wireOpenCode(gateway: gateway, advertisedModels: advertisedModels)
         case .forge:
             return try wireForge(gateway: gateway)
         case .droid:
-            return try wireDroid(gateway: gateway)
+            return try wireDroid(gateway: gateway, advertisedModels: advertisedModels)
         }
     }
 
@@ -248,21 +344,88 @@ struct RoutingClientWiring {
     /// in user defaults.
     func isWired(target: RoutingClientWiringTarget) -> Bool {
         let url = configURL(for: target)
-        guard fileManager.fileExists(atPath: url.path) else { return false }
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
         switch target {
         case .claudeCode:
-            // Claude Code stores the env block as a JSON object, so we look
-            // for our well-known marker key.
-            return text.contains("\"OPENBURNBAR_WIRED\"") || text.contains(Self.sentinelStart)
-        case .opencode:
-            return text.contains("\"openburnbar\"") && text.contains("OpenBurnBar Gateway")
-        case .droid:
-            return text.contains("\"customModels\"")
-                && (text.localizedCaseInsensitiveContains("openburnbar:")
-                    || text.localizedCaseInsensitiveContains("OpenBurnBar "))
-        case .codex, .forge:
+            guard fileManager.fileExists(atPath: url.path),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+            if let root = try? readJSONObject(at: url),
+               let env = root["env"] as? [String: Any] {
+                if env["OPENBURNBAR_WIRED"] != nil { return true }
+                if let baseURL = env["ANTHROPIC_BASE_URL"] as? String,
+                   isLocalGatewayURL(baseURL) {
+                    return true
+                }
+            }
             return text.contains(Self.sentinelStart)
+        case .opencode:
+            guard fileManager.fileExists(atPath: url.path),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+            if let root = try? readJSONObject(at: url),
+               let providers = root["provider"] as? [String: Any],
+               let provider = providers["openburnbar"] as? [String: Any] {
+                if let options = provider["options"] as? [String: Any],
+                   let baseURL = options["baseURL"] as? String,
+                   isLocalGatewayURL(baseURL) {
+                    return true
+                }
+                if let models = provider["models"] as? [String: Any], !models.isEmpty {
+                    return true
+                }
+            }
+            return text.contains("\"openburnbar\"") && text.localizedCaseInsensitiveContains("OpenBurnBar Gateway")
+        case .droid:
+            return droidConfigURLs().contains { url in
+                guard fileManager.fileExists(atPath: url.path),
+                      let text = try? String(contentsOf: url, encoding: .utf8) else {
+                    return false
+                }
+                if let root = try? readJSONObject(at: url) {
+                    let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
+                    let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
+                    if (settingsModels + configModels).contains(where: { isOpenBurnBarDroidModel($0) }) {
+                        return true
+                    }
+                }
+                return (text.contains("\"customModels\"") || text.contains("\"custom_models\""))
+                    && (text.localizedCaseInsensitiveContains("custom:OpenBurnBar")
+                        || text.localizedCaseInsensitiveContains("openburnbar:")
+                        || text.localizedCaseInsensitiveContains("OpenBurnBar "))
+            }
+        case .codex:
+            guard fileManager.fileExists(atPath: url.path),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+            return text.contains(Self.sentinelStart)
+                || (text.contains("[model_providers.openburnbar]") && text.contains("base_url") && text.contains(":8317"))
+                || text.range(of: #"base_url\s*=\s*"https?://(127\.0\.0\.1|localhost):8317(/v1)?/?.*""#, options: .regularExpression) != nil
+        case .forge:
+            guard fileManager.fileExists(atPath: url.path),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+            return text.contains(Self.sentinelStart)
+                || (text.contains(#"id = "openburnbar""#) && text.contains(":8317"))
+                || text.range(of: #"url\s*=\s*"https?://(127\.0\.0\.1|localhost):8317(/v1)?/chat/completions""#, options: .regularExpression) != nil
+        }
+    }
+
+    /// Compares a routed client's on-disk OpenBurnBar model entries with the
+    /// live route-eligible catalog. Today only Droid needs this because its
+    /// BYOK model picker caches concrete model rows instead of asking
+    /// `/v1/models` on every launch.
+    func modelSyncStatus(
+        target: RoutingClientWiringTarget,
+        gateway: RoutingClientGateway,
+        advertisedModels: [RoutingClientAdvertisedModel]
+    ) -> RoutingClientModelSyncStatus {
+        switch target {
+        case .droid:
+            let expected = gatewayServedModelIDs(advertisedModels)
+            let installed = installedDroidOpenBurnBarModelIDs(gateway: gateway)
+            guard !installed.isEmpty else { return .notWired }
+            guard Set(installed) == Set(expected) else {
+                return .stale(installedModelIDs: installed, expectedModelIDs: expected)
+            }
+            return .current(modelIDs: installed)
+        case .claudeCode, .codex, .opencode, .forge:
+            return isWired(target: target) ? .current(modelIDs: []) : .notWired
         }
     }
 
@@ -286,26 +449,26 @@ struct RoutingClientWiring {
         switch target {
         case .claudeCode:
             return """
-            # OpenBurnBar — wire Claude Code through the Hydrant
+            # OpenBurnBar — wire Claude Code through the local gateway
             export ANTHROPIC_BASE_URL=\(baseURL)
             export ANTHROPIC_AUTH_TOKEN=\(token)
             """
         case .codex:
             return """
-            # OpenBurnBar — wire Codex CLI through the Hydrant
+            # OpenBurnBar — wire Codex CLI through the local gateway
             # `OPENAI_*` env vars are enough on their own — Codex picks them
             # up automatically and bypasses any config-file wiring. If you
             # also want a named provider entry (so `codex --profile
-            # openburnbar` works), the OpenBurnBar Settings → Routing pools
-            # toggle writes one for you in ~/.codex/config.toml.
+            # openburnbar` works), OpenBurnBar Settings -> Agents -> CLIs
+            # writes one for you in ~/.codex/config.toml.
             export OPENAI_BASE_URL=\(openAIBaseURL)
             export OPENAI_API_KEY=\(token)
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
             """
         case .opencode:
             return """
-            # OpenBurnBar — wire OpenCode CLI through the Hydrant
-            # The config-file toggle adds provider.openburnbar to
+            # OpenBurnBar — wire OpenCode CLI through the local gateway
+            # The Settings -> Agents -> CLIs Connect button adds provider.openburnbar to
             # ~/.config/opencode/opencode.json.
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
             export OPENAI_BASE_URL=\(openAIBaseURL)
@@ -313,8 +476,8 @@ struct RoutingClientWiring {
             """
         case .forge:
             return """
-            # OpenBurnBar — wire Forge CLI through the Hydrant
-            # The config-file toggle adds a Forge provider named `openburnbar`
+            # OpenBurnBar — wire Forge CLI through the local gateway
+            # The Settings -> Agents -> CLIs Connect button adds a Forge provider named `openburnbar`
             # at ~/forge/.forge.toml. This env var supplies its api_key_var.
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
             export OPENAI_BASE_URL=\(openAIBaseURL)
@@ -322,14 +485,129 @@ struct RoutingClientWiring {
             """
         case .droid:
             return """
-            # OpenBurnBar — wire Droid CLI through the Hydrant
-            # The config-file toggle writes customModels into
-            # ~/.factory/settings.local.json.
+            # OpenBurnBar — wire Droid CLI through the local gateway
+            # In OpenBurnBar Settings -> Agents -> CLIs, press Connect + Sync
+            # or Sync models to write live BurnBar models under ~/.factory/.
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
             export OPENAI_BASE_URL=\(openAIBaseURL)
             export OPENAI_API_KEY=\(token)
             """
         }
+    }
+
+    func advertisedModels(
+        gateway: RoutingClientGateway,
+        session: URLSession = .shared,
+        timeoutSeconds: TimeInterval = 8
+    ) async -> [RoutingClientAdvertisedModel] {
+        guard let url = URL(string: gateway.baseURL)?.appending(path: "v1/models") else {
+            return []
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeoutSeconds
+        if !gateway.authToken.isEmpty {
+            request.setValue("Bearer \(gateway.authToken)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let rows = object["data"] as? [[String: Any]] else {
+                return []
+            }
+            let models: [RoutingClientAdvertisedModel] = rows.compactMap { row -> RoutingClientAdvertisedModel? in
+                guard let id = (row["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !id.isEmpty else {
+                    return nil
+                }
+                let providerID = (row["provider_id"] as? String)
+                    ?? (row["owned_by"] as? String)
+                    ?? "openburnbar"
+                let providerName = (row["provider_name"] as? String)
+                    ?? providerID
+                return RoutingClientAdvertisedModel(
+                    id: id,
+                    displayName: (row["display_name"] as? String) ?? id,
+                    providerID: providerID,
+                    providerName: providerName,
+                    formatFamily: (row["format_family"] as? String) ?? "openai_compat",
+                    servedEndpoints: (row["served_endpoints"] as? [String]) ?? [],
+                    capabilities: (row["capabilities"] as? [String]) ?? [],
+                    routeEligible: (row["route_eligible"] as? Bool) ?? true
+                )
+            }
+            return Self.logicalProviderModelCatalog(models)
+        } catch {
+            return []
+        }
+    }
+
+    private static func logicalProviderModelCatalog(
+        _ models: [RoutingClientAdvertisedModel]
+    ) -> [RoutingClientAdvertisedModel] {
+        let normalizedRows = models.map { model in
+            normalizedLegacyAccountScopedModel(model)
+        }
+        let duplicateRawIDs = Set(
+            Dictionary(grouping: normalizedRows) {
+                $0.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            }
+            .compactMap { entry -> String? in
+                let id = entry.key
+                let providerIDs = Set(entry.value.map { $0.providerID.lowercased() })
+                return id.isEmpty || providerIDs.count < 2 ? nil : id
+            }
+        )
+
+        var seen: Set<String> = []
+        var logicalRows: [RoutingClientAdvertisedModel] = []
+        for row in normalizedRows {
+            let rawID = row.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawID.isEmpty else { continue }
+            let routedID = duplicateRawIDs.contains(rawID.lowercased())
+                ? "\(row.providerID)/\(rawID)"
+                : rawID
+            let key = "\(row.providerID.lowercased())|\(routedID.lowercased())"
+            guard seen.insert(key).inserted else { continue }
+            logicalRows.append(
+                RoutingClientAdvertisedModel(
+                    id: routedID,
+                    displayName: row.displayName,
+                    providerID: row.providerID,
+                    providerName: row.providerName,
+                    formatFamily: row.formatFamily,
+                    servedEndpoints: row.servedEndpoints,
+                    capabilities: row.capabilities,
+                    routeEligible: row.routeEligible
+                )
+            )
+        }
+        return logicalRows
+    }
+
+    private static func normalizedLegacyAccountScopedModel(
+        _ model: RoutingClientAdvertisedModel
+    ) -> RoutingClientAdvertisedModel {
+        let parts = model.id.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 3,
+              parts[0].caseInsensitiveCompare(model.providerID) == .orderedSame else {
+            return model
+        }
+        let rawModelID = parts.dropFirst(2).joined(separator: "/")
+        guard !rawModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return model
+        }
+        return RoutingClientAdvertisedModel(
+            id: rawModelID,
+            displayName: model.displayName,
+            providerID: model.providerID,
+            providerName: model.providerName,
+            formatFamily: model.formatFamily,
+            servedEndpoints: model.servedEndpoints,
+            capabilities: model.capabilities,
+            routeEligible: model.routeEligible
+        )
     }
 
     /// POSIX-safe single-quoted shell argument. Embedded single quotes are
@@ -348,6 +626,7 @@ struct RoutingClientWiring {
     func probe(
         target: RoutingClientWiringTarget,
         gateway: RoutingClientGateway,
+        advertisedModels: [RoutingClientAdvertisedModel] = [],
         session: URLSession = .shared,
         timeoutSeconds: TimeInterval = 8
     ) async -> RoutingClientWiringProbe {
@@ -375,8 +654,33 @@ struct RoutingClientWiring {
                 "max_tokens": 1,
                 "messages": [["role": "user", "content": "ping"]]
             ]
-        case .codex, .opencode, .forge, .droid:
-            probeModel = "gpt-5.4-nano"
+        case .codex:
+            let models = advertisedModels.isEmpty
+                ? await self.advertisedModels(gateway: gateway, session: session, timeoutSeconds: timeoutSeconds)
+                : advertisedModels
+            guard let liveModel = firstGatewayServedModel(models) else {
+                return .failed(
+                    status: 503,
+                    message: "No route-eligible gateway models are advertised by /v1/models."
+                )
+            }
+            probeModel = liveModel.id
+            body = [
+                "model": probeModel,
+                "input": "ping",
+                "max_output_tokens": 1,
+            ]
+        case .opencode, .forge, .droid:
+            let models = advertisedModels.isEmpty
+                ? await self.advertisedModels(gateway: gateway, session: session, timeoutSeconds: timeoutSeconds)
+                : advertisedModels
+            guard let liveModel = firstGatewayServedModel(models) else {
+                return .failed(
+                    status: 503,
+                    message: "No route-eligible gateway models are advertised by /v1/models."
+                )
+            }
+            probeModel = liveModel.id
             // OpenAI Chat Completions deprecated `max_tokens` for reasoning-
             // capable models in favor of `max_completion_tokens`. The
             // gateway's structured-executor tests use `max_completion_tokens`
@@ -430,7 +734,9 @@ struct RoutingClientWiring {
         switch target {
         case .claudeCode:
             return base?.appending(path: "v1/messages")
-        case .codex, .opencode, .forge, .droid:
+        case .codex:
+            return base?.appending(path: "v1/responses")
+        case .opencode, .forge, .droid:
             return base?.appending(path: "v1/chat/completions")
         }
     }
@@ -480,11 +786,14 @@ struct RoutingClientWiring {
 
     // MARK: - Codex (~/.codex/config.toml)
 
-    private func wireCodex(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+    private func wireCodex(
+        gateway: RoutingClientGateway,
+        advertisedModels: [RoutingClientAdvertisedModel]
+    ) throws -> RoutingClientWiringChange {
         let url = configURL(for: .codex)
         let existing = readText(at: url) ?? ""
         let stripped = stripSentinelBlock(in: existing)
-        let block = codexTOMLBlock(gateway: gateway)
+        let block = codexTOMLBlock(gateway: gateway, advertisedModels: advertisedModels)
         let separator = stripped.isEmpty || stripped.hasSuffix("\n") ? "" : "\n"
         let next = stripped + separator + block + "\n"
 
@@ -515,41 +824,52 @@ struct RoutingClientWiring {
         }
     }
 
-    private func codexTOMLBlock(gateway: RoutingClientGateway) -> String {
+    private func codexTOMLBlock(
+        gateway: RoutingClientGateway,
+        advertisedModels: [RoutingClientAdvertisedModel]
+    ) -> String {
         // The provider block defines *how* to talk to the gateway; the
         // profile makes one-line activation possible:
         //
         //     codex --profile openburnbar
         //
         // The user still needs to export OPENBURNBAR_GATEWAY_TOKEN so Codex
-        // can read the bearer at runtime. The Settings → Routing pools card
+        // can read the bearer at runtime. The Settings -> Agents -> CLIs row
         // shows the exact export command and the shell-snippet sheet
         // includes it verbatim.
-        """
+        let modelLine = firstGatewayServedModel(advertisedModels)
+            .map { "\nmodel = \"\($0.id)\"" }
+            ?? ""
+        return """
         \(Self.sentinelStart)
-        # Managed by OpenBurnBar. Edit Settings → Routing pools to change.
+        # Managed by OpenBurnBar. Edit Settings -> Agents -> CLIs to change.
         # To activate this provider:
         #   1. export OPENBURNBAR_GATEWAY_TOKEN='<your gateway token>'
         #   2. codex --profile openburnbar
         # Or set OPENAI_BASE_URL/OPENAI_API_KEY directly and skip the profile.
         [model_providers.openburnbar]
-        name = "OpenBurnBar Hydrant"
+        name = "OpenBurnBar Gateway"
         base_url = "\(gateway.baseURL)/v1"
         env_key = "OPENBURNBAR_GATEWAY_TOKEN"
-        wire_api = "chat"
+        wire_api = "responses"
 
         [profiles.openburnbar]
         model_provider = "openburnbar"
+        \(modelLine)
         \(Self.sentinelEnd)
         """
     }
 
     // MARK: - OpenCode (~/.config/opencode/opencode.json)
 
-    private func wireOpenCode(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+    private func wireOpenCode(
+        gateway: RoutingClientGateway,
+        advertisedModels: [RoutingClientAdvertisedModel]
+    ) throws -> RoutingClientWiringChange {
         let url = configURL(for: .opencode)
         var (root, backupURL) = try loadJSONObjectWithBackup(at: url)
         var providers = (root["provider"] as? [String: Any]) ?? [:]
+        let liveModels = try gatewayServedModelsOrThrow(advertisedModels)
         providers["openburnbar"] = [
             "npm": "@ai-sdk/openai-compatible",
             "name": "OpenBurnBar Gateway",
@@ -557,12 +877,13 @@ struct RoutingClientWiring {
                 "baseURL": "\(gateway.baseURL)/v1",
                 "apiKey": gateway.effectiveClientToken,
             ],
-            "models": [
-                "gpt-5.4-nano": [
-                    "name": "gpt-5.4-nano",
-                ],
-            ],
+            "models": Dictionary(
+                uniqueKeysWithValues: liveModels.map { model in
+                    (model.id, ["name": model.displayName.isEmpty ? model.id : model.displayName])
+                }
+            ),
         ]
+        root["model"] = "openburnbar/\(liveModels[0].id)"
         root["provider"] = providers
         try writeJSONObject(root, to: url)
         return RoutingClientWiringChange(
@@ -630,12 +951,12 @@ struct RoutingClientWiring {
     }
 
     private func forgeTOMLBlock(gateway: RoutingClientGateway) -> String {
-        // Mirrors the VibeProxy provider entry shape Forge already supports:
-        // a chat-completions URL plus a separate models URL. We do not change
-        // the active `[session]` provider so users can opt in deliberately.
+        // Forge supports a chat-completions URL plus a separate models URL.
+        // We do not change the active `[session]` provider so users can opt
+        // in deliberately.
         """
         \(Self.sentinelStart)
-        # Managed by OpenBurnBar. Edit Settings → Routing pools to change.
+        # Managed by OpenBurnBar. Edit Settings -> Agents -> CLIs to change.
         # To activate in Forge, select provider `openburnbar` or set it in
         # your Forge session after exporting OPENBURNBAR_GATEWAY_TOKEN.
         [[providers]]
@@ -648,28 +969,29 @@ struct RoutingClientWiring {
         """
     }
 
-    // MARK: - Droid (~/.factory/settings.local.json)
+    // MARK: - Droid (~/.factory/{settings.local.json,settings.json,config.json})
 
-    private func wireDroid(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+    private func wireDroid(
+        gateway: RoutingClientGateway,
+        advertisedModels: [RoutingClientAdvertisedModel]
+    ) throws -> RoutingClientWiringChange {
         let url = configURL(for: .droid)
-        var (root, backupURL) = try loadJSONObjectWithBackup(at: url)
-        var customModels = (root["customModels"] as? [[String: Any]]) ?? []
-        customModels.removeAll(where: isOpenBurnBarDroidModel)
-        let startIndex = customModels.count
-        customModels.append(contentsOf: Self.droidDefaultModels.enumerated().map { offset, model in
-            [
-                "model": model,
-                "id": "openburnbar:\(model)",
-                "index": startIndex + offset,
-                "baseUrl": "\(gateway.baseURL)/v1",
-                "apiKey": gateway.effectiveClientToken,
-                "displayName": "OpenBurnBar \(model)",
-                "maxOutputTokens": 8192,
-                "provider": "openai",
-            ] as [String: Any]
-        })
-        root["customModels"] = customModels
-        try writeJSONObject(root, to: url)
+        let liveModels = try gatewayServedModelsOrThrow(advertisedModels)
+        let backupURL = try writeDroidSettingsStyleModels(
+            to: url,
+            gateway: gateway,
+            liveModels: liveModels
+        )
+        try writeDroidSettingsStyleModels(
+            to: home.appendingPathComponent(".factory/settings.json"),
+            gateway: gateway,
+            liveModels: liveModels
+        )
+        try writeDroidConfigStyleModels(
+            to: home.appendingPathComponent(".factory/config.json"),
+            gateway: gateway,
+            liveModels: liveModels
+        )
         return RoutingClientWiringChange(
             target: .droid,
             configURL: url,
@@ -679,40 +1001,306 @@ struct RoutingClientWiring {
     }
 
     private func unwireDroid() throws {
-        let url = configURL(for: .droid)
-        guard fileManager.fileExists(atPath: url.path) else {
+        var removedAny = false
+        for url in droidConfigURLs() where fileManager.fileExists(atPath: url.path) {
+            var (root, _) = try loadJSONObjectWithBackup(at: url)
+            let removedSettings = removeOpenBurnBarDroidModels(
+                key: "customModels",
+                from: &root
+            )
+            let removedConfig = removeOpenBurnBarDroidModels(
+                key: "custom_models",
+                from: &root
+            )
+            let removedDefaults = removeManagedDroidDefaultModel(from: &root)
+            guard removedSettings || removedConfig || removedDefaults else { continue }
+            removedAny = true
+            if root.isEmpty {
+                try? fileManager.removeItem(at: url)
+            } else {
+                try writeJSONObject(root, to: url)
+            }
+        }
+        guard removedAny else {
             throw RoutingClientWiringError.notEnabled
-        }
-        var (root, _) = try loadJSONObjectWithBackup(at: url)
-        guard var customModels = root["customModels"] as? [[String: Any]],
-              customModels.contains(where: isOpenBurnBarDroidModel) else {
-            throw RoutingClientWiringError.notEnabled
-        }
-        customModels.removeAll(where: isOpenBurnBarDroidModel)
-        if customModels.isEmpty {
-            root.removeValue(forKey: "customModels")
-        } else {
-            root["customModels"] = customModels
-        }
-        if root.isEmpty {
-            try? fileManager.removeItem(at: url)
-        } else {
-            try writeJSONObject(root, to: url)
         }
     }
 
-    private func isOpenBurnBarDroidModel(_ entry: [String: Any]) -> Bool {
+    @discardableResult
+    private func writeDroidSettingsStyleModels(
+        to url: URL,
+        gateway: RoutingClientGateway,
+        liveModels: [RoutingClientAdvertisedModel]
+    ) throws -> URL? {
+        var (root, backupURL) = try loadJSONObjectWithBackup(at: url)
+        var customModels = (root["customModels"] as? [[String: Any]]) ?? []
+        customModels.removeAll { isOpenBurnBarDroidModel($0, gateway: gateway) }
+        let startIndex = customModels.count
+        let openBurnBarModels = liveModels.enumerated().map { offset, model in
+            droidSettingsStyleModelEntry(
+                model: model,
+                gateway: gateway,
+                index: startIndex + offset
+            )
+        }
+        customModels.append(contentsOf: openBurnBarModels)
+        root["customModels"] = customModels
+        updateDroidDefaultModelIfManaged(
+            root: &root,
+            fallbackModelID: preferredDroidDefaultModelID(from: openBurnBarModels)
+        )
+        try writeJSONObject(root, to: url)
+        return backupURL
+    }
+
+    private func writeDroidConfigStyleModels(
+        to url: URL,
+        gateway: RoutingClientGateway,
+        liveModels: [RoutingClientAdvertisedModel]
+    ) throws {
+        var (root, _) = try loadJSONObjectWithBackup(at: url)
+        var customModels = (root["custom_models"] as? [[String: Any]]) ?? []
+        customModels.removeAll { isOpenBurnBarDroidModel($0, gateway: gateway) }
+        customModels.append(contentsOf: liveModels.map { model in
+            [
+                "model_display_name": "OpenBurnBar \(model.displayName.isEmpty ? model.id : model.displayName)",
+                "model": model.id,
+                "base_url": model.droidBaseURL(gateway: gateway),
+                "api_key": gateway.effectiveClientToken,
+                "max_output_tokens": 8192,
+                "provider": model.droidProviderType,
+            ] as [String: Any]
+        })
+        root["custom_models"] = customModels
+        try writeJSONObject(root, to: url)
+    }
+
+    private func droidSettingsStyleModelEntry(
+        model: RoutingClientAdvertisedModel,
+        gateway: RoutingClientGateway,
+        index: Int
+    ) -> [String: Any] {
+        [
+            "model": model.id,
+            "id": droidCustomModelID(for: model, index: index),
+            "index": index,
+            "baseUrl": model.droidBaseURL(gateway: gateway),
+            "apiKey": gateway.effectiveClientToken,
+            "displayName": "OpenBurnBar \(model.displayName.isEmpty ? model.id : model.displayName)",
+            "maxOutputTokens": 8192,
+            "provider": model.droidProviderType,
+        ]
+    }
+
+    private func droidCustomModelID(
+        for model: RoutingClientAdvertisedModel,
+        index: Int
+    ) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-_"))
+        let sanitized = model.id
+            .unicodeScalars
+            .map { allowed.contains($0) ? String($0) : "-" }
+            .joined()
+        let slug = sanitized
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".-_"))
+            .isEmpty ? "model" : sanitized
+        return "custom:OpenBurnBar-\(slug)-\(index)"
+    }
+
+    private func preferredDroidDefaultModelID(from models: [[String: Any]]) -> String? {
+        let nonAnthropic = models.first {
+            (($0["provider"] as? String)?.lowercased() ?? "") != "anthropic"
+        }
+        return (nonAnthropic ?? models.first)?["id"] as? String
+    }
+
+    private func removeOpenBurnBarDroidModels(
+        key: String,
+        from root: inout [String: Any]
+    ) -> Bool {
+        guard var customModels = root[key] as? [[String: Any]],
+              customModels.contains(where: { isOpenBurnBarDroidModel($0) }) else {
+            return false
+        }
+        customModels.removeAll { isOpenBurnBarDroidModel($0) }
+        if customModels.isEmpty {
+            root.removeValue(forKey: key)
+        } else {
+            root[key] = customModels
+        }
+        return true
+    }
+
+    private func droidConfigURLs() -> [URL] {
+        [
+            configURL(for: .droid),
+            home.appendingPathComponent(".factory/settings.json"),
+            home.appendingPathComponent(".factory/config.json"),
+        ]
+    }
+
+    private func isOpenBurnBarDroidModel(
+        _ entry: [String: Any],
+        gateway: RoutingClientGateway? = nil
+    ) -> Bool {
         let provider = (entry["provider"] as? String)?.lowercased()
         let id = (entry["id"] as? String)?.lowercased()
         let displayName = (entry["displayName"] as? String)?.lowercased()
+            ?? (entry["model_display_name"] as? String)?.lowercased()
         let model = (entry["model"] as? String)?.lowercased()
+        let baseURL = (entry["baseUrl"] as? String) ?? (entry["base_url"] as? String)
+        let isGatewayEntry = baseURL.map { isLocalGatewayURL($0) || matchesGatewayURL($0, gateway: gateway) } == true
         return provider == "openburnbar"
+            || id?.hasPrefix("custom:openburnbar") == true
             || id?.hasPrefix("openburnbar:") == true
+            || id?.contains("vibeproxy") == true
             || displayName?.hasPrefix("openburnbar ") == true
+            || displayName?.contains("vibeproxy") == true
             || model?.hasPrefix("openburnbar:") == true
+            || ((provider == "openai"
+                 || provider == "anthropic"
+                 || provider == "generic-chat-completion-api")
+                && isGatewayEntry)
+    }
+
+    private func updateDroidDefaultModelIfManaged(
+        root: inout [String: Any],
+        fallbackModelID: String?
+    ) {
+        guard let fallbackModelID else { return }
+        if shouldReplaceDroidDefaultModel(root["model"] as? String) {
+            root["model"] = fallbackModelID
+        }
+        if shouldReplaceDroidDefaultModel(root["defaultModel"] as? String) {
+            root["defaultModel"] = fallbackModelID
+        }
+        if var sessionDefaultSettings = root["sessionDefaultSettings"] as? [String: Any],
+           shouldReplaceDroidDefaultModel(sessionDefaultSettings["model"] as? String) {
+            sessionDefaultSettings["model"] = fallbackModelID
+            root["sessionDefaultSettings"] = sessionDefaultSettings
+        }
+    }
+
+    private func shouldReplaceDroidDefaultModel(_ value: String?) -> Bool {
+        guard let value else { return true }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        return isManagedDroidDefaultModel(trimmed)
+    }
+
+    private func isManagedDroidDefaultModel(_ value: String?) -> Bool {
+        guard let value else { return false }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let lowercased = trimmed.lowercased()
+        return lowercased.hasPrefix("custom:openburnbar")
+            || lowercased.hasPrefix("openburnbar:")
+            || lowercased.contains("vibeproxy")
+    }
+
+    @discardableResult
+    private func removeManagedDroidDefaultModel(from root: inout [String: Any]) -> Bool {
+        var removed = false
+        if isManagedDroidDefaultModel(root["model"] as? String) {
+            root.removeValue(forKey: "model")
+            removed = true
+        }
+        if isManagedDroidDefaultModel(root["defaultModel"] as? String) {
+            root.removeValue(forKey: "defaultModel")
+            removed = true
+        }
+        if var sessionDefaultSettings = root["sessionDefaultSettings"] as? [String: Any],
+           isManagedDroidDefaultModel(sessionDefaultSettings["model"] as? String) {
+            sessionDefaultSettings.removeValue(forKey: "model")
+            if sessionDefaultSettings.isEmpty {
+                root.removeValue(forKey: "sessionDefaultSettings")
+            } else {
+                root["sessionDefaultSettings"] = sessionDefaultSettings
+            }
+            removed = true
+        }
+        return removed
+    }
+
+    private func isLocalGatewayURL(_ rawValue: String) -> Bool {
+        guard let components = URLComponents(string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let host = components.host?.lowercased(),
+              host == "127.0.0.1" || host == "localhost",
+              components.port == 8317 else {
+            return false
+        }
+        return true
+    }
+
+    private func matchesGatewayURL(_ rawValue: String, gateway: RoutingClientGateway?) -> Bool {
+        guard let gateway,
+              let components = URLComponents(string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let gatewayComponents = URLComponents(string: gateway.baseURL),
+              let host = components.host?.lowercased(),
+              let gatewayHost = gatewayComponents.host?.lowercased(),
+              host == gatewayHost,
+              components.port == gatewayComponents.port else {
+            return false
+        }
+        return true
+    }
+
+    private func firstGatewayServedModel(
+        _ advertisedModels: [RoutingClientAdvertisedModel]
+    ) -> RoutingClientAdvertisedModel? {
+        advertisedModels.first(where: \.isGatewayServedModelCandidate)
+    }
+
+    private func gatewayServedModelsOrThrow(
+        _ advertisedModels: [RoutingClientAdvertisedModel]
+    ) throws -> [RoutingClientAdvertisedModel] {
+        let models = Self.logicalProviderModelCatalog(advertisedModels)
+            .filter(\.isGatewayServedModelCandidate)
+        guard !models.isEmpty else {
+            throw RoutingClientWiringError.gatewayMisconfigured(
+                detail: "No route-eligible gateway models are advertised by /v1/models. Add or enable an account/provider before wiring this CLI."
+            )
+        }
+        return models
+    }
+
+    private func gatewayServedModelIDs(
+        _ advertisedModels: [RoutingClientAdvertisedModel]
+    ) -> [String] {
+        Self.logicalProviderModelCatalog(advertisedModels)
+            .filter(\.isGatewayServedModelCandidate)
+            .map(\.id)
+            .uniquedPreservingOrder()
+    }
+
+    private func installedDroidOpenBurnBarModelIDs(
+        gateway: RoutingClientGateway
+    ) -> [String] {
+        var installed: [String] = []
+        for url in droidConfigURLs() where fileManager.fileExists(atPath: url.path) {
+            guard let root = try? readJSONObject(at: url) else { continue }
+            let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
+            let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
+            for entry in settingsModels + configModels where isOpenBurnBarDroidModel(entry, gateway: gateway) {
+                guard let model = entry["model"] as? String,
+                      !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    continue
+                }
+                installed.append(model)
+            }
+        }
+        return installed.uniquedPreservingOrder()
     }
 
     // MARK: - JSON file helpers
+
+    private func readJSONObject(at url: URL) throws -> [String: Any] {
+        guard fileManager.fileExists(atPath: url.path) else { return [:] }
+        let data = try Data(contentsOf: url)
+        let stripped = stripJSONComments(String(decoding: data, as: UTF8.self))
+        guard !stripped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [:] }
+        return (try JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? [String: Any]) ?? [:]
+    }
 
     private func loadJSONObjectWithBackup(at url: URL) throws -> (root: [String: Any], backupURL: URL?) {
         guard fileManager.fileExists(atPath: url.path) else {
@@ -865,5 +1453,12 @@ struct RoutingClientWiring {
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         formatter.timeZone = TimeZone(identifier: "UTC")
         return formatter.string(from: now())
+    }
+}
+
+private extension Array where Element: Hashable {
+    func uniquedPreservingOrder() -> [Element] {
+        var seen = Set<Element>()
+        return filter { seen.insert($0).inserted }
     }
 }

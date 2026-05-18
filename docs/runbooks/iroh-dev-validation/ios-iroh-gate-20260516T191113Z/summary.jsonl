@@ -1,0 +1,55 @@
+{
+  "run": 1,
+  "startedAt": "2026-05-16T19:11:20Z",
+  "completedAt": "2026-05-16T19:14:00Z",
+  "expectedInterface": "cellular",
+  "result": "passed",
+  "log": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-01.log",
+  "events": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-01-events.json"
+}
+{
+  "run": 2,
+  "startedAt": "2026-05-16T19:14:00Z",
+  "completedAt": "2026-05-16T19:16:40Z",
+  "expectedInterface": "cellular",
+  "result": "passed",
+  "log": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-02.log",
+  "events": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-02-events.json"
+}
+{
+  "run": 3,
+  "startedAt": "2026-05-16T19:16:40Z",
+  "completedAt": "2026-05-16T19:19:22Z",
+  "expectedInterface": "cellular",
+  "result": "passed",
+  "log": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-03.log",
+  "events": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-03-events.json"
+}
+{
+  "run": 4,
+  "startedAt": "2026-05-16T19:19:22Z",
+  "completedAt": "2026-05-16T19:22:04Z",
+  "expectedInterface": "cellular",
+  "result": "passed",
+  "log": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-04.log",
+  "events": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-04-events.json"
+}
+{
+  "run": 5,
+  "startedAt": "2026-05-16T19:22:04Z",
+  "completedAt": "2026-05-16T19:24:45Z",
+  "expectedInterface": "cellular",
+  "result": "passed",
+  "log": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-05.log",
+  "events": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-05-events.json"
+}
+{
+  "run": 6,
+  "startedAt": "2026-05-16T19:24:45Z",
+  "completedAt": "2026-05-16T19:26:23Z",
+  "expectedInterface": "cellular",
+  "result": "failed",
+  "exitCode": 1,
+  "log": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-06.log",
+  "events": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T191113Z/run-06-events.json"
+}

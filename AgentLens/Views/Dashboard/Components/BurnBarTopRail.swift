@@ -676,6 +676,164 @@ private struct ShortcutChip: View {
     }
 }
 
+// MARK: - Section: Workspace Context
+//
+// Lives in the principal toolbar slot. Anchors the rail in *where you are* and
+// *what's happening right now* — a route name + state caption that doubles as
+// editorial context for the current tab.
+
+struct BurnRailWorkspaceContextPill: View {
+    let routeName: String
+    let stateCaption: String
+    let helpText: String
+
+    @State private var hover = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: "circle.dotted")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.ember.opacity(0.85))
+                Text(routeName.uppercased())
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .tracking(0.9)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+
+            Text(stateCaption)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            mercuryHairline
+                .frame(height: 0.75)
+                .padding(.top, 1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(pillBackground)
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(hover ? 0.7 : 0.45), lineWidth: 0.5)
+        )
+        .clipShape(Capsule(style: .continuous))
+        .help(helpText)
+        .onHover { hover = $0 }
+        .animation(DesignSystem.Animation.hover, value: hover)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Workspace \(routeName)")
+        .accessibilityValue(stateCaption)
+    }
+
+    @ViewBuilder
+    private var pillBackground: some View {
+        if #available(macOS 26.0, *) {
+            Capsule(style: .continuous)
+                .fill(.regularMaterial)
+                .opacity(hover ? 0.95 : 0.78)
+        } else {
+            Capsule(style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(hover ? 0.78 : 0.55))
+        }
+    }
+
+    private var mercuryHairline: some View {
+        LinearGradient(
+            colors: [
+                DesignSystem.Colors.hermesMercury.opacity(0.0),
+                DesignSystem.Colors.hermesMercury.opacity(0.5),
+                DesignSystem.Colors.hermesAureate.opacity(0.65),
+                DesignSystem.Colors.hermesMercury.opacity(0.5),
+                DesignSystem.Colors.hermesMercury.opacity(0.0)
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+    }
+}
+
+// MARK: - Time range menu chip
+//
+// Public counterpart of the private menu chip in `DashboardToolbar.swift` —
+// the live toolbar in `DashboardToolbarContent.swift` reaches for this so the
+// macOS-toolbar `ToolbarItem` can render a calendar pill with the same visual
+// language as the rest of the BurnRail primitives.
+
+struct BurnRailTimeRangeMenuChip: View {
+    @Binding var selected: TimeRange
+    @State private var hover = false
+
+    var body: some View {
+        Menu {
+            ForEach(TimeRange.allCases) { range in
+                Button {
+                    selected = range
+                } label: {
+                    if selected == range {
+                        Label(range.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(range.displayName)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 10, weight: .semibold))
+                Text(selected.displayName)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .opacity(0.7)
+            }
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(hover
+                          ? DesignSystem.Colors.ember.opacity(0.08)
+                          : DesignSystem.Colors.surface.opacity(0.35))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.5)
+            )
+            .contentShape(Capsule(style: .continuous))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .onHover { hover = $0 }
+        .animation(DesignSystem.Animation.hover, value: hover)
+        .help("Filter time range — currently \(selected.displayName)")
+    }
+}
+
+#if DEBUG
+#Preview("Workspace context pill — Quota near edge") {
+    BurnRailWorkspaceContextPill(
+        routeName: "Quota",
+        stateCaption: "5 plans · 2 near edge · next reset in 3 hours",
+        helpText: "Subscription Vault — every connected provider's quota."
+    )
+    .padding(20)
+    .background(DesignSystem.Colors.background)
+}
+
+#Preview("Workspace context pill — Overview") {
+    BurnRailWorkspaceContextPill(
+        routeName: "Overview",
+        stateCaption: "12 providers · 1,492 sessions in window",
+        helpText: "All providers + models in the current time window."
+    )
+    .padding(20)
+    .background(DesignSystem.Colors.background)
+}
+#endif
+
 // MARK: - Section: Context (range + unit)
 
 struct BurnRailContextSection: View {

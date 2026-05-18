@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
@@ -257,6 +258,14 @@ private fun SettingsRootList(router: SettingsRouter) {
                 subtitle = "BurnBar persistent cost glance",
                 pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
                 onTap = { router.page = SettingsPageRoute.MENU_BAR_PREFS }
+            ),
+            RootRow(
+                anchor = SettingsAnchor.COMPUTER_USE_ROW,
+                icon = Icons.Filled.Computer,
+                title = "Computer Use",
+                subtitle = "Agent Watch, phone takeover, approvals, and audit chain",
+                pageRoute = SettingsPageRoute.ROOT,
+                onTap = {}
             ),
             RootRow(
                 anchor = SettingsAnchor.PERSISTENT_NOTIFICATION,

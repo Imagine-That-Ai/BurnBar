@@ -33,6 +33,8 @@ public struct MissionTitlePromptFields: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
                     .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
                     .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
                     .focused($titleFocused)
@@ -87,6 +89,8 @@ public struct MissionTitlePromptFields: View {
                             Text("What should the agent do? Be specific — the brief becomes the prompt verbatim.")
                                 .font(.system(size: 14, weight: .regular, design: .rounded))
                                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, UnifiedDesignSystem.Spacing.sm + 5)
                                 .padding(.vertical, UnifiedDesignSystem.Spacing.sm + 8)
                                 .allowsHitTesting(false)
@@ -95,6 +99,7 @@ public struct MissionTitlePromptFields: View {
                     .animation(UnifiedDesignSystem.Animation.hover, value: promptFocused)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sectionHeader: some View {
@@ -131,12 +136,20 @@ public struct MissionDepthDial: View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             fieldLabel("DEPTH")
 
-            HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                ForEach(MissionConsoleDepth.allCases) { stop in
-                    stopButton(stop)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                    ForEach(MissionConsoleDepth.allCases) { stop in
+                        stopButton(stop)
+                            .frame(width: 196, alignment: .leading)
+                    }
                 }
+                .padding(.trailing, UnifiedDesignSystem.Spacing.lg)
+                .fixedSize(horizontal: true, vertical: false)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollClipDisabled(false)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func stopButton(_ stop: MissionConsoleDepth) -> some View {
@@ -212,19 +225,18 @@ public struct MissionApprovalLever: View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             fieldLabel("APPROVAL")
 
-            HStack(spacing: 0) {
-                option(.existingPolicy, glyph: "shield.checkered")
-                option(.requireApproval, glyph: "hand.raised.fill")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    option(.existingPolicy, glyph: "shield.checkered")
+                        .frame(width: 304)
+                    option(.requireApproval, glyph: "hand.raised.fill")
+                        .frame(width: 304)
+                }
+                .padding(.trailing, UnifiedDesignSystem.Spacing.lg)
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .background {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                    .fill(UnifiedDesignSystem.Colors.surface.opacity(0.5))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                    .strokeBorder(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6), lineWidth: 0.5)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollClipDisabled(false)
 
             Text(mode.caption)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -233,6 +245,7 @@ public struct MissionApprovalLever: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .animation(UnifiedDesignSystem.Animation.snappy, value: mode)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func option(_ value: MissionConsoleApprovalMode, glyph: String) -> some View {
@@ -302,6 +315,28 @@ public struct MissionPermissionsRow: View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             fieldLabel("PERMISSIONS")
             ViewThatFits(in: .horizontal) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                        toggleTile(
+                            label: "Commands",
+                            subtitle: "Allow shell execution",
+                            glyph: "terminal.fill",
+                            isOn: $commandsAllowed
+                        )
+                        .frame(width: 300, alignment: .leading)
+                        toggleTile(
+                            label: "File edits",
+                            subtitle: "Allow code writes",
+                            glyph: "doc.fill.badge.plus",
+                            isOn: $fileEditsAllowed
+                        )
+                        .frame(width: 300, alignment: .leading)
+                    }
+                    .padding(.trailing, UnifiedDesignSystem.Spacing.lg)
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .scrollClipDisabled(false)
                 HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     toggleTile(
                         label: "Commands",
@@ -316,6 +351,7 @@ public struct MissionPermissionsRow: View {
                         isOn: $fileEditsAllowed
                     )
                 }
+                .frame(maxWidth: .infinity)
                 VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     toggleTile(
                         label: "Commands",
@@ -330,6 +366,7 @@ public struct MissionPermissionsRow: View {
                         isOn: $fileEditsAllowed
                     )
                 }
+                .frame(maxWidth: .infinity)
             }
             if commandsAllowed && fileEditsAllowed {
                 HStack(spacing: 6) {
@@ -352,6 +389,7 @@ public struct MissionPermissionsRow: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .animation(UnifiedDesignSystem.Animation.standard, value: commandsAllowed && fileEditsAllowed)
     }
 
@@ -466,6 +504,8 @@ public struct MissionProjectField: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .focused($isFocused)
 
                 if !project.isEmpty {
@@ -493,6 +533,7 @@ public struct MissionProjectField: View {
                     )
             }
             .animation(UnifiedDesignSystem.Animation.hover, value: isFocused)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if isFocused && !filteredSuggestions.isEmpty {
                 suggestionsRow
@@ -500,6 +541,7 @@ public struct MissionProjectField: View {
                 quickRow
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var normalizedPath: String {
@@ -532,6 +574,8 @@ public struct MissionProjectField: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .scrollClipDisabled(false)
     }
 
     private var quickRow: some View {
@@ -546,6 +590,8 @@ public struct MissionProjectField: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .scrollClipDisabled(false)
     }
 
     private func suggestionChip(_ name: String) -> some View {

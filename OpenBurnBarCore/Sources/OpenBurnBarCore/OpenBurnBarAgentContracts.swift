@@ -194,8 +194,30 @@ public enum BurnBarAgentLoopActionKind: String, Codable, CaseIterable, Hashable,
     case readFile = "read_file"
     case applyPatch = "apply_patch"
     case runTerminal = "run_terminal"
+    case browserClick = "browser_click"
+    case browserFill = "browser_fill"
+    case browserGoto = "browser_goto"
+    case browserKey = "browser_key"
+    case browserSelect = "browser_select"
+    case browserScreenshot = "browser_screenshot"
+    case browserExtract = "browser_extract"
     case requestApproval = "request_approval"
     case fail
+}
+
+public extension BurnBarAgentLoopActionKind {
+    var browserToolKind: BurnBarToolKind? {
+        switch self {
+        case .browserClick: return .browserClick
+        case .browserFill: return .browserFill
+        case .browserGoto: return .browserGoto
+        case .browserKey: return .browserKey
+        case .browserSelect: return .browserSelect
+        case .browserScreenshot: return .browserScreenshot
+        case .browserExtract: return .browserExtract
+        default: return nil
+        }
+    }
 }
 
 public struct BurnBarAgentContextSnapshot: Codable, Hashable, Sendable {

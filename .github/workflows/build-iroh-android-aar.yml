@@ -1,0 +1,120 @@
+name: openburnbar-iroh AAR (Android)
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/openburnbar-iroh/**"
+      - "scripts/build-iroh-android-aar.sh"
+      - ".github/workflows/build-iroh-android-aar.yml"
+      - "android/openburnbar-iroh-relay/**"
+  pull_request:
+    paths:
+      - "crates/openburnbar-iroh/**"
+      - "scripts/build-iroh-android-aar.sh"
+      - ".github/workflows/build-iroh-android-aar.yml"
+      - "android/openburnbar-iroh-relay/**"
+  workflow_dispatch:
+
+concurrency:
+  group: openburnbar-iroh-aar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    env:
+      ANDROID_NDK_VERSION: "26.3.11579264"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@387ac29b308b003ca37ba93a6cab5eb57c8f5f93 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: "ndk;${{ env.ANDROID_NDK_VERSION }}"
+
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            crates/openburnbar-iroh/target
+            build/uniffi-bindgen-kotlin-helper/target
+          key: iroh-aar-${{ runner.os }}-${{ hashFiles('crates/openburnbar-iroh/Cargo.toml') }}
+          restore-keys: |
+            iroh-aar-${{ runner.os }}-
+
+      - name: Install cargo-ndk
+        run: |
+          if ! command -v cargo-ndk >/dev/null 2>&1; then
+            cargo install cargo-ndk --locked --version "^3.5"
+          fi
+
+      - name: Export Android NDK ${{ env.ANDROID_NDK_VERSION }}
+        run: |
+          set -euo pipefail
+          ndk_path="${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}"
+          if [[ ! -d "${ndk_path}" ]]; then
+            echo "Expected Android NDK missing: ${ndk_path}" >&2
+            exit 1
+          fi
+          echo "ANDROID_NDK_HOME=${ndk_path}" >> "${GITHUB_ENV}"
+          echo "ANDROID_NDK_ROOT=${ndk_path}" >> "${GITHUB_ENV}"
+
+      - name: Host-side cargo check (sanity)
+        run: cargo check -p openburnbar-iroh
+        working-directory: crates/openburnbar-iroh
+
+      - name: Host-side cargo test (datagrams + chat ALPN)
+        run: cargo test -p openburnbar-iroh
+        working-directory: crates/openburnbar-iroh
+
+      - name: Build AAR
+        run: ./scripts/build-iroh-android-aar.sh
+        env:
+          IROH_BUILD_PROFILE: release
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+
+      - name: Inspect AAR
+        run: |
+          set -euo pipefail
+          ls -la Vendor/openburnbar-iroh.aar
+          unzip -l Vendor/openburnbar-iroh.aar | head -40
+
+      - name: Upload AAR artifact
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4
+        with:
+          name: openburnbar-iroh.aar
+          path: Vendor/openburnbar-iroh.aar
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload generated Kotlin bindings
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4
+        with:
+          name: openburnbar-iroh-kotlin-bindings
+          path: android/openburnbar-iroh-relay/src/main/java/uniffi/openburnbar_iroh
+          if-no-files-found: error
+          retention-days: 14

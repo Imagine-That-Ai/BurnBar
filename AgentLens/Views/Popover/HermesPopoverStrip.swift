@@ -55,9 +55,13 @@ struct AssistantsPopoverStrip: View {
 
     private var collapsedRow: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            Text(controller.chatBackend.glyph)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundStyle(stripGlyphColor)
+            if let provider = controller.chatBackend.agentProvider {
+                ProviderLogoView(provider: provider, size: 18, useFallbackColor: false)
+            } else {
+                Text(controller.chatBackend.glyph)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(stripGlyphColor)
+            }
 
             TextField(stripPlaceholder, text: $controller.inputText)
                 .textFieldStyle(.plain)

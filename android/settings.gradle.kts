@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "BurnBar"
 include(":app")
+include(":openburnbar-iroh-relay")

@@ -112,6 +112,18 @@ import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 import { issueRemoteMcpGrantForSignedInUser } from "./remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "./remoteMcpGrant.js";
 export { insightsHostedAnswer } from "./insightsHostedAnswer.js";
+export { rollupIrohTransportDaily } from "./irohMonitoring.js";
+export { recomputeMediaQuotaUsage } from "./mediaQuota.js";
+export { rollupMediaSessionDaily } from "./mediaMonitoring.js";
+export { grantMediaGrandfather, validateMediaPurchase } from "./mediaSku.js";
+export { triggerVoIPCall } from "./voipPush.js";
+export { evaluateMediaBudget } from "./mediaBudget.js";
+export { evaluateComputerUseBudget } from "./computerUseBudget.js";
+export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
+export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
+export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
+export { sendVoIPOutbound } from "./apnsSender.js";
+export { sendFcmOutbound } from "./fcmAndroidSender.js";
 
 // ---------------------------------------------------------------------------
 // Admin initialization

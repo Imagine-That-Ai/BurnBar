@@ -594,7 +594,16 @@ final class ConversationStore: Sendable {
                       AND TRIM(lm.content) != ''
                     ORDER BY lm.timestamp DESC
                     LIMIT 1
-                ) AS lastMessageContent
+                ) AS lastMessageContent,
+                (
+                    SELECT am.attachmentsJSON
+                    FROM chat_messages am
+                    WHERE am.threadId = t.id
+                      AND am.attachmentsJSON IS NOT NULL
+                      AND TRIM(am.attachmentsJSON) != ''
+                    ORDER BY am.timestamp DESC
+                    LIMIT 1
+                ) AS latestAttachmentsJSON
             FROM chat_threads t
             LEFT JOIN chat_messages m ON m.threadId = t.id
             """
@@ -643,6 +652,7 @@ final class ConversationStore: Sendable {
                     id: id,
                     title: Self.compactChatSnippet(titleSource, limit: 84),
                     preview: Self.compactChatSnippet(previewSource, limit: 180),
+                    attachments: Array((OpenBurnBarDatabase.decodeChatAttachments(row["latestAttachmentsJSON"] as? String) ?? []).prefix(3)),
                     messageCount: messageCount,
                     createdAt: createdAt,
                     updatedAt: updatedAt,

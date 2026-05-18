@@ -120,6 +120,9 @@ enum SettingsPageRoute: Hashable, Codable {
     /// `ChatTilesSettingsView` — which chat tiles appear in the runtime pill +
     /// which Hermes sub-providers appear in the model picker.
     case chatTiles
+    /// `MediaSettingsView` — Mercury per-partner save preferences,
+    /// iPad multi-cam toggle, session stats overlay toggle.
+    case media
 }
 
 // MARK: - Anchor IDs
@@ -143,6 +146,7 @@ enum SettingsAnchor {
     static let providersRow = "hub.providers.row"
     static let hermesRow = "hub.hermes.row"
     static let piRow = "hub.pi.row"
+    static let mediaRow = "hub.media.row"
     static let aboutVersion = "hub.about.version"
     static let aboutPrivacy = "hub.about.privacy"
     static let aboutTerms = "hub.about.terms"

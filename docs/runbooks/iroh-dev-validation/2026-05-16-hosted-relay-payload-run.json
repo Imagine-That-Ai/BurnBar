@@ -1,0 +1,850 @@
+{
+  "capturedAt": "2026-05-16T09:12:00Z",
+  "project": "burnbar",
+  "phase": "D",
+  "status": "first_physical_iphone_hosted_relay_e2e_green_and_model_binding_no_fallback_proved",
+  "hostedRelay": {
+    "url": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+    "remoteConfigParameter": "hermes_iroh_hosted_relay_url",
+    "remoteConfigDefaultValue": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+    "remoteConfigReadback": "verified_live"
+  },
+  "latestPairingReadback": {
+    "updateTime": "2026-05-16T04:47:06.992Z",
+    "nodeId": "4e003a80f9a1e30e492c62cc2134e7a33aab52390c5449f7766d44a26d8a3085",
+    "relayURL": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+    "directAddresses": [
+      "192.168.68.94:51703",
+      "99.62.49.146:51703"
+    ]
+  },
+  "hermesConnectionReadback": {
+    "connectionId": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa",
+    "status": "online",
+    "realtimeRelayStatus": "online",
+    "updatedAt": "2026-05-16T04:47:38.258Z",
+    "realtimeRelayLastSeenAt": "2026-05-16T04:47:38.258Z"
+  },
+  "physicalIphoneRun": {
+    "bundleId": "com.openburnbar.app",
+    "deviceId": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "launchResult": "success",
+    "launchJson": "/tmp/openburnbar-mobile-hermes-e2e-sse-done-launch-final.json",
+    "launchLog": "/tmp/openburnbar-mobile-hermes-e2e-sse-done-launch-final.log",
+    "environment": {
+      "OPENBURNBAR_ENABLE_IROH_TRANSPORT": "1",
+      "OPENBURNBAR_IROH_HOSTED_RELAY_URL": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+      "OPENBURNBAR_E2E_HERMES_PROMPT": "Reply with iroh validation ok"
+    }
+  },
+  "modelFidelityTimeoutRun": {
+    "runId": "07",
+    "bundleId": "com.openburnbar.app",
+    "deviceId": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "launchResult": "success",
+    "launchJson": "/tmp/openburnbar-mobile-hermes-e2e-run-07-launch.json",
+    "launchLog": "/tmp/openburnbar-mobile-hermes-e2e-run-07-launch.log",
+    "installedBuild": "build/DerivedData-ios/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app",
+    "environment": {
+      "OPENBURNBAR_ENABLE_IROH_TRANSPORT": "1",
+      "OPENBURNBAR_IROH_HOSTED_RELAY_URL": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+      "OPENBURNBAR_E2E_HERMES_MODEL": "gpt-5.5",
+      "OPENBURNBAR_E2E_HERMES_PROMPT": "Do not call tools. Reply exactly: iroh validation ok run 07"
+    },
+    "result": "model_binding_forwarded_no_fallback_timeout",
+    "countsTowardTenCompletionGate": false,
+    "interpretation": "The selected on-device model was forwarded to the selected Mac harness. The local Hermes gateway returned HTTP 200, but the selected Mac harness did not complete before the 240s relay guard. The phone surfaced the explicit no-fallback timeout instead of silently trying WSS or another model.",
+    "auditEvidence": [
+      {
+        "observedAt": "2026-05-16T05:53:53.824Z",
+        "eventType": "iroh_pairing_verified"
+      },
+      {
+        "observedAt": "2026-05-16T05:53:57.341Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "side": "ios"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T05:54:27.405Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_frame_received",
+          "frameType": "request.start",
+          "requestId": "iroh_b68e39e1-0826-427e-bf8f-95e46b44fb2d"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T05:54:27.791Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_request_decrypted",
+          "operation": "chatCompletions",
+          "path": "/v1/chat/completions",
+          "requestId": "iroh_b68e39e1-0826-427e-bf8f-95e46b44fb2d"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T05:54:28.007Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_forward_chat_start",
+          "requestId": "iroh_b68e39e1-0826-427e-bf8f-95e46b44fb2d",
+          "requestedModel": "gpt-5.5",
+          "url": "http://127.0.0.1:8642/v1/chat/completions"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T05:54:28.168Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_forward_chat_response",
+          "requestId": "iroh_b68e39e1-0826-427e-bf8f-95e46b44fb2d",
+          "status": "200"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T05:57:57.668Z",
+        "eventType": "iroh_stream_failed",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "dial_start",
+          "error": "Remote Hermes relay timed out before the selected Mac harness completed. No fallback was attempted, so the selected model is not silently rerouted."
+        }
+      },
+      {
+        "observedAt": "2026-05-16T05:58:27.420Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_request_error",
+          "requestId": "iroh_b68e39e1-0826-427e-bf8f-95e46b44fb2d",
+          "error": "iroh stream failed: connection lost"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T05:58:57.422Z",
+        "eventType": "iroh_stream_failed",
+        "transport": "iroh-direct",
+        "detail": {
+          "error": "iroh stream failed: connection lost"
+        }
+      }
+    ],
+    "fallbackAuditReadback": {
+      "queryWindowStart": "2026-05-16T05:53:40Z",
+      "totalEvents": 13,
+      "fallbackCount": 0
+    }
+  },
+  "latestModelFidelityRun": {
+    "runId": "08",
+    "bundleId": "com.openburnbar.app",
+    "deviceId": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "launchResult": "success",
+    "launchJson": "/tmp/openburnbar-mobile-hermes-e2e-run-08-launch.json",
+    "launchLog": "/tmp/openburnbar-mobile-hermes-e2e-run-08-launch.log",
+    "installedBuild": "build/DerivedData-ios/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app",
+    "environment": {
+      "OPENBURNBAR_ENABLE_IROH_TRANSPORT": "1",
+      "OPENBURNBAR_IROH_HOSTED_RELAY_URL": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+      "OPENBURNBAR_E2E_HERMES_MODEL": "gpt-5.5",
+      "OPENBURNBAR_E2E_HERMES_PROMPT": "Reply exactly: ok"
+    },
+    "result": "model_binding_forwarded_and_completed_no_fallback",
+    "countsTowardTenCompletionGate": true,
+    "interpretation": "The selected on-device model was forwarded to the selected Mac harness over iroh, the local Hermes gateway returned HTTP 200, the host observed SSE completion, and the iroh stream closed without WSS fallback.",
+    "auditEvidence": [
+      {
+        "observedAt": "2026-05-16T06:01:48.831Z",
+        "eventType": "iroh_pairing_verified"
+      },
+      {
+        "observedAt": "2026-05-16T06:01:52.397Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "side": "ios"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T06:02:22.554Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_frame_received",
+          "frameType": "request.start",
+          "requestId": "iroh_4e71dade-2dda-46b1-9c15-1f0b1033e788"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T06:02:23.042Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_request_decrypted",
+          "operation": "chatCompletions",
+          "path": "/v1/chat/completions",
+          "requestId": "iroh_4e71dade-2dda-46b1-9c15-1f0b1033e788"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T06:02:23.185Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_forward_chat_start",
+          "requestId": "iroh_4e71dade-2dda-46b1-9c15-1f0b1033e788",
+          "requestedModel": "gpt-5.5",
+          "url": "http://127.0.0.1:8642/v1/chat/completions"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T06:02:23.344Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_forward_chat_response",
+          "requestId": "iroh_4e71dade-2dda-46b1-9c15-1f0b1033e788",
+          "status": "200"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T06:04:22.564Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "host_forward_chat_complete",
+          "requestId": "iroh_4e71dade-2dda-46b1-9c15-1f0b1033e788",
+          "chunks": "3",
+          "done": "true"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T06:04:22.753Z",
+        "eventType": "iroh_stream_closed",
+        "transport": "iroh-direct"
+      }
+    ],
+    "fallbackAuditReadback": {
+      "queryWindowStart": "2026-05-16T06:01:40Z",
+      "totalEvents": 13,
+      "fallbackCount": 0
+    }
+  },
+  "auditEvidence": [
+    {
+      "observedAt": "2026-05-16T04:47:07.319Z",
+      "eventType": "iroh_pairing_published",
+      "detail": {
+        "nodeId": "4e003a80f9a1e30e492c62cc2134e7a33aab52390c5449f7766d44a26d8a3085",
+        "relayURL": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+        "directAddressCount": "2"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:47:58.217Z",
+      "eventType": "iroh_pairing_verified"
+    },
+    {
+      "observedAt": "2026-05-16T04:47:58.331Z",
+      "eventType": "iroh_pairing_verified",
+      "detail": {
+        "stage": "transport_start"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:48:01.495Z",
+      "eventType": "iroh_pairing_verified",
+      "detail": {
+        "stage": "dial_start",
+        "relayURL": "https://use1-1.relay.alberto8793.burnbar.iroh.link/"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:48:01.814Z",
+      "eventType": "iroh_stream_opened",
+      "transport": "iroh-direct",
+      "detail": {
+        "side": "ios"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:48:01.922Z",
+      "eventType": "iroh_stream_opened",
+      "transport": "iroh-direct",
+      "detail": {
+        "side": "mac"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:48:31.924Z",
+      "eventType": "iroh_stream_opened",
+      "transport": "iroh-direct",
+      "detail": {
+        "stage": "host_frame_received",
+        "frameType": "request.start"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:48:32.071Z",
+      "eventType": "iroh_stream_opened",
+      "transport": "iroh-direct",
+      "detail": {
+        "stage": "host_request_start"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:48:32.236Z",
+      "eventType": "iroh_stream_opened",
+      "transport": "iroh-direct",
+      "detail": {
+        "stage": "host_request_decrypted",
+        "operation": "chatCompletions",
+        "path": "/v1/chat/completions"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:48:32.378Z",
+      "eventType": "iroh_stream_opened",
+      "transport": "iroh-direct",
+      "detail": {
+        "stage": "host_forward_chat_start"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:48:32.517Z",
+      "eventType": "iroh_stream_opened",
+      "transport": "iroh-direct",
+      "detail": {
+        "stage": "host_forward_chat_response",
+        "status": "200"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:50:01.932Z",
+      "eventType": "iroh_stream_opened",
+      "transport": "iroh-direct",
+      "detail": {
+        "stage": "host_forward_chat_complete",
+        "chunks": "2",
+        "done": "true"
+      }
+    },
+    {
+      "observedAt": "2026-05-16T04:50:02.033Z",
+      "eventType": "iroh_stream_closed",
+      "transport": "iroh-direct"
+    }
+  ],
+  "latestFailureBeforeSSEDoneFix": {
+    "observedAt": "2026-05-16T04:28:20.421Z",
+    "eventType": "iroh_stream_failed",
+    "transport": "iroh-direct",
+    "error": "Iroh relay timed out before response.complete.",
+    "followedByFallbackToWssAt": "2026-05-16T04:28:20.743Z"
+  },
+  "fixVerification": {
+    "summary": "Host treats OpenAI-style SSE data: [DONE] as stream completion before sending response.complete.",
+    "testCommand": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData-mac -only-testing:OpenBurnBarTests/IrohRelayRequestHandlerTests -only-testing:OpenBurnBarTests/OpenBurnBarRuntimeTests",
+    "result": "passed: 12 selected tests, 0 failures",
+    "xcresult": "build/DerivedData-mac/Logs/Test/Test-OpenBurnBar-2026.05.16_00-49-21--0500.xcresult",
+    "coveredSuites": [
+      "IrohRelayRequestHandlerTests",
+      "OpenBurnBarRuntimeTests"
+    ],
+    "previousSSEFocusedResult": "passed: 4 tests, 0 failures"
+  },
+  "modelFidelityVerification": {
+    "mobileFocusedTestCommand": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -derivedDataPath build/DerivedData-ios -only-testing:OpenBurnBarMobileTests/HermesServiceTests",
+    "mobileFocusedResult": "passed: 72 tests, 0 failures, 1 intentional live skip",
+    "mobileFocusedXcresult": "build/DerivedData-ios/Logs/Test/Test-OpenBurnBarMobile-2026.05.16_00-47-49--0500.xcresult",
+    "macFocusedTestCommand": "OPENBURNBAR_FORCE_LIVE_SCENE=0 TEST_RUNNER_CI=true xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData-mac -only-testing:OpenBurnBarTests/IrohRelayRequestHandlerTests -only-testing:OpenBurnBarTests/OpenBurnBarRuntimeTests",
+    "macFocusedResult": "passed: 12 selected tests, 0 failures",
+    "iosDeviceBuildCommand": "xcodebuild build -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData-ios",
+    "iosDeviceBuildResult": "passed",
+    "directGatewaySmoke": {
+      "url": "http://127.0.0.1:8642/v1/chat/completions",
+      "model": "gpt-5.5",
+      "result": "stream returned HTTP 200 SSE chunks with model gpt-5.5, content ok, usage, and data: [DONE]"
+    }
+  },
+  "crossHarnessModelBindingVerification": {
+    "summary": "Mobile-created CLI agent missions now carry requestedModelID, and the trusted Mac runner applies the selected model to Hermes, Pi, OpenClaw, Codex, and Claude instead of silently falling back.",
+    "sourceContract": {
+      "mobileMissionField": "requestedModelID",
+      "trustedMacLifecycleField": "selectedModelID",
+      "runtimesCovered": [
+        "hermes",
+        "pi",
+        "openclaw",
+        "codex",
+        "claude"
+      ]
+    },
+    "harnessApplication": {
+      "pi": "Direct CLI launch receives OPENBURNBAR_MISSION_MODEL and --model \"$OPENBURNBAR_MISSION_MODEL\".",
+      "openclaw": "Direct CLI launch receives --model <requestedModelID>.",
+      "codex": "ChatSessionController sets the Codex session model to requestedModelID before send; unknown explicit model IDs are preserved for real CLI/provider errors.",
+      "claude": "ChatSessionController sets the Claude session model to requestedModelID before send.",
+      "hermes": "Hermes relay keeps the explicit selected model binding and audits requestedModel before gateway forward."
+    },
+    "verification": {
+      "firestoreRules": "passed: Firestore rules emulator, 17 tests, 0 failures",
+      "androidTargeted": "passed: ./gradlew app:testDebugUnitTest --tests 'com.openburnbar.data.insights.InsightsDataLayerTest' --tests 'com.openburnbar.data.missions.*'",
+      "iosTargeted": "passed: OpenBurnBarMobile targeted xcodebuild, 4 tests, 0 failures",
+      "macTargeted": "passed: OpenBurnBar targeted xcodebuild, 6 tests, 0 failures",
+      "diffCheck": "passed: git diff --check over the changed cross-harness files",
+      "latestLiveReadbackAt": "2026-05-16T09:51:26Z",
+      "latestLiveReadbackResult": "passed: Firestore readback for Pi, OpenClaw, Codex, Claude, and Hermes showed status=completed and requestedModelID == selectedModelID for every live mission proof.",
+      "latestFocusedHarnessCommand": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath /tmp/OpenBurnBarHarnessModelDD -skipPackagePluginValidation -skipMacroValidation -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_claudeArguments_includeExplicitModelWhenProvided -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_claudeArguments_omitsModelWhenEmpty -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_codexArguments_defaultModelAndReasoning -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_codexArguments_useExplicitModelWhenProvided -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_codexArguments_preservesExplicitModelWhenUnknown -only-testing:OpenBurnBarTests/CLIAgentSessionMirrorTests/test_missionRuntimePlanner_keepsShellBackedPromptsOutOfCommandStrings -only-testing:OpenBurnBarTests/CLIAgentSessionMirrorTests/test_missionRuntimePlanner_passesRequestedModelToPiDirectCLI -only-testing:OpenBurnBarTests/CLIAgentSessionMirrorTests/test_missionRuntimePlanner_passesRequestedModelToOpenClawDirectCLI",
+      "latestFocusedHarnessResult": "passed: 8 selected tests, 0 failures"
+    },
+    "cliHelpReadback": {
+      "pi": "pi --help exposes --model <pattern>",
+      "openclaw": "openclaude --help exposes --model <model>",
+      "codex": "codex exec --help exposes -m, --model <MODEL>",
+      "claude": "Claude Code is installed under the active nvm tree and exposes --model <model>"
+    },
+    "liveE2EStatus": "Hermes selected-model behavior is physical-iPhone hosted-relay proved. Pi, OpenClaw, Codex, Claude, and Hermes are also proved through live cli_agent_mission_requests claimed by the trusted Mac mission listener."
+  },
+  "finalHostedRelayRun": {
+    "requestId": "iroh_27bc1c83-677a-43a4-9e9a-7cbbc061f8d9",
+    "launchedAt": "2026-05-16T07:40:49Z",
+    "device": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "hostedRelayUrl": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+    "requestedModel": "gpt-5.5",
+    "auditEvidence": {
+      "pairingPublishedAt": "2026-05-16T07:40:47.239Z",
+      "pairingVerifiedAt": "2026-05-16T07:40:51.613Z",
+      "streamOpenedAt": "2026-05-16T07:40:55.171Z",
+      "hostForwardStartAt": "2026-05-16T07:41:25.753Z",
+      "hostForwardRequestShape": {
+        "bodyBytes": 7530,
+        "messageCount": 2,
+        "toolCount": 5,
+        "stream": true
+      },
+      "hostForwardResponseStatus": 200,
+      "firstUpstreamByteElapsedMs": 130,
+      "firstChunkSendElapsedMs": 29380,
+      "terminalChunkSendElapsedMs": 239399,
+      "completeSendElapsedMs": 269402,
+      "hostCompleteAt": "2026-05-16T07:45:55.307Z",
+      "iosCompleteAt": "2026-05-16T07:45:55.340Z",
+      "chunks": 8,
+      "done": true,
+      "newerFallbackObserved": false
+    },
+    "result": "passed: iPhone received ios_response_complete over iroh-direct with selected model gpt-5.5 and no newer WSS fallback"
+  },
+  "liveMissionHarnessVerification": {
+    "setupFixes": [
+      "Promoted escrow_devices/23AA015D-B6C5-434C-8EBA-E33B8B8E4AAA from pending to trusted after user authorization so the Mac listener can claim mobile missions.",
+      "Enabled cliAssistantAllowed and cliAssistantConsentShown in com.openburnbar.app so Codex and Claude run instead of returning the local CLI assistant privacy guardrail.",
+      "Changed shell-backed direct mission launchers from zsh -lic to zsh -lc because GUI-launched interactive shells can stop before spawning Pi."
+    ],
+    "missions": [
+      {
+        "id": "codex-live-pi2-20260516T075124Z",
+        "requestedRuntime": "pi",
+        "selectedRuntime": "piAgent",
+        "selectedModelID": "deepseek-v4-flash",
+        "status": "completed",
+        "resultPreview": "pi mission route ok"
+      },
+      {
+        "id": "codex-live-openclaw-20260516T075155Z",
+        "requestedRuntime": "openclaw",
+        "selectedRuntime": "openclaw",
+        "selectedModelID": "gpt-5.5",
+        "status": "completed",
+        "resultPreview": "openclaw mission route ok"
+      },
+      {
+        "id": "codex-live-codex2-20260516T075318Z",
+        "requestedRuntime": "codex",
+        "selectedRuntime": "codex",
+        "selectedModelID": "gpt-5.5",
+        "status": "completed",
+        "resultPreview": "codex mission route ok"
+      },
+      {
+        "id": "codex-live-claude-20260516T075359Z",
+        "requestedRuntime": "claude",
+        "selectedRuntime": "claude",
+        "selectedModelID": "sonnet",
+        "status": "completed",
+        "resultPreview": "claude mission route ok"
+      },
+      {
+        "id": "codex-live-hermes-20260516T075423Z",
+        "requestedRuntime": "hermes",
+        "selectedRuntime": "hermes",
+        "selectedModelID": "gpt-5.5",
+        "status": "completed",
+        "resultPreview": "hermes mission route ok"
+      }
+    ],
+    "focusedTestCommand": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath /tmp/OpenBurnBarMissionRoutingDD -skipPackagePluginValidation -skipMacroValidation -only-testing:OpenBurnBarTests/CLIAgentSessionMirrorTests/test_missionRuntimePlanner_keepsShellBackedPromptsOutOfCommandStrings -only-testing:OpenBurnBarTests/CLIAgentSessionMirrorTests/test_missionRuntimePlanner_passesRequestedModelToPiDirectCLI -only-testing:OpenBurnBarTests/CLIAgentSessionMirrorTests/test_missionRuntimePlanner_passesRequestedModelToOpenClawDirectCLI",
+    "focusedTestResult": "passed: 3 tests, 0 failures",
+    "latestReadbackAt": "2026-05-16T09:51:26Z",
+    "latestReadbackResult": "passed: all five live mission documents still show status=completed and requestedModelID == selectedModelID",
+    "latestFocusedTestCommand": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath /tmp/OpenBurnBarHarnessModelDD -skipPackagePluginValidation -skipMacroValidation -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_claudeArguments_includeExplicitModelWhenProvided -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_claudeArguments_omitsModelWhenEmpty -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_codexArguments_defaultModelAndReasoning -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_codexArguments_useExplicitModelWhenProvided -only-testing:OpenBurnBarTests/CLIBridgeTests/test_cliBridge_codexArguments_preservesExplicitModelWhenUnknown -only-testing:OpenBurnBarTests/CLIAgentSessionMirrorTests/test_missionRuntimePlanner_keepsShellBackedPromptsOutOfCommandStrings -only-testing:OpenBurnBarTests/CLIAgentSessionMirrorTests/test_missionRuntimePlanner_passesRequestedModelToPiDirectCLI -only-testing:OpenBurnBarTests/CLIAgentSessionMirrorTests/test_missionRuntimePlanner_passesRequestedModelToOpenClawDirectCLI",
+    "latestFocusedTestResult": "passed: 8 selected tests, 0 failures"
+  },
+  "productionMonitoring": {
+    "function": "projects/burnbar/locations/us-central1/functions/rollupIrohTransportDaily",
+    "state": "ACTIVE",
+    "runtime": "nodejs22",
+    "region": "us-central1",
+    "updateTime": "2026-05-16T05:04:27.855692678Z",
+    "schedulerJob": "projects/burnbar/locations/us-central1/jobs/firebase-schedule-rollupIrohTransportDaily-us-central1",
+    "schedule": "15 8 * * *",
+    "scheduleTimeReadback": "2026-05-16T08:15:00Z",
+    "schedulerState": "ENABLED",
+    "deploymentLogEvidence": "Deployment logs show CreateFunction by alberto8793@gmail.com, revision rollupirohtransportdaily-00001-leg startup, and ACTIVE state.",
+    "rollupDocumentReadback": {
+      "checkedAt": "2026-05-16T08:21:40Z",
+      "pathsChecked": [
+        "ops/iroh_transport_daily_rollups/days/2026-05-15",
+        "ops/iroh_transport_daily_rollups/days/2026-05-16"
+      ],
+      "result": "manual scheduler run succeeded after missing collection-group indexes reached READY",
+      "generatedDocument": "ops/iroh_transport_daily_rollups/days/2026-05-15",
+      "generatedAt": "2026-05-16T08:21:27.515Z",
+      "totalEvents": 0,
+      "streamOpens": 0,
+      "streamCloses": 0,
+      "streamFailures": 0,
+      "wssFallbacks": 0,
+      "successRate": 0,
+      "fallbackRate": 0,
+      "note": "The scheduled worker rolls up the previous UTC day. The 2026-05-16 hosted-relay validation events will appear in the next daily window."
+    }
+  },
+  "monitoringRepair": {
+    "firstScheduledAttempt": {
+      "timeUTC": "2026-05-16T08:15:42Z",
+      "status": "failed",
+      "error": "Firestore FAILED_PRECONDITION on collection-group range query"
+    },
+    "deployedIndexes": [
+      "iroh_audit_events.observedAt ASCENDING COLLECTION",
+      "iroh_audit_events.observedAt DESCENDING COLLECTION",
+      "iroh_audit_events.observedAt ASCENDING COLLECTION_GROUP",
+      "iroh_audit_events.observedAt DESCENDING COLLECTION_GROUP",
+      "media_session_events.startedAt ASCENDING COLLECTION",
+      "media_session_events.startedAt DESCENDING COLLECTION",
+      "media_session_events.startedAt ASCENDING COLLECTION_GROUP",
+      "media_session_events.startedAt DESCENDING COLLECTION_GROUP"
+    ],
+    "deploymentCommand": "firebase deploy --only firestore:indexes --project burnbar",
+    "readiness": {
+      "iroh_audit_events.observedAt": "READY",
+      "media_session_events.startedAt": "READY"
+    },
+    "manualSchedulerRun": {
+      "command": "gcloud scheduler jobs run firebase-schedule-rollupIrohTransportDaily-us-central1 --location us-central1 --project burnbar",
+      "timeUTC": "2026-05-16T08:21:27Z",
+      "result": "success",
+      "schedulerStatus": {}
+    }
+  },
+  "additionalHostedRelayRuns": [
+    {
+      "requestId": "iroh_b0fbb692-2c32-4cbe-9855-ca71a849b7c0",
+      "startedAt": "2026-05-16T07:59:36Z",
+      "topology": "same-LAN",
+      "model": "gpt-5.5",
+      "transport": "iroh-direct",
+      "hostForwardStartedAt": "2026-05-16T08:00:13.139Z",
+      "httpStatus": 200,
+      "firstUpstreamByteMs": 145,
+      "hostCompleteAt": "2026-05-16T08:05:42.778Z",
+      "iosCompleteAt": "2026-05-16T08:05:42.941Z",
+      "chunks": 10,
+      "elapsedMs": 329505,
+      "wssFallback": false
+    },
+    {
+      "requestId": "iroh_91ad4c8c-44e3-42cd-8976-83155b7e8b82",
+      "startedAt": "2026-05-16T08:09:04Z",
+      "topology": "same-LAN",
+      "model": "gpt-5.4-mini",
+      "transport": "iroh-direct",
+      "hostForwardStartedAt": "2026-05-16T08:09:53.049Z",
+      "httpStatus": 200,
+      "firstUpstreamByteMs": 166,
+      "hostCompleteAt": "2026-05-16T08:15:22.557Z",
+      "iosCompleteAt": "2026-05-16T08:15:22.631Z",
+      "chunks": 10,
+      "elapsedMs": 329346,
+      "wssFallback": false
+    },
+    {
+      "requestId": "iroh_388e539a-6640-4cfb-9123-f24dc02110e9",
+      "startedAt": "2026-05-16T09:07:21Z",
+      "topology": "same-LAN",
+      "model": "gpt-5.4-mini",
+      "transport": "iroh-direct",
+      "hostForwardStartedAt": "2026-05-16T09:07:57.437Z",
+      "httpStatus": 200,
+      "firstUpstreamByteMs": 146,
+      "firstIosChunkAt": "2026-05-16T09:08:26.990Z",
+      "hostCompleteAt": "2026-05-16T09:09:56.927Z",
+      "iosCompleteAt": "2026-05-16T09:09:57.016Z",
+      "chunks": 3,
+      "elapsedMs": 119346,
+      "iosRttMillis": 150085,
+      "wssFallback": false,
+      "countsTowardCurrentConsecutiveGate": true
+    }
+  ],
+  "sameLanConsecutiveGateEvidence": {
+    "topology": "same-LAN",
+    "hostedRelayUrl": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+    "model": "gpt-5.4-mini",
+    "prompt": "Reply exactly: ok",
+    "streakResetBeforeRun": "iroh_87f74a8d-ce74-41fc-86b8-539efb1404c3 failed at 2026-05-16T08:41:30.401Z",
+    "result": "passed: 10 consecutive same-LAN physical-iPhone hosted-relay Hermes completions after the reset, all over iroh-direct, no WSS fallback, no failure events",
+    "historicalConsecutiveCompletionStreak": 10,
+    "remainingTopologyGate": "different-network/cellular completion still required before Phase C/D can close",
+    "runs": [
+      {
+        "ordinal": 1,
+        "requestId": "iroh_388e539a-6640-4cfb-9123-f24dc02110e9",
+        "startedAt": "2026-05-16T09:07:21Z",
+        "hostCompleteAt": "2026-05-16T09:09:56.927Z",
+        "iosCompleteAt": "2026-05-16T09:09:57.016Z",
+        "chunks": 3,
+        "rttMillis": 150085,
+        "fallbackCount": 0,
+        "failureCount": 0
+      },
+      {
+        "ordinal": 2,
+        "requestId": "iroh_7d8a54be-ce31-4186-8e93-50fca32c7914",
+        "startedAt": "2026-05-16T09:20:28Z",
+        "hostCompleteAt": "2026-05-16T09:22:34.649Z",
+        "iosCompleteAt": "2026-05-16T09:22:34.787Z",
+        "chunks": 2,
+        "rttMillis": 120105,
+        "fallbackCount": 0,
+        "failureCount": 0
+      },
+      {
+        "ordinal": 3,
+        "requestId": "iroh_963da898-1ec7-4c88-8f0b-9950309253f1",
+        "startedAt": "2026-05-16T09:23:51.346Z",
+        "hostCompleteAt": "2026-05-16T09:25:59.512Z",
+        "iosCompleteAt": "2026-05-16T09:25:59.592Z",
+        "chunks": 2,
+        "rttMillis": 120072,
+        "fallbackCount": 0,
+        "failureCount": 0
+      },
+      {
+        "ordinal": 4,
+        "requestId": "iroh_4e81ab30-98d5-4840-8a8f-9703d110555c",
+        "startedAt": "2026-05-16T09:26:10.831Z",
+        "hostCompleteAt": "2026-05-16T09:28:19.087Z",
+        "iosCompleteAt": "2026-05-16T09:28:19.268Z",
+        "chunks": 2,
+        "rttMillis": 120148,
+        "fallbackCount": 0,
+        "failureCount": 0
+      },
+      {
+        "ordinal": 5,
+        "requestId": "iroh_d084537d-e9da-4b1e-9dfc-d2f24ff0304d",
+        "startedAt": "2026-05-16T09:28:29.549Z",
+        "hostCompleteAt": "2026-05-16T09:30:38.023Z",
+        "iosCompleteAt": "2026-05-16T09:30:38.225Z",
+        "chunks": 2,
+        "rttMillis": 120271,
+        "fallbackCount": 0,
+        "failureCount": 0
+      },
+      {
+        "ordinal": 6,
+        "requestId": "iroh_db146eb4-bb35-47ff-8990-2b6415a55cab",
+        "startedAt": "2026-05-16T09:30:48.466Z",
+        "hostCompleteAt": "2026-05-16T09:32:56.476Z",
+        "iosCompleteAt": "2026-05-16T09:32:56.596Z",
+        "chunks": 2,
+        "rttMillis": 120107,
+        "fallbackCount": 0,
+        "failureCount": 0
+      },
+      {
+        "ordinal": 7,
+        "requestId": "iroh_d23cec62-f5c2-493e-bc81-8a5a50f71ed8",
+        "startedAt": "2026-05-16T09:33:07.252Z",
+        "hostCompleteAt": "2026-05-16T09:35:15.389Z",
+        "iosCompleteAt": "2026-05-16T09:35:15.528Z",
+        "chunks": 2,
+        "rttMillis": 120204,
+        "fallbackCount": 0,
+        "failureCount": 0
+      },
+      {
+        "ordinal": 8,
+        "requestId": "iroh_1a5a7078-1244-43df-928f-e7e303739ba8",
+        "startedAt": "2026-05-16T09:35:25.839Z",
+        "hostCompleteAt": "2026-05-16T09:37:34.339Z",
+        "iosCompleteAt": "2026-05-16T09:37:34.487Z",
+        "chunks": 2,
+        "rttMillis": 120139,
+        "fallbackCount": 0,
+        "failureCount": 0
+      },
+      {
+        "ordinal": 9,
+        "requestId": "iroh_1f3992d5-6358-4e25-8105-10f00bb6dd8b",
+        "startedAt": "2026-05-16T09:37:44.697Z",
+        "hostCompleteAt": "2026-05-16T09:39:52.934Z",
+        "iosCompleteAt": "2026-05-16T09:39:52.972Z",
+        "chunks": 2,
+        "rttMillis": 120019,
+        "fallbackCount": 0,
+        "failureCount": 0
+      },
+      {
+        "ordinal": 10,
+        "requestId": "iroh_bc915e67-14c2-44cb-9276-b914a6c2ede1",
+        "startedAt": "2026-05-16T09:40:03.509Z",
+        "hostCompleteAt": "2026-05-16T09:42:12.043Z",
+        "iosCompleteAt": "2026-05-16T09:42:12.198Z",
+        "chunks": 2,
+        "rttMillis": 120135,
+        "fallbackCount": 0,
+        "failureCount": 0
+      }
+    ]
+  },
+  "postStreakTopologyPreflight": {
+    "capturedAt": "2026-05-16T09:54:22Z",
+    "bundleId": "com.openburnbar.app",
+    "deviceId": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "launchResult": "success",
+    "launchJson": "/tmp/openburnbar-mobile-hermes-cellular-attempt-launch.json",
+    "launchLog": "/tmp/openburnbar-mobile-hermes-cellular-attempt-launch.log",
+    "installedBuild": "build/DerivedData-ios/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app",
+    "environment": {
+      "OPENBURNBAR_ENABLE_IROH_TRANSPORT": "1",
+      "OPENBURNBAR_IROH_HOSTED_RELAY_URL": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
+      "OPENBURNBAR_E2E_HERMES_MODEL": "gpt-5.4-mini",
+      "OPENBURNBAR_E2E_HERMES_PROMPT": "Reply exactly: ok"
+    },
+    "result": "failed_preflight_wifi_not_cellular",
+    "countsTowardTenCompletionGate": false,
+    "streakImpact": "resets the formal current consecutive-completion counter after the historical 10-run same-LAN streak",
+    "interpretation": "The newly installed iOS network audit fields worked and showed the phone path was still wifi, not cellular. The iroh stream then failed with connection lost and the composite transport recorded a WSS fallback, so this run cannot close the different-network/cellular gate.",
+    "auditEvidence": [
+      {
+        "observedAt": "2026-05-16T09:54:18.658Z",
+        "eventType": "iroh_pairing_verified",
+        "detail": {
+          "networkInterfaces": "wifi"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T09:54:18.776Z",
+        "eventType": "iroh_pairing_verified",
+        "detail": {
+          "stage": "transport_start",
+          "networkInterfaces": "wifi"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T09:54:21.944Z",
+        "eventType": "iroh_pairing_verified",
+        "detail": {
+          "stage": "dial_start",
+          "networkInterfaces": "wifi"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T09:54:22.180Z",
+        "eventType": "iroh_stream_opened",
+        "transport": "iroh-direct",
+        "detail": {
+          "side": "ios",
+          "networkInterfaces": "wifi"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T09:54:22.288Z",
+        "eventType": "iroh_stream_failed",
+        "transport": "iroh-direct",
+        "detail": {
+          "stage": "dial_start",
+          "error": "iroh stream failed: connection lost"
+        }
+      },
+      {
+        "observedAt": "2026-05-16T09:54:22.385Z",
+        "eventType": "iroh_fallback_to_wss",
+        "transport": "wss",
+        "detail": {
+          "error": "iroh stream failed: connection lost"
+        }
+      }
+    ]
+  },
+  "postModelBindingRulesDeploy": {
+    "project": "burnbar",
+    "release": "projects/burnbar/releases/cloud.firestore",
+    "rulesetName": "projects/burnbar/rulesets/521751e6-5deb-422e-935f-49e47c3f681d",
+    "updateTime": "2026-05-16T06:38:01.992530Z",
+    "liveSourceContains": [
+      "cli_agent_mission_requests requestedModelID allowlist entry",
+      "requestedModelID string validator <= 240 chars",
+      "selectedModelID trusted-Mac lifecycle field allowlist entry",
+      "selectedModelID string validator <= 240 chars",
+      "mobile create rejects selectedModelID"
+    ]
+  },
+  "debugAppRuntimeDetectorFix": {
+    "rootCause": "The Debug macOS app bundle contains Contents/PlugIns/OpenBurnBarTests.xctest, and the old runtime detector treated that embedded plugin as proof the process was an XCTest host. The app then rendered the empty test scene and did not start the relay heartbeat.",
+    "liveRunWorkaround": "OPENBURNBAR_FORCE_LIVE_SCENE=1",
+    "sourceFix": "OpenBurnBarRuntime keeps the embedded-plugin XCTest fast path for xcodebuild safety, and focused tests now cover that OPENBURNBAR_FORCE_LIVE_SCENE=1 is the explicit live-debug override."
+  },
+  "mobileHermesE2EDiagnostics": {
+    "sourceFiles": [
+      "OpenBurnBarMobile/App/AuthGateView.swift",
+      "OpenBurnBarMobile/Views/RootTabView.swift"
+    ],
+    "summary": "DEBUG-only HermesE2E diagnostics now log whether the hidden physical-device prompt was skipped by missing auth, missing launch env, duplicate application, or selected-model send. The diagnostics do not log prompt contents or user identity.",
+    "compiledIntoDebugDylib": true,
+    "verification": "strings build/DerivedData-ios/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app/OpenBurnBarMobile.debug.dylib | rg 'OPENBURNBAR_E2E_HERMES|Hermes E2E|HermesE2E'"
+  },
+  "networkTopologyAuditBuild": {
+    "capturedAt": "2026-05-16T09:49:50Z",
+    "sourceFile": "OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift",
+    "summary": "The iOS iroh transport now adds NWPath-derived networkPathStatus, networkInterfaces, networkIsExpensive, and networkIsConstrained fields to iOS-side iroh audit details. This makes the remaining different-network/cellular proof auditable from Firestore instead of relying on external phone state.",
+    "buildCommand": "xcodebuild build -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData-ios -skipPackagePluginValidation -skipMacroValidation",
+    "buildResult": "passed",
+    "installCommand": "xcrun devicectl device install app --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 build/DerivedData-ios/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app",
+    "installResult": "passed: com.openburnbar.app installed on physical iPhone AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "topologyRunStatus": "pending: no different-network/cellular Hermes iroh completion has been captured with these fields yet"
+  },
+  "remainingGate": {
+    "currentConsecutiveCompletionStreak": 0,
+    "historicalSameLanCompletionStreak": 10,
+    "streakResetReason": "Run iroh_87f74a8d-ce74-41fc-86b8-539efb1404c3 failed at 2026-05-16T08:41:30.401Z with the explicit selected-model no-fallback timeout. Runs from 2026-05-16T09:07Z through 2026-05-16T09:42Z then produced 10 consecutive clean same-LAN completions. A later topology preflight at 2026-05-16T09:54:22Z showed networkInterfaces=wifi and failed with iroh stream connection lost plus WSS fallback, so the formal current streak is reset.",
+    "sameLanQuotaStatus": "historical_green",
+    "differentNetworkTopologyStatus": "pending: requires iPhone Wi-Fi off / cellular or another different-network topology; the installed iOS debug build now records networkInterfaces for audit readback",
+    "requiredBeforePhaseE": [
+      "a renewed clean 10-completion validation sequence that includes a different-network/cellular iroh Hermes completion",
+      "TestFlight release preparation after validation gates"
+    ]
+  }
+}

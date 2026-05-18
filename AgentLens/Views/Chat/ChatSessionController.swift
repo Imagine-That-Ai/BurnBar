@@ -20,9 +20,16 @@ final class ChatSessionController {
     var messages: [ChatMessageRecord] = []
     var inputText = ""
     var isStreaming = false
+    /// Monotonic counter bumped every time a streaming text chunk lands in
+    /// the active assistant placeholder. UI surfaces (Project Memory
+    /// detail sheets, etc.) observe this with `.onChange(of:)` to mirror
+    /// the latest content without polling. Cheap, decoupled, and survives
+    /// view rebuilds.
+    var streamingTick: Int = 0
     var streamError: String?
     var chatBackend: ChatBackendID = .codex
-    /// Per-backend `model` selection for the active chat. Empty means defaults (Codex: gpt-5.5, Claude: CLI default, Hermes: automatic from gateway/settings, OpenClaw: gpt-4o-mini).
+    /// Per-backend `model` selection for the active chat. Empty means the
+    /// active CLI profile or gateway-advertised default decides.
     var chatModelCodex: String = "" {
         didSet { UserDefaults.standard.set(chatModelCodex, forKey: Self.udChatModelCodex) }
     }
@@ -166,6 +173,9 @@ final class ChatSessionController {
     /// The model currently loaded in Hermes (e.g. "NousResearch/Hermes-3-Llama-3.1-8B").
     var hermesModelName: String? { cliBridge.hermesModelName }
     var hermesAdvertisedModels: [HermesAdvertisedModel] { cliBridge.hermesAdvertisedModels }
+    var hermesGatewayModels: [OpenAICompatibleAdvertisedModel] { cliBridge.hermesGatewayModels }
+    var openClawGatewayModels: [OpenAICompatibleAdvertisedModel] { cliBridge.openClawGatewayModels }
+    var piAgentGatewayModels: [OpenAICompatibleAdvertisedModel] { cliBridge.piAgentGatewayModels }
 
     func chatModelSelection(for backend: ChatBackendID) -> String {
         switch backend {
@@ -192,25 +202,125 @@ final class ChatSessionController {
         switch backend {
         case .codex:
             let s = chatModelCodex.trimmingCharacters(in: .whitespacesAndNewlines)
-            return s.isEmpty ? CLIBridge.normalizedCodexModel("gpt-5.5") : CLIBridge.normalizedCodexModel(s)
+            return CLIBridge.normalizedCodexModel(s)
         case .claude:
             return chatModelClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         case .hermes:
-            let s = chatModelHermes.trimmingCharacters(in: .whitespacesAndNewlines)
-            if s.isEmpty {
-                return settingsManager.resolvedHermesChatModel(gatewayAdvertisedModel: cliBridge.hermesModelName)
-            }
-            return s
+            return Self.resolvedHermesModelSelection(
+                panelSelection: chatModelHermes,
+                settingsOverride: settingsManager.hermesChatModelOverride,
+                selectedFamily: settingsManager.selectedHermesModel,
+                advertisedModels: hermesAdvertisedModels,
+                gatewayDefault: liveDefaultModel(for: .hermes)
+            )
         case .openclaw:
             let s = chatModelOpenClaw.trimmingCharacters(in: .whitespacesAndNewlines)
-            return s.isEmpty ? "gpt-4o-mini" : s
+            if s.isEmpty { return liveDefaultModel(for: .openclaw) ?? "" }
+            return s
         case .piAgent:
             let s = chatModelPiAgent.trimmingCharacters(in: .whitespacesAndNewlines)
-            if s.isEmpty {
-                return settingsManager.resolvedPiChatModel(gatewayAdvertisedModel: cliBridge.piAgentModelName)
-            }
+            if s.isEmpty { return liveDefaultModel(for: .piAgent) ?? "" }
             return s
         }
+    }
+
+    func liveAdvertisedModels(for backend: ChatBackendID) -> [OpenAICompatibleAdvertisedModel] {
+        switch backend {
+        case .hermes:
+            return hermesGatewayModels
+        case .openclaw:
+            return openClawGatewayModels
+        case .piAgent:
+            return piAgentGatewayModels
+        case .codex, .claude:
+            return []
+        }
+    }
+
+    private func liveDefaultModel(for backend: ChatBackendID) -> String? {
+        liveAdvertisedModels(for: backend)
+            .first { $0.routeEligible }?
+            .id
+    }
+
+    static func resolvedHermesModelSelection(
+        panelSelection: String,
+        settingsOverride: String,
+        selectedFamily: HermesModelID?,
+        advertisedModels: [HermesAdvertisedModel],
+        gatewayDefault: String?
+    ) -> String {
+        let panel = panelSelection.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !panel.isEmpty {
+            if advertisedModels.contains(where: { $0.id == panel }) {
+                return panel
+            }
+            if let family = hermesFamilyHint(for: panel),
+               let advertised = advertisedModels.first(where: { $0.family == family }) {
+                return advertised.id
+            }
+            if advertisedModels.isEmpty {
+                return panel
+            }
+        }
+
+        let override = settingsOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+        if advertisedModels.contains(where: { $0.id == override }) {
+            return override
+        }
+        if let family = hermesFamilyHint(for: override) {
+            if let advertised = advertisedModels.first(where: { $0.family == family }) {
+                return advertised.id
+            }
+        } else if !override.isEmpty, advertisedModels.isEmpty {
+            return override
+        }
+
+        if let selectedFamily,
+           let advertised = advertisedModels.first(where: { $0.family == selectedFamily }) {
+            return advertised.id
+        }
+
+        return gatewayDefault?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func hermesFamilyHint(for model: String) -> HermesModelID? {
+        let normalized = model
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+        guard !normalized.isEmpty else { return nil }
+        if let family = HermesModelID(rawValue: normalized) { return family }
+        if normalized.contains("claude") || normalized.contains("anthropic") { return .claude }
+        if normalized.contains("codex") || normalized.contains("openai") || normalized.hasPrefix("gpt-") { return .codex }
+        if normalized.contains("zai") || normalized.contains("z.ai") || normalized.contains("glm") { return .zai }
+        if normalized.contains("kimi") || normalized.contains("moonshot") { return .kimi }
+        if normalized.contains("minimax") { return .minimax }
+        if normalized.contains("ollama")
+            || normalized.contains("llama")
+            || normalized.contains("mistral")
+            || normalized.contains("qwen")
+            || normalized.contains("deepseek")
+            || normalized.contains("gemma") {
+            return .ollama
+        }
+        return nil
+    }
+
+    private func selectedModelRoutingError(for backend: ChatBackendID) -> String? {
+        guard backend == .hermes || backend == .openclaw || backend == .piAgent else { return nil }
+        let selected = effectiveChatModel(for: backend).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !selected.isEmpty else {
+            return "No eligible route for \(backend.displayName). Add or enable an account/provider that serves this model."
+        }
+        let models = liveAdvertisedModels(for: backend)
+        guard !models.isEmpty else {
+            return "Selected \(backend.displayName) model '\(selected)' has not been verified against this gateway's live /v1/models catalog. Refresh the gateway before sending, so the request is not silently rerouted."
+        }
+        guard models.contains(where: { $0.id == selected && $0.routeEligible }) else {
+            return "No eligible route for \(selected). Add or enable an account/provider that serves this model."
+        }
+        return nil
     }
 
     /// Short label for the model picker (reflects `effectiveChatModel` for the current backend).
@@ -553,6 +663,40 @@ final class ChatSessionController {
         refreshHistory()
     }
 
+    func openOrCreateChatThread(id rawThreadID: String) {
+        let threadID = rawThreadID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !threadID.isEmpty else {
+            startNewChatThread()
+            return
+        }
+
+        streamTask?.cancel()
+        cliBridge.cancel()
+        streamTask = nil
+        isStreaming = false
+        activeStreamMessageId = nil
+        streamError = nil
+        selectedContext = nil
+        conversationJumpTargets = []
+
+        do {
+            if try !dataStore.chatThreadExists(id: threadID) {
+                _ = try dataStore.createChatThread(id: threadID)
+            }
+            activeThreadID = threadID
+            persistActiveThreadSlot()
+            messages = try dataStore.fetchChatMessages(threadID: threadID)
+        } catch {
+            AppLogger.chat.silentFailure("openOrCreateChatThread", error: error)
+            startNewChatThread()
+            return
+        }
+
+        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
+        ensureChatWorkspaceDirectoryExists()
+        refreshHistory()
+    }
+
     func refreshHistory() {
         do {
             historyThreads = try dataStore.fetchChatThreadSummaries(searchQuery: historyQuery)
@@ -724,7 +868,7 @@ final class ChatSessionController {
             if !hermesAvailable {
                 let err = ChatMessageRecord(
                     role: .assistant,
-                    content: "Hermes isn’t running. Add API_SERVER_ENABLED=true to ~/.hermes/.env, then in Terminal run: hermes gateway run. You don’t need to enter anything in OpenBurnBar unless you set API_SERVER_KEY in that file — then paste the same value in Settings → Chat under Hermes.",
+                    content: await hermesUnavailableMessage(),
                     cliUsed: nil
                 )
                 messages.append(err)
@@ -822,6 +966,8 @@ final class ChatSessionController {
             }
         }
 
+        let pendingModelRoutingError = selectedModelRoutingError(for: chatBackend)
+
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
 
         let retrievalText = Self.retrievalQueryText(for: trimmed, messages: messages)
@@ -835,7 +981,23 @@ final class ChatSessionController {
             OpenBurnBarChatContextBudget.chatRetrievalMaxResultLimit
         )
 
-        guard let searchSvc = typedSearchService else { return }
+        guard let searchSvc = typedSearchService else {
+            if let routingError = pendingModelRoutingError {
+                let err = ChatMessageRecord(
+                    role: .assistant,
+                    content: routingError,
+                    cliUsed: nil
+                )
+                messages.append(err)
+                do {
+                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                } catch {
+                    AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
+                }
+                refreshHistory()
+            }
+            return
+        }
 
         let queryRun = await searchSvc.runBurnBarQuery(
             RetrievalQuery(
@@ -887,6 +1049,23 @@ final class ChatSessionController {
                 try dataStore.saveChatMessage(assistant, threadID: activeThreadID)
             } catch {
                 AppLogger.chat.silentFailure("saveChatMessage (oracle response)", error: error)
+            }
+            refreshHistory()
+            selectedContext = nil
+            return
+        }
+
+        if let routingError = pendingModelRoutingError {
+            let err = ChatMessageRecord(
+                role: .assistant,
+                content: routingError,
+                cliUsed: nil
+            )
+            messages.append(err)
+            do {
+                try dataStore.saveChatMessage(err, threadID: activeThreadID)
+            } catch {
+                AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
             }
             refreshHistory()
             selectedContext = nil
@@ -1048,14 +1227,14 @@ final class ChatSessionController {
                             systemPrompt: augmentedSystem,
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,
-                            model: self.chatModelCodex
+                            model: requestModel
                         )
                     case .claude:
                         return self.cliBridge.chatClaudeStream(
                             systemPrompt: augmentedSystem,
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,
-                            model: self.chatModelClaude
+                            model: requestModel
                         )
                     }
                 }
@@ -1087,6 +1266,7 @@ final class ChatSessionController {
                                 cliUsed: old.cliUsed,
                                 transcriptPieces: snapshot
                             )
+                            self.streamingTick &+= 1
                         }
                     }.value
                 }
@@ -1162,6 +1342,37 @@ final class ChatSessionController {
         }
     }
 
+    private func hermesUnavailableMessage() async -> String {
+        if await hermesHealthReachable() {
+            let model = effectiveChatModel(for: .hermes).trimmingCharacters(in: .whitespacesAndNewlines)
+            let modelLine = model.isEmpty ? "" : " Current requested model: \(model)."
+            return "Hermes gateway is running, but OpenBurnBar could not read its live model catalog. Wait a few seconds and retry, or choose a live Hermes model from Settings → Chat.\(modelLine)"
+        }
+        return "Hermes isn’t running. Add API_SERVER_ENABLED=true to ~/.hermes/.env, then in Terminal run: hermes gateway run. You don’t need to enter anything in OpenBurnBar unless you set API_SERVER_KEY in that file — then paste the same value in Settings → Chat under Hermes."
+    }
+
+    private func hermesHealthReachable() async -> Bool {
+        guard var components = URLComponents(url: hermesGatewayBaseURL, resolvingAgainstBaseURL: false) else {
+            return false
+        }
+        components.path = "/health"
+        components.query = nil
+        guard let url = components.url else { return false }
+
+        var request = URLRequest(url: url, timeoutInterval: 2)
+        request.httpMethod = "GET"
+        if let token = hermesBearerToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+            return (200...299).contains(http.statusCode)
+        } catch {
+            return false
+        }
+    }
+
     func cancelGeneration() {
         streamTask?.cancel()
         cliBridge.cancel()
@@ -1201,7 +1412,7 @@ final class ChatSessionController {
                     ?? "hermes"
                 return (.hermes, "OpenBurnBar Hermes Chat", m)
             case .openclaw:
-                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "gpt-4o-mini"
+                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "unselected"
                 return (.openClaw, "OpenBurnBar OpenClaw Chat", m)
             case .piAgent:
                 let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty

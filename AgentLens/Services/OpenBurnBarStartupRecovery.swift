@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OpenBurnBarMedia
 
 struct DataStoreStartupFailure: Identifiable, Equatable {
     let id: UUID
@@ -191,8 +192,24 @@ final class OpenBurnBarRuntimeContext {
     var castActionsListener: CastActionsListener?
     var cliAgentMissionRequestListener: CLIAgentMissionRequestListener?
     var agentHarnessImportJobListener: AgentHarnessImportJobListener?
+    var routedClientWiringSentry: RoutedClientWiringSentry?
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    var computerUseRuntimeController: ComputerUseRuntimeController?
+    #endif
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
+
+    // MARK: - Mercury Phase 8 — user-facing surfaces
+
+    /// Live-share / file-transfer / call brain. Mounted into the
+    /// menu-bar popover via `MercuryTraySection` and into the app
+    /// scene root via `MercuryGlobalChrome`.
+    var mercuryPeerSource: MercuryPeerSource?
+    var mercurySessionCoordinator: MediaSessionCoordinator?
+    var mercuryRouter: MercuryRouter?
+    var mercuryCallHUDState: CallHUDState?
+    var mercuryConsentStore: MercuryConsentStore?
+    var voipCallTrigger: VoIPCallTrigger?
 
     init(
         dataStore: DataStore,
@@ -219,6 +236,62 @@ final class OpenBurnBarRuntimeContext {
         self.chatController = chatController
         self.operatingLayer = operatingLayer
     }
+
+    func startRelayServices() {
+        let hermesRelayHost: HermesRelayHostService
+        if let existingRelayHost = hermesRelayHostService {
+            hermesRelayHost = existingRelayHost
+        } else {
+            let cliRelayExecutor = ChatSessionControllerCLIAgentRelayChatExecutor(chatController: chatController)
+            hermesRelayHost = HermesRelayHostService(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                cliChatDispatcher: { request, eventSender in
+                    try await cliRelayExecutor.streamChat(request: request, onEvent: eventSender)
+                }
+            )
+            hermesRelayHostService = hermesRelayHost
+        }
+        hermesRelayHost.start()
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        startComputerUseServices(relayHostService: hermesRelayHost)
+        #endif
+
+        startRoutedClientWiringSentry()
+
+        let piRelayHost: PiAgentCloudRelayHostService
+        if let existingPiRelayHost = piAgentRelayHostService {
+            piRelayHost = existingPiRelayHost
+        } else {
+            piRelayHost = PiAgentCloudRelayHostService(
+                accountManager: accountManager,
+                settingsManager: settingsManager
+            )
+            piAgentRelayHostService = piRelayHost
+        }
+        piRelayHost.start()
+    }
+
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    func startComputerUseServices(relayHostService explicitRelayHostService: HermesRelayHostService? = nil) {
+        let controller: ComputerUseRuntimeController
+        if let existing = computerUseRuntimeController {
+            controller = existing
+        } else {
+            controller = ComputerUseRuntimeController(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                relayHostService: explicitRelayHostService ?? hermesRelayHostService
+            )
+            computerUseRuntimeController = controller
+        }
+
+        if let relayHost = explicitRelayHostService ?? hermesRelayHostService {
+            controller.attach(relayHostService: relayHost)
+        }
+        controller.startPanicMonitoring()
+    }
+    #endif
 
     func startSmartDisplayServices() {
         let smartHubBridge: SmartHubBridgeController
@@ -322,5 +395,67 @@ final class OpenBurnBarRuntimeContext {
             agentHarnessImportJobListener = importListener
         }
         importListener.start()
+    }
+
+    /// Boot the durability sentry that keeps Claude Code / Codex / Forge /
+    /// OpenCode / Droid wired through the local BurnBar gateway after
+    /// external rewrites (Claude Code's atomic settings.json save, plugin
+    /// installs, dotfile syncs). The sentry is a no-op until at least one CLI
+    /// has been Connected; it picks up the persisted intent automatically.
+    func startRoutedClientWiringSentry() {
+        let sentry: RoutedClientWiringSentry
+        if let existing = routedClientWiringSentry {
+            sentry = existing
+        } else {
+            sentry = RoutedClientWiringSentry()
+            routedClientWiringSentry = sentry
+        }
+        sentry.start(settingsManager: settingsManager)
+    }
+
+    /// Mercury Phase 8 — construct the user-facing service stack:
+    /// peer source, session coordinator, consent store, router. The
+    /// router is attached to the CloudSync iroh client's control
+    /// stream dispatcher so inbound `media.mirror.request` /
+    /// `media.presence.heartbeat` frames flow into it. The popover
+    /// section + scene-root chrome read state off these published
+    /// objects.
+    ///
+    /// Idempotent: calling more than once does nothing.
+    func startMercuryServices() {
+        guard mercuryRouter == nil else { return }
+        let consent = MercuryConsentStore()
+        let peerSource = makeMercuryPeerSource()
+        let session = MediaSessionCoordinator(capabilityGate: MacMediaCapabilityGate.shared)
+        let hud = CallHUDState()
+        let router = MercuryRouter(
+            sessionCoordinator: session,
+            peerSource: peerSource,
+            consentStore: consent
+        )
+
+        self.mercuryConsentStore = consent
+        self.mercuryPeerSource = peerSource
+        self.mercurySessionCoordinator = session
+        self.mercuryCallHUDState = hud
+        self.mercuryRouter = router
+        self.voipCallTrigger = VoIPCallTrigger()
+
+        peerSource.start()
+
+        // Attach to the live iroh host's control stream. The relay host
+        // owns the persistent `media.control` registry; CloudSyncService
+        // only owns Firestore sync.
+        hermesRelayHostService?.attachMercuryRouter(router)
+    }
+
+    private func makeMercuryPeerSource() -> MercuryPeerSource {
+        let registry = hermesRelayHostService?.mercuryControlStreamRegistry
+            ?? MediaControlStreamRegistry()
+        let manager = accountManager
+        return MercuryPeerSource(
+            registry: registry,
+            uidProvider: { manager.userID }
+        )
     }
 }

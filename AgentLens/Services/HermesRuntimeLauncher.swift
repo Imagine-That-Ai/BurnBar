@@ -45,7 +45,11 @@ struct HermesRuntimeLauncherDependencies: Sendable {
             try await HermesRuntimeProcessRunner.launchDetached(executable: executable, arguments: arguments)
         },
         probeGateway: { baseURL, bearerToken in
-            await OpenAICompatibleModelProbe.probeWithModel(baseURL: baseURL, bearerToken: bearerToken)
+            await OpenAICompatibleModelProbe.probeWithModel(
+                baseURL: baseURL,
+                bearerToken: bearerToken,
+                timeout: 8
+            )
         }
     )
 }

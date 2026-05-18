@@ -60,6 +60,7 @@ public struct MissionSituationRoom: View {
                         MissionApprovalCard(ask: ask, onApprove: { approve in onApprove(ask, approve) })
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             activeMissionsSection
@@ -67,6 +68,7 @@ public struct MissionSituationRoom: View {
 
             Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Header
@@ -281,6 +283,7 @@ public struct MissionLiveBurnGauge: View {
             Spacer(minLength: 0)
         }
         .padding(UnifiedDesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous)
                 .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.55))

@@ -69,26 +69,17 @@ struct HermesModelStrip: View {
     @ViewBuilder
     private func familyGroup(for family: HermesModelID) -> some View {
         let models = advertisedModelsByFamily[family] ?? []
-        HStack(spacing: 2) {
-            familyTag(family)
+        Group {
             if models.isEmpty {
                 fallbackPill(family)
             } else {
-                ForEach(models) { model in
-                    advertisedPill(model)
+                HStack(spacing: 2) {
+                    ForEach(models) { model in
+                        advertisedPill(model)
+                    }
                 }
             }
         }
-    }
-
-    private func familyTag(_ family: HermesModelID) -> some View {
-        Text(family.shortLabel)
-            .font(.system(size: 8, weight: .bold, design: .rounded))
-            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.8))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 3)
-            .background(DesignSystem.Colors.surface.opacity(0.45), in: Capsule(style: .continuous))
-            .help(family.displayName)
     }
 
     private func fallbackPill(_ model: HermesModelID) -> some View {
@@ -96,9 +87,9 @@ struct HermesModelStrip: View {
         return Button {
             handleModelTap(model)
         } label: {
-            Text(model.shortLabel)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .padding(.horizontal, 6)
+            ProviderLogoView(provider: model.agentProvider, size: 13, useFallbackColor: false)
+                .frame(width: 18, height: 18)
+                .padding(.horizontal, 3)
                 .padding(.vertical, 3)
                 .background {
                     if isSelected {
@@ -113,6 +104,7 @@ struct HermesModelStrip: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(model.displayName)
         .help(model.displayName)
     }
 
@@ -121,11 +113,9 @@ struct HermesModelStrip: View {
         return Button {
             handleAdvertisedModelTap(model)
         } label: {
-            Text(model.displayName)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .padding(.horizontal, 6)
+            ProviderLogoView(provider: model.family.agentProvider, size: 13, useFallbackColor: false)
+                .frame(width: 18, height: 18)
+                .padding(.horizontal, 3)
                 .padding(.vertical, 3)
                 .background {
                     if isSelected {
@@ -140,7 +130,8 @@ struct HermesModelStrip: View {
                 )
         }
         .buttonStyle(.plain)
-        .help(model.id)
+        .accessibilityLabel(model.displayName)
+        .help(model.displayName)
     }
 
     private func handleModelTap(_ model: HermesModelID) {

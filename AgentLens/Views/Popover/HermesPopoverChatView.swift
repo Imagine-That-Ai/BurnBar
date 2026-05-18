@@ -38,14 +38,12 @@ struct AssistantsPopoverChatView: View {
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.xs)
             .background(DesignSystem.Colors.surface.opacity(0.35))
-            OpenBurnBarHermesOperatingStrip(layer: operatingLayer)
-            Divider().background(runtimeDividerTint.opacity(0.3))
             chatThread
             Divider().background(runtimeDividerTint.opacity(0.3))
             inputRow
             bottomBar
         }
-        .frame(width: 340)
+        .frame(maxWidth: .infinity)
         .background(DesignSystem.Colors.background)
         .environment(\.hermesAtomNavigator, atomRouter)
         .popover(item: Binding(
@@ -79,15 +77,18 @@ struct AssistantsPopoverChatView: View {
 
     private var runtimeHeroCard: some View {
         HStack(spacing: DesignSystem.Spacing.md) {
-            // Provider emblem
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(AnyShapeStyle(heroCardEmblemFill))
                     .frame(width: 36, height: 36)
 
-                Text(controller.chatBackend.glyph)
-                    .font(.system(size: 18, weight: .medium, design: .rounded))
-                    .foregroundStyle(heroCardGlyphColor)
+                if let provider = controller.chatBackend.agentProvider {
+                    ProviderLogoView(provider: provider, size: 24, useFallbackColor: false)
+                } else {
+                    Text(controller.chatBackend.glyph)
+                        .font(.system(size: 18, weight: .medium, design: .rounded))
+                        .foregroundStyle(heroCardGlyphColor)
+                }
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -307,9 +308,14 @@ struct AssistantsPopoverChatView: View {
 
     private var emptyState: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
-            Text(controller.chatBackend.glyph)
-                .font(.system(size: 32))
-                .foregroundStyle(heroCardGlyphColor.opacity(0.4))
+            if let provider = controller.chatBackend.agentProvider {
+                ProviderLogoView(provider: provider, size: 32, useFallbackColor: false)
+                    .opacity(0.55)
+            } else {
+                Text(controller.chatBackend.glyph)
+                    .font(.system(size: 32))
+                    .foregroundStyle(heroCardGlyphColor.opacity(0.4))
+            }
 
             Text("Ask \(controller.chatBackend.displayName)")
                 .font(DesignSystem.Typography.body)

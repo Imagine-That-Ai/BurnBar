@@ -332,6 +332,10 @@ final class PixelClockController {
     }
 
     func start() {
+        guard !OpenBurnBarRuntime.isRunningTests else {
+            Self.logger.info("Pixel Clock controller start skipped under XCTest")
+            return
+        }
         stockSimulator.start()
         heartbeatTask?.cancel()
         inputTask?.cancel()

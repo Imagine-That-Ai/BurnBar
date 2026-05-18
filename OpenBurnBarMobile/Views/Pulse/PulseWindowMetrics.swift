@@ -32,7 +32,7 @@ enum PulseWindowMetricBuilder {
         case .day:
             return liveMetrics(
                 from: liveUsages,
-                since: calendar.startOfDay(for: now),
+                since: now.addingTimeInterval(-Self.dayWindowInterval),
                 through: now,
                 trailingTotal: rollupTotals[.sevenDays]
             )
@@ -49,9 +49,13 @@ enum PulseWindowMetricBuilder {
         }
     }
 
-    static func todayStart(now: Date = Date(), calendar: Calendar = .current) -> Date {
-        calendar.startOfDay(for: now)
+    static func liveQueryStart(now: Date = Date(), calendar: Calendar = .current) -> Date {
+        let rollingStart = now.addingTimeInterval(-dayWindowInterval)
+        let components = calendar.dateComponents([.year, .month, .day, .hour], from: rollingStart)
+        return calendar.date(from: components) ?? rollingStart
     }
+
+    private static let dayWindowInterval: TimeInterval = 24 * 60 * 60
 
     private static func liveMetrics(
         from usages: [TokenUsage],
@@ -74,7 +78,7 @@ enum PulseWindowMetricBuilder {
     }
 
     private static func eventDate(for usage: TokenUsage) -> Date {
-        usage.startTime
+        max(usage.startTime, usage.endTime)
     }
 }
 

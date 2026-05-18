@@ -133,4 +133,31 @@ final class ChatMessageViewTests: XCTestCase {
         )
         XCTAssertNoThrow(try view.inspect())
     }
+
+    func test_oversizedUserMessageRendersCollapsedExcerpt() throws {
+        let content = String(repeating: "A", count: ChatMessageTextLimiter.defaultVisibleCharacterLimit + 37)
+        let message = ViewTestFixtures.makeUserMessage(content: content)
+        let view = ChatMessageView(
+            message: message,
+            isStreaming: false,
+            showViaBadge: false
+        )
+
+        let sut = try view.inspect()
+
+        XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.count == ChatMessageTextLimiter.defaultVisibleCharacterLimit }))
+        XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("37 more characters") }))
+    }
+
+    func test_textLimiterReturnsFullTextWhenExpanded() {
+        let content = String(repeating: "B", count: ChatMessageTextLimiter.defaultVisibleCharacterLimit + 5)
+
+        let collapsed = ChatMessageTextLimiter.presentation(for: content, expanded: false)
+        let expanded = ChatMessageTextLimiter.presentation(for: content, expanded: true)
+
+        XCTAssertEqual(collapsed.visibleText.count, ChatMessageTextLimiter.defaultVisibleCharacterLimit)
+        XCTAssertEqual(collapsed.hiddenCharacterCount, 5)
+        XCTAssertEqual(expanded.visibleText, content)
+        XCTAssertEqual(expanded.hiddenCharacterCount, 0)
+    }
 }

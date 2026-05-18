@@ -336,11 +336,7 @@ private data class CostSample(val timeMillis: Long, val cumulative: Double)
 private fun domainFor(scope: PulseTimelineScope, nowMillis: Long): Pair<Long, Long> = when (scope) {
     PulseTimelineScope.MINUTE -> (nowMillis - 60_000L) to nowMillis
     PulseTimelineScope.HOUR   -> (nowMillis - 3_600_000L) to nowMillis
-    PulseTimelineScope.DAY -> {
-        val start = startOfLocalPulseDayMillis(nowMillis)
-        val end = start + 86_400_000L
-        start to end
-    }
+    PulseTimelineScope.DAY -> (nowMillis - 86_400_000L) to nowMillis
     PulseTimelineScope.WEEK -> {
         val start = startOfLocalPulseDayMillis(nowMillis) - 6L * 86_400_000L
         start to nowMillis
@@ -391,8 +387,8 @@ private fun buildLiveSamples(
 
     val relevant = usages
         .asSequence()
-        .filter { it.startTime in lower..upper }
-        .sortedBy { it.startTime }
+        .filter { it.pulseEventTimeMillis() in lower..upper }
+        .sortedBy { it.pulseEventTimeMillis() }
         .toList()
 
     val out = ArrayList<CostSample>(bucketCount + 1)
@@ -401,7 +397,7 @@ private fun buildLiveSamples(
     var cursor = 0
     for (i in 1..bucketCount) {
         val edge = lower + i * stride
-        while (cursor < relevant.size && relevant[cursor].startTime <= edge) {
+        while (cursor < relevant.size && relevant[cursor].pulseEventTimeMillis() <= edge) {
             val event = relevant[cursor]
             cumulative += when (displayMode) {
                 UsageDisplayMode.CURRENCY -> max(0.0, event.effectiveCost)
@@ -440,9 +436,15 @@ private fun buildAggregateSamples(
 private fun emptyMessage(scope: PulseTimelineScope): String = when (scope) {
     PulseTimelineScope.MINUTE -> "AWAITING THIS MINUTE'S BURN"
     PulseTimelineScope.HOUR   -> "AWAITING THIS HOUR'S BURN"
-    PulseTimelineScope.DAY    -> "AWAITING TODAY'S FIRST BURN"
+    PulseTimelineScope.DAY    -> "NO BURN IN LAST 24H"
     PulseTimelineScope.WEEK   -> "NO DATA THIS WEEK YET"
     PulseTimelineScope.MONTH  -> "NO DATA THIS MONTH YET"
+}
+
+private fun TokenUsage.pulseEventTimeMillis(): Long {
+    val eventTimes = listOf(timestamp, startTime, endTime).filter { it > 0L }
+    eventTimes.maxOrNull()?.let { return it }
+    return 0L
 }
 
 // ── Monotone cubic path ──
@@ -497,4 +499,3 @@ object PulseBurnRate {
         return if (tokens > 0) tokens / 5 else null
     }
 }
-

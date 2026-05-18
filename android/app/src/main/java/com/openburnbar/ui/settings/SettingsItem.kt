@@ -58,6 +58,7 @@ enum class SettingsSection(val displayTitle: String) {
     SMART_DISPLAYS("Smart Displays"),
     NOTIFICATIONS("Notifications"),
     HERMES("Hermes"),
+    COMPUTER_USE("Computer Use"),
 }
 
 /**
@@ -85,6 +86,7 @@ object SettingsAnchor {
     const val CONNECTED_DEVICES = "root.connectedDevices"
     const val SMART_DISPLAYS_ROW = "root.smartDisplays"
     const val QUICK_GLANCE_ROW = "root.quickGlance"
+    const val COMPUTER_USE_ROW = "root.computerUse"
 
     // Smart Displays
     const val GOOGLE_SMART_DISPLAY = "smartDisplays.google"

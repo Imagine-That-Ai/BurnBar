@@ -44,10 +44,11 @@ public enum BurnBarProviderCapability: String, Codable, Hashable, Sendable {
 
 /// Wire-format family a provider speaks at the OpenBurnBar local gateway.
 ///
-/// The router enforces that an incoming request is only served by accounts in
-/// the same format family. OpenAI-compatible (`/v1/chat/completions`) traffic
-/// never crosses into Anthropic-compatible (`/v1/messages`) accounts and
-/// vice-versa. This is "two highways" routing — not cross-format translation.
+/// The router uses this to keep native upstream selection honest. Gateway
+/// endpoints may expose explicit compatibility bridges, such as serving a
+/// Claude model through the local OpenAI-style endpoints, but those bridges
+/// are declared at the HTTP layer and still route to a provider in its native
+/// format family.
 public enum BurnBarProviderFormatFamily: String, Codable, Hashable, Sendable {
     /// OpenAI-shape Chat Completions API. Covers OpenAI, Z.ai, MiniMax, Kimi,
     /// Ollama Cloud, Ollama Local, xAI, DeepSeek, Mistral, Meta, Cohere,
@@ -78,6 +79,17 @@ public struct BurnBarModelMatcher: Codable, Hashable, Sendable {
 }
 
 public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case displayName
+        case visibility
+        case aliases
+        case matchers
+        case pricing
+        case capabilityClassID
+        case capabilityClassRank
+    }
+
     public let id: String
     public let displayName: String
     public let visibility: BurnBarCatalogVisibility
@@ -110,6 +122,18 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         self.pricing = pricing
         self.capabilityClassID = capabilityClassID
         self.capabilityClassRank = capabilityClassRank
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.displayName = try container.decode(String.self, forKey: .displayName)
+        self.visibility = try container.decode(BurnBarCatalogVisibility.self, forKey: .visibility)
+        self.aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
+        self.matchers = try container.decodeIfPresent([BurnBarModelMatcher].self, forKey: .matchers) ?? []
+        self.pricing = try container.decodeIfPresent(BurnBarModelPricing.self, forKey: .pricing) ?? .defaultFallback
+        self.capabilityClassID = try container.decodeIfPresent(String.self, forKey: .capabilityClassID)
+        self.capabilityClassRank = try container.decodeIfPresent(Int.self, forKey: .capabilityClassRank)
     }
 
     public func matches(modelName: String) -> Bool {
@@ -184,15 +208,63 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
     }
 
     /// Asset catalog image name for this provider's bundled logo.
-    /// Falls back to a convention-based name ("{id}Logo") if not explicitly set.
+    /// Falls back to the built-in provider logo registry, then to a convention-
+    /// based name ("{id}Logo") if not explicitly set.
     public var bundledLogoName: String {
-        logoKey ?? "\(id.capitalized)Logo"
+        logoKey ?? Self.bundledLogoName(forProviderID: id) ?? "\(id.capitalized)Logo"
+    }
+
+    public static func bundledLogoName(forProviderID providerID: String) -> String? {
+        switch providerID.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "anthropic", "claude", "claude-code":
+            return "AnthropicLogo"
+        case "openai", "codex":
+            return "OpenAILogo"
+        case "opencode", "open-code":
+            return "OpenCodeLogo"
+        case "factory", "droid":
+            return "FactoryLogo"
+        case "google", "gemini":
+            return "GeminiCLILogo"
+        case "xai", "grok":
+            return "GrokLogo"
+        case "deepseek", "deep-seek":
+            return "DeepSeekProviderLogo"
+        case "mistral":
+            return "MistralProviderLogo"
+        case "meta", "llama":
+            return "MetaProviderLogo"
+        case "cohere":
+            return "CohereProviderLogo"
+        case "amazon", "aws", "bedrock":
+            return "AmazonProviderLogo"
+        case "alibaba", "qwen", "dashscope":
+            return "AlibabaProviderLogo"
+        case "zai", "z-ai", "z.ai", "glm":
+            return "ZaiProviderLogo"
+        case "minimax", "mini-max":
+            return "MiniMaxLogo"
+        case "moonshot", "kimi":
+            return "KimiProviderLogo"
+        case "mlx":
+            return "MLXLogo"
+        case "ollama":
+            return "OllamaLogo"
+        default:
+            return nil
+        }
     }
 }
 
 public struct BurnBarCatalog: Codable, Hashable, Sendable {
     public let schemaVersion: Int
     public let providers: [BurnBarCatalogProvider]
+
+    private struct ModelMatch {
+        let provider: BurnBarCatalogProvider
+        let model: BurnBarCatalogModel
+        let rank: Int
+    }
 
     public init(schemaVersion: Int, providers: [BurnBarCatalogProvider]) {
         self.schemaVersion = schemaVersion
@@ -219,25 +291,14 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
         let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalized.isEmpty else { return nil }
 
-        for provider in providers {
-            for model in provider.models where model.matches(modelName: normalized) {
-                return model.pricing
-            }
-        }
-
-        return nil
+        return bestModelMatch(named: normalized)?.model.pricing
     }
 
     /// Returns the catalog provider (vendor) that owns a given model name, if any.
     public func vendorForModel(named modelName: String) -> BurnBarCatalogProvider? {
         let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalized.isEmpty else { return nil }
-        for provider in providers {
-            for model in provider.models where model.matches(modelName: normalized) {
-                return provider
-            }
-        }
-        return nil
+        return bestModelMatch(named: normalized)?.provider
     }
 
     public func supportsModel(named modelName: String, providerID: String? = nil, includeHidden: Bool = true) -> Bool {
@@ -275,16 +336,49 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
             providersToSearch = providers
         }
 
-        for provider in providersToSearch {
-            for model in provider.models where model.matches(modelName: normalized) {
-                let classID = model.capabilityClassID?.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let classID, !classID.isEmpty {
-                    return classID.lowercased()
+        if let match = bestModelMatch(named: normalized, providersToSearch: providersToSearch) {
+            let classID = match.model.capabilityClassID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let classID, !classID.isEmpty {
+                return classID.lowercased()
+            }
+            return match.model.id.lowercased()
+        }
+
+        return nil
+    }
+
+    private func bestModelMatch(
+        named normalizedModelName: String,
+        providersToSearch: [BurnBarCatalogProvider]? = nil
+    ) -> ModelMatch? {
+        let searchableProviders = providersToSearch ?? providers
+        var best: ModelMatch?
+
+        for provider in searchableProviders {
+            for model in provider.models {
+                guard let rank = matchRank(for: model, normalizedModelName: normalizedModelName) else {
+                    continue
                 }
-                return model.id.lowercased()
+                let candidate = ModelMatch(provider: provider, model: model, rank: rank)
+                if best == nil || candidate.rank < best!.rank {
+                    best = candidate
+                }
             }
         }
 
+        return best
+    }
+
+    private func matchRank(for model: BurnBarCatalogModel, normalizedModelName: String) -> Int? {
+        if model.id.lowercased() == normalizedModelName {
+            return 0
+        }
+        if model.aliases.contains(where: { $0.lowercased() == normalizedModelName }) {
+            return 1
+        }
+        if model.matchers.contains(where: { $0.matches(normalizedModelName) }) {
+            return 2
+        }
         return nil
     }
 

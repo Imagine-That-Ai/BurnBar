@@ -9,8 +9,8 @@ import OSLog
 
 /// Lightweight, runtime-agnostic representation of an assistant chat thread
 /// persisted by the mobile app. Used as the single source of truth for the
-/// "chat history" list both `PiConversationListView` and the on-device section
-/// of `HermesConversationListView` read from.
+/// "chat history" list that native mobile assistants read from: Hermes, Pi,
+/// and Mac-backed CLI chats such as Codex, Claude Code, and OpenClaw.
 struct MobileChatThread: Identifiable, Codable, Equatable {
     let id: String
     let runtime: String
@@ -22,6 +22,17 @@ struct MobileChatThread: Identifiable, Codable, Equatable {
     var messages: [MobileChatMessage]
 
     var messageCount: Int { messages.count }
+
+    var recentAttachmentPreviews: [HermesAttachment] {
+        var previews: [HermesAttachment] = []
+        for message in messages.reversed() where !message.attachments.isEmpty {
+            for attachment in message.attachments {
+                previews.append(attachment.asHermesAttachment)
+                if previews.count == 3 { return previews }
+            }
+        }
+        return previews
+    }
 }
 
 struct MobileChatMessage: Identifiable, Codable, Equatable {
@@ -96,6 +107,21 @@ struct MobileChatMessage: Identifiable, Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case id, role, text, timestamp, modelName, isError, attachments, toolCalls, hermes
+    }
+}
+
+extension MobileChatAttachment {
+    var asHermesAttachment: HermesAttachment {
+        HermesAttachment(
+            id: id,
+            kind: HermesAttachmentKind(rawValue: kind) ?? .generic,
+            displayName: displayName,
+            mimeType: mimeType,
+            byteSize: byteSize,
+            workspaceRelativePath: workspaceRelativePath,
+            thumbnailPNG: thumbnailPNG,
+            extractedTextPreview: extractedTextPreview
+        )
     }
 }
 
@@ -600,8 +626,8 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
 // MARK: - Store
 
 /// Observable singleton owning the on-device assistant chat history. Source of
-/// truth for the conversation lists in `PiConversationListView` and the
-/// "On this device" section of `HermesConversationListView`.
+/// truth for the conversation lists in `PiConversationListView`,
+/// `HermesConversationListView`, and the native mobile CLI chat surface.
 ///
 /// Per-user partitioning: the local file is namespaced by Firebase uid (or
 /// `"local"` when signed out) so two accounts on the same device never see

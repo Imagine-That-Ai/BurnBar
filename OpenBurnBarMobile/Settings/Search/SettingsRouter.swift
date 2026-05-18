@@ -55,7 +55,7 @@ final class SettingsRouter {
             // Row already lives on the root form — make sure no sub-page is
             // covering it.
             path.removeAll()
-        case .cloud, .providerConnections, .hermes, .pi, .chatTiles:
+        case .cloud, .providerConnections, .hermes, .pi, .chatTiles, .media:
             path = [item.pageRoute]
         }
 

@@ -576,9 +576,15 @@ export async function applyUsageCounterDelta(
   const now = new Date().toISOString();
 
   await db.runTransaction(async (transaction) => {
-    for (const logicalKey of affectedKeys) {
-      const keyRef = db.doc(`users/${uid}/usage_counter_keys/${stableCounterKey(logicalKey)}`);
-      const snap = await transaction.get(keyRef);
+    const entries = await Promise.all(
+      Array.from(affectedKeys).map(async (logicalKey) => {
+        const keyRef = db.doc(`users/${uid}/usage_counter_keys/${stableCounterKey(logicalKey)}`);
+        const snap = await transaction.get(keyRef);
+        return { logicalKey, keyRef, snap };
+      })
+    );
+
+    for (const { logicalKey, keyRef, snap } of entries) {
       const existing = snap.exists ? snap.data() ?? {} : {};
       const candidates = {
         ...((existing.candidates as Record<string, UsageCounterCandidate> | undefined) ?? {}),
@@ -825,18 +831,11 @@ export async function rebuildUserRollupCounters(
   db: Firestore,
   uid: string
 ): Promise<void> {
-  const existingCounters = await db.collection(`users/${uid}/usage_counter_days`).get();
-  for (const doc of existingCounters.docs) {
-    await db.recursiveDelete(doc.ref);
-  }
-  const existingTotals = await db.collection(`users/${uid}/usage_counter_totals`).get();
-  for (const doc of existingTotals.docs) {
-    await db.recursiveDelete(doc.ref);
-  }
-  const existingKeys = await db.collection(`users/${uid}/usage_counter_keys`).get();
-  for (const doc of existingKeys.docs) {
-    await db.recursiveDelete(doc.ref);
-  }
+  await Promise.all([
+    db.recursiveDelete(db.collection(`users/${uid}/usage_counter_days`)),
+    db.recursiveDelete(db.collection(`users/${uid}/usage_counter_totals`)),
+    db.recursiveDelete(db.collection(`users/${uid}/usage_counter_keys`)),
+  ]);
 
   const usageRef = db.collection(`users/${uid}/usage`);
   const snapshot = await usageRef.get();

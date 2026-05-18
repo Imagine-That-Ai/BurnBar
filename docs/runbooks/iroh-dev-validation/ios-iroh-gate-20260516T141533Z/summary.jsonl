@@ -1,0 +1,9 @@
+{
+  "run": 1,
+  "startedAt": "2026-05-16T14:15:38Z",
+  "completedAt": "2026-05-16T14:17:46Z",
+  "expectedInterface": "cellular",
+  "result": "passed",
+  "log": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T141533Z/run-01.log",
+  "events": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T141533Z/run-01-events.json"
+}

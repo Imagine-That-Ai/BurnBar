@@ -39,6 +39,9 @@ and quota snapshots sync to mobile devices.
   happens only on the owning Mac.
 - **Device Keychain accounts:** daemon-managed slots appear as provider accounts
   with their labels and status, while the credential remains on that Mac.
+  Catalog-only routing providers such as DeepSeek, Alibaba/Qwen, Meta, Mistral,
+  xAI/Grok, and Cohere use the same daemon-slot projection even when they have no
+  `AgentProvider` enum case.
 
 Quota snapshots use schema version 2 and include `providerID`, `accountID`,
 `accountLabel`, `accountStorageScope`, and `sourceID`. Provider-level views keep

@@ -183,6 +183,20 @@ enum PiChatMessageOutcome: String, Equatable, Sendable {
     }
 }
 
+enum PiServiceError: LocalizedError {
+    case selectedModelUnavailable(String)
+    case selectedModelCatalogUnavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .selectedModelUnavailable(let modelID):
+            return "Selected Pi model '\(modelID)' is not available on this Mac Pi harness. Pick another model or refresh/restart the Mac Pi gateway."
+        case .selectedModelCatalogUnavailable(let modelID):
+            return "Selected Pi model '\(modelID)' has not been verified against this Mac Pi harness catalog yet. Refresh the Mac Pi gateway before sending, so the selected model is not silently rerouted."
+        }
+    }
+}
+
 // MARK: - Pi Service
 
 @MainActor
@@ -219,6 +233,7 @@ final class PiService {
     private let selectedModelDefaultsKey = "pi.selectedModelID"
     private let favoriteModelsDefaultsKey = "pi.favoriteModelIDs"
     private let savedConnectionsDefaultsKey = "pi.savedConnections"
+    private var selectedModelWasExplicit = false
 
     /// Catalog the service advertises to the upstream Pi runtime. Same
     /// catalog Hermes uses; injectable for tests.
@@ -244,7 +259,12 @@ final class PiService {
         self.defaults = defaults
         self.history = history
         self.toolCatalog = toolCatalog
-        self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
+        self.selectedModelWasExplicit = self.selectedModelID?.nilIfBlank != nil
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         // Restore previously-added direct URLs.
         if let saved = Self.decodeRecords(defaults.data(forKey: savedConnectionsDefaultsKey)) {
@@ -288,6 +308,13 @@ final class PiService {
     func selectConnection(_ connection: PiConnectionRecord) -> Bool {
         guard connections.contains(where: { $0.id == connection.id }) else { return false }
         selectedConnection = connection
+        selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
+        selectedModelWasExplicit = selectedModelID?.nilIfBlank != nil
+        modelOptions = []
         defaults.set(connection.id, forKey: selectedConnectionDefaultsKey)
         Task { @MainActor in await refreshRuntime() }
         return true
@@ -332,8 +359,59 @@ final class PiService {
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
-        selectedModelID = option.modelID
-        defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+        let raw = option.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requested = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(raw)
+        let resolved = !modelOptions.isEmpty
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(raw, in: modelOptions)
+            : requested
+        let modelID = resolved ?? requested
+        selectedModelID = modelID
+        selectedModelWasExplicit = true
+        defaults.set(modelID, forKey: selectedModelDefaultsKey)
+    }
+
+    func clearSelectedModel() {
+        selectedModelID = nil
+        selectedModelWasExplicit = false
+        defaults.removeObject(forKey: selectedModelDefaultsKey)
+    }
+
+    func validatedModelIDForMissionDispatch() throws -> String? {
+        guard let selectedModelID = selectedModelID?.nilIfBlank else { return nil }
+        if selectedModelWasExplicit {
+            guard !modelOptions.isEmpty else {
+                throw PiServiceError.selectedModelCatalogUnavailable(selectedModelID)
+            }
+            guard let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) else {
+                throw PiServiceError.selectedModelUnavailable(selectedModelID)
+            }
+            persistResolvedSelectedModelID(resolved)
+            return resolved
+        }
+        return canonicalizedSelectedModelID(selectedModelID)
+    }
+
+    private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
+        guard let stored = stored?.nilIfBlank else { return nil }
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(stored)
+        if canonical != stored {
+            defaults.set(canonical, forKey: key)
+        }
+        return canonical
+    }
+
+    private func canonicalizedSelectedModelID(_ modelID: String) -> String {
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(modelID)
+        persistResolvedSelectedModelID(canonical)
+        return canonical
+    }
+
+    private func persistResolvedSelectedModelID(_ modelID: String) {
+        guard selectedModelID != modelID else { return }
+        selectedModelID = modelID
+        if selectedModelWasExplicit {
+            defaults.set(modelID, forKey: selectedModelDefaultsKey)
+        }
     }
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
@@ -378,7 +456,22 @@ final class PiService {
 
         let baseURL = resolvedBaseURL
         let bearer = resolvedBearerToken
-        let model = selectedModelID
+        let model: String
+        do {
+            model = try activeModelIDForRequest()
+        } catch {
+            lastError = error.localizedDescription
+            messages.append(
+                PiChatMessage(
+                    role: .assistant,
+                    text: "Pi error: \(error.localizedDescription)",
+                    isError: true
+                )
+            )
+            persistCurrentThread()
+            isStreaming = false
+            return
+        }
 
         currentTask?.cancel()
         currentTask = Task { @MainActor [weak self] in
@@ -429,7 +522,7 @@ final class PiService {
         let assistant = PiChatMessage(
             role: .assistant,
             text: "",
-            modelName: selectedModelID,
+            modelName: model,
             isStreaming: true
         )
         messages.append(assistant)
@@ -724,12 +817,45 @@ final class PiService {
             let (data, _) = try await urlSession.data(for: request)
             let decoded = Self.parseModels(data: data)
             modelOptions = decoded
-            if selectedModelID == nil {
-                selectedModelID = decoded.first?.modelID
+            if let selectedModelID,
+               let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+                persistResolvedSelectedModelID(resolved)
+                runtimeErrorText = nil
+            } else if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+                if selectedModelWasExplicit {
+                    runtimeErrorText = "Selected Pi model '\(selectedModelID)' is not advertised by this Mac Pi harness. Pick a listed model or refresh the Mac provider catalog."
+                } else {
+                    self.selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
+                        ?? decoded.first { $0.isRouteEligible }?.modelID
+                        ?? decoded.first?.modelID
+                    selectedModelWasExplicit = false
+                }
+            } else if selectedModelID == nil {
+                selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
+                    ?? decoded.first { $0.isRouteEligible }?.modelID
+                    ?? decoded.first?.modelID
+                selectedModelWasExplicit = false
             }
         } catch {
             runtimeErrorText = "Failed to list Pi models: \(error.localizedDescription)"
         }
+    }
+
+    private func activeModelIDForRequest() throws -> String {
+        if let selectedModelID = selectedModelID?.nilIfBlank {
+            if selectedModelWasExplicit {
+                guard !modelOptions.isEmpty else {
+                    throw PiServiceError.selectedModelCatalogUnavailable(selectedModelID)
+                }
+                guard let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) else {
+                    throw PiServiceError.selectedModelUnavailable(selectedModelID)
+                }
+                persistResolvedSelectedModelID(resolved)
+                return resolved
+            }
+            return canonicalizedSelectedModelID(selectedModelID)
+        }
+        return selectedConnection.advertisedModel?.nilIfBlank ?? "pi"
     }
 
     private func streamChat(
@@ -998,12 +1124,24 @@ final class PiService {
         let raw = (object["data"] as? [[String: Any]]) ?? []
         return raw.compactMap { entry in
             guard let id = entry["id"] as? String, !id.isEmpty else { return nil }
-            let provider = (entry["owned_by"] as? String) ?? "pi"
+            let provider = (entry["provider_id"] as? String)
+                ?? (entry["owned_by"] as? String)
+                ?? "pi"
+            let providerName = (entry["provider_name"] as? String)
+                ?? provider.capitalized
             return HermesRuntimeModelOption(
                 providerID: provider,
-                providerName: provider.capitalized,
+                providerName: providerName,
                 modelID: id,
-                displayName: id
+                displayName: (entry["display_name"] as? String) ?? id,
+                accountID: entry["account_id"] as? String,
+                accountLabel: entry["account_label"] as? String,
+                sourceID: entry["source_id"] as? String,
+                sourceKind: entry["source_kind"] as? String,
+                capabilities: entry["capabilities"] as? [String] ?? [],
+                quotaState: entry["quota_state"] as? String,
+                routeEligible: entry["route_eligible"] as? Bool,
+                lastError: entry["last_error"] as? String
             )
         }
     }

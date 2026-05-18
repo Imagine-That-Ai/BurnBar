@@ -8,6 +8,17 @@ import OpenBurnBarCore
 @MainActor
 final class HermesServiceTests: XCTestCase {
 
+    func testIrohBootstrapStartupTimeoutLeavesRoomForHomeRelayRetry() {
+        XCTAssertGreaterThanOrEqual(
+            HermesIrohRelayTransport.bootstrapStartupTimeout(connectTimeout: 5),
+            30
+        )
+        XCTAssertEqual(
+            HermesIrohRelayTransport.bootstrapStartupTimeout(connectTimeout: 10),
+            35
+        )
+    }
+
     func testInitialState() {
         let service = HermesService()
         XCTAssertTrue(service.messages.isEmpty)
@@ -237,6 +248,7 @@ final class HermesServiceTests: XCTestCase {
     }
 
     func testSuggestedRelayConnectionPicksNewestOnlineEncryptedRelay() {
+        let now = Date()
         let older = HermesConnectionRecord(
             id: "relay-old",
             displayName: "Old Mac Relay",
@@ -246,7 +258,8 @@ final class HermesServiceTests: XCTestCase {
             relayKeyVersion: HermesRelayCrypto.keyVersion,
             relayEncryption: HermesRelayCrypto.algorithm,
             capabilities: ["chat_completions", "remote_relay"],
-            lastSeenAt: Date(timeIntervalSince1970: 100)
+            lastSeenAt: now.addingTimeInterval(-90),
+            updatedAt: now.addingTimeInterval(-90)
         )
         let newer = HermesConnectionRecord(
             id: "relay-new",
@@ -257,7 +270,8 @@ final class HermesServiceTests: XCTestCase {
             relayKeyVersion: HermesRelayCrypto.keyVersion,
             relayEncryption: HermesRelayCrypto.algorithm,
             capabilities: ["chat_completions", "remote_relay"],
-            lastSeenAt: Date(timeIntervalSince1970: 200)
+            lastSeenAt: now.addingTimeInterval(-15),
+            updatedAt: now.addingTimeInterval(-15)
         )
         let legacy = HermesConnectionRecord(
             id: "relay-legacy",
@@ -269,6 +283,49 @@ final class HermesServiceTests: XCTestCase {
         service.connections = [.localDefault, legacy, older, newer]
 
         XCTAssertEqual(service.suggestedRelayConnection?.id, "relay-new")
+    }
+
+    func testSuggestedRelayConnectionStillAttemptsStaleOnlineRelay() {
+        let stale = HermesConnectionRecord(
+            id: "relay-stale",
+            displayName: "Stale Mac Relay",
+            mode: .relayLink,
+            status: .online,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            realtimeRelayLastSeenAt: Date().addingTimeInterval(-10 * 60),
+            capabilities: ["chat_completions", "remote_relay"],
+            lastSeenAt: Date().addingTimeInterval(-10 * 60),
+            updatedAt: Date().addingTimeInterval(-10 * 60)
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, stale]
+
+        XCTAssertEqual(service.suggestedRelayConnection?.id, stale.id)
+        XCTAssertTrue(service.selectConnection(stale, refresh: false))
+        XCTAssertEqual(service.selectedConnection.id, stale.id)
+    }
+
+    func testSuggestedRelayConnectionRejectsOfflineRelay() {
+        let offline = HermesConnectionRecord(
+            id: "relay-offline",
+            displayName: "Offline Mac Relay",
+            mode: .relayLink,
+            status: .offline,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            realtimeRelayLastSeenAt: Date().addingTimeInterval(-10 * 60),
+            capabilities: ["chat_completions", "remote_relay"],
+            lastSeenAt: Date().addingTimeInterval(-10 * 60),
+            updatedAt: Date().addingTimeInterval(-10 * 60)
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, offline]
+
+        XCTAssertNil(service.suggestedRelayConnection)
+        XCTAssertFalse(service.selectConnection(offline, refresh: false))
+        XCTAssertEqual(service.selectedConnection.id, HermesConnectionRecord.localDefault.id)
+        XCTAssertTrue(service.lastError?.contains("stopped checking in") ?? false)
     }
 
     func testConnectToSuggestedRelayIsExplicitUserGrant() {
@@ -310,6 +367,84 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(relayTransport.streamingPayloads.first?.connectionID, relay.id)
         XCTAssertEqual(service.messages.last?.text, "relay ok")
         XCTAssertFalse(service.hasPendingRelaySuggestion)
+    }
+
+    func testSendRefreshesRelayDiscoveryBeforeUsingOfflineLocalHost() async throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "minimax-m2.7-highspeed",
+            displayName: "MiniMax M2.7 Highspeed"
+        )
+        let relayTransport = FakeHermesRelayTransport()
+        relayTransport.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"relay ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let relay = relayConnection()
+        let repository = FakeHermesConnectionRepository(connections: [relay])
+        let service = HermesService(
+            connectionRepository: repository,
+            relayTransport: relayTransport,
+            defaults: defaults
+        )
+        service.connections = [.localDefault]
+        service.selectedConnection = .localDefault
+        service.isReachable = false
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        service.modelOptions = []
+
+        service.sendMessage("Use the Mac relay")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(repository.listCallCount, 1)
+        XCTAssertEqual(service.selectedConnection.id, relay.id)
+        XCTAssertEqual(relayTransport.streamingPayloads.count, 1)
+        let body = try XCTUnwrap(relayTransport.streamingPayloads.first?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "minimax-m2.7-highspeed")
+        XCTAssertEqual(service.messages.last?.text, "relay ok")
+        XCTAssertNil(service.lastError)
+    }
+
+    func testOfflineLocalSelectedModelExplainsLocalhostInsteadOfMacCatalog() async {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "minimax-m2.7-highspeed",
+            displayName: "MiniMax M2.7 Highspeed"
+        )
+        let relayTransport = FakeHermesRelayTransport()
+        let repository = FakeHermesConnectionRepository()
+        let service = HermesService(
+            connectionRepository: repository,
+            relayTransport: relayTransport,
+            defaults: defaults
+        )
+        service.connections = [.localDefault]
+        service.selectedConnection = .localDefault
+        service.isReachable = false
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        service.modelOptions = []
+
+        service.sendMessage("Use the selected model")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(repository.listCallCount, 1)
+        XCTAssertTrue(relayTransport.streamingPayloads.isEmpty)
+        XCTAssertTrue(service.lastError?.contains("localhost points at this device") ?? false)
+        XCTAssertFalse(service.lastError?.contains("model catalog") ?? true)
+        XCTAssertTrue(service.messages.last?.isError ?? false)
     }
 
     func testRefreshConnectionsReadsFirestoreBackedRelayRepository() async {
@@ -418,6 +553,21 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertFalse(service.isStreaming)
     }
 
+    func testRelayStreamingUsesExtendedRemoteHarnessTimeout() async throws {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"slow harness ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Give the selected Mac harness enough time")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(try XCTUnwrap(relay.streamingTimeouts.first), 360, accuracy: 0.001)
+    }
+
     func testRelayStreamingAccumulatesToolCallArgumentsAcrossDeltas() async throws {
         // OpenAI-compatible streaming emits a tool call across multiple
         // chunks: the first carries the function name, and successive chunks
@@ -514,6 +664,68 @@ final class HermesServiceTests: XCTestCase {
         let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(object["model"] as? String, "MiniMax-M2.7")
+    }
+
+    func testSelectModelResolvesLegacyCatalogSlugToLiveRelayModelID() {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = HermesService(defaults: defaults)
+        service.modelOptions = [
+            HermesRuntimeModelOption(
+                providerID: "minimax",
+                providerName: "MiniMax",
+                modelID: "minimax-m2.7-highspeed",
+                displayName: "MiniMax M2.7 Highspeed",
+                routeEligible: true
+            )
+        ]
+
+        service.selectModel(
+            HermesRuntimeModelOption(
+                providerID: "minimax",
+                providerName: "MiniMax",
+                modelID: "minimax-m2-7",
+                displayName: "MiniMax M2.7"
+            )
+        )
+
+        XCTAssertEqual(service.selectedModelID, "minimax-m2.7-highspeed")
+        XCTAssertEqual(defaults.string(forKey: "hermes.selectedModelID"), "minimax-m2.7-highspeed")
+        XCTAssertNil(service.runtimeErrorText)
+    }
+
+    func testInitializesByMigratingLegacyPersistedCatalogSlug() {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("minimax-m2-7", forKey: "hermes.selectedModelID")
+
+        let service = HermesService(defaults: defaults)
+
+        XCTAssertEqual(service.selectedModelID, "minimax-m2.7-highspeed")
+        XCTAssertEqual(defaults.string(forKey: "hermes.selectedModelID"), "minimax-m2.7-highspeed")
+    }
+
+    func testSelectModelPersistsExactLiveRelayModelID() {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = HermesService(defaults: defaults)
+        let live = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.4",
+            displayName: "GPT-5.4",
+            routeEligible: true
+        )
+        service.modelOptions = [live]
+
+        service.selectModel(live)
+
+        XCTAssertEqual(service.selectedModelID, "gpt-5.4")
+        XCTAssertEqual(defaults.string(forKey: "hermes.selectedModelID"), "gpt-5.4")
+        XCTAssertNil(service.runtimeErrorText)
     }
 
     func testRelayStreamingParsesFinalMessageContentParts() async {
@@ -1009,7 +1221,7 @@ final class HermesServiceTests: XCTestCase {
                 return Self.response(
                     status: 200,
                     url: request.url!,
-                    body: #"{"data":[{"id":"hermes-agent","owned_by":"hermes"},{"id":"glm-5","owned_by":"zai","display_name":"GLM-5"},{"id":"MiniMax-M2.7","owned_by":"minimax"},{"id":"kimi-k2.6","owned_by":"moonshot"},{"id":"gemma4:e4b","owned_by":"ollama-local","provider_id":"ollama-local","provider_name":"Ollama Local","display_name":"gemma4:e4b (8.0B Q4_K_M)"},{"id":"local-qwen","owned_by":"lmstudio-local","provider_id":"lmstudio-local","provider_name":"LM Studio Local"}]}"#
+                    body: #"{"data":[{"id":"hermes-agent","owned_by":"hermes"},{"id":"glm-5","owned_by":"zai","display_name":"GLM-5","account_id":"primary","account_label":"Z.AI Pro","source_id":"provider:zai:primary","source_kind":"provider_account","capabilities":["chat"],"quota_state":"healthy","route_eligible":true},{"id":"MiniMax-M2.7","owned_by":"minimax"},{"id":"kimi-k2.6","owned_by":"moonshot"},{"id":"gemma4:e4b","owned_by":"ollama-local","provider_id":"ollama-local","provider_name":"Ollama Local","display_name":"gemma4:e4b (8.0B Q4_K_M)"},{"id":"local-qwen","owned_by":"lmstudio-local","provider_id":"lmstudio-local","provider_name":"LM Studio Local"}]}"#
                 )
             default:
                 return Self.response(status: 200, url: request.url!, body: "{}")
@@ -1023,6 +1235,11 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.modelOptions.map(\.modelID), ["hermes-agent", "glm-5", "MiniMax-M2.7", "kimi-k2.6", "gemma4:e4b", "local-qwen"])
         XCTAssertEqual(service.modelOptions.map(\.providerID), ["hermes", "zai", "minimax", "kimi-coding", "ollama-local", "lmstudio-local"])
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.displayName, "GLM-5")
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.accountID, "primary")
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.accountLabel, "Z.AI Pro")
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.quotaState, "healthy")
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.routeEligible, true)
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.liveCatalogDetailText, "Z.AI Pro · healthy")
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "kimi-k2.6" })?.providerName, "Kimi / Kimi Coding Plan")
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "gemma4:e4b" })?.providerName, "Ollama Local")
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "local-qwen" })?.providerName, "LM Studio Local")
@@ -1077,6 +1294,59 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.messages.last?.isError ?? false)
     }
 
+    func testRelayStreamingSurfacesHermesFailedTerminalChunkAsError() async throws {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}"#,
+            #"data: {"choices":[{"delta":{},"finish_reason":"error"}],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0},"hermes":{"completed":false,"partial":false,"failed":true,"error":"HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"}}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Fail clearly")
+        await waitForStreamToFinish(service)
+
+        let assistant = try XCTUnwrap(service.messages.last)
+        XCTAssertEqual(
+            assistant.text,
+            "Hermes upstream model failed: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"
+        )
+        XCTAssertEqual(service.lastError, assistant.text)
+        XCTAssertTrue(assistant.isError)
+        XCTAssertEqual(assistant.outcome, .empty)
+    }
+
+    func testRelayStreamingSurfacesChoiceErrorContentAsError() async throws {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"API call failed after 3 retries: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"},"finish_reason":"error"}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Do not turn provider failure into assistant text")
+        await waitForStreamToFinish(service)
+
+        let assistant = try XCTUnwrap(service.messages.last)
+        XCTAssertEqual(
+            assistant.text,
+            "Hermes upstream model failed: API call failed after 3 retries: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"
+        )
+        XCTAssertTrue(assistant.isError)
+        XCTAssertEqual(assistant.outcome, .empty)
+    }
+
+    func testNoEligibleRouteClassifiesAsUpstreamModelError() {
+        XCTAssertEqual(
+            HermesServiceError.upstreamModelErrorMessage(
+                from: "HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini. Add or enable an OpenAI-family account."
+            ),
+            "Hermes upstream model failed: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini. Add or enable an OpenAI-family account."
+        )
+    }
+
     func testRelayStreamingFailureReplacesBlankAssistantBubble() async {
         let relay = FakeHermesRelayTransport()
         relay.streamingError = HermesServiceError.relayUnavailable("Mac relay stopped.")
@@ -1089,6 +1359,363 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.messages.filter { $0.role == .assistant }.count, 1)
         XCTAssertEqual(service.messages.last?.text, "Mac relay stopped.")
         XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
+    func testExplicitSelectedModelUnavailableStopsBeforeRelayRequest() async {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "openburnbar-local",
+            providerName: "OpenBurnBar Local",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+        let advertised = HermesRuntimeModelOption(
+            providerID: "zai",
+            providerName: "Z.AI",
+            modelID: "glm-5.1",
+            displayName: "GLM-5.1"
+        )
+        let relay = FakeHermesRelayTransport()
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = [advertised]
+
+        service.sendMessage("Do not silently route this")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.streamingPayloads.isEmpty)
+        XCTAssertEqual(
+            service.lastError,
+            "Selected Hermes model 'gpt-5.5' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
+        )
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
+    func testExplicitSelectedModelWithIneligibleLiveRouteStopsBeforeRelayRequest() async {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "zai",
+            providerName: "Z.AI",
+            modelID: "glm-5-turbo",
+            displayName: "GLM-5 Turbo",
+            accountID: "primary",
+            accountLabel: "Z.AI Pro",
+            quotaState: "exhausted",
+            routeEligible: false
+        )
+        let relay = FakeHermesRelayTransport()
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = [
+            HermesRuntimeModelOption(
+                providerID: selected.providerID,
+                providerName: selected.providerName,
+                modelID: selected.modelID,
+                displayName: selected.displayName,
+                accountID: selected.accountID,
+                accountLabel: selected.accountLabel,
+                quotaState: "healthy",
+                routeEligible: true
+            )
+        ]
+        service.selectModel(service.modelOptions[0])
+        service.modelOptions = [selected]
+
+        service.sendMessage("Do not send exhausted route")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.streamingPayloads.isEmpty)
+        XCTAssertEqual(
+            service.lastError,
+            "Selected Hermes model 'glm-5-turbo' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
+        )
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
+    func testAutomaticSelectionWithNoRouteEligibleModelsStopsBeforeRelayRequest() async {
+        let relay = FakeHermesRelayTransport()
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = [
+            HermesRuntimeModelOption(
+                providerID: "openai",
+                providerName: "OpenAI",
+                modelID: "gpt-5.4-mini",
+                displayName: "GPT-5.4 Mini",
+                quotaState: "exhausted",
+                routeEligible: false
+            )
+        ]
+
+        service.sendMessage("Do not send exhausted automatic route")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.streamingPayloads.isEmpty)
+        XCTAssertEqual(
+            service.lastError,
+            "No route-eligible Hermes model is currently advertised by this Mac relay. Add or enable a provider account with available quota, then refresh the Mac Hermes gateway."
+        )
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
+    func testExplicitSelectedModelSendsWithoutRelayCatalogPreflight() async throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "openburnbar-local",
+            providerName: "OpenBurnBar Local",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = []
+
+        service.sendMessage("Send the selected model directly")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.unaryPayloads.isEmpty)
+        XCTAssertEqual(relay.streamingPayloads.count, 1)
+        let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "gpt-5.5")
+        XCTAssertEqual(service.messages.last?.text, "ok")
+        XCTAssertNil(service.lastError)
+    }
+
+    func testExplicitSelectedModelUsesSelectedIDWhenRelayCatalogIsEmpty() async throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "minimax-m2.7-highspeed",
+            displayName: "MiniMax M2.7 Highspeed"
+        )
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = []
+
+        service.sendMessage("Use the live relay catalog model")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.unaryPayloads.isEmpty)
+        XCTAssertEqual(relay.streamingPayloads.count, 1)
+        let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "minimax-m2.7-highspeed")
+        XCTAssertEqual(service.messages.last?.text, "ok")
+        XCTAssertNil(service.lastError)
+    }
+
+    func testPersistedCatalogAliasSendsResolvedModelWithoutRelayCatalogPreflight() async throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.set("minimax-m2-7", forKey: "hermes.selectedModelID")
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        var connection = relayConnection()
+        connection.advertisedModel = "gpt-5.5"
+        XCTAssertTrue(service.selectConnection(connection, refresh: false))
+
+        service.sendMessage("Use the selected MiniMax route")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.unaryPayloads.isEmpty)
+        XCTAssertEqual(relay.streamingPayloads.count, 1)
+        let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "minimax-m2.7-highspeed")
+        XCTAssertEqual(service.selectedModelID, "minimax-m2.7-highspeed")
+        XCTAssertEqual(service.messages.last?.text, "ok")
+        XCTAssertNil(service.lastError)
+    }
+
+    func testExplicitSelectedModelMatchingRelayAdvertisedModelSendsBeforeCatalogRefresh() async throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "minimax-m2.7-highspeed",
+            displayName: "MiniMax M2.7 Highspeed"
+        )
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        var connection = relayConnection()
+        connection.advertisedModel = selected.modelID
+        XCTAssertTrue(service.selectConnection(connection, refresh: false))
+        service.modelOptions = []
+
+        service.sendMessage("Use the advertised relay model")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(relay.streamingPayloads.count, 1)
+        let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "minimax-m2.7-highspeed")
+        XCTAssertEqual(service.messages.last?.text, "ok")
+        XCTAssertNil(service.lastError)
+    }
+
+    func testExplicitSelectedRelayModelIsValidForMissionDispatchWithoutCatalogPreflight() throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let selected = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport(), defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = []
+
+        XCTAssertEqual(try service.validatedModelIDForMissionDispatch(), "gpt-5.5")
+    }
+
+    func testNoRouteEligibleModelStopsMissionDispatchModel() throws {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.modelOptions = [
+            HermesRuntimeModelOption(
+                providerID: "openai",
+                providerName: "OpenAI",
+                modelID: "gpt-5.4-mini",
+                displayName: "GPT-5.4 Mini",
+                quotaState: "exhausted",
+                routeEligible: false
+            )
+        ]
+
+        XCTAssertThrowsError(try service.validatedModelIDForMissionDispatch()) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "No route-eligible Hermes model is currently advertised by this Mac relay. Add or enable a provider account with available quota, then refresh the Mac Hermes gateway."
+            )
+        }
+    }
+
+    func testCompositeRelayDoesNotFallbackForUpstreamModelErrors() async throws {
+        let primary = FakeHermesRelayTransport()
+        primary.streamingError = HermesServiceError.upstreamModelError(
+            "Hermes upstream model 'glm-5.1' returned HTTP 429: Weekly/Monthly Limit Exhausted."
+        )
+        let secondary = FakeHermesRelayTransport()
+        secondary.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"should not run"}}]}"#
+        ]
+        let fallback = FakeHermesRelayTransport()
+        let composite = HermesCompositeRelayTransport(
+            primary: primary,
+            secondary: secondary,
+            fallback: fallback,
+            irohEnabled: { true }
+        )
+        let payload = HermesRelayPayload(
+            connectionID: "relay-mac",
+            relayPublicKey: "AAAA",
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            operation: .chatCompletions,
+            method: "POST",
+            path: "/v1/chat/completions",
+            body: Data(#"{"model":"glm-5.1","messages":[]}"#.utf8)
+        )
+
+        do {
+            try await composite.sendStreaming(payload, timeout: 1) { _ in }
+            XCTFail("Expected upstream model error to stop the fallback cascade.")
+        } catch let error as HermesServiceError {
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Hermes upstream model 'glm-5.1' returned HTTP 429: Weekly/Monthly Limit Exhausted."
+            )
+        }
+        XCTAssertEqual(primary.streamingPayloads.count, 1)
+        XCTAssertTrue(secondary.streamingPayloads.isEmpty)
+        XCTAssertTrue(fallback.streamingPayloads.isEmpty)
+    }
+
+    func testCompositeRelayDoesNotFallbackWhenIrohRequestTimesOutAfterDispatch() async throws {
+        let primary = FakeHermesRelayTransport()
+        primary.streamingError = HermesServiceError.relayTimeout
+        let secondary = FakeHermesRelayTransport()
+        secondary.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"should not run"}}]}"#
+        ]
+        let fallback = FakeHermesRelayTransport()
+        let composite = HermesCompositeRelayTransport(
+            primary: primary,
+            secondary: secondary,
+            fallback: fallback,
+            irohEnabled: { true }
+        )
+        let payload = HermesRelayPayload(
+            connectionID: "relay-mac",
+            relayPublicKey: "AAAA",
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            operation: .chatCompletions,
+            method: "POST",
+            path: "/v1/chat/completions",
+            body: Data(#"{"model":"gpt-5.5","messages":[]}"#.utf8)
+        )
+
+        do {
+            try await composite.sendStreaming(payload, timeout: 1) { _ in }
+            XCTFail("Expected the dispatched Iroh timeout to stop the fallback cascade.")
+        } catch let error as HermesServiceError {
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Remote Hermes relay timed out before the selected Mac harness completed. No fallback was attempted, so the selected model is not silently rerouted."
+            )
+        }
+        XCTAssertEqual(primary.streamingPayloads.count, 1)
+        XCTAssertTrue(secondary.streamingPayloads.isEmpty)
+        XCTAssertTrue(fallback.streamingPayloads.isEmpty)
     }
 
     func testRelayPayloadFiltersBlankAndErrorAssistantHistory() async throws {
@@ -1312,6 +1939,7 @@ private final class FakeHermesRelayTransport: HermesRelayTransporting {
     var streamingError: Error?
     private(set) var unaryPayloads: [HermesRelayPayload] = []
     private(set) var streamingPayloads: [HermesRelayPayload] = []
+    private(set) var streamingTimeouts: [TimeInterval] = []
 
     func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
         unaryPayloads.append(payload)
@@ -1324,6 +1952,7 @@ private final class FakeHermesRelayTransport: HermesRelayTransporting {
         onSSEEvent: @escaping @MainActor (String) -> Void
     ) async throws {
         streamingPayloads.append(payload)
+        streamingTimeouts.append(timeout)
         if let streamingError {
             throw streamingError
         }
