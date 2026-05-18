@@ -143,15 +143,62 @@ final class AssistantModelMergerTests: XCTestCase {
 
     func test_connectedProviderTagged() {
         // No live data; catalog has an Anthropic row; user has Anthropic
-        // connected. Row should be `.connectedOnIOS`.
+        // connected. Row should be `.connectedOnIOS` when relay data is
+        // loaded and live models exist (even if none match this catalog row).
+        let catalog = [cat("claude-opus-4-7", provider: "anthropic")]
+        let liveRelay = [opt("minimax-m2.7-highspeed", provider: "minimax")]
+        let rows = AssistantModelMerger.merge(
+            runtime: .hermes,
+            liveRelay: liveRelay,
+            catalog: catalog,
+            connectedProviderIDs: [.anthropic]
+        )
+        XCTAssertEqual(rows.first?.reachability, .connectedOnIOS)
+    }
+
+    func test_connectedProviderTaggedPendingWhenRelayDataAbsent() {
+        // When relay data hasn't loaded yet (empty relay, refresh in
+        // progress), connected providers should be marked
+        // `.pendingRelayData` so the UI shows a loading hint instead
+        // of misleading "Not live" / "Relay only".
         let catalog = [cat("claude-opus-4-7", provider: "anthropic")]
         let rows = AssistantModelMerger.merge(
             runtime: .hermes,
             liveRelay: [],
             catalog: catalog,
-            connectedProviderIDs: [.anthropic]
+            connectedProviderIDs: [.anthropic],
+            relayDataLoaded: false
         )
+        XCTAssertEqual(rows.first?.reachability, .pendingRelayData)
+    }
+
+    func test_connectedProviderTaggedPendingWhenRelayEmptyButStillLoading() {
+        // Even with relayDataLoaded=true, if liveRelay is genuinely empty
+        // (relay returned no models), connected providers get
+        // `.pendingRelayData` because we can't distinguish "relay has
+        // no models" from "relay data hasn't arrived yet" without the
+        // relayDataLoaded flag being false.
+        let rows = AssistantModelMerger.merge(
+            runtime: .hermes,
+            liveRelay: [],
+            catalog: [cat("claude-opus-4-7", provider: "anthropic")],
+            connectedProviderIDs: [.anthropic],
+            relayDataLoaded: true
+        )
+        // Empty relay with relayDataLoaded=true means relay genuinely
+        // returned no models — connected provider is correctly
+        // `.connectedOnIOS` (relay confirmed it doesn't advertise).
+        // But if relayDataLoaded is false, it's pending.
         XCTAssertEqual(rows.first?.reachability, .connectedOnIOS)
+
+        let rowsPending = AssistantModelMerger.merge(
+            runtime: .hermes,
+            liveRelay: [],
+            catalog: [cat("claude-opus-4-7", provider: "anthropic")],
+            connectedProviderIDs: [.anthropic],
+            relayDataLoaded: false
+        )
+        XCTAssertEqual(rowsPending.first?.reachability, .pendingRelayData)
     }
 
     func test_unreachableWhenNoLiveNoAccount() {
@@ -161,6 +208,20 @@ final class AssistantModelMergerTests: XCTestCase {
             liveRelay: [],
             catalog: catalog,
             connectedProviderIDs: [.anthropic] // different provider
+        )
+        XCTAssertEqual(rows.first?.reachability, .unreachable)
+    }
+
+    func test_unreachableEvenWhenRelayDataPending() {
+        // Providers without a connected account are always unreachable,
+        // regardless of relay data loading state.
+        let catalog = [cat("kimi-k2-6", provider: "kimi")]
+        let rows = AssistantModelMerger.merge(
+            runtime: .hermes,
+            liveRelay: [],
+            catalog: catalog,
+            connectedProviderIDs: [.anthropic],
+            relayDataLoaded: false
         )
         XCTAssertEqual(rows.first?.reachability, .unreachable)
     }

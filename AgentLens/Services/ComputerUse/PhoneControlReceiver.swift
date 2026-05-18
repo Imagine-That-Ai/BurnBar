@@ -18,7 +18,8 @@ import OpenBurnBarComputerUseCore
 public final class PhoneControlReceiver: @unchecked Sendable {
     public typealias DispatchHandler = @Sendable (
         _ action: ComputerUseAction,
-        _ sessionId: ComputerUseSessionID
+        _ sessionId: ComputerUseSessionID,
+        _ counter: UInt64
     ) async -> Void
 
     public typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
@@ -80,7 +81,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             // Forward as a synthetic action; the coordinator interprets
             // it as a panic halt directly.
             let action: ComputerUseAction = .phoneIntent(PhoneControlIntent(kind: .panic))
-            await dispatchHandler(action, sessionId)
+            await dispatchHandler(action, sessionId, intent.authority.counter)
             return
         case .tap, .scroll, .dragStart, .dragMove, .dragEnd:
             guard let (displayX, displayY) = denormalize(intent.normalizedX, intent.normalizedY) else {
@@ -109,16 +110,18 @@ public final class PhoneControlReceiver: @unchecked Sendable {
                 dragEndX: endpoint?.0,
                 dragEndY: endpoint?.1
             )
-            await dispatchHandler(.macInput(macAction), sessionId)
+            await dispatchHandler(.macInput(macAction), sessionId, intent.authority.counter)
         case .type:
             await dispatchHandler(
                 .macInput(MacInputAction(kind: .type, text: intent.text)),
-                sessionId
+                sessionId,
+                intent.authority.counter
             )
         case .shortcut:
             await dispatchHandler(
                 .macInput(MacInputAction(kind: .shortcut, key: intent.key, modifiers: intent.modifiers)),
-                sessionId
+                sessionId,
+                intent.authority.counter
             )
         }
     }

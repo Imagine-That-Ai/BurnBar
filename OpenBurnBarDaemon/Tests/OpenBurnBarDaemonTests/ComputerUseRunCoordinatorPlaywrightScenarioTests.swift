@@ -52,6 +52,40 @@ final class ComputerUseRunCoordinatorPlaywrightScenarioTests: XCTestCase {
         XCTAssertGreaterThan(proof.screenshotBytes, 1_000)
     }
 
+    func testFiftyLocalBrowserScenariosValidateAuditChainEveryRun() async throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUN_COMPUTER_USE_PLAYWRIGHT_50_RUN_GATE"] == "1",
+            "Set RUN_COMPUTER_USE_PLAYWRIGHT_50_RUN_GATE=1 to run the Phase 9 50-run audit-chain gate."
+        )
+
+        let started = Date()
+        var totalResponses = 0
+        var totalAuditEntries = 0
+        for run in 1...50 {
+            let trustMode: ComputerUseTrustMode = run.isMultiple(of: 2) ? .trusted : .step
+            let scopeOutcome: ComputerUseScopeOutcome
+            if trustMode == .trusted {
+                scopeOutcome = .allowed(rule: ComputerUseScopeRuleID(rawValue: "allow-local-playwright-\(run)"))
+            } else {
+                scopeOutcome = .notMatched
+            }
+            let proof = try await runLocalBrowserScenario(
+                trustMode: trustMode,
+                scopeOutcome: scopeOutcome
+            )
+            XCTAssertEqual(proof.responseCount, 7, "run \(run)")
+            XCTAssertEqual(proof.auditValidation.entryCount, 7, "run \(run)")
+            XCTAssertTrue(proof.auditValidation.isValid, "run \(run): \(String(describing: proof.auditValidation.firstInvalidReason))")
+            totalResponses += proof.responseCount
+            totalAuditEntries += proof.auditEntries.count
+        }
+
+        let elapsedMillis = Int(Date().timeIntervalSince(started) * 1_000)
+        print("phase9_50_run_gate runs=50 responses=\(totalResponses) auditEntries=\(totalAuditEntries) elapsedMs=\(elapsedMillis)")
+        XCTAssertEqual(totalResponses, 350)
+        XCTAssertEqual(totalAuditEntries, 350)
+    }
+
     private func runLocalBrowserScenario(
         trustMode: ComputerUseTrustMode,
         scopeOutcome: ComputerUseScopeOutcome
@@ -164,13 +198,21 @@ final class ComputerUseRunCoordinatorPlaywrightScenarioTests: XCTestCase {
 
         for response in responses {
             XCTAssertEqual(response.status, .executed, response.denyReason ?? "unexpected non-executed status")
-            XCTAssertEqual(response.result?.succeeded, true)
+            XCTAssertEqual(response.result?.succeeded, true, String(describing: response.result?.output))
         }
+        let finalAuditHeadHashHex = try XCTUnwrap(responses.last?.auditHeadHashHex)
+        let auditValidation = try validateAuditChain(
+            baseDirectory: auditBaseDirectory,
+            sessionId: sessionId,
+            manifest: manifest,
+            expectedHeadHashHex: finalAuditHeadHashHex
+        )
 
         return BrowserScenarioProof(
             responseCount: responses.count,
             approvalRequests: approvals.requests,
             auditEntries: try auditEntries(baseDirectory: auditBaseDirectory, sessionId: sessionId),
+            auditValidation: auditValidation,
             finalExtractedText: textOutput(from: extract),
             screenshotBytes: screenshotSize(from: screenshot)
         )
@@ -314,6 +356,24 @@ final class ComputerUseRunCoordinatorPlaywrightScenarioTests: XCTestCase {
         }
     }
 
+    private func validateAuditChain(
+        baseDirectory: URL,
+        sessionId: ComputerUseSessionID,
+        manifest: ComputerUseSessionManifest,
+        expectedHeadHashHex: String
+    ) throws -> ComputerUseAuditChain.ValidationResult {
+        let chainURL = baseDirectory
+            .appendingPathComponent(sessionId.rawValue, isDirectory: true)
+            .appendingPathComponent("chain.jsonl")
+        let chain = ComputerUseAuditChain()
+        let manifestHashHex = try chain.hashSessionManifest(manifest)
+        return try chain.validate(
+            at: chainURL,
+            sessionManifestHashHex: manifestHashHex,
+            expectedHeadHashHex: expectedHeadHashHex
+        )
+    }
+
     private func testAuditBaseDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-cu-playwright-scenarios-\(UUID().uuidString)", isDirectory: true)
@@ -369,6 +429,7 @@ private struct BrowserScenarioProof {
     let responseCount: Int
     let approvalRequests: [HermesRealtimeRelayApprovalRequest]
     let auditEntries: [ComputerUseAuditEntry]
+    let auditValidation: ComputerUseAuditChain.ValidationResult
     let finalExtractedText: String?
     let screenshotBytes: Int
 }

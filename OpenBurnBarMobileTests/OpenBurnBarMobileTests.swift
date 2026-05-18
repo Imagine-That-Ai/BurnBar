@@ -227,6 +227,65 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(coordinator.state.pendingApproval)
     }
 
+    func testAgentWatchLoopbackReflectsTenActionLogEntriesWithinTwoHundredMillisecondsEach() async throws {
+        let uid = "user-agent-watch-loopback"
+        let connectionID = "relay-connection-loopback"
+        let sessionID = "session-loopback"
+        let stream = AgentWatchFakeStream()
+        let coordinator = AgentWatchOverlayCoordinator(
+            dialer: { _, _, _ in stream },
+            authorityPublisher: AgentWatchFakeAuthorityPublisher(),
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        defer {
+            Task { await coordinator.stop() }
+        }
+
+        coordinator.start(
+            uid: uid,
+            connectionID: connectionID,
+            relayPublicKey: Data(repeating: 8, count: 32)
+        )
+        _ = try await waitForFrame(from: stream) { $0.type == .controlClassify }
+
+        await stream.pushInbound(HermesRealtimeRelayFrame(
+            type: .controlClassify,
+            uid: uid,
+            connectionId: connectionID,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlActionLog.rawValue,
+                sessionId: sessionID
+            )
+        ))
+        try await waitForCondition {
+            coordinator.state.sessionId?.rawValue == sessionID
+        }
+
+        var perEntryLatencies: [TimeInterval] = []
+        for index in 0..<10 {
+            let sentAt = Date()
+            await stream.pushInbound(actionLogFrame(
+                uid: uid,
+                connectionID: connectionID,
+                sessionID: sessionID,
+                index: index
+            ))
+            try await waitForCondition(timeout: 0.2) {
+                coordinator.state.actionTimeline.contains { $0.entryIndex == index }
+            }
+            perEntryLatencies.append(Date().timeIntervalSince(sentAt))
+        }
+
+        XCTAssertEqual(coordinator.state.actionTimeline.map(\.entryIndex), Array(0..<10))
+        XCTAssertEqual(coordinator.state.actionTimeline.map(\.summary), (0..<10).map { "Fake agent action \($0)" })
+        XCTAssertEqual(coordinator.state.actionsExecuted, 10)
+        XCTAssertTrue(
+            perEntryLatencies.allSatisfy { $0 <= 0.2 },
+            "Expected every action-log frame to reach the phone timeline within 200 ms, got \(perEntryLatencies)"
+        )
+    }
+
     func testAgentWatchReceiverSendsSignedTapAndScrollIntents() async throws {
         let uid = "user-agent-watch-input"
         let connectionID = "relay-connection-input"
@@ -359,6 +418,33 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("http://192.168.1.1"))
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL(""))
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("not-a-url"))
+    }
+
+    private func actionLogFrame(
+        uid: String,
+        connectionID: String,
+        sessionID: String,
+        index: Int
+    ) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .controlActionLogEntry,
+            uid: uid,
+            connectionId: connectionID,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlActionLog.rawValue,
+                sessionId: sessionID,
+                actionLogEntry: HermesRealtimeRelayActionLogEntry(
+                    entryIndex: index,
+                    gopOrdinal: UInt32(index),
+                    timestamp: Date(timeIntervalSince1970: 1_800_000_000 + Double(index)),
+                    actionKind: "browser.click",
+                    summary: "Fake agent action \(index)",
+                    status: .completed,
+                    screenshotHashBlake3: "shot-\(index)",
+                    parentEntryBlake3: "head-\(index)"
+                )
+            )
+        )
     }
 
     private func waitForFrame(

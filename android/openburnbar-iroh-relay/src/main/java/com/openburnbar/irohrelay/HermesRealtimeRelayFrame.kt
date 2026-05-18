@@ -136,7 +136,44 @@ data class HermesRealtimeRelayControlPayload(
     val inputIntent: HermesRealtimeRelayInputIntent? = null,
     val authorityPeerNodeId: String? = null,
     val authorityPublicKeyBase64: String? = null,
+    val approvalRequest: HermesRealtimeRelayApprovalRequest? = null,
+    val approvalResponse: HermesRealtimeRelayApprovalResponse? = null,
 )
+
+@Serializable
+data class HermesRealtimeRelayApprovalRequest(
+    val approvalId: String,
+    val runId: String,
+    val sessionId: String,
+    val toolKind: String,
+    val title: String,
+    val message: String,
+    val beforeScreenshotBlake3: String? = null,
+    val beforeScreenshotPNGBase64: String? = null,
+    val beforeScreenshotMimeType: String? = null,
+    val beforeScreenshotSizeBytes: Int? = null,
+    val actionSummary: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val requestedAt: Double,
+    val trustMode: String? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayApprovalResponse(
+    val approvalId: String,
+    val decision: Decision,
+    val respondedBy: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val respondedAt: Double,
+    val note: String? = null,
+) {
+    @Serializable
+    enum class Decision {
+        @SerialName("approve") APPROVE,
+        @SerialName("reject") REJECT,
+        @SerialName("reject_and_halt") REJECT_AND_HALT,
+    }
+}
 
 @Serializable
 data class HermesRealtimeRelayInputIntent(

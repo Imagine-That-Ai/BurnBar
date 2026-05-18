@@ -307,6 +307,57 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(state.actionsRejected, 1)
     }
 
+    func testChaosBrowserActionTimeoutFailsWithinTenSecondsAndAuditsFailure() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let auditBaseDirectory = testAuditBaseDirectory()
+        let approvals = ApprovalRecorder(decision: .approve)
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            auditBaseDirectory: auditBaseDirectory
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .browser, trustMode: .trusted)
+        let driver = try await makeHangingDriver(sessionId: sessionId)
+        _ = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
+        let allowRule = ComputerUseScopeRuleID(rawValue: "allow-timeout-test")
+
+        let started = Date()
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(
+                tool: .browserClick,
+                arguments: .object([
+                    "selector": .string("#never-responds"),
+                    "timeoutMillis": .number(50)
+                ])
+            ),
+            scopeContext: ComputerUseScopeContext(url: "https://example.com/app"),
+            scopeOutcome: .allowed(rule: allowRule),
+            accessibilityDeny: nil,
+            capability: capability(for: makeState(sessionId: sessionId, manifest: manifest))
+        )
+        let elapsed = Date().timeIntervalSince(started)
+
+        XCTAssertEqual(response.status, .error)
+        XCTAssertEqual(response.denyReason, "rpcTimeout")
+        XCTAssertLessThan(elapsed, 10, "ChaosBrowserActionTimeout must fail the action before the 10s plan gate.")
+        XCTAssertTrue(approvals.requests.isEmpty)
+        XCTAssertEqual(response.auditEntryIndex, 0)
+        XCTAssertNotNil(response.auditHeadHashHex)
+
+        let entry = try firstAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entry.actionKind, "browser.click")
+        XCTAssertEqual(entry.approvedBy, .trustedScope)
+        XCTAssertEqual(entry.scopeRuleId, allowRule.rawValue)
+        XCTAssertEqual(entry.denyReason, "rpcTimeout")
+
+        let maybeState = await coordinator.session(sessionId)
+        let state = try XCTUnwrap(maybeState)
+        XCTAssertEqual(state.actionsExecuted, 0)
+        XCTAssertEqual(state.actionsRejected, 1)
+    }
+
     func testBrowserTrustedScopeDispatchesWithoutApprovalAndAuditsTrustedScope() async throws {
         let sessionId = ComputerUseSessionID.newRandom()
         let auditBaseDirectory = testAuditBaseDirectory()
@@ -780,6 +831,25 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         return driver
     }
 
+    private func makeHangingDriver(
+        sessionId: ComputerUseSessionID
+    ) async throws -> OpenBurnBarPlaywrightDriver {
+        let node = try XCTUnwrap(nodeExecutablePath())
+        let bridge = try makeHangingBridge()
+        let driver = OpenBurnBarPlaywrightDriver(
+            configuration: OpenBurnBarPlaywrightDriver.Configuration(
+                nodeExecutablePath: node,
+                bridgeScriptPath: bridge,
+                headless: true,
+                perActionTimeoutMillis: 50
+            ),
+            sessionId: sessionId,
+            logger: BurnBarDaemonLogger(category: "cu-coordinator-timeout-tests")
+        )
+        try await driver.start()
+        return driver
+    }
+
     private func makeEchoBridge(expectedRequestCount: Int) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-cu-coordinator-driver-\(UUID().uuidString)", isDirectory: true)
@@ -811,6 +881,25 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
             });
           }, 25);
         });
+        """
+        try script.write(to: bridge, atomically: true, encoding: .utf8)
+        return bridge
+    }
+
+    private func makeHangingBridge() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cu-coordinator-hanging-driver-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let bridge = directory.appendingPathComponent("hanging-bridge.js")
+        let script = """
+        const readline = require('readline');
+        setTimeout(() => {}, 1 << 30);
+        readline.createInterface({ input: process.stdin, terminal: false })
+          .on('line', () => {
+            // Intentionally never respond. The Swift driver must time
+            // out, stop the bridge process, and let the coordinator
+            // record the failed action in the audit chain.
+          });
         """
         try script.write(to: bridge, atomically: true, encoding: .utf8)
         return bridge

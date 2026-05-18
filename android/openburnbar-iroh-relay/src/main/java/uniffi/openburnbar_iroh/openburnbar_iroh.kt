@@ -788,92 +788,92 @@ internal interface UniffiLib : Library {
                 uniffiCheckApiChecksums(lib)
                 }
         }
-
+        
         // The Cleaner for the whole library
         internal val CLEANER: UniffiCleaner by lazy {
             UniffiCleaner.create()
         }
     }
 
-    fun uniffi_openburnbar_iroh_fn_clone_irohblobnode(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_clone_irohblobnode(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_free_irohblobnode(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_free_irohblobnode(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_constructor_irohblobnode_new(uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_constructor_irohblobnode_new(uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_bootstrap(`ptr`: Pointer,`secret`: RustBuffer.ByValue,`storeDir`: RustBuffer.ByValue,`relayUrl`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_bootstrap(`ptr`: Pointer,`secret`: RustBuffer.ByValue,`storeDir`: RustBuffer.ByValue,`relayUrl`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob(`ptr`: Pointer,`ticketText`: RustBuffer.ByValue,`destination`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob(`ptr`: Pointer,`ticketText`: RustBuffer.ByValue,`destination`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_identity(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_identity(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_publish_blob(`ptr`: Pointer,`localPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_publish_blob(`ptr`: Pointer,`localPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_clone_irohdatagramchannel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_clone_irohdatagramchannel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_free_irohdatagramchannel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_free_irohdatagramchannel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_close_channel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_close_channel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_max_datagram_size(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_max_datagram_size(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
-    fun uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_recv(`ptr`: Pointer,`timeoutMillis`: Int,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_recv(`ptr`: Pointer,`timeoutMillis`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_send(`ptr`: Pointer,`packet`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_send(`ptr`: Pointer,`packet`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_clone_irohendpointhandle(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_clone_irohendpointhandle(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_free_irohendpointhandle(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_free_irohendpointhandle(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_constructor_irohendpointhandle_new(uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_constructor_irohendpointhandle_new(uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_accept_datagram_channel(`ptr`: Pointer,`timeoutSeconds`: Int,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_accept_datagram_channel(`ptr`: Pointer,`timeoutSeconds`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_accept_one(`ptr`: Pointer,`timeoutSeconds`: Int,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_accept_one(`ptr`: Pointer,`timeoutSeconds`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_bootstrap(`ptr`: Pointer,`secret`: RustBuffer.ByValue,`relayUrl`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_bootstrap(`ptr`: Pointer,`secret`: RustBuffer.ByValue,`relayUrl`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_connect(`ptr`: Pointer,`nodeId`: RustBuffer.ByValue,`relayUrl`: RustBuffer.ByValue,`directAddresses`: RustBuffer.ByValue,`timeoutSeconds`: Int,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_connect(`ptr`: Pointer,`nodeId`: RustBuffer.ByValue,`relayUrl`: RustBuffer.ByValue,`directAddresses`: RustBuffer.ByValue,`timeoutSeconds`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_identity(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_identity(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_open_datagram_channel(`ptr`: Pointer,`nodeId`: RustBuffer.ByValue,`relayUrl`: RustBuffer.ByValue,`directAddresses`: RustBuffer.ByValue,`timeoutSeconds`: Int,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_open_datagram_channel(`ptr`: Pointer,`nodeId`: RustBuffer.ByValue,`relayUrl`: RustBuffer.ByValue,`directAddresses`: RustBuffer.ByValue,`timeoutSeconds`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohendpointhandle_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_clone_irohstream(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_clone_irohstream(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
-    fun uniffi_openburnbar_iroh_fn_free_irohstream(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_free_irohstream(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_method_irohstream_close_stream(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohstream_close_stream(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_method_irohstream_recv_frame(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohstream_recv_frame(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_method_irohstream_send_frame(`ptr`: Pointer,`frame`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_method_irohstream_send_frame(`ptr`: Pointer,`frame`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_openburnbar_iroh_fn_func_generate_secret_key_material(uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_func_generate_secret_key_material(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_func_iroh_blobs_alpn(uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_func_iroh_blobs_alpn(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_func_iroh_blobs_crate_version(uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_func_iroh_blobs_crate_version(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_func_mercury_audio_alpn(uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_func_mercury_audio_alpn(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_func_openburnbar_alpn(uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_func_openburnbar_alpn(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_openburnbar_iroh_fn_func_openburnbar_iroh_protocol_version(uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_func_openburnbar_iroh_protocol_version(uniffi_out_err: UniffiRustCallStatus, 
     ): Int
-    fun uniffi_openburnbar_iroh_fn_func_parse_blob_ticket(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    fun uniffi_openburnbar_iroh_fn_func_parse_blob_ticket(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun ffi_openburnbar_iroh_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun ffi_openburnbar_iroh_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun ffi_openburnbar_iroh_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun ffi_openburnbar_iroh_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun ffi_openburnbar_iroh_rust_future_poll_u8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -881,7 +881,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_u8(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
     fun ffi_openburnbar_iroh_rust_future_poll_i8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -889,7 +889,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_i8(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
     fun ffi_openburnbar_iroh_rust_future_poll_u16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -897,7 +897,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_u16(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Short
     fun ffi_openburnbar_iroh_rust_future_poll_i16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -905,7 +905,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_i16(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Short
     fun ffi_openburnbar_iroh_rust_future_poll_u32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -913,7 +913,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_u32(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
     fun ffi_openburnbar_iroh_rust_future_poll_i32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -921,7 +921,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_i32(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
     fun ffi_openburnbar_iroh_rust_future_poll_u64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -929,7 +929,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_u64(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     fun ffi_openburnbar_iroh_rust_future_poll_i64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -937,7 +937,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_i64(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     fun ffi_openburnbar_iroh_rust_future_poll_f32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -945,7 +945,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_f32(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Float
     fun ffi_openburnbar_iroh_rust_future_poll_f64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -953,7 +953,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_f64(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Double
     fun ffi_openburnbar_iroh_rust_future_poll_pointer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -961,7 +961,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_pointer(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_pointer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_pointer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
     fun ffi_openburnbar_iroh_rust_future_poll_rust_buffer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -969,7 +969,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_rust_buffer(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun ffi_openburnbar_iroh_rust_future_poll_void(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -977,7 +977,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_iroh_rust_future_free_void(`handle`: Long,
     ): Unit
-    fun ffi_openburnbar_iroh_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    fun ffi_openburnbar_iroh_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_openburnbar_iroh_checksum_func_generate_secret_key_material(
     ): Short
@@ -1037,7 +1037,7 @@ internal interface UniffiLib : Library {
     ): Short
     fun ffi_openburnbar_iroh_uniffi_contract_version(
     ): Int
-
+    
 }
 
 private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
@@ -1176,7 +1176,7 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
         }
     }
 
-/**
+/** 
  * Used to instantiate an interface without an actual pointer, for fakes in tests, mostly.
  *
  * @suppress
@@ -1497,7 +1497,7 @@ private class JavaLangRefCleanable(
  * state.
  */
 public interface IrohBlobNodeInterface {
-
+    
     /**
      * Spin up the blob endpoint with the supplied secret key + on-disk
      * store directory. `relay_url` empty → n0's public relay set;
@@ -1506,7 +1506,7 @@ public interface IrohBlobNodeInterface {
      * `media.blob.advertise` ticket-host hint.
      */
     fun `bootstrap`(`secret`: IrohSecretKeyMaterial, `storeDir`: kotlin.String, `relayUrl`: kotlin.String): IrohNodeIdentity
-
+    
     /**
      * Dial the ticket's source node, download the blob, write it to
      * `destination`. Returns transfer stats. Resume across reconnects
@@ -1514,25 +1514,25 @@ public interface IrohBlobNodeInterface {
      * flips true if any partial state was found at start.
      */
     fun `fetchBlob`(`ticketText`: kotlin.String, `destination`: kotlin.String): BlobTransferStats
-
+    
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
     fun `identity`(): IrohNodeIdentity
-
+    
     /**
      * Hash + ingest a local file into the blob store, return a ticket
      * the receiver can use to fetch it. Idempotent — same file content
      * produces the same hash and the same ticket bytes.
      */
     fun `publishBlob`(`localPath`: kotlin.String): BlobTicketBytes
-
+    
     /**
      * Tear down the router, close the endpoint, drop the store and
      * runtime. Idempotent.
      */
     fun `shutdown`()
-
+    
     companion object
 }
 
@@ -1630,7 +1630,7 @@ open class IrohBlobNode: Disposable, AutoCloseable, IrohBlobNodeInterface {
         }
     }
 
-
+    
     /**
      * Spin up the blob endpoint with the supplied secret key + on-disk
      * store directory. `relay_url` empty → n0's public relay set;
@@ -1648,9 +1648,9 @@ open class IrohBlobNode: Disposable, AutoCloseable, IrohBlobNodeInterface {
     }
     )
     }
+    
 
-
-
+    
     /**
      * Dial the ticket's source node, download the blob, write it to
      * `destination`. Returns transfer stats. Resume across reconnects
@@ -1667,9 +1667,9 @@ open class IrohBlobNode: Disposable, AutoCloseable, IrohBlobNodeInterface {
     }
     )
     }
+    
 
-
-
+    
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
@@ -1683,9 +1683,9 @@ open class IrohBlobNode: Disposable, AutoCloseable, IrohBlobNodeInterface {
     }
     )
     }
+    
 
-
-
+    
     /**
      * Hash + ingest a local file into the blob store, return a ticket
      * the receiver can use to fetch it. Idempotent — same file content
@@ -1701,30 +1701,30 @@ open class IrohBlobNode: Disposable, AutoCloseable, IrohBlobNodeInterface {
     }
     )
     }
+    
 
-
-
+    
     /**
      * Tear down the router, close the endpoint, drop the store and
      * runtime. Idempotent.
      */
     @Throws(IrohFfiException::class)override fun `shutdown`()
-        =
+        = 
     callWithPointer {
     uniffiRustCallWithError(IrohFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_iroh_fn_method_irohblobnode_shutdown(
         it, _status)
 }
     }
+    
+    
 
+    
 
-
-
-
-
-
+    
+    
     companion object
-
+    
 }
 
 /**
@@ -1861,18 +1861,18 @@ public object FfiConverterTypeIrohBlobNode: FfiConverter<IrohBlobNode, Pointer> 
  * streams per GOP per the master plan.
  */
 public interface IrohDatagramChannelInterface {
-
+    
     /**
      * Cleanly close the underlying connection. Idempotent.
      */
     fun `closeChannel`()
-
+    
     /**
      * Maximum datagram payload size negotiated for this connection.
      * Returns 0 if datagrams aren't supported (peer disabled them).
      */
     fun `maxDatagramSize`(): kotlin.UInt
-
+    
     /**
      * Receive one datagram with a bounded wait. Returns `None` if the
      * peer closed the connection before a packet arrived. `timeout_millis`
@@ -1880,14 +1880,14 @@ public interface IrohDatagramChannelInterface {
      * the Opus framing cadence (20 ms) plus a small safety margin.
      */
     fun `recv`(`timeoutMillis`: kotlin.UInt): kotlin.ByteArray?
-
+    
     /**
      * Send a single datagram. Length is the in-flight MTU (1200 bytes on
      * most networks) — anything larger fails with `StreamFailed`. The
      * sender is responsible for keeping each Opus packet under the MTU.
      */
     fun `send`(`packet`: kotlin.ByteArray)
-
+    
     companion object
 }
 
@@ -1978,22 +1978,22 @@ open class IrohDatagramChannel: Disposable, AutoCloseable, IrohDatagramChannelIn
         }
     }
 
-
+    
     /**
      * Cleanly close the underlying connection. Idempotent.
      */
     @Throws(IrohFfiException::class)override fun `closeChannel`()
-        =
+        = 
     callWithPointer {
     uniffiRustCallWithError(IrohFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_close_channel(
         it, _status)
 }
     }
+    
+    
 
-
-
-
+    
     /**
      * Maximum datagram payload size negotiated for this connection.
      * Returns 0 if datagrams aren't supported (peer disabled them).
@@ -2008,9 +2008,9 @@ open class IrohDatagramChannel: Disposable, AutoCloseable, IrohDatagramChannelIn
     }
     )
     }
+    
 
-
-
+    
     /**
      * Receive one datagram with a bounded wait. Returns `None` if the
      * peer closed the connection before a packet arrived. `timeout_millis`
@@ -2027,31 +2027,31 @@ open class IrohDatagramChannel: Disposable, AutoCloseable, IrohDatagramChannelIn
     }
     )
     }
+    
 
-
-
+    
     /**
      * Send a single datagram. Length is the in-flight MTU (1200 bytes on
      * most networks) — anything larger fails with `StreamFailed`. The
      * sender is responsible for keeping each Opus packet under the MTU.
      */
     @Throws(IrohFfiException::class)override fun `send`(`packet`: kotlin.ByteArray)
-        =
+        = 
     callWithPointer {
     uniffiRustCallWithError(IrohFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_send(
         it, FfiConverterByteArray.lower(`packet`),_status)
 }
     }
+    
+    
 
+    
 
-
-
-
-
-
+    
+    
     companion object
-
+    
 }
 
 /**
@@ -2186,20 +2186,20 @@ public object FfiConverterTypeIrohDatagramChannel: FfiConverter<IrohDatagramChan
  * `OpenBurnBarIrohEndpoint` actor calls into.
  */
 public interface IrohEndpointHandleInterface {
-
+    
     /**
      * Block waiting for an inbound Mercury audio datagram connection.
      * Mac uses this in a loop on a dedicated accept task; iOS / Android
      * dial outbound and rarely accept.
      */
     fun `acceptDatagramChannel`(`timeoutSeconds`: kotlin.UInt): IrohDatagramChannel
-
+    
     /**
      * Block waiting for one inbound bidirectional stream. Returns once the
      * remote opens its first bi-stream after a successful ALPN handshake.
      */
     fun `acceptOne`(`timeoutSeconds`: kotlin.UInt): IrohStream
-
+    
     /**
      * Spawn the iroh endpoint with the supplied 32-byte secret key. Idempotent
      * per handle; calling twice replaces the inner endpoint. Returns the
@@ -2212,18 +2212,18 @@ public interface IrohEndpointHandleInterface {
      * phases 1-5).
      */
     fun `bootstrap`(`secret`: IrohSecretKeyMaterial, `relayUrl`: kotlin.String): IrohNodeIdentity
-
+    
     /**
      * Dial a remote node by NodeId (base32 surface form) and open one
      * bidirectional stream. The caller is responsible for stream lifetime.
      */
     fun `connect`(`nodeId`: kotlin.String, `relayUrl`: kotlin.String, `directAddresses`: List<kotlin.String>, `timeoutSeconds`: kotlin.UInt): IrohStream
-
+    
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
     fun `identity`(): IrohNodeIdentity
-
+    
     /**
      * Dial a remote NodeId on the Mercury audio ALPN and return a
      * datagram-only channel. The chat ALPN endpoint must already be
@@ -2231,12 +2231,12 @@ public interface IrohEndpointHandleInterface {
      * shares discovery + relay state.
      */
     fun `openDatagramChannel`(`nodeId`: kotlin.String, `relayUrl`: kotlin.String, `directAddresses`: List<kotlin.String>, `timeoutSeconds`: kotlin.UInt): IrohDatagramChannel
-
+    
     /**
      * Cleanly close the endpoint. After shutdown the handle is unusable.
      */
     fun `shutdown`()
-
+    
     companion object
 }
 
@@ -2332,7 +2332,7 @@ open class IrohEndpointHandle: Disposable, AutoCloseable, IrohEndpointHandleInte
         }
     }
 
-
+    
     /**
      * Block waiting for an inbound Mercury audio datagram connection.
      * Mac uses this in a loop on a dedicated accept task; iOS / Android
@@ -2348,9 +2348,9 @@ open class IrohEndpointHandle: Disposable, AutoCloseable, IrohEndpointHandleInte
     }
     )
     }
+    
 
-
-
+    
     /**
      * Block waiting for one inbound bidirectional stream. Returns once the
      * remote opens its first bi-stream after a successful ALPN handshake.
@@ -2365,9 +2365,9 @@ open class IrohEndpointHandle: Disposable, AutoCloseable, IrohEndpointHandleInte
     }
     )
     }
+    
 
-
-
+    
     /**
      * Spawn the iroh endpoint with the supplied 32-byte secret key. Idempotent
      * per handle; calling twice replaces the inner endpoint. Returns the
@@ -2389,9 +2389,9 @@ open class IrohEndpointHandle: Disposable, AutoCloseable, IrohEndpointHandleInte
     }
     )
     }
+    
 
-
-
+    
     /**
      * Dial a remote node by NodeId (base32 surface form) and open one
      * bidirectional stream. The caller is responsible for stream lifetime.
@@ -2406,9 +2406,9 @@ open class IrohEndpointHandle: Disposable, AutoCloseable, IrohEndpointHandleInte
     }
     )
     }
+    
 
-
-
+    
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
@@ -2422,9 +2422,9 @@ open class IrohEndpointHandle: Disposable, AutoCloseable, IrohEndpointHandleInte
     }
     )
     }
+    
 
-
-
+    
     /**
      * Dial a remote NodeId on the Mercury audio ALPN and return a
      * datagram-only channel. The chat ALPN endpoint must already be
@@ -2441,29 +2441,29 @@ open class IrohEndpointHandle: Disposable, AutoCloseable, IrohEndpointHandleInte
     }
     )
     }
+    
 
-
-
+    
     /**
      * Cleanly close the endpoint. After shutdown the handle is unusable.
      */
     @Throws(IrohFfiException::class)override fun `shutdown`()
-        =
+        = 
     callWithPointer {
     uniffiRustCallWithError(IrohFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_iroh_fn_method_irohendpointhandle_shutdown(
         it, _status)
 }
     }
+    
+    
 
+    
 
-
-
-
-
-
+    
+    
     companion object
-
+    
 }
 
 /**
@@ -2598,24 +2598,24 @@ public object FfiConverterTypeIrohEndpointHandle: FfiConverter<IrohEndpointHandl
  * can keep the send/recv halves alive across UniFFI boundaries.
  */
 public interface IrohStreamInterface {
-
+    
     /**
      * Close the stream cleanly. Idempotent.
      */
     fun `closeStream`()
-
+    
     /**
      * Read one length-prefixed JSON frame off the stream. Returns `None` on
      * clean stream close.
      */
     fun `recvFrame`(): kotlin.ByteArray?
-
+    
     /**
      * Write a length-prefixed JSON frame onto the stream. Length prefix is
      * a big-endian u32 — matches `IrohRelayWireFormat.lengthPrefix` in Swift.
      */
     fun `sendFrame`(`frame`: kotlin.ByteArray)
-
+    
     companion object
 }
 
@@ -2704,22 +2704,22 @@ open class IrohStream: Disposable, AutoCloseable, IrohStreamInterface {
         }
     }
 
-
+    
     /**
      * Close the stream cleanly. Idempotent.
      */
     @Throws(IrohFfiException::class)override fun `closeStream`()
-        =
+        = 
     callWithPointer {
     uniffiRustCallWithError(IrohFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_iroh_fn_method_irohstream_close_stream(
         it, _status)
 }
     }
+    
+    
 
-
-
-
+    
     /**
      * Read one length-prefixed JSON frame off the stream. Returns `None` on
      * clean stream close.
@@ -2734,30 +2734,30 @@ open class IrohStream: Disposable, AutoCloseable, IrohStreamInterface {
     }
     )
     }
+    
 
-
-
+    
     /**
      * Write a length-prefixed JSON frame onto the stream. Length prefix is
      * a big-endian u32 — matches `IrohRelayWireFormat.lengthPrefix` in Swift.
      */
     @Throws(IrohFfiException::class)override fun `sendFrame`(`frame`: kotlin.ByteArray)
-        =
+        = 
     callWithPointer {
     uniffiRustCallWithError(IrohFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_iroh_fn_method_irohstream_send_frame(
         it, FfiConverterByteArray.lower(`frame`),_status)
 }
     }
+    
+    
 
+    
 
-
-
-
-
-
+    
+    
     companion object
-
+    
 }
 
 /**
@@ -2801,7 +2801,7 @@ data class BlobTicketBytes (
      */
     var `text`: kotlin.String
 ) {
-
+    
     companion object
 }
 
@@ -2832,12 +2832,12 @@ public object FfiConverterTypeBlobTicketBytes: FfiConverterRustBuffer<BlobTicket
  * reach Firebase Analytics in plaintext.
  */
 data class BlobTransferStats (
-    var `bytesTotal`: kotlin.ULong,
-    var `blake3Hash`: kotlin.String,
-    var `durationMillis`: kotlin.ULong,
+    var `bytesTotal`: kotlin.ULong, 
+    var `blake3Hash`: kotlin.String, 
+    var `durationMillis`: kotlin.ULong, 
     var `didResume`: kotlin.Boolean
 ) {
-
+    
     companion object
 }
 
@@ -2878,7 +2878,7 @@ public object FfiConverterTypeBlobTransferStats: FfiConverterRustBuffer<BlobTran
 data class IrohAcceptOptions (
     var `alpn`: kotlin.ByteArray
 ) {
-
+    
     companion object
 }
 
@@ -2907,12 +2907,12 @@ public object FfiConverterTypeIrohAcceptOptions: FfiConverterRustBuffer<IrohAcce
  * 32 raw public-key bytes plus the base32 NodeId surface form (52 chars).
  */
 data class IrohNodeIdentity (
-    var `rawPublicKey`: kotlin.ByteArray,
-    var `nodeId`: kotlin.String,
-    var `relayUrl`: kotlin.String,
+    var `rawPublicKey`: kotlin.ByteArray, 
+    var `nodeId`: kotlin.String, 
+    var `relayUrl`: kotlin.String, 
     var `directAddresses`: List<kotlin.String>
 ) {
-
+    
     companion object
 }
 
@@ -2953,7 +2953,7 @@ public object FfiConverterTypeIrohNodeIdentity: FfiConverterRustBuffer<IrohNodeI
 data class IrohSecretKeyMaterial (
     var `raw`: kotlin.ByteArray
 ) {
-
+    
     companion object
 }
 
@@ -2981,71 +2981,71 @@ public object FfiConverterTypeIrohSecretKeyMaterial: FfiConverterRustBuffer<Iroh
 
 
 sealed class IrohFfiException: kotlin.Exception() {
-
+    
     class InvalidSecretKey(
         ) : IrohFfiException() {
         override val message
             get() = ""
     }
-
+    
     class InvalidNodeId(
         ) : IrohFfiException() {
         override val message
             get() = ""
     }
-
+    
     class EndpointNotInitialized(
         ) : IrohFfiException() {
         override val message
             get() = ""
     }
-
+    
     class ConnectFailed(
-
+        
         val `detail`: kotlin.String
         ) : IrohFfiException() {
         override val message
             get() = "detail=${ `detail` }"
     }
-
+    
     class StreamFailed(
-
+        
         val `detail`: kotlin.String
         ) : IrohFfiException() {
         override val message
             get() = "detail=${ `detail` }"
     }
-
+    
     class AcceptFailed(
-
+        
         val `detail`: kotlin.String
         ) : IrohFfiException() {
         override val message
             get() = "detail=${ `detail` }"
     }
-
+    
     class ShutdownFailed(
-
+        
         val `detail`: kotlin.String
         ) : IrohFfiException() {
         override val message
             get() = "detail=${ `detail` }"
     }
-
+    
     class RuntimeFailed(
-
+        
         val `detail`: kotlin.String
         ) : IrohFfiException() {
         override val message
             get() = "detail=${ `detail` }"
     }
-
+    
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<IrohFfiException> {
         override fun lift(error_buf: RustBuffer.ByValue): IrohFfiException = FfiConverterTypeIrohFfiError.lift(error_buf)
     }
 
-
+    
 }
 
 /**
@@ -3053,7 +3053,7 @@ sealed class IrohFfiException: kotlin.Exception() {
  */
 public object FfiConverterTypeIrohFfiError : FfiConverterRustBuffer<IrohFfiException> {
     override fun read(buf: ByteBuffer): IrohFfiException {
-
+        
 
         return when(buf.getInt()) {
             1 -> IrohFfiException.InvalidSecretKey()
@@ -3230,7 +3230,7 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 }
     )
     }
-
+    
 
         /**
          * Returns the iroh-blobs ALPN. Mac and iOS surface this so Swift code
@@ -3244,7 +3244,7 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 }
     )
     }
-
+    
 
         /**
          * Returns the iroh-blobs crate version that the binary was built with.
@@ -3259,7 +3259,7 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 }
     )
     }
-
+    
 
         /**
          * Exported constant so platform code never has to hardcode the ALPN.
@@ -3271,7 +3271,7 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 }
     )
     }
-
+    
  fun `openburnbarAlpn`(): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     uniffiRustCall() { _status ->
@@ -3280,7 +3280,7 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 }
     )
     }
-
+    
  fun `openburnbarIrohProtocolVersion`(): kotlin.UInt {
             return FfiConverterUInt.lift(
     uniffiRustCall() { _status ->
@@ -3289,7 +3289,7 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 }
     )
     }
-
+    
 
         /**
          * Parse a candidate ticket text into the canonical base32 surface form.
@@ -3304,3 +3304,6 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 }
     )
     }
+    
+
+

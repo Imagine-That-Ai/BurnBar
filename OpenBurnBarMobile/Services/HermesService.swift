@@ -3867,7 +3867,7 @@ enum HermesServiceError: LocalizedError {
 }
 
 final class HermesConnectionSecretStore: HermesConnectionSecretStoring {
-    static let shared = HermesConnectionSecretStore()
+    nonisolated(unsafe) static let shared = HermesConnectionSecretStore()
 
     private let keychainService = "com.openburnbar.mobile.hermes-connection"
 

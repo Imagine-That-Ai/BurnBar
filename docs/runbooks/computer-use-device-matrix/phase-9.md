@@ -13,6 +13,12 @@ Browser Computer Use lets the agent drive a managed Playwright Chromium session 
 | Daemon build | `cd OpenBurnBarDaemon && swift build --target OpenBurnBarDaemon` | exit `0` |
 | Mac app build | `xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -configuration Debug -quiet build` | exit `0` |
 
+## Result Log
+
+| Timestamp | Device / Host | Build | Install / Setup | Scenario Result | Evidence |
+|---|---|---|---|---|---|
+| 2026-05-18T04:55:28Z | Mac local Playwright coordinator, headless Chromium | PASS: `RUN_COMPUTER_USE_PLAYWRIGHT_SCENARIOS=1 swift test --package-path OpenBurnBarDaemon --filter ComputerUseRunCoordinatorPlaywrightScenarioTests` exited `0`; normal opt-in Step + Trusted scenario tests passed | PASS: `scripts/install-playwright.sh` restored pinned Playwright 1.49.1 browser cache after the headless shell was missing | PASS: `RUN_COMPUTER_USE_PLAYWRIGHT_50_RUN_GATE=1 swift test --package-path OpenBurnBarDaemon --filter ComputerUseRunCoordinatorPlaywrightScenarioTests/testFiftyLocalBrowserScenariosValidateAuditChainEveryRun` ran 50 real Playwright coordinator sessions, alternating Step and Trusted trust modes. Each session executed 7 browser actions (`goto`, `fill`, `click`, `select`, `key`, `extract`, `screenshot`) and validated `chain.jsonl` with `ComputerUseAuditChain.validate(... expectedHeadHashHex:)`. Total: 50/50 sessions, 350/350 executed responses, 350/350 audit entries, 0 audit-chain validation failures. | Test output: `phase9_50_run_gate runs=50 responses=350 auditEntries=350 elapsedMs=23900` |
+
 ## Manual Smoke
 
 1. Start a browser Computer Use session from the Mac.

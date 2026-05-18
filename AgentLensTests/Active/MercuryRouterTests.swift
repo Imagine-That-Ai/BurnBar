@@ -79,7 +79,8 @@ final class MercuryRouterTests: XCTestCase {
             XCTFail("expected .ringing, got \(router.phase)")
         }
         XCTAssertNotNil(router.pendingRequest)
-        XCTAssertEqual(await sink.count, 0, "ringing must not auto-ack")
+        let ackCount = await sink.count
+        XCTAssertEqual(ackCount, 0, "ringing must not auto-ack")
     }
 
     func testConsentToggleSkipsRingingAndAutoAccepts() async {
@@ -157,7 +158,8 @@ final class MercuryRouterTests: XCTestCase {
             media: HermesRealtimeRelayMediaPayload(presence: beat)
         )
         await router.handleFrame(frame, replySender: sink.sender)
-        XCTAssertEqual(await sink.count, 0, "heartbeat must not produce an ack")
+        let ackCount = await sink.count
+        XCTAssertEqual(ackCount, 0, "heartbeat must not produce an ack")
         XCTAssertEqual(router.phase, .idle)
     }
 
@@ -173,7 +175,8 @@ final class MercuryRouterTests: XCTestCase {
         } else {
             XCTFail("expected .cooldown after stop, got \(router.phase)")
         }
-        XCTAssertEqual(await sink.count, 0,
+        let ackCount = await sink.count
+        XCTAssertEqual(ackCount, 0,
                        "stop from idle has no active request to ack")
     }
 

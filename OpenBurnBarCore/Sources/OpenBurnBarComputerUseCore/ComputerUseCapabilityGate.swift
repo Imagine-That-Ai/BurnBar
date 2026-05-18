@@ -237,6 +237,9 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         switch scopeOutcome {
         case .denied: return .denied(.scopeDenied)
         case .allowed:
+            if context.originatedFromPhone {
+                return .allowed(approvedBy: .phone)
+            }
             // Trusted-mode + allow rule covers approval automatically.
             // Step / Manual modes still need explicit approval; the
             // dispatcher checks the trust mode after this gate returns
@@ -246,6 +249,9 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             }
             return .allowed(approvedBy: .mac)
         case .notMatched:
+            if context.originatedFromPhone {
+                return .allowed(approvedBy: .phone)
+            }
             // Manual / Step / Trusted all fall back to per-action
             // approval here; the dispatcher will pop the sheet.
             return .allowed(approvedBy: .mac)

@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "z\/JhGIocd1YrJW+E46eNhlE9oh2dbutoPD1oUk2WN4c9dXjAsQJiYuWcdImHQJA=",
+  "chunkCiphertext" : "uXrq2pN9FVX170XbdivrvYU0YcpqP3Uml7GUrkLnlRkBfC7CFJv1ql1B7KOe\/8U=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
+  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "JSCRK9IVT7LTdSve2s\/XEUhrOz04h22y08CoD+PuLmsL6fjwwMXxGZYpdCo1fqN022Rq5F2XOIe\/IKsXGzFTlwQEK+Pt0V41ssc924sKwFq3B9NA9m1aJYbyVUAYDkdXKD+cv\/Jgk6AZGsHZNr4Y5XrteSSHD+JWlRBG5nliogvrSwSn3pD3H5sO51npcKQe6POaIOud",
+  "payloadCiphertext" : "zxqvXe27ejHmD2v+vhG1NDM9LlxX5IXt7ftpVOhPsmYXD2qn2atTrxSiLECyrX++HqFXmtEYDFF1UQvoyu3DoIanIUyb2P\/ynYI\/1Qvt5XToqt38TfyR4BgYmKsKVsKcwS5MirpVdFEcVk\/yOvFL+sgsoMqQ0PJLt6SL4nnzLhzb+BOpvsUqkIdtb\/g4bMK8bD7EEuH3",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BITbsNUyYyVwbn9QQ3yckqyUoDU2fSEIP06jzuZroyJcX9A52jEOtKCuruZ08bxL\/\/jZby58etEYUQbSVJ+AlLEQEh46HJym9VTq0Lo4ziTqfG5nLi7ZhYUMowvNlZtiuWUt1uWNI0QVWGLTpD9uIQn6cWK7QpeWD6mKNvk="
+  "wrappedKey" : "BBWja\/l770Gud\/tIZDK1j3+518LvDyyvnd3nbO4qRqXD3r4uXqgMrfFvkwDDFnuVXlJzMJLKpOk+\/lielp5SIJi50zCb7gFbBnC7MpZEjbFla5Z6knFPY4JIgJs730p2\/YYKI001d7BxVNLoIvEgCDLSPoNv2vsNaW3LbME="
 }

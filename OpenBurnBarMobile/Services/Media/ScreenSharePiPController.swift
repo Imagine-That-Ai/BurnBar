@@ -45,7 +45,7 @@ final class ScreenSharePiPController: NSObject {
 }
 
 #if canImport(AVKit)
-extension ScreenSharePiPController: AVPictureInPictureSampleBufferPlaybackDelegate {
+extension ScreenSharePiPController: @preconcurrency AVPictureInPictureSampleBufferPlaybackDelegate {
     func pictureInPictureController(
         _ pictureInPictureController: AVPictureInPictureController,
         setPlaying playing: Bool

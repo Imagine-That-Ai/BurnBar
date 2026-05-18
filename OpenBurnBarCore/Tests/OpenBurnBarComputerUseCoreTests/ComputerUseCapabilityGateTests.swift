@@ -39,7 +39,8 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
         session: ComputerUseSessionState? = nil,
         concurrent: Bool = false,
         kill: Bool = false,
-        accessibility: Bool = true
+        accessibility: Bool = true,
+        originatedFromPhone: Bool = false
     ) -> ComputerUseCapabilityContext {
         ComputerUseCapabilityContext(
             entitlement: entitlement,
@@ -48,7 +49,8 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
             session: session ?? makeSession(),
             concurrentSessionActive: concurrent,
             killSwitch: kill,
-            accessibilityTrusted: accessibility
+            accessibilityTrusted: accessibility,
+            originatedFromPhone: originatedFromPhone
         )
     }
 
@@ -211,6 +213,17 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
         )
         XCTAssertEqual(outcome, .allowed(approvedBy: .mac),
             "Manual mode never grants automatic dispatch; gate returns approvedBy: .mac so the dispatcher knows to raise an approval sheet.")
+    }
+
+    func testPhoneOriginatedMacInputIsPhoneApprovedAfterTrustChecksPass() {
+        let outcome = gate.check(
+            action: macAction,
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            context: makeContext(originatedFromPhone: true)
+        )
+        XCTAssertEqual(outcome, .allowed(approvedBy: .phone),
+            "A verified phone-control intent is already the operator action; the Mac coordinator should audit it as phone-approved without raising a second Mac approval sheet.")
     }
 
     func testNoScopeMatchFallsBackToMacApproval() {

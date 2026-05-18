@@ -172,6 +172,26 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         self.mediaControlReceiver = receiver
     }
 
+    /// Start the persistent Mercury media-control stream from an already
+    /// selected relay connection. This is used by Hermes Square before any
+    /// chat request has happened, so tapping "My Mac" is enough to bring
+    /// Mercury online.
+    func ensureMediaControlStream(connectionID: String) async throws {
+        guard mediaControlCoordinator == nil else { return }
+        guard let uid = Auth.auth().currentUser?.uid else {
+            throw HermesServiceError.relayUnavailable("Mercury requires a signed-in Firebase user.")
+        }
+        guard mediaControlReceiver != nil else {
+            throw HermesServiceError.relayUnavailable("Mercury receiver is not installed.")
+        }
+        let publicKey = try await pairingPublicKeyProvider.fetchPublicKey(uid: uid)
+        startMediaControlCoordinatorIfNeeded(
+            uid: uid,
+            connectionID: connectionID,
+            pairingPublicKey: publicKey
+        )
+    }
+
     /// Mercury Phase 8 — read-only accessor for the active control-stream
     /// coordinator. Returns `nil` until the lazy boot path in `send(...)`
     /// has constructed and started one. Used by `MercuryPeerSource` to

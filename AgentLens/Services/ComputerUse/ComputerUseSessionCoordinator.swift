@@ -98,7 +98,36 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private var screenshotEvidenceDataByHash: [String: Data] = [:]
     private var latestControlUID: String?
     private var latestControlConnectionID: String?
+    #if DEBUG
+    private var didStartE2EApprovalProbe = false
+    #endif
     private nonisolated(unsafe) var remoteConfigObserver: NSObjectProtocol?
+
+    private func recordE2EProofEvent(_ fields: [String: String]) {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_COMPUTER_USE_PROOF"] == "1" else { return }
+        var record = fields
+        record["timestamp"] = ISO8601DateFormatter().string(from: Date())
+        record["timestampMillis"] = String(Int(Date().timeIntervalSince1970 * 1000))
+        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
+              let line = String(data: data, encoding: .utf8)
+        else { return }
+        print("OpenBurnBar ComputerUseE2E \(line)")
+        guard let path = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_COMPUTER_USE_PROOF_OUTPUT"],
+              !path.isEmpty,
+              let lineData = "\(line)\n".data(using: .utf8)
+        else { return }
+        let url = URL(fileURLWithPath: path)
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            try? handle.seekToEnd()
+            try? handle.write(contentsOf: lineData)
+            try? handle.close()
+        }
+        #endif
+    }
 
     public init(
         configuration: Configuration,
@@ -160,6 +189,9 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
     public func updateBudgetEnvelope(_ envelope: ComputerUseBudgetEnvelope) {
         configuration.budgetEnvelope = envelope
+        if envelope.level == .hardCap {
+            haltForBudgetHardCap()
+        }
     }
 
     public func updateQuotaUsage(_ usage: ComputerUseQuotaUsage) {
@@ -230,11 +262,17 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             sessionId: sessionId,
             validator: phoneValidator,
             displayBoundsProvider: displayBoundsProvider,
-            dispatchHandler: { [weak self] action, sessionId in
-                await self?.handlePhoneAction(action, sessionId: sessionId)
+            dispatchHandler: { [weak self] action, sessionId, counter in
+                await self?.handlePhoneAction(action, sessionId: sessionId, counter: counter)
             },
             denyFrameSink: { [weak self] frame in
                 guard let self else { return }
+                await self.recordE2EProofEvent([
+                    "event": "mac_control_denied",
+                    "connectionId": frame.connectionId,
+                    "reason": frame.control?.denied?.reason.rawValue ?? "unknown",
+                    "detail": frame.control?.denied?.detail ?? ""
+                ])
                 try await self.latestReplySender?(frame)
             }
         )
@@ -302,6 +340,38 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             status: .panicHalted
         )
         _ = sessionId
+    }
+
+    private func haltForBudgetHardCap() {
+        guard activeSessionId != nil else { return }
+        cancelPendingApprovals(decision: .rejectAndHalt, note: "budget hard cap")
+        if let logger = auditLogger {
+            let action: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
+            if let entry = try? logger.makeEntry(
+                for: action,
+                approvedBy: .panic,
+                denyReason: ComputerUseDenyReason.hardCap.rawValue,
+                macHostNodeId: configuration.macHostNodeId,
+                scopeContext: macDispatcher.currentScopeContext()
+            ) {
+                _ = try? logger.append(entry)
+                state?.auditChainHeadHashHex = logger.headHashHex
+            }
+        }
+        activeSessionId = nil
+        phoneReceiver = nil
+        auditLogger = nil
+        screenshotEvidenceDataByHash.removeAll()
+        pendingApproval = nil
+        pendingApprovalScreenshotPNG = nil
+        lastDeniedReason = .hardCap
+        state?.endReason = .budgetHardCap
+        state?.endedAt = Date()
+        appendTimeline(
+            kind: "budget.hard_cap",
+            summary: "Budget hard cap reached",
+            status: .panicHalted
+        )
     }
 
     public func setTrustMode(_ mode: ComputerUseTrustMode) {
@@ -398,7 +468,9 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
         case .allowed(let approvedByCandidate):
             let approval: ApprovalDecision
-            if approvedByCandidate == .trustedScope || isReadOnlyInspect(action: action) {
+            if approvedByCandidate == .trustedScope ||
+                approvedByCandidate == .phone ||
+                isReadOnlyInspect(action: action) {
                 approval = ApprovalDecision(approvedBy: approvedByCandidate, approvalId: nil)
             } else {
                 approval = await requestApproval(
@@ -604,7 +676,21 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     peerNodeId: peerNodeId
                 )
                 registerPhonePeer(nodeId: peerNodeId, publicKey: publicKey)
+                recordE2EProofEvent([
+                    "event": "mac_control_classified",
+                    "peerNodeId": peerNodeId,
+                    "connectionId": frame.connectionId
+                ])
+                #if DEBUG
+                startE2EApprovalProbeIfRequested()
+                #endif
             } catch {
+                recordE2EProofEvent([
+                    "event": "mac_control_classify_failed",
+                    "peerNodeId": peerNodeId,
+                    "connectionId": frame.connectionId,
+                    "error": error.localizedDescription
+                ])
                 emitControlFrame(
                     type: .controlDenied,
                     payload: HermesRealtimeRelayControlPayload(
@@ -615,7 +701,20 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 )
             }
         case .controlInputIntent:
-            await phoneReceiver?.ingest(frame)
+            recordE2EProofEvent([
+                "event": "mac_control_input_received",
+                "kind": frame.control?.inputIntent?.kind.rawValue ?? "unknown",
+                "connectionId": frame.connectionId,
+                "counter": String(frame.control?.inputIntent?.authority.counter ?? 0)
+            ])
+            guard let phoneReceiver else {
+                recordE2EProofEvent([
+                    "event": "mac_control_input_missing_receiver",
+                    "connectionId": frame.connectionId
+                ])
+                return
+            }
+            await phoneReceiver.ingest(frame)
         case .controlApprovalResponse:
             if let response = frame.control?.approvalResponse {
                 submitApprovalResponse(response)
@@ -625,7 +724,54 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         }
     }
 
-    private func handlePhoneAction(_ action: ComputerUseAction, sessionId: ComputerUseSessionID) async {
+    #if DEBUG
+    private func startE2EApprovalProbeIfRequested() {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["OPENBURNBAR_E2E_COMPUTER_USE_APPROVAL_PROOF"] == "1" else { return }
+        guard !didStartE2EApprovalProbe else { return }
+        guard let sessionId = activeSessionId?.rawValue else { return }
+        didStartE2EApprovalProbe = true
+        Task { @MainActor in
+            recordE2EProofEvent([
+                "event": "mac_approval_probe_started",
+                "sessionId": sessionId
+            ])
+            let response = await invoke(BurnBarToolInvocation(
+                callID: "e2e-approval-\(UUID().uuidString)",
+                runID: BurnBarRunID(rawValue: "e2e-approval-\(sessionId)"),
+                tool: .macInputScroll,
+                arguments: .object([
+                    "displayX": .number(500),
+                    "displayY": .number(500),
+                    "dragEndX": .number(500),
+                    "dragEndY": .number(420)
+                ]),
+                requestedBy: BurnBarClientID(rawValue: "e2e-approval-agent"),
+                requestedAt: Date()
+            ))
+            var fields: [String: String] = [
+                "event": "mac_approval_probe_completed",
+                "sessionId": response.sessionId,
+                "status": response.status.rawValue
+            ]
+            if let approvalId = response.approvalId {
+                fields["approvalId"] = approvalId
+            }
+            if let auditEntryIndex = response.auditEntryIndex {
+                fields["auditEntryIndex"] = String(auditEntryIndex)
+            }
+            if let auditHeadHashHex = response.auditHeadHashHex {
+                fields["auditHead"] = auditHeadHashHex
+            }
+            if let denyReason = response.denyReason {
+                fields["denyReason"] = denyReason
+            }
+            recordE2EProofEvent(fields)
+        }
+    }
+    #endif
+
+    private func handlePhoneAction(_ action: ComputerUseAction, sessionId: ComputerUseSessionID, counter: UInt64) async {
         guard activeSessionId == sessionId else { return }
         guard configuration.entitlement.allowsPhoneControl else {
             emitControlFrame(
@@ -639,11 +785,39 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             return
         }
         if case .phoneIntent(let intent) = action, intent.kind == .panic {
+            recordE2EProofEvent([
+                "event": "mac_phone_panic_received",
+                "sessionId": sessionId.rawValue,
+                "counter": String(counter)
+            ])
             await panicHalt(source: .phoneGesture)
             return
         }
         let invocation = invocationFromPhoneAction(action, sessionId: sessionId)
-        _ = await invoke(invocation)
+        recordE2EProofEvent([
+            "event": "mac_phone_action_dispatching",
+            "tool": invocation.tool.rawValue,
+            "sessionId": sessionId.rawValue,
+            "counter": String(counter)
+        ])
+        let response = await invoke(invocation)
+        var fields: [String: String] = [
+            "event": "mac_phone_action_dispatched",
+            "tool": invocation.tool.rawValue,
+            "sessionId": response.sessionId,
+            "status": response.status.rawValue,
+            "counter": String(counter)
+        ]
+        if let auditEntryIndex = response.auditEntryIndex {
+            fields["auditEntryIndex"] = String(auditEntryIndex)
+        }
+        if let auditHeadHashHex = response.auditHeadHashHex {
+            fields["auditHead"] = auditHeadHashHex
+        }
+        if let denyReason = response.denyReason {
+            fields["denyReason"] = denyReason
+        }
+        recordE2EProofEvent(fields)
     }
 
     private func invocationFromPhoneAction(

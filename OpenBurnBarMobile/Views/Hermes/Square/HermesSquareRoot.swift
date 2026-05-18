@@ -65,6 +65,8 @@ struct HermesSquareRoot: View {
     /// identity.
     @StateObject private var mercuryPeerSource = MercuryPeerSource()
     @State private var mercuryAckBanner: HermesRealtimeRelayMirrorAck?
+    @State private var bootingMercuryConnectionID: String?
+    @State private var mercuryBootError: String?
     @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
 
     private var pinnedGrid: PinnedAgentGridConfig {
@@ -305,8 +307,21 @@ struct HermesSquareRoot: View {
                         uidProvider: { Auth.auth().currentUser?.uid }
                     )
                 } else {
-                    Text("Mercury unavailable")
-                        .foregroundStyle(DesignSystemColors.textMuted)
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text(bootingMercuryConnectionID == connectionID ? "Connecting to Mercury..." : "Starting Mercury...")
+                            .foregroundStyle(DesignSystemColors.textSecondary)
+                        if let mercuryBootError {
+                            Text(mercuryBootError)
+                                .font(.footnote)
+                                .foregroundStyle(DesignSystemColors.textMuted)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                    }
+                    .task(id: connectionID) {
+                        await ensureMercuryLive(connectionID: connectionID)
+                    }
                 }
             }
         }
@@ -916,6 +931,39 @@ struct HermesSquareRoot: View {
                 prompt: "What's important across my fleet right now? Summarize in 5 bullets."
             )
             navTarget = .runtimeNative(.hermes)
+        }
+    }
+
+    private func ensureMercuryLive(connectionID: String) async {
+        guard bootingMercuryConnectionID != connectionID else { return }
+        bootingMercuryConnectionID = connectionID
+        mercuryBootError = nil
+        defer { bootingMercuryConnectionID = nil }
+
+        let relay: HermesConnectionRecord?
+        if hermesService.selectedConnection.mode == .relayLink {
+            relay = hermesService.selectedConnection
+        } else if let suggested = hermesService.suggestedRelayConnection {
+            _ = hermesService.selectConnection(suggested, refresh: false)
+            relay = suggested
+        } else {
+            await hermesService.refreshConnections(refreshSelectedConnection: false)
+            relay = hermesService.suggestedRelayConnection
+            if let relay {
+                _ = hermesService.selectConnection(relay, refresh: false)
+            }
+        }
+
+        guard let relay else {
+            mercuryBootError = "No online Mac relay found. Open BurnBar on the Mac, enable Remote Relay, then refresh."
+            return
+        }
+
+        do {
+            try await HermesIrohRelayTransport.shared.ensureMediaControlStream(connectionID: relay.id)
+            mercuryBootError = nil
+        } catch {
+            mercuryBootError = error.localizedDescription
         }
     }
 

@@ -26,6 +26,9 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
     private weak var relayHostService: HermesRelayHostService?
     private var panicCoordinator: ComputerUsePanicHaltCoordinator?
     private var cancellables: Set<AnyCancellable> = []
+    #if DEBUG
+    private var didStartE2EProofSession = false
+    #endif
 
     init(
         accountManager: AccountManager,
@@ -60,6 +63,86 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         panicCoordinator = panic
     }
 
+    #if DEBUG
+    func startE2EProofSessionIfRequested() {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["OPENBURNBAR_E2E_COMPUTER_USE_PROOF"] == "1" else { return }
+        guard !didStartE2EProofSession else { return }
+        didStartE2EProofSession = true
+        Task { @MainActor in
+            do {
+                try await waitForComputerUseEntitlementForE2E()
+                try await waitForAccessibilityForE2E()
+                let response = try await startSystemSession(trustMode: .manual)
+                Self.recordE2EProofEvent([
+                    "event": "mac_session_started",
+                    "sessionId": response.sessionId,
+                    "auditHead": response.manifestHashHex
+                ])
+            } catch {
+                Self.recordE2EProofEvent([
+                    "event": "mac_session_failed",
+                    "error": error.localizedDescription
+                ])
+            }
+        }
+    }
+
+    private func waitForComputerUseEntitlementForE2E() async throws {
+        let store = MacCloudEntitlementStore.shared
+        store.start()
+        for _ in 0..<50 {
+            refreshEntitlement()
+            if store.hostedComputerUseIsActive {
+                Self.recordE2EProofEvent(["event": "mac_entitlement_active"])
+                return
+            }
+            try await Task.sleep(nanoseconds: 200_000_000)
+        }
+        Self.recordE2EProofEvent(["event": "mac_entitlement_wait_timed_out"])
+    }
+
+    private func waitForAccessibilityForE2E() async throws {
+        if AXIsProcessTrusted() {
+            Self.recordE2EProofEvent(["event": "mac_accessibility_trusted"])
+            return
+        }
+        Self.recordE2EProofEvent(["event": "mac_accessibility_prompted"])
+        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+        for _ in 0..<150 {
+            if AXIsProcessTrusted() {
+                Self.recordE2EProofEvent(["event": "mac_accessibility_trusted"])
+                return
+            }
+            try await Task.sleep(nanoseconds: 200_000_000)
+        }
+        Self.recordE2EProofEvent(["event": "mac_accessibility_wait_timed_out"])
+    }
+
+    private static func recordE2EProofEvent(_ fields: [String: String]) {
+        var record = fields
+        record["timestamp"] = ISO8601DateFormatter().string(from: Date())
+        record["timestampMillis"] = String(Int(Date().timeIntervalSince1970 * 1000))
+        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
+              let line = String(data: data, encoding: .utf8)
+        else { return }
+        print("OpenBurnBar ComputerUseE2E \(line)")
+        guard let path = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_COMPUTER_USE_PROOF_OUTPUT"],
+              !path.isEmpty,
+              let lineData = "\(line)\n".data(using: .utf8)
+        else { return }
+        let url = URL(fileURLWithPath: path)
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            try? handle.seekToEnd()
+            try? handle.write(contentsOf: lineData)
+            try? handle.close()
+        }
+    }
+    #endif
+
     func refreshEntitlement() {
         MacCloudEntitlementStore.shared.start()
         let entitlement = ComputerUseEntitlementSnapshot(
@@ -89,12 +172,19 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
     @discardableResult
     func startSystemSession(trustMode: ComputerUseTrustMode = .manual) async throws -> ComputerUseSessionStartResponse {
         refreshEntitlement()
+        #if DEBUG
+        let proofActionCap = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_COMPUTER_USE_ACTION_CAP"]
+            .flatMap(Int.init)
+            .map { max(1, min($0, 500)) }
+        #else
+        let proofActionCap: Int? = nil
+        #endif
         let request = ComputerUseSessionStartRequest(
             mode: ComputerUseMode.system.rawValue,
             trustMode: trustMode.rawValue,
             scopeRuleIds: panelModel.scopeRules.map { $0.id.rawValue },
             macHostNodeId: accountManager.deviceId,
-            actionCap: ComputerUseBudgetEnvelope.initialNormal.activeActionsPerRun,
+            actionCap: proofActionCap ?? ComputerUseBudgetEnvelope.initialNormal.activeActionsPerRun,
             sessionTimeoutSeconds: 1800,
             clientID: BurnBarClientID(rawValue: accountManager.userID ?? "local-\(accountManager.deviceId)")
         )
@@ -125,6 +215,13 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
     }
 
     private func bindCoordinator() {
+        MacCloudEntitlementStore.shared.$hostedComputerUseIsActive
+            .combineLatest(MacCloudEntitlementStore.shared.$hostedComputerUseExpirationDate)
+            .sink { [weak self] _, _ in
+                self?.refreshEntitlement()
+            }
+            .store(in: &cancellables)
+
         coordinator.$state
             .sink { [weak self] state in
                 guard let self else { return }

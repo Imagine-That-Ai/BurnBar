@@ -1,5 +1,6 @@
 package com.openburnbar.irohrelay
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -32,7 +33,7 @@ class IrohJniTransport(
         if (needsBootstrap) {
             return try {
                 val secret = secretProvider()
-                val identity = backend.bootstrap(secret.raw, relayURLProvider())
+                val identity = bootstrapWithRetry(secret)
                 cachedIdentity = identity
                 identity
             } catch (err: IrohBackendError) {
@@ -44,6 +45,22 @@ class IrohJniTransport(
             }
         }
         return cachedIdentity ?: backend.identity()
+    }
+
+    private suspend fun bootstrapWithRetry(secret: IrohSecretKeyMaterial): IrohEndpointIdentity {
+        var lastError: IrohBackendError? = null
+        repeat(BOOTSTRAP_ATTEMPTS) { attempt ->
+            try {
+                return backend.bootstrap(secret.raw, relayURLProvider())
+            } catch (err: IrohBackendError) {
+                lastError = err
+                if (!err.isRetryableBootstrapFailure() || attempt == BOOTSTRAP_ATTEMPTS - 1) {
+                    throw err
+                }
+                delay(BOOTSTRAP_RETRY_DELAY_MILLIS * (attempt + 1))
+            }
+        }
+        throw lastError ?: IrohBackendError.RuntimeFailed("bootstrap failed")
     }
 
     override suspend fun connect(target: IrohDialTarget, timeoutMillis: Long): IrohRelayStream {
@@ -78,6 +95,9 @@ class IrohJniTransport(
     }
 
     companion object {
+        private const val BOOTSTRAP_ATTEMPTS = 3
+        private const val BOOTSTRAP_RETRY_DELAY_MILLIS = 750L
+
         /**
          * Bridges backend error semantics into the public transport
          * surface. Connect timeouts collapse to `TimedOut` so the
@@ -100,6 +120,10 @@ class IrohJniTransport(
             else IrohRelayTransportError.StreamRejected("iroh accept failed: ${error.detail}")
             is IrohBackendError.ShutdownFailed -> IrohRelayTransportError.StreamRejected("iroh shutdown failed: ${error.detail}")
         }
+
+        private fun IrohBackendError.isRetryableBootstrapFailure(): Boolean =
+            this is IrohBackendError.RuntimeFailed &&
+                detail.contains("home relay", ignoreCase = true)
     }
 }
 

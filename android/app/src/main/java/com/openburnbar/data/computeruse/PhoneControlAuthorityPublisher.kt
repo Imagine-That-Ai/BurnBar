@@ -7,7 +7,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.irohrelay.HermesRealtimeRelayProtocol
 import java.security.KeyStore
 import java.security.MessageDigest
-import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -117,10 +116,11 @@ class PhoneControlSigningKeyStore(context: Context) {
     private fun saveToStore(seed: ByteArray) {
         require(seed.size == 32) { "Ed25519 private key seed must be 32 bytes" }
         val key = wrappingKey()
-        val iv = ByteArray(GCM_IV_BYTES).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORM).apply {
-            init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+            init(Cipher.ENCRYPT_MODE, key)
         }
+        val iv = cipher.iv
+        require(iv.size == GCM_IV_BYTES) { "Unexpected AES-GCM IV length ${iv.size}" }
         val wrapped = cipher.doFinal(seed)
         prefs.edit()
             .putString(KEY_WRAPPED_SEED, Base64.getEncoder().encodeToString(wrapped))
