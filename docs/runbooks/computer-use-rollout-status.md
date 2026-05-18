@@ -66,9 +66,12 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
   - `ComputerUsePanicHaltCoordinator` (hotkey + auth-gate + remote-config kill paths); daemon-wide panic accepts `sessionId = "*"` and the app startup presenter installs the hotkey coordinator for daemon-owned sessions
   - `ComputerUseSetupWizard` Accessibility-permission flow
   - `#if !DISTRIBUTION_MAS` compile-out applied to MacInputController, MacAccessibilityInspector, ComputerUseSetupWizard, PhoneControlReceiver
-- **Test coverage:** 9 MacInputCore tests (virtual-key map, modifier flags, display-bounds containment) · `ComputerUseRunCoordinatorTests` proves daemon `ComputerUseService` rejects app-owned Path A/C modes at session start · MAS compile-out proof: `xcodebuild ... OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' build` exit 0
+- **Test coverage:** 9 MacInputCore tests (virtual-key map, modifier flags, display-bounds containment) · `ComputerUseRunCoordinatorTests` proves daemon `ComputerUseService` rejects app-owned Path A/C modes at session start · Calculator loopback proof: `tools/CUClickSmoke --scenario calculator --runs 50` passed 50/50 via CGEvent typing + AX result readback (`p95=157.25 ms`) · MAS compile-out proof: `xcodebuild ... OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' build` exit 0
 - **Acceptance gate remaining:**
   - [ ] ≥ 14-day Phase 9 soak with ≥ 95% success rate
+  - [x] Calculator 50/50 loopback
+  - [ ] TextEdit 50/50 loopback
+  - [ ] Deny-region 12/12 proof
   - [x] MAS `DISTRIBUTION_MAS` compile-out build proof
   - [ ] Direct-download notarized build verified via `spctl --assess`
 

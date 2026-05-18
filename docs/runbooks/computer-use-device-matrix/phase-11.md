@@ -12,6 +12,13 @@ Mac System Computer Use uses Accessibility, AX inspection, and CGEvent dispatch.
 | Accessibility prompt | Settings -> Computer Use -> Open Accessibility | System Settings opens Privacy & Security -> Accessibility |
 | Mac build | `xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -configuration Debug -quiet build` | exit `0` |
 | Core Mac input tests | `cd OpenBurnBarCore && swift test --filter MacInputCoreTests` | all tests pass |
+| Calculator loopback | `cd tools/CUClickSmoke && .build/debug/CUClickSmoke --scenario calculator --runs 50` | 50/50 pass, AX result readback equals `4` |
+
+## Result Log
+
+| Date (UTC) | Scenario | Runs | Result | p50 | p95 | Evidence |
+|---|---|---:|---|---:|---:|---|
+| 2026-05-18T00:04:25Z | Calculator `2+2=` loopback via CGEvent typing + AX display readback | 50 | PASS: 50 pass / 0 fail, `AXIsProcessTrusted=true` | 146.39 ms | 157.25 ms | `/tmp/cu-calculator-50.log`; tool: `tools/CUClickSmoke --scenario calculator --runs 50` |
 
 ## Manual Smoke
 
