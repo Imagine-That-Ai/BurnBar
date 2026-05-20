@@ -238,9 +238,9 @@ The play:
 - OpenBurnBar writes the client config for Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code.
 - OpenBurnBar temporarily swaps Cursor's local BYOK token field to a short-lived OpenBurnBar session token while the connector is active, then restores the saved value on disconnect.
 - Routed provider API keys stay in Keychain; client config only receives the local gateway URL and gateway token.
-- Gateway usage shows up as **`OpenBurnBar Gateway`**, and exhausted upstream plans fail over through the same routing policy instead of stranding the client on a dead account.
+- Gateway usage shows up as **`OpenBurnBar Gateway`**, and exhausted upstream plans fail over only when the next route proves the same canonical model ID instead of stranding the client on a dead account or silently changing models.
 
-**v1 upstream provider scope:** `Z.ai`, `MiniMax`, `Ollama Cloud`, `OpenAI`, `Kimi`, `Anthropic`, and `Factory Droid` where configured. Factory Standard exhaustion is treated as exact same-model failover, not silent Droid Core downgrade. **Client targets:** Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code. **Cursor tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared` only for Cursor).
+**v1 upstream provider scope:** `Z.ai`, `MiniMax`, `Ollama Cloud`, `OpenAI`, `Kimi`, `Anthropic`, and `Factory Droid` where configured. Exact model failover may change provider/account, but it will not change `gpt-5.4` into `gpt-5.4-mini`, `gpt-5.4-pro`, a broad family wrapper, or a same-capability-class substitute. Factory Standard exhaustion is treated as exact same-model failover, not silent Droid Core downgrade. **Client targets:** Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code. **Cursor tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared` only for Cursor).
 
 **Checklist:**
 
