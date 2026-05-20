@@ -18,8 +18,8 @@ import { LATEST_RUNDOWN, ALL_RUNDOWNS } from "@data/router-rundown-loader";
 
 const rundown = LATEST_RUNDOWN;
 
-const codingTask = rundown?.taskRankings.find((t) => t.taskID === "coding")
-  ?? rundown?.taskRankings[0];
+const codingTask =
+  rundown?.taskRankings.find((t) => t.taskID === "coding") ?? rundown?.taskRankings[0];
 
 const candidates: ScoreboardCandidate[] = (codingTask?.recommendations ?? [])
   .slice(0, 5)
@@ -29,15 +29,16 @@ const candidates: ScoreboardCandidate[] = (codingTask?.recommendations ?? [])
     providerDisplay: r.providerDisplay,
     providerLogo: r.providerLogo,
     score: r.selectionScore ?? r.score,
-    badge: r.signals?.contextWindowTokens != null
-      ? `ctx ${r.signals.contextWindowTokens >= 1_000_000 ? (r.signals.contextWindowTokens / 1_000_000).toFixed(0) + "M" : (Math.round(r.signals.contextWindowTokens / 1000)) + "k"}`
-      : undefined,
+    badge:
+      r.signals?.contextWindowTokens != null
+        ? `ctx ${r.signals.contextWindowTokens >= 1_000_000 ? (r.signals.contextWindowTokens / 1_000_000).toFixed(0) + "M" : Math.round(r.signals.contextWindowTokens / 1000) + "k"}`
+        : undefined
   }));
 
 const sources: ScoreboardSource[] = (rundown?.sourceStatuses ?? []).map((s) => ({
   source: s.source,
   status: s.status,
-  ageHours: s.ageHours,
+  ageHours: s.ageHours
 }));
 
 const otherTasks = (rundown?.taskRankings ?? [])
@@ -45,7 +46,7 @@ const otherTasks = (rundown?.taskRankings ?? [])
   .map((t) => ({
     id: t.taskID,
     label: t.taskLabel,
-    top: t.recommendations[0],
+    top: t.recommendations[0]
   }));
 
 const rundownDate = rundown?.date ?? "—";
@@ -59,71 +60,81 @@ const archiveCount = ALL_RUNDOWNS.length;
       Today's board verdict — what intelligent mode would pick, with citations.
     </h2>
     <p class="todays__lead">
-      Every twenty-four hours a board of language models runs research and
-      analysis tasks against the model-landscape snapshot. The result is
-      frozen, dated, and inspectable — the daily archive at
+      Every twenty-four hours a board of language models runs research and analysis tasks against
+      the model-landscape snapshot. The result is frozen, dated, and inspectable — the daily archive
+      at
       <a class="todays__link" href="/router/daily">/router/daily</a>
-      holds {archiveCount} of them. Below: today's top coding candidates,
-      with source freshness and the deterministic selection score shown alongside.
+      holds {archiveCount} of them. Below: today's top coding candidates, with source freshness and the
+      deterministic selection score shown alongside.
     </p>
   </header>
 
-  {rundown ? (
-    <div class="todays__body">
-      <IntelligentScoreboard
-        variant="full"
-        heading={`Today · ${codingTask?.taskLabel ?? "ranking"} ${rundownDate}`}
-        sub={codingTask?.topPickRationale}
-        candidates={candidates}
-        sources={sources}
-        showAdvisory={true}
-        ctaURL="/router/daily"
-        ctaLabel="Browse the daily archive"
-      />
+  {
+    rundown ? (
+      <div class="todays__body">
+        <IntelligentScoreboard
+          variant="full"
+          heading={`Today · ${codingTask?.taskLabel ?? "ranking"} ${rundownDate}`}
+          sub={codingTask?.topPickRationale}
+          candidates={candidates}
+          sources={sources}
+          showAdvisory={true}
+          ctaURL="/router/daily"
+          ctaLabel="Browse the daily archive"
+        />
 
-      {otherTasks.length > 0 && (
-        <aside class="todays__tasks" aria-label="Other task categories today">
-          <header class="todays__taskshead">
-            <span class="todays__taskseyebrow mono">other task categories · today</span>
-          </header>
-          <ul class="todays__taskslist">
-            {otherTasks.map((t) => (
-              <li class="taskchip">
-                <a class="taskchip__link" href={`/router/daily/${rundownDate}#task-${t.id}`}>
-                  <span class={`taskchip__pill taskchip__pill--${t.id} mono`}>{t.label}</span>
-                  {t.top ? (
-                    <span class="taskchip__pick">
-                      {t.top.providerLogo && (
-                        <img class="taskchip__logo" src={t.top.providerLogo} alt="" width="20" height="20" loading="lazy" />
-                      )}
-                      <span class="taskchip__name">{t.top.modelDisplay}</span>
-                      <span class="taskchip__score mono">{Math.round((t.top.selectionScore ?? t.top.score) * 100)}</span>
-                    </span>
-                  ) : (
-                    <span class="taskchip__none mono">no fresh evidence</span>
-                  )}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      )}
-    </div>
-  ) : (
-    <p class="todays__empty">
-      No daily rundown is available right now. Run
-      <code class="todays__code">npm run gen:rundown</code> locally — or check
-      back when the production daily cron has produced one.
-    </p>
-  )}
+        {otherTasks.length > 0 && (
+          <aside class="todays__tasks" aria-label="Other task categories today">
+            <header class="todays__taskshead">
+              <span class="todays__taskseyebrow mono">other task categories · today</span>
+            </header>
+            <ul class="todays__taskslist">
+              {otherTasks.map((t) => (
+                <li class="taskchip">
+                  <a class="taskchip__link" href={`/router/daily/${rundownDate}#task-${t.id}`}>
+                    <span class={`taskchip__pill taskchip__pill--${t.id} mono`}>{t.label}</span>
+                    {t.top ? (
+                      <span class="taskchip__pick">
+                        {t.top.providerLogo && (
+                          <img
+                            class="taskchip__logo"
+                            src={t.top.providerLogo}
+                            alt=""
+                            width="20"
+                            height="20"
+                            loading="lazy"
+                          />
+                        )}
+                        <span class="taskchip__name">{t.top.modelDisplay}</span>
+                        <span class="taskchip__score mono">
+                          {Math.round((t.top.selectionScore ?? t.top.score) * 100)}
+                        </span>
+                      </span>
+                    ) : (
+                      <span class="taskchip__none mono">no fresh evidence</span>
+                    )}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )}
+      </div>
+    ) : (
+      <p class="todays__empty">
+        No daily rundown is available right now. Run
+        <code class="todays__code">npm run gen:rundown</code> locally — or check back when the
+        production daily cron has produced one.
+      </p>
+    )
+  }
 </section>
 
 <style>
   .todays {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
-    background:
-      radial-gradient(60% 50% at 80% 0%, rgba(214, 211, 223, 0.05), transparent 65%);
+    background: radial-gradient(60% 50% at 80% 0%, rgba(214, 211, 223, 0.05), transparent 65%);
   }
   .todays__head {
     max-width: 64ch;
@@ -136,7 +147,9 @@ const archiveCount = ALL_RUNDOWNS.length;
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
@@ -146,10 +159,17 @@ const archiveCount = ALL_RUNDOWNS.length;
     margin: 0 auto;
     line-height: 1.55;
   }
-  .todays__link { color: var(--mercury-bright); }
-  .todays__link:hover { color: var(--ember-bright); }
+  .todays__link {
+    color: var(--mercury-bright);
+  }
+  .todays__link:hover {
+    color: var(--ember-bright);
+  }
 
-  .todays__body { display: grid; gap: var(--s-5); }
+  .todays__body {
+    display: grid;
+    gap: var(--s-5);
+  }
 
   .todays__tasks {
     padding: var(--s-5);
@@ -157,7 +177,9 @@ const archiveCount = ALL_RUNDOWNS.length;
     border-radius: var(--r-4);
     background: var(--ink-base);
   }
-  .todays__taskshead { margin-bottom: var(--s-4); }
+  .todays__taskshead {
+    margin-bottom: var(--s-4);
+  }
   .todays__taskseyebrow {
     color: var(--text-dim);
     font-size: 0.66rem;
@@ -178,7 +200,9 @@ const archiveCount = ALL_RUNDOWNS.length;
     background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
     transition: border-color var(--dur-fast) var(--ease-out);
   }
-  .taskchip:hover { border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line)); }
+  .taskchip:hover {
+    border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+  }
   .taskchip__link {
     display: grid;
     gap: var(--s-2);
@@ -200,11 +224,31 @@ const archiveCount = ALL_RUNDOWNS.length;
     letter-spacing: 0.16em;
     text-transform: uppercase;
   }
-  .taskchip__pill--terminal { border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line)); background: color-mix(in oklab, var(--mercury-bright) 10%, var(--ink-base)); color: var(--mercury-bright); }
-  .taskchip__pill--design   { border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line));    background: color-mix(in oklab, var(--status-exact) 10%, var(--ink-base));    color: var(--status-exact); }
-  .taskchip__pill--analysis { border-color: color-mix(in oklab, var(--status-estimated) 35%, var(--ink-line)); background: color-mix(in oklab, var(--status-estimated) 10%, var(--ink-base)); color: var(--status-estimated); }
-  .taskchip__pill--agent    { border-color: color-mix(in oklab, var(--ember-glow) 40%, var(--ink-line));       background: color-mix(in oklab, var(--ember-glow) 12%, var(--ink-base));       color: var(--ember-glow); }
-  .taskchip__pill--general  { border-color: var(--ink-line); background: var(--ink-surface); color: var(--text-mute); }
+  .taskchip__pill--terminal {
+    border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 10%, var(--ink-base));
+    color: var(--mercury-bright);
+  }
+  .taskchip__pill--design {
+    border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-exact) 10%, var(--ink-base));
+    color: var(--status-exact);
+  }
+  .taskchip__pill--analysis {
+    border-color: color-mix(in oklab, var(--status-estimated) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-estimated) 10%, var(--ink-base));
+    color: var(--status-estimated);
+  }
+  .taskchip__pill--agent {
+    border-color: color-mix(in oklab, var(--ember-glow) 40%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-glow) 12%, var(--ink-base));
+    color: var(--ember-glow);
+  }
+  .taskchip__pill--general {
+    border-color: var(--ink-line);
+    background: var(--ink-surface);
+    color: var(--text-mute);
+  }
 
   .taskchip__pick {
     display: inline-flex;
@@ -234,7 +278,11 @@ const archiveCount = ALL_RUNDOWNS.length;
     letter-spacing: 0.06em;
     margin-left: auto;
   }
-  .taskchip__none { color: var(--text-dim); font-size: 0.7rem; letter-spacing: 0.04em; }
+  .taskchip__none {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+  }
 
   .todays__empty {
     max-width: 56ch;

@@ -8,7 +8,7 @@ import { SITE } from "@data/site";
 export async function getStaticPaths() {
   return ALL_RUNDOWNS.map((rundown) => ({
     params: { date: rundown.date },
-    props: { rundown },
+    props: { rundown }
   }));
 }
 
@@ -42,23 +42,51 @@ const taskCount = rundown.taskRankings.length;
         <span class="ember mono">{rundown.date}</span>.
       </h1>
       <p class="lead">
-        Frozen snapshot. A board of language models ran research and analysis
-        tasks over the same daily data, then BurnBar reduced the result to
-        deterministic selections with source citations. Benchmark signals are
-        <strong>advisory</strong> — runtime constraints (provider-family
-        mode, pinning, auth, quota, safety, availability) always win.
+        Frozen snapshot. A board of language models ran research and analysis tasks over the same
+        daily data, then BurnBar reduced the result to deterministic selections with source
+        citations. Benchmark signals are
+        <strong>advisory</strong> — runtime constraints (provider-family mode, pinning, auth, quota, safety,
+        availability) always win.
       </p>
 
       <ul class="pagehead__chips mono" aria-label="Page summary">
-        <li><span class="dot dot--ember"></span> generated {rundown.generatedAt.slice(11, 16)} UTC</li>
-        <li><span class="dot dot--mercury"></span> {taskCount} task categor{taskCount === 1 ? "y" : "ies"}</li>
-        <li><span class="dot dot--ember"></span> {sourcesCount} source{sourcesCount === 1 ? "" : "s"}</li>
+        <li>
+          <span class="dot dot--ember"></span> generated {rundown.generatedAt.slice(11, 16)} UTC
+        </li>
+        <li>
+          <span class="dot dot--mercury"></span>
+          {taskCount} task categor{taskCount === 1 ? "y" : "ies"}
+        </li>
+        <li>
+          <span class="dot dot--ember"></span>
+          {sourcesCount} source{sourcesCount === 1 ? "" : "s"}
+        </li>
       </ul>
 
       <nav class="archive-nav" aria-label="Adjacent days">
-        {older && <a class="archive-nav__btn" href={`/router/daily/${older.date}`}><span class="mono">←</span><span>{older.date}</span></a>}
-        <a class="archive-nav__btn archive-nav__btn--latest" href="/router/daily">all dated rundowns</a>
-        {newer && <a class="archive-nav__btn" href={`/router/daily/${newer.date}`}><span>{newer.date}</span><span class="mono">→</span></a>}
+        {
+          older && (
+            <a class="archive-nav__btn" href={`/router/daily/${older.date}`}>
+              <>
+                <span class="mono">←</span>
+                <span>{older.date}</span>
+              </>
+            </a>
+          )
+        }
+        <a class="archive-nav__btn archive-nav__btn--latest" href="/router/daily"
+          >all dated rundowns</a
+        >
+        {
+          newer && (
+            <a class="archive-nav__btn" href={`/router/daily/${newer.date}`}>
+              <>
+                <span>{newer.date}</span>
+                <span class="mono">→</span>
+              </>
+            </a>
+          )
+        }
       </nav>
     </div>
   </section>
@@ -73,19 +101,28 @@ const taskCount = rundown.taskRankings.length;
     <div class="container container--narrow">
       <h2>Re-run today's routing locally.</h2>
       <p class="lead">
-        Add an account, pick a model, and let the Fire Hydrant do the routing.
-        Provider-family mode by default; intelligent mode opt-in.
+        Add an account, pick a model, and let the Fire Hydrant do the routing. Provider-family mode
+        by default; intelligent mode opt-in.
       </p>
       <div class="endcta__ctas">
-        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
-        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`} target="_blank" rel="noopener noreferrer">Read the gateway doc</a>
+        <a class="btn btn--ember" href="/download"
+          >Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a
+        >
+        <a
+          class="btn btn--ghost"
+          href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`}
+          target="_blank"
+          rel="noopener noreferrer">Read the gateway doc</a
+        >
       </div>
     </div>
   </section>
 </BaseLayout>
 
 <style>
-  .pagehead--archive { padding-block: var(--s-8) var(--s-5); }
+  .pagehead--archive {
+    padding-block: var(--s-8) var(--s-5);
+  }
   .archive-bread {
     display: flex;
     gap: var(--s-2);
@@ -98,8 +135,12 @@ const taskCount = rundown.taskRankings.length;
     color: var(--text-mute);
     text-decoration: none;
   }
-  .archive-bread a:hover { color: var(--ember-bright); }
-  .archive-bread span:not([aria-hidden]) { color: var(--text-base); }
+  .archive-bread a:hover {
+    color: var(--ember-bright);
+  }
+  .archive-bread span:not([aria-hidden]) {
+    color: var(--text-base);
+  }
 
   .pagehead__h .ember {
     color: var(--ember-bright);
@@ -138,7 +179,11 @@ const taskCount = rundown.taskRankings.length;
     border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
     color: var(--ember-bright);
   }
-  .archive-nav__btn--latest { color: var(--text-mute); }
+  .archive-nav__btn--latest {
+    color: var(--text-mute);
+  }
 
-  .archive-body { padding-block: var(--s-3) var(--s-9); }
+  .archive-body {
+    padding-block: var(--s-3) var(--s-9);
+  }
 </style>

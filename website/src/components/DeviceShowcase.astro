@@ -8,9 +8,8 @@
       <span class="eyebrow eyebrow--ember">Companions</span>
       <h2 id="devices-h">The phone, the tablet, the launcher.</h2>
       <p class="lead">
-        The Mac records. The phone and tablet render. Companion apps stream
-        the same daemon data; widgets and Live Activity surface the burn even
-        without opening the app.
+        The Mac records. The phone and tablet render. Companion apps stream the same daemon data;
+        widgets and Live Activity surface the burn even without opening the app.
       </p>
     </header>
 
@@ -92,10 +91,14 @@
   .devices {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
-    background:
-      radial-gradient(60% 80% at 50% 0%, rgba(255, 106, 26, 0.04), transparent 70%);
+    background: radial-gradient(60% 80% at 50% 0%, rgba(255, 106, 26, 0.04), transparent 70%);
   }
-  .sec-head { display: grid; gap: var(--s-3); margin-bottom: var(--s-7); max-width: 64ch; }
+  .sec-head {
+    display: grid;
+    gap: var(--s-3);
+    margin-bottom: var(--s-7);
+    max-width: 64ch;
+  }
   .devices__grid {
     display: grid;
     grid-template-columns: 1fr 1.4fr 1fr;
@@ -110,12 +113,17 @@
     border-radius: var(--r-4);
     background: var(--ink-base);
   }
-  .device__head { display: grid; gap: var(--s-2); }
+  .device__head {
+    display: grid;
+    gap: var(--s-2);
+  }
   .device h3 {
     font-family: var(--font-display);
     font-size: 1.4rem;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
     letter-spacing: -0.02em;
   }
   .device__frame {
@@ -217,7 +225,9 @@
     font-family: var(--font-display);
     color: var(--text-bright);
     font-size: 1.05rem;
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     letter-spacing: -0.014em;
   }
   .android-sub {
@@ -270,11 +280,20 @@
   }
 
   @media (max-width: 1080px) {
-    .devices__grid { grid-template-columns: 1fr 1fr; }
-    .device--ipad { grid-column: 1 / -1; }
-    .device__frame--ipad { max-width: 720px; margin-inline: auto; }
+    .devices__grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .device--ipad {
+      grid-column: 1 / -1;
+    }
+    .device__frame--ipad {
+      max-width: 720px;
+      margin-inline: auto;
+    }
   }
   @media (max-width: 640px) {
-    .devices__grid { grid-template-columns: 1fr; }
+    .devices__grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

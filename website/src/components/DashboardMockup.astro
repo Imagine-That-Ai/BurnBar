@@ -2,7 +2,11 @@
 // A larger "Mac app dashboard" mockup — the home page hero secondary visual
 ---
 
-<div class="dash-mockup" role="img" aria-label="OpenBurnBar dashboard showing today's burn, top providers, quota windows, and a Hermes insight card">
+<div
+  class="dash-mockup"
+  role="img"
+  aria-label="OpenBurnBar dashboard showing today's burn, top providers, quota windows, and a Hermes insight card"
+>
   <div class="dash-mockup__chrome">
     <div class="dash-mockup__traffic">
       <span class="tl tl--r"></span><span class="tl tl--y"></span><span class="tl tl--g"></span>
@@ -23,7 +27,28 @@
         <li><span aria-hidden="true">⊕</span> Projects</li>
         <li><span aria-hidden="true">≋</span> Streams</li>
         <li class="sep"></li>
-        <li><span aria-hidden="true">☿</span> Hermes</li>
+        <li>
+          <span
+            aria-hidden="true"
+            style="display: flex; align-items: center; justify-content: center; width: 12px; height: 12px;"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              style="width: 100%; height: 100%;"
+            >
+              <path d="M7 4.5a4.5 4.5 0 0 1 10 0"></path>
+              <circle cx="12" cy="11.5" r="4"></circle>
+              <line x1="12" y1="15.5" x2="12" y2="21.5"></line>
+              <line x1="9" y1="18.5" x2="15" y2="18.5"></line>
+            </svg>
+          </span>
+          Hermes
+        </li>
         <li><span aria-hidden="true">⌥</span> Mission Control</li>
         <li><span aria-hidden="true">⚙</span> Settings</li>
       </ul>
@@ -36,8 +61,12 @@
           <div class="dash-mockup__title">
             <span class="huge"><span class="sign">$</span>14.27</span>
             <div class="dash-mockup__title-meta">
-              <div><span class="mono">28,140</span> tokens · <span class="mono">19</span> sessions</div>
-              <div class="muted">across <span class="bright">4 providers</span>, <span class="bright">7 models</span></div>
+              <div>
+                <span class="mono">28,140</span> tokens · <span class="mono">19</span> sessions
+              </div>
+              <div class="muted">
+                across <span class="bright">4 providers</span>, <span class="bright">7 models</span>
+              </div>
             </div>
           </div>
         </div>
@@ -73,7 +102,9 @@
             <span class="tag tag--mercury tag--plain mono">today</span>
           </div>
           <div class="dcard__big">38%</div>
-          <span class="muted small">Saved approx <span class="bright">$3.18</span> vs no-cache baseline</span>
+          <span class="muted small"
+            >Saved approx <span class="bright">$3.18</span> vs no-cache baseline</span
+          >
         </div>
       </div>
 
@@ -86,23 +117,41 @@
           <svg viewBox="0 0 400 160" class="dchart__svg" aria-hidden="true">
             <defs>
               <linearGradient id="aP1" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stop-color="#ff6a1a" stop-opacity="0.7"/>
-                <stop offset="100%" stop-color="#ff6a1a" stop-opacity="0.05"/>
+                <stop offset="0%" stop-color="#ff6a1a" stop-opacity="0.7"></stop>
+                <stop offset="100%" stop-color="#ff6a1a" stop-opacity="0.05"></stop>
               </linearGradient>
               <linearGradient id="aP2" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stop-color="#6fd189" stop-opacity="0.5"/>
-                <stop offset="100%" stop-color="#6fd189" stop-opacity="0.05"/>
+                <stop offset="0%" stop-color="#6fd189" stop-opacity="0.5"></stop>
+                <stop offset="100%" stop-color="#6fd189" stop-opacity="0.05"></stop>
               </linearGradient>
               <linearGradient id="aP3" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stop-color="#ffb547" stop-opacity="0.45"/>
-                <stop offset="100%" stop-color="#ffb547" stop-opacity="0.05"/>
+                <stop offset="0%" stop-color="#ffb547" stop-opacity="0.45"></stop>
+                <stop offset="100%" stop-color="#ffb547" stop-opacity="0.05"></stop>
               </linearGradient>
             </defs>
-            <path d="M0 40 C 50 60 100 30 150 50 S 250 25 300 40 S 380 30 400 28 L400 160 L0 160 Z" fill="url(#aP1)"/>
-            <path d="M0 90 C 50 80 100 95 150 88 S 250 100 300 92 S 380 86 400 84 L400 160 L0 160 Z" fill="url(#aP2)"/>
-            <path d="M0 130 C 50 132 100 124 150 130 S 250 128 300 130 S 380 124 400 126 L400 160 L0 160 Z" fill="url(#aP3)"/>
-            <path d="M0 40 C 50 60 100 30 150 50 S 250 25 300 40 S 380 30 400 28" stroke="#ff8a3d" stroke-width="1.2" fill="none"/>
-            <line x1="0" y1="40" x2="400" y2="40" stroke="#ff8a3d" stroke-dasharray="2,4" stroke-width="0.6" opacity="0.5"/>
+            <path
+              d="M0 40 C 50 60 100 30 150 50 S 250 25 300 40 S 380 30 400 28 L400 160 L0 160 Z"
+              fill="url(#aP1)"></path>
+            <path
+              d="M0 90 C 50 80 100 95 150 88 S 250 100 300 92 S 380 86 400 84 L400 160 L0 160 Z"
+              fill="url(#aP2)"></path>
+            <path
+              d="M0 130 C 50 132 100 124 150 130 S 250 128 300 130 S 380 124 400 126 L400 160 L0 160 Z"
+              fill="url(#aP3)"></path>
+            <path
+              d="M0 40 C 50 60 100 30 150 50 S 250 25 300 40 S 380 30 400 28"
+              stroke="#ff8a3d"
+              stroke-width="1.2"
+              fill="none"></path>
+            <line
+              x1="0"
+              y1="40"
+              x2="400"
+              y2="40"
+              stroke="#ff8a3d"
+              stroke-dasharray="2,4"
+              stroke-width="0.6"
+              opacity="0.5"></line>
           </svg>
           <div class="dchart__legend mono">
             <span><span class="sw" style="background:#ff6a1a"></span>Claude Code</span>
@@ -119,7 +168,19 @@
           <ul>
             <li>
               <div class="qline">
-                <span class="qprov">Claude Code · <span class="mono">5h</span></span>
+                <span class="qprov" style="display: flex; align-items: center; gap: 5px;">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    xmlns="http://www.w3.org/2000/svg"
+                    style="width: 11px; height: 11px; flex-shrink: 0; color: #D97756;"
+                  >
+                    <path
+                      d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z"
+                    ></path>
+                  </svg>
+                  <span>Claude Code · <span class="mono">5h</span></span>
+                </span>
                 <span class="qpct mono">68% · 1h 42m</span>
               </div>
               <div class="qbar"><div class="qfill" style="width:68%"></div></div>
@@ -150,14 +211,44 @@
       </div>
 
       <div class="dash-mockup__hermes">
-        <div class="dh__avatar" aria-hidden="true">☿</div>
+        <div class="dh__avatar" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            style="width: 16px; height: 16px; display: block;"
+          >
+            <path d="M7 4.5a4.5 4.5 0 0 1 10 0"></path>
+            <circle cx="12" cy="11.5" r="4"></circle>
+            <line x1="12" y1="15.5" x2="12" y2="21.5"></line>
+            <line x1="9" y1="18.5" x2="15" y2="18.5"></line>
+          </svg>
+        </div>
         <div class="dh__body">
           <div class="dh__head">
             <span class="dh__name">Hermes</span>
             <span class="tag tag--mercury tag--plain mono">local index</span>
           </div>
           <p class="dh__msg">
-            Your <span class="atom atom--ember">Claude Code · 5h window</span> hits
+            Your <span
+              class="atom atom--ember"
+              style="display: inline-flex; align-items: center; gap: 4px; vertical-align: middle;"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                xmlns="http://www.w3.org/2000/svg"
+                style="width: 11px; height: 11px; flex-shrink: 0; display: inline-block;"
+              >
+                <path
+                  d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z"
+                ></path>
+              </svg>
+              <span>Claude Code · 5h window</span>
+            </span> hits
             <span class="atom mono">80%</span> at the current rate by
             <span class="atom mono">3:47pm</span>. Top draw is
             <span class="atom atom--mercury">opus-4-7</span> on the
@@ -177,14 +268,13 @@
 <style>
   .dash-mockup {
     width: 100%;
-    background:
-      linear-gradient(180deg, #1a1521 0%, #0e0a14 100%);
+    background: linear-gradient(180deg, #1a1521 0%, #0e0a14 100%);
     border: 1px solid var(--ink-line);
     border-radius: 14px;
     overflow: hidden;
     box-shadow:
-      0 28px 80px -40px rgba(0,0,0,0.95),
-      0 0 0 1px rgba(255,106,26,0.06);
+      0 28px 80px -40px rgba(0, 0, 0, 0.95),
+      0 0 0 1px rgba(255, 106, 26, 0.06);
     color: var(--text-base);
     font-size: 13px;
     line-height: 1.4;
@@ -197,11 +287,24 @@
     background: #16131e;
     border-bottom: 1px solid var(--ink-line);
   }
-  .dash-mockup__traffic { display: inline-flex; gap: 6px; }
-  .tl { width: 11px; height: 11px; border-radius: 50%; }
-  .tl--r { background: #ff5f57; }
-  .tl--y { background: #febc2e; }
-  .tl--g { background: #28c840; }
+  .dash-mockup__traffic {
+    display: inline-flex;
+    gap: 6px;
+  }
+  .tl {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+  }
+  .tl--r {
+    background: #ff5f57;
+  }
+  .tl--y {
+    background: #febc2e;
+  }
+  .tl--g {
+    background: #28c840;
+  }
   .dash-mockup__path {
     flex: 1;
     text-align: center;
@@ -231,7 +334,10 @@
     padding: 12px 0;
     background: #11101a;
   }
-  .dash-mockup__sidebar ul { display: grid; gap: 1px; }
+  .dash-mockup__sidebar ul {
+    display: grid;
+    gap: 1px;
+  }
   .dash-mockup__sidebar li {
     padding: 6px 14px;
     font-size: 12.5px;
@@ -252,7 +358,10 @@
     padding: 0;
     margin: 8px 14px;
   }
-  .dash-mockup__sidebar li span { color: var(--ember-bright); width: 12px; }
+  .dash-mockup__sidebar li span {
+    color: var(--ember-bright);
+    width: 12px;
+  }
 
   .dash-mockup__main {
     padding: 20px 22px;
@@ -271,18 +380,34 @@
     letter-spacing: 0.18em;
     margin-bottom: 8px;
   }
-  .dash-mockup__title { display: flex; gap: 16px; align-items: flex-end; }
+  .dash-mockup__title {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+  }
   .huge {
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 144, "wght" 460;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 460;
     font-size: 52px;
     line-height: 1;
     color: var(--text-bright);
     letter-spacing: -0.03em;
   }
-  .huge .sign { color: var(--ember-bright); font-variation-settings: "wght" 340; }
-  .dash-mockup__title-meta { display: grid; gap: 2px; font-size: 12px; padding-bottom: 4px; }
-  .dash-mockup__title-meta .muted { color: var(--text-mute); }
+  .huge .sign {
+    color: var(--ember-bright);
+    font-variation-settings: "wght" 340;
+  }
+  .dash-mockup__title-meta {
+    display: grid;
+    gap: 2px;
+    font-size: 12px;
+    padding-bottom: 4px;
+  }
+  .dash-mockup__title-meta .muted {
+    color: var(--text-mute);
+  }
 
   .dash-mockup__window {
     text-align: right;
@@ -301,7 +426,9 @@
     color: var(--text-mute);
     border-right: 1px solid var(--ink-line);
   }
-  .dash-mockup__windowtabs span:last-child { border-right: 0; }
+  .dash-mockup__windowtabs span:last-child {
+    border-right: 0;
+  }
   .dash-mockup__windowtabs .active {
     background: var(--ink-surface-2);
     color: var(--text-bright);
@@ -329,7 +456,9 @@
     font-family: var(--font-display);
     font-size: 22px;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 36, "wght" 500;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 500;
     letter-spacing: -0.01em;
   }
   .dcard__bar {
@@ -342,14 +471,17 @@
     height: 100%;
     background: linear-gradient(90deg, var(--ember-deep), var(--ember-core), var(--ember-bright));
   }
-  .small { font-size: 11.5px; }
+  .small {
+    font-size: 11.5px;
+  }
 
   .dash-mockup__split {
     display: grid;
     grid-template-columns: 1.4fr 1fr;
     gap: 16px;
   }
-  .dchart, .dquota {
+  .dchart,
+  .dquota {
     border: 1px solid var(--ink-line);
     border-radius: 10px;
     padding: 14px;
@@ -357,15 +489,19 @@
     display: grid;
     gap: 10px;
   }
-  .dchart__head, .dquota__head {
+  .dchart__head,
+  .dquota__head {
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-  .dchart h4, .dquota h4 {
+  .dchart h4,
+  .dquota h4 {
     font-size: 13px;
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     color: var(--text-bright);
     letter-spacing: -0.01em;
   }
@@ -389,13 +525,30 @@
     margin-right: 6px;
     vertical-align: middle;
   }
-  .dquota ul { display: grid; gap: 12px; }
-  .qline { display: flex; justify-content: space-between; font-size: 12px; }
-  .qprov { color: var(--text-bright); }
-  .qpct { color: var(--text-mute); }
-  .qfill { background: linear-gradient(90deg, var(--ember-deep), var(--ember-core), var(--ember-bright)); }
-  .qfill--mid { background: linear-gradient(90deg, #c0a14a, #ffb547); }
-  .qfill--low { background: linear-gradient(90deg, var(--mercury-deep), var(--mercury-bright)); }
+  .dquota ul {
+    display: grid;
+    gap: 12px;
+  }
+  .qline {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+  }
+  .qprov {
+    color: var(--text-bright);
+  }
+  .qpct {
+    color: var(--text-mute);
+  }
+  .qfill {
+    background: linear-gradient(90deg, var(--ember-deep), var(--ember-core), var(--ember-bright));
+  }
+  .qfill--mid {
+    background: linear-gradient(90deg, #c0a14a, #ffb547);
+  }
+  .qfill--low {
+    background: linear-gradient(90deg, var(--mercury-deep), var(--mercury-bright));
+  }
 
   .dash-mockup__hermes {
     border: 1px solid color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
@@ -404,8 +557,7 @@
     display: grid;
     grid-template-columns: 38px 1fr;
     gap: 12px;
-    background:
-      linear-gradient(135deg, rgba(214, 211, 223, 0.06), transparent 55%);
+    background: linear-gradient(135deg, rgba(214, 211, 223, 0.06), transparent 55%);
   }
   .dh__avatar {
     width: 32px;
@@ -416,18 +568,27 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background:
-      radial-gradient(80% 80% at 30% 30%, rgba(214, 211, 223, 0.18), transparent 60%);
+    background: radial-gradient(80% 80% at 30% 30%, rgba(214, 211, 223, 0.18), transparent 60%);
     font-size: 16px;
   }
-  .dh__head { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
+  .dh__head {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 4px;
+  }
   .dh__name {
     color: var(--mercury-bright);
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 36, "wght" 500;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 500;
     letter-spacing: -0.01em;
   }
-  .dh__msg { font-size: 12.5px; color: var(--text-base); }
+  .dh__msg {
+    font-size: 12.5px;
+    color: var(--text-base);
+  }
   .atom {
     background: var(--ink-surface);
     border: 1px solid var(--ink-line);
@@ -470,6 +631,8 @@
     .dash-mockup__split {
       grid-template-columns: 1fr;
     }
-    .huge { font-size: 40px; }
+    .huge {
+      font-size: 40px;
+    }
   }
 </style>

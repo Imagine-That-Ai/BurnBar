@@ -22,54 +22,69 @@ interface Props {
 const { kind, label } = Astro.props;
 ---
 
-{kind === "nest-hub" && (
-  <div class="deviceframe deviceframe--nest" role="img" aria-label={label ?? "Google Nest Hub device frame"}>
-    <div class="deviceframe__nest-shelf">
-      <div class="deviceframe__nest-bezel">
-        <div class="deviceframe__nest-glass">
-          <slot />
-          <div class="deviceframe__nest-reflection" aria-hidden="true"></div>
+{
+  kind === "nest-hub" && (
+    <div
+      class="deviceframe deviceframe--nest"
+      role="img"
+      aria-label={label ?? "Google Nest Hub device frame"}
+    >
+      <div class="deviceframe__nest-shelf">
+        <div class="deviceframe__nest-bezel">
+          <div class="deviceframe__nest-glass">
+            <slot />
+            <div class="deviceframe__nest-reflection" aria-hidden="true" />
+          </div>
+          <span class="deviceframe__nest-camera" aria-hidden="true" />
         </div>
-        <span class="deviceframe__nest-camera" aria-hidden="true"></span>
-      </div>
-    </div>
-
-    <div class="deviceframe__nest-pedestal" aria-hidden="true">
-      <div class="deviceframe__nest-fabric"></div>
-      <div class="deviceframe__nest-weave"></div>
-      <div class="deviceframe__nest-toplight"></div>
-    </div>
-
-    <div class="deviceframe__nest-floor" aria-hidden="true"></div>
-  </div>
-)}
-
-{kind === "ulanzi-tc001" && (
-  <div class="deviceframe deviceframe--ulanzi" role="img" aria-label={label ?? "Ulanzi TC001 pixel clock"}>
-    <div class="deviceframe__ulanzi-cable" aria-hidden="true">
-      <span class="deviceframe__ulanzi-cable-plug"></span>
-    </div>
-
-    <div class="deviceframe__ulanzi-body">
-      <div class="deviceframe__ulanzi-toprail" aria-hidden="true">
-        <span class="deviceframe__ulanzi-button"></span>
-        <span class="deviceframe__ulanzi-button"></span>
-        <span class="deviceframe__ulanzi-button"></span>
-      </div>
-      <div class="deviceframe__ulanzi-top-highlight" aria-hidden="true"></div>
-
-      <div class="deviceframe__ulanzi-panel">
-        <slot />
       </div>
 
-      <div class="deviceframe__ulanzi-feet" aria-hidden="true">
-        <span></span><span></span>
+      <div class="deviceframe__nest-pedestal" aria-hidden="true">
+        <div class="deviceframe__nest-fabric" />
+        <div class="deviceframe__nest-weave" />
+        <div class="deviceframe__nest-toplight" />
       </div>
-    </div>
 
-    <div class="deviceframe__ulanzi-floor" aria-hidden="true"></div>
-  </div>
-)}
+      <div class="deviceframe__nest-floor" aria-hidden="true" />
+    </div>
+  )
+}
+
+{
+  kind === "ulanzi-tc001" && (
+    <div
+      class="deviceframe deviceframe--ulanzi"
+      role="img"
+      aria-label={label ?? "Ulanzi TC001 pixel clock"}
+    >
+      <div class="deviceframe__ulanzi-cable" aria-hidden="true">
+        <span class="deviceframe__ulanzi-cable-plug" />
+      </div>
+
+      <div class="deviceframe__ulanzi-body">
+        <div class="deviceframe__ulanzi-toprail" aria-hidden="true">
+          <span class="deviceframe__ulanzi-button" />
+          <span class="deviceframe__ulanzi-button" />
+          <span class="deviceframe__ulanzi-button" />
+        </div>
+        <div class="deviceframe__ulanzi-top-highlight" aria-hidden="true" />
+
+        <div class="deviceframe__ulanzi-panel">
+          <slot />
+        </div>
+
+        <div class="deviceframe__ulanzi-feet" aria-hidden="true">
+          <>
+            <span />
+            <span />
+          </>
+        </div>
+      </div>
+
+      <div class="deviceframe__ulanzi-floor" aria-hidden="true" />
+    </div>
+  )
+}
 
 <style>
   .deviceframe {
@@ -134,12 +149,13 @@ const { kind, label } = Astro.props;
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background:
-      linear-gradient(115deg,
-        rgba(255, 255, 255, 0.08) 0%,
-        transparent 32%,
-        transparent 68%,
-        rgba(255, 255, 255, 0.05) 95%);
+    background: linear-gradient(
+      115deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      transparent 32%,
+      transparent 68%,
+      rgba(255, 255, 255, 0.05) 95%
+    );
     mix-blend-mode: screen;
     opacity: 0.55;
   }
@@ -154,8 +170,7 @@ const { kind, label } = Astro.props;
     width: clamp(4px, 0.85cqi, 7px);
     height: clamp(4px, 0.85cqi, 7px);
     border-radius: 50%;
-    background:
-      radial-gradient(closest-side, #2a2030 35%, #0a070d 100%);
+    background: radial-gradient(closest-side, #2a2030 35%, #0a070d 100%);
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.08),
       0 0 4px rgba(0, 0, 0, 0.6);
@@ -171,11 +186,7 @@ const { kind, label } = Astro.props;
     aspect-ratio: 7.2 / 1;
     margin-top: -0.3%;
     border-radius: 22% 22% 30% 30% / 60% 60% 100% 100%;
-    background:
-      radial-gradient(140% 110% at 50% -20%,
-        #fbf3e2 0%,
-        #e8dcc1 45%,
-        #c1ad88 100%);
+    background: radial-gradient(140% 110% at 50% -20%, #fbf3e2 0%, #e8dcc1 45%, #c1ad88 100%);
     box-shadow:
       inset 0 2px 0 rgba(255, 255, 255, 0.6),
       inset 0 -8px 12px rgba(0, 0, 0, 0.16),
@@ -189,10 +200,14 @@ const { kind, label } = Astro.props;
     inset: 0;
     border-radius: inherit;
     background-image:
-      radial-gradient(rgba(0, 0, 0, 0.20) 0.8px, transparent 1.2px),
+      radial-gradient(rgba(0, 0, 0, 0.2) 0.8px, transparent 1.2px),
       radial-gradient(rgba(255, 255, 255, 0.18) 0.8px, transparent 1.2px);
-    background-size: 4px 4px, 4px 4px;
-    background-position: 0 0, 2px 2px;
+    background-size:
+      4px 4px,
+      4px 4px;
+    background-position:
+      0 0,
+      2px 2px;
     mix-blend-mode: multiply;
     opacity: 0.55;
   }
@@ -202,14 +217,8 @@ const { kind, label } = Astro.props;
     inset: 0;
     border-radius: inherit;
     background-image:
-      repeating-linear-gradient(
-        38deg,
-        rgba(0, 0, 0, 0.04) 0 1px,
-        transparent 1px 3px),
-      repeating-linear-gradient(
-        -38deg,
-        rgba(0, 0, 0, 0.04) 0 1px,
-        transparent 1px 3px);
+      repeating-linear-gradient(38deg, rgba(0, 0, 0, 0.04) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(-38deg, rgba(0, 0, 0, 0.04) 0 1px, transparent 1px 3px);
     mix-blend-mode: multiply;
     opacity: 0.7;
     pointer-events: none;
@@ -219,8 +228,7 @@ const { kind, label } = Astro.props;
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background:
-      radial-gradient(70% 45% at 50% 0%, rgba(255, 255, 255, 0.4), transparent 75%);
+    background: radial-gradient(70% 45% at 50% 0%, rgba(255, 255, 255, 0.4), transparent 75%);
     pointer-events: none;
   }
   /* FLOOR — soft contact shadow. */
@@ -229,8 +237,7 @@ const { kind, label } = Astro.props;
     height: clamp(10px, 2.4cqi, 22px);
     margin-top: -2.5%;
     border-radius: 50%;
-    background:
-      radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.5), transparent 75%);
+    background: radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.5), transparent 75%);
     filter: blur(10px);
     z-index: 0;
   }
@@ -256,8 +263,7 @@ const { kind, label } = Astro.props;
     width: 14%;
     height: 6px;
     border-radius: 3px;
-    background:
-      linear-gradient(90deg, #1a1422 0%, #2a2030 60%, transparent 100%);
+    background: linear-gradient(90deg, #1a1422 0%, #2a2030 60%, transparent 100%);
     transform: rotate(-4deg);
     transform-origin: left center;
     z-index: 0;
@@ -269,8 +275,7 @@ const { kind, label } = Astro.props;
     width: 10px;
     height: 12px;
     border-radius: 2px;
-    background:
-      linear-gradient(180deg, #2a2030 0%, #1a1422 100%);
+    background: linear-gradient(180deg, #2a2030 0%, #1a1422 100%);
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.05),
       0 1px 3px rgba(0, 0, 0, 0.4);
@@ -280,11 +285,7 @@ const { kind, label } = Astro.props;
     width: 100%;
     height: 100%;
     border-radius: 10px;
-    background:
-      linear-gradient(180deg,
-        #f7f0e2 0%,
-        #ede2cd 40%,
-        #d5c6a8 100%);
+    background: linear-gradient(180deg, #f7f0e2 0%, #ede2cd 40%, #d5c6a8 100%);
     border: 1px solid rgba(0, 0, 0, 0.22);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.8),
@@ -311,8 +312,7 @@ const { kind, label } = Astro.props;
     width: clamp(10px, 3cqi, 26px);
     height: clamp(3px, 0.8cqi, 6px);
     border-radius: 2px 2px 0 0;
-    background:
-      linear-gradient(180deg, #efe4cc 0%, #c4b288 100%);
+    background: linear-gradient(180deg, #efe4cc 0%, #c4b288 100%);
     border: 1px solid rgba(0, 0, 0, 0.22);
     border-bottom: none;
     box-shadow:
@@ -326,8 +326,7 @@ const { kind, label } = Astro.props;
     left: 10%;
     right: 10%;
     height: 16%;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 100%);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 100%);
     border-radius: 10px 10px 0 0;
     opacity: 0.55;
     pointer-events: none;
@@ -352,8 +351,7 @@ const { kind, label } = Astro.props;
   .deviceframe__ulanzi-feet span {
     width: clamp(14px, 4.5cqi, 36px);
     height: 100%;
-    background:
-      linear-gradient(180deg, #2a2030 0%, #18141a 100%);
+    background: linear-gradient(180deg, #2a2030 0%, #18141a 100%);
     border-radius: 0 0 4px 4px;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -366,8 +364,7 @@ const { kind, label } = Astro.props;
     bottom: -10px;
     height: 8px;
     border-radius: 50%;
-    background:
-      radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.45), transparent 75%);
+    background: radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.45), transparent 75%);
     filter: blur(8px);
     z-index: 0;
   }

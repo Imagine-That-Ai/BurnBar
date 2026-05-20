@@ -261,69 +261,42 @@ struct MenuBarPopoverView: View {
                     .overlay(alignment: .topTrailing) {
                         trayReorderControls(for: section, at: index, totalCount: sections.count)
                     }
-                    .overlay(alignment: .bottom) {
-                        if !isLast {
-                            sectionResizeGrip(for: section, below: sections[index + 1], index: index)
+
+                if !isLast {
+                    let below = sections[index + 1]
+                    SectionResizeHandle(
+                        index: index,
+                        isDragging: trayDividerDraggingIndex == index,
+                        onDragDelta: { delta in
+                            let key = section.rawValue
+                            let belowKey = below.rawValue
+                            if trayDividerDraggingIndex != index {
+                                trayDividerDraggingIndex = index
+                                var starts = parseSectionHeights()
+                                if starts[key] == nil { starts[key] = section.defaultHeight }
+                                if starts[belowKey] == nil { starts[belowKey] = below.defaultHeight }
+                                trayDividerStartHeights = starts
+                            }
+                            let aboveCurrent = sectionHeight(for: section)
+                            let belowCurrent = sectionHeight(for: below)
+                            let proposedAbove = aboveCurrent + Double(delta)
+                            let clampedAbove = clampSectionHeight(proposedAbove, for: section)
+                            let actualDelta = clampedAbove - aboveCurrent
+                            let proposedBelow = belowCurrent - actualDelta
+                            let clampedBelow = clampSectionHeight(proposedBelow, for: below)
+                            updateSectionHeight(section, height: clampedAbove)
+                            updateSectionHeight(below, height: clampedBelow)
+                        },
+                        onDragEnded: {
+                            trayDividerDraggingIndex = nil
+                            trayDividerStartHeights = [:]
                         }
-                    }
+                    )
+                }
             }
         }
         .animation(DesignSystem.Animation.snappy, value: orderedTraySections)
         .animation(DesignSystem.Animation.gentle, value: storedPopoverTraySectionHeights)
-    }
-
-    private func sectionResizeGrip(for section: PopoverTraySection, below: PopoverTraySection, index: Int) -> some View {
-        let isDragging = trayDividerDraggingIndex == index
-        return VStack(spacing: 0) {
-            Rectangle()
-                .fill(DesignSystem.Colors.border)
-                .frame(height: 0.5)
-            HStack(spacing: 3) {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(isDragging ? DesignSystem.Colors.textPrimary.opacity(0.7) : DesignSystem.Colors.textMuted.opacity(0.35))
-                    .frame(width: 24, height: isDragging ? 3 : 2)
-            }
-            .padding(.vertical, 3)
-            Rectangle()
-                .fill(isDragging ? DesignSystem.Colors.textSecondary.opacity(0.2) : Color.clear)
-                .frame(height: isDragging ? 2 : 0)
-        }
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 1)
-                .onChanged { value in
-                    let aboveKey = section.rawValue
-                    let belowKey = below.rawValue
-                    if trayDividerDraggingIndex != index {
-                        trayDividerDraggingIndex = index
-                        var starts = parseSectionHeights()
-                        if starts[aboveKey] == nil { starts[aboveKey] = section.defaultHeight }
-                        if starts[belowKey] == nil { starts[belowKey] = below.defaultHeight }
-                        trayDividerStartHeights = starts
-                    }
-                    guard let aboveStart = trayDividerStartHeights[aboveKey],
-                          let belowStart = trayDividerStartHeights[belowKey] else { return }
-                    let translation = Double(value.translation.height)
-                    let proposedAbove = aboveStart + translation
-                    let clampedAbove = clampSectionHeight(proposedAbove, for: section)
-                    let actualDelta = clampedAbove - aboveStart
-                    let proposedBelow = belowStart - actualDelta
-                    let clampedBelow = clampSectionHeight(proposedBelow, for: below)
-                    updateSectionHeight(section, height: clampedAbove)
-                    updateSectionHeight(below, height: clampedBelow)
-                }
-                .onEnded { _ in
-                    trayDividerDraggingIndex = nil
-                    trayDividerStartHeights = [:]
-                }
-        )
-        .onHover { hovering in
-            if hovering {
-                NSCursor.resizeUpDown.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
     }
 
     @ViewBuilder
@@ -1197,6 +1170,85 @@ private enum PopoverTraySection: String, CaseIterable, Identifiable {
         case .summary: return true
         default: return false
         }
+    }
+}
+
+// MARK: - Section Resize Handle (NSView-backed)
+//
+// SwiftUI DragGesture is unreliable inside NSPopover — AppKit's event routing
+// swallows mouse events before SwiftUI's gesture recognizers see them.
+// This handle uses a custom NSView that intercepts mouseDown/mouseDragged/mouseUp
+// directly at the responder-chain level, guaranteeing reliable drag behavior.
+
+struct SectionResizeHandle: View {
+    let index: Int
+    let isDragging: Bool
+    let onDragDelta: (CGFloat) -> Void
+    let onDragEnded: () -> Void
+
+    var body: some View {
+        _SectionResizeHandleNSViewRepresentable(
+            onDragDelta: onDragDelta,
+            onDragEnded: onDragEnded
+        )
+        .frame(height: 14)
+        .overlay(alignment: .center) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(isDragging ? DesignSystem.Colors.textPrimary.opacity(0.7) : DesignSystem.Colors.textMuted.opacity(0.35))
+                .frame(width: 24, height: isDragging ? 3 : 2)
+        }
+    }
+}
+
+private struct _SectionResizeHandleNSViewRepresentable: NSViewRepresentable {
+    let onDragDelta: (CGFloat) -> Void
+    let onDragEnded: () -> Void
+
+    func makeNSView(context: Context) -> _ResizeHandleNSView {
+        let view = _ResizeHandleNSView()
+        view.onDragDelta = onDragDelta
+        view.onDragEnded = onDragEnded
+        return view
+    }
+
+    func updateNSView(_ nsView: _ResizeHandleNSView, context: Context) {
+        nsView.onDragDelta = onDragDelta
+        nsView.onDragEnded = onDragEnded
+    }
+}
+
+private final class _ResizeHandleNSView: NSView {
+    var onDragDelta: ((CGFloat) -> Void)?
+    var onDragEnded: (() -> Void)?
+    private var lastY: CGFloat?
+
+    override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: 14) }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeUpDown)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        lastY = event.locationInWindow.y
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let prevY = lastY else { return }
+        let currentY = event.locationInWindow.y
+        // In macOS, Y increases upward; dragging the divider down increases Y.
+        // But we want dragging down to increase the section above (which means
+        // a positive delta in SwiftUI coordinates where y increases downward).
+        // So delta = previousY - currentY = up movement = negative = shrink above.
+        // Wait: dragging the divider DOWN means currentY < prevY, so prevY - currentY > 0,
+        // which means the section above should grow. That's correct.
+        let delta = prevY - currentY
+        onDragDelta?(delta)
+        lastY = event.locationInWindow.y
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        lastY = nil
+        onDragEnded?()
     }
 }
 

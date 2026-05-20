@@ -27,7 +27,7 @@ const faqEntries = [
   },
   {
     q: "Can I pin a model in either mode?",
-    a: "Yes. In Provider-Family Failover, you pin an account; the runner-up is pre-selected. In Intelligent Mode, you can pin a model, a family, or a tier (e.g. \"always opus-class for autopilot\"). A healthy pin always wins."
+    a: 'Yes. In Provider-Family Failover, you pin an account; the runner-up is pre-selected. In Intelligent Mode, you can pin a model, a family, or a tier (e.g. "always opus-class for autopilot"). A healthy pin always wins.'
   },
   {
     q: "Are routing logs safe?",
@@ -41,21 +41,22 @@ const faqEntries = [
   description="BurnBar's local router preserves the exact model you asked for. Failover swaps accounts, never the model. Intelligent mode uses a daily board of language models to research candidates against Artificial Analysis, Terminal-Bench, and Design Arena — benchmarks advisory, pins always win."
 >
   <section class="pagehead" aria-labelledby="hero-h">
-    <div class="container container--wide pagehead__inner glass-pane">
+    <div class="container container--wide pagehead__inner">
       <span class="eyebrow eyebrow--ember">The router · same-model · animated</span>
       <h1 id="hero-h" class="pagehead__h">
         Same model.
         <span class="pagehead__hb">Different account.</span>
         <span class="pagehead__hsm">Every time.</span>
       </h1>
-      <p class="pagehead__lead">
-        BurnBar's local router stretches one model across every account in
-        your library that serves it. Your <code class="mono">gpt-5.5</code> stays
-        <code class="mono">gpt-5.5</code>. Your
-        <code class="mono">claude-opus-4-7</code> stays
-        <code class="mono">claude-opus-4-7</code>. The accounts swap;
-        the model never does.
-      </p>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="pagehead__lead">
+          BurnBar's local router stretches one model across every account in your library that
+          serves it. Your <code class="mono">gpt-5.5</code> stays
+          <code class="mono">gpt-5.5</code>. Your
+          <code class="mono">claude-opus-4-7</code> stays
+          <code class="mono">claude-opus-4-7</code>. The accounts swap; the model never does.
+        </p>
+      </div>
 
       <ul class="pagehead__chips mono" aria-label="Quick highlights">
         <li><span class="dot dot--ember"></span> 127.0.0.1:8317 · local-only</li>
@@ -68,8 +69,15 @@ const faqEntries = [
       </div>
 
       <div class="pagehead__ctas">
-        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
-        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`} target="_blank" rel="noopener noreferrer">Read the gateway doc</a>
+        <a class="btn btn--ember" href="/download"
+          >Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a
+        >
+        <a
+          class="btn btn--ghost"
+          href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`}
+          target="_blank"
+          rel="noopener noreferrer">Read the gateway doc</a
+        >
         <a class="btn btn--ghost" href="/router/daily">See today's rundown</a>
       </div>
     </div>
@@ -82,8 +90,8 @@ const faqEntries = [
         <span class="eyebrow eyebrow--ember">The non-negotiable rule</span>
         <h2 id="rules-h" class="rules__h">Your model in. Your model out. Every path.</h2>
         <p class="rules__lead">
-          Three things can happen to a request in flight. Watch what each one
-          does — or refuses to do — to the model identity you asked for.
+          Three things can happen to a request in flight. Watch what each one does — or refuses to
+          do — to the model identity you asked for.
         </p>
       </header>
 
@@ -95,8 +103,16 @@ const faqEntries = [
           title="Primary OpenAI key throttled → backup OpenAI key, same model."
           eyebrow="01 · gpt-5.5 · 429"
           client={{ name: "Forge", logo: "/brand/providers/forge.png" }}
-          primary={{ name: "OpenAI · personal", logo: "/brand/providers/openai.png", state: "primary" }}
-          fallback={{ name: "Codex · plus", logo: "/brand/providers/codex.png", state: "carries gpt-5.5" }}
+          primary={{
+            name: "OpenAI · personal",
+            logo: "/brand/providers/openai.png",
+            state: "primary"
+          }}
+          fallback={{
+            name: "Codex · plus",
+            logo: "/brand/providers/codex.png",
+            state: "carries gpt-5.5"
+          }}
           failure="429"
           swapDetail="account only · gpt-5.5 → gpt-5.5"
         />
@@ -108,8 +124,18 @@ const faqEntries = [
           title="Pro plan capped → Console admin key, same model."
           eyebrow="02 · claude-opus-4-7"
           client={{ name: "Claude Code", logo: "/brand/providers/claude-code.png" }}
-          primary={{ name: "Anthropic Pro", logo: "/brand/providers/anthropic.png", state: "5h cap hit", auth: "OAuth bearer" }}
-          fallback={{ name: "Console admin", logo: "/brand/providers/anthropic.png", state: "healthy", auth: "x-api-key" }}
+          primary={{
+            name: "Anthropic Pro",
+            logo: "/brand/providers/anthropic.png",
+            state: "5h cap hit",
+            auth: "OAuth bearer"
+          }}
+          fallback={{
+            name: "Console admin",
+            logo: "/brand/providers/anthropic.png",
+            state: "healthy",
+            auth: "x-api-key"
+          }}
           failure="5h · cap"
           swapDetail="Authorization → x-api-key · same model id on the wire"
         />
@@ -130,8 +156,9 @@ const faqEntries = [
 
       <p class="rules__cap mono">
         Implementation · <code>ProviderRoutingPolicy.decide</code> @
-        <code>ProviderAccountTypes.swift:735</code> ·
-        gate response @ <code>OpenBurnBarHTTPGatewayServer.swift:361</code>
+        <code>ProviderAccountTypes.swift:735</code> · gate response @ <code
+          >OpenBurnBarHTTPGatewayServer.swift:361</code
+        >
       </p>
     </div>
   </section>
@@ -156,8 +183,8 @@ const faqEntries = [
         <span class="eyebrow eyebrow--burn">What BurnBar will not do</span>
         <h2 id="wontdo-h" class="wontdo__h">Four bright lines we don't cross.</h2>
         <p class="wontdo__lead">
-          A router that's allowed to do anything is a router you can't predict.
-          These are baked into the policy — not promises, code.
+          A router that's allowed to do anything is a router you can't predict. These are baked into
+          the policy — not promises, code.
         </p>
       </header>
 
@@ -167,7 +194,9 @@ const faqEntries = [
           <div>
             <h3 class="wontno__h">Will not swap your model on failover.</h3>
             <p>
-              Filter rule #F in <code class="mono">ProviderRoutingPolicy.decide</code> drops every candidate account whose model catalog doesn't list your requested model. If no candidate survives, the gateway returns a structured 503 — your IDE sees a clean error, never a silent substitute.
+              Filter rule #F in <code class="mono">ProviderRoutingPolicy.decide</code> drops every candidate
+              account whose model catalog doesn't list your requested model. If no candidate survives,
+              the gateway returns a structured 503 — your IDE sees a clean error, never a silent substitute.
             </p>
           </div>
         </li>
@@ -176,7 +205,9 @@ const faqEntries = [
           <div>
             <h3 class="wontno__h">Will not collapse accounts into a generic quota pool.</h3>
             <p>
-              Each account keeps its own bucket, its own cool-down clock, its own decision history. You added them separately because they cost and throttle differently — the router treats them that way.
+              Each account keeps its own bucket, its own cool-down clock, its own decision history.
+              You added them separately because they cost and throttle differently — the router
+              treats them that way.
             </p>
           </div>
         </li>
@@ -185,7 +216,9 @@ const faqEntries = [
           <div>
             <h3 class="wontno__h">Will not log secrets.</h3>
             <p>
-              The local decision stream records the chosen account ID, the skipped ones, and the reason each was skipped. It never records the API key, the OAuth bearer, the request body, or the response body. Keys live in the macOS Keychain, device-local.
+              The local decision stream records the chosen account ID, the skipped ones, and the
+              reason each was skipped. It never records the API key, the OAuth bearer, the request
+              body, or the response body. Keys live in the macOS Keychain, device-local.
             </p>
           </div>
         </li>
@@ -194,7 +227,9 @@ const faqEntries = [
           <div>
             <h3 class="wontno__h">Will not treat benchmarks as absolute truth.</h3>
             <p>
-              Benchmark snapshots feed the daily model board and inform deterministic selection. They never override a pin. They never beat live quota state. A model that benchmarks higher but is rate-limited right now still loses.
+              Benchmark snapshots feed the daily model board and inform deterministic selection.
+              They never override a pin. They never beat live quota state. A model that benchmarks
+              higher but is rate-limited right now still loses.
             </p>
           </div>
         </li>
@@ -216,26 +251,37 @@ const faqEntries = [
       </header>
 
       <dl class="qa__list">
-        {faqEntries.map((entry) => (
-          <div class="qa__item glass-pane">
-            <dt>{entry.q}</dt>
-            <dd set:html={entry.a.replace(/`([^`]+)`/g, "<code class='mono'>$1</code>")} />
-          </div>
-        ))}
+        {
+          faqEntries.map((entry) => (
+            <div class="qa__item glass-pane">
+              <dt>{entry.q}</dt>
+              <dd set:html={entry.a.replace(/`([^`]+)`/g, "<code class='mono'>$1</code>")} />
+            </div>
+          ))
+        }
       </dl>
     </div>
   </section>
 
   <section class="endcta endcta--inline">
-    <div class="container container--narrow endcta__inner glass-pane">
+    <div class="container container--narrow endcta__inner">
       <h2>Pin a model. Add a second account. Sleep on it.</h2>
-      <p class="lead">
-        BurnBar keeps your model — and your work — running across whatever
-        account is healthy right now.
-      </p>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          BurnBar keeps your model — and your work — running across whatever account is healthy
+          right now.
+        </p>
+      </div>
       <div class="endcta__ctas">
-        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
-        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`} target="_blank" rel="noopener noreferrer">Read the gateway doc</a>
+        <a class="btn btn--ember" href="/download"
+          >Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a
+        >
+        <a
+          class="btn btn--ghost"
+          href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`}
+          target="_blank"
+          rel="noopener noreferrer">Read the gateway doc</a
+        >
         <a class="btn btn--ghost" href="/router/daily">Browse the daily rundown</a>
       </div>
     </div>
@@ -248,7 +294,9 @@ const faqEntries = [
 
 <style>
   /* ────────── 1. HERO ────────── */
-  .pagehead { padding-block: var(--s-9) var(--s-7); }
+  .pagehead {
+    padding-block: var(--s-9) var(--s-7);
+  }
   .pagehead__inner {
     display: grid;
     gap: var(--s-5);
@@ -265,18 +313,25 @@ const faqEntries = [
     line-height: 0.98;
     letter-spacing: -0.04em;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 144, "wght" 460;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 460;
   }
   .pagehead__hb {
     display: block;
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 360,
+      "ital" 1;
   }
   .pagehead__hsm {
     display: block;
     color: var(--text-mute);
-    font-variation-settings: "opsz" 80, "wght" 380;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 380;
     font-size: 0.52em;
     letter-spacing: 0.02em;
     margin-top: 0.4em;
@@ -309,15 +364,25 @@ const faqEntries = [
     background: color-mix(in oklab, var(--ink-surface) 60%, transparent);
     margin: 0;
   }
-  .pagehead__chips li { display: inline-flex; align-items: center; gap: var(--s-2); }
+  .pagehead__chips li {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
   .dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     display: inline-block;
   }
-  .dot--ember   { background: var(--ember-core); box-shadow: 0 0 8px var(--ember-glow); }
-  .dot--mercury { background: var(--mercury-bright); box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 55%, transparent); }
+  .dot--ember {
+    background: var(--ember-core);
+    box-shadow: 0 0 8px var(--ember-glow);
+  }
+  .dot--mercury {
+    background: var(--mercury-bright);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 55%, transparent);
+  }
   .pagehead__visual {
     width: 100%;
     max-width: 980px;
@@ -335,8 +400,7 @@ const faqEntries = [
   .rules {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
-    background:
-      radial-gradient(70% 50% at 50% 0%, rgba(255, 106, 26, 0.05), transparent 65%);
+    background: radial-gradient(70% 50% at 50% 0%, rgba(255, 106, 26, 0.05), transparent 65%);
   }
   .rules__head {
     max-width: 64ch;
@@ -349,17 +413,30 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
-  .rules__lead { color: var(--text-base); max-width: 56ch; margin: 0 auto; line-height: 1.55; }
+  .rules__lead {
+    color: var(--text-base);
+    max-width: 56ch;
+    margin: 0 auto;
+    line-height: 1.55;
+  }
   .rules__grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: var(--s-4);
   }
-  @media (max-width: 1080px) { .rules__grid { grid-template-columns: 1fr; max-width: 560px; margin-inline: auto; } }
+  @media (max-width: 1080px) {
+    .rules__grid {
+      grid-template-columns: 1fr;
+      max-width: 560px;
+      margin-inline: auto;
+    }
+  }
   .rules__cap {
     margin-top: var(--s-5);
     color: var(--text-dim);
@@ -379,8 +456,7 @@ const faqEntries = [
   .wontdo {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
-    background:
-      radial-gradient(60% 50% at 0% 0%, rgba(229, 72, 60, 0.04), transparent 70%);
+    background: radial-gradient(60% 50% at 0% 0%, rgba(229, 72, 60, 0.04), transparent 70%);
   }
   .wontdo__head {
     max-width: 64ch;
@@ -389,16 +465,25 @@ const faqEntries = [
     display: grid;
     gap: var(--s-3);
   }
-  .wontdo__head .eyebrow { color: var(--status-burn); }
+  .wontdo__head .eyebrow {
+    color: var(--status-burn);
+  }
   .wontdo__h {
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
-  .wontdo__lead { color: var(--text-base); max-width: 56ch; margin: 0 auto; line-height: 1.55; }
+  .wontdo__lead {
+    color: var(--text-base);
+    max-width: 56ch;
+    margin: 0 auto;
+    line-height: 1.55;
+  }
   .wontdo__grid {
     list-style: none;
     margin: 0;
@@ -426,7 +511,9 @@ const faqEntries = [
     border-color: color-mix(in oklab, var(--status-burn) 35%, rgba(255, 255, 255, 0.12));
     border-top: 1px solid color-mix(in oklab, var(--status-burn) 50%, rgba(255, 255, 255, 0.22));
     background: rgba(22, 10, 10, 0.82);
-    box-shadow: 0 12px 40px 0 rgba(229, 72, 60, 0.08), 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+    box-shadow:
+      0 12px 40px 0 rgba(229, 72, 60, 0.08),
+      0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
   .wontno__x {
     width: 36px;
@@ -446,13 +533,17 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: 1.1rem;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     letter-spacing: -0.014em;
     line-height: 1.2;
     margin-bottom: var(--s-2);
     text-wrap: balance;
   }
-  .wontno--headline .wontno__h { font-size: 1.4rem; }
+  .wontno--headline .wontno__h {
+    font-size: 1.4rem;
+  }
   .wontno p {
     color: var(--text-base);
     font-size: 0.94rem;
@@ -469,10 +560,14 @@ const faqEntries = [
   .wontno p em {
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings: "opsz" 36, "ital" 1;
+    font-variation-settings:
+      "opsz" 36,
+      "ital" 1;
   }
   @media (max-width: 880px) {
-    .wontdo__grid { grid-template-columns: 1fr; }
+    .wontdo__grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ────────── 7. FAQ ────────── */
@@ -491,11 +586,18 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
-  .qa__list { display: grid; gap: var(--s-4); max-width: 80ch; margin: 0 auto; }
+  .qa__list {
+    display: grid;
+    gap: var(--s-4);
+    max-width: 80ch;
+    margin: 0 auto;
+  }
   .qa__item {
     padding: var(--s-4);
     border: 1px solid var(--ink-line);
@@ -506,11 +608,17 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: 1.1rem;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     letter-spacing: -0.014em;
     margin-bottom: var(--s-2);
   }
-  .qa__item dd { color: var(--text-base); font-size: 0.94rem; line-height: 1.55; }
+  .qa__item dd {
+    color: var(--text-base);
+    font-size: 0.94rem;
+    line-height: 1.55;
+  }
   .qa__item code {
     font-family: var(--font-mono);
     font-size: 0.86em;
@@ -532,9 +640,17 @@ const faqEntries = [
     margin-bottom: var(--s-3);
     font-family: var(--font-display);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
   }
-  .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta__ctas {
+    display: flex;
+    justify-content: center;
+    gap: var(--s-3);
+    margin-top: var(--s-5);
+    flex-wrap: wrap;
+  }
   .endcta__inner {
     text-align: center;
     display: grid;

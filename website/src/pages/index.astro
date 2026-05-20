@@ -12,24 +12,22 @@ import { SURFACES } from "@data/surfaces";
 import { PROVIDERS_PRIMARY } from "@data/providers";
 
 const previewProviders = PROVIDERS_PRIMARY.filter((p) =>
-  ["claude-code", "codex", "openai", "cursor", "copilot", "factory", "minimax", "warp"].includes(p.id)
+  ["claude-code", "codex", "openai", "cursor", "copilot", "factory", "minimax", "warp"].includes(
+    p.id
+  )
 );
 const surfaceShowcase = SURFACES.filter((s) =>
   ["macos", "ios", "cursor", "daemon", "cli", "widgets", "smart-display", "android"].includes(s.id)
 );
 ---
 
-<BaseLayout
-  title={SITE.name}
-  description={SITE.description}
-  ogImage="/og/default.svg"
->
+<BaseLayout title={SITE.name} description={SITE.description} ogImage="/og/default.svg">
   <!-- ────────────────────────────────────────────────
        HERO
        ──────────────────────────────────────────────── -->
   <section class="hero" aria-labelledby="hero-h">
     <div class="container container--wide hero__grid">
-      <div class="hero__copy glass-pane">
+      <div class="hero__copy">
         <div class="hero__eyebrow eyebrow">
           <span>v{SITE.macReleaseLatest}</span>
           <span aria-hidden="true">·</span>
@@ -43,21 +41,64 @@ const surfaceShowcase = SURFACES.filter((s) =>
           <span class="hero__h-second">Before the bill.</span>
         </h1>
 
-        <p class="lead">
-          OpenBurnBar is a <strong>local-first developer tool</strong> that watches the AI
-          coding agents you already use — Claude Code, Codex, Cursor, Copilot, Factory,
-          MiniMax, and more — and gives you a live read on tokens burned, dollars spent,
-          and quota left, across all of them, on your machine. <em>Every token leaves a trail. BurnBar reads the fire.</em>
-        </p>
+        <div class="lead-glass-wrap glass-pane">
+          <p class="lead">
+            OpenBurnBar is a <strong>local-first developer tool</strong> that watches the AI coding agents
+            you already use — Claude Code, Codex, Cursor, Copilot, Factory, MiniMax, and more — and gives
+            you a live read on tokens burned, dollars spent, and quota left, across all of them, on your
+            machine. <em>Every token leaves a trail. BurnBar reads the fire.</em>
+          </p>
+          <div class="hero__providers">
+            <span class="hero__providers-title mono">MONITORED INTEGRATIONS</span>
+            <div class="hero__providers-list">
+              <div class="hero__provider-pill" title="Claude Code">
+                <img
+                  src="/brand/providers/claude-code.png"
+                  alt="Claude Code"
+                  width="16"
+                  height="16"
+                />
+                <span class="mono">Claude Code</span>
+              </div>
+              <div class="hero__provider-pill" title="Codex">
+                <img src="/brand/providers/codex.png" alt="Codex" width="16" height="16" />
+                <span class="mono">Codex</span>
+              </div>
+              <div class="hero__provider-pill" title="Cursor">
+                <img src="/brand/providers/cursor.png" alt="Cursor" width="16" height="16" />
+                <span class="mono">Cursor</span>
+              </div>
+              <div class="hero__provider-pill" title="OpenAI">
+                <img src="/brand/providers/openai.png" alt="OpenAI" width="16" height="16" />
+                <span class="mono">OpenAI</span>
+              </div>
+              <div class="hero__provider-pill" title="GitHub Copilot">
+                <img
+                  src="/brand/providers/copilot.png"
+                  alt="GitHub Copilot"
+                  width="16"
+                  height="16"
+                />
+                <span class="mono">Copilot</span>
+              </div>
+              <div class="hero__provider-pill" title="Factory">
+                <img src="/brand/providers/factory.png" alt="Factory" width="16" height="16" />
+                <span class="mono">Factory</span>
+              </div>
+              <div class="hero__provider-pill" title="MiniMax">
+                <img src="/brand/providers/minimax.png" alt="MiniMax" width="16" height="16" />
+                <span class="mono">MiniMax</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div class="hero__ctas">
           <a class="btn btn--ember" href="/download">
             Download for macOS
             <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
-          <a class="btn btn--ghost" href="/privacy">
-            Read the privacy model
-          </a>
+          <a class="btn btn--ghost" href="/privacy"> Read the privacy model </a>
         </div>
 
         <div class="hero__attest mono">
@@ -103,7 +144,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
       <div class="band__sep" aria-hidden="true"></div>
       <div class="band__stat">
         <div class="band__num mono">7<span class="band__num-unit">·2</span></div>
-        <div class="band__lbl">Upstream providers routed across two same-format pools (OpenAI · Anthropic)</div>
+        <div class="band__lbl">
+          Upstream providers routed across two same-format pools (OpenAI · Anthropic)
+        </div>
       </div>
     </div>
   </section>
@@ -117,9 +160,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
         <span class="eyebrow eyebrow--ember">Three commitments</span>
         <h2 id="pillars-h">A developer tool, not a SaaS dashboard.</h2>
         <p class="lead">
-          OpenBurnBar is built for the kind of developer who has three agents open in
-          parallel and only checks the bill at the end of the month. Three things
-          shape every decision in the product.
+          OpenBurnBar is built for the kind of developer who has three agents open in parallel and
+          only checks the bill at the end of the month. Three things shape every decision in the
+          product.
         </p>
       </header>
 
@@ -128,32 +171,40 @@ const surfaceShowcase = SURFACES.filter((s) =>
           <div class="pillar__num mono">01</div>
           <h3>Local-first by default.</h3>
           <p>
-            The canonical store is a local SQLite database, run by a local daemon
-            under your user account. Firebase is an optional replication plane,
-            not the source of truth. The whole product works offline.
+            The canonical store is a local SQLite database, run by a local daemon under your user
+            account. Firebase is an optional replication plane, not the source of truth. The whole
+            product works offline.
           </p>
-          <a href="/privacy" class="pillar__more">How the privacy model works <span aria-hidden="true">→</span></a>
+          <a href="/privacy" class="pillar__more"
+            >How the privacy model works <span aria-hidden="true">→</span></a
+          >
         </li>
         <li class="pillar">
           <div class="pillar__num mono">02</div>
           <h3>Honest about confidence.</h3>
           <p>
-            Every provider row carries one of three labels — <span class="tag tag--exact tag--plain mono">exact</span>,
+            Every provider row carries one of three labels — <span
+              class="tag tag--exact tag--plain mono">exact</span
+            >,
             <span class="tag tag--estimated tag--plain mono">estimated</span>,
-            <span class="tag tag--unavailable tag--plain mono">unavailable</span>.
-            We don't pretend to know what the vendor doesn't tell us.
+            <span class="tag tag--unavailable tag--plain mono">unavailable</span>. We don't pretend
+            to know what the vendor doesn't tell us.
           </p>
-          <a href="/providers" class="pillar__more">See the full provider matrix <span aria-hidden="true">→</span></a>
+          <a href="/providers" class="pillar__more"
+            >See the full provider matrix <span aria-hidden="true">→</span></a
+          >
         </li>
         <li class="pillar">
           <div class="pillar__num mono">03</div>
           <h3>Built for multi-agent reality.</h3>
           <p>
-            A single daemon owns routing, quota, retrieval, projects, and missions.
-            Every surface — macOS, iOS, iPad, Cursor, VS Code, CLI, widgets, smart
-            displays — speaks to the same daemon. One source of truth, many windows in.
+            A single daemon owns routing, quota, retrieval, projects, and missions. Every surface —
+            macOS, iOS, iPad, Cursor, VS Code, CLI, widgets, smart displays — speaks to the same
+            daemon. One source of truth, many windows in.
           </p>
-          <a href="/product" class="pillar__more">Tour the product <span aria-hidden="true">→</span></a>
+          <a href="/product" class="pillar__more"
+            >Tour the product <span aria-hidden="true">→</span></a
+          >
         </li>
       </ol>
     </div>
@@ -170,9 +221,8 @@ const surfaceShowcase = SURFACES.filter((s) =>
           <h2 id="dashshow-h">What a calm console looks like.</h2>
         </div>
         <p class="lead">
-          The macOS app is dense by design. Today's burn, top providers,
-          quota windows that matter, and an on-device assistant that knows
-          your data — one keystroke away.
+          The macOS app is dense by design. Today's burn, top providers, quota windows that matter,
+          and an on-device assistant that knows your data — one keystroke away.
         </p>
       </header>
 
@@ -205,13 +255,15 @@ const surfaceShowcase = SURFACES.filter((s) =>
         <span class="eyebrow eyebrow--ember">Providers</span>
         <h2 id="provshow-h">The list of vendors it actually understands.</h2>
         <p class="lead">
-          Eleven providers ship with real usage data today. Eight more are detected
-          at install but don't expose data — so we show "Installed / Not installed"
-          and stop there.
+          Eleven providers ship with real usage data today. Eight more are detected at install but
+          don't expose data — so we show "Installed / Not installed" and stop there.
         </p>
       </header>
 
-      <ProviderTable rows={previewProviders} caption="Selected · see Providers for the full matrix" />
+      <ProviderTable
+        rows={previewProviders}
+        caption="Selected · see Providers for the full matrix"
+      />
 
       <div class="provshow__cta">
         <a class="btn btn--ghost" href="/providers">
@@ -230,8 +282,8 @@ const surfaceShowcase = SURFACES.filter((s) =>
         <span class="eyebrow eyebrow--ember">Where it shows up</span>
         <h2 id="surfaces-h">Eight surfaces, one daemon.</h2>
         <p class="lead">
-          Every screen you care about — and a few you didn't expect — talks to the
-          same local daemon. Multi-agent work needs multi-surface visibility.
+          Every screen you care about — and a few you didn't expect — talks to the same local
+          daemon. Multi-agent work needs multi-surface visibility.
         </p>
       </header>
 
@@ -252,20 +304,17 @@ const surfaceShowcase = SURFACES.filter((s) =>
           Same model.
           <span class="hydrantsec__hb">Different account.</span>
         </h2>
-        <p class="hydrantsec__sub mono">
-          Failover swaps the account · the model id never moves
-        </p>
+        <p class="hydrantsec__sub mono">Failover swaps the account · the model id never moves</p>
         <p class="lead">
-          BurnBar's local gateway preserves the exact model you asked for.
-          Your <span class="mono">gpt-5.5</span> stays
+          BurnBar's local gateway preserves the exact model you asked for. Your <span class="mono"
+            >gpt-5.5</span
+          > stays
           <span class="mono">gpt-5.5</span>; your
-          <span class="mono">claude-opus-4-7</span> stays itself. The router
-          picks from accounts in your library that already carry that model —
-          and if none survive, it returns a structured 503 instead of a
-          silent substitute. Two modes ship: <strong>Provider-Family Failover</strong>
-          (default) and <strong>Intelligent Model Router</strong> (opt-in, scored
-          against Artificial Analysis, Terminal-Bench, and Design Arena).
-          Benchmarks are advisory. Pins always win.
+          <span class="mono">claude-opus-4-7</span> stays itself. The router picks from accounts in your
+          library that already carry that model — and if none survive, it returns a structured 503 instead
+          of a silent substitute. Two modes ship: <strong>Provider-Family Failover</strong>
+          (default) and <strong>Intelligent Model Router</strong> (opt-in, scored against Artificial Analysis,
+          Terminal-Bench, and Design Arena). Benchmarks are advisory. Pins always win.
         </p>
 
         <ul class="hydrantsec__modes mono">
@@ -291,12 +340,8 @@ const surfaceShowcase = SURFACES.filter((s) =>
           See how routing actually works
           <span class="btn-arrow" aria-hidden="true">→</span>
         </a>
-        <a class="btn btn--ghost" href="/router/daily">
-          Browse today's rundown
-        </a>
-        <a class="btn btn--ghost" href="/providers">
-          See the provider matrix
-        </a>
+        <a class="btn btn--ghost" href="/router/daily"> Browse today's rundown </a>
+        <a class="btn btn--ghost" href="/providers"> See the provider matrix </a>
       </div>
     </div>
   </section>
@@ -308,47 +353,43 @@ const surfaceShowcase = SURFACES.filter((s) =>
     <div class="container container--wide hermes__grid">
       <div>
         <span class="eyebrow eyebrow--mercury">Hermes</span>
-        <h2 id="hermes-h" class="hermes__h">
-          A messenger for your own data.
-        </h2>
+        <h2 id="hermes-h" class="hermes__h">A messenger for your own data.</h2>
         <p class="lead">
-          Ask, in plain language, what your week looked like. What model burned
-          the most cache. Which window is about to roll over. Hermes pulls
-          context from your local SQLite — your sessions, providers, models,
-          tools — and answers right there, in chat.
+          Ask, in plain language, what your week looked like. What model burned the most cache.
+          Which window is about to roll over. Hermes pulls context from your local SQLite — your
+          sessions, providers, models, tools — and answers right there, in chat.
         </p>
         <ul class="hermes__list">
           <li>
             <span class="hermes__mark mono" aria-hidden="true">·</span>
             <div class="hermes__listbody">
               <strong>Conversation Atoms.</strong>
-              Every entity Hermes mentions becomes a tappable chip — cost,
-              session, provider, model, window — that opens the matching native view.
+              Every entity Hermes mentions becomes a tappable chip — cost, session, provider, model, window
+              — that opens the matching native view.
             </div>
           </li>
           <li>
             <span class="hermes__mark mono" aria-hidden="true">·</span>
             <div class="hermes__listbody">
               <strong>Chart Studio.</strong>
-              On iPhone and iPad, Hermes streams JSON envelopes that render to
-              10 native Swift Charts kinds and sandboxed Mermaid diagrams.
+              On iPhone and iPad, Hermes streams JSON envelopes that render to 10 native Swift Charts
+              kinds and sandboxed Mermaid diagrams.
             </div>
           </li>
           <li>
             <span class="hermes__mark mono" aria-hidden="true">·</span>
             <div class="hermes__listbody">
               <strong>Two backends.</strong>
-              Local Index for stateless per-turn answers via the CLI, or the
-              local Hermes Gateway for multi-turn, OpenAI-shaped chat with
-              server-side tool calls.
+              Local Index for stateless per-turn answers via the CLI, or the local Hermes Gateway for
+              multi-turn, OpenAI-shaped chat with server-side tool calls.
             </div>
           </li>
           <li>
             <span class="hermes__mark mono" aria-hidden="true">·</span>
             <div class="hermes__listbody">
               <strong>Hermes Remote Relay.</strong>
-              Reach the Mac's Hermes from anywhere over an end-to-end-encrypted
-              WebSocket. Paid-tier; relay never sees plaintext.
+              Reach the Mac's Hermes from anywhere over an end-to-end-encrypted WebSocket. Paid-tier;
+              relay never sees plaintext.
             </div>
           </li>
         </ul>
@@ -359,9 +400,39 @@ const surfaceShowcase = SURFACES.filter((s) =>
             <span class="bubble">What's about to roll over?</span>
           </div>
           <div class="hermes__msg hermes__msg--hermes">
-            <span class="avatar">☿</span>
+            <span class="avatar">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="width: 14px; height: 14px; display: block;"
+              >
+                <path d="M7 4.5a4.5 4.5 0 0 1 10 0"></path>
+                <circle cx="12" cy="11.5" r="4"></circle>
+                <line x1="12" y1="15.5" x2="12" y2="21.5"></line>
+                <line x1="9" y1="18.5" x2="15" y2="18.5"></line>
+              </svg>
+            </span>
             <span class="bubble">
-              Your <span class="atom atom--ember">Claude Code · 5h window</span>
+              Your <span
+                class="atom atom--ember"
+                style="display: inline-flex; align-items: center; gap: 4px; vertical-align: middle;"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style="width: 11px; height: 11px; flex-shrink: 0; display: inline-block;"
+                >
+                  <path
+                    d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z"
+                  ></path>
+                </svg>
+                <span>Claude Code · 5h window</span>
+              </span>
               hits <span class="atom mono">80%</span> at the current rate by
               <span class="atom mono">3:47 pm</span>. Top draw is
               <span class="atom atom--mercury">opus-4-7</span> on
@@ -372,21 +443,50 @@ const surfaceShowcase = SURFACES.filter((s) =>
             <span class="bubble">Show the burn for this week.</span>
           </div>
           <div class="hermes__msg hermes__msg--hermes">
-            <span class="avatar">☿</span>
+            <span class="avatar">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="width: 14px; height: 14px; display: block;"
+              >
+                <path d="M7 4.5a4.5 4.5 0 0 1 10 0"></path>
+                <circle cx="12" cy="11.5" r="4"></circle>
+                <line x1="12" y1="15.5" x2="12" y2="21.5"></line>
+                <line x1="9" y1="18.5" x2="15" y2="18.5"></line>
+              </svg>
+            </span>
             <span class="bubble bubble--chart">
               <svg viewBox="0 0 220 84" aria-hidden="true">
                 <defs>
                   <linearGradient id="hcg" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stop-color="#ff8a3d" stop-opacity="0.5"/>
-                    <stop offset="100%" stop-color="#ff8a3d" stop-opacity="0"/>
+                    <stop offset="0%" stop-color="#ff8a3d" stop-opacity="0.5"></stop>
+                    <stop offset="100%" stop-color="#ff8a3d" stop-opacity="0"></stop>
                   </linearGradient>
                 </defs>
-                <path d="M0 60 C 30 56 40 40 70 44 S 110 30 140 36 S 180 28 220 22 L220 84 L0 84 Z" fill="url(#hcg)"/>
-                <path d="M0 60 C 30 56 40 40 70 44 S 110 30 140 36 S 180 28 220 22"
-                  stroke="#ff8a3d" stroke-width="1.5" fill="none"/>
-                <g font-family="ui-monospace, JetBrains Mono, Menlo, monospace" font-size="9" fill="#8b8275" text-anchor="middle">
-                  <text x="14" y="80">M</text><text x="50" y="80">T</text><text x="86" y="80">W</text>
-                  <text x="122" y="80">T</text><text x="158" y="80">F</text><text x="194" y="80">S</text>
+                <path
+                  d="M0 60 C 30 56 40 40 70 44 S 110 30 140 36 S 180 28 220 22 L220 84 L0 84 Z"
+                  fill="url(#hcg)"></path>
+                <path
+                  d="M0 60 C 30 56 40 40 70 44 S 110 30 140 36 S 180 28 220 22"
+                  stroke="#ff8a3d"
+                  stroke-width="1.5"
+                  fill="none"></path>
+                <g
+                  font-family="ui-monospace, JetBrains Mono, Menlo, monospace"
+                  font-size="9"
+                  fill="#8b8275"
+                  text-anchor="middle"
+                >
+                  <text x="14" y="80">M</text><text x="50" y="80">T</text><text x="86" y="80"
+                    >W</text
+                  >
+                  <text x="122" y="80">T</text><text x="158" y="80">F</text><text x="194" y="80"
+                    >S</text
+                  >
                 </g>
               </svg>
               <span class="chart-cap mono">Mon → Sat · $87.34 total · trending +12% wow</span>
@@ -406,15 +506,20 @@ const surfaceShowcase = SURFACES.filter((s) =>
         <span class="eyebrow eyebrow--ember">Privacy &amp; trust</span>
         <h2 id="trust-h">By default, OpenBurnBar collects nothing.</h2>
         <p class="lead">
-          All processing happens on your device. No telemetry, no analytics, no
-          crash reports — nothing is transmitted unless you explicitly opt in.
+          All processing happens on your device. No telemetry, no analytics, no crash reports —
+          nothing is transmitted unless you explicitly opt in.
         </p>
         <ul class="trust__points">
           <li><strong>No API keys read</strong> for local-only tracking.</li>
           <li><strong>No account required</strong> for the core product.</li>
           <li><strong>Optional Firebase sync</strong> after sign-in — metadata only by default.</li>
-          <li><strong>Optional iCloud mirror</strong> uses your Apple ID, separate from OpenBurnBar's servers.</li>
-          <li><strong>Hosted credentials</strong>, when used, go to Google Cloud Secret Manager — not Firestore.</li>
+          <li>
+            <strong>Optional iCloud mirror</strong> uses your Apple ID, separate from OpenBurnBar's servers.
+          </li>
+          <li>
+            <strong>Hosted credentials</strong>, when used, go to Google Cloud Secret Manager — not
+            Firestore.
+          </li>
           <li><strong>Claude Code is self-hosted only</strong>, by design.</li>
         </ul>
         <div class="trust__ctas">
@@ -426,8 +531,8 @@ const surfaceShowcase = SURFACES.filter((s) =>
       <aside class="trust__quote">
         <blockquote>
           <p>
-            "Your API keys never leave the providers you already trust;
-            OpenBurnBar just reads crumbs they dropped on disk."
+            "Your API keys never leave the providers you already trust; OpenBurnBar just reads
+            crumbs they dropped on disk."
           </p>
           <footer class="mono small">— README.md · README · the team</footer>
         </blockquote>
@@ -466,7 +571,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
           <header>
             <span class="tag tag--ember tag--plain mono">OpenBurnBar Cloud</span>
             <div class="ptcard__price">
-              <span class="mono">${SITE.iapPriceUSD}</span><span class="ptcard__period">/{SITE.iapPeriod}</span>
+              <span class="mono">${SITE.iapPriceUSD}</span><span class="ptcard__period"
+                >/{SITE.iapPeriod}</span
+              >
             </div>
             <p class="muted small">billed monthly by Apple · cancel anytime · no free trial</p>
           </header>
@@ -489,14 +596,15 @@ const surfaceShowcase = SURFACES.filter((s) =>
        CTA
        ──────────────────────────────────────────────── -->
   <section class="endcta">
-    <div class="container container--narrow endcta__inner glass-pane">
+    <div class="container container--narrow endcta__inner">
       <h2 class="endcta__h">
         Watch the burn. <span class="ember">Keep building.</span>
       </h2>
-      <p class="lead">
-        OpenBurnBar is MIT-licensed, signed and notarized for macOS, and
-        ready to run today.
-      </p>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          OpenBurnBar is MIT-licensed, signed and notarized for macOS, and ready to run today.
+        </p>
+      </div>
       <div class="endcta__ctas">
         <a class="btn btn--ember" href="/download">
           Download for macOS
@@ -505,9 +613,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
         <a class="btn btn--ghost" href={SITE.github} target="_blank" rel="noopener noreferrer">
           View on GitHub
         </a>
-        <a class="btn btn--ghost" href="/faq">
-          Read the FAQ
-        </a>
+        <a class="btn btn--ghost" href="/faq"> Read the FAQ </a>
       </div>
     </div>
   </section>
@@ -526,8 +632,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
     align-items: center;
   }
   .hero__copy {
-    padding: var(--s-6) var(--s-7);
-    border-radius: var(--r-xl);
+    padding: 0;
   }
   .hero__eyebrow {
     display: inline-flex;
@@ -540,12 +645,16 @@ const surfaceShowcase = SURFACES.filter((s) =>
     font-family: var(--font-mono);
     margin-bottom: var(--s-5);
   }
-  .hero__eyebrow::before { display: none; }
+  .hero__eyebrow::before {
+    display: none;
+  }
   .hero__h {
     font-size: var(--t-display);
     line-height: 0.97;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 144, "wght" 460;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 460;
     letter-spacing: -0.04em;
     text-wrap: balance;
   }
@@ -553,7 +662,10 @@ const surfaceShowcase = SURFACES.filter((s) =>
     display: block;
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 360,
+      "ital" 1;
     letter-spacing: -0.04em;
   }
   .hero .lead {
@@ -575,7 +687,66 @@ const surfaceShowcase = SURFACES.filter((s) =>
     color: var(--text-mute);
     letter-spacing: 0.03em;
   }
-  .hero__attest span span.ember { color: var(--ember-bright); }
+  .hero__attest span span.ember {
+    color: var(--ember-bright);
+  }
+
+  /* monitored integration logo pills */
+  .hero__providers {
+    margin-top: var(--s-5);
+    padding-top: var(--s-4);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: grid;
+    gap: var(--s-3);
+  }
+  .hero__providers-title {
+    font-size: 10px;
+    color: var(--text-mute);
+    letter-spacing: 0.12em;
+    font-weight: 600;
+  }
+  .hero__providers-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-3);
+    align-items: center;
+  }
+  .hero__provider-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.3rem 0.6rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: var(--r-m);
+    transition: all var(--dur-base) var(--ease);
+  }
+  .hero__provider-pill img {
+    opacity: 0.6;
+    transition: all var(--dur-base) var(--ease);
+    filter: grayscale(0.2) contrast(1.1);
+  }
+  .hero__provider-pill span {
+    font-size: 10.5px;
+    color: var(--text-mute);
+    letter-spacing: 0.02em;
+    transition: all var(--dur-base) var(--ease);
+  }
+  .hero__provider-pill:hover {
+    background: rgba(250, 107, 6, 0.05);
+    border-color: rgba(250, 107, 6, 0.2);
+    box-shadow:
+      0 4px 12px rgba(250, 107, 6, 0.05),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+    transform: translateY(-1px);
+  }
+  .hero__provider-pill:hover img {
+    opacity: 1;
+    filter: none;
+  }
+  .hero__provider-pill:hover span {
+    color: var(--text-bright);
+  }
 
   .hero__visual {
     position: relative;
@@ -590,8 +761,13 @@ const surfaceShowcase = SURFACES.filter((s) =>
   }
 
   @media (max-width: 960px) {
-    .hero__grid { grid-template-columns: 1fr; gap: var(--s-6); }
-    .hero__visual { justify-content: flex-start; }
+    .hero__grid {
+      grid-template-columns: 1fr;
+      gap: var(--s-6);
+    }
+    .hero__visual {
+      justify-content: flex-start;
+    }
   }
 
   /* ────────── band ────────── */
@@ -607,16 +783,25 @@ const surfaceShowcase = SURFACES.filter((s) =>
     flex-wrap: wrap;
     justify-content: space-between;
   }
-  .band__stat { display: grid; gap: var(--s-2); flex: 1; min-width: 180px; }
+  .band__stat {
+    display: grid;
+    gap: var(--s-2);
+    flex: 1;
+    min-width: 180px;
+  }
   .band__num {
     font-family: var(--font-display);
     font-size: clamp(2rem, 1.4rem + 2vw, 3.4rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 144, "wght" 420;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 420;
     line-height: 0.9;
     letter-spacing: -0.04em;
   }
-  .band__num .sym { color: var(--ember-bright); }
+  .band__num .sym {
+    color: var(--ember-bright);
+  }
   .band__num-unit {
     font-family: var(--font-mono);
     font-size: 0.45em;
@@ -625,7 +810,11 @@ const surfaceShowcase = SURFACES.filter((s) =>
     margin-left: 0.2em;
     font-variation-settings: "wght" 500;
   }
-  .band__lbl { color: var(--text-mute); font-size: 0.9rem; max-width: 28ch; }
+  .band__lbl {
+    color: var(--text-mute);
+    font-size: 0.9rem;
+    max-width: 28ch;
+  }
   .band__sep {
     width: 1px;
     height: 56px;
@@ -664,7 +853,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
     background: var(--glass-bg);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
-    box-shadow: 
+    box-shadow:
       0 8px 32px 0 rgba(0, 0, 0, 0.4),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
     position: relative;
@@ -672,7 +861,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
   }
   .pillar:hover {
     border-color: rgba(250, 107, 6, 0.3);
-    box-shadow: 
+    box-shadow:
       0 12px 40px 0 rgba(250, 107, 6, 0.08),
       0 8px 32px 0 rgba(0, 0, 0, 0.4),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
@@ -686,7 +875,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
   .pillar h3 {
     text-wrap: balance;
   }
-  .pillar p { font-size: 0.95rem; }
+  .pillar p {
+    font-size: 0.95rem;
+  }
   .pillar__more {
     color: var(--ember-bright);
     font-size: 0.88rem;
@@ -694,16 +885,19 @@ const surfaceShowcase = SURFACES.filter((s) =>
     padding-top: var(--s-3);
   }
   @media (max-width: 880px) {
-    .pillars__list { grid-template-columns: 1fr; }
-    .sec-head--split { grid-template-columns: 1fr; }
+    .pillars__list {
+      grid-template-columns: 1fr;
+    }
+    .sec-head--split {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ────────── dashshow ────────── */
   .dashshow {
     padding-block: var(--s-10);
     border-block: 1px solid var(--ink-line);
-    background:
-      radial-gradient(100% 100% at 50% 100%, var(--core-underglow), transparent 70%);
+    background: radial-gradient(100% 100% at 50% 100%, var(--core-underglow), transparent 70%);
   }
   .dashshow__frame {
     margin-top: var(--s-6);
@@ -736,8 +930,16 @@ const surfaceShowcase = SURFACES.filter((s) =>
     grid-template-columns: repeat(4, 1fr);
     gap: var(--s-4);
   }
-  @media (max-width: 1080px) { .surfaces__grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 560px) { .surfaces__grid { grid-template-columns: 1fr; } }
+  @media (max-width: 1080px) {
+    .surfaces__grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (max-width: 560px) {
+    .surfaces__grid {
+      grid-template-columns: 1fr;
+    }
+  }
 
   /* ────────── fire hydrant ────────── */
   .hydrantsec {
@@ -763,7 +965,10 @@ const surfaceShowcase = SURFACES.filter((s) =>
     -webkit-mask-image: radial-gradient(70% 60% at 50% 50%, black 30%, transparent 75%);
     pointer-events: none;
   }
-  .hydrantsec > .container { position: relative; z-index: 1; }
+  .hydrantsec > .container {
+    position: relative;
+    z-index: 1;
+  }
   .hydrantsec__head {
     max-width: 64ch;
   }
@@ -773,7 +978,10 @@ const surfaceShowcase = SURFACES.filter((s) =>
   .hydrantsec__hb {
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 360,
+      "ital" 1;
     display: block;
   }
   .hydrantsec__sub {
@@ -827,7 +1035,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
   .hydrantsec__mode strong {
     color: var(--text-bright);
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     font-size: 0.98rem;
     letter-spacing: -0.014em;
     grid-column: 2;
@@ -840,12 +1050,13 @@ const surfaceShowcase = SURFACES.filter((s) =>
     grid-column: 2;
   }
   @media (max-width: 720px) {
-    .hydrantsec__modes { grid-template-columns: 1fr; }
+    .hydrantsec__modes {
+      grid-template-columns: 1fr;
+    }
   }
   .hydrantsec__rule--pool {
     grid-column: 1 / -1;
-    background:
-      linear-gradient(180deg, rgba(214, 211, 223, 0.06) 0%, transparent 100%);
+    background: linear-gradient(180deg, rgba(214, 211, 223, 0.06) 0%, transparent 100%);
     border-top: 1px solid color-mix(in oklab, var(--mercury-bright) 25%, var(--ink-line)) !important;
     border-bottom: 1px dashed var(--ink-line);
     padding-bottom: var(--s-4);
@@ -867,7 +1078,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
     font-family: var(--font-display);
     font-size: var(--t-h3);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
     letter-spacing: -0.02em;
     text-wrap: balance;
   }
@@ -957,18 +1170,21 @@ const surfaceShowcase = SURFACES.filter((s) =>
     justify-content: center;
   }
   @media (max-width: 1080px) {
-    .hydrantsec__rulesl { grid-template-columns: repeat(2, 1fr); }
+    .hydrantsec__rulesl {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
   @media (max-width: 640px) {
-    .hydrantsec__rulesl { grid-template-columns: 1fr; }
+    .hydrantsec__rulesl {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ────────── hermes ────────── */
   .hermes {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
-    background:
-      radial-gradient(60% 60% at 100% 50%, rgba(214, 211, 223, 0.04), transparent 70%);
+    background: radial-gradient(60% 60% at 100% 50%, rgba(214, 211, 223, 0.04), transparent 70%);
   }
   .hermes__grid {
     display: grid;
@@ -993,7 +1209,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
     color: var(--text-base);
     line-height: 1.55;
   }
-  .hermes__listbody { min-width: 0; }
+  .hermes__listbody {
+    min-width: 0;
+  }
   .hermes__listbody strong {
     color: var(--text-bright);
     font-variation-settings: "wght" 540;
@@ -1022,7 +1240,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
     display: flex;
     gap: var(--s-3);
   }
-  .hermes__msg--user { justify-content: flex-end; }
+  .hermes__msg--user {
+    justify-content: flex-end;
+  }
   .hermes__msg--user .bubble {
     background: var(--ink-surface-2);
     border: 1px solid var(--ink-line);
@@ -1045,16 +1265,21 @@ const surfaceShowcase = SURFACES.filter((s) =>
     flex-shrink: 0;
   }
   .hermes__msg--hermes .bubble {
-    background:
-      linear-gradient(135deg, rgba(214, 211, 223, 0.06), transparent 60%);
+    background: linear-gradient(135deg, rgba(214, 211, 223, 0.06), transparent 60%);
     border: 1px solid color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
     border-radius: 4px 14px 14px 14px;
     padding: 0.6rem 0.9rem;
     color: var(--text-base);
     max-width: 80%;
   }
-  .bubble--chart { display: grid; gap: var(--s-2); }
-  .chart-cap { font-size: var(--t-caption); color: var(--text-mute); }
+  .bubble--chart {
+    display: grid;
+    gap: var(--s-2);
+  }
+  .chart-cap {
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
   .atom {
     background: var(--ink-surface);
     border: 1px solid var(--ink-line);
@@ -1073,7 +1298,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
     color: var(--mercury-bright);
   }
   @media (max-width: 900px) {
-    .hermes__grid { grid-template-columns: 1fr; }
+    .hermes__grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ────────── trust ────────── */
@@ -1087,15 +1314,21 @@ const surfaceShowcase = SURFACES.filter((s) =>
     gap: var(--s-7);
     align-items: start;
   }
-  .trust__head h2 { margin-top: var(--s-2); }
+  .trust__head h2 {
+    margin-top: var(--s-2);
+  }
   .trust__points {
     margin-top: var(--s-5);
     display: grid;
     gap: var(--s-3);
     font-size: 0.95rem;
   }
-  .trust__points li { color: var(--text-base); }
-  .trust__points strong { color: var(--text-bright); }
+  .trust__points li {
+    color: var(--text-base);
+  }
+  .trust__points strong {
+    color: var(--text-bright);
+  }
   .trust__ctas {
     margin-top: var(--s-5);
     display: flex;
@@ -1111,16 +1344,22 @@ const surfaceShowcase = SURFACES.filter((s) =>
     font-size: var(--t-h3);
     line-height: 1.2;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 400;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 400;
     letter-spacing: -0.018em;
   }
   .trust__quote footer {
     margin-top: var(--s-4);
     color: var(--text-mute);
   }
-  .small { font-size: var(--t-caption); }
+  .small {
+    font-size: var(--t-caption);
+  }
   @media (max-width: 900px) {
-    .trust__grid { grid-template-columns: 1fr; }
+    .trust__grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ────────── pricing teaser ────────── */
@@ -1141,7 +1380,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
     background: var(--glass-bg);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
-    box-shadow: 
+    box-shadow:
       0 8px 32px 0 rgba(0, 0, 0, 0.4),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
     display: grid;
@@ -1150,7 +1389,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
   }
   .ptcard:hover {
     border-color: rgba(250, 107, 6, 0.3);
-    box-shadow: 
+    box-shadow:
       0 12px 40px 0 rgba(250, 107, 6, 0.08),
       0 8px 32px 0 rgba(0, 0, 0, 0.4),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
@@ -1160,11 +1399,18 @@ const surfaceShowcase = SURFACES.filter((s) =>
     font-family: var(--font-display);
     font-size: clamp(2.2rem, 1.8rem + 1.5vw, 3rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 144, "wght" 460;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 460;
     line-height: 1;
     letter-spacing: -0.03em;
   }
-  .ptcard__period { color: var(--text-mute); font-size: 1rem; letter-spacing: 0; margin-left: 0.2em; }
+  .ptcard__period {
+    color: var(--text-mute);
+    font-size: 1rem;
+    letter-spacing: 0;
+    margin-left: 0.2em;
+  }
   .ptcard ul {
     display: grid;
     gap: var(--s-2);
@@ -1196,33 +1442,39 @@ const surfaceShowcase = SURFACES.filter((s) =>
     pointer-events: none;
   }
   @media (max-width: 900px) {
-    .pricing-teaser__grid { grid-template-columns: 1fr; }
+    .pricing-teaser__grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ────────── endcta ────────── */
   .endcta {
     padding-block: var(--s-10);
-    background:
-      radial-gradient(100% 100% at 50% 50%, var(--core-underglow), transparent 70%);
+    background: radial-gradient(100% 100% at 50% 50%, var(--core-underglow), transparent 70%);
   }
   .endcta__inner {
     text-align: center;
     display: grid;
     gap: var(--s-5);
     justify-items: center;
-    padding: var(--s-7) var(--s-6);
+    padding: var(--s-4) 0;
   }
   .endcta__h {
     font-size: var(--t-display);
     line-height: 0.97;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 144, "wght" 460;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 460;
     letter-spacing: -0.04em;
   }
   .endcta__h .ember {
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 360,
+      "ital" 1;
   }
   .endcta__ctas {
     display: flex;

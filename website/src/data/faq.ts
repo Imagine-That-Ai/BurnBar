@@ -27,7 +27,7 @@ export const FAQ: FAQItem[] = [
     id: "router-pin-model",
     question: "Can I still pin a model?",
     answer:
-      "Yes. Pinning is the strongest signal in both modes.\n\nIn Provider-Family Failover, you pin an account that serves your chosen model. The pinned account wins as long as it's healthy; a runner-up account (one that also carries the same model) is pre-selected for instant failover.\n\nIn Intelligent Mode, you pin a model identity, a family, or a tier (e.g. \"always opus-class for the autopilot surface\"). The router still scores candidates and holds a runner-up, but it will not pick something else when your pin is healthy. A healthy pin always wins."
+      'Yes. Pinning is the strongest signal in both modes.\n\nIn Provider-Family Failover, you pin an account that serves your chosen model. The pinned account wins as long as it\'s healthy; a runner-up account (one that also carries the same model) is pre-selected for instant failover.\n\nIn Intelligent Mode, you pin a model identity, a family, or a tier (e.g. "always opus-class for the autopilot surface"). The router still scores candidates and holds a runner-up, but it will not pick something else when your pin is healthy. A healthy pin always wins.'
   },
   {
     id: "router-benchmark-sources",

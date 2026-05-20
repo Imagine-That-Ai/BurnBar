@@ -70,8 +70,7 @@ export const SURFACES: Surface[] = [
     platform: "Embedded in macOS app",
     status: "shipping",
     statusLabel: "Shipping",
-    description:
-      "The control plane. A launchd-managed UNIX socket service every surface talks to.",
+    description: "The control plane. A launchd-managed UNIX socket service every surface talks to.",
     bullets: [
       "Auth-token-gated JSON-RPC + HTTP gateway",
       "Owns provider routing, quota refresh, retrieval, mission control",
@@ -100,7 +99,7 @@ export const SURFACES: Surface[] = [
     status: "shipping",
     statusLabel: "Shipping (with iOS app)",
     description:
-      "Lock-screen quota, Dynamic Island countdown, home-screen cost sparkline. Siri shortcut: \"What's my burn today?\"",
+      'Lock-screen quota, Dynamic Island countdown, home-screen cost sparkline. Siri shortcut: "What\'s my burn today?"',
     bullets: [
       "Hero small, cost sparkline medium, dashboard large",
       "Live Activity on iOS 16.1+ with top provider + tokens + cost",
@@ -114,7 +113,7 @@ export const SURFACES: Surface[] = [
     status: "shipping",
     statusLabel: "Shipping (per-device QA matrix)",
     description:
-      "One-click \"Make display work\" — casts a live OpenBurnBar dashboard, with proof of acceptance before marking healthy.",
+      'One-click "Make display work" — casts a live OpenBurnBar dashboard, with proof of acceptance before marking healthy.',
     bullets: [
       "Google Nest Hub via Cast V2 + Home Assistant blueprints",
       "ULANZI TC001 via AWTRIX HTTP or stock-firmware simulator",

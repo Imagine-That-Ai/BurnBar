@@ -50,46 +50,56 @@ const LOGOS: Record<string, string> = {
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => {
-          const logo = LOGOS[row.id];
-          return (
-            <tr>
-              <td>
-                <div class="pcell">
-                  {logo ? (
-                    <img
-                      class="pcell__logo"
-                      src={logo}
-                      alt=""
-                      width="40"
-                      height="40"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  ) : (
-                    <span class="pcell__logo pcell__logo--placeholder" aria-hidden="true">
-                      {row.name.charAt(0)}
-                    </span>
-                  )}
-                  <div class="pcell__text">
-                    <strong>{row.name}</strong>
-                    <span class="pcell__blurb">{row.blurb}</span>
+        {
+          rows.map((row) => {
+            const logo = LOGOS[row.id];
+            return (
+              <tr>
+                <td>
+                  <div class="pcell">
+                    {logo ? (
+                      <img
+                        class="pcell__logo"
+                        src={logo}
+                        alt=""
+                        width="40"
+                        height="40"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : (
+                      <span class="pcell__logo pcell__logo--placeholder" aria-hidden="true">
+                        {row.name.charAt(0)}
+                      </span>
+                    )}
+                    <div class="pcell__text">
+                      <strong>{row.name}</strong>
+                      <span class="pcell__blurb">{row.blurb}</span>
+                    </div>
                   </div>
-                </div>
-              </td>
-              <td><span class="mono small">{row.source}</span></td>
-              <td>
-                <span class={`tag tag--plain mono tag--${row.cost}`}>{row.cost}</span>
-              </td>
-              <td>
-                <span class={`tag tag--plain mono tag--${row.quota === "yes" ? "exact" : row.quota === "partial" ? "estimated" : "unavailable"}`}>
-                  {row.quota === "yes" ? "yes" : row.quota === "partial" ? "partial" : "no"}
-                </span>
-              </td>
-              {variant === "full" && <td><span class="mono small">{row.cred}</span></td>}
-            </tr>
-          );
-        })}
+                </td>
+                <td>
+                  <span class="mono small">{row.source}</span>
+                </td>
+                <td>
+                  <span class={`tag tag--plain mono tag--${row.cost}`}>{row.cost}</span>
+                </td>
+                <td>
+                  <span
+                    class={`tag tag--plain mono tag--${row.quota === "yes" ? "exact" : row.quota === "partial" ? "estimated" : "unavailable"}`}
+                  >
+                    {row.quota === "yes" ? "yes" : row.quota === "partial" ? "partial" : "no"}
+                  </span>
+                </td>
+                {variant === "full" && (
+                  <td>
+                    <span class="mono small">{row.cred}</span>
+                  </td>
+                )}
+              </tr>
+            );
+          })
+        }
       </tbody>
     </table>
   </div>
@@ -112,7 +122,7 @@ const LOGOS: Record<string, string> = {
     background: var(--glass-bg);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
-    box-shadow: 
+    box-shadow:
       0 8px 32px rgba(0, 0, 0, 0.4),
       inset 0 1px 1px rgba(255, 255, 255, 0.05);
   }
@@ -170,7 +180,9 @@ const LOGOS: Record<string, string> = {
     align-items: center;
     justify-content: center;
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     color: var(--text-mute);
     font-size: 1.05rem;
   }

@@ -15,7 +15,8 @@ const year = new Date().getFullYear();
           macOS · iPhone · iPad · daemon · CLI · editor.
         </p>
         <p class="site-footer__entity mono">
-          © {year} {SITE.entity}. <br />
+          © {year}
+          {SITE.entity}. <br />
           Released under the {SITE.license} license.
         </p>
       </div>
@@ -23,36 +24,50 @@ const year = new Date().getFullYear();
       <div>
         <h5>Product</h5>
         <ul>
-          {NAV_FOOTER.product.map((item) => (
-            <li><a href={item.href}>{item.label}</a></li>
-          ))}
+          {
+            NAV_FOOTER.product.map((item) => (
+              <li>
+                <a href={item.href}>{item.label}</a>
+              </li>
+            ))
+          }
         </ul>
       </div>
 
       <div>
         <h5>Trust</h5>
         <ul>
-          {NAV_FOOTER.trust.map((item) => (
-            <li><a href={item.href}>{item.label}</a></li>
-          ))}
+          {
+            NAV_FOOTER.trust.map((item) => (
+              <li>
+                <a href={item.href}>{item.label}</a>
+              </li>
+            ))
+          }
         </ul>
       </div>
 
       <div>
         <h5>Build</h5>
         <ul>
-          {NAV_FOOTER.build.map((item) => (
-            <li>
-              <a
-                href={item.href}
-                target={item.external ? "_blank" : undefined}
-                rel={item.external ? "noopener noreferrer" : undefined}
-              >
-                {item.label}
-                {item.external && <span class="ext" aria-hidden="true">↗</span>}
-              </a>
-            </li>
-          ))}
+          {
+            NAV_FOOTER.build.map((item) => (
+              <li>
+                <a
+                  href={item.href}
+                  target={item.external ? "_blank" : undefined}
+                  rel={item.external ? "noopener noreferrer" : undefined}
+                >
+                  {item.label}
+                  {item.external && (
+                    <span class="ext" aria-hidden="true">
+                      ↗
+                    </span>
+                  )}
+                </a>
+              </li>
+            ))
+          }
         </ul>
       </div>
     </div>
@@ -61,8 +76,8 @@ const year = new Date().getFullYear();
 
     <div class="site-footer__base">
       <p class="mono small">
-        burnbar.ai — built with restraint. No analytics, no trackers, no
-        third-party fonts loaded remotely.
+        burnbar.ai — built with restraint. No analytics, no trackers, no third-party fonts loaded
+        remotely.
       </p>
       <div class="site-footer__contact mono small">
         <span>privacy@imagine-that.ai</span>
@@ -83,8 +98,7 @@ const year = new Date().getFullYear();
     padding-block: var(--s-8) var(--s-6);
     border-top: 1px solid var(--ink-line);
     background:
-      radial-gradient(60% 80% at 50% -10%, var(--ember-wash), transparent 70%),
-      var(--ink-void);
+      radial-gradient(60% 80% at 50% -10%, var(--ember-wash), transparent 70%), var(--ink-void);
   }
   .site-footer__grid {
     display: grid;

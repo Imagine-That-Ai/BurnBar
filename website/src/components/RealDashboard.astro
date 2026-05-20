@@ -23,31 +23,26 @@ const {
 ---
 
 <figure class={`realdash realdash--${variant}`}>
-  {variant === "device" ? (
-    <div class="realdash__bezel">
-      <span class="realdash__camera" aria-hidden="true"></span>
-      <div class="realdash__screen">
-        <img
-          src={src}
-          alt={alt}
-          width="1032"
-          height="1376"
-          decoding="async"
-          loading="lazy"
-        />
+  {
+    variant === "device" ? (
+      <div class="realdash__bezel">
+        <span class="realdash__camera" aria-hidden="true" />
+        <div class="realdash__screen">
+          <img src={src} alt={alt} width="1032" height="1376" decoding="async" loading="lazy" />
+        </div>
       </div>
-    </div>
-  ) : (
-    <img
-      class="realdash__bare"
-      src={src}
-      alt={alt}
-      width="1032"
-      height="1376"
-      decoding="async"
-      loading="lazy"
-    />
-  )}
+    ) : (
+      <img
+        class="realdash__bare"
+        src={src}
+        alt={alt}
+        width="1032"
+        height="1376"
+        decoding="async"
+        loading="lazy"
+      />
+    )
+  }
   {caption && <figcaption class="realdash__cap mono">{caption}</figcaption>}
 </figure>
 

@@ -1,306 +1,2103 @@
 ---
 /**
- * LifecycleStateMachine — an animated state diagram replacing the old
- * eight-card lifecycle grid. A glowing avatar walks a typical lifecycle
- * over a 12-second cycle, visiting every state the router can park a
- * routed account in. Static legend on the right names each state.
+ * LifecycleStateMachine — SOTA Interactive Account Lifecycle Simulator.
+ * Replaces the basic static SVG diagram with an interactive playground.
  *
- * Pure SVG + <animateMotion>. Reduced-motion users see the diagram with
- * the avatar parked on the "healthy" hub.
+ * Includes:
+ * 1. Three failover scenario presets (Normal Loop, API Outage, Auth Disaster)
+ * 2. Play/Pause, speed slider, and reset simulator controls
+ * 3. A high-fidelity SVG state diagram with curved glowing connectors, breathing nodes,
+ *    and request packet flow particles
+ * 4. Bidirectional card legends that highlight active and hovered states dynamically
+ * 5. A live Simulated Terminal Console that prints typewriter-speed router decision logs
+ *
+ * Designed following "Glass Console over Furnace Core" guidelines.
  */
 ---
 
 <section class="lifecycle" aria-labelledby="lifecycle-h">
   <header class="lifecycle__head">
-    <span class="eyebrow eyebrow--ember">Account lifecycle · animated</span>
-    <h2 id="lifecycle-h" class="lifecycle__h">
-      Every state an account passes through, on one diagram.
-    </h2>
+    <span class="eyebrow eyebrow--ember">State Simulator & Playground</span>
+    <h2 id="lifecycle-h" class="lifecycle__h">Interactive Account Lifecycle Playground.</h2>
     <p class="lifecycle__lead">
-      The router keeps an account in one of eight states. <strong>Healthy</strong>
-      accounts serve traffic. <strong>Pressure</strong>, <strong>cooling-down</strong>,
-      and <strong>rate-limited</strong> are temporary; the router lets them
-      heal on a five-minute clock. <strong>Exhausted</strong> and <strong>auth-failed</strong>
-      need you. <strong>Disabled</strong> and <strong>unknown</strong> sit out of
-      rotation by design. Watch a typical day below.
+      The OpenBurnBar router dynamically tracks, scores, and re-ranks accounts in real time. Select
+      a scenario below to watch how the local router executes failover paths, handles 429 rate
+      limits, and triggers recovery, in a live-scrolling console.
     </p>
   </header>
 
+  <!-- Interactive Simulator Controls -->
+  <div class="sim-controls glass-pane">
+    <div class="sim-controls__group">
+      <span class="sim-controls__label mono">SCENARIO:</span>
+      <div class="sim-tabs" role="tablist">
+        <button
+          class="sim-tab is-active"
+          id="btn-scenario-loop"
+          role="tab"
+          aria-selected="true"
+          data-scenario="loop"
+        >
+          <span class="sim-tab__dot healthy"></span>
+          Typical Loop
+        </button>
+        <button
+          class="sim-tab"
+          id="btn-scenario-outage"
+          role="tab"
+          aria-selected="false"
+          data-scenario="outage"
+        >
+          <span class="sim-tab__dot rate"></span>
+          API Rate Outage
+        </button>
+        <button
+          class="sim-tab"
+          id="btn-scenario-auth"
+          role="tab"
+          aria-selected="false"
+          data-scenario="auth"
+        >
+          <span class="sim-tab__dot auth"></span>
+          Auth Disaster
+        </button>
+      </div>
+    </div>
+
+    <div class="sim-controls__actions">
+      <button class="sim-action btn-play" id="btn-play-pause" aria-label="Pause Simulation">
+        <svg class="icon-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="4" y="4" width="6" height="16" rx="1"></rect>
+          <rect x="14" y="4" width="6" height="16" rx="1"></rect>
+        </svg>
+        <svg
+          class="icon-play hidden"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path d="M8 5v14l11-7z"></path>
+        </svg>
+        <span class="sim-action__text mono">PAUSE</span>
+      </button>
+
+      <div class="sim-speed">
+        <span class="sim-speed__label mono">SPEED:</span>
+        <input
+          type="range"
+          id="speed-slider"
+          min="0.5"
+          max="2"
+          step="0.5"
+          value="1"
+          class="speed-range"
+          aria-label="Simulation Speed"
+        />
+        <span class="sim-speed__val mono" id="speed-val">1.0x</span>
+      </div>
+
+      <button class="sim-action btn-reset" id="btn-reset" aria-label="Reset Simulation">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+        </svg>
+        <span class="sim-action__text mono">RESET</span>
+      </button>
+    </div>
+  </div>
+
   <div class="lifecycle__panel" data-animate-onview="">
-    <svg class="lcsm" viewBox="0 0 600 420" role="img" aria-label="State diagram of the account lifecycle" preserveAspectRatio="xMidYMid meet">
-      <defs>
-        <linearGradient id="lcsm-edge" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%" stop-color="rgba(214, 211, 223, 0.0)"/>
-          <stop offset="50%" stop-color="rgba(214, 211, 223, 0.55)"/>
-          <stop offset="100%" stop-color="rgba(214, 211, 223, 0.0)"/>
-        </linearGradient>
-        <linearGradient id="lcsm-edge-ember" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%" stop-color="rgba(255, 138, 61, 0)"/>
-          <stop offset="50%" stop-color="rgba(255, 138, 61, 0.7)"/>
-          <stop offset="100%" stop-color="rgba(255, 138, 61, 0)"/>
-        </linearGradient>
-        <radialGradient id="lcsm-hub" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="rgba(111, 209, 137, 0.35)"/>
-          <stop offset="60%" stop-color="rgba(111, 209, 137, 0.08)"/>
-          <stop offset="100%" stop-color="rgba(111, 209, 137, 0)"/>
-        </radialGradient>
-        <filter id="lcsm-blur" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="3"/>
-        </filter>
-      </defs>
+    <!-- Left: State Machine Interactive SVG -->
+    <div class="lcsm-wrapper">
+      <svg
+        class="lcsm"
+        viewBox="0 0 600 420"
+        role="img"
+        aria-label="State diagram of the account lifecycle"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <defs>
+          <radialGradient id="lcsm-glow-healthy" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="rgba(56, 216, 152, 0.45)"></stop>
+            <stop offset="60%" stop-color="rgba(56, 216, 152, 0.08)"></stop>
+            <stop offset="100%" stop-color="rgba(56, 216, 152, 0)"></stop>
+          </radialGradient>
+          <radialGradient id="lcsm-glow-warning" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="rgba(253, 196, 44, 0.35)"></stop>
+            <stop offset="60%" stop-color="rgba(253, 196, 44, 0.06)"></stop>
+            <stop offset="100%" stop-color="rgba(253, 196, 44, 0)"></stop>
+          </radialGradient>
+          <radialGradient id="lcsm-glow-error" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="rgba(229, 72, 60, 0.35)"></stop>
+            <stop offset="60%" stop-color="rgba(229, 72, 60, 0.06)"></stop>
+            <stop offset="100%" stop-color="rgba(229, 72, 60, 0)"></stop>
+          </radialGradient>
 
-      {/* hub halo */}
-      <circle cx="300" cy="210" r="80" fill="url(#lcsm-hub)"/>
+          <linearGradient id="edge-flow-gradient" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stop-color="rgba(250, 107, 6, 0.1)"></stop>
+            <stop offset="50%" stop-color="rgba(250, 107, 6, 0.95)"></stop>
+            <stop offset="100%" stop-color="rgba(250, 107, 6, 0.1)"></stop>
+          </linearGradient>
 
-      {/* edges — drawn as gentle arcs from hub to satellites */}
-      {/* hub → pressure */}
-      <path d="M 300 210 Q 240 165 145 95" stroke="url(#lcsm-edge-ember)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
-      {/* pressure → cooling-down */}
-      <path d="M 145 95 Q 220 92 295 95" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
-      {/* cooling-down → rate-limited */}
-      <path d="M 295 95 Q 380 92 455 95" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
-      {/* rate-limited → hub */}
-      <path d="M 455 95 Q 370 165 300 210" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
-      {/* hub → exhausted */}
-      <path d="M 300 210 Q 380 215 460 215" stroke="url(#lcsm-edge-ember)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
-      {/* exhausted → swap-keys */}
-      <path d="M 460 215 Q 470 290 460 335" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
-      {/* swap-keys → hub */}
-      <path d="M 460 335 Q 380 290 300 210" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
-      {/* hub → auth-failed */}
-      <path d="M 300 210 Q 280 280 295 335" stroke="url(#lcsm-edge-ember)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
-      {/* auth-failed → swap-keys */}
-      <path d="M 295 335 Q 380 340 460 335" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
-      {/* disabled (sit-out) - no edge to hub, denoting opt-out */}
-      <path d="M 145 335 L 145 285" stroke="rgba(91, 84, 72, 0.4)" stroke-width="1" fill="none" stroke-dasharray="2 3"/>
-      {/* unknown (no data, eligible w/ low rank) */}
-      <path d="M 145 215 Q 200 210 240 210" stroke="rgba(91, 84, 72, 0.4)" stroke-width="1" fill="none" stroke-dasharray="2 3"/>
+          <filter id="lcsm-blur" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="4"></feGaussianBlur>
+          </filter>
+        </defs>
 
-      {/* nodes */}
-      {/* pressure */}
-      <g class="lcsm__node lcsm__node--press" transform="translate(145 95)">
-        <circle r="28" fill="rgba(255, 200, 97, 0.08)" stroke="rgba(255, 200, 97, 0.5)" stroke-width="1.2"/>
-        <circle r="6" fill="#ffc861"/>
-        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">pressure</text>
-      </g>
-      {/* cooling-down */}
-      <g class="lcsm__node lcsm__node--cool" transform="translate(295 95)">
-        <circle r="28" fill="rgba(214, 211, 223, 0.06)" stroke="rgba(174, 172, 186, 0.55)" stroke-width="1.2"/>
-        <circle r="6" fill="#aeacba"/>
-        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">cooling-down</text>
-        <text x="0" y="62" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">5-min auto</text>
-      </g>
-      {/* rate-limited */}
-      <g class="lcsm__node lcsm__node--rate" transform="translate(455 95)">
-        <circle r="28" fill="rgba(255, 200, 97, 0.06)" stroke="rgba(255, 200, 97, 0.5)" stroke-width="1.2"/>
-        <circle r="6" fill="#ffc861"/>
-        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">rate-limited</text>
-        <text x="0" y="62" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">429 · cool down</text>
-      </g>
-      {/* unknown */}
-      <g class="lcsm__node lcsm__node--unknown" transform="translate(145 210)">
-        <circle r="28" fill="rgba(91, 84, 72, 0.1)" stroke="rgba(91, 84, 72, 0.55)" stroke-width="1.2"/>
-        <circle r="6" fill="#5c5448"/>
-        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">unknown</text>
-      </g>
-      {/* HEALTHY hub */}
-      <g class="lcsm__node lcsm__node--hub" transform="translate(300 210)">
-        <circle r="48" fill="rgba(111, 209, 137, 0.06)" stroke="rgba(111, 209, 137, 0.55)" stroke-width="1.8"/>
-        <circle r="10" fill="#6fd189" filter="url(#lcsm-blur)" opacity="0.7"/>
-        <circle r="6" fill="#6fd189"/>
-        <text x="0" y="32" text-anchor="middle" font-family="Fraunces Variable, serif" font-size="14" fill="#f6f1e7">healthy</text>
-        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">eligible · serving</text>
-      </g>
-      {/* exhausted */}
-      <g class="lcsm__node lcsm__node--exh" transform="translate(460 215)">
-        <circle r="28" fill="rgba(229, 72, 60, 0.08)" stroke="rgba(229, 72, 60, 0.55)" stroke-width="1.2"/>
-        <circle r="6" fill="#e5483c"/>
-        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">exhausted</text>
-        <text x="0" y="62" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">bucket window</text>
-      </g>
-      {/* disabled */}
-      <g class="lcsm__node lcsm__node--off" transform="translate(145 335)">
-        <circle r="28" fill="rgba(91, 84, 72, 0.08)" stroke="rgba(91, 84, 72, 0.55)" stroke-width="1.2"/>
-        <circle r="6" fill="#5c5448"/>
-        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">disabled</text>
-      </g>
-      {/* auth-failed */}
-      <g class="lcsm__node lcsm__node--auth" transform="translate(295 335)">
-        <circle r="28" fill="rgba(229, 72, 60, 0.08)" stroke="rgba(229, 72, 60, 0.55)" stroke-width="1.2"/>
-        <circle r="6" fill="#e5483c"/>
-        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">auth-failed</text>
-        <text x="0" y="62" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">re-auth needed</text>
-      </g>
-      {/* swap-keys (user prompt — not a router state but the recovery action) */}
-      <g class="lcsm__node lcsm__node--swap" transform="translate(460 335)">
-        <rect x="-44" y="-22" width="88" height="44" rx="10" fill="rgba(255, 138, 61, 0.08)" stroke="rgba(255, 138, 61, 0.55)" stroke-width="1.2"/>
-        <text x="0" y="-3" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="10" fill="#ff8a3d">swap keys</text>
-        <text x="0" y="11" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#ff8a3d">user action</text>
-        <text x="0" y="42" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">re-auth · re-key</text>
-      </g>
+        {/* Glow halos driven by active state */}
+        <circle
+          id="halo-healthy"
+          cx="300"
+          cy="210"
+          r="100"
+          fill="url(#lcsm-glow-healthy)"
+          class="lcsm-halo active"></circle>
+        <circle
+          id="halo-exh"
+          cx="460"
+          cy="215"
+          r="70"
+          fill="url(#lcsm-glow-error)"
+          class="lcsm-halo"></circle>
+        <circle
+          id="halo-auth"
+          cx="295"
+          cy="335"
+          r="70"
+          fill="url(#lcsm-glow-error)"
+          class="lcsm-halo"></circle>
 
-      {/* the walking avatar */}
-      <circle class="lcsm__avatar" r="7" fill="#ff8a3d" filter="url(#lcsm-blur)">
-        <animateMotion
-          dur="12s"
-          repeatCount="indefinite"
-          rotate="0"
-          path="M 300 210 L 145 95 L 295 95 L 455 95 L 300 210 L 460 215 L 460 335 L 300 210 L 295 335 L 460 335 L 300 210 Z"
-        />
-      </circle>
-      <circle class="lcsm__avatarcore" r="3" fill="#ffd07a">
-        <animateMotion
-          dur="12s"
-          repeatCount="indefinite"
-          rotate="0"
-          path="M 300 210 L 145 95 L 295 95 L 455 95 L 300 210 L 460 215 L 460 335 L 300 210 L 295 335 L 460 335 L 300 210 Z"
-        />
-      </circle>
+        {/* Curved Connection Edges */}
+        {/* Base tracks (Low Opacity) */}
+        <path
+          d="M 300 210 Q 240 165 145 95"
+          stroke="rgba(255,255,255,0.06)"
+          stroke-width="2"
+          fill="none"></path>
+        <path
+          d="M 145 95 Q 220 92 295 95"
+          stroke="rgba(255,255,255,0.06)"
+          stroke-width="2"
+          fill="none"></path>
+        <path
+          d="M 295 95 Q 380 92 455 95"
+          stroke="rgba(255,255,255,0.06)"
+          stroke-width="2"
+          fill="none"></path>
+        <path
+          d="M 455 95 Q 370 165 300 210"
+          stroke="rgba(255,255,255,0.06)"
+          stroke-width="2"
+          fill="none"></path>
+        <path
+          d="M 300 210 Q 380 215 460 215"
+          stroke="rgba(255,255,255,0.06)"
+          stroke-width="2"
+          fill="none"></path>
+        <path
+          d="M 460 215 Q 470 290 460 335"
+          stroke="rgba(255,255,255,0.06)"
+          stroke-width="2"
+          fill="none"></path>
+        <path
+          d="M 460 335 Q 380 290 300 210"
+          stroke="rgba(255,255,255,0.06)"
+          stroke-width="2"
+          fill="none"></path>
+        <path
+          d="M 300 210 Q 280 280 295 335"
+          stroke="rgba(255,255,255,0.06)"
+          stroke-width="2"
+          fill="none"></path>
+        <path
+          d="M 295 335 Q 380 340 460 335"
+          stroke="rgba(255,255,255,0.06)"
+          stroke-width="2"
+          fill="none"></path>
+        <path
+          d="M 145 210 Q 200 210 240 210"
+          stroke="rgba(255,255,255,0.04)"
+          stroke-width="1.5"
+          stroke-dasharray="2 3"
+          fill="none"></path>
+        <path
+          d="M 145 335 L 145 285"
+          stroke="rgba(255,255,255,0.04)"
+          stroke-width="1.5"
+          stroke-dasharray="2 3"
+          fill="none"></path>
 
-      {/* avatar trail — a thin path showing path direction. Drawn dashed-animated. */}
-      <path
-        class="lcsm__trail"
-        d="M 300 210 L 145 95 L 295 95 L 455 95 L 300 210 L 460 215 L 460 335 L 300 210 L 295 335 L 460 335 L 300 210 Z"
-        fill="none"
-        stroke="rgba(255, 138, 61, 0.18)"
-        stroke-width="1"
-        stroke-dasharray="2 6"
-      />
-    </svg>
+        {/* Active glowing traffic flow traces (Animated on active state transitions) */}
+        <path
+          id="flow-healthy-pressure"
+          d="M 300 210 Q 240 165 145 95"
+          stroke="url(#edge-flow-gradient)"
+          stroke-width="2.5"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-pressure-cool"
+          d="M 145 95 Q 220 92 295 95"
+          stroke="url(#edge-flow-gradient)"
+          stroke-width="2.5"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-cool-rate"
+          d="M 295 95 Q 380 92 455 95"
+          stroke="url(#edge-flow-gradient)"
+          stroke-width="2.5"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-rate-healthy"
+          d="M 455 95 Q 370 165 300 210"
+          stroke="url(#edge-flow-gradient)"
+          stroke-width="2.5"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-healthy-exh"
+          d="M 300 210 Q 380 215 460 215"
+          stroke="url(#edge-flow-gradient)"
+          stroke-width="2.5"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-exh-swap"
+          d="M 460 215 Q 470 290 460 335"
+          stroke="url(#edge-flow-gradient)"
+          stroke-width="2.5"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-swap-healthy"
+          d="M 460 335 Q 380 290 300 210"
+          stroke="url(#edge-flow-gradient)"
+          stroke-width="2.5"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-healthy-auth"
+          d="M 300 210 Q 280 280 295 335"
+          stroke="url(#edge-flow-gradient)"
+          stroke-width="2.5"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-auth-swap"
+          d="M 295 335 Q 380 340 460 335"
+          stroke="url(#edge-flow-gradient)"
+          stroke-width="2.5"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-unknown-healthy"
+          d="M 145 210 Q 200 210 240 210"
+          stroke="rgba(255,255,255,0.15)"
+          stroke-width="2"
+          stroke-dasharray="3 4"
+          fill="none"
+          class="lcsm-flow"></path>
+        <path
+          id="flow-disabled-unknown"
+          d="M 145 335 L 145 285"
+          stroke="rgba(255,255,255,0.15)"
+          stroke-width="2"
+          stroke-dasharray="3 4"
+          fill="none"
+          class="lcsm-flow"></path>
 
-    {/* sidebar legend */}
-    <aside class="lcsm__legend" aria-label="Lifecycle legend">
+        {/* Nodes with interactive clicking and dynamic highlighting */}
+        {/* pressure */}
+        <g class="lcsm__node node-btn" data-node="pressure" transform="translate(145 95)">
+          <circle
+            r="28"
+            fill="rgba(253, 196, 44, 0.03)"
+            stroke="rgba(253, 196, 44, 0.25)"
+            stroke-width="1"
+            class="node-ring"></circle>
+          <circle r="6" fill="#FDC42C" class="node-dot"></circle>
+          <text
+            x="0"
+            y="44"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="10"
+            fill="rgba(255,255,255,0.65)"
+            class="node-label">pressure</text
+          >
+        </g>
+        {/* cooling-down */}
+        <g class="lcsm__node node-btn" data-node="cooling-down" transform="translate(295 95)">
+          <circle
+            r="28"
+            fill="rgba(174, 172, 186, 0.03)"
+            stroke="rgba(174, 172, 186, 0.25)"
+            stroke-width="1"
+            class="node-ring"></circle>
+          <circle r="6" fill="#aeacba" class="node-dot"></circle>
+          <text
+            x="0"
+            y="44"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="10"
+            fill="rgba(255,255,255,0.65)"
+            class="node-label">cooling-down</text
+          >
+          <text
+            x="0"
+            y="56"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="8"
+            fill="rgba(255,255,255,0.3)"
+            class="node-sub">5-min auto</text
+          >
+        </g>
+        {/* rate-limited */}
+        <g class="lcsm__node node-btn" data-node="rate-limited" transform="translate(455 95)">
+          <circle
+            r="28"
+            fill="rgba(250, 107, 6, 0.03)"
+            stroke="rgba(250, 107, 6, 0.25)"
+            stroke-width="1"
+            class="node-ring"></circle>
+          <circle r="6" fill="#FA6B06" class="node-dot"></circle>
+          <text
+            x="0"
+            y="44"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="10"
+            fill="rgba(255,255,255,0.65)"
+            class="node-label">rate-limited</text
+          >
+          <text
+            x="0"
+            y="56"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="8"
+            fill="rgba(255,255,255,0.3)"
+            class="node-sub">429 · cool</text
+          >
+        </g>
+        {/* unknown */}
+        <g class="lcsm__node node-btn" data-node="unknown" transform="translate(145 210)">
+          <circle
+            r="28"
+            fill="rgba(92, 84, 72, 0.04)"
+            stroke="rgba(92, 84, 72, 0.25)"
+            stroke-width="1"
+            class="node-ring"></circle>
+          <circle r="6" fill="#5c5448" class="node-dot"></circle>
+          <text
+            x="0"
+            y="44"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="10"
+            fill="rgba(255,255,255,0.65)"
+            class="node-label">unknown</text
+          >
+        </g>
+
+        {/* HEALTHY Hub (larger, primary console) */}
+        <g class="lcsm__node node-btn is-active" data-node="healthy" transform="translate(300 210)">
+          <circle
+            r="48"
+            fill="rgba(56, 216, 152, 0.04)"
+            stroke="rgba(56, 216, 152, 0.45)"
+            stroke-width="1.8"
+            class="node-ring hub-ring"></circle>
+          <circle r="10" fill="#38D898" filter="url(#lcsm-blur)" opacity="0.6" class="hub-glow"
+          ></circle>
+          <circle r="6" fill="#38D898" class="node-dot"></circle>
+          <text
+            x="0"
+            y="28"
+            text-anchor="middle"
+            font-family="var(--font-display)"
+            font-weight="600"
+            font-size="12"
+            fill="#ffffff"
+            class="node-label-main">healthy</text
+          >
+          <text
+            x="0"
+            y="42"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="8.5"
+            fill="rgba(255,255,255,0.4)"
+            class="node-sub">serving</text
+          >
+        </g>
+
+        {/* exhausted */}
+        <g class="lcsm__node node-btn" data-node="exhausted" transform="translate(460 215)">
+          <circle
+            r="28"
+            fill="rgba(229, 72, 60, 0.03)"
+            stroke="rgba(229, 72, 60, 0.25)"
+            stroke-width="1"
+            class="node-ring"></circle>
+          <circle r="6" fill="#e5483c" class="node-dot"></circle>
+          <text
+            x="0"
+            y="44"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="10"
+            fill="rgba(255,255,255,0.65)"
+            class="node-label">exhausted</text
+          >
+          <text
+            x="0"
+            y="56"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="8"
+            fill="rgba(255,255,255,0.3)"
+            class="node-sub">limit hit</text
+          >
+        </g>
+        {/* disabled */}
+        <g class="lcsm__node node-btn" data-node="disabled" transform="translate(145 335)">
+          <circle
+            r="28"
+            fill="rgba(92, 84, 72, 0.04)"
+            stroke="rgba(92, 84, 72, 0.25)"
+            stroke-width="1"
+            class="node-ring"></circle>
+          <circle r="6" fill="#5c5448" class="node-dot"></circle>
+          <text
+            x="0"
+            y="44"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="10"
+            fill="rgba(255,255,255,0.65)"
+            class="node-label">disabled</text
+          >
+        </g>
+        {/* auth-failed */}
+        <g class="lcsm__node node-btn" data-node="auth-failed" transform="translate(295 335)">
+          <circle
+            r="28"
+            fill="rgba(229, 72, 60, 0.03)"
+            stroke="rgba(229, 72, 60, 0.25)"
+            stroke-width="1"
+            class="node-ring"></circle>
+          <circle r="6" fill="#e5483c" class="node-dot"></circle>
+          <text
+            x="0"
+            y="44"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="10"
+            fill="rgba(255,255,255,0.65)"
+            class="node-label">auth-failed</text
+          >
+          <text
+            x="0"
+            y="56"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="8"
+            fill="rgba(255,255,255,0.3)"
+            class="node-sub">expired 401</text
+          >
+        </g>
+        {/* swap-keys (User Action Actionable Card box) */}
+        <g
+          class="lcsm__node node-btn swap-action-btn"
+          data-node="swap-keys"
+          transform="translate(460 335)"
+        >
+          <rect
+            x="-42"
+            y="-22"
+            width="84"
+            height="44"
+            rx="8"
+            fill="rgba(250, 107, 6, 0.04)"
+            stroke="rgba(250, 107, 6, 0.35)"
+            stroke-width="1.2"
+            class="swap-rect"></rect>
+          <text
+            x="0"
+            y="-3"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="10"
+            font-weight="600"
+            fill="#FA6B06"
+            class="swap-text-primary">swap keys</text
+          >
+          <text
+            x="0"
+            y="11"
+            text-anchor="middle"
+            font-family="var(--font-mono)"
+            font-size="8"
+            fill="rgba(250, 107, 6, 0.7)"
+            class="swap-text-sec">user action</text
+          >
+        </g>
+
+        {/* The walking avatar: glides fluidly using JS transforms */}
+        <circle
+          id="walking-avatar"
+          r="8"
+          fill="#ff8a3d"
+          filter="url(#lcsm-blur)"
+          opacity="0.9"
+          style="transform: translate(300px, 210px);"
+          class="avatar-glow"></circle>
+        <circle
+          id="walking-avatar-core"
+          r="3.5"
+          fill="#ffffff"
+          style="transform: translate(300px, 210px);"
+          class="avatar-core"></circle>
+      </svg>
+    </div>
+
+    <!-- Right: High-Fidelity Interactive Sidebar Legend -->
+    <aside class="lcsm__legend" aria-label="Interactive Lifecycle Legend">
       <h3 class="lcsm__legendh mono">eight states</h3>
       <ul class="lcsm__list">
-        <li><span class="lcsm__pill lcsm__pill--hub"></span><strong>healthy</strong><span>eligible to serve · ranked first</span></li>
-        <li><span class="lcsm__pill lcsm__pill--press"></span><strong>pressure</strong><span>&lt; 20% bucket left · still eligible, ranked lower</span></li>
-        <li><span class="lcsm__pill lcsm__pill--cool"></span><strong>cooling-down</strong><span>transient failure · auto-retry in 5 min</span></li>
-        <li><span class="lcsm__pill lcsm__pill--rate"></span><strong>rate-limited</strong><span>429 from provider · cool-down ticking</span></li>
-        <li><span class="lcsm__pill lcsm__pill--exh"></span><strong>exhausted</strong><span>bucket cap hit · waits for window roll</span></li>
-        <li><span class="lcsm__pill lcsm__pill--auth"></span><strong>auth-failed</strong><span>token expired · re-auth surfaces a UI flag</span></li>
-        <li><span class="lcsm__pill lcsm__pill--off"></span><strong>disabled</strong><span>routing off by you · tracked, not used</span></li>
-        <li><span class="lcsm__pill lcsm__pill--unknown"></span><strong>unknown</strong><span>quota probe stale · eligible, ranked low</span></li>
+        <li class="legend-card is-active" data-card="healthy">
+          <span class="legend-card__indicator healthy"></span>
+          <div class="legend-card__body">
+            <div class="legend-card__header">
+              <strong class="legend-card__title">healthy</strong>
+              <span class="legend-card__badge badge--healthy mono">ACTIVE</span>
+            </div>
+            <p class="legend-card__desc">Eligible to serve · ranked first on primary queue.</p>
+          </div>
+        </li>
+
+        <li class="legend-card" data-card="pressure">
+          <span class="legend-card__indicator pressure"></span>
+          <div class="legend-card__body">
+            <div class="legend-card__header">
+              <strong class="legend-card__title">pressure</strong>
+              <span class="legend-card__badge badge--warning mono">DEGRADED</span>
+            </div>
+            <p class="legend-card__desc">&lt; 20% quota remaining · ranked lower on fallbacks.</p>
+          </div>
+        </li>
+
+        <li class="legend-card" data-card="cooling-down">
+          <span class="legend-card__indicator cooling-down"></span>
+          <div class="legend-card__body">
+            <div class="legend-card__header">
+              <strong class="legend-card__title">cooling-down</strong>
+              <span class="legend-card__badge badge--slate mono">TEMPORARY</span>
+            </div>
+            <p class="legend-card__desc">Transient failure · automatically re-probed in 5 min.</p>
+          </div>
+        </li>
+
+        <li class="legend-card" data-card="rate-limited">
+          <span class="legend-card__indicator rate-limited"></span>
+          <div class="legend-card__body">
+            <div class="legend-card__header">
+              <strong class="legend-card__title">rate-limited</strong>
+              <span class="legend-card__badge badge--orange mono">TIMEOUT</span>
+            </div>
+            <p class="legend-card__desc">429 limit from provider · cool-down ticking down.</p>
+          </div>
+        </li>
+
+        <li class="legend-card" data-card="exhausted">
+          <span class="legend-card__indicator exhausted"></span>
+          <div class="legend-card__body">
+            <div class="legend-card__header">
+              <strong class="legend-card__title">exhausted</strong>
+              <span class="legend-card__badge badge--error mono">OUT OF DATA</span>
+            </div>
+            <p class="legend-card__desc">Monthly token cap hit · waits for window rollover.</p>
+          </div>
+        </li>
+
+        <li class="legend-card" data-card="auth-failed">
+          <span class="legend-card__indicator auth-failed"></span>
+          <div class="legend-card__body">
+            <div class="legend-card__header">
+              <strong class="legend-card__title">auth-failed</strong>
+              <span class="legend-card__badge badge--error mono">BLOCKED</span>
+            </div>
+            <p class="legend-card__desc">Token expired or billing error · surfaces a UI flag.</p>
+          </div>
+        </li>
+
+        <li class="legend-card" data-card="disabled">
+          <span class="legend-card__indicator disabled"></span>
+          <div class="legend-card__body">
+            <div class="legend-card__header">
+              <strong class="legend-card__title">disabled</strong>
+              <span class="legend-card__badge badge--dim mono">PARKED</span>
+            </div>
+            <p class="legend-card__desc">
+              Routing turned off by user · tracked but never selected.
+            </p>
+          </div>
+        </li>
+
+        <li class="legend-card" data-card="unknown">
+          <span class="legend-card__indicator unknown"></span>
+          <div class="legend-card__body">
+            <div class="legend-card__header">
+              <strong class="legend-card__title">unknown</strong>
+              <span class="legend-card__badge badge--dim mono">UNRANKED</span>
+            </div>
+            <p class="legend-card__desc">Quota probe stale · eligible but serves at lowest rank.</p>
+          </div>
+        </li>
       </ul>
-      <p class="lcsm__cap mono">avatar walks a typical day · 12 s loop</p>
     </aside>
+  </div>
+
+  <!-- Live Simulated Decision Console -->
+  <div class="console glass-pane">
+    <div class="console__header">
+      <div class="console__dots">
+        <span class="console__dot red"></span>
+        <span class="console__dot yellow"></span>
+        <span class="console__dot green"></span>
+      </div>
+      <div class="console__title mono">BURNBAR ROUTER CONTROL SIMULATOR v1.0.4</div>
+      <div class="console__status mono" id="console-status">ONLINE</div>
+    </div>
+    <div class="console__body" id="console-body">
+      <!-- Logs will print dynamically here -->
+    </div>
   </div>
 </section>
 
+<script>
+  interface LogLine {
+    text: string;
+    type: string;
+  }
+  interface ScenarioStep {
+    state: string;
+    duration: number;
+    flow?: string;
+    logs: LogLine[];
+  }
+
+  // Dynamic Simulator Coordinates for fluid avatar gliding
+  const coords: Record<string, { x: number; y: number }> = {
+    healthy: { x: 300, y: 210 },
+    pressure: { x: 145, y: 95 },
+    "cooling-down": { x: 295, y: 95 },
+    "rate-limited": { x: 455, y: 95 },
+    unknown: { x: 145, y: 210 },
+    exhausted: { x: 460, y: 215 },
+    disabled: { x: 145, y: 335 },
+    "auth-failed": { x: 295, y: 335 },
+    "swap-keys": { x: 460, y: 335 }
+  };
+
+  // Preset Scenario Script Sequences
+  const SCENARIOS: Record<"loop" | "outage" | "auth", ScenarioStep[]> = {
+    loop: [
+      {
+        state: "healthy",
+        duration: 3000,
+        logs: [
+          {
+            text: "[ROUTER] Initializing routing metrics. Active provider pools checked.",
+            type: "system"
+          },
+          {
+            text: "[REQUEST] POST https://api.anthropic.com/v1/messages - 200 OK (served via Sonnet-4.6 in 410ms)",
+            type: "req"
+          }
+        ]
+      },
+      {
+        state: "pressure",
+        duration: 3500,
+        flow: "healthy-pressure",
+        logs: [
+          {
+            text: "[ROUTER] Quota threshold check triggered: Claude Sonnet usage exceeded 80% limit.",
+            type: "warning"
+          },
+          {
+            text: "[ROUTER] Transitioned to PRESSURE. Re-ranking routing queue. Adjusting fallbacks.",
+            type: "warning"
+          },
+          {
+            text: "[REQUEST] POST https://api.anthropic.com/v1/messages - 200 OK (served with degraded rank in 580ms)",
+            type: "req"
+          }
+        ]
+      },
+      {
+        state: "cooling-down",
+        duration: 3500,
+        flow: "pressure-cool",
+        logs: [
+          {
+            text: "[ROUTER] Temporary timeout detected on OpenAI endpoint. Activating failover guard.",
+            type: "system"
+          },
+          {
+            text: "[ROUTER] Node transitioned to COOLING-DOWN. 5-minute cooldown timer started.",
+            type: "system"
+          },
+          {
+            text: "[ROUTER] Redirecting incoming traffic flow safely to Anthropic secondary cluster.",
+            type: "system"
+          }
+        ]
+      },
+      {
+        state: "healthy",
+        duration: 3000,
+        flow: "rate-healthy",
+        logs: [
+          {
+            text: "[ROUTER] Cooldown clock expired. Probed OpenAI node responds: 200 OK.",
+            type: "success"
+          },
+          {
+            text: "[ROUTER] Node restored. Score reset to maximum index. State returned to HEALTHY.",
+            type: "success"
+          },
+          {
+            text: "[REQUEST] POST https://api.openai.com/v1/chat/completions - 200 OK (served primary in 310ms)",
+            type: "req"
+          }
+        ]
+      }
+    ],
+    outage: [
+      {
+        state: "healthy",
+        duration: 3000,
+        logs: [
+          {
+            text: "[ROUTER] Main routing loops online. Primary Anthropic queue serving developers.",
+            type: "system"
+          },
+          { text: "[REQUEST] POST https://api.anthropic.com/v1/messages - 200 OK", type: "req" }
+        ]
+      },
+      {
+        state: "pressure",
+        duration: 3000,
+        flow: "healthy-pressure",
+        logs: [
+          {
+            text: "[ROUTER] High concurrent developer demand. Sonnet quota reservoir dropped <15%.",
+            type: "warning"
+          },
+          {
+            text: "[ROUTER] Account transitioned to PRESSURE. Switching primary to fallback pools.",
+            type: "warning"
+          }
+        ]
+      },
+      {
+        state: "rate-limited",
+        duration: 3500,
+        flow: "cool-rate",
+        logs: [
+          { text: "[ROUTER] Error: API request returned 429 Too Many Requests.", type: "error" },
+          {
+            text: "[ROUTER] Primary token pool rate-limit cap exceeded on server side.",
+            type: "error"
+          },
+          {
+            text: "[ROUTER] Transitioned to RATE-LIMITED. Blocked from routing for 300 seconds.",
+            type: "error"
+          }
+        ]
+      },
+      {
+        state: "exhausted",
+        duration: 3500,
+        flow: "healthy-exh",
+        logs: [
+          {
+            text: "[ROUTER] Failover check failed: Secondary OpenAI account limits are exhausted.",
+            type: "error"
+          },
+          {
+            text: "[ROUTER] Router has run out of alternative token routes. Queue locked.",
+            type: "error"
+          },
+          {
+            text: "[ROUTER] Transitioned to EXHAUSTED state. Administrative intervention needed.",
+            type: "error"
+          }
+        ]
+      },
+      {
+        state: "swap-keys",
+        duration: 4000,
+        flow: "exh-swap",
+        logs: [
+          {
+            text: "[ALERT] PLEASE SWAP API KEYS OR UPGRADE TIER. Waiting for user action...",
+            type: "alert"
+          },
+          {
+            text: "[ACTION] To resolve: click OpenBurnBar popover -> Settings -> Swap Key.",
+            type: "alert"
+          }
+        ]
+      },
+      {
+        state: "healthy",
+        duration: 3000,
+        flow: "swap-healthy",
+        logs: [
+          {
+            text: "[ACTION] Dynamic API Key refresh detected from developer. Verifying keys...",
+            type: "success"
+          },
+          {
+            text: "[ROUTER] Authentication verified. Quota reset. Transitioned back to HEALTHY.",
+            type: "success"
+          }
+        ]
+      }
+    ],
+    auth: [
+      {
+        state: "healthy",
+        duration: 3000,
+        logs: [
+          {
+            text: "[ROUTER] Routing table verified. 8 credentials loaded successfully.",
+            type: "system"
+          },
+          {
+            text: "[REQUEST] POST https://api.openai.com/v1/chat/completions - 200 OK",
+            type: "req"
+          }
+        ]
+      },
+      {
+        state: "auth-failed",
+        duration: 4000,
+        flow: "healthy-auth",
+        logs: [
+          {
+            text: "[ROUTER] Error: OpenAI credential validation returned 401 Unauthorized.",
+            type: "error"
+          },
+          {
+            text: "[ROUTER] Billing verification failed or credit card transaction failed.",
+            type: "error"
+          },
+          {
+            text: "[ROUTER] Transitioned to AUTH-FAILED. Expired credential flagged in menu bar.",
+            type: "error"
+          }
+        ]
+      },
+      {
+        state: "disabled",
+        duration: 4000,
+        flow: "auth-swap",
+        logs: [
+          {
+            text: "[ROUTER] Manual user action received: Account 'openai-personal' disabled.",
+            type: "warning"
+          },
+          {
+            text: "[ROUTER] Transitioning route from rotation. Account status is now DISABLED.",
+            type: "warning"
+          },
+          {
+            text: "[ROUTER] Parked out of rotation. Safely ignoring 401 warnings on this node.",
+            type: "system"
+          }
+        ]
+      }
+    ]
+  };
+
+  // Simulator state tracking
+  let currentScenario: "loop" | "outage" | "auth" = "loop";
+  let stepIndex = 0;
+  let isPlaying = true;
+  let speed = 1.0;
+  let currentTimeout: any = null;
+  let isTransitioning = false;
+
+  // Elements
+  const avatar = document.getElementById("walking-avatar") as HTMLElement | null;
+  const avatarCore = document.getElementById("walking-avatar-core") as HTMLElement | null;
+  const consoleBody = document.getElementById("console-body") as HTMLElement | null;
+  const consoleStatus = document.getElementById("console-status") as HTMLElement | null;
+  const speedSlider = document.getElementById("speed-slider") as HTMLInputElement | null;
+  const speedVal = document.getElementById("speed-val") as HTMLElement | null;
+  const btnPlayPause = document.getElementById("btn-play-pause") as HTMLButtonElement | null;
+  const iconPause = btnPlayPause?.querySelector(".icon-pause") as HTMLElement | null;
+  const iconPlay = btnPlayPause?.querySelector(".icon-play") as HTMLElement | null;
+  const btnPlayText = btnPlayPause?.querySelector(".sim-action__text") as HTMLElement | null;
+
+  // Scenarios tabs
+  const tabLoop = document.getElementById("btn-scenario-loop") as HTMLButtonElement | null;
+  const tabOutage = document.getElementById("btn-scenario-outage") as HTMLButtonElement | null;
+  const tabAuth = document.getElementById("btn-scenario-auth") as HTMLButtonElement | null;
+  const tabs = [tabLoop, tabOutage, tabAuth];
+
+  // Initialize simulation
+  function init(startPlayback = false) {
+    if (currentTimeout) {
+      clearTimeout(currentTimeout);
+    }
+    stepIndex = 0;
+
+    // Reset avatar position
+    moveAvatar("healthy");
+
+    // Clear console & print startup logs
+    if (consoleBody) {
+      consoleBody.innerHTML = "";
+    }
+    addLog("[SYSTEM] OpenBurnBar Local State Router Simulator v1.0.4 starting up...", "system");
+    addLog(
+      `[SYSTEM] Scenario [${currentScenario.toUpperCase()}] selected. Active loops online.`,
+      "success"
+    );
+
+    // Reset active highlights without scrolling the layout
+    setActiveNode("healthy", false);
+    clearFlowTraces();
+
+    // Start step loop only when explicitly requested (e.g. after scrolled into view or user override)
+    if (startPlayback && isPlaying) {
+      runStep();
+    }
+  }
+
+  // Set node states in SVG
+  function setActiveNode(stateId: string, shouldScroll = true) {
+    // Highlight SVG node
+    document.querySelectorAll(".lcsm__node").forEach((node) => {
+      node.classList.remove("is-active");
+      if (node.getAttribute("data-node") === stateId) {
+        node.classList.add("is-active");
+      }
+    });
+
+    // Highlight Legend Card inside scroll container, preventing main window scrolling
+    const listContainer = document.querySelector(".lcsm__list") as HTMLElement | null;
+    document.querySelectorAll(".legend-card").forEach((card) => {
+      card.classList.remove("is-active");
+      if (card.getAttribute("data-card") === stateId) {
+        card.classList.add("is-active");
+        if (shouldScroll && listContainer) {
+          const cardHtml = card as HTMLElement;
+          const relativeTop = cardHtml.offsetTop - listContainer.offsetTop;
+          listContainer.scrollTo({
+            top: relativeTop - 8,
+            behavior: "smooth"
+          });
+        }
+      }
+    });
+
+    // Highlight halos
+    document.querySelectorAll(".lcsm-halo").forEach((halo) => halo.classList.remove("active"));
+    const haloHealthy = document.getElementById("halo-healthy");
+    const haloExh = document.getElementById("halo-exh");
+    const haloAuth = document.getElementById("halo-auth");
+
+    if (stateId === "healthy" && haloHealthy) haloHealthy.classList.add("active");
+    if (stateId === "exhausted" && haloExh) haloExh.classList.add("active");
+    if (stateId === "auth-failed" && haloAuth) haloAuth.classList.add("active");
+  }
+
+  // Clear connection glow traces
+  function clearFlowTraces() {
+    document.querySelectorAll(".lcsm-flow").forEach((flow) => {
+      flow.classList.remove("is-active");
+    });
+  }
+
+  // Glide walking avatar dynamically
+  function moveAvatar(stateId: string) {
+    const point = coords[stateId] || coords["healthy"];
+    if (point && avatar && avatarCore) {
+      avatar.style.transform = `translate(${point.x}px, ${point.y}px)`;
+      avatarCore.style.transform = `translate(${point.x}px, ${point.y}px)`;
+    }
+  }
+
+  // Typewriter simulated console logging
+  function addLog(text: string, type = "system") {
+    if (!consoleBody) return;
+    const line = document.createElement("div");
+    line.className = `console__line ${type}`;
+
+    const time = document.createElement("span");
+    time.className = "console__time mono";
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    time.textContent = `[${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}] `;
+    line.appendChild(time);
+
+    const content = document.createElement("span");
+    content.className = "console__text mono";
+    line.appendChild(content);
+    consoleBody.appendChild(line);
+
+    // Dynamic typing effect
+    let i = 0;
+    function typeChar() {
+      if (!content || !consoleBody) return;
+      if (i < text.length) {
+        content.textContent += text.charAt(i);
+        i++;
+        setTimeout(typeChar, 8); // extremely fast retro typing
+      } else {
+        // Auto scroll console
+        consoleBody.scrollTop = consoleBody.scrollHeight;
+      }
+    }
+    typeChar();
+
+    // Prevent log overflow
+    while (consoleBody.children.length > 30) {
+      if (consoleBody.firstChild) {
+        consoleBody.removeChild(consoleBody.firstChild);
+      }
+    }
+  }
+
+  // Walk through scenario steps
+  function runStep() {
+    const sequence = SCENARIOS[currentScenario];
+    if (!sequence) return;
+
+    const currentStep = sequence[stepIndex];
+    if (!currentStep) {
+      // Loop complete, restart
+      stepIndex = 0;
+      runStep();
+      return;
+    }
+
+    isTransitioning = true;
+
+    // Trigger flow line animation if available
+    clearFlowTraces();
+    if (currentStep.flow) {
+      const activeFlow = document.getElementById(`flow-${currentStep.flow}`);
+      if (activeFlow) activeFlow.classList.add("is-active");
+    }
+
+    // Glide avatar to node
+    moveAvatar(currentStep.state);
+
+    // Set active highlight class with slight delay for the slide effect
+    setTimeout(() => {
+      setActiveNode(currentStep.state);
+      isTransitioning = false;
+    }, 400);
+
+    // Typewriter logs
+    if (currentStep.logs) {
+      currentStep.logs.forEach((log: LogLine, logIdx: number) => {
+        setTimeout(() => {
+          addLog(log.text, log.type);
+        }, logIdx * 400); // slight stagger between logs
+      });
+    }
+
+    // Schedule next transition step
+    const nextTimeout = (currentStep.duration || 3000) / speed;
+    stepIndex = (stepIndex + 1) % sequence.length;
+
+    currentTimeout = setTimeout(() => {
+      if (isPlaying) {
+        runStep();
+      }
+    }, nextTimeout);
+  }
+
+  // Play / Pause toggle
+  function togglePlay() {
+    isPlaying = !isPlaying;
+    if (isPlaying) {
+      if (iconPause) iconPause.classList.remove("hidden");
+      if (iconPlay) iconPlay.classList.add("hidden");
+      if (btnPlayText) btnPlayText.textContent = "PAUSE";
+      if (consoleStatus) {
+        consoleStatus.textContent = "PLAYING";
+        consoleStatus.className = "console__status mono online";
+      }
+      addLog("[SYSTEM] Simulation resumed.", "success");
+      runStep();
+    } else {
+      if (currentTimeout) clearTimeout(currentTimeout);
+      if (iconPause) iconPause.classList.add("hidden");
+      if (iconPlay) iconPlay.classList.remove("hidden");
+      if (btnPlayText) btnPlayText.textContent = "PLAY";
+      if (consoleStatus) {
+        consoleStatus.textContent = "PAUSED";
+        consoleStatus.className = "console__status mono offline";
+      }
+      addLog("[SYSTEM] Simulation paused.", "warning");
+    }
+  }
+
+  // Reset
+  function resetSimulation() {
+    addLog("[SYSTEM] Resetting simulator state...", "system");
+    init(true);
+  }
+
+  // Speed slider update
+  function updateSpeed(val: string) {
+    speed = parseFloat(val);
+    if (speedSlider) speedSlider.value = val;
+    if (speedVal) speedVal.textContent = `${speed.toFixed(1)}x`;
+    addLog(`[SYSTEM] Simulation speed adjusted to ${speed.toFixed(1)}x.`, "system");
+
+    // Re-schedule current timeout if playing
+    if (isPlaying && !isTransitioning) {
+      if (currentTimeout) clearTimeout(currentTimeout);
+      const sequence = SCENARIOS[currentScenario];
+      const nextIndex = stepIndex === 0 ? sequence.length - 1 : stepIndex - 1;
+      const currentStep = sequence[nextIndex];
+      if (currentStep) {
+        const remaining = (currentStep.duration || 3000) / speed;
+        currentTimeout = setTimeout(runStep, remaining);
+      }
+    }
+  }
+
+  // Click tabs to select scenario
+  function selectScenario(scenId: "loop" | "outage" | "auth") {
+    if (currentScenario === scenId) return;
+
+    currentScenario = scenId;
+
+    // Update active tab buttons
+    tabs.forEach((tab) => {
+      if (!tab) return;
+      const isSelect = tab.getAttribute("data-scenario") === scenId;
+      tab.classList.toggle("is-active", isSelect);
+      tab.setAttribute("aria-selected", isSelect ? "true" : "false");
+    });
+
+    init(true);
+  }
+
+  // Event Listeners for tabs
+  tabLoop?.addEventListener("click", () => selectScenario("loop"));
+  tabOutage?.addEventListener("click", () => selectScenario("outage"));
+  tabAuth?.addEventListener("click", () => selectScenario("auth"));
+
+  // Play / Pause / Reset listeners
+  btnPlayPause?.addEventListener("click", togglePlay);
+  document.getElementById("btn-reset")?.addEventListener("click", resetSimulation);
+
+  // Speed slider listener
+  speedSlider?.addEventListener("input", (e) => {
+    const target = e.target as HTMLInputElement;
+    if (target) {
+      updateSpeed(target.value);
+    }
+  });
+
+  // Bidirectional interaction: Click SVG nodes to manually override routing
+  document.querySelectorAll(".node-btn").forEach((node) => {
+    node.addEventListener("click", () => {
+      const stateId = node.getAttribute("data-node");
+      if (!stateId || isTransitioning) return;
+
+      // Pause regular scenario loop
+      if (isPlaying) {
+        togglePlay();
+      }
+
+      isTransitioning = true;
+      addLog(
+        `[ROUTER] Manual administrative override: forcing state transition to ${stateId.toUpperCase()}...`,
+        "warning"
+      );
+
+      // Clear flow connections and light up immediate flow if reachable
+      clearFlowTraces();
+      moveAvatar(stateId);
+
+      setTimeout(() => {
+        setActiveNode(stateId);
+        isTransitioning = false;
+        addLog(
+          `[ROUTER] State transition confirmed. Node ${stateId.toUpperCase()} active.`,
+          "success"
+        );
+      }, 400);
+    });
+  });
+
+  // Bidirectional interaction: Click Legend Cards to trigger manual override
+  document.querySelectorAll(".legend-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const stateId = card.getAttribute("data-card");
+      if (!stateId || isTransitioning) return;
+
+      // Pause regular scenario loop
+      if (isPlaying) {
+        togglePlay();
+      }
+
+      isTransitioning = true;
+      addLog(
+        `[ROUTER] Manual card override: forcing state transition to ${stateId.toUpperCase()}...`,
+        "warning"
+      );
+
+      clearFlowTraces();
+      moveAvatar(stateId);
+
+      setTimeout(() => {
+        setActiveNode(stateId);
+        isTransitioning = false;
+        addLog(
+          `[ROUTER] State transition confirmed. Node ${stateId.toUpperCase()} active.`,
+          "success"
+        );
+      }, 400);
+    });
+
+    // Legend hover binds
+    card.addEventListener("mouseenter", () => {
+      const stateId = card.getAttribute("data-card");
+      document.querySelectorAll(".lcsm__node").forEach((node) => {
+        if (node.getAttribute("data-node") === stateId) {
+          node.classList.add("node-hover");
+        }
+      });
+    });
+
+    card.addEventListener("mouseleave", () => {
+      document.querySelectorAll(".lcsm__node").forEach((node) => {
+        node.classList.remove("node-hover");
+      });
+    });
+  });
+
+  // Node hovers highlight cards on the right
+  document.querySelectorAll(".node-btn").forEach((node) => {
+    node.addEventListener("mouseenter", () => {
+      const stateId = node.getAttribute("data-node");
+      document.querySelectorAll(".legend-card").forEach((card) => {
+        if (card.getAttribute("data-card") === stateId) {
+          card.classList.add("card-hover");
+        }
+      });
+    });
+
+    node.addEventListener("mouseleave", () => {
+      document.querySelectorAll(".legend-card").forEach((card) => {
+        card.classList.remove("card-hover");
+      });
+    });
+  });
+
+  // Start on view lifecycle panel
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("is-visible");
+          init(true); // trigger initial runs when scrolled into view
+          observer.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.15 }
+  );
+
+  const panel = document.querySelector(".lifecycle__panel");
+  if (panel) {
+    observer.observe(panel);
+  }
+
+  // Pre-load default logs if not intersecting yet, but do not trigger automated transitions yet
+  init(false);
+</script>
+
 <style>
   .lifecycle {
-    padding-block: var(--s-9);
+    padding-block: var(--s-8);
     border-top: 1px solid var(--ink-line);
+    position: relative;
+    z-index: 2;
   }
   .lifecycle__head {
-    max-width: 64ch;
+    max-width: 68ch;
     margin: 0 auto var(--s-6);
     text-align: center;
     display: grid;
-    gap: var(--s-3);
+    gap: var(--s-2);
   }
   .lifecycle__h {
     font-family: var(--font-display);
-    font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
+    font-size: clamp(2rem, 1.5rem + 2.5vw, 3.2rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
-    letter-spacing: -0.022em;
+    font-weight: 700;
+    letter-spacing: var(--tracking-tight);
     text-wrap: balance;
+    margin: 0;
   }
-  .lifecycle__lead { color: var(--text-base); max-width: 64ch; margin: 0 auto; line-height: 1.55; }
-  .lifecycle__lead strong { color: var(--text-bright); }
+  .lifecycle__lead {
+    color: var(--text-mute);
+    max-width: 64ch;
+    margin: 0 auto;
+    line-height: var(--leading-base);
+    font-size: var(--t-body);
+  }
 
+  /* Interactive Simulator Controls */
+  .sim-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--s-4);
+    padding: var(--s-4) var(--s-5);
+    margin-bottom: var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    background: var(--glass-bg-elevated);
+    backdrop-filter: var(--glass-blur);
+  }
+  @media (max-width: 900px) {
+    .sim-controls {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+
+  .sim-controls__group {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  @media (max-width: 600px) {
+    .sim-controls__group {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+
+  .sim-controls__label {
+    font-size: var(--t-caption);
+    font-weight: 600;
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-dim);
+  }
+
+  .sim-tabs {
+    display: flex;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 3px;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-sm);
+    gap: 2px;
+  }
+
+  .sim-tab {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 6px var(--s-3);
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-mute);
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all var(--dur-base) var(--ease);
+  }
+  .sim-tab:hover {
+    color: var(--text-bright);
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .sim-tab.is-active {
+    color: var(--text-bright);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  }
+
+  .sim-tab__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .sim-tab__dot.healthy {
+    background: #38d898;
+    box-shadow: 0 0 6px #38d898;
+  }
+  .sim-tab__dot.rate {
+    background: #fa6b06;
+    box-shadow: 0 0 6px #fa6b06;
+  }
+  .sim-tab__dot.auth {
+    background: #e5483c;
+    box-shadow: 0 0 6px #e5483c;
+  }
+
+  .sim-controls__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    flex-wrap: wrap;
+  }
+  @media (max-width: 600px) {
+    .sim-controls__actions {
+      justify-content: space-between;
+    }
+  }
+
+  .sim-action {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--ink-line);
+    border-radius: 6px;
+    padding: 6px var(--s-3);
+    color: var(--text-base);
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.2s var(--ease);
+  }
+  .sim-action:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-bright);
+    border-color: var(--ink-line-bright);
+  }
+  .sim-action svg {
+    opacity: 0.8;
+  }
+  .sim-action:hover svg {
+    opacity: 1;
+  }
+
+  .sim-speed {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  .sim-speed__label {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+  .speed-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 70px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  .speed-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ff8a3d;
+    box-shadow: 0 0 6px #ff8a3d;
+    transition: transform 0.1s var(--ease);
+  }
+  .speed-range::-webkit-slider-thumb:hover {
+    transform: scale(1.3);
+  }
+  .sim-speed__val {
+    font-size: 0.75rem;
+    width: 32px;
+    color: #ff8a3d;
+  }
+
+  /* Panel Redesign: SVG Canvas & Legend Grid */
   .lifecycle__panel {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    gap: var(--s-5);
-    padding: var(--s-5);
+    gap: var(--s-4);
+    padding: var(--s-4);
     border: 1px solid var(--ink-line);
-    border-radius: var(--r-5);
-    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    border-radius: var(--r-lg);
+    background: linear-gradient(180deg, rgba(16, 16, 24, 0.8) 0%, rgba(10, 10, 14, 0.95) 100%);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    position: relative;
+    overflow: hidden;
   }
-  @media (max-width: 900px) {
-    .lifecycle__panel { grid-template-columns: 1fr; }
+  .lifecycle__panel::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.08) 50%,
+      transparent 100%
+    );
+  }
+  @media (max-width: 950px) {
+    .lifecycle__panel {
+      grid-template-columns: 1fr;
+    }
   }
 
+  /* SVG Graphics Styling */
+  .lcsm-wrapper {
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: var(--r-md);
+    background: rgba(0, 0, 0, 0.4);
+    padding: var(--s-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   .lcsm {
     width: 100%;
     height: auto;
-    max-height: 460px;
+    max-height: 400px;
     display: block;
   }
-  .lcsm__avatar { mix-blend-mode: screen; opacity: 0.7; }
-  .lcsm__avatarcore { mix-blend-mode: screen; }
-  .lcsm__node circle:first-of-type { transition: stroke-width var(--dur-fast) var(--ease-out); }
 
-  /* the trail subtly migrates */
-  .lcsm__trail {
-    stroke-dashoffset: 0;
-    animation: lcsm-trail 18s linear infinite;
+  /* Gliding Avatar */
+  #walking-avatar,
+  #walking-avatar-core {
+    transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-box: fill-box;
+    transform-origin: center;
   }
-  @keyframes lcsm-trail {
-    to { stroke-dashoffset: -160; }
+  .avatar-glow {
+    mix-blend-mode: screen;
+    animation: avatar-breathe 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes avatar-breathe {
+    0% {
+      r: 7.5;
+      opacity: 0.8;
+    }
+    100% {
+      r: 10.5;
+      opacity: 0.95;
+    }
   }
 
-  /* legend */
+  /* Glowing Halos */
+  .lcsm-halo {
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+    transition:
+      opacity 0.8s var(--ease),
+      transform 0.8s var(--ease);
+  }
+  .lcsm-halo.active {
+    opacity: 1;
+    animation: halo-pulse 3s var(--ease) infinite;
+  }
+  @keyframes halo-pulse {
+    0%,
+    100% {
+      transform: scale(0.9);
+      opacity: 0.45;
+    }
+    50% {
+      transform: scale(1.1);
+      opacity: 0.65;
+    }
+  }
+
+  /* glowing path flows */
+  .lcsm-flow {
+    opacity: 0;
+    stroke-dasharray: 6 12;
+    stroke-dashoffset: 200;
+    transition: opacity 0.4s var(--ease);
+  }
+  .lcsm-flow.is-active {
+    opacity: 1;
+    animation: edge-flow-run 3.5s linear infinite;
+  }
+  @keyframes edge-flow-run {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* SVG node interactions */
+  .lcsm__node {
+    cursor: pointer;
+    transition: all 0.3s var(--ease);
+  }
+  .node-ring {
+    transition:
+      stroke 0.3s var(--ease),
+      stroke-width 0.3s var(--ease),
+      fill 0.3s var(--ease);
+  }
+  .node-dot {
+    transition:
+      transform 0.3s var(--ease),
+      fill 0.3s var(--ease),
+      r 0.3s var(--ease);
+  }
+  .node-label {
+    transition: fill 0.3s var(--ease);
+  }
+
+  /* Node Hover effects */
+  .lcsm__node:hover .node-ring,
+  .lcsm__node.node-hover .node-ring {
+    stroke-width: 1.5;
+    fill: rgba(255, 255, 255, 0.05);
+  }
+  .lcsm__node:hover .node-dot,
+  .lcsm__node.node-hover .node-dot {
+    transform: scale(1.3);
+    r: 7.5;
+  }
+  .lcsm__node:hover .node-label,
+  .lcsm__node.node-hover .node-label {
+    fill: #ffffff;
+  }
+
+  /* Active Node style */
+  .lcsm__node.is-active .node-ring {
+    stroke-width: 1.8;
+  }
+  .lcsm__node.is-active[data-node="healthy"] .node-ring {
+    stroke: #38d898;
+    fill: rgba(56, 216, 152, 0.06);
+  }
+  .lcsm__node.is-active[data-node="pressure"] .node-ring {
+    stroke: #fdc42c;
+    fill: rgba(253, 196, 44, 0.06);
+  }
+  .lcsm__node.is-active[data-node="cooling-down"] .node-ring {
+    stroke: #aeacba;
+    fill: rgba(174, 172, 186, 0.06);
+  }
+  .lcsm__node.is-active[data-node="rate-limited"] .node-ring {
+    stroke: #fa6b06;
+    fill: rgba(250, 107, 6, 0.06);
+  }
+  .lcsm__node.is-active[data-node="exhausted"] .node-ring {
+    stroke: #e5483c;
+    fill: rgba(229, 72, 60, 0.06);
+  }
+  .lcsm__node.is-active[data-node="auth-failed"] .node-ring {
+    stroke: #e5483c;
+    fill: rgba(229, 72, 60, 0.06);
+  }
+  .lcsm__node.is-active[data-node="disabled"] .node-ring {
+    stroke: #5c5448;
+    fill: rgba(92, 84, 72, 0.06);
+  }
+  .lcsm__node.is-active[data-node="unknown"] .node-ring {
+    stroke: #5c5448;
+    fill: rgba(92, 84, 72, 0.06);
+  }
+
+  .lcsm__node.is-active .node-dot {
+    animation: active-dot-pulse 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes active-dot-pulse {
+    0% {
+      transform: scale(1);
+      r: 6;
+    }
+    100% {
+      transform: scale(1.4);
+      r: 7;
+      opacity: 0.9;
+    }
+  }
+
+  .lcsm__node.is-active[data-node="auth-failed"] .node-dot {
+    animation: auth-flash 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes auth-flash {
+    0% {
+      fill: #e5483c;
+      opacity: 0.5;
+    }
+    100% {
+      fill: #ff3c2f;
+      opacity: 1;
+      transform: scale(1.3);
+    }
+  }
+
+  /* Swap button rect box */
+  .swap-rect {
+    transition: all 0.3s var(--ease);
+  }
+  .swap-action-btn:hover .swap-rect {
+    fill: rgba(250, 107, 6, 0.08);
+    stroke-width: 1.5;
+    stroke: rgba(250, 107, 6, 0.85);
+  }
+  .lcsm__node.is-active.swap-action-btn .swap-rect {
+    stroke: #fa6b06;
+    fill: rgba(250, 107, 6, 0.08);
+    animation: swap-pulse 1.8s ease-in-out infinite alternate;
+  }
+  @keyframes swap-pulse {
+    0% {
+      stroke-opacity: 0.6;
+      fill-opacity: 0.04;
+    }
+    100% {
+      stroke-opacity: 1;
+      fill-opacity: 0.12;
+    }
+  }
+
+  /* Interactive Legend Cards */
   .lcsm__legend {
-    padding: var(--s-4);
+    padding: var(--s-3);
     border: 1px solid var(--ink-line);
-    border-radius: var(--r-4);
-    background: var(--ink-base);
-    display: grid;
-    gap: var(--s-3);
-    align-content: start;
+    border-radius: var(--r-md);
+    background: rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    height: 420px;
   }
   .lcsm__legendh {
     color: var(--text-dim);
-    font-size: 0.66rem;
-    letter-spacing: 0.18em;
+    font-size: 0.68rem;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
+    margin-bottom: var(--s-3);
   }
   .lcsm__list {
     list-style: none;
     margin: 0;
     padding: 0;
-    display: grid;
-    gap: var(--s-2);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    padding-right: var(--s-1);
   }
-  .lcsm__list li {
-    display: grid;
-    grid-template-columns: 14px 90px 1fr;
-    gap: var(--s-2);
-    align-items: baseline;
-    color: var(--text-base);
-    font-size: 0.86rem;
+  .lcsm__list::-webkit-scrollbar {
+    width: 4px;
   }
-  .lcsm__list strong { color: var(--text-bright); font-variation-settings: "wght" 540; }
-  .lcsm__list span { color: var(--text-mute); font-size: 0.78rem; }
-  .lcsm__pill {
-    width: 10px;
-    height: 10px;
+  .lcsm__list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .lcsm__list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+  }
+
+  .legend-card {
+    display: flex;
+    gap: var(--s-3);
+    padding: var(--s-3);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, 0.01);
+    cursor: pointer;
+    align-items: flex-start;
+    transition: all 0.25s var(--ease);
+  }
+  .legend-card:hover,
+  .legend-card.card-hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .legend-card.is-active {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  .legend-card.is-active[data-card="healthy"] {
+    border-left: 3px solid #38d898;
+  }
+  .legend-card.is-active[data-card="pressure"] {
+    border-left: 3px solid #fdc42c;
+  }
+  .legend-card.is-active[data-card="cooling-down"] {
+    border-left: 3px solid #aeacba;
+  }
+  .legend-card.is-active[data-card="rate-limited"] {
+    border-left: 3px solid #fa6b06;
+  }
+  .legend-card.is-active[data-card="exhausted"] {
+    border-left: 3px solid #e5483c;
+  }
+  .legend-card.is-active[data-card="auth-failed"] {
+    border-left: 3px solid #e5483c;
+  }
+  .legend-card.is-active[data-card="disabled"] {
+    border-left: 3px solid #5c5448;
+  }
+  .legend-card.is-active[data-card="unknown"] {
+    border-left: 3px solid #5c5448;
+  }
+
+  .legend-card__indicator {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    display: inline-block;
-    border: 1px solid currentColor;
-    opacity: 0.85;
+    margin-top: 4px;
+    flex-shrink: 0;
   }
-  .lcsm__pill--hub { background: var(--status-exact); border-color: var(--status-exact); box-shadow: 0 0 8px var(--status-exact); }
-  .lcsm__pill--press, .lcsm__pill--rate { background: var(--status-estimated); border-color: var(--status-estimated); }
-  .lcsm__pill--cool { background: var(--mercury-base); border-color: var(--mercury-base); }
-  .lcsm__pill--exh, .lcsm__pill--auth { background: var(--status-burn); border-color: var(--status-burn); }
-  .lcsm__pill--off, .lcsm__pill--unknown { background: var(--text-dim); border-color: var(--text-dim); }
+  .legend-card__indicator.healthy {
+    background: #38d898;
+    box-shadow: 0 0 6px #38d898;
+  }
+  .legend-card__indicator.pressure {
+    background: #fdc42c;
+  }
+  .legend-card__indicator.cooling-down {
+    background: #aeacba;
+  }
+  .legend-card__indicator.rate-limited {
+    background: #fa6b06;
+  }
+  .legend-card__indicator.exhausted {
+    background: #e5483c;
+  }
+  .legend-card__indicator.auth-failed {
+    background: #e5483c;
+  }
+  .legend-card__indicator.disabled {
+    background: #5c5448;
+  }
+  .legend-card__indicator.unknown {
+    background: #5c5448;
+  }
 
-  .lcsm__cap {
+  .legend-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-grow: 1;
+  }
+  .legend-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .legend-card__title {
+    font-size: var(--t-caption);
+    color: var(--text-bright);
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  .legend-card__badge {
+    font-size: 0.62rem;
+    padding: 1.5px 5px;
+    border-radius: 3px;
+    font-weight: 700;
+  }
+  .badge--healthy {
+    background: rgba(56, 216, 152, 0.12);
+    color: #38d898;
+  }
+  .badge--warning {
+    background: rgba(253, 196, 44, 0.12);
+    color: #fdc42c;
+  }
+  .badge--slate {
+    background: rgba(174, 172, 186, 0.12);
+    color: #aeacba;
+  }
+  .badge--orange {
+    background: rgba(250, 107, 6, 0.12);
+    color: #fa6b06;
+  }
+  .badge--error {
+    background: rgba(229, 72, 60, 0.12);
+    color: #e5483c;
+  }
+  .badge--dim {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .legend-card__desc {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    margin: 0;
+  }
+
+  /* SOTA Simulated Router Console */
+  .console {
+    grid-column: span 2;
+    margin-top: var(--s-3);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    background: rgba(5, 5, 8, 0.9);
+    box-shadow:
+      inset 0 0 20px rgba(0, 0, 0, 0.8),
+      0 10px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  @media (max-width: 950px) {
+    .console {
+      grid-column: span 1;
+    }
+  }
+
+  .console__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--s-2) var(--s-4);
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--ink-line);
+  }
+
+  .console__dots {
+    display: flex;
+    gap: 6px;
+  }
+  .console__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .console__dot.red {
+    background: #e5483c;
+  }
+  .console__dot.yellow {
+    background: #fdc42c;
+  }
+  .console__dot.green {
+    background: #38d898;
+  }
+
+  .console__title {
+    font-size: 0.65rem;
     color: var(--text-dim);
-    font-size: 0.7rem;
-    letter-spacing: 0.06em;
-    padding-top: var(--s-2);
-    border-top: 1px dashed var(--ink-line-soft);
+    letter-spacing: var(--tracking-wide);
   }
 
-  /* entrance */
+  .console__status {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px var(--s-2);
+    border-radius: 4px;
+    letter-spacing: var(--tracking-wide);
+    background: rgba(56, 216, 152, 0.1);
+    color: #38d898;
+    transition: all 0.2s var(--ease);
+  }
+  .console__status.online {
+    background: rgba(56, 216, 152, 0.1);
+    color: #38d898;
+  }
+  .console__status.offline {
+    background: rgba(229, 72, 60, 0.1);
+    color: #e5483c;
+  }
+
+  .console__body {
+    padding: var(--s-4);
+    height: 180px;
+    overflow-y: auto;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  }
+  .console__body::-webkit-scrollbar {
+    width: 6px;
+  }
+  .console__body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .console__body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
+
+  .console__line {
+    display: flex;
+    align-items: flex-start;
+  }
+  .console__time {
+    color: rgba(255, 255, 255, 0.25);
+    flex-shrink: 0;
+    margin-right: var(--s-2);
+  }
+  .console__text {
+    text-shadow: 0 0 2px currentColor;
+    white-space: pre-wrap;
+  }
+
+  /* Console Line Log Types Colors */
+  .console__line.system .console__text {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .console__line.req .console__text {
+    color: #38d898;
+  }
+  .console__line.warning .console__text {
+    color: #fdc42c;
+  }
+  .console__line.success .console__text {
+    color: #38d898;
+  }
+  .console__line.error .console__text {
+    color: #e5483c;
+  }
+  .console__line.alert .console__text {
+    color: #fa6b06;
+    font-weight: 600;
+  }
+
+  /* Entrance Transitions */
   .lifecycle__panel[data-animate-onview] {
     opacity: 0;
-    transform: translateY(6px);
-    transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out);
+    transform: translateY(12px);
+    transition:
+      opacity 1000ms var(--ease),
+      transform 1000ms var(--ease);
   }
   .lifecycle__panel[data-animate-onview].is-visible {
     opacity: 1;
@@ -308,8 +2105,28 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    /* animateMotion can't be paused via CSS easily, but trail and entrance are managed */
-    .lcsm__trail { animation: none; }
+    #walking-avatar,
+    #walking-avatar-core {
+      transition: none !important;
+    }
+    .avatar-glow {
+      animation: none !important;
+    }
+    .lcsm-flow {
+      animation: none !important;
+    }
+    .lcsm-halo {
+      animation: none !important;
+    }
+    .lcsm__node.is-active .node-dot {
+      animation: none !important;
+    }
+    .lcsm__node.is-active[data-node="auth-failed"] .node-dot {
+      animation: none !important;
+    }
+    .lcsm__node.is-active.swap-action-btn .swap-rect {
+      animation: none !important;
+    }
     .lifecycle__panel[data-animate-onview] {
       opacity: 1 !important;
       transform: none !important;

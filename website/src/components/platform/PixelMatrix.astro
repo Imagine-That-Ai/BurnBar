@@ -13,7 +13,12 @@
  * `rgba(255,255,255,0.035)`, exactly matching the Swift fallback.
  */
 // Pure-JS port of PixelClockFramePresenter — Vite resolves the .mjs import.
-import { COLUMNS, ROWS, DEFAULT_ITEMS, buildFrame } from "../../../scripts/lib/pixel-clock-presenter.mjs";
+import {
+  COLUMNS,
+  ROWS,
+  DEFAULT_ITEMS,
+  buildFrame
+} from "../../../scripts/lib/pixel-clock-presenter.mjs";
 
 interface PixelItem {
   providerID: string;
@@ -32,12 +37,7 @@ interface Props {
   items?: PixelItem[];
 }
 
-const {
-  id,
-  layout = "providerDashboard",
-  palette = "emberWhimsy",
-  items,
-} = Astro.props;
+const { id, layout = "providerDashboard", palette = "emberWhimsy", items } = Astro.props;
 const effectiveItems: PixelItem[] = items ?? (DEFAULT_ITEMS as PixelItem[]);
 
 // Bridge to the untyped .mjs presenter — JSON-safe shape, runtime-validated.
@@ -45,9 +45,12 @@ type PresentedFrame = {
   grid: Array<Array<{ isLit: boolean; color: string }>>;
   accessibilityLabel: string;
 };
-const frame = (buildFrame as unknown as (args: unknown) => PresentedFrame)(
-  { layout, items: effectiveItems, tick: 0, palette }
-);
+const frame = (buildFrame as unknown as (args: unknown) => PresentedFrame)({
+  layout,
+  items: effectiveItems,
+  tick: 0,
+  palette
+});
 const cells = frame.grid.flat();
 
 // Serialize the items/config so the hydrator can pick them up without
@@ -65,13 +68,15 @@ const config = JSON.stringify({ layout, palette, items: effectiveItems });
   style={`--cols:${COLUMNS}; --rows:${ROWS};`}
 >
   <div class="pixmatrix__panel" aria-hidden="true">
-    {cells.map((cell, i) => (
-      <span
-        class={cell.isLit ? "px px--on" : "px"}
-        style={cell.isLit ? `--c:${cell.color}` : undefined}
-        data-i={i}
-      ></span>
-    ))}
+    {
+      cells.map((cell, i) => (
+        <span
+          class={cell.isLit ? "px px--on" : "px"}
+          style={cell.isLit ? `--c:${cell.color}` : undefined}
+          data-i={i}
+        />
+      ))
+    }
   </div>
 </div>
 
@@ -106,9 +111,10 @@ const config = JSON.stringify({ layout, palette, items: effectiveItems });
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.035);
     transform: scale(0.74);
-    transition: background-color 60ms linear,
-                box-shadow 80ms linear,
-                transform 80ms linear;
+    transition:
+      background-color 60ms linear,
+      box-shadow 80ms linear,
+      transform 80ms linear;
   }
   .px--on {
     background: var(--c, var(--ember-bright, #ffb547));
@@ -125,20 +131,21 @@ const config = JSON.stringify({ layout, palette, items: effectiveItems });
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background-image:
-      linear-gradient(
-        180deg,
-        transparent 0,
-        transparent calc(100% / var(--rows, 8) - 0.5px),
-        rgba(0, 0, 0, 0.22) calc(100% / var(--rows, 8) - 0.5px),
-        rgba(0, 0, 0, 0.22) calc(100% / var(--rows, 8))
-      );
+    background-image: linear-gradient(
+      180deg,
+      transparent 0,
+      transparent calc(100% / var(--rows, 8) - 0.5px),
+      rgba(0, 0, 0, 0.22) calc(100% / var(--rows, 8) - 0.5px),
+      rgba(0, 0, 0, 0.22) calc(100% / var(--rows, 8))
+    );
     background-size: 100% calc(100% / var(--rows, 8));
     mix-blend-mode: multiply;
     opacity: 0.55;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .px { transition: none; }
+    .px {
+      transition: none;
+    }
   }
 </style>
