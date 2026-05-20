@@ -116,6 +116,34 @@ footer {
     inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
 }
 
+.glass-inline {
+  display: inline;
+  background: rgba(10, 10, 15, 0.72);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--r-sm);
+  box-shadow: 
+    0 4px 16px 0 rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  color: var(--text-base);
+  padding: 0.18em 0.5em;
+  margin: 0;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
+}
+
+.glass-inline:hover {
+  border-color: rgba(250, 107, 6, 0.3);
+  box-shadow: 
+    0 6px 20px 0 rgba(250, 107, 6, 0.08),
+    0 4px 16px 0 rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+}
+
+
 /* ---------- typography ---------- */
 
 h1,

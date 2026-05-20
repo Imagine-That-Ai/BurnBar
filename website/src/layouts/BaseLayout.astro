@@ -586,5 +586,123 @@ const fullTitle =
         setInterval(updateInteractiveElements, 1200);
       })();
     </script>
+
+    <!-- chenglou/pretext-powered High-Performance Text Shrinkwrap Layout Engine -->
+    <script type="module">
+      import { prepare, layout } from 'https://esm.sh/@chenglou/pretext';
+
+      async function initPretextShrinkwrap() {
+        try {
+          await document.fonts.ready;
+        } catch (e) {
+          console.warn('Font loading check skipped:', e);
+        }
+
+        const elements = document.querySelectorAll(
+          '.glass-pane, .glass-pane--elevated, .surface-card, .ptcard, .pillar, .feat, .routing__card, .zonecard, .optins__list li, .steps li, .alt, .callout, .reqs__grid article, .qa__item'
+        );
+
+        function relayout() {
+          elements.forEach(el => {
+            // Skip containers with complex multi-column grids or tables
+            if (el.querySelector('table') || el.classList.contains('container') || el.classList.contains('zonepairs__grid')) return;
+
+            // Reset inline styles first
+            el.style.width = '';
+            el.style.maxWidth = '';
+
+            const text = el.textContent?.trim();
+            if (!text || text.length < 8) return;
+
+            const style = window.getComputedStyle(el);
+            
+            // Skip elements that display as grids/flexboxes holding large sub-elements
+            if (style.display === 'grid' && el.children.length > 3 && !el.classList.contains('qa__item')) return;
+
+            const fontSize = parseFloat(style.fontSize);
+            const fontFamily = style.fontFamily;
+            const font = `${style.fontWeight || '400'} ${fontSize}px ${fontFamily}`;
+            const lineHeight = parseFloat(style.lineHeight) || (fontSize * 1.5);
+
+            // Compute available parent width
+            const parent = el.parentElement;
+            if (!parent) return;
+            const parentStyle = window.getComputedStyle(parent);
+            const maxAvailWidth = parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight);
+
+            try {
+              const prepared = prepare(text, font);
+              const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+              const borderX = parseFloat(style.borderLeftWidth || '0') + parseFloat(style.borderRightWidth || '0');
+              const currentContentWidth = el.clientWidth - paddingX - borderX;
+
+              if (currentContentWidth <= 50) return;
+
+              // Find the line count at current width
+              const { lineCount: targetLines } = layout(prepared, currentContentWidth, lineHeight);
+
+              // Binary search to find the narrowest width that maintains the same line count
+              let lo = Math.min(100, currentContentWidth);
+              let hi = currentContentWidth;
+
+              if (targetLines <= 1) {
+                // For single-line boxes, find the absolute minimum width before it wraps
+                while (hi - lo > 1) {
+                  const mid = Math.round((lo + hi) / 2);
+                  const { lineCount } = layout(prepared, mid, lineHeight);
+                  if (lineCount <= 1) {
+                    hi = mid;
+                  } else {
+                    lo = mid;
+                  }
+                }
+              } else {
+                // For multi-line boxes, find the minimum width that yields exactly targetLines
+                while (hi - lo > 1) {
+                  const mid = Math.round((lo + hi) / 2);
+                  const { lineCount } = layout(prepared, mid, lineHeight);
+                  if (lineCount <= targetLines) {
+                    hi = mid;
+                  } else {
+                    lo = mid;
+                  }
+                }
+              }
+
+              // Apply the shrinkwrapped width
+              const tightWidth = hi + paddingX + borderX + 12; // 12px safety buffer
+              if (tightWidth < el.clientWidth && tightWidth > 120) {
+                el.style.maxWidth = `${tightWidth}px`;
+                el.style.width = '100%';
+              }
+            } catch (err) {
+              // Pretext measurements can fail if font shorthand format is unparseable
+              console.debug('Pretext measurement skipped for element:', el, err);
+            }
+          });
+        }
+
+        // Run shrinkwrap layout
+        relayout();
+
+        // Listen for window resizes
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+          clearTimeout(resizeTimeout);
+          resizeTimeout = setTimeout(relayout, 100);
+        });
+
+        // Re-run periodically to account for dynamic content loading
+        setInterval(relayout, 2000);
+      }
+
+      // Initialize
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPretextShrinkwrap);
+      } else {
+        initPretextShrinkwrap();
+      }
+    </script>
   </body>
 </html>
+
