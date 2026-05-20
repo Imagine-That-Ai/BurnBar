@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenBurnBar - Glass Console Theme</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-top: #08080a;
+      --bg-bottom: #160a05;
+      --fire: #ff4500;
+      --fire-glow: rgba(255, 69, 0, 0.4);
+      --glass: rgba(18, 18, 22, 0.7);
+      --border: rgba(255, 255, 255, 0.06);
+      --text: #ffffff;
+      --text-muted: rgba(255, 255, 255, 0.6);
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: linear-gradient(to bottom, var(--bg-top) 0%, var(--bg-top) 75%, var(--bg-bottom) 100%);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      overflow-x: hidden;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .furnace-glow {
+      position: fixed;
+      bottom: -150px;
+      left: 0;
+      width: 100%;
+      height: 350px;
+      background: radial-gradient(ellipse at bottom, var(--fire) 0%, transparent 75%);
+      filter: blur(50px);
+      z-index: 1;
+      opacity: 0.55;
+      pointer-events: none;
+      animation: pulsate 6s infinite alternate ease-in-out;
+    }
+
+    @keyframes pulsate {
+      0% { opacity: 0.45; transform: scaleY(1); }
+      100% { opacity: 0.65; transform: scaleY(1.15); }
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    header {
+      padding: 2.5rem 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5rem;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 700;
+      font-size: 1.3rem;
+    }
+
+    .logo-cube {
+      width: 24px;
+      height: 24px;
+      background: var(--text);
+      border-radius: 6px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      font-size: 0.9rem;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    .nav-link:hover, .nav-link.active {
+      color: var(--text);
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding-bottom: 6rem;
+    }
+
+    .eyebrow {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #ff6a00;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-h {
+      font-size: 4.8rem;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      line-height: 1.0;
+      margin-bottom: 2rem;
+    }
+
+    .hero-h span {
+      display: block;
+      background: linear-gradient(to bottom, #fff, #ff5500);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .lead {
+      font-size: 1.3rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto 3.5rem auto;
+      line-height: 1.6;
+    }
+
+    .ctas {
+      display: flex;
+      gap: 1.5rem;
+      justify-content: center;
+    }
+
+    .btn {
+      padding: 0.95rem 2.2rem;
+      border-radius: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .btn-white {
+      background: #fff;
+      color: #000;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+    }
+
+    .btn-white:hover {
+      transform: scale(1.03);
+      box-shadow: 0 15px 35px rgba(255, 69, 0, 0.2);
+    }
+
+    .btn-glass {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      color: var(--text);
+      backdrop-filter: blur(10px);
+    }
+
+    .btn-glass:hover {
+      background: rgba(255,255,255,0.07);
+      border-color: rgba(255,255,255,0.15);
+    }
+
+    /* Glass Panels */
+    .glass-card {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 3rem;
+      backdrop-filter: blur(35px);
+      -webkit-backdrop-filter: blur(35px);
+      box-shadow: 0 30px 60px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+      margin-bottom: 6rem;
+    }
+
+    /* Stat Band */
+    .stat-band {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2rem;
+      margin-bottom: 6rem;
+    }
+
+    .stat-card {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      text-align: center;
+      backdrop-filter: blur(20px);
+    }
+
+    .stat-num {
+      display: block;
+      font-size: 2.2rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-lbl {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Pillars */
+    .pillars-h {
+      text-align: center;
+      font-size: 2.8rem;
+      font-weight: 800;
+      margin-bottom: 4rem;
+    }
+
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+      margin-bottom: 6rem;
+    }
+
+    .pillar {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2.5rem;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .pillar:hover {
+      transform: translateY(-5px);
+      border-color: rgba(255, 69, 0, 0.2);
+      box-shadow: 0 20px 40px rgba(255, 69, 0, 0.08);
+    }
+
+    .pillar h3 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+
+    .pillar p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    /* Hermes */
+    .hermes {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 4rem;
+      align-items: center;
+      margin-bottom: 6rem;
+    }
+
+    .chat-console {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2rem;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+    }
+
+    .chat-bubble {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      padding: 1.25rem;
+      border-radius: 14px;
+      margin-top: 1rem;
+      line-height: 1.4;
+    }
+
+    /* Footer */
+    footer {
+      padding: 6rem 0;
+      text-align: center;
+    }
+
+    .footer-h {
+      font-size: 3.5rem;
+      font-weight: 800;
+      margin-bottom: 2rem;
+    }
+
+    @media (max-width: 900px) {
+      .hero-h { font-size: 3.2rem; }
+      .stat-band, .pillars-grid, .hermes { grid-template-columns: 1fr; gap: 2rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="furnace-glow"></div>
+
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-cube"></div>
+        <span>OpenBurnBar</span>
+      </div>
+      <nav class="nav-links">
+        <a href="molten-token-rain.html" class="nav-link">Molten Rain</a>
+        <a href="quota-rings-orbits.html" class="nav-link">Quota Rings</a>
+        <a href="#" class="nav-link active">Glass Console</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="eyebrow">macOS Beta Now Available</div>
+      <h1 class="hero-h">Watch your AI agents. <span>Before the bill.</span></h1>
+      <p class="lead">OpenBurnBar is a local-first developer tool that watches the AI coding agents you already use — Claude Code, Cursor, Codex, and more.</p>
+      <div class="ctas">
+        <a href="#" class="btn btn-white">Download for macOS</a>
+        <a href="#" class="btn btn-glass">Privacy Policy</a>
+      </div>
+    </section>
+
+    <!-- Stat Band inside Glass Elements -->
+    <section class="stat-band">
+      <div class="stat-card"><span class="stat-num">11</span><span class="stat-lbl">Providers</span></div>
+      <div class="stat-card"><span class="stat-num">3</span><span class="stat-lbl">Labels</span></div>
+      <div class="stat-card"><span class="stat-num">0</span><span class="stat-lbl">Telemetry</span></div>
+      <div class="stat-card"><span class="stat-num">∞</span><span class="stat-lbl">Offline Ready</span></div>
+    </section>
+
+    <section class="pillars-section">
+      <h2 class="pillars-h">A developer tool, not a SaaS dashboard.</h2>
+      <div class="pillars-grid">
+        <div class="pillar">
+          <h3>Local-first by default.</h3>
+          <p>The canonical store is a local SQLite database, run by a local daemon under your user account. Everything stays on device.</p>
+        </div>
+        <div class="pillar">
+          <h3>Honest about confidence.</h3>
+          <p>We don't pretend to know what the vendor doesn't tell us. Accurate categorization based on actual log files.</p>
+        </div>
+        <div class="pillar">
+          <h3>Multi-agent ready.</h3>
+          <p>A single local daemon owns routing, quota, and retrieval. Integrated cleanly across all coding tools.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="hermes">
+      <div class="chat-console">
+        <div style="color: var(--text-muted);">&gt; What's about to roll over?</div>
+        <div class="chat-bubble">
+          Your <strong>Claude Code · 5h window</strong> is approaching limits (currently at 80%). The top billing draw is coming from active runs on <em>ledger-rebuild</em>.
+        </div>
+      </div>
+      <div>
+        <h2 style="font-size: 2.8rem; font-weight: 800; margin-bottom: 1.5rem; letter-spacing: -0.04em;">A messenger for your own data.</h2>
+        <p class="lead" style="margin: 0; font-size: 1.15rem;">Ask Hermes in plain English for instant database summaries. The local model checks your logs and replies directly in the chat panel.</p>
+      </div>
+    </section>
+
+    <footer>
+      <h2 class="footer-h">Watch the burn. Keep building.</h2>
+      <div class="ctas">
+        <a href="#" class="btn btn-white">Download Now</a>
+        <a href="#" class="btn btn-glass">GitHub</a>
+      </div>
+    </footer>
+  </div>
+
+</body>
+</html>

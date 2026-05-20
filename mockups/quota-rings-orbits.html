@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenBurnBar - Quota Rings Theme</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #05050a;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.4);
+      --card-bg: rgba(10, 10, 20, 0.6);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --mono: 'Geist Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Geist', sans-serif;
+      overflow-x: hidden;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    #orbitCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    header {
+      padding: 2rem 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6rem;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 800;
+      font-size: 1.4rem;
+      letter-spacing: -0.04em;
+    }
+
+    .logo-ring {
+      width: 28px;
+      height: 28px;
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      position: relative;
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    .logo-ring::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 6px;
+      height: 6px;
+      background: #fff;
+      border-radius: 50%;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    .nav-link:hover, .nav-link.active {
+      color: var(--text);
+    }
+
+    /* Hero */
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      padding-bottom: 8rem;
+      align-items: center;
+    }
+
+    .eyebrow {
+      font-family: var(--mono);
+      color: var(--accent);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 1.5rem;
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 999px;
+    }
+
+    .hero-h {
+      font-size: 4.5rem;
+      font-weight: 800;
+      line-height: 1.0;
+      letter-spacing: -0.05em;
+      margin-bottom: 2rem;
+    }
+
+    .hero-h span {
+      display: block;
+      color: var(--text-muted);
+    }
+
+    .lead {
+      font-size: 1.2rem;
+      color: #94a3b8;
+      margin-bottom: 3rem;
+      max-width: 45ch;
+    }
+
+    .ctas {
+      display: flex;
+      gap: 1.25rem;
+    }
+
+    .btn {
+      padding: 1rem 2rem;
+      border-radius: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 10px 20px rgba(99, 102, 241, 0.2);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 30px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn-secondary {
+      border: 1px solid var(--border);
+      color: var(--text);
+      backdrop-filter: blur(10px);
+    }
+
+    .btn-secondary:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Stat Band */
+    .band {
+      display: flex;
+      justify-content: space-between;
+      padding: 3rem 0;
+      border-block: 1px solid var(--border);
+      margin-bottom: 8rem;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-num {
+      display: block;
+      font-size: 2.5rem;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-lbl {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Pillars */
+    .pillars-h {
+      text-align: center;
+      font-size: 2.5rem;
+      font-weight: 800;
+      margin-bottom: 1rem;
+    }
+
+    .pillars-sub {
+      text-align: center;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto 4rem auto;
+    }
+
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2.5rem;
+      margin-bottom: 8rem;
+    }
+
+    .pillar {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 3rem 2rem;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .pillar:hover {
+      border-color: var(--accent);
+      transform: scale(1.02);
+    }
+
+    .pillar-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 2rem auto;
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: var(--accent);
+    }
+
+    /* Hermes */
+    .hermes {
+      background: radial-gradient(circle at 0% 50%, rgba(99, 102, 241, 0.05) 0%, transparent 50%);
+      padding: 8rem 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .hermes-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6rem;
+      align-items: center;
+    }
+
+    .chat-frame {
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      padding: 2rem;
+      backdrop-filter: blur(20px);
+    }
+
+    .chat-msg {
+      margin-bottom: 2rem;
+    }
+
+    .msg-user { text-align: right; color: var(--accent); font-weight: 600; margin-bottom: 0.5rem; }
+    .msg-bot { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 1.5rem; border-radius: 16px; font-size: 0.95rem; }
+
+    .atom {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-family: var(--mono);
+      margin: 0 2px;
+    }
+
+    /* Footer */
+    footer {
+      padding: 8rem 0 4rem 0;
+      text-align: center;
+    }
+
+    .footer-h { font-size: 4rem; font-weight: 800; margin-bottom: 2rem; }
+
+    @media (max-width: 900px) {
+      .hero, .band, .pillars-grid, .hermes-grid { grid-template-columns: 1fr; gap: 3rem; text-align: center; }
+      .hero-h { font-size: 3.5rem; }
+      .band { flex-direction: column; gap: 2rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="orbitCanvas"></canvas>
+
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-ring"></div>
+        <span>OpenBurnBar</span>
+      </div>
+      <nav class="nav-links">
+        <a href="molten-token-rain.html" class="nav-link">Molten Rain</a>
+        <a href="#" class="nav-link active">Quota Rings</a>
+        <a href="glass-console-furnace.html" class="nav-link">Glass Console</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Public Beta · v1.2.0</div>
+        <h1 class="hero-h">Watch your AI agents. <span>Before the bill.</span></h1>
+        <p class="lead">OpenBurnBar is a local-first developer tool that watches the AI coding agents you already use and gives you a live read on tokens burned, dollars spent, and quota left.</p>
+        <div class="ctas">
+          <a href="#" class="btn btn-primary">Download for macOS</a>
+          <a href="#" class="btn btn-secondary">Privacy Model</a>
+        </div>
+      </div>
+
+      <!-- Theme Visual: Central Orbiting Hub -->
+      <div style="position: relative; width: 100%; aspect-ratio: 1; display: flex; justify-content: center; align-items: center;">
+        <div style="width: 120px; height: 120px; border-radius: 50%; border: 1px solid var(--accent); box-shadow: 0 0 30px var(--accent-glow); display: flex; justify-content: center; align-items: center; font-family: var(--mono); font-size: 0.8rem; color: var(--accent);">DAEMON</div>
+        <!-- Orbit indicators -->
+        <div style="position: absolute; width: 220px; height: 220px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 50%;"></div>
+        <div style="position: absolute; width: 320px; height: 320px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 50%;"></div>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="stat"><span class="stat-num">11</span><span class="stat-lbl">Providers</span></div>
+      <div class="stat"><span class="stat-num">3</span><span class="stat-lbl">Labels</span></div>
+      <div class="stat"><span class="stat-num">0</span><span class="stat-lbl">Telemetry</span></div>
+      <div class="stat"><span class="stat-num">∞</span><span class="stat-lbl">Offline</span></div>
+    </section>
+
+    <section class="pillars">
+      <h2 class="pillars-h">A developer tool, not a SaaS dashboard.</h2>
+      <p class="pillars-sub">Three things shape every decision in the product.</p>
+      <div class="pillars-grid">
+        <div class="pillar">
+          <div class="pillar-icon">01</div>
+          <h3>Local-first by default.</h3>
+          <p>The canonical store is a local SQLite database, run by a local daemon. Everything works offline.</p>
+        </div>
+        <div class="pillar">
+          <div class="pillar-icon">02</div>
+          <h3>Honest about confidence.</h3>
+          <p>We don't pretend to know what the vendor doesn't tell us. Labels are exact, estimated, or unavailable.</p>
+        </div>
+        <div class="pillar">
+          <div class="pillar-icon">03</div>
+          <h3>Built for multi-agent.</h3>
+          <p>Every surface speaks to the same local daemon. One source of truth, many windows in.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="hermes">
+      <div class="hermes-grid">
+        <div class="chat-frame">
+          <div class="chat-msg"><div class="msg-user">What's about to roll over?</div><div class="msg-bot">Your <span class="atom">Claude Code · 5h window</span> hits <span style="color: #fbbf24;">80%</span> at the current rate by <span style="font-weight: 700;">3:47 pm</span>.</div></div>
+          <div class="chat-msg"><div class="msg-user">Show the burn for this week.</div><div class="msg-bot">Mon &rarr; Sat · <span style="color: var(--accent); font-weight: 800;">$87.34</span> total · trending +12% wow.</div></div>
+        </div>
+        <div>
+          <h2 style="font-size: 3rem; font-weight: 800; margin-bottom: 2rem; letter-spacing: -0.04em;">A messenger for your own data.</h2>
+          <p class="lead">Ask, in plain language, what your week looked like. Hermes pulls context from your local SQLite — sessions, providers, models, tools — and answers right there.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <h2 class="footer-h">Watch the burn.<br><span style="color: var(--accent);">Keep building.</span></h2>
+      <div class="ctas" style="justify-content: center;">
+        <a href="#" class="btn btn-primary">Download for macOS</a>
+        <a href="#" class="btn btn-secondary">GitHub</a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('orbitCanvas');
+    const ctx = canvas.getContext('2d');
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const rings = [
+      { r: 120, s: 0.002, a: 0, c: 'rgba(99, 102, 241, 0.4)' },
+      { r: 200, s: -0.001, a: 1, c: 'rgba(99, 102, 241, 0.2)' },
+      { r: 280, s: 0.0005, a: 2, c: 'rgba(99, 102, 241, 0.1)' }
+    ];
+
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+
+      rings.forEach(ring => {
+        ctx.beginPath();
+        ctx.arc(cx, cy, ring.r, 0, Math.PI * 2);
+        ctx.strokeStyle = ring.c;
+        ctx.setLineDash([10, 20]);
+        ctx.stroke();
+
+        ring.a += ring.s;
+        const mx = cx + Math.cos(ring.a) * ring.r;
+        const my = cy + Math.sin(ring.a) * ring.r;
+        ctx.beginPath();
+        ctx.arc(mx, my, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+      });
+
+      requestAnimationFrame(animate);
+    }
+    animate();
+  </script>
+</body>
+</html>

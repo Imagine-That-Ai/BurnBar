@@ -9,7 +9,7 @@ import { SITE } from "@data/site";
   description="How OpenBurnBar handles your data — local-first by default, no telemetry, optional cloud sync, optional iCloud mirror. Detailed architecture diagram and threat model."
 >
   <section class="pagehead">
-    <div class="container">
+    <div class="container pagehead__inner glass-pane">
       <span class="eyebrow eyebrow--ember">Privacy &amp; trust</span>
       <h1 class="pagehead__h">By default, OpenBurnBar collects nothing.</h1>
       <p class="lead">
@@ -40,7 +40,7 @@ import { SITE } from "@data/site";
   <section class="zonepairs">
     <div class="container container--wide">
       <div class="zonepairs__grid">
-        <article class="zonecard zonecard--a">
+        <article class="zonecard zonecard--a glass-pane">
           <header>
             <span class="tag tag--exact tag--plain mono">Zone A · Your Mac</span>
             <h3>Canonical. Works offline.</h3>
@@ -58,7 +58,7 @@ import { SITE } from "@data/site";
           </p>
         </article>
 
-        <article class="zonecard zonecard--b">
+        <article class="zonecard zonecard--b glass-pane">
           <header>
             <span class="tag tag--mercury tag--plain mono">Zone B · Apple iCloud</span>
             <h3>Opt-in · your Apple ID.</h3>
@@ -71,7 +71,7 @@ import { SITE } from "@data/site";
           </ul>
         </article>
 
-        <article class="zonecard zonecard--c">
+        <article class="zonecard zonecard--c glass-pane glass-pane--elevated">
           <header>
             <span class="tag tag--ember tag--plain mono">Zone C · Firebase &amp; GCP</span>
             <h3>Opt-in · OpenBurnBar-operated.</h3>
@@ -115,7 +115,7 @@ import { SITE } from "@data/site";
       </header>
 
       <ul class="optins__list">
-        <li>
+        <li class="glass-pane">
           <h3>Firebase sync</h3>
           <p>
             Off by default. Enable in <em>Settings → Account</em>. Even when on,
@@ -123,7 +123,7 @@ import { SITE } from "@data/site";
             Conversation metadata backup, or Session-log sync.
           </p>
         </li>
-        <li>
+        <li class="glass-pane">
           <h3>iCloud session-log mirror</h3>
           <p>
             Off by default. Uses your Apple ID and iCloud Drive; deletions in
@@ -131,7 +131,7 @@ import { SITE } from "@data/site";
             owns sync semantics.
           </p>
         </li>
-        <li>
+        <li class="glass-pane">
           <h3>Hosted provider credentials</h3>
           <p>
             Off by default. When used, the secret value is encrypted and stored
@@ -139,7 +139,7 @@ import { SITE } from "@data/site";
             label. Remove the account in OpenBurnBar to delete it.
           </p>
         </li>
-        <li>
+        <li class="glass-pane">
           <h3>Hermes Remote Relay (paid)</h3>
           <p>
             Off by default; paid entitlement required to activate. Frames are
@@ -147,7 +147,7 @@ import { SITE } from "@data/site";
             never receives plaintext.
           </p>
         </li>
-        <li>
+        <li class="glass-pane">
           <h3>Sentry diagnostics</h3>
           <p>
             Off by default. When on, anonymized crash reports are sent to Sentry.
@@ -184,7 +184,7 @@ import { SITE } from "@data/site";
   </section>
 
   <section class="endcta endcta--inline">
-    <div class="container container--narrow">
+    <div class="container container--narrow endcta__inner glass-pane">
       <h2>Read it in code, not just in copy.</h2>
       <p class="lead">
         Every promise on this page points at a file you can read — the threat
@@ -201,6 +201,12 @@ import { SITE } from "@data/site";
 
 <style>
   .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead__inner {
+    padding: var(--s-7) var(--s-6);
+    border-radius: var(--r-xl);
+    max-width: 960px;
+    margin: 0 auto;
+  }
   .pagehead__h { margin-top: var(--s-3); max-width: 22ch; }
   .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
   .zones { padding-block: var(--s-7); border-top: 1px solid var(--ink-line); }
@@ -213,9 +219,13 @@ import { SITE } from "@data/site";
   }
   .zonecard {
     padding: var(--s-5);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-4);
-    background: var(--ink-base);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
     display: grid;
     gap: var(--s-3);
   }
@@ -249,9 +259,9 @@ import { SITE } from "@data/site";
   .zonecard code {
     font-size: 0.86em;
   }
-  .zonecard--a { border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line)); }
-  .zonecard--b { border-color: color-mix(in oklab, var(--mercury-bright) 25%, var(--ink-line)); }
-  .zonecard--c { border-color: color-mix(in oklab, var(--ember-core) 22%, var(--ink-line)); border-style: dashed; }
+  .zonecard--a { border-color: color-mix(in oklab, var(--ember-core) 30%, rgba(255, 255, 255, 0.08)); border-top-color: color-mix(in oklab, var(--ember-core) 45%, rgba(255, 255, 255, 0.16)); }
+  .zonecard--b { border-color: color-mix(in oklab, var(--mercury-bright) 25%, rgba(255, 255, 255, 0.08)); border-top-color: color-mix(in oklab, var(--mercury-bright) 38%, rgba(255, 255, 255, 0.16)); }
+  .zonecard--c { border-color: color-mix(in oklab, var(--ember-core) 22%, rgba(255, 255, 255, 0.12)); border-top-color: color-mix(in oklab, var(--ember-core) 35%, rgba(255, 255, 255, 0.22)); border-style: dashed; }
 
   @media (max-width: 1080px) {
     .zonepairs__grid { grid-template-columns: 1fr; }
@@ -266,25 +276,37 @@ import { SITE } from "@data/site";
     gap: var(--s-3);
   }
   .never__list li, .cdelete__list li {
-    padding-left: 1em;
+    padding: var(--s-3) var(--s-4) var(--s-3) 2.2em;
     position: relative;
     color: var(--text-base);
     line-height: 1.6;
+    background: rgba(10, 10, 15, 0.4);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--r-3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   }
   .never__list li::before, .cdelete__list li::before {
-    content: "—";
+    content: "✕";
     position: absolute;
-    left: 0;
-    color: var(--ember-bright);
+    left: var(--s-4);
+    color: var(--status-burn);
+    font-family: var(--font-mono);
   }
   .never__list strong, .cdelete__list strong { color: var(--text-bright); }
 
   .optins__list { display: grid; gap: var(--s-5); }
   .optins__list li {
     padding: var(--s-5);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-3);
-    background: var(--ink-base);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
   }
   .optins__list h3 {
     font-family: var(--font-display);
@@ -313,4 +335,11 @@ import { SITE } from "@data/site";
   }
   .endcta--inline h2 { margin-bottom: var(--s-3); }
   .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta__inner {
+    text-align: center;
+    display: grid;
+    gap: var(--s-5);
+    justify-items: center;
+    padding: var(--s-7) var(--s-6);
+  }
 </style>

@@ -8,7 +8,7 @@ import { SITE } from "@data/site";
   description="OpenBurnBar pricing — free local-first tier plus an optional Hosted Quota Sync subscription. $4.99/month, billed by Apple, cancel anytime."
 >
   <section class="pagehead">
-    <div class="container">
+    <div class="container pagehead__inner glass-pane">
       <span class="eyebrow eyebrow--ember">Pricing</span>
       <h1 class="pagehead__h">Free where it should be. Paid where it costs us money.</h1>
       <p class="lead">
@@ -23,7 +23,7 @@ import { SITE } from "@data/site";
     <div class="container container--wide">
       <div class="plans__grid">
         <!-- FREE -->
-        <article class="plan">
+        <article class="plan glass-pane">
           <header class="plan__head">
             <span class="tag tag--exact tag--plain mono">Free, local-first</span>
             <h2 class="plan__name">Local</h2>
@@ -53,7 +53,7 @@ import { SITE } from "@data/site";
         </article>
 
         <!-- PAID -->
-        <article class="plan plan--ember">
+        <article class="plan plan--ember glass-pane glass-pane--elevated">
           <header class="plan__head">
             <span class="tag tag--ember tag--plain mono">OpenBurnBar Cloud</span>
             <h2 class="plan__name">Cloud</h2>
@@ -158,7 +158,7 @@ import { SITE } from "@data/site";
   </section>
 
   <section class="endcta endcta--inline">
-    <div class="container container--narrow">
+    <div class="container container--narrow endcta__inner glass-pane">
       <h2>Start with the free product. Upgrade only if it earns it.</h2>
       <div class="endcta__ctas">
         <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
@@ -170,6 +170,12 @@ import { SITE } from "@data/site";
 
 <style>
   .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead__inner {
+    padding: var(--s-7) var(--s-6);
+    border-radius: var(--r-xl);
+    max-width: 960px;
+    margin: 0 auto;
+  }
   .pagehead__h { margin-top: var(--s-3); max-width: 22ch; }
   .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
 
@@ -177,17 +183,22 @@ import { SITE } from "@data/site";
   .plans__grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-5); }
   .plan {
     padding: var(--s-6);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-4);
-    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
     display: grid;
     gap: var(--s-5);
     align-content: start;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
   .plan--ember {
-    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
-    background: linear-gradient(180deg, rgba(255, 106, 26, 0.06) 0%, var(--ink-base) 100%);
-    box-shadow: 0 0 60px -20px rgba(255, 106, 26, 0.4);
+    border-color: color-mix(in oklab, var(--ember-core) 30%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--ember-core) 45%, rgba(255, 255, 255, 0.16));
+    background: rgba(20, 12, 10, 0.82);
+    box-shadow: 0 0 60px -20px rgba(255, 106, 26, 0.3), 0 12px 40px 0 rgba(0, 0, 0, 0.55);
   }
   .plan__head { display: grid; gap: var(--s-3); }
   .plan__name {
@@ -242,8 +253,14 @@ import { SITE } from "@data/site";
     display: grid;
     grid-template-columns: 1fr 1.5fr;
     gap: var(--s-5);
-    padding-bottom: var(--s-4);
-    border-bottom: 1px solid var(--ink-line-soft);
+    padding: var(--s-4) var(--s-5);
+    background: rgba(10, 10, 15, 0.4);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--r-3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   }
   .defs dt {
     font-family: var(--font-display);
@@ -265,4 +282,11 @@ import { SITE } from "@data/site";
   }
   .endcta--inline h2 { margin-bottom: var(--s-3); }
   .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta__inner {
+    text-align: center;
+    display: grid;
+    gap: var(--s-5);
+    justify-items: center;
+    padding: var(--s-7) var(--s-6);
+  }
 </style>

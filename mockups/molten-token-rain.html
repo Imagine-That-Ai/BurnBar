@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenBurnBar - Molten Token Rain Theme</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&family=Geist:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #030206;
+      --ember: #ff4500;
+      --ember-glow: rgba(255, 69, 0, 0.4);
+      --indigo: #6366f1;
+      --indigo-glow: rgba(99, 102, 241, 0.15);
+      --border: rgba(255, 69, 0, 0.15);
+      --card-bg: rgba(8, 6, 15, 0.75);
+      --text: #f3f4f6;
+      --text-muted: #8b8275;
+      --mono: 'Geist Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Geist', sans-serif;
+      overflow-x: hidden;
+      min-height: 100vh;
+      position: relative;
+      line-height: 1.5;
+    }
+
+    /* Falling Particles Canvas */
+    #bgCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .ambient-glow {
+      position: fixed;
+      bottom: -150px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80vw;
+      height: 400px;
+      background: radial-gradient(circle, rgba(255, 69, 0, 0.12) 0%, transparent 75%);
+      z-index: 2;
+      pointer-events: none;
+      filter: blur(50px);
+    }
+
+    .ambient-glow-top {
+      position: fixed;
+      top: -200px;
+      right: 10%;
+      width: 600px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    /* Container */
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Header styling */
+    header {
+      padding: 2rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4rem;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--mono);
+      font-weight: 700;
+      letter-spacing: -0.05em;
+    }
+
+    .logo-box {
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, var(--ember), #ffa500);
+      border-radius: 4px;
+      box-shadow: 0 0 15px var(--ember-glow);
+    }
+
+    .logo-text {
+      font-size: 1.25rem;
+      background: linear-gradient(to right, #fff, var(--ember));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1.5rem;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    .nav-link:hover, .nav-link.active {
+      color: var(--text);
+    }
+
+    /* Hero Section */
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 4rem;
+      padding: 2rem 0 6rem 0;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .eyebrow {
+      font-family: var(--mono);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 1.5rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .eyebrow span.active-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--ember);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--ember);
+    }
+
+    .hero-h {
+      font-size: 4rem;
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-h-second {
+      display: block;
+      color: var(--ember);
+      font-style: italic;
+      font-weight: 300;
+      text-shadow: 0 0 20px rgba(255, 69, 0, 0.1);
+    }
+
+    .lead {
+      font-size: 1.15rem;
+      color: #d1d5db;
+      line-height: 1.6;
+      margin-bottom: 2.5rem;
+      max-width: 60ch;
+    }
+
+    .lead strong {
+      color: #fff;
+    }
+
+    .ctas {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .btn {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      padding: 0.85rem 1.75rem;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-ember {
+      background: linear-gradient(135deg, var(--ember), #ff8800);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(255, 69, 0, 0.2);
+    }
+
+    .btn-ember:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 30px rgba(255, 69, 0, 0.4);
+    }
+
+    .btn-ghost {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .btn-ghost:hover {
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .attest {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 1.5rem;
+    }
+
+    .attest span {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .attest span::before {
+      content: '●';
+      color: var(--ember);
+      font-size: 0.6rem;
+    }
+
+    /* Terminal Interface (Hero Right) */
+    .terminal-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      font-family: var(--mono);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      position: relative;
+    }
+
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1rem;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .terminal-dots {
+      display: flex;
+      gap: 0.4rem;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .terminal-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      font-size: 0.85rem;
+      border-bottom: 1px solid rgba(255,255,255,0.02);
+    }
+
+    .token-gl { color: var(--ember); }
+    .token-num { color: #38bdf8; font-weight: 600; }
+
+    /* Stat Band */
+    .stat-band {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 2rem;
+      padding: 4rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .stat-num {
+      font-size: 3rem;
+      font-family: var(--mono);
+      font-weight: 700;
+      line-height: 1;
+      color: #fff;
+    }
+
+    .stat-num .sym {
+      color: var(--ember);
+    }
+
+    .stat-lbl {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      line-height: 1.4;
+      max-width: 20ch;
+    }
+
+    /* Pillars */
+    .pillars {
+      padding: 6rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sec-head {
+      margin-bottom: 4rem;
+      max-width: 700px;
+    }
+
+    .sec-head h2 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+    }
+
+    .pillar-card {
+      background: var(--card-bg);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-left: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 2.5rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .pillar-card:hover {
+      border-left-color: var(--ember);
+      background: rgba(12, 8, 22, 0.8);
+      transform: translateY(-2px);
+    }
+
+    .pillar-num {
+      font-family: var(--mono);
+      color: var(--ember);
+      font-size: 0.85rem;
+      letter-spacing: 0.1em;
+    }
+
+    .pillar-card h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+
+    .pillar-card p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    /* Fire Hydrant Section */
+    .hydrant {
+      padding: 6rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hydrant-layout {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 4rem;
+      align-items: center;
+    }
+
+    .router-display {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .router-node {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+
+    .router-node.active {
+      border-color: var(--ember);
+      box-shadow: 0 0 15px rgba(255, 69, 0, 0.15);
+      background: rgba(255, 69, 0, 0.03);
+    }
+
+    .node-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .status-light {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+
+    .status-light.active {
+      box-shadow: 0 0 10px #10b981;
+    }
+
+    /* Hermes Chat */
+    .hermes {
+      padding: 6rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hermes-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+    }
+
+    .chat-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      height: 380px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: var(--mono);
+    }
+
+    .chat-header {
+      background: rgba(0,0,0,0.2);
+      padding: 1rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .chat-messages {
+      flex-grow: 1;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      overflow-y: auto;
+      font-size: 0.85rem;
+    }
+
+    .msg {
+      max-width: 80%;
+      line-height: 1.4;
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      color: var(--ember);
+    }
+
+    .msg.hermes {
+      align-self: flex-start;
+      color: #fff;
+    }
+
+    .chip {
+      background: rgba(255, 69, 0, 0.15);
+      border: 1px solid rgba(255, 69, 0, 0.3);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+
+    .msg-avatar {
+      color: var(--ember);
+      font-weight: bold;
+      margin-right: 0.5rem;
+    }
+
+    /* Footer CTA */
+    .footer-cta {
+      padding: 8rem 0;
+      text-align: center;
+    }
+
+    .footer-cta h2 {
+      font-size: 3.5rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-cta span.highlight {
+      color: var(--ember);
+      font-style: italic;
+      font-weight: 300;
+    }
+
+    @media (max-width: 900px) {
+      .hero, .stat-band, .pillars-grid, .hydrant-layout, .hermes-grid {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+      }
+      .hero-h {
+        font-size: 3rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Background canvas for Falling Token Fragments -->
+  <canvas id="bgCanvas"></canvas>
+  <div class="ambient-glow"></div>
+  <div class="ambient-glow-top"></div>
+
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-box"></div>
+        <span class="logo-text">OpenBurnBar</span>
+      </div>
+      <div class="nav-links">
+        <a href="#" class="nav-link active">Molten Rain</a>
+        <a href="quota-rings-orbits.html" class="nav-link">Quota Rings</a>
+        <a href="glass-console-furnace.html" class="nav-link">Glass Console</a>
+      </div>
+    </header>
+
+    <!-- HERO -->
+    <section class="hero">
+      <div>
+        <div class="eyebrow">
+          <span class="active-dot"></span>
+          <span>v1.2.0</span>
+          <span>·</span>
+          <span>macOS public beta</span>
+          <span>·</span>
+          <span>iOS in App Store review</span>
+        </div>
+        <h1 class="hero-h">
+          Watch your AI agents.
+          <span class="hero-h-second">Before the bill.</span>
+        </h1>
+        <p class="lead">
+          OpenBurnBar is a <strong>local-first developer tool</strong> that watches the AI coding agents you already use — Claude Code, Codex, Cursor, Copilot, Factory, MiniMax, and more — and gives you a live read on tokens burned, dollars spent, and quota left, across all of them, on your machine.
+        </p>
+        <div class="ctas">
+          <a class="btn btn-ember" href="#">
+            Download for macOS &rarr;
+          </a>
+          <a class="btn btn-ghost" href="#">
+            Read the privacy model
+          </a>
+        </div>
+        <div class="attest">
+          <span>No telemetry by default</span>
+          <span>No account required</span>
+          <span>Reads logs, not your API keys</span>
+        </div>
+      </div>
+
+      <!-- Theme Specific Right Side Widget (Molten stream) -->
+      <div class="terminal-card">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+          <span>token_leak_monitor · live</span>
+        </div>
+        <div class="terminal-row">
+          <span>&gt; claude-code/ledger-rebuild</span>
+          <span class="token-num">42,503 tok</span>
+        </div>
+        <div class="terminal-row">
+          <span>&gt; cursor/inline-refactor</span>
+          <span class="token-num">12,429 tok</span>
+        </div>
+        <div class="terminal-row">
+          <span>&gt; status/failover-gate</span>
+          <span style="color: #ef4444;">err_429</span>
+        </div>
+        <div class="terminal-row">
+          <span>&gt; gpt-4o-mini/batch-crawl</span>
+          <span class="token-num">128k ctx</span>
+        </div>
+        <div class="terminal-row" style="border: none;">
+          <span>&gt; local_daemon/sqlite_write</span>
+          <span style="color: #10b981;">ok</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- STAT BAND -->
+    <section class="stat-band">
+      <div class="stat-item">
+        <span class="stat-num">11</span>
+        <span class="stat-lbl">Providers with real usage data today</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">3</span>
+        <span class="stat-lbl">Honest confidence labels — exact · est · unavail</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">0</span>
+        <span class="stat-lbl">Telemetry, analytics, or crash reports out of the box</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num"><span class="sym">∞</span></span>
+        <span class="stat-lbl">Works offline. The whole product, locally.</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">7<span class="sym">·</span>2</span>
+        <span class="stat-lbl">Upstream providers routed across format pools</span>
+      </div>
+    </section>
+
+    <!-- PILLARS -->
+    <section class="pillars">
+      <header class="sec-head">
+        <span class="eyebrow" style="color: var(--ember);">Three commitments</span>
+        <h2>A developer tool, not a SaaS dashboard.</h2>
+        <p style="color: var(--text-muted); font-size: 1.1rem;">
+          OpenBurnBar is built for the kind of developer who has three agents open in parallel and only checks the bill at the end of the month.
+        </p>
+      </header>
+      <div class="pillars-grid">
+        <div class="pillar-card">
+          <span class="pillar-num">01 / SECURITY</span>
+          <h3>Local-first by default.</h3>
+          <p>The canonical store is a local SQLite database, run by a local daemon under your user account. Firebase is an optional replication plane.</p>
+        </div>
+        <div class="pillar-card">
+          <span class="pillar-num">02 / HONESTY</span>
+          <h3>Honest about confidence.</h3>
+          <p>Every provider row carries one of three labels — exact, estimated, or unavailable. We don't pretend to know what the vendor doesn't tell us.</p>
+        </div>
+        <div class="pillar-card">
+          <span class="pillar-num">03 / REALITY</span>
+          <h3>Built for multi-agent reality.</h3>
+          <p>A single daemon owns routing, quota, retrieval, projects, and missions. Every surface speaks to the same local daemon.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- FIRE HYDRANT -->
+    <section class="hydrant">
+      <div class="hydrant-layout">
+        <div>
+          <span class="eyebrow" style="color: var(--ember);">Same model, every time</span>
+          <h2 style="font-size: 2.5rem; font-weight: 800; margin-top: 1rem; margin-bottom: 1.5rem;">
+            Same model.<br>
+            <span style="color: var(--ember); font-style: italic; font-weight: 300;">Different account.</span>
+          </h2>
+          <p class="lead" style="font-size: 1.05rem; color: var(--text-muted);">
+            BurnBar's local gateway preserves the exact model you asked for. Your <span class="chip">gpt-5.5</span> stays invariant. The router picks from accounts in your library that already carry that model — and if none survive, it returns a structured 503 instead of a silent substitute.
+          </p>
+        </div>
+
+        <div class="router-display">
+          <div class="router-node active">
+            <span>OpenAI API (Primary)</span>
+            <div class="node-status"><span class="status-light active"></span><span>Active</span></div>
+          </div>
+          <div class="router-node">
+            <span>Anthropic API (Failover Account)</span>
+            <div class="node-status"><span class="status-light" style="background: var(--text-muted);"></span><span>Standby</span></div>
+          </div>
+          <div class="router-node">
+            <span>Gemini Pro Failover Pool</span>
+            <div class="node-status"><span class="status-light" style="background: var(--text-muted);"></span><span>Standby</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HERMES TEASER -->
+    <section class="hermes">
+      <div class="hermes-grid">
+        <div class="chat-box">
+          <div class="chat-header">
+            <span>☿ hermes_assistant_v1.0</span>
+            <span>sqlite_connected</span>
+          </div>
+          <div class="chat-messages">
+            <div class="msg user">
+              &gt; What's about to roll over?
+            </div>
+            <div class="msg hermes">
+              <span class="msg-avatar">☿</span> Your <span class="chip">Claude Code · 5h window</span> hits <span style="color: var(--ember);">80%</span> at the current rate by <span style="color: var(--ember);">3:47 pm</span>. Top draw is <span class="chip">opus-4-7</span> on <span class="chip">ledger-rebuild</span>.
+            </div>
+            <div class="msg user">
+              &gt; Show the burn for this week.
+            </div>
+            <div class="msg hermes">
+              <span class="msg-avatar">☿</span> Mon &rarr; Sat · $87.34 total · trending +12% wow.
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <span class="eyebrow" style="color: var(--ember);">Hermes Chat</span>
+          <h2 style="font-size: 2.5rem; font-weight: 800; margin-top: 1rem; margin-bottom: 1.5rem;">
+            A messenger for your own data.
+          </h2>
+          <p class="lead" style="font-size: 1.05rem; color: var(--text-muted); line-height: 1.6;">
+            Ask, in plain language, what your week looked like. What model burned the most cache. Which window is about to roll over. Hermes pulls context from your local SQLite — your sessions, providers, models, tools — and answers right there, in chat.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- END CTA -->
+    <section class="footer-cta">
+      <h2>Watch the burn. <span class="highlight">Keep building.</span></h2>
+      <p style="color: var(--text-muted); margin-bottom: 2.5rem; font-size: 1.1rem;">
+        OpenBurnBar is MIT-licensed, signed and notarized for macOS, and ready to run today.
+      </p>
+      <div class="ctas" style="justify-content: center;">
+        <a class="btn btn-ember" href="#">Download for macOS &rarr;</a>
+        <a class="btn btn-ghost" href="#">View on GitHub</a>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('bgCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const glyphs = ['tok', 'ctx', '$', '429', '503', 'run', 'cache', 'get', 'post'];
+    let particles = [];
+    let embers = [];
+
+    class Particle {
+      constructor() {
+        this.reset();
+      }
+      reset() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * -200 - 50;
+        this.speed = 1 + Math.random() * 2;
+        this.text = glyphs[Math.floor(Math.random() * glyphs.length)];
+        this.size = 10 + Math.random() * 6;
+        this.opacity = 0.2 + Math.random() * 0.4;
+      }
+      update() {
+        this.y += this.speed;
+        if (this.y >= canvas.height - 20) {
+          createEmber(this.x, canvas.height - Math.random() * 15);
+          this.reset();
+        }
+      }
+      draw() {
+        ctx.font = `${this.size}px 'Geist Mono', monospace`;
+        ctx.fillStyle = `rgba(255, 69, 0, ${this.opacity})`;
+        ctx.fillText(this.text, this.x, this.y);
+      }
+    }
+
+    class Ember {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = 1 + Math.random() * 3;
+        this.life = 100 + Math.random() * 100;
+        this.maxLife = this.life;
+      }
+      update() {
+        this.life--;
+      }
+      draw() {
+        const ratio = this.life / this.maxLife;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 69, 0, ${ratio * 0.5})`;
+        ctx.fill();
+      }
+    }
+
+    function createEmber(x, y) {
+      if (embers.length < 200) {
+        embers.push(new Ember(x, y));
+      }
+    }
+
+    // Init
+    for (let i = 0; i < 35; i++) {
+      particles.push(new Particle());
+    }
+
+    function animate() {
+      ctx.fillStyle = 'rgba(3, 2, 6, 0.2)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      particles.forEach(p => {
+        p.update();
+        p.draw();
+      });
+
+      embers = embers.filter(e => {
+        e.update();
+        e.draw();
+        return e.life > 0;
+      });
+
+      requestAnimationFrame(animate);
+    }
+    animate();
+  </script>
+</body>
+</html>

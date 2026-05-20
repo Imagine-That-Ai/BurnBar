@@ -109,7 +109,12 @@ const LOGOS: Record<string, string> = {
     overflow-x: auto;
     border: 1px solid var(--ink-line);
     border-radius: var(--r-3);
-    background: var(--ink-base);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      inset 0 1px 1px rgba(255, 255, 255, 0.05);
   }
   table {
     width: 100%;
@@ -118,7 +123,7 @@ const LOGOS: Record<string, string> = {
     min-width: 720px;
   }
   thead {
-    background: var(--ink-surface);
+    background: rgba(255, 255, 255, 0.03);
   }
   th {
     text-align: left;

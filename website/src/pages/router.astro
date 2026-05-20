@@ -40,9 +40,8 @@ const faqEntries = [
   title="The router — same model, every time"
   description="BurnBar's local router preserves the exact model you asked for. Failover swaps accounts, never the model. Intelligent mode uses a daily board of language models to research candidates against Artificial Analysis, Terminal-Bench, and Design Arena — benchmarks advisory, pins always win."
 >
-  {/* ──────────────── 1 · HERO ──────────────── */}
   <section class="pagehead" aria-labelledby="hero-h">
-    <div class="container container--wide pagehead__inner">
+    <div class="container container--wide pagehead__inner glass-pane">
       <span class="eyebrow eyebrow--ember">The router · same-model · animated</span>
       <h1 id="hero-h" class="pagehead__h">
         Same model.
@@ -218,7 +217,7 @@ const faqEntries = [
 
       <dl class="qa__list">
         {faqEntries.map((entry) => (
-          <div class="qa__item">
+          <div class="qa__item glass-pane">
             <dt>{entry.q}</dt>
             <dd set:html={entry.a.replace(/`([^`]+)`/g, "<code class='mono'>$1</code>")} />
           </div>
@@ -227,9 +226,8 @@ const faqEntries = [
     </div>
   </section>
 
-  {/* ──────────────── 8 · END CTA ──────────────── */}
   <section class="endcta endcta--inline">
-    <div class="container container--narrow">
+    <div class="container container--narrow endcta__inner glass-pane">
       <h2>Pin a model. Add a second account. Sleep on it.</h2>
       <p class="lead">
         BurnBar keeps your model — and your work — running across whatever
@@ -256,6 +254,8 @@ const faqEntries = [
     gap: var(--s-5);
     justify-items: center;
     text-align: center;
+    padding: var(--s-7) var(--s-6);
+    border-radius: var(--r-xl);
   }
   .pagehead__h {
     margin-top: var(--s-2);
@@ -412,18 +412,21 @@ const faqEntries = [
     grid-template-columns: auto 1fr;
     gap: var(--s-4);
     padding: var(--s-5);
-    border: 1px solid color-mix(in oklab, var(--status-burn) 18%, var(--ink-line));
+    border: 1px solid color-mix(in oklab, var(--status-burn) 18%, rgba(255, 255, 255, 0.08));
+    border-top: 1px solid color-mix(in oklab, var(--status-burn) 30%, rgba(255, 255, 255, 0.16));
     border-radius: var(--r-4);
-    background:
-      linear-gradient(180deg, rgba(229, 72, 60, 0.04) 0%, var(--ink-base) 100%);
+    background: rgba(15, 10, 10, 0.76);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
     align-items: start;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
   .wontno--headline {
     grid-column: 1 / -1;
-    border-color: color-mix(in oklab, var(--status-burn) 35%, var(--ink-line));
-    background:
-      linear-gradient(180deg, rgba(229, 72, 60, 0.06) 0%, var(--ink-base) 70%);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--status-burn) 20%, transparent);
+    border-color: color-mix(in oklab, var(--status-burn) 35%, rgba(255, 255, 255, 0.12));
+    border-top: 1px solid color-mix(in oklab, var(--status-burn) 50%, rgba(255, 255, 255, 0.22));
+    background: rgba(22, 10, 10, 0.82);
+    box-shadow: 0 12px 40px 0 rgba(229, 72, 60, 0.08), 0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
   .wontno__x {
     width: 36px;
@@ -532,4 +535,11 @@ const faqEntries = [
     font-variation-settings: "opsz" 80, "wght" 500;
   }
   .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta__inner {
+    text-align: center;
+    display: grid;
+    gap: var(--s-5);
+    justify-items: center;
+    padding: var(--s-7) var(--s-6);
+  }
 </style>

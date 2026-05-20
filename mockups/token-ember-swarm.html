@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenBurnBar — Token Ember Swarm Concept</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink-void: #050508;
+      --ink-base: #0a0a0e;
+      --ink-line: rgba(255, 255, 255, 0.08);
+      --ink-line-bright: rgba(255, 255, 255, 0.15);
+      
+      --core-fire: #ff4500;
+      --core-amber: #ff8800;
+      --core-indigo: #6366f1;
+      --core-glow: rgba(255, 69, 0, 0.4);
+      --core-underglow: rgba(255, 69, 0, 0.12);
+
+      --glass-bg: rgba(15, 15, 20, 0.65);
+      --glass-bg-elevated: rgba(255, 69, 0, 0.04);
+      --glass-blur: blur(40px);
+
+      --text-bright: #ffffff;
+      --text-base: rgba(255, 255, 255, 0.85);
+      --text-mute: rgba(255, 255, 255, 0.55);
+      --text-dim: rgba(255, 255, 255, 0.35);
+
+      --font-display: "Outfit", sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--ink-void);
+      color: var(--text-base);
+      font-family: var(--font-display);
+      overflow-x: hidden;
+      min-height: 100vh;
+      position: relative;
+      line-height: 1.5;
+    }
+
+    /* Ambient background styling */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: auto -10% -25% -10%;
+      height: 60vh;
+      background: radial-gradient(ellipse at bottom, var(--core-fire) 0%, transparent 70%);
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.3;
+    }
+
+    /* Noise grain */
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.05 0 0 0 0 0.05 0 0 0 0 0.05 0 0 0 0.25 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      opacity: 0.15;
+      pointer-events: none;
+      z-index: 1;
+      mix-blend-mode: overlay;
+    }
+
+    #bgCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Header */
+    header {
+      padding: 2.5rem 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--ink-line);
+      margin-bottom: 4rem;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text-bright);
+    }
+
+    .logo-box {
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, var(--core-fire), var(--core-amber));
+      border-radius: 6px;
+      box-shadow: 0 0 15px var(--core-glow);
+    }
+
+    .logo-text {
+      font-size: 1.25rem;
+      letter-spacing: -0.04em;
+    }
+
+    .logo-text span {
+      color: var(--core-amber);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .nav-link {
+      color: var(--text-mute);
+      text-decoration: none;
+      transition: color 0.3s var(--ease);
+    }
+
+    .nav-link:hover {
+      color: var(--text-bright);
+    }
+
+    /* Hero */
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 5rem;
+      padding: 4rem 0 8rem 0;
+      align-items: center;
+    }
+
+    .hero__copy {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-mute);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--core-amber);
+      box-shadow: 0 0 8px var(--core-fire);
+    }
+
+    .hero__h {
+      font-size: 4rem;
+      line-height: 0.95;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--text-bright);
+    }
+
+    .hero__h-second {
+      display: block;
+      color: var(--core-amber);
+      font-style: italic;
+    }
+
+    .lead {
+      font-size: 1.25rem;
+      color: var(--text-base);
+      line-height: 1.5;
+    }
+
+    .lead strong {
+      color: var(--text-bright);
+      font-weight: 600;
+    }
+
+    .hero__ctas {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 1rem 2rem;
+      border-radius: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      font-size: 0.95rem;
+      border: 1px solid var(--ink-line);
+      background: var(--glass-bg);
+      color: var(--text-bright);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn:hover {
+      border-color: var(--ink-line-bright);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .btn--ember {
+      background: linear-gradient(135deg, var(--core-fire) 0%, var(--core-amber) 100%);
+      border-color: transparent;
+      box-shadow: 0 10px 20px var(--core-underglow);
+    }
+
+    .btn--ember:hover {
+      box-shadow: 0 15px 35px var(--core-glow);
+      transform: translateY(-3px) scale(1.02);
+    }
+
+    .btn--ghost {
+      background: transparent;
+      color: var(--text-mute);
+    }
+
+    .btn--ghost:hover {
+      color: var(--text-bright);
+      border-color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Live Control Console */
+    .swarm-controls {
+      margin-top: 2rem;
+      padding: 1.5rem;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--ink-line);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .swarm-controls h3 {
+      font-size: 0.9rem;
+      font-family: var(--font-mono);
+      color: var(--text-bright);
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .control-buttons {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+    }
+
+    .btn-control {
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--ink-line);
+      background: rgba(10, 10, 15, 0.8);
+      color: var(--text-mute);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .btn-control:hover, .btn-control.active {
+      color: var(--text-bright);
+      border-color: var(--core-amber);
+      background: rgba(255, 69, 0, 0.1);
+      box-shadow: 0 0 10px var(--core-underglow);
+    }
+
+    /* Hero Visual Console Mockup */
+    .hero__visual {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      z-index: 12;
+    }
+
+    .console {
+      background: rgba(8, 6, 12, 0.85);
+      border: 1px solid var(--ink-line);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 30px 60px rgba(0,0,0,0.8), inset 0 1px 1px rgba(255,255,255,0.05);
+      backdrop-filter: var(--glass-blur);
+    }
+
+    .console__header {
+      padding: 0.75rem 1rem;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--ink-line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .console__dots {
+      display: flex;
+      gap: 0.4rem;
+    }
+
+    .console__dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .console__dot--fire { background: var(--core-fire); }
+    .console__dot--amber { background: var(--core-amber); }
+
+    .console__title {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .console__body {
+      padding: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--text-mute);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+
+    .log-line {
+      display: flex;
+      gap: 1rem;
+      border-bottom: 1px solid rgba(255,255,255,0.01);
+      padding-bottom: 0.4rem;
+    }
+
+    .log-time { color: var(--text-dim); }
+    .log-tag { color: var(--core-amber); }
+    .log-msg { color: var(--text-bright); }
+    .log-cost { color: var(--core-fire); font-weight: 700; margin-left: auto; }
+
+    /* Interactive Status Cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      margin-top: 6rem;
+      padding-bottom: 8rem;
+    }
+
+    .card {
+      background: var(--glass-bg);
+      border: 1px solid var(--ink-line);
+      border-radius: 20px;
+      padding: 2rem;
+      backdrop-filter: var(--glass-blur);
+      transition: all 0.4s var(--ease);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .card:hover {
+      border-color: var(--ink-line-bright);
+      background: rgba(255, 69, 0, 0.02);
+      transform: translateY(-5px);
+      box-shadow: 0 20px 40px rgba(255, 69, 0, 0.03);
+    }
+
+    .card-num {
+      font-size: 3rem;
+      font-weight: 800;
+      color: var(--text-bright);
+      line-height: 1;
+      font-family: var(--font-display);
+      letter-spacing: -0.04em;
+    }
+
+    .card-num span {
+      color: var(--core-fire);
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-bright);
+    }
+
+    .card-desc {
+      font-size: 0.9rem;
+      color: var(--text-mute);
+      line-height: 1.4;
+    }
+
+    .glow-marker {
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Floating murmuration canvas background -->
+  <canvas id="bgCanvas"></canvas>
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <a href="#" class="logo">
+        <div class="logo-box"></div>
+        <div class="logo-text">OpenBurn<span>Bar</span></div>
+      </a>
+      <nav class="nav-links">
+        <a href="#" class="nav-link">Product</a>
+        <a href="#" class="nav-link">Providers</a>
+        <a href="#" class="nav-link">Router</a>
+        <a href="#" class="nav-link">Privacy</a>
+      </nav>
+    </header>
+
+    <!-- Hero -->
+    <main class="hero">
+      <div class="hero__copy">
+        <div class="eyebrow">Interactive Concept Demo</div>
+        
+        <h1 class="hero__h">
+          Every token leaves a trail.
+          <span class="hero__h-second glow-marker">BurnBar reads the fire.</span>
+        </h1>
+
+        <p class="lead">
+          OpenBurnBar is a <strong>local-first developer tool</strong> that watches the AI
+          coding agents you already use. Our custom <strong>Token Ember Swarm</strong> concept simulates active developer tasks forming beautiful, coordinated murmuration ripples that respond directly to your actions.
+        </p>
+
+        <div class="hero__ctas">
+          <a class="btn btn--ember" href="#">
+            Download for macOS
+            <span style="font-family: var(--font-mono); margin-left: 0.5rem;">→</span>
+          </a>
+          <a class="btn btn--ghost" href="#">
+            Read the docs
+          </a>
+        </div>
+
+        <!-- Dynamic Control Board -->
+        <div class="swarm-controls">
+          <h3>
+            <span>SWARM COGNITION STATE</span>
+            <span id="current-state" style="color: var(--core-amber)">SWARMING</span>
+          </h3>
+          <div class="control-buttons">
+            <button class="btn-control active" data-action="swarm">Swarm Murmuration</button>
+            <button class="btn-control" data-action="shape-dollar">Form "$" Shape</button>
+            <button class="btn-control" data-action="shape-code">Form "</>" Shape</button>
+            <button class="btn-control" data-action="shape-rings">Form Quota Rings</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Console Widget -->
+      <div class="hero__visual">
+        <div class="console">
+          <div class="console__header">
+            <div class="console__dots">
+              <div class="console__dot console__dot--fire"></div>
+              <div class="console__dot console__dot--amber"></div>
+              <div class="console__dot"></div>
+            </div>
+            <div class="console__title">burnbar-daemon - stdout</div>
+          </div>
+          <div class="console__body">
+            <div class="log-line">
+              <span class="log-time">[14:32:01]</span>
+              <span class="log-tag">claude-code</span>
+              <span class="log-msg">Scanning project structure...</span>
+              <span class="log-cost">$0.002</span>
+            </div>
+            <div class="log-line">
+              <span class="log-time">[14:32:08]</span>
+              <span class="log-tag">claude-code</span>
+              <span class="log-msg">Prompt processed (42k context)</span>
+              <span class="log-cost">$0.126</span>
+            </div>
+            <div class="log-line">
+              <span class="log-time">[14:32:15]</span>
+              <span class="log-tag">cursor-copilot</span>
+              <span class="log-msg">Cached response loaded (2.4k tok)</span>
+              <span class="log-cost">$0.000</span>
+            </div>
+            <div class="log-line">
+              <span class="log-time">[14:32:44]</span>
+              <span class="log-tag">openai-gpt-5</span>
+              <span class="log-msg">Running code generation (230 tokens)</span>
+              <span class="log-cost">$0.003</span>
+            </div>
+            <div class="log-line">
+              <span class="log-time">[14:33:10]</span>
+              <span class="log-tag">factory-agent</span>
+              <span class="log-msg">Running integration tests (89k context)</span>
+              <span class="log-cost">$0.267</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Core commitments -->
+    <section class="stats-grid">
+      <div class="card">
+        <div class="card-num">1,600<span>+</span></div>
+        <div class="card-title text-marker">Thinking Embers</div>
+        <div class="card-desc">Simulating the cognitive load of deep AI agent context windows in a fully dynamic, hardware-accelerated 2D environment.</div>
+      </div>
+      <div class="card">
+        <div class="card-num">100<span>%</span></div>
+        <div class="card-title text-marker">Local Physics</div>
+        <div class="card-desc">No network calls, no telemetry, no layout stutter. The simulation runs directly in a lightweight HTML5 canvas.</div>
+      </div>
+      <div class="card">
+        <div class="card-num">60<span>fps</span></div>
+        <div class="card-title text-marker">Apple-Grade Fluidity</div>
+        <div class="card-desc">Particles dynamically brighten when moving close to interactive buttons or critical UI elements on hover.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Interactive Swarm Canvas Simulation Script -->
+  <script is:inline>
+    (function() {
+      const canvas = document.getElementById('bgCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      // Adaptive sizing
+      let width, height;
+      function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        updateInteractiveElements();
+      }
+      window.addEventListener('resize', resize);
+
+      // Tracking positions of UI elements for glow effects
+      let interactiveBoxes = [];
+      function updateInteractiveElements() {
+        interactiveBoxes = [];
+        const elements = document.querySelectorAll('.btn, .eyebrow, .glow-marker, .console, .card');
+        elements.forEach(el => {
+          const rect = el.getBoundingClientRect();
+          interactiveBoxes.push({
+            x: rect.left,
+            y: rect.top,
+            w: rect.width,
+            h: rect.height,
+            center: { x: rect.left + rect.width/2, y: rect.top + rect.height/2 }
+          });
+        });
+      }
+
+      // Hide offscreen canvas for shape coordinate harvesting
+      const offscreen = document.createElement('canvas');
+      const oCtx = offscreen.getContext('2d');
+      const shapeMap = {
+        'swarm': null,
+        'shape-dollar': '$',
+        'shape-code': '</>',
+        'shape-rings': 'o' // Custom indicator for rings
+      };
+
+      function samplePointsFromText(text, size = 280) {
+        offscreen.width = 400;
+        offscreen.height = 400;
+        oCtx.fillStyle = '#000';
+        oCtx.fillRect(0, 0, 400, 400);
+        oCtx.fillStyle = '#fff';
+        oCtx.font = `800 ${size}px monospace`;
+        oCtx.textAlign = 'center';
+        oCtx.textBaseline = 'middle';
+        oCtx.fillText(text, 200, 200);
+
+        const imgData = oCtx.getImageData(0, 0, 400, 400).data;
+        const pts = [];
+        const gap = 6; // sample step
+
+        for (let y = 0; y < 400; y += gap) {
+          for (let x = 0; x < 400; x += gap) {
+            const index = (y * 400 + x) * 4;
+            if (imgData[index] > 128) {
+              // Normalized to center around 0
+              pts.push({
+                x: (x - 200) / 200,
+                y: (y - 200) / 200
+              });
+            }
+          }
+        }
+        return pts;
+      }
+
+      // Sample a set of orbits (quota rings)
+      function generateRingPoints(numRings = 3) {
+        const pts = [];
+        for (let ring = 0; ring < numRings; ring++) {
+          const radius = 0.2 + (ring * 0.25);
+          const numPts = 80 + ring * 50;
+          for (let i = 0; i < numPts; i++) {
+            const angle = (i / numPts) * Math.PI * 2;
+            pts.push({
+              x: Math.cos(angle) * radius,
+              y: Math.sin(angle) * radius,
+              isOrbit: true,
+              ringIndex: ring
+            });
+          }
+        }
+        return pts;
+      }
+
+      // Collect shape structures
+      const shapes = {
+        'swarm': [],
+        'shape-dollar': samplePointsFromText('$'),
+        'shape-code': samplePointsFromText('</>', 220),
+        'shape-rings': generateRingPoints()
+      };
+
+      // Swarm settings
+      const PARTICLE_COUNT = 1600;
+      const GLYPHS = ['$', '{}', '</>', 'tok', 'ctx', '429', '503', 'gpt-5', 'claude-opus', 'gemini-u', 'run'];
+      
+      let particles = [];
+      let currentMode = 'swarm'; // swarm | shape-dollar | shape-code | shape-rings
+      let flowTime = 0;
+
+      class EmberParticle {
+        constructor() {
+          this.x = Math.random() * window.innerWidth;
+          this.y = Math.random() * window.innerHeight;
+          this.vx = (Math.random() - 0.5) * 1.5;
+          this.vy = (Math.random() - 0.5) * 1.5;
+          
+          this.size = 1 + Math.random() * 2;
+          this.type = Math.random() < 0.08 ? 'glyph' : 'pixel';
+          this.text = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
+          this.colorIndex = Math.random(); // mix of ember/gold/indigo
+          
+          this.tx = null; // target positions when shape forming
+          this.ty = null;
+          
+          this.baseOpacity = 0.15 + Math.random() * 0.35;
+          this.opacity = this.baseOpacity;
+        }
+
+        update() {
+          // Flow Field / Coordinated Waves
+          flowTime += 0.00001;
+          const noiseX = Math.sin(this.y * 0.005 + flowTime * 2) * Math.cos(this.x * 0.003 + flowTime);
+          const noiseY = Math.cos(this.x * 0.005 + flowTime * 3) * Math.sin(this.y * 0.003 + flowTime * 2);
+
+          if (currentMode === 'swarm') {
+            // Apply swarm drift forces
+            this.vx += noiseX * 0.08;
+            this.vy += noiseY * 0.08;
+            
+            // Friction
+            this.vx *= 0.98;
+            this.vy *= 0.98;
+            
+            // Speed limits
+            const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            const maxSpeed = this.type === 'glyph' ? 0.8 : 1.5;
+            if (speed > maxSpeed) {
+              this.vx = (this.vx / speed) * maxSpeed;
+              this.vy = (this.vy / speed) * maxSpeed;
+            }
+
+            this.x += this.vx;
+            this.y += this.vy;
+
+            // Boundaries
+            if (this.x < 0) this.x = width;
+            if (this.x > width) this.x = 0;
+            if (this.y < 0) this.y = height;
+            if (this.y > height) this.y = 0;
+
+          } else {
+            // Shape assembly mode: pull towards assigned target coordinates
+            if (this.tx !== null && this.ty !== null) {
+              const dx = this.tx - this.x;
+              const dy = this.ty - this.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+
+              if (dist > 1) {
+                // Accelerate towards target
+                this.vx += (dx / dist) * 0.45;
+                this.vy += (dy / dist) * 0.45;
+              }
+
+              // Add a bit of wave motion to make it look "alive" even in shape
+              this.vx += noiseX * 0.03;
+              this.vy += noiseY * 0.03;
+
+              this.vx *= 0.85; // Heavy friction so it settles into shape
+              this.vy *= 0.85;
+
+              this.x += this.vx;
+              this.y += this.vy;
+            } else {
+              // Inactive shape particles act as background swarm
+              this.vx += noiseX * 0.04;
+              this.vy += noiseY * 0.04;
+              this.vx *= 0.95;
+              this.vy *= 0.95;
+              this.x += this.vx;
+              this.y += this.vy;
+
+              if (this.x < 0) this.x = width;
+              if (this.x > width) this.x = 0;
+              if (this.y < 0) this.y = height;
+              if (this.y > height) this.y = 0;
+            }
+          }
+
+          // Interactive Glow Checks: brightens near headlines and buttons
+          let nearElement = false;
+          let glowMultiplier = 1;
+          for (let i = 0; i < interactiveBoxes.length; i++) {
+            const box = interactiveBoxes[i];
+            const distToCenter = Math.sqrt((this.x - box.center.x)*(this.x - box.center.x) + (this.y - box.center.y)*(this.y - box.center.y));
+            
+            // If near any element bounding box, increase brightness
+            if (this.x >= box.x - 40 && this.x <= box.x + box.w + 40 &&
+                this.y >= box.y - 40 && this.y <= box.y + box.h + 40) {
+              nearElement = true;
+              const normalizedDist = Math.max(0, 1 - (distToCenter / 250));
+              glowMultiplier = 1 + normalizedDist * 2.5;
+              break;
+            }
+          }
+
+          this.opacity = this.baseOpacity * glowMultiplier;
+          if (nearElement && this.type === 'pixel') {
+            this.size = 2 + Math.random();
+          } else if (this.type === 'pixel') {
+            this.size = 1 + Math.random();
+          }
+        }
+
+        draw() {
+          // Palette interpolation based on state and colorIndex
+          let color;
+          if (this.colorIndex < 0.25) {
+            color = `rgba(255, 69, 0, ${this.opacity})`; // Warm Ember Orange
+          } else if (this.colorIndex < 0.70) {
+            color = `rgba(255, 136, 0, ${this.opacity})`; // Warm Gold
+          } else {
+            color = `rgba(99, 102, 241, ${this.opacity})`; // Coordinated Indigo Glow
+          }
+
+          if (this.type === 'glyph') {
+            ctx.font = `600 9px monospace`;
+            ctx.fillStyle = color;
+            ctx.fillText(this.text, this.x, this.y);
+          } else {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+          }
+        }
+      }
+
+      // Initialize Swarm
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        particles.push(new EmberParticle());
+      }
+
+      resize();
+      updateInteractiveElements();
+
+      // Triggering shape transitions
+      function assignShape(shapeName) {
+        currentMode = shapeName;
+        document.getElementById('current-state').innerText = shapeName === 'swarm' ? 'SWARMING' : 'COGNITIVE ASSEMBLY';
+
+        const shapePts = shapes[shapeName];
+        if (!shapePts || shapePts.length === 0) {
+          // Clear targets
+          particles.forEach(p => {
+            p.tx = null;
+            p.ty = null;
+          });
+          return;
+        }
+
+        const scale = Math.min(width, height) * 0.45;
+        const centerX = width * 0.7; // Draw shape on the right side of the screen mostly
+        const centerY = height * 0.45;
+
+        // Shuffle particles to randomize target mapping (creates organic movement)
+        const shuffled = [...particles].sort(() => Math.random() - 0.5);
+
+        for (let i = 0; i < shuffled.length; i++) {
+          const p = shuffled[i];
+          if (i < shapePts.length) {
+            // Assign shape coordinates scaled to current canvas dimensions
+            p.tx = centerX + shapePts[i].x * scale;
+            p.ty = centerY + shapePts[i].y * scale;
+          } else {
+            // Spare particles remain in background
+            p.tx = null;
+            p.ty = null;
+          }
+        }
+      }
+
+      // Interactive Click Handlers
+      const buttons = document.querySelectorAll('.btn-control');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          buttons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const action = btn.getAttribute('data-action');
+          assignShape(action);
+        });
+      });
+
+      // Periodic state transitions (Murmuration thinking effect)
+      let cycle = 0;
+      const modesList = ['swarm', 'shape-dollar', 'swarm', 'shape-code', 'swarm', 'shape-rings'];
+      
+      setInterval(() => {
+        // Only auto cycle if the user is not actively interacting with control buttons
+        const anyActiveHover = document.querySelector('.btn-control:focus, .btn-control:hover');
+        if (!anyActiveHover) {
+          cycle = (cycle + 1) % modesList.length;
+          const nextMode = modesList[cycle];
+          
+          // Sync UI buttons
+          buttons.forEach(b => {
+            if (b.getAttribute('data-action') === nextMode) {
+              b.classList.add('active');
+            } else {
+              b.classList.remove('active');
+            }
+          });
+          
+          assignShape(nextMode);
+        }
+      }, 7000);
+
+      // Main Loop
+      function loop() {
+        ctx.fillStyle = 'rgba(5, 5, 8, 0.12)'; // Trails
+        ctx.fillRect(0, 0, width, height);
+
+        particles.forEach(p => {
+          p.update();
+          p.draw();
+        });
+
+        requestAnimationFrame(loop);
+      }
+
+      loop();
+
+      // Recalculate elements occasionally or on scroll
+      window.addEventListener('scroll', updateInteractiveElements);
+      setInterval(updateInteractiveElements, 1000);
+
+    })();
+  </script>
+</body>
+</html>

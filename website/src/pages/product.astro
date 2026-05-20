@@ -12,7 +12,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
   description="OpenBurnBar — what it actually does. Local tracking, cost and tokens, quota windows, smart insights, daemon, CLI, Hermes assistant, surfaces."
 >
   <section class="pagehead">
-    <div class="container">
+    <div class="container pagehead__inner glass-pane">
       <span class="eyebrow eyebrow--ember">Product</span>
       <h1 class="pagehead__h">
         Every agent, every model, every dollar — in one calm console.
@@ -51,7 +51,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
       </header>
       <ul class="featgroup__grid">
         {FEATURES_BY_CATEGORY.tracking.map((f) => (
-          <li class="feat">
+          <li class="feat glass-pane">
             <h3>{f.title}</h3>
             <p>{f.blurb}</p>
           </li>
@@ -77,7 +77,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
       </header>
 
       <ul class="routing__grid">
-        <li class="routing__card routing__card--family">
+        <li class="routing__card routing__card--family glass-pane">
           <header>
             <span class="mono routing__tag">default</span>
             <h3>Provider-Family Failover</h3>
@@ -95,7 +95,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
             <li>Account-level routing — no quota pool collapse</li>
           </ul>
         </li>
-        <li class="routing__card routing__card--intelligent">
+        <li class="routing__card routing__card--intelligent glass-pane glass-pane--elevated">
           <header>
             <span class="mono routing__tag routing__tag--mercury">opt-in</span>
             <h3>Intelligent Model Router</h3>
@@ -138,7 +138,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
       </header>
       <ul class="featgroup__grid">
         {FEATURES_BY_CATEGORY.assistant.map((f) => (
-          <li class="feat feat--mercury">
+          <li class="feat feat--mercury glass-pane">
             <h3>{f.title}</h3>
             <p>{f.blurb}</p>
           </li>
@@ -161,7 +161,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
       </header>
       <ul class="featgroup__grid">
         {FEATURES_BY_CATEGORY.control.map((f) => (
-          <li class="feat">
+          <li class="feat glass-pane">
             <h3>{f.title}</h3>
             <p>{f.blurb}</p>
           </li>
@@ -196,7 +196,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
       </header>
       <ul class="featgroup__grid">
         {FEATURES_BY_CATEGORY.honesty.map((f) => (
-          <li class="feat">
+          <li class="feat glass-pane">
             <h3>{f.title}</h3>
             <p>{f.blurb}</p>
           </li>
@@ -206,7 +206,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
   </section>
 
   <section class="endcta endcta--inline">
-    <div class="container container--narrow">
+    <div class="container container--narrow endcta__inner glass-pane">
       <h2>Read it in code, not in marketing.</h2>
       <p class="lead">
         OpenBurnBar is MIT-licensed. The README, the architecture doc, the threat
@@ -223,6 +223,12 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
 <style>
   .pagehead {
     padding-block: var(--s-9) var(--s-6);
+  }
+  .pagehead__inner {
+    padding: var(--s-7) var(--s-6);
+    border-radius: var(--r-xl);
+    max-width: 960px;
+    margin: 0 auto;
   }
   .pagehead__h {
     margin-top: var(--s-3);
@@ -256,9 +262,13 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
   }
   .feat {
     padding: var(--s-5);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-4);
-    background: var(--ink-base);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
     display: grid;
     gap: var(--s-2);
   }
@@ -271,7 +281,9 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
   }
   .feat p { color: var(--text-base); font-size: 0.94rem; }
   .feat--mercury {
-    border-color: color-mix(in oklab, var(--mercury-bright) 22%, var(--ink-line));
+    border-color: color-mix(in oklab, var(--mercury-bright) 22%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--mercury-bright) 35%, rgba(255, 255, 255, 0.16));
+    background: rgba(15, 15, 20, 0.76);
   }
   .surfaces__grid {
     display: grid;
@@ -295,6 +307,13 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
   .endcta--inline h2 { margin-bottom: var(--s-3); }
   .endcta--inline .lead { margin: 0 auto; }
   .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta__inner {
+    text-align: center;
+    display: grid;
+    gap: var(--s-5);
+    justify-items: center;
+    padding: var(--s-7) var(--s-6);
+  }
 
   /* ─── routing ─── */
   .featgroup--routing {
@@ -312,20 +331,25 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     display: grid;
     gap: var(--s-3);
     padding: var(--s-5);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-4);
-    background:
-      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
   .routing__card--family {
-    border-color: color-mix(in oklab, var(--ember-core) 32%, var(--ink-line));
-    background:
-      linear-gradient(180deg, rgba(255, 106, 26, 0.05) 0%, var(--ink-base) 100%);
+    border-color: color-mix(in oklab, var(--ember-core) 32%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--ember-core) 45%, rgba(255, 255, 255, 0.16));
+    background: rgba(20, 12, 10, 0.76);
+    box-shadow: 0 0 40px -15px rgba(255, 106, 26, 0.25), 0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
   .routing__card--intelligent {
-    border-color: color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
-    background:
-      linear-gradient(180deg, rgba(214, 211, 223, 0.05) 0%, var(--ink-base) 100%);
+    border-color: color-mix(in oklab, var(--mercury-bright) 30%, rgba(255, 255, 255, 0.12));
+    border-top-color: color-mix(in oklab, var(--mercury-bright) 45%, rgba(255, 255, 255, 0.22));
+    background: rgba(20, 20, 28, 0.82);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.55);
   }
   .routing__card header {
     display: flex;

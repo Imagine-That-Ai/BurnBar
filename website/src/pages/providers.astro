@@ -17,7 +17,7 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
   description="The honest provider support matrix for OpenBurnBar — Claude Code, Codex, OpenAI, Copilot, Cursor, Factory, MiniMax, Z.ai, Warp, Ollama, Kimi and more."
 >
   <section class="pagehead">
-    <div class="container">
+    <div class="container pagehead__inner glass-pane">
       <span class="eyebrow eyebrow--ember">Providers</span>
       <h1 class="pagehead__h">An honest provider matrix.</h1>
       <p class="lead">
@@ -32,7 +32,7 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
     <div class="container">
       <ol class="legend__grid">
         {confidenceKeys.map((k) => (
-          <li class={`legend__card legend__card--${k}`}>
+          <li class={`legend__card legend__card--${k} glass-pane`}>
             <header>
               <span class={`tag tag--plain mono tag--${k}`}>{k}</span>
             </header>
@@ -59,7 +59,7 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
       </header>
 
       <ul class="accountrouting__grid">
-        <li class="accountrouting__card accountrouting__card--family">
+        <li class="accountrouting__card accountrouting__card--family glass-pane">
           <header>
             <span class="mono accountrouting__tag">model identity preserved</span>
             <h3>Failover only picks accounts that carry your exact model.</h3>
@@ -75,7 +75,7 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
             never a stealth swap into a different model.
           </p>
         </li>
-        <li class="accountrouting__card accountrouting__card--account">
+        <li class="accountrouting__card accountrouting__card--account glass-pane">
           <header>
             <span class="mono accountrouting__tag">account-level routing</span>
             <h3>Accounts have their own clocks and quotas.</h3>
@@ -188,7 +188,7 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
   </section>
 
   <section class="endcta endcta--inline">
-    <div class="container container--narrow">
+    <div class="container container--narrow endcta__inner glass-pane">
       <h2>If your vendor is missing, file an issue.</h2>
       <p class="lead">
         We add providers when there's a real data source and a real user.
@@ -207,6 +207,12 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
 
 <style>
   .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead__inner {
+    padding: var(--s-7) var(--s-6);
+    border-radius: var(--r-xl);
+    max-width: 960px;
+    margin: 0 auto;
+  }
   .pagehead__h { margin-top: var(--s-3); }
   .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
   .legend {
@@ -220,14 +226,18 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
   }
   .legend__card {
     padding: var(--s-5);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-4);
-    background: var(--ink-base);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
     display: grid;
     gap: var(--s-2);
   }
-  .legend__card--exact { border-color: color-mix(in oklab, var(--status-exact) 22%, var(--ink-line)); }
-  .legend__card--estimated { border-color: color-mix(in oklab, var(--status-estimated) 22%, var(--ink-line)); }
+  .legend__card--exact { border-color: color-mix(in oklab, var(--status-exact) 22%, rgba(255, 255, 255, 0.08)); border-top-color: color-mix(in oklab, var(--status-exact) 35%, rgba(255, 255, 255, 0.16)); }
+  .legend__card--estimated { border-color: color-mix(in oklab, var(--status-estimated) 22%, rgba(255, 255, 255, 0.08)); border-top-color: color-mix(in oklab, var(--status-estimated) 35%, rgba(255, 255, 255, 0.16)); }
   .legend__card h3 {
     font-family: var(--font-display);
     color: var(--text-bright);
@@ -254,8 +264,14 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
   }
   .caveats li {
     padding: var(--s-5);
-    border-left: 2px solid var(--ember-bright);
-    background: var(--ink-base);
+    border-left: 3px solid var(--ember-bright);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(15, 10, 10, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
     border-radius: 0 var(--r-3) var(--r-3) 0;
   }
   .caveats h4 {
@@ -280,6 +296,13 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
   .endcta--inline h2 { margin-bottom: var(--s-3); }
   .endcta--inline .lead { margin: 0 auto; }
   .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta__inner {
+    text-align: center;
+    display: grid;
+    gap: var(--s-5);
+    justify-items: center;
+    padding: var(--s-7) var(--s-6);
+  }
 
   /* ─── account routing preamble ─── */
   .accountrouting {
@@ -299,15 +322,21 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
     display: grid;
     gap: var(--s-3);
     padding: var(--s-5);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-4);
-    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
   .accountrouting__card--family {
-    border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
+    border-color: color-mix(in oklab, var(--ember-core) 30%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--ember-core) 45%, rgba(255, 255, 255, 0.16));
   }
   .accountrouting__card--account {
-    border-color: color-mix(in oklab, var(--mercury-bright) 24%, var(--ink-line));
+    border-color: color-mix(in oklab, var(--mercury-bright) 24%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--mercury-bright) 38%, rgba(255, 255, 255, 0.16));
   }
   .accountrouting__card header {
     display: grid;

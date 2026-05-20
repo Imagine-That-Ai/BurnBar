@@ -44,12 +44,17 @@ const statusClass =
     gap: var(--s-3);
     align-content: start;
     padding: var(--s-5);
-    border: 1px solid var(--ink-line);
-    border-radius: var(--r-4);
-    background:
-      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: var(--r-md);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
     position: relative;
-    transition: border-color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+    transition: border-color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
   }
   .surface-card:hover {
     border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));

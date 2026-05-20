@@ -8,7 +8,7 @@ import { SITE } from "@data/site";
   description="Download OpenBurnBar. macOS public beta available now, iOS in App Store review, Cursor and VS Code extensions source-only."
 >
   <section class="pagehead">
-    <div class="container">
+    <div class="container pagehead__inner glass-pane">
       <span class="eyebrow eyebrow--ember">Download</span>
       <h1 class="pagehead__h">Get OpenBurnBar.</h1>
       <p class="lead">
@@ -37,7 +37,7 @@ import { SITE } from "@data/site";
       </div>
 
       <ol class="steps">
-        <li>
+        <li class="glass-pane">
           <div class="step__num mono">01</div>
           <div class="step__body">
             <h3>Download &amp; open the DMG</h3>
@@ -48,7 +48,7 @@ import { SITE } from "@data/site";
             </p>
           </div>
         </li>
-        <li>
+        <li class="glass-pane">
           <div class="step__num mono">02</div>
           <div class="step__body">
             <h3>Drag OpenBurnBar.app to <code>/Applications</code></h3>
@@ -57,7 +57,7 @@ import { SITE } from "@data/site";
             </p>
           </div>
         </li>
-        <li>
+        <li class="glass-pane">
           <div class="step__num mono">03</div>
           <div class="step__body">
             <h3>Launch &amp; find the menu bar</h3>
@@ -68,7 +68,7 @@ import { SITE } from "@data/site";
             </p>
           </div>
         </li>
-        <li>
+        <li class="glass-pane">
           <div class="step__num mono">04</div>
           <div class="step__body">
             <h3>Watch the burn</h3>
@@ -144,14 +144,14 @@ make install</code></pre>
       </div>
 
       <ol class="steps">
-        <li>
+        <li class="glass-pane">
           <div class="step__num mono">01</div>
           <div class="step__body">
             <h3>Install &amp; launch OpenBurnBar on macOS</h3>
             <p>The daemon must be running — it's how the extension reads data.</p>
           </div>
         </li>
-        <li>
+        <li class="glass-pane">
           <div class="step__num mono">02</div>
           <div class="step__body">
             <h3>Build the extension</h3>
@@ -160,7 +160,7 @@ npm ci
 npm run build</code></pre>
           </div>
         </li>
-        <li>
+        <li class="glass-pane">
           <div class="step__num mono">03</div>
           <div class="step__body">
             <h3>Load unpacked into your editor</h3>
@@ -171,7 +171,7 @@ npm run build</code></pre>
             </p>
           </div>
         </li>
-        <li>
+        <li class="glass-pane">
           <div class="step__num mono">04</div>
           <div class="step__body">
             <h3>Open the OpenBurnBar activity bar</h3>
@@ -210,7 +210,7 @@ npm run build</code></pre>
         <h2>What you need, what we ship.</h2>
       </header>
       <div class="reqs__grid">
-        <article>
+        <article class="glass-pane">
           <h4>macOS</h4>
           <ul>
             <li>{SITE.macMin} or later</li>
@@ -221,7 +221,7 @@ npm run build</code></pre>
             <li>SPDX SBOM per release</li>
           </ul>
         </article>
-        <article>
+        <article class="glass-pane">
           <h4>iOS / iPadOS</h4>
           <ul>
             <li>{SITE.iosMin} or later</li>
@@ -230,7 +230,7 @@ npm run build</code></pre>
             <li>Live Activity needs iOS 16.1+</li>
           </ul>
         </article>
-        <article>
+        <article class="glass-pane">
           <h4>Editor extension</h4>
           <ul>
             <li>Cursor or VS Code ^1.95.0</li>
@@ -243,7 +243,7 @@ npm run build</code></pre>
   </section>
 
   <section class="endcta endcta--inline">
-    <div class="container container--narrow">
+    <div class="container container--narrow endcta__inner glass-pane">
       <h2>Two extra resources before you install.</h2>
       <div class="endcta__ctas">
         <a class="btn btn--ghost" href="/privacy">Privacy model</a>
@@ -256,6 +256,16 @@ npm run build</code></pre>
 
 <style>
   .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead__inner {
+    padding: var(--s-7) var(--s-6);
+    border-radius: var(--r-xl);
+    max-width: 960px;
+    margin: 0 auto;
+    text-align: center;
+    display: grid;
+    gap: var(--s-3);
+    justify-items: center;
+  }
   .pagehead__h { margin-top: var(--s-3); }
   .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
   .dlsec { padding-block: var(--s-8); border-top: 1px solid var(--ink-line); }
@@ -298,9 +308,13 @@ npm run build</code></pre>
     grid-template-columns: 60px minmax(0, 1fr);
     gap: var(--s-4);
     padding: var(--s-5);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-3);
-    background: var(--ink-base);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
     align-items: start;
   }
   .step__body {
@@ -333,9 +347,13 @@ npm run build</code></pre>
   pre code { background: transparent; border: 0; padding: 0; }
   .alt {
     margin-top: var(--s-5);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-3);
-    background: var(--ink-base);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
   }
   .alt summary {
     cursor: pointer;
@@ -357,8 +375,14 @@ npm run build</code></pre>
   .alt__body { padding: 0 var(--s-5) var(--s-5); }
   .callout {
     padding: var(--s-5);
-    border-left: 2px solid var(--ember-bright);
-    background: var(--ink-base);
+    border-left: 3px solid var(--ember-bright);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(15, 10, 10, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
     border-radius: 0 var(--r-3) var(--r-3) 0;
     display: grid;
     gap: var(--s-3);
@@ -374,9 +398,13 @@ npm run build</code></pre>
   }
   .reqs__grid article {
     padding: var(--s-5);
-    border: 1px solid var(--ink-line);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-3);
-    background: var(--ink-base);
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
   .reqs__grid h4 {
     font-family: var(--font-display);
@@ -409,4 +437,11 @@ npm run build</code></pre>
     border-top: 1px solid var(--ink-line);
   }
   .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta__inner {
+    text-align: center;
+    display: grid;
+    gap: var(--s-5);
+    justify-items: center;
+    padding: var(--s-7) var(--s-6);
+  }
 </style>
