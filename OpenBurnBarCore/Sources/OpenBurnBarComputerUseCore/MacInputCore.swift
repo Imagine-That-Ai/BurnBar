@@ -6,6 +6,31 @@ import Foundation
 /// unit-testable from the cross-platform core target (`MacInputController`
 /// itself is AppKit-only and lives in the AgentLens target).
 public enum MacInputCore {
+    public struct UnicodeTypingEvent: Sendable, Equatable {
+        public let text: String
+        public let isKeyDown: Bool
+        public let carriesUnicodeText: Bool
+
+        public init(text: String, isKeyDown: Bool, carriesUnicodeText: Bool) {
+            self.text = text
+            self.isKeyDown = isKeyDown
+            self.carriesUnicodeText = carriesUnicodeText
+        }
+    }
+
+    /// Text input uses one key-down and one key-up per character. Only the
+    /// key-down event carries Unicode text; attaching the same text payload to
+    /// key-up can make some apps insert the character twice.
+    public static func unicodeTypingEvents(for text: String) -> [UnicodeTypingEvent] {
+        text.flatMap { character in
+            let scalar = String(character)
+            return [
+                UnicodeTypingEvent(text: scalar, isKeyDown: true, carriesUnicodeText: true),
+                UnicodeTypingEvent(text: scalar, isKeyDown: false, carriesUnicodeText: false)
+            ]
+        }
+    }
+
     /// Map a user-facing key name to the macOS HIToolbox virtual-key
     /// code. Returns `nil` for unknown names. The table is the same
     /// one `MacInputController.virtualKey(for:)` consumes in the Mac

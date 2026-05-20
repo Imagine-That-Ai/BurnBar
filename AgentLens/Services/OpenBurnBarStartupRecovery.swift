@@ -289,7 +289,6 @@ final class OpenBurnBarRuntimeContext {
         if let relayHost = explicitRelayHostService ?? hermesRelayHostService {
             controller.attach(relayHostService: relayHost)
         }
-        controller.startPanicMonitoring()
         #if DEBUG
         controller.startE2EProofSessionIfRequested()
         #endif

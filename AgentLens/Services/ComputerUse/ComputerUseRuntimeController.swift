@@ -63,6 +63,11 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         panicCoordinator = panic
     }
 
+    func stopPanicMonitoring() {
+        panicCoordinator?.uninstall()
+        panicCoordinator = nil
+    }
+
     #if DEBUG
     func startE2EProofSessionIfRequested() {
         let environment = ProcessInfo.processInfo.environment
@@ -188,11 +193,14 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
             sessionTimeoutSeconds: 1800,
             clientID: BurnBarClientID(rawValue: accountManager.userID ?? "local-\(accountManager.deviceId)")
         )
-        return try await coordinator.startSession(request: request)
+        let response = try await coordinator.startSession(request: request)
+        startPanicMonitoring()
+        return response
     }
 
     func endSession() async {
         await coordinator.endSession(reason: .userHalt)
+        stopPanicMonitoring()
     }
 
     private func configurePanelModel() {
@@ -228,6 +236,9 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
                 self.panelModel.liveTrustMode = state?.liveTrustMode ?? .manual
                 self.panelModel.auditHeadHashHex = state?.auditChainHeadHashHex
                 self.panelModel.currentSessionStartedAt = state?.manifest.startedAt
+                if state == nil {
+                    self.stopPanicMonitoring()
+                }
             }
             .store(in: &cancellables)
 
@@ -297,7 +308,7 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
             )
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 380, height: 520),
-                styleMask: [.titled, .closable, .nonactivatingPanel],
+                styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
             )
