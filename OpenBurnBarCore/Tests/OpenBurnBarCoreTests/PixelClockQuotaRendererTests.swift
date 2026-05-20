@@ -585,6 +585,72 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertEqual(antigravity.colorHex(row: 5, column: 7), "#E91E63")
         XCTAssertNil(antigravity.colorHex(row: 6, column: 0))
         XCTAssertNil(antigravity.colorHex(row: 7, column: 7))
+
+        // Warp — bold chevron prompt `>` with underline bar. Cyan head,
+        // dark fill, teal stroke, warm gray bar.
+        let warp = logo(for: .warp)
+        XCTAssertEqual(warp.sourceName, "WarpLogo")
+        XCTAssertEqual(warp.rows, [
+            "........",
+            "..####..",
+            "...###..",
+            "#####...",
+            "...###..",
+            "..####..",
+            "..#####.",
+            "........"
+        ])
+        // Cyan (#02D1D1) — chevron head
+        XCTAssertEqual(warp.colorHex(row: 1, column: 3), "#02D1D1")
+        XCTAssertEqual(warp.colorHex(row: 3, column: 3), "#02D1D1")
+        // Dark (#1A3A3A) — left arm of chevron
+        XCTAssertEqual(warp.colorHex(row: 2, column: 3), "#1A3A3A")
+        // Teal (#0D7377) — tail accent
+        XCTAssertEqual(warp.colorHex(row: 3, column: 0), "#0D7377")
+        // Gray (#A8B0B8) — prompt bar
+        XCTAssertEqual(warp.colorHex(row: 6, column: 2), "#A8B0B8")
+        XCTAssertNil(warp.colorHex(row: 0, column: 0))
+
+        // DeepSeek — side-profile whale in indigo blue with white eye.
+        let deepSeek = logo(for: .deepSeek)
+        XCTAssertEqual(deepSeek.sourceName, "DeepSeekLogo")
+        XCTAssertEqual(deepSeek.rows, [
+            "..####..",
+            ".######.",
+            "########",
+            "########",
+            ".#######",
+            "..####.#",
+            "...##.##",
+            "........"
+        ])
+        // Indigo (#6366F1) — whale body
+        XCTAssertEqual(deepSeek.colorHex(row: 0, column: 2), "#6366F1")
+        XCTAssertEqual(deepSeek.colorHex(row: 3, column: 0), "#6366F1")
+        // White (#FFFFFF) — whale eye
+        XCTAssertEqual(deepSeek.colorHex(row: 2, column: 1), "#FFFFFF")
+        XCTAssertNil(deepSeek.colorHex(row: 7, column: 0))
+
+        // OpenCode — hollow white rectangle frame with gray inner area.
+        let openCode = logo(for: .openCode)
+        XCTAssertEqual(openCode.sourceName, "OpenCodeLogo")
+        XCTAssertEqual(openCode.rows, [
+            "########",
+            "#......#",
+            "#......#",
+            "#.####.#",
+            "#.####.#",
+            "#......#",
+            "########",
+            "........"
+        ])
+        // White (#FFFFFF) — outer frame
+        XCTAssertEqual(openCode.colorHex(row: 0, column: 0), "#FFFFFF")
+        XCTAssertEqual(openCode.colorHex(row: 3, column: 0), "#FFFFFF")
+        // Gray (#5A5858) — inner screen area
+        XCTAssertEqual(openCode.colorHex(row: 3, column: 2), "#5A5858")
+        XCTAssertNil(openCode.colorHex(row: 1, column: 1))
+        XCTAssertNil(openCode.colorHex(row: 7, column: 0))
     }
 
     func testCursorLogoIsThinAngularNorthEastFacetedMark() {
@@ -961,7 +1027,9 @@ final class PixelClockQuotaRendererTests: XCTestCase {
             ("ollama", "Ollama", 22),
             ("cursor", "Cursor", 18),
             ("warp", "Warp", 30),
-            ("kimi", "Kimi", 16)
+            ("kimi", "Kimi", 16),
+            ("deepseek", "DeepSeek", 24),
+            ("opencode", "OpenCode", 30)
         ]
         let config = PixelClockConfig(enabled: true, layout: .providerDashboard, palette: .rainbow)
         for (id, name, minLitPixels) in providers {

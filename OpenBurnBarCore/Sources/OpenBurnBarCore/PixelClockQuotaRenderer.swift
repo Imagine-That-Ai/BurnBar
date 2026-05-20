@@ -576,10 +576,35 @@ public enum PixelClockQuotaRenderer {
             ]
         }
         if token.contains("warp") {
-            // Center vortex — two dark pixels.
+            // Chevron arrow accent — sparkle on the tail and shadow
+            // on the bar tip; the corner pixels imply a terminal frame
+            // so the sparse prompt mark still reads in rainbow mode.
             return [
-                .pixel(x: 3, y: 4, color: shadow),
-                .pixel(x: 4, y: 4, color: shadow)
+                .pixel(x: 1, y: 1, color: highlight),
+                .pixel(x: 6, y: 1, color: highlight),
+                .pixel(x: 0, y: 3, color: shadow),
+                .pixel(x: 6, y: 5, color: sparkle),
+                .pixel(x: 1, y: 6, color: shadow),
+                .pixel(x: 7, y: 6, color: sparkle)
+            ]
+        }
+        if token.contains("deepseek") || token.contains("deep seek") || token.contains("deep-seek") {
+            // Whale eye, fin, and tail dots keep the silhouette readable
+            // when the indigo body maps to a single rainbow stripe.
+            return [
+                .pixel(x: 1, y: 2, color: sparkle),
+                .pixel(x: 7, y: 3, color: highlight),
+                .pixel(x: 2, y: 5, color: highlight),
+                .pixel(x: 6, y: 5, color: sparkle),
+                .pixel(x: 6, y: 6, color: shadow)
+            ]
+        }
+        if token.contains("opencode") || token.contains("open code") || token.contains("open-code") {
+            // Inner gray screen accent + two corner sparkles.
+            return [
+                .pixel(x: 2, y: 2, color: shadow),
+                .pixel(x: 5, y: 2, color: shadow),
+                .pixel(x: 0, y: 6, color: sparkle)
             ]
         }
         if token.contains("kimi") {
@@ -690,23 +715,20 @@ public enum PixelClockQuotaRenderer {
                 "#0F0F0F": 5, "#101010": 5, "#030303": 5, "#000000": 5
             ]
         }
-        // Warp — vortex needs three luminance bands (light gloss / midtone
-        // ring / dark core) mapped to three different pride colors so the
-        // circular silhouette stays readable.
+        // Warp — chevron prompt arrow in terminal frame. Four luminance
+        // zones: bright cyan head, dark fill, teal bar, warm gray prompt.
         if token.contains("warp") {
             return [
-                "#FFFFFF": 0, "#FBFBFB": 0, "#FCFCFC": 0, "#FAFAFA": 0,
-                "#F4F5F6": 1, "#F5F6F7": 1, "#F5F7F7": 1, "#F6F7F8": 1,
-                "#F6F8F8": 1, "#FCFCFD": 1, "#FBFCFC": 1, "#F3F5F5": 1,
-                "#DCE0E3": 2, "#D0D6DA": 2, "#CFD5D9": 2, "#D2D8DC": 2,
-                "#D4DADE": 2, "#D6DCE0": 2, "#D8DEE2": 2, "#CCD2D6": 2,
-                "#E1E6E9": 2, "#E3E8EB": 2,
-                "#ADB2B6": 3, "#A1A6AA": 3, "#ACB1B4": 3, "#B3B8BC": 3,
-                "#B2B7BB": 3, "#B4B9BD": 3, "#C1C6CA": 3, "#C4C9CD": 3,
-                "#6E7173": 4, "#777A7C": 4, "#787B7D": 4, "#8C8F92": 4,
-                "#3B3C3D": 5, "#47494A": 5, "#373838": 5, "#313233": 5,
-                "#4B4C4D": 5, "#323333": 5, "#494A4B": 5, "#282828": 5
+                "#02D1D1": 0, "#1A3A3A": 3, "#0D7377": 4, "#A8B0B8": 5
             ]
+        }
+        // DeepSeek — indigo whale body vs. white eye accent.
+        if token.contains("deepseek") || token.contains("deep seek") || token.contains("deep-seek") {
+            return ["#6366F1": 0, "#FFFFFF": 3]
+        }
+        // OpenCode — white frame vs. gray inner screen area.
+        if token.contains("opencode") || token.contains("open code") || token.contains("open-code") {
+            return ["#FFFFFF": 0, "#5A5858": 3]
         }
         // Ollama — alpaca body (creamy white) vs. blue eyes vs. grey feet.
         if token.contains("ollama") {

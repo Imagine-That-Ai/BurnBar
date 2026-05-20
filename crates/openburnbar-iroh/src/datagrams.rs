@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use iroh::endpoint::Connection;
-use iroh::{Endpoint, NodeAddr, NodeId, RelayUrl};
+use iroh::{Endpoint, EndpointAddr, EndpointId, RelayUrl, TransportAddr};
 use tokio::sync::Mutex;
 
 use crate::{block_on, IrohEndpointHandle, IrohFfiError};
@@ -131,8 +131,8 @@ impl IrohEndpointHandle {
             Ok::<_, IrohFfiError>((endpoint, runtime_handle))
         })?;
 
-        let target: NodeId = node_id.parse().map_err(|_| IrohFfiError::InvalidNodeId)?;
-        let mut node_addr = NodeAddr::new(target);
+        let target: EndpointId = node_id.parse().map_err(|_| IrohFfiError::InvalidNodeId)?;
+        let mut node_addr = EndpointAddr::new(target);
         let relay = relay_url.trim();
         if !relay.is_empty() {
             let url: RelayUrl = relay.parse().map_err(|err: iroh::RelayUrlParseError| {
@@ -153,7 +153,7 @@ impl IrohEndpointHandle {
             })
             .collect::<Result<Vec<_>, _>>()?;
         if !parsed_addresses.is_empty() {
-            node_addr = node_addr.with_direct_addresses(parsed_addresses);
+            node_addr = node_addr.with_addrs(parsed_addresses.into_iter().map(TransportAddr::Ip));
         }
 
         let timeout = Duration::from_secs(timeout_seconds.max(1) as u64);
@@ -197,7 +197,7 @@ impl IrohEndpointHandle {
 
 fn connect_audio(
     endpoint: Endpoint,
-    node_addr: NodeAddr,
+    node_addr: EndpointAddr,
     runtime_handle: tokio::runtime::Handle,
     timeout: Duration,
 ) -> Result<Connection, IrohFfiError> {

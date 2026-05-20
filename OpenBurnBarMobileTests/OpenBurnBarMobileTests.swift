@@ -335,6 +335,16 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(scrollIntent.normalizedY2), 0.20, accuracy: 0.0001)
         XCTAssertEqual(scrollIntent.authority.counter, tapIntent.authority.counter + 1)
         XCTAssertFalse(scrollIntent.authority.signatureEd25519.isEmpty)
+
+        try await coordinator.receiver?.type("hello from iphone")
+        let typeFrame = try await waitForFrame(from: stream) {
+            $0.type == .controlInputIntent &&
+            $0.control?.inputIntent?.kind == .type
+        }
+        let typeIntent = try XCTUnwrap(typeFrame.control?.inputIntent)
+        XCTAssertEqual(typeIntent.text, "hello from iphone")
+        XCTAssertEqual(typeIntent.authority.counter, scrollIntent.authority.counter + 1)
+        XCTAssertFalse(typeIntent.authority.signatureEd25519.isEmpty)
     }
 
     // MARK: - Formatting
@@ -565,6 +575,45 @@ final class ScreenShareViewportStateTests: XCTestCase {
         viewport.toggleQuickZoom(in: CGSize(width: 400, height: 800))
         XCTAssertEqual(viewport.scale, ScreenShareViewportState.minimumScale)
         XCTAssertEqual(viewport.offset, .zero)
+    }
+
+    func testNormalizedTapMappingAtDefaultScale() {
+        let viewport = ScreenShareViewportState()
+
+        let point = viewport.normalizedPoint(
+            for: CGPoint(x: 100, y: 600),
+            in: CGSize(width: 400, height: 800)
+        )
+
+        XCTAssertEqual(point.x, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(point.y, 0.75, accuracy: 0.0001)
+    }
+
+    func testNormalizedTapMappingCompensatesForZoomAndPan() {
+        let viewport = ScreenShareViewportState(scale: 2, offset: CGSize(width: 40, height: -80))
+
+        let point = viewport.normalizedPoint(
+            for: CGPoint(x: 240, y: 320),
+            in: CGSize(width: 400, height: 800)
+        )
+
+        XCTAssertEqual(point.x, 0.50, accuracy: 0.0001)
+        XCTAssertEqual(point.y, 0.55, accuracy: 0.0001)
+    }
+
+    func testNormalizedTapMappingClampsEdgesAfterRotation() {
+        var viewport = ScreenShareViewportState(scale: 3, offset: CGSize(width: 900, height: -900))
+        viewport.reclamp(in: CGSize(width: 844, height: 390))
+
+        let point = viewport.normalizedPoint(
+            for: CGPoint(x: 844, y: 0),
+            in: CGSize(width: 844, height: 390)
+        )
+
+        XCTAssertGreaterThanOrEqual(point.x, 0)
+        XCTAssertLessThanOrEqual(point.x, 1)
+        XCTAssertGreaterThanOrEqual(point.y, 0)
+        XCTAssertLessThanOrEqual(point.y, 1)
     }
 }
 

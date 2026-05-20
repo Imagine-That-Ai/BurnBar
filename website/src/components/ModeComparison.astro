@@ -1,47 +1,26 @@
 ---
 /**
- * ModeComparison — the two-mode panel for /router.
+ * ModeComparison — the two router-mode panel for /router.
  *
- * Left: failover (LockedModelRelay mini) — proves model identity.
- * Right: intelligent (IntelligentScoreboard mini) — proves research scoring.
- *
- * Both panels pull real data where they can. The scoreboard pulls today's
- * top three coding candidates from `LATEST_RUNDOWN`; the relay uses the
- * hero's locked model identity.
+ * Left: provider-family failover — default, same provider family.
+ * Right: exact model failover — opt-in, cross-provider only after canonical
+ * model identity is proven.
  */
 
 import LockedModelRelay from "./LockedModelRelay.astro";
-import IntelligentScoreboard from "./IntelligentScoreboard.astro";
-import type { ScoreboardCandidate, ScoreboardSource } from "./IntelligentScoreboard.astro";
-import { LATEST_RUNDOWN } from "@data/router-rundown-loader";
-
-const codingTask =
-  LATEST_RUNDOWN?.taskRankings.find((t) => t.taskID === "coding") ??
-  LATEST_RUNDOWN?.taskRankings[0];
-
-const candidates: ScoreboardCandidate[] = (codingTask?.recommendations ?? [])
-  .slice(0, 3)
-  .map((r) => ({
-    rank: r.rank,
-    modelDisplay: r.modelDisplay,
-    providerDisplay: r.providerDisplay,
-    providerLogo: r.providerLogo,
-    score: r.selectionScore ?? r.score
-  }));
-
-const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
-  .slice(0, 5)
-  .map((s) => ({ source: s.source, status: s.status, ageHours: s.ageHours }));
 ---
 
 <section class="modes" aria-labelledby="modes-h">
   <header class="modes__head">
-    <span class="eyebrow eyebrow--ember">Two modes · one switch</span>
-    <h2 id="modes-h" class="modes__h">Pick a posture. The model stays itself either way.</h2>
+    <span class="eyebrow eyebrow--ember">Two router modes · one invariant</span>
+    <h2 id="modes-h" class="modes__h">
+      Choose how far failover may look. The model still stays exact.
+    </h2>
     <p class="modes__lead">
-      Most days you want the router to honor what you asked for and only stretch capacity behind the
-      scenes. Some days you'd rather it look at the task in front of you and pick the right tool
-      from a researched shortlist. Same gateway. Same accounts. Different posture.
+      Provider-Family Failover is the conservative default: stay inside the selected provider
+      family. Exact Model Failover is the opt-in expansion: BurnBar may cross to another provider or
+      account, but only after it proves that route serves the same canonical model ID. Same gateway.
+      Same accounts. A stricter proof gate before any wider retry.
     </p>
   </header>
 
@@ -50,9 +29,9 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     <article class="modecard modecard--failover" data-animate-onview="">
       <header class="modecard__head">
         <span class="modecard__tag mono">01 · default · provider-family failover</span>
-        <h3 class="modecard__title">Same model. Different account.</h3>
+        <h3 class="modecard__title">Stay inside the selected provider family.</h3>
         <p class="modecard__sub mono">
-          protects your model identity · scales your account capacity
+          conservative capacity extension · no unrelated provider pool
         </p>
       </header>
 
@@ -62,20 +41,20 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
 
       <ul class="modecard__bullets">
         <li>
-          <strong>Model identity is non-negotiable.</strong> Failover only considers accounts that already
-          carry your model.
+          <strong>Your selected family is the boundary.</strong> A Codex route stays with Codex accounts,
+          a Claude route stays with Claude accounts, and a Z.ai route stays with Z.ai accounts.
         </li>
         <li>
-          <strong>Account-level capacity.</strong> Add a second key, pin a third — they all serve the
-          same model.
+          <strong>Your active route wins while healthy.</strong> The exact selected account and model
+          stay active until quota, rate-limit, or availability state forces a retry.
         </li>
         <li>
-          <strong>Pre-selected runner-up.</strong> If the primary stumbles, the next account is already
-          chosen.
+          <strong>Account-level capacity.</strong> Add a second subscription or key in that provider family
+          and BurnBar can hold it as the runner-up.
         </li>
         <li>
-          <strong>Cool-downs heal themselves.</strong> 5-min parking on transient failures, auto-rejoin
-          after.
+          <strong>Never a generic coding bucket.</strong> Provider-family mode does not send Claude traffic
+          to Z.ai or Codex traffic to Claude just because a different account has quota.
         </li>
       </ul>
 
@@ -85,51 +64,93 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
       </p>
     </article>
 
-    {/* RIGHT — intelligent */}
-    <article class="modecard modecard--intelligent" data-animate-onview="">
+    {/* RIGHT — exact model failover */}
+    <article class="modecard modecard--exact" data-animate-onview="">
       <header class="modecard__head">
         <span class="modecard__tag modecard__tag--mercury mono"
-          >02 · opt-in · intelligent model router</span
+          >02 · opt-in · exact model failover</span
         >
-        <h3 class="modecard__title">Different model — when you ask for one.</h3>
-        <p class="modecard__sub mono">model board researches candidates · your pin still wins</p>
+        <h3 class="modecard__title">Cross providers only when the model identity matches.</h3>
+        <p class="modecard__sub mono">canonical model proof · fail closed if proof is missing</p>
       </header>
 
       <div class="modecard__viz">
-        <IntelligentScoreboard
-          variant="mini"
-          heading="Today · top three coding candidates"
-          candidates={candidates}
-          sources={sources}
-        />
+        <div
+          class="exactproof"
+          role="img"
+          aria-label="Exact Model Failover proof gate: the request requires canonical gpt-5.4. Factory and OpenAI routes pass because they serve canonical gpt-5.4. Mini, Pro, family, and openai standard routes are rejected because they are not exact identity proof."
+        >
+          <div class="exactproof__request">
+            <span class="exactproof__label mono">request</span>
+            <strong class="exactproof__model mono">gpt-5.4</strong>
+            <span class="exactproof__canonical mono">canonical · gpt-5.4</span>
+          </div>
+          <ol class="exactproof__routes" role="list">
+            <li class="exactproof__route exactproof__route--source">
+              <span class="exactproof__logo exactproof__logo--factory">F</span>
+              <span class="exactproof__body">
+                <strong>Factory Standard</strong>
+                <span class="mono">exhausted · canonical gpt-5.4</span>
+              </span>
+              <span class="exactproof__verdict exactproof__verdict--pass mono">source</span>
+            </li>
+            <li class="exactproof__route exactproof__route--pass">
+              <span class="exactproof__logo exactproof__logo--openai">O</span>
+              <span class="exactproof__body">
+                <strong>OpenAI</strong>
+                <span class="mono">healthy · canonical gpt-5.4</span>
+              </span>
+              <span class="exactproof__verdict exactproof__verdict--pass mono">pass</span>
+            </li>
+            <li class="exactproof__route exactproof__route--fail">
+              <span class="exactproof__logo">m</span>
+              <span class="exactproof__body">
+                <strong>gpt-5.4-mini</strong>
+                <span class="mono">similar · not exact</span>
+              </span>
+              <span class="exactproof__verdict exactproof__verdict--fail mono">reject</span>
+            </li>
+            <li class="exactproof__route exactproof__route--fail">
+              <span class="exactproof__logo">std</span>
+              <span class="exactproof__body">
+                <strong>openai:standard</strong>
+                <span class="mono">capability class · not proof</span>
+              </span>
+              <span class="exactproof__verdict exactproof__verdict--fail mono">reject</span>
+            </li>
+          </ol>
+          <p class="exactproof__result mono">only exact canonical identity may cross the gate</p>
+        </div>
       </div>
 
       <ul class="modecard__bullets">
         <li>
-          <strong>Daily model board.</strong> A board of language models runs research and analysis tasks
-          before the deterministic ranking is published.
+          <strong>The request creates a required canonical model ID.</strong> If you ask for
+          <code>gpt-5.4</code>, eligible routes must prove <code>gpt-5.4</code>.
         </li>
         <li>
-          <strong>Benchmarks are advisory.</strong> Pulled from Artificial Analysis, Terminal-Bench, Design
-          Arena. Older signals weigh less.
+          <strong>Cross-provider is allowed only after proof.</strong> BurnBar may move from Factory,
+          OpenAI, Codex, or another account only when the destination serves that exact canonical model.
         </li>
         <li>
-          <strong>Selection is deliberately stable.</strong> Favorites are only dethroned after clear
-          evidence and benchmark margins repeat.
+          <strong>Similar does not count.</strong>
+          <code>gpt-5.4-mini</code>, <code>gpt-5.4-pro</code>,
+          <code>gpt-5-family</code>, and broad classes like <code>openai:standard</code> are rejected
+          as substitutes.
         </li>
         <li>
-          <strong>Your pin still wins.</strong> A pinned model that meets the floor beats a higher-scored
-          alternative.
+          <strong>Missing proof fails closed.</strong> If BurnBar cannot prove exact identity, the gateway
+          returns a structured 503 instead of guessing.
         </li>
         <li>
-          <strong>Every pick is explainable.</strong> Today's rundown ships with citations, freshness
-          states, and board verdicts.
+          <strong>The audit trail says what happened.</strong> Events record the attempted model, canonical
+          ID, original route, destination route, reason, and whether the invariant passed.
         </li>
       </ul>
 
-      <a class="modecard__foot modecard__foot--cta mono" href="/router/daily">
+      <a class="modecard__foot modecard__foot--cta mono" href="/router#exact-model-test">
         <span class="modecard__dot modecard__dot--mercury"></span>
-        Browse today's rundown<span aria-hidden="true"> →</span>
+        See the exact-model test<span aria-hidden="true"> →</span>
       </a>
     </article>
   </div>
@@ -223,7 +244,7 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
     color: var(--ember-bright);
   }
-  .modecard--intelligent {
+  .modecard--exact {
     border-color: color-mix(in oklab, var(--mercury-bright) 28%, var(--ink-line));
     color: var(--mercury-bright);
   }
@@ -268,12 +289,131 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     font-size: 0.78rem;
     letter-spacing: 0.04em;
   }
-  .modecard--intelligent .modecard__sub {
+  .modecard--exact .modecard__sub {
     color: var(--mercury-bright);
   }
 
   .modecard__viz {
     margin-top: var(--s-2);
+  }
+
+  .exactproof {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-4);
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 28%, var(--ink-line));
+    border-radius: var(--r-4);
+    background:
+      radial-gradient(80% 60% at 50% 0%, rgba(214, 211, 223, 0.08), transparent 70%),
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+  }
+  .exactproof__request {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    padding: var(--s-3);
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 40%, var(--ink-line));
+    border-radius: var(--r-3);
+    background: color-mix(in oklab, var(--mercury-bright) 8%, var(--ink-base));
+    text-align: center;
+  }
+  .exactproof__label,
+  .exactproof__canonical,
+  .exactproof__result {
+    color: var(--text-mute);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .exactproof__model {
+    color: var(--mercury-bright);
+    font-size: clamp(1.1rem, 0.96rem + 0.5vw, 1.35rem);
+    letter-spacing: 0.02em;
+  }
+  .exactproof__routes {
+    list-style: none;
+    display: grid;
+    gap: var(--s-2);
+    margin: 0;
+    padding: 0;
+  }
+  .exactproof__route {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--s-3);
+    padding: var(--s-3);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: color-mix(in oklab, var(--ink-surface) 70%, var(--ink-base));
+  }
+  .exactproof__route--pass,
+  .exactproof__route--source {
+    border-color: color-mix(in oklab, var(--status-exact) 34%, var(--ink-line));
+  }
+  .exactproof__route--fail {
+    opacity: 0.74;
+    border-color: color-mix(in oklab, var(--status-burn) 22%, var(--ink-line));
+  }
+  .exactproof__logo {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    border: 1px solid var(--ink-line);
+    background: var(--ink-base);
+  }
+  .exactproof__logo--factory {
+    color: var(--ember-bright);
+    border-color: color-mix(in oklab, var(--ember-core) 36%, var(--ink-line));
+  }
+  .exactproof__logo--openai {
+    color: var(--status-exact);
+    border-color: color-mix(in oklab, var(--status-exact) 38%, var(--ink-line));
+  }
+  .exactproof__body {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+  .exactproof__body strong {
+    color: var(--text-bright);
+    font-size: 0.9rem;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .exactproof__body span {
+    color: var(--text-mute);
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+  }
+  .exactproof__verdict {
+    padding: 2px 7px;
+    border-radius: var(--r-pill);
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .exactproof__verdict--pass {
+    color: var(--status-exact);
+    border: 1px solid color-mix(in oklab, var(--status-exact) 34%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-exact) 10%, var(--ink-base));
+  }
+  .exactproof__verdict--fail {
+    color: var(--status-burn);
+    border: 1px solid color-mix(in oklab, var(--status-burn) 28%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-burn) 8%, var(--ink-base));
+  }
+  .exactproof__result {
+    text-align: center;
   }
 
   .modecard__bullets {
@@ -300,8 +440,17 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     font-family: var(--font-mono);
     font-size: 0.9em;
   }
-  .modecard--intelligent .modecard__bullets li::before {
+  .modecard--exact .modecard__bullets li::before {
     color: var(--mercury-bright);
+  }
+  .modecard__bullets code {
+    color: var(--text-bright);
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-2);
+    padding: 0 5px;
+    font-family: var(--font-mono);
+    font-size: 0.86em;
   }
   .modecard__bullets strong {
     color: var(--text-bright);
@@ -352,7 +501,7 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     opacity: 1;
     transform: none;
   }
-  .modecard--intelligent[data-animate-onview] {
+  .modecard--exact[data-animate-onview] {
     transition-delay: 120ms;
   }
 
