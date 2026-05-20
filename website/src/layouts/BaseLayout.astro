@@ -589,7 +589,7 @@ const fullTitle =
 
     <!-- chenglou/pretext-powered High-Performance Text Shrinkwrap Layout Engine -->
     <script type="module">
-      import { prepare, layout } from 'https://esm.sh/@chenglou/pretext';
+      import { prepareWithSegments, layoutWithLines } from 'https://esm.sh/@chenglou/pretext';
 
       async function initPretextShrinkwrap() {
         try {
@@ -598,27 +598,52 @@ const fullTitle =
           console.warn('Font loading check skipped:', e);
         }
 
+        // Query all key copy elements for tight word wrapping
         const elements = document.querySelectorAll(
-          '.glass-pane, .glass-pane--elevated, .surface-card, .ptcard, .pillar, .feat, .routing__card, .zonecard, .optins__list li, .steps li, .alt, .callout, .reqs__grid article, .qa__item'
+          '.pretext-wrap, .glass-wrap-text, .hero__h, .hero__copy .lead, .hero__attest > span, .trust__head h2, .trust__head .lead, .trust__quote blockquote p, .endcta__h, .endcta__inner h2, .endcta__inner p, .endcta__inner .lead, .pagehead__inner h1, .pagehead__inner p, .pagehead__inner .lead, .pagehead__lead'
         );
+
+        // Styling reconstructor to restore semantic styling highlights on wrapped lines
+        function reconstructLineHTML(lineText) {
+          let html = lineText.trim();
+          
+          const highlights = [
+            { phrase: 'Before the bill.', replace: '<span class="hero__h-second">Before the bill.</span>' },
+            { phrase: 'local-first developer tool', replace: '<strong>local-first developer tool</strong>' },
+            { phrase: 'Every token leaves a trail. BurnBar reads the fire.', replace: '<em>Every token leaves a trail. BurnBar reads the fire.</em>' },
+            { phrase: 'Keep building.', replace: '<span class="ember">Keep building.</span>' },
+            { phrase: '● No telemetry by default', replace: '<span class="ember">●</span> No telemetry by default' },
+            { phrase: '● No account required', replace: '<span class="ember">●</span> No account required' },
+            { phrase: '● Reads logs, not your API keys', replace: '<span class="ember">●</span> Reads logs, not your API keys' }
+          ];
+
+          for (const item of highlights) {
+            if (html.includes(item.phrase)) {
+              html = html.replace(item.phrase, item.replace);
+            }
+          }
+          return html;
+        }
 
         function relayout() {
           elements.forEach(el => {
-            // Skip containers with complex multi-column grids or tables
-            if (el.querySelector('table') || el.classList.contains('container') || el.classList.contains('zonepairs__grid')) return;
+            // Retrieve or store original text/HTML
+            let originalText = el.dataset.originalText;
+            if (!originalText) {
+              originalText = el.textContent.trim().replace(/\s+/g, ' ');
+              el.dataset.originalText = originalText;
+            }
 
-            // Reset inline styles first
-            el.style.width = '';
-            el.style.maxWidth = '';
-
-            const text = el.textContent?.trim();
-            if (!text || text.length < 8) return;
+            // Set parent styles to fit tight inline elements cleanly
+            el.style.width = '100%';
+            el.style.maxWidth = 'none';
+            el.style.background = 'none';
+            el.style.border = 'none';
+            el.style.boxShadow = 'none';
+            el.style.backdropFilter = 'none';
+            el.style.webkitBackdropFilter = 'none';
 
             const style = window.getComputedStyle(el);
-            
-            // Skip elements that display as grids/flexboxes holding large sub-elements
-            if (style.display === 'grid' && el.children.length > 3 && !el.classList.contains('qa__item')) return;
-
             const fontSize = parseFloat(style.fontSize);
             const fontFamily = style.fontFamily;
             const font = `${style.fontWeight || '400'} ${fontSize}px ${fontFamily}`;
@@ -627,57 +652,30 @@ const fullTitle =
             // Compute available parent width
             const parent = el.parentElement;
             if (!parent) return;
-            const parentStyle = window.getComputedStyle(parent);
-            const maxAvailWidth = parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight);
+            const parentWidth = parent.clientWidth - parseFloat(window.getComputedStyle(parent).paddingLeft) - parseFloat(window.getComputedStyle(parent).paddingRight);
+            
+            // Apply a slight safety buffer so spans don't wrap prematurely
+            const targetWidth = Math.max(160, parentWidth - 32);
 
             try {
-              const prepared = prepare(text, font);
-              const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-              const borderX = parseFloat(style.borderLeftWidth || '0') + parseFloat(style.borderRightWidth || '0');
-              const currentContentWidth = el.clientWidth - paddingX - borderX;
+              const segs = prepareWithSegments(originalText, font);
+              const { lines } = layoutWithLines(segs, targetWidth, lineHeight);
 
-              if (currentContentWidth <= 50) return;
-
-              // Find the line count at current width
-              const { lineCount: targetLines } = layout(prepared, currentContentWidth, lineHeight);
-
-              // Binary search to find the narrowest width that maintains the same line count
-              let lo = Math.min(100, currentContentWidth);
-              let hi = currentContentWidth;
-
-              if (targetLines <= 1) {
-                // For single-line boxes, find the absolute minimum width before it wraps
-                while (hi - lo > 1) {
-                  const mid = Math.round((lo + hi) / 2);
-                  const { lineCount } = layout(prepared, mid, lineHeight);
-                  if (lineCount <= 1) {
-                    hi = mid;
-                  } else {
-                    lo = mid;
+              if (lines && lines.length > 0) {
+                el.innerHTML = '';
+                lines.forEach((line, index) => {
+                  const span = document.createElement('span');
+                  span.className = 'glass-line-pill';
+                  span.innerHTML = reconstructLineHTML(line.text);
+                  el.appendChild(span);
+                  
+                  if (index < lines.length - 1) {
+                    el.appendChild(document.createElement('br'));
                   }
-                }
-              } else {
-                // For multi-line boxes, find the minimum width that yields exactly targetLines
-                while (hi - lo > 1) {
-                  const mid = Math.round((lo + hi) / 2);
-                  const { lineCount } = layout(prepared, mid, lineHeight);
-                  if (lineCount <= targetLines) {
-                    hi = mid;
-                  } else {
-                    lo = mid;
-                  }
-                }
-              }
-
-              // Apply the shrinkwrapped width
-              const tightWidth = hi + paddingX + borderX + 12; // 12px safety buffer
-              if (tightWidth < el.clientWidth && tightWidth > 120) {
-                el.style.maxWidth = `${tightWidth}px`;
-                el.style.width = '100%';
+                });
               }
             } catch (err) {
-              // Pretext measurements can fail if font shorthand format is unparseable
-              console.debug('Pretext measurement skipped for element:', el, err);
+              console.debug('Pretext layout failed for element:', el, err);
             }
           });
         }
