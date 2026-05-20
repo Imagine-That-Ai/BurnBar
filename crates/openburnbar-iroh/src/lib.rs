@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use iroh::{Endpoint, NodeAddr, NodeId, RelayMap, RelayMode, RelayUrl, SecretKey, Watcher};
+use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
@@ -477,6 +478,29 @@ impl IrohEndpointHandle {
             drop(runtime);
         }
         Ok(())
+    }
+
+    /// Collect a snapshot of the endpoint's iroh metrics as a JSON string.
+    ///
+    /// Returns `Err(IrohFfiError::EndpointNotInitialized)` if the endpoint
+    /// has not been bootstrapped yet. Call this before `shutdown()`.
+    ///
+    /// The JSON schema is an implementation detail — callers should treat it
+    /// as an opaque blob and pass it directly to the Firestore audit logger.
+    /// A Cloud Function rolls these up into `ops/iroh_transport_daily_rollups/days`.
+    pub fn collect_metrics(self: Arc<Self>) -> Result<String, IrohFfiError> {
+        block_on(async {
+            let endpoint = self
+                .endpoint
+                .lock()
+                .await
+                .clone()
+                .ok_or(IrohFfiError::EndpointNotInitialized)?;
+            let metrics = endpoint.metrics();
+            serde_json::to_string(&*metrics).map_err(|err| IrohFfiError::RuntimeFailed {
+                detail: format!("failed to serialize iroh metrics: {err}"),
+            })
+        })
     }
 }
 
