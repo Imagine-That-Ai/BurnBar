@@ -592,12 +592,12 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertEqual(warp.sourceName, "WarpLogo")
         XCTAssertEqual(warp.rows, [
             "........",
-            "..DCCC..",
-            "...DCC..",
-            "GGCCC...",
-            "...DCC..",
-            "..DCCC..",
-            "..BBBBB.",
+            "..####..",
+            "...###..",
+            "#####...",
+            "...###..",
+            "..####..",
+            "..#####.",
             "........"
         ])
         // Cyan (#02D1D1) — chevron head
@@ -617,10 +617,10 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertEqual(deepSeek.rows, [
             "..####..",
             ".######.",
-            "#.######",
+            "########",
             "########",
             ".#######",
-            "..###.#.",
+            "..####.#",
             "...##.##",
             "........"
         ])
