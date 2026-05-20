@@ -32,9 +32,9 @@ use iroh::{
 };
 use iroh_blobs::api::downloader::Shuffled;
 use iroh_blobs::{store::fs::FsStore, ticket::BlobTicket, BlobsProtocol};
-use tokio_stream::StreamExt;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
+use tokio_stream::StreamExt;
 
 use crate::{block_on, IrohFfiError, IrohNodeIdentity};
 
@@ -256,7 +256,10 @@ impl IrohBlobNode {
             let started = Instant::now();
             let downloader = store.downloader(&endpoint);
             let mut progress = downloader
-                .download(ticket.hash_and_format(), Shuffled::new(vec![ticket.addr().id]))
+                .download(
+                    ticket.hash_and_format(),
+                    Shuffled::new(vec![ticket.addr().id]),
+                )
                 .stream()
                 .await
                 .map_err(|err| IrohFfiError::StreamFailed {

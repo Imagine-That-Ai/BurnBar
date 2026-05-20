@@ -588,6 +588,9 @@ Completed:
 - Kept normal app bootstrap tolerant of services-control-plane failures, with
   `OPENBURNBAR_IROH_SERVICES_REQUIRED=true` available for CI/smoke runs that
   must fail closed.
+- Added stderr warnings for optional Iroh Services configuration/startup
+  failures so a malformed secret does not look like successful observability
+  while the chat transport remains available.
 - Added `scripts/e2e/iroh-services-smoke.sh`, which starts a real endpoint,
   authenticates to Iroh Services, pings it, and pushes one metrics snapshot.
 - Rebuilt `Vendor/OpenBurnBarIroh.xcframework` and

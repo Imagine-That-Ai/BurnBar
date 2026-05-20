@@ -50,6 +50,14 @@ keeps it alive for the endpoint lifetime, and lets the official client push
 endpoint metrics on its default interval. No app-side Firestore collection or
 Cloud Function rollup is the source of truth for these native counters.
 
+This is a runtime credential, not a Firestore schema flag. The macOS host or
+test harness that starts the iroh endpoint must launch with
+`IROH_SERVICES_API_SECRET` in its environment; a Finder-launched local build
+will not inherit a shell export automatically. Do not bake this key into an
+App Store/mobile binary. For release verification, run the smoke below and
+then launch the macOS host from the same secret-bearing environment or an
+equivalent trusted launcher.
+
 Operational toggles:
 
 - `IROH_SERVICES_API_SECRET`: enables the Iroh Services client.
@@ -57,7 +65,9 @@ Operational toggles:
   name. If omitted, the Rust bridge uses `openburnbar-{endpoint_id_prefix}`.
 - `OPENBURNBAR_IROH_SERVICES_REQUIRED=true`: make bootstrap fail if the
   services client cannot start. Leave unset for normal app runtime so chat can
-  continue if the metrics control plane is temporarily unavailable.
+  continue if the metrics control plane is temporarily unavailable. When this
+  is unset and the secret is malformed or the service is unavailable, the Rust
+  bridge logs a stderr warning and continues without endpoint-native metrics.
 
 Smoke-test the official metrics path with:
 

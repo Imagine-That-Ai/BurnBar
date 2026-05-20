@@ -45,8 +45,7 @@ pub const OPENBURNBAR_ALPN: &[u8] = b"openburnbar/1";
 const OPENBURNBAR_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(1);
 const OPENBURNBAR_MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const IROH_SERVICES_API_SECRET_ENV: &str = "IROH_SERVICES_API_SECRET";
-const OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME_ENV: &str =
-    "OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME";
+const OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME_ENV: &str = "OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME";
 const OPENBURNBAR_IROH_SERVICES_REQUIRED_ENV: &str = "OPENBURNBAR_IROH_SERVICES_REQUIRED";
 
 pub(crate) fn openburnbar_transport_config(
@@ -151,14 +150,10 @@ impl IrohStream {
             let mut guard = self.send.lock().await;
             let send = guard.as_mut().ok_or(IrohFfiError::EndpointNotInitialized)?;
             let length = frame.len() as u32;
-            send
-                .write_all(&length.to_be_bytes())
+            send.write_all(&length.to_be_bytes())
                 .await
                 .map_err(IrohFfiError::stream)?;
-            send
-                .write_all(&frame)
-                .await
-                .map_err(IrohFfiError::stream)?;
+            send.write_all(&frame).await.map_err(IrohFfiError::stream)?;
             send.flush().await.map_err(IrohFfiError::stream)?;
             Ok(())
         })
@@ -179,8 +174,7 @@ impl IrohStream {
             }
             let length = u32::from_be_bytes(len_buf) as usize;
             let mut payload = vec![0u8; length];
-            recv
-                .read_exact(&mut payload)
+            recv.read_exact(&mut payload)
                 .await
                 .map_err(IrohFfiError::stream)?;
             Ok(Some(payload))
@@ -311,9 +305,8 @@ impl IrohEndpointHandle {
                 direct_addresses,
             })
         })?;
-        let services_client = runtime.block_on(async {
-            start_iroh_services_if_configured(&endpoint).await
-        })?;
+        let services_client =
+            runtime.block_on(async { start_iroh_services_if_configured(&endpoint).await })?;
 
         let runtime_handle = runtime.handle().clone();
         block_on(async {
@@ -488,7 +481,6 @@ impl IrohEndpointHandle {
         }
         Ok(())
     }
-
 }
 
 #[uniffi::export]
@@ -517,7 +509,7 @@ async fn start_iroh_services_if_configured(
         _ => return Ok(None),
     };
     let required = std::env::var(OPENBURNBAR_IROH_SERVICES_REQUIRED_ENV)
-        .map(|value| value.eq_ignore_ascii_case("true") || value == "1")
+        .map(|value| truthy_env_value(&value))
         .unwrap_or(false);
     let endpoint_name = std::env::var(OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME_ENV)
         .ok()
@@ -533,7 +525,10 @@ async fn start_iroh_services_if_configured(
     let builder = match build_client() {
         Ok(builder) => builder,
         Err(err) if required => return Err(IrohFfiError::runtime(err)),
-        Err(_) => return Ok(None),
+        Err(err) => {
+            eprintln!("openburnbar-iroh: Iroh Services disabled after configuration error: {err}");
+            return Ok(None);
+        }
     };
     let client = match tokio::time::timeout(Duration::from_secs(15), builder.build()).await {
         Ok(Ok(client)) => client,
@@ -543,9 +538,25 @@ async fn start_iroh_services_if_configured(
                 detail: "iroh services client build timed out".into(),
             });
         }
-        _ => return Ok(None),
+        Ok(Err(err)) => {
+            eprintln!(
+                "openburnbar-iroh: Iroh Services client failed to start; endpoint remains available without native metrics: {err}"
+            );
+            return Ok(None);
+        }
+        Err(_) => {
+            eprintln!(
+                "openburnbar-iroh: Iroh Services client start timed out; endpoint remains available without native metrics"
+            );
+            return Ok(None);
+        }
     };
     Ok(Some(client))
+}
+
+fn truthy_env_value(value: &str) -> bool {
+    let normalized = value.trim();
+    normalized == "1" || normalized.eq_ignore_ascii_case("true")
 }
 
 fn default_iroh_services_endpoint_name(endpoint_id: EndpointId) -> String {
@@ -569,5 +580,33 @@ where
             .build()
             .expect("tokio runtime build failed")
             .block_on(future),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn iroh_services_required_env_accepts_only_explicit_truthy_values() {
+        assert!(truthy_env_value("1"));
+        assert!(truthy_env_value("true"));
+        assert!(truthy_env_value(" TRUE "));
+
+        assert!(!truthy_env_value(""));
+        assert!(!truthy_env_value("0"));
+        assert!(!truthy_env_value("false"));
+        assert!(!truthy_env_value("yes"));
+    }
+
+    #[test]
+    fn default_iroh_services_endpoint_name_is_stable_and_human_scannable() {
+        let endpoint_id = EndpointId::from(SecretKey::generate().public());
+        let id = endpoint_id.to_string();
+        let name = default_iroh_services_endpoint_name(endpoint_id);
+
+        assert!(name.starts_with("openburnbar-"));
+        assert_eq!(name, format!("openburnbar-{}", &id[..12]));
+        assert!(name.len() <= "openburnbar-".len() + 12);
     }
 }

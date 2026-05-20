@@ -7,10 +7,8 @@ const DEFAULT_ENDPOINT_NAME: &str = "openburnbar-smoke";
 
 #[tokio::main]
 async fn main() -> Result<(), iroh_services::anyhow::Error> {
-    let endpoint_name =
-        std::env::var("OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME").unwrap_or_else(|_| {
-            DEFAULT_ENDPOINT_NAME.to_string()
-        });
+    let endpoint_name = std::env::var("OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME")
+        .unwrap_or_else(|_| DEFAULT_ENDPOINT_NAME.to_string());
 
     let endpoint = Endpoint::bind(presets::N0).await?;
     tokio::time::timeout(Duration::from_secs(10), endpoint.online()).await?;

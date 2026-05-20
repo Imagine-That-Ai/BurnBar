@@ -577,16 +577,24 @@ public enum PixelClockQuotaRenderer {
         }
         if token.contains("warp") {
             // Chevron arrow accent — sparkle on the tail and shadow
-            // on the bar tip so both shapes read at 8×8.
+            // on the bar tip; the corner pixels imply a terminal frame
+            // so the sparse prompt mark still reads in rainbow mode.
             return [
+                .pixel(x: 1, y: 1, color: highlight),
+                .pixel(x: 6, y: 1, color: highlight),
                 .pixel(x: 0, y: 3, color: shadow),
-                .pixel(x: 6, y: 5, color: sparkle)
+                .pixel(x: 6, y: 5, color: sparkle),
+                .pixel(x: 1, y: 6, color: shadow),
+                .pixel(x: 7, y: 6, color: sparkle)
             ]
         }
         if token.contains("deepseek") || token.contains("deep seek") || token.contains("deep-seek") {
-            // Whale eye and tail dots to keep shape readable on rainbow.
+            // Whale eye, fin, and tail dots keep the silhouette readable
+            // when the indigo body maps to a single rainbow stripe.
             return [
                 .pixel(x: 1, y: 2, color: sparkle),
+                .pixel(x: 7, y: 3, color: highlight),
+                .pixel(x: 2, y: 5, color: highlight),
                 .pixel(x: 6, y: 5, color: sparkle),
                 .pixel(x: 6, y: 6, color: shadow)
             ]
