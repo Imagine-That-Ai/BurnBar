@@ -625,13 +625,52 @@ const fullTitle =
           return html;
         }
 
+        // Parse the element's child nodes into distinct blocks (e.g. separate standard text, second-row headings, br, etc.)
+        function parseOriginalBlocks(el) {
+          const blocks = [];
+          let currentText = "";
+          
+          el.childNodes.forEach(node => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const isSecond = node.className && (node.className.includes('-second') || node.classList.contains('hero__h-second') || node.classList.contains('pagehead__h-second'));
+              const isBr = node.nodeName === 'BR';
+              
+              if (isBr || isSecond) {
+                if (currentText.trim()) {
+                  blocks.push({ text: currentText.trim().replace(/\s+/g, ' '), className: "" });
+                  currentText = "";
+                }
+                if (isBr) {
+                  blocks.push({ isBr: true });
+                } else {
+                  blocks.push({
+                    text: node.textContent.trim().replace(/\s+/g, ' '),
+                    className: node.className
+                  });
+                }
+              } else {
+                // Sibling inline nodes (strong, em, spans) - extract text content to preserve
+                currentText += " " + node.textContent;
+              }
+            } else if (node.nodeType === Node.TEXT_NODE) {
+              currentText += " " + node.textContent;
+            }
+          });
+          
+          if (currentText.trim()) {
+            blocks.push({ text: currentText.trim().replace(/\s+/g, ' '), className: "" });
+          }
+          
+          return blocks;
+        }
+
         function relayout() {
           elements.forEach(el => {
-            // Retrieve or store original text/HTML
-            let originalText = el.dataset.originalText;
-            if (!originalText) {
-              originalText = el.textContent.trim().replace(/\s+/g, ' ');
-              el.dataset.originalText = originalText;
+            // Retrieve or parse the cached blocks array to maintain consistency
+            let blocks = el.__pretextBlocks;
+            if (!blocks) {
+              blocks = parseOriginalBlocks(el);
+              el.__pretextBlocks = blocks;
             }
 
             // Set parent styles to fit tight inline elements cleanly
@@ -658,22 +697,43 @@ const fullTitle =
             const targetWidth = Math.max(160, parentWidth - 32);
 
             try {
-              const segs = prepareWithSegments(originalText, font);
-              const { lines } = layoutWithLines(segs, targetWidth, lineHeight);
+              el.innerHTML = '';
+              blocks.forEach((block, blockIndex) => {
+                if (block.isBr) {
+                  el.appendChild(document.createElement('br'));
+                  return;
+                }
 
-              if (lines && lines.length > 0) {
-                el.innerHTML = '';
-                lines.forEach((line, index) => {
-                  const span = document.createElement('span');
-                  span.className = 'glass-line-pill';
-                  span.innerHTML = reconstructLineHTML(line.text);
-                  el.appendChild(span);
-                  
-                  if (index < lines.length - 1) {
-                    el.appendChild(document.createElement('br'));
+                const segs = prepareWithSegments(block.text, font);
+                const { lines } = layoutWithLines(segs, targetWidth, lineHeight);
+
+                if (lines && lines.length > 0) {
+                  // If block has a specific class name (e.g. hero__h-second), create a container wrapper
+                  let container = el;
+                  if (block.className) {
+                    const wrapper = document.createElement('span');
+                    wrapper.className = block.className;
+                    el.appendChild(wrapper);
+                    container = wrapper;
                   }
-                });
-              }
+
+                  lines.forEach((line, lineIndex) => {
+                    const span = document.createElement('span');
+                    span.className = 'glass-line-pill';
+                    span.innerHTML = reconstructLineHTML(line.text);
+                    container.appendChild(span);
+                    
+                    if (lineIndex < lines.length - 1) {
+                      container.appendChild(document.createElement('br'));
+                    }
+                  });
+                }
+                
+                // Add a newline between blocks if it's not the last block and not followed by a BR block
+                if (blockIndex < blocks.length - 1 && !blocks[blockIndex + 1].isBr) {
+                  el.appendChild(document.createElement('br'));
+                }
+              });
             } catch (err) {
               console.debug('Pretext layout failed for element:', el, err);
             }

@@ -3,6 +3,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import { SURFACES, type Surface } from "@data/surfaces";
 import { SITE } from "@data/site";
+import SurfaceIcon from "@components/SurfaceIcon.astro";
 
 const statusTint = (s: Surface["status"]) => {
   switch (s) {
@@ -58,11 +59,16 @@ const statusTint = (s: Surface["status"]) => {
 
       <ul class="surfacematrix__grid">
         {SURFACES.map((s) => (
-          <li class={`surfacecard surfacecard--${s.status}`}>
+          <li class={`surfacecard surfacecard--${s.status} surfacecard--id-${s.id}`}>
             <header class="surfacecard__head">
-              <span class={`tag tag--${statusTint(s.status)} mono`}>{s.statusLabel}</span>
-              <h3 class="surfacecard__h">{s.name}</h3>
-              <p class="surfacecard__platform mono">{s.platform}</p>
+              <SurfaceIcon id={s.id} />
+              <div class="surfacecard__head-info">
+                <div class="surfacecard__head-meta">
+                  <span class={`tag tag--${statusTint(s.status)} mono`}>{s.statusLabel}</span>
+                  <span class="surfacecard__platform mono">{s.platform}</span>
+                </div>
+                <h3 class="surfacecard__h">{s.name}</h3>
+              </div>
             </header>
             <p class="surfacecard__desc">{s.description}</p>
             <ul class="surfacecard__bullets">
@@ -161,6 +167,32 @@ const statusTint = (s: Surface["status"]) => {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: var(--s-4);
   }
+  /* Brand color definitions for premium glowing effects */
+  .surfacecard--id-macos {
+    --brand-color: #F0EBE2;
+  }
+  .surfacecard--id-ios {
+    --brand-color: #E87060;
+  }
+  .surfacecard--id-cursor {
+    --brand-color: #5FF5D2;
+  }
+  .surfacecard--id-daemon {
+    --brand-color: #9080D8;
+  }
+  .surfacecard--id-cli {
+    --brand-color: #2CCAC0;
+  }
+  .surfacecard--id-widgets {
+    --brand-color: #E87060;
+  }
+  .surfacecard--id-smart-display {
+    --brand-color: #4285F4;
+  }
+  .surfacecard--id-android {
+    --brand-color: #3DDC84;
+  }
+
   .surfacecard {
     border: 1px solid var(--ink-line);
     border-radius: var(--r-4);
@@ -168,15 +200,46 @@ const statusTint = (s: Surface["status"]) => {
       linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
     padding: var(--s-5);
     display: grid;
-    gap: var(--s-3);
+    gap: var(--s-4);
+    position: relative;
+    transition: 
+      transform var(--dur-base) var(--ease-out),
+      border-color var(--dur-base) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out);
   }
-  .surfacecard--shipping { border-color: color-mix(in oklab, var(--status-exact) 30%, var(--ink-line)); }
+  .surfacecard--shipping { border-color: color-mix(in oklab, var(--status-exact) 20%, var(--ink-line)); }
   .surfacecard--review,
-  .surfacecard--beta { border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line)); }
+  .surfacecard--beta { border-color: color-mix(in oklab, var(--ember-core) 20%, var(--ink-line)); }
   .surfacecard--planned,
   .surfacecard--source-only { opacity: 0.85; }
 
-  .surfacecard__head { display: grid; gap: var(--s-2); }
+  .surfacecard:hover {
+    border-color: color-mix(in oklab, var(--brand-color, var(--ember-core)) 40%, var(--ink-line));
+    transform: translateY(-4px);
+    box-shadow: 
+      0 12px 36px rgba(0, 0, 0, 0.45),
+      0 0 20px color-mix(in oklab, var(--brand-color, var(--ember-core)) 10%, transparent);
+  }
+
+  .surfacecard__head {
+    display: flex;
+    gap: var(--s-3);
+    align-items: flex-start;
+  }
+  .surfacecard__head-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    flex-grow: 1;
+    min-width: 0;
+  }
+  .surfacecard__head-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+  }
   .surfacecard__h {
     font-family: var(--font-display);
     font-size: 1.18rem;
@@ -185,18 +248,34 @@ const statusTint = (s: Surface["status"]) => {
     margin: 0;
     letter-spacing: -0.014em;
   }
-  .surfacecard__platform { color: var(--text-mute); font-size: 0.78rem; letter-spacing: 0.04em; }
-  .surfacecard__desc { color: var(--text-base); font-size: 0.92rem; line-height: 1.5; }
+  .surfacecard__platform { color: var(--text-mute); font-size: 0.78rem; letter-spacing: 0.04em; margin: 0; }
+  .surfacecard__desc { color: var(--text-base); font-size: 0.92rem; line-height: 1.5; margin: 0; }
   .surfacecard__bullets {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
-    gap: 4px;
+    gap: 6px;
     color: var(--text-mute);
     font-size: 0.84rem;
   }
-  .surfacecard__bullets li::before { content: "·  "; color: var(--ember-bright); }
+  .surfacecard__bullets li {
+    position: relative;
+    padding-left: 1.25em;
+    line-height: 1.45;
+    transition: color var(--dur-base) var(--ease-out);
+  }
+  .surfacecard__bullets li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: var(--brand-color, var(--ember-bright));
+    font-family: var(--font-mono);
+    transition: transform var(--dur-base) var(--ease-out);
+  }
+  .surfacecard:hover .surfacecard__bullets li::before {
+    transform: translateX(3px);
+  }
   .surfacecard__foot {
     padding-top: var(--s-3);
     border-top: 1px dashed var(--ink-line-soft);

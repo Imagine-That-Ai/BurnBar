@@ -77,15 +77,13 @@ final class HostedQuotaSubscriptionStore {
     static let legacyHostedComputerUseProductID = "com.openburnbar.hostedComputerUseSync.monthly"
     static let legacyProMaxProductID = "com.openburnbar.proMax.monthly"
 
-    /// Every auto-renewable subscription currently configured in App Store
-    /// Connect for the iOS app. The App Review paywall uses this exact list so
-    /// new ASC products cannot sit in the catalog without an in-app purchase
-    /// surface.
+    /// Every App Store-reviewable auto-renewable subscription that this build
+    /// presents in StoreKit. Draft products stay out of this list until App
+    /// Store Connect reports them as review-includable, which prevents the
+    /// paywall from referencing product IDs Apple will omit from review.
     static let appStoreReviewVisibleProductIDs = [
         productID,
-        legacyHostedQuotaProductID,
-        hostedComputerUseProductID,
-        proMaxProductID
+        legacyHostedQuotaProductID
     ]
 
     private static let entitlementProductIDs: Set<String> = [

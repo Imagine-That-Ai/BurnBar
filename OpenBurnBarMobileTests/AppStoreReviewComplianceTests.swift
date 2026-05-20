@@ -61,8 +61,8 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("https://burnbar.ai/legal/terms"))
         XCTAssertTrue(source.contains("Terms of Use (EULA)"))
         XCTAssertTrue(source.contains("SubscriptionStoreView(productIDs: HostedQuotaSubscriptionStore.appStoreReviewVisibleProductIDs)"))
-        XCTAssertTrue(source.contains("OpenBurnBar Computer Use Monthly"))
-        XCTAssertTrue(source.contains("OpenBurnBar Pro Max Monthly"))
+        XCTAssertFalse(source.contains("OpenBurnBar Computer Use Monthly - 1 month"))
+        XCTAssertFalse(source.contains("OpenBurnBar Pro Max Monthly - 1 month"))
         XCTAssertTrue(source.contains("All App Store Connect subscriptions for this app are available here"))
         XCTAssertFalse(source.contains(".font(.system(size: 10"))
         XCTAssertTrue(source.contains(".storeButton(.visible, for: .restorePurchases)"))
@@ -88,6 +88,8 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("com.openburnbar.proMax.bundle.monthly"))
         XCTAssertTrue(source.contains("legacyHostedComputerUseProductID"))
         XCTAssertTrue(source.contains("legacyProMaxProductID"))
+        XCTAssertTrue(source.contains("Draft products stay out of this list until App"))
+        XCTAssertFalse(source.contains("appStoreReviewVisibleProductIDs = [\n        productID,\n        legacyHostedQuotaProductID,\n        hostedComputerUseProductID"))
         XCTAssertTrue(source.contains("fetchProducts(Self.appStoreReviewVisibleProductIDs)"))
     }
 

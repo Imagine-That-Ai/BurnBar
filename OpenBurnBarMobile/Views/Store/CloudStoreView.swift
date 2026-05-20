@@ -17,9 +17,7 @@ private enum CloudSubscriptionDisclosure {
     static let billing = "Billed by Apple. Auto-renews until canceled at least 24 hours before renewal. Manage or cancel in Settings -> Apple ID."
     static let reviewVisiblePlans = [
         "OpenBurnBar Cloud Monthly - 1 month - hosted quota refresh, session sync, conversation backup, and remote relay.",
-        "Hosted Quota Sync Monthly - 1 month - legacy hosted quota sync entitlement for existing App Store review catalog continuity.",
-        "OpenBurnBar Computer Use Monthly - 1 month - trusted Mac computer use.",
-        "OpenBurnBar Pro Max Monthly - 1 month - all OpenBurnBar cloud features."
+        "Hosted Quota Sync Monthly - 1 month - legacy hosted quota sync entitlement for existing App Store review catalog continuity."
     ]
 }
 
