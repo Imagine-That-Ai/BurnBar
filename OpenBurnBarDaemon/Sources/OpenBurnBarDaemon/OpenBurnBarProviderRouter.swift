@@ -183,8 +183,8 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
     public let canonicalModelID: String?
     public let apiKey: String
     public let pricing: BurnBarModelPricing
-    /// Same-tier failover class. Retry attempts must stay inside this class
-    /// unless explicit downgrade policy is enabled.
+    /// Advisory capability class for scoring, grouping, and legacy audit
+    /// consumers. Exact failover is keyed by `canonicalModelID`, not this field.
     public let modelCapabilityClassID: String
     /// Wire-format family this route serves. Determined by the upstream
     /// provider's catalog declaration. The gateway enforces that an incoming
@@ -434,19 +434,6 @@ public struct BurnBarProviderRouter: Sendable {
             && (requiredCanonicalModelID != nil || routerMode.usesExactSameModelInvariant)
         if shouldEnforceExactModel {
             guard let requiredCanonicalModelID else {
-                routes = []
-                if let route = routes.first {
-                    logger.notice(
-                        "route_selected",
-                        metadata: [
-                            "provider_id": route.providerID,
-                            "slot_id": route.credentialSlotID ?? "legacy",
-                            "resolved_model_id": route.resolvedModelID,
-                            "requested_model": route.requestedModel
-                        ]
-                    )
-                }
-                if !routes.isEmpty { return routes }
                 return []
             }
             routes = capabilityScopedRoutes.filter { route in
@@ -1249,9 +1236,8 @@ extension BurnBarProviderRouter {
             strictPreferredProvider: preferredProviderID != nil
         )
 
-        // When capability-class filtering is active, also fetch the unfiltered candidates
-        // to compute which lower-class routes were excluded. Used by callers (gateway)
-        // to report "downgrade disabled" when the same-class pool is exhausted.
+        // Retain legacy capability-class filtering for older direct router
+        // callers. The HTTP gateway now enforces exact canonical model identity.
         let blockedByCapabilityClass: [BurnBarProviderRoute]
         if requiredCapabilityClassID != nil {
             let unfilteredCandidates = try candidateRoutes(
