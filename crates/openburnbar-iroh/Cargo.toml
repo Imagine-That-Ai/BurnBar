@@ -17,7 +17,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # Iroh is the QUIC + NAT-traversal stack. Pinning an exact minor for now so
 # the xcframework build is bit-stable; planned upgrade cycles will bump this
 # deliberately, validated against `OpenBurnBarIroh` Swift integration tests.
-iroh = { version = "0.91", default-features = false }
+iroh = { version = "0.91", default-features = false, features = ["metrics"] }
 
 # iroh-blobs: content-addressed BLAKE3 file transfer over the same
 # `Endpoint`. Carries Mercury Phase 1 file transfer (see
@@ -29,6 +29,8 @@ iroh-blobs = "0.92"
 # Async runtime + utilities used by iroh.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
 thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # Matches iroh 0.91's pinned rand. Used by `SecretKey::generate(&mut OsRng)`
 # when Swift asks us for a cold-start identity.
 rand = "0.8"

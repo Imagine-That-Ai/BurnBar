@@ -1238,43 +1238,6 @@ public actor BurnBarHTTPGatewayServer {
             || description.contains("429")
     }
 
-    private func capabilityClassID(
-        forModelName modelName: String,
-        providerID requestedProviderID: String?,
-        catalog: BurnBarCatalog
-    ) -> String? {
-        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let providerID = requestedProviderID ?? (normalized.contains(":cloud") || normalized.contains("-cloud") ? "ollama" : nil)
-        if providerID?.caseInsensitiveCompare("ollama") == .orderedSame,
-           let cloudModelID = ollamaCloudWireModelID(from: modelName) {
-            return cloudModelID.lowercased()
-        }
-        if let providerID,
-           let provider = catalog.provider(id: providerID) {
-            if let exactModel = provider.models.first(where: { model in
-                model.id.lowercased() == normalized
-                    || model.aliases.contains(where: { $0.lowercased() == normalized })
-            }) {
-                let classID = exactModel.capabilityClassID?.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let classID, !classID.isEmpty {
-                    return classID.lowercased()
-                }
-                let matchedAlias = exactModel.aliases.contains { $0.lowercased() == normalized }
-                if matchedAlias && !exactModel.id.lowercased().hasSuffix("-family") {
-                    return normalized
-                }
-                return exactModel.id.lowercased()
-            }
-
-            // Provider-qualified gateway IDs come from the live advertised
-            // catalog. If the static catalog only has a broad matcher, keep
-            // the requested live model as its own class so same-tier routing
-            // cannot downgrade it to an older family/default model.
-            return normalized
-        }
-        return catalog.capabilityClassID(forModelName: modelName, providerID: providerID)
-    }
-
     private func canonicalModelID(
         forModelName modelName: String,
         providerID requestedProviderID: String?,
