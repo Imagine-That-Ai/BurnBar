@@ -14,6 +14,7 @@ final class MercuryRouterTests: XCTestCase {
     private func makeRouter(
         consent: Bool = false,
         cooldownSeconds: TimeInterval = 30,
+        ensureComputerUseSession: MercuryRouter.ComputerUseSessionEnsurer? = nil,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink) {
         let registry = MediaControlStreamRegistry()
@@ -32,6 +33,7 @@ final class MercuryRouterTests: XCTestCase {
             sessionCoordinator: sessionCoordinator,
             peerSource: peerSource,
             consentStore: consentStore,
+            ensureComputerUseSession: ensureComputerUseSession,
             cooldownSeconds: cooldownSeconds,
             clock: clock
         )
@@ -66,6 +68,22 @@ final class MercuryRouterTests: XCTestCase {
             requestId: requestID,
             media: HermesRealtimeRelayMediaPayload(mirrorRequest: req)
         )
+    }
+
+    func testAcceptMirrorEnsuresComputerUseSessionBeforeAcceptedAck() async {
+        var ensureCount = 0
+        let (router, sink) = makeRouter(
+            consent: true,
+            ensureComputerUseSession: {
+                ensureCount += 1
+            }
+        )
+
+        await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
+
+        let frames = await sink.frames
+        XCTAssertEqual(frames.first?.media?.mirrorAck?.decision, .accepted)
+        XCTAssertEqual(ensureCount, 1)
     }
 
     private func mirrorStopFrame(requestID: String = "req_test") -> HermesRealtimeRelayFrame {

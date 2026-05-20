@@ -43,6 +43,32 @@ Each rollup includes:
 Use this document for Phase E/F gate checks. Do not trust a rollout gate until
 the matching daily rollup exists for the full UTC day being evaluated.
 
+Endpoint-native iroh metrics are sent through the official Iroh Services
+client inside `crates/openburnbar-iroh`. When `IROH_SERVICES_API_SECRET` is
+present, the Rust endpoint starts `iroh_services::Client` after bootstrap,
+keeps it alive for the endpoint lifetime, and lets the official client push
+endpoint metrics on its default interval. No app-side Firestore collection or
+Cloud Function rollup is the source of truth for these native counters.
+
+Operational toggles:
+
+- `IROH_SERVICES_API_SECRET`: enables the Iroh Services client.
+- `OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME`: optional human-readable endpoint
+  name. If omitted, the Rust bridge uses `openburnbar-{endpoint_id_prefix}`.
+- `OPENBURNBAR_IROH_SERVICES_REQUIRED=true`: make bootstrap fail if the
+  services client cannot start. Leave unset for normal app runtime so chat can
+  continue if the metrics control plane is temporarily unavailable.
+
+Smoke-test the official metrics path with:
+
+```bash
+./scripts/e2e/iroh-services-smoke.sh
+```
+
+The smoke loads the local secret without printing it, starts a real iroh
+endpoint, authenticates to Iroh Services, pings the service, and pushes one
+metrics snapshot.
+
 ## Verification Commands
 
 ```bash
@@ -58,6 +84,8 @@ PROJECT_ID=burnbar firebase --project burnbar remoteconfig:get --output /tmp/ope
 
 cd functions
 npm run test:iroh-monitoring
+
+./scripts/e2e/iroh-services-smoke.sh
 ```
 
 ## Incident Response

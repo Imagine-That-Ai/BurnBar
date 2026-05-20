@@ -114,6 +114,7 @@ reused byte-for-byte.
 | `.github/workflows/iroh-xcframework.yml` | CI: builds + caches the xcframework and uploads it as a workflow artifact. |
 | `scripts/ci/iroh-services.env.example` | Template for the n0 services API secret used by Phase 6+ (owned hosted relay). |
 | `scripts/ci/load-iroh-services-secret.sh` | Loader that materializes `.secrets/iroh-services.env` from CI secrets. |
+| `scripts/e2e/iroh-services-smoke.sh` | Live Iroh Services smoke. Starts a real endpoint, authenticates with the local services secret, pings Iroh Services, and pushes one native metrics snapshot. |
 | `scripts/e2e/ios-iroh-chat.sh` | Physical-iPhone hosted-relay smoke runner. Starts the debug Mac host, launches the hidden Hermes E2E prompt route on iPhone, polls Firestore `iroh_audit_events`, and fails unless the expected phone `networkInterfaces` value plus `ios_response_complete` appear with no WSS fallback. |
 | `scripts/e2e/ios-iroh-gate.sh` | Gate C/D sequence runner. Starts one debug Mac host, calls `ios-iroh-chat.sh` repeatedly, writes per-run Firestore event exports under `docs/runbooks/iroh-dev-validation/`, and stops on the first stream failure or WSS fallback. |
 | `OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/` | SwiftPM target. Contains the wire codec, transport protocol, in-process loopback transport, pairing helpers, audit contract, and the encrypted echo path. |

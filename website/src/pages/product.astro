@@ -66,13 +66,13 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Routing</span>
-        <h2>Same model in. Same model out. Two ways to choose it.</h2>
+        <h2>Same model in. Same model out. Two ways to recover.</h2>
         <p class="lead">
           The same daemon ships two postures. <strong>Provider-Family Failover</strong>
           protects your model identity and extends capacity across every account in your library that
-          carries it. <strong>Intelligent Model Router</strong>
-          researches candidates against Artificial Analysis, Terminal-Bench, and Design Arena, then picks.
-          Benchmarks are advisory signals — pins and live quota always win.
+          carries it inside the selected provider family. <strong>Exact Model Failover</strong>
+          can recover across providers or accounts only after the destination proves the same canonical
+          model ID. Benchmarks remain advisory signals — they never prove identity.
         </p>
       </header>
 
@@ -94,24 +94,23 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
             <li>Account-level routing — no quota pool collapse</li>
           </ul>
         </li>
-        <li class="routing__card routing__card--intelligent glass-pane glass-pane--elevated">
+        <li class="routing__card routing__card--exact glass-pane glass-pane--elevated">
           <header>
             <span class="mono routing__tag routing__tag--mercury">opt-in</span>
-            <h3>Intelligent Model Router</h3>
+            <h3>Exact Model Failover</h3>
           </header>
           <p>
-            Hand the router a task. A daily board of language models researches candidate models,
-            BurnBar applies deterministic selection policy, then the gateway picks the best
-            available route, holds a runner-up, and streams a <span class="mono"
-              >decision_reason</span
-            > with every pick. Daily board verdicts live at <a href="/router/daily">/router/daily</a
-            >.
+            Let the router look beyond the selected provider family only when the next route can
+            prove the same canonical model. <span class="mono">gpt-5.4</span> may move to another provider's
+            real <span class="mono">gpt-5.4</span>; it cannot become
+            <span class="mono">gpt-5.4-mini</span>, <span class="mono">gpt-5.4-pro</span>, or a
+            broad <span class="mono">openai:standard</span> substitute.
           </p>
           <ul class="routing__bullets">
-            <li>Raw evidence score · stable selection score</li>
-            <li>Sources: Artificial Analysis · Terminal-Bench · Design Arena</li>
-            <li>Per-surface opt-in (autopilot, scout, researcher)</li>
-            <li>Explainable: every decision logged locally</li>
+            <li>Canonical model ID is the hard gate</li>
+            <li>Provider/account can change after recoverable failures</li>
+            <li>Similar models, family wrappers, and capability classes are rejected</li>
+            <li>Every decision logs original route, destination, reason, and invariant status</li>
           </ul>
         </li>
       </ul>
@@ -375,7 +374,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
       0 0 40px -15px rgba(255, 106, 26, 0.25),
       0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
-  .routing__card--intelligent {
+  .routing__card--exact {
     border-color: color-mix(in oklab, var(--mercury-bright) 30%, rgba(255, 255, 255, 0.12));
     border-top-color: color-mix(in oklab, var(--mercury-bright) 45%, rgba(255, 255, 255, 0.22));
     background: rgba(20, 20, 28, 0.82);
@@ -439,7 +438,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     font-family: var(--font-mono);
     font-size: 0.9em;
   }
-  .routing__card--intelligent .routing__bullets li::before {
+  .routing__card--exact .routing__bullets li::before {
     color: var(--mercury-bright);
   }
   .routing__cta {

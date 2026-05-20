@@ -174,6 +174,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     await self?.refreshPairingRecord(uid: uid, connectionID: connectionID)
                 }
             }
+
             return true
         } catch {
             AppLogger.network.silentFailure("hermes_iroh_relay_start_failed", error: error)

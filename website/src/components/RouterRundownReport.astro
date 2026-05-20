@@ -1,11 +1,11 @@
 ---
 /**
- * Daily Intelligent Router Rundown — operator-grade report component.
+ * Daily Model Board Rundown — operator-grade report component.
  *
  * Renders the rundown JSON shape as cited, source-attributed UI. The server
  * renders a build-time fallback fixture; on the client we fetch the live
  * rundown produced by the production daily Cloud Function and re-render in
- * place so what you see is always what the router would recommend now.
+ * place so what you see is always what the model board would recommend now.
  *
  * Hydration flow:
  *   1. SSR pass: paint the build-time `rundown` prop (fallback fixture).
@@ -59,14 +59,14 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
 
 <section
   class={`rundown rundown--${variant}`}
-  aria-label="Daily Intelligent Router Rundown"
+  aria-label="Daily Model Board Rundown"
   data-rundown-live-path={livePath}
   data-rundown-fallback-date={rundown.date}
 >
   <!-- header strip -->
   <header class="rundown__head">
     <div class="rundown__headline">
-      <span class="eyebrow eyebrow--ember mono">Daily Intelligent Router Board</span>
+      <span class="eyebrow eyebrow--ember mono">Daily Model Board</span>
       <h2 class="rundown__h" data-rundown-title>
         {isPreview ? "Today's model-board recommendation — at a glance." : `Rundown · ${rundown.date}`}
       </h2>
@@ -99,7 +99,8 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     A daily board of language models runs research and analysis tasks across
     the benchmark feed, then BurnBar reduces their findings to this deterministic
     recommendation. Benchmark data is <strong>advisory only</strong>; user pins,
-    auth, quota, safety, and availability still win at runtime.
+    auth, quota, safety, availability, and exact-model failover rules still win
+    at runtime.
   </p>
 
   {sortedTasks.length === 0 && (

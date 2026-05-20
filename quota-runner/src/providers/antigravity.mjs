@@ -4,20 +4,27 @@ import os from "node:os";
 import { valueBucket } from "./shared.mjs";
 
 /**
- * Antigravity model tiers and their rolling 24-hour daily caps.
- * Order determines display order in the quota UI.
+ * Antigravity model tiers and their estimated 5-hour window caps.
+ * Antigravity uses a credit-based quota system; these caps are
+ * community-estimated, not official Google numbers.
+ *
+ * Quota windows refresh every 5 hours (Pro/Ultra).
+ * See: https://blog.google/feed/new-antigravity-rate-limits-pro-ultra-subsribers/
  */
 const MODEL_TIERS = [
-  { name: "Gemini 3.5 Flash (High)", dailyCap: 1000 },
-  { name: "Gemini 3.5 Flash (Medium)", dailyCap: 1500 },
-  { name: "Gemini 3.1 Pro (High)", dailyCap: 250 },
-  { name: "Gemini 3.1 Pro (Low)", dailyCap: 500 },
-  { name: "Claude Sonnet 4.6 (Thinking)", dailyCap: 200 },
-  { name: "Claude Opus 4.6 (Thinking)", dailyCap: 100 },
-  { name: "GPT-OSS 120B (Medium)", dailyCap: 400 },
+  { name: "Gemini 3.5 Flash (High)", windowCap: 600 },
+  { name: "Gemini 3.5 Flash (Medium)", windowCap: 900 },
+  { name: "Gemini 3.1 Pro (High)", windowCap: 150 },
+  { name: "Gemini 3.1 Pro (Low)", windowCap: 300 },
+  { name: "Claude Sonnet 4.6 (Thinking)", windowCap: 120 },
+  { name: "Claude Opus 4.6 (Thinking)", windowCap: 60 },
+  { name: "GPT-OSS 120B (Medium)", windowCap: 240 },
 ];
 
 const DEFAULT_MODEL = "Claude Opus 4.6 (Thinking)";
+
+/** 5-hour quota window in milliseconds. */
+const QUOTA_WINDOW_MS = 5 * 60 * 60 * 1000;
 
 /** Snake-case a model name for use as a bucket key. */
 function modelKey(name) {
@@ -64,12 +71,12 @@ export async function fetchAntigravityQuota({ credential, accountID }) {
       // settings.json missing or malformed — keep default
     }
 
-    // --- Parse history events in rolling 24h window ---
+    // --- Parse history events in rolling 5h quota window ---
     const data = await readFile(historyPath, "utf8");
     const lines = data.split(/\r?\n/);
-    const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
+    const cutoff = now.getTime() - QUOTA_WINDOW_MS;
 
-    const eventsIn24h = [];
+    const eventsInWindow = [];
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -78,7 +85,7 @@ export async function fetchAntigravityQuota({ credential, accountID }) {
         const event = JSON.parse(trimmed);
         if (typeof event.timestamp === "number") {
           if (event.timestamp >= cutoff && event.timestamp <= now.getTime()) {
-            eventsIn24h.push(event);
+            eventsInWindow.push(event);
           }
         }
       } catch {
@@ -86,16 +93,16 @@ export async function fetchAntigravityQuota({ credential, accountID }) {
       }
     }
 
-    const usedCount = eventsIn24h.length;
+    const usedCount = eventsInWindow.length;
 
     // --- Compute resetsAt from earliest event in the window ---
     let resetsAt = null;
-    if (eventsIn24h.length > 0) {
-      const sortedTimestamps = eventsIn24h
+    if (eventsInWindow.length > 0) {
+      const sortedTimestamps = eventsInWindow
         .map((e) => e.timestamp)
         .sort((a, b) => a - b);
       resetsAt = new Date(
-        sortedTimestamps[0] + 24 * 60 * 60 * 1000
+        sortedTimestamps[0] + QUOTA_WINDOW_MS
       ).toISOString();
     }
 
@@ -104,7 +111,7 @@ export async function fetchAntigravityQuota({ credential, accountID }) {
       const isActive =
         tier.name.toLowerCase() === activeModelName.toLowerCase();
       const used = isActive ? usedCount : 0;
-      const limit = tier.dailyCap;
+      const limit = tier.windowCap;
       const remaining = Math.max(0, limit - used);
 
       return valueBucket({
@@ -112,10 +119,11 @@ export async function fetchAntigravityQuota({ credential, accountID }) {
         used,
         limit,
         remaining,
-        window: "24h",
+        window: "5h",
         resetsAt: isActive ? resetsAt : null,
         source: "antigravity-history",
         unit: "requests",
+        isEstimated: true,
       });
     });
 
@@ -125,9 +133,9 @@ export async function fetchAntigravityQuota({ credential, accountID }) {
       sourceId: credential.trim() ? "hosted-runner" : "self-hosted-runner",
       fetchedAt: now.toISOString(),
       source: "Antigravity CLI history",
-      confidence: "exact",
+      confidence: "estimated",
       managementURL: null,
-      statusMessage: `Antigravity quota calculated — active model: ${activeModelName}`,
+      statusMessage: `Antigravity 5h rolling quota — active model: ${activeModelName}. Caps are community-estimated.`,
       buckets,
     };
   } catch (err) {

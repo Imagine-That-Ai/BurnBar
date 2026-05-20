@@ -105,7 +105,6 @@ class OpenBurnBarIrohFfiBackend(
         }
         handleObject = null
     }
-
     /** Open a datagram channel against a remote peer. Used by Mercury audio. */
     suspend fun openDatagramChannel(
         target: IrohDialTarget,

@@ -50,7 +50,6 @@ class AndroidIrohTransportAuditLogger(
             Log.d(TAG, "hermes_iroh_audit_write_failed: ${error.message}")
         }
     }
-
     companion object {
         private const val TAG = "IrohAudit"
         private const val AUDIT_TTL_MILLIS = 30L * 24L * 60L * 60L * 1_000L

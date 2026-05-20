@@ -9,31 +9,37 @@ export const FAQ: FAQItem[] = [
     id: "router-family-failover",
     question: "What is Provider-Family Failover?",
     answer:
-      "It's the default routing mode in BurnBar. The router stretches capacity for the model you asked for across multiple accounts inside the same wire-format family — never across families, and never to a different model.\n\nIf your pinned Z.ai key throttles, any other account in your library that ALSO carries that exact model picks up — never a substitute. Claude Code works the same way inside the Anthropic family: your Pro plan as primary, your Console admin key as runner-up, both serving the identical model id.\n\nFilter rule #F in ProviderRoutingPolicy.decide drops every candidate account whose catalog doesn't list the requested model. If no candidate survives, the gateway returns a structured 503 — your IDE sees a clean error, never a silent substitute."
+      "It's the default routing mode in BurnBar. The router stretches capacity inside the provider family you selected — never across unrelated providers, and never to a different model.\n\nA Codex route stays with Codex accounts. A Claude route stays with Claude accounts. A Z.ai route stays with Z.ai accounts. Your exact selected account and model remain active while healthy; only quota, rate-limit, or availability state moves the request to a runner-up inside that family.\n\nIf no candidate survives, the gateway returns a structured 503 — your IDE sees a clean error, never a silent substitute."
   },
   {
-    id: "router-intelligent-mode",
-    question: "What is the Intelligent Model Router?",
+    id: "router-exact-model-failover",
+    question: "What is Exact Model Failover?",
     answer:
-      "It's the opt-in routing mode. You tell BurnBar what the task is (or let your client surface it), and a daily board of language models runs research and analysis tasks over the model landscape.\n\nBurnBar keeps the result deterministic: the public rundown preserves the raw evidence score, then applies a stable favorite policy so GPT-5.5 xhigh, Claude Opus 4.7, and GLM 5.1 are not dethroned by one noisy refresh. A challenger has to clear freshness, routability, evidence, and benchmark margins across consecutive rundowns.\n\nThe winner serves the request and a runner-up is held in reserve so failover is instant. Benchmarks are advisory — they help break ties and weigh recency, but they never override your pin or the live quota state. User choice, auth, quota, and availability always win."
+      "It's the opt-in wider failover mode. BurnBar may try another provider or account after a quota, rate-limit, or availability failure — but only when that destination proves it serves the same canonical model ID as the request.\n\nThat means a request for gpt-5.4 can fail over to another route that truly serves canonical gpt-5.4. It cannot become gpt-5.4-mini, gpt-5.4-pro, a broad gpt-5-family wrapper, or a generic openai:standard substitute.\n\nIf the router cannot prove the exact identity, it fails closed with a structured 503. The audit event records the attempted model, canonical model, original route, destination route, reason, and whether the exact-model invariant passed."
+  },
+  {
+    id: "router-model-board",
+    question: "What is the daily model board?",
+    answer:
+      "The daily model board is advisory research, not a failover mode. A board of language models researches the model landscape using Artificial Analysis, Terminal-Bench, Design Arena, and cached/manual fixtures, then BurnBar turns that into a deterministic public rundown at /router/daily.\n\nThose rankings can explain which models look strong for coding, terminal, design, analysis, or agent tasks. They do not prove exact model identity and they do not authorize silent substitution. Pins, auth, quota, safety, availability, provider-family mode, and Exact Model Failover's canonical-ID gate still win at runtime."
   },
   {
     id: "router-codex-to-claude",
     question: "Will BurnBar send my Codex task to Claude?",
     answer:
-      "Not in failover mode. The router refuses to cross the family boundary. Your Codex task stays on OpenAI-family accounts (Z.ai, MiniMax, Kimi, OpenAI, Ollama). Your Claude Code task stays on Anthropic-family accounts.\n\nIf every OpenAI-family account is rate-limited, you get a structured 503, not a stealth swap into Claude.\n\nIn Intelligent mode you can opt into cross-family routing per surface — but the surface (and you) have to ask for it explicitly. We never silently swap providers on a request that asked for a specific one."
+      "Not in Provider-Family Failover. The router refuses to cross the selected provider-family boundary. Your Codex route stays with Codex accounts. Your Claude route stays with Claude accounts. Your Z.ai route stays with Z.ai accounts.\n\nExact Model Failover can look wider only when the destination route proves the same canonical model ID. It still will not send a request to a merely similar model just because that provider has quota."
   },
   {
     id: "router-pin-model",
     question: "Can I still pin a model?",
     answer:
-      'Yes. Pinning is the strongest signal in both modes.\n\nIn Provider-Family Failover, you pin an account that serves your chosen model. The pinned account wins as long as it\'s healthy; a runner-up account (one that also carries the same model) is pre-selected for instant failover.\n\nIn Intelligent Mode, you pin a model identity, a family, or a tier (e.g. "always opus-class for the autopilot surface"). The router still scores candidates and holds a runner-up, but it will not pick something else when your pin is healthy. A healthy pin always wins.'
+      "Yes. Pinning is the strongest signal in both modes.\n\nIn Provider-Family Failover, you pin an account that serves your chosen model. The pinned account wins as long as it's healthy; a runner-up inside that provider family is pre-selected for instant failover.\n\nIn Exact Model Failover, the pin still wins while healthy. Only recoverable failures open the door to another provider/account, and only after the destination proves the same canonical model ID."
   },
   {
     id: "router-benchmark-sources",
     question: "What benchmark sources does BurnBar use?",
     answer:
-      "A curated set of recently refreshed, well-methodologized public sources: Artificial Analysis (intelligence + coding indices, plus TPS and pricing), Terminal-Bench via Hugging Face (shell-loop agents, verified-run flag), and Design Arena (pairwise Elo + win-rate by category). Manual cached fixtures cover gaps when a source's API is unavailable.\n\nEach score carries an age and a confidence label; older scores are weighted down, not silently dropped. The daily rundown at /router/daily shows the model-board verdict, the raw evidence score, the deterministic selection score, source logos, and freshness states.\n\nWe don't synthesize benchmarks. We cite, we don't fabricate. And no benchmark ever overrides your pin or beats live quota state — they're advisory signals."
+      "A curated set of recently refreshed, well-methodologized public sources: Artificial Analysis (intelligence + coding indices, plus TPS and pricing), Terminal-Bench via Hugging Face (shell-loop agents, verified-run flag), and Design Arena (pairwise Elo + win-rate by category). Manual cached fixtures cover gaps when a source's API is unavailable.\n\nEach score carries an age and a confidence label; older scores are weighted down, not silently dropped. The daily rundown at /router/daily shows the model-board verdict, the raw evidence score, the deterministic selection score, source logos, and freshness states.\n\nWe don't synthesize benchmarks. We cite, we don't fabricate. And no benchmark ever overrides your pin, beats live quota state, or counts as exact-model proof — they're advisory signals."
   },
   {
     id: "router-logs-safe",

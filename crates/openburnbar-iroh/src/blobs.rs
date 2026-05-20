@@ -27,8 +27,12 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use iroh::{protocol::Router, Endpoint, NodeAddr, RelayMap, RelayMode, RelayUrl, SecretKey};
+use iroh::{
+    endpoint::presets, protocol::Router, Endpoint, RelayMap, RelayMode, RelayUrl, SecretKey,
+};
+use iroh_blobs::api::downloader::Shuffled;
 use iroh_blobs::{store::fs::FsStore, ticket::BlobTicket, BlobsProtocol};
+use tokio_stream::StreamExt;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
@@ -123,7 +127,7 @@ impl IrohBlobNode {
         let transport_config = crate::openburnbar_transport_config()?;
 
         let (endpoint, store, router, identity) = runtime.block_on(async {
-            let endpoint = Endpoint::builder()
+            let endpoint = Endpoint::builder(presets::N0)
                 .secret_key(secret_key.clone())
                 .alpns(vec![iroh_blobs::ALPN.to_vec()])
                 .relay_mode(relay_mode)
@@ -131,6 +135,11 @@ impl IrohBlobNode {
                 .bind()
                 .await
                 .map_err(IrohFfiError::runtime)?;
+            tokio::time::timeout(std::time::Duration::from_secs(10), endpoint.online())
+                .await
+                .map_err(|_| IrohFfiError::RuntimeFailed {
+                    detail: "iroh blob endpoint did not come online within 10s".into(),
+                })?;
 
             let store =
                 FsStore::load(&store_path)
@@ -139,17 +148,22 @@ impl IrohBlobNode {
                         detail: format!("FsStore::load({store_dir}): {err}"),
                     })?;
 
-            let blobs = BlobsProtocol::new(&store, endpoint.clone(), None);
+            let blobs = BlobsProtocol::new(&store, None);
             let router = Router::builder(endpoint.clone())
                 .accept(iroh_blobs::ALPN, blobs)
                 .spawn();
 
-            let node_id = endpoint.node_id();
+            let endpoint_addr = endpoint.addr();
+            let node_id = endpoint.id();
             let identity = IrohNodeIdentity {
                 raw_public_key: node_id.as_bytes().to_vec(),
                 node_id: node_id.to_string(),
-                relay_url: String::new(),
-                direct_addresses: Vec::new(),
+                relay_url: endpoint_addr
+                    .relay_urls()
+                    .next()
+                    .map(ToString::to_string)
+                    .unwrap_or_default(),
+                direct_addresses: endpoint_addr.ip_addrs().map(ToString::to_string).collect(),
             };
             Ok::<_, IrohFfiError>((endpoint, store, router, identity))
         })?;
@@ -200,8 +214,7 @@ impl IrohBlobNode {
                 }
             })?;
 
-            let node_id = endpoint.node_id();
-            let ticket = BlobTicket::new(NodeAddr::from(node_id), tag.hash, tag.format);
+            let ticket = BlobTicket::new(endpoint.addr(), tag.hash, tag.format);
             Ok(BlobTicketBytes {
                 text: ticket.to_string(),
             })
@@ -242,12 +255,20 @@ impl IrohBlobNode {
 
             let started = Instant::now();
             let downloader = store.downloader(&endpoint);
-            downloader
-                .download(ticket.hash(), Some(ticket.node_addr().node_id))
+            let mut progress = downloader
+                .download(ticket.hash_and_format(), Shuffled::new(vec![ticket.addr().id]))
+                .stream()
                 .await
                 .map_err(|err| IrohFfiError::StreamFailed {
-                    detail: format!("blob download: {err}"),
+                    detail: format!("blob download stream: {err}"),
                 })?;
+            while let Some(item) = progress.next().await {
+                if let iroh_blobs::api::downloader::DownloadProgressItem::Error(err) = item {
+                    return Err(IrohFfiError::StreamFailed {
+                        detail: format!("blob download: {err}"),
+                    });
+                }
+            }
 
             store
                 .blobs()
@@ -339,13 +360,13 @@ pub fn iroh_blobs_crate_version() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iroh::{NodeAddr, NodeId, SecretKey};
+    use iroh::{EndpointAddr, EndpointId, SecretKey};
     use iroh_blobs::{BlobFormat, Hash};
 
     fn sample_ticket() -> BlobTicket {
-        let secret = SecretKey::generate(&mut rand::thread_rng());
-        let node_id: NodeId = secret.public();
-        let node = NodeAddr::from(node_id);
+        let secret = SecretKey::generate();
+        let node_id: EndpointId = secret.public();
+        let node = EndpointAddr::from(node_id);
         let hash = Hash::new(b"hello world");
         BlobTicket::new(node, hash, BlobFormat::Raw)
     }

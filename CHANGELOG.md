@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Iroh Services observability
+- **Official Iroh Services endpoint metrics.** Upgraded the native iroh bridge
+  to the 1.0.0-rc.0 line and starts `iroh_services::Client` whenever
+  `IROH_SERVICES_API_SECRET` is present, keeping the client alive for the
+  endpoint lifetime so native iroh metrics flow to Iroh Services without a
+  parallel Firestore rollup. Added `scripts/e2e/iroh-services-smoke.sh` for a
+  live auth + ping + metrics push check.
+
 ### Added — Mercury Media user-facing surfaces (Phase 8)
+- **Mercury mirror click and type control (iOS → Mac).** Full-screen iOS screen sharing now has explicit View/Control modes. Control mode maps taps through the current zoom/pan viewport into signed Phone Control click intents, adds a floating keyboard composer for Mac typing, and starts the existing Computer Use control stream when a mirror request is accepted.
 - **Redesigned Liquid Glass `MercuryLiveSheet` (iOS).** Completely redesigned the My Mac live sheet on iOS adopting standard Liquid Glass tokens. Added an elevated, glassy header card with an animated pulsing indicator, high-performance button styling (`LiquidGlassButtonStyle`) with spring scaling, custom glass capsule overlays, silver-shimmer border gradients, and a dedicated preferences card.
 - **Mac-to-iOS Wallpaper Sync (Zero-Latency).** Implemented a high-performance wallpaper sync system between the Mac client and the iOS app. Captures the Mac desktop wallpaper without screen recording TCC permissions by querying the active lockscreen caches under `/Library/Caches/Desktop Pictures/` and downscaling to a `120x80` thumbnail using `CGImageSourceCreateThumbnailAtIndex` to prevent OOM issues. Decodes the thumbnail on iOS in real-time, displaying it as a beautifully blurred (`.blur(radius: 30)`) background backdrop. Added a "Mimic Mac Wallpaper" toggle to toggle this sync dynamically.
 - **Instant Heartbeat Sync.** Updated `MediaControlStreamCoordinator` to fire a presence heartbeat immediately upon establishing a stream, guaranteeing that capability and wallpaper synchronization happens instantaneously when opening the sheets.

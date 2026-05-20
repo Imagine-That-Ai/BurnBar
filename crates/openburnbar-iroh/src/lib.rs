@@ -16,7 +16,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use iroh::{Endpoint, NodeAddr, NodeId, RelayMap, RelayMode, RelayUrl, SecretKey, Watcher};
+use iroh::{
+    endpoint::presets, Endpoint, EndpointAddr, EndpointId, RelayMap, RelayMode, RelayUrl,
+    SecretKey, TransportAddr,
+};
+use iroh_services::Client as IrohServicesClient;
 use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
@@ -40,17 +44,21 @@ uniffi::setup_scaffolding!();
 pub const OPENBURNBAR_ALPN: &[u8] = b"openburnbar/1";
 const OPENBURNBAR_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(1);
 const OPENBURNBAR_MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const IROH_SERVICES_API_SECRET_ENV: &str = "IROH_SERVICES_API_SECRET";
+const OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME_ENV: &str =
+    "OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME";
+const OPENBURNBAR_IROH_SERVICES_REQUIRED_ENV: &str = "OPENBURNBAR_IROH_SERVICES_REQUIRED";
 
-pub(crate) fn openburnbar_transport_config() -> Result<iroh::endpoint::TransportConfig, IrohFfiError>
-{
-    let mut transport_config = iroh::endpoint::TransportConfig::default();
-    transport_config.keep_alive_interval(Some(OPENBURNBAR_KEEP_ALIVE_INTERVAL));
-    transport_config.max_idle_timeout(Some(
-        OPENBURNBAR_MAX_IDLE_TIMEOUT
-            .try_into()
-            .map_err(IrohFfiError::runtime)?,
-    ));
-    Ok(transport_config)
+pub(crate) fn openburnbar_transport_config(
+) -> Result<iroh::endpoint::QuicTransportConfig, IrohFfiError> {
+    Ok(iroh::endpoint::QuicTransportConfig::builder()
+        .keep_alive_interval(OPENBURNBAR_KEEP_ALIVE_INTERVAL)
+        .max_idle_timeout(Some(
+            OPENBURNBAR_MAX_IDLE_TIMEOUT
+                .try_into()
+                .map_err(IrohFfiError::runtime)?,
+        ))
+        .build())
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -202,6 +210,7 @@ pub struct IrohEndpointHandle {
     runtime: Mutex<Option<Runtime>>,
     runtime_handle: Mutex<Option<tokio::runtime::Handle>>,
     identity: Mutex<Option<IrohNodeIdentity>>,
+    services_client: Mutex<Option<IrohServicesClient>>,
 }
 
 #[uniffi::export]
@@ -213,6 +222,7 @@ impl IrohEndpointHandle {
             runtime: Mutex::new(None),
             runtime_handle: Mutex::new(None),
             identity: Mutex::new(None),
+            services_client: Mutex::new(None),
         })
     }
 
@@ -262,49 +272,47 @@ impl IrohEndpointHandle {
 
         let endpoint = runtime
             .block_on(async {
-                Endpoint::builder()
+                Endpoint::builder(presets::N0)
                     .secret_key(secret_key.clone())
                     .alpns(vec![OPENBURNBAR_ALPN.to_vec()])
                     .relay_mode(relay_mode)
                     .transport_config(transport_config)
-                    .discovery_n0()
                     .bind()
                     .await
             })
             .map_err(IrohFfiError::runtime)?;
 
         let identity = runtime.block_on(async {
-            let selected_relay_url =
-                tokio::time::timeout(Duration::from_secs(10), endpoint.home_relay().initialized())
-                    .await
-                    .map_err(|_| IrohFfiError::RuntimeFailed {
-                        detail: "iroh endpoint did not select a home relay within 10s".into(),
-                    })?;
+            tokio::time::timeout(Duration::from_secs(10), endpoint.online())
+                .await
+                .map_err(|_| IrohFfiError::RuntimeFailed {
+                    detail: "iroh endpoint did not come online within 10s".into(),
+                })?;
+
+            let addr = endpoint.addr();
+            let selected_relay_url = addr
+                .relay_urls()
+                .next()
+                .map(ToString::to_string)
+                .unwrap_or_default();
             let published_relay_url = if configured_relay_url.is_empty() {
-                selected_relay_url.to_string()
+                selected_relay_url
             } else {
                 configured_relay_url.clone()
             };
 
-            let direct_addresses = tokio::time::timeout(
-                Duration::from_secs(10),
-                endpoint.direct_addresses().initialized(),
-            )
-            .await
-            .map_err(|_| IrohFfiError::RuntimeFailed {
-                detail: "iroh endpoint did not publish direct addresses within 10s".into(),
-            })?
-            .into_iter()
-            .map(|addr| addr.addr.to_string())
-            .collect();
+            let direct_addresses = addr.ip_addrs().map(ToString::to_string).collect();
 
-            let node_id = endpoint.node_id();
+            let node_id = endpoint.id();
             Ok::<_, IrohFfiError>(IrohNodeIdentity {
                 raw_public_key: node_id.as_bytes().to_vec(),
                 node_id: node_id.to_string(),
                 relay_url: published_relay_url,
                 direct_addresses,
             })
+        })?;
+        let services_client = runtime.block_on(async {
+            start_iroh_services_if_configured(&endpoint).await
         })?;
 
         let runtime_handle = runtime.handle().clone();
@@ -313,6 +321,7 @@ impl IrohEndpointHandle {
             *self.runtime_handle.lock().await = Some(runtime_handle);
             *self.runtime.lock().await = Some(runtime);
             *self.identity.lock().await = Some(identity.clone());
+            *self.services_client.lock().await = services_client;
             Ok::<_, IrohFfiError>(())
         })?;
 
@@ -355,7 +364,7 @@ impl IrohEndpointHandle {
             Ok::<_, IrohFfiError>((endpoint, runtime_handle))
         })?;
 
-        let target: NodeId = node_id.parse().map_err(|_| IrohFfiError::InvalidNodeId)?;
+        let target: EndpointId = node_id.parse().map_err(|_| IrohFfiError::InvalidNodeId)?;
         let relay_url = relay_url.trim();
         let relay_url = if relay_url.is_empty() {
             None
@@ -376,12 +385,12 @@ impl IrohEndpointHandle {
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut node_addr = NodeAddr::new(target);
+        let mut node_addr = EndpointAddr::new(target);
         if let Some(relay_url) = relay_url {
             node_addr = node_addr.with_relay_url(relay_url);
         }
         if !direct_addresses.is_empty() {
-            node_addr = node_addr.with_direct_addresses(direct_addresses);
+            node_addr = node_addr.with_addrs(direct_addresses.into_iter().map(TransportAddr::Ip));
         }
         let timeout = Duration::from_secs(timeout_seconds.max(1) as u64);
 
@@ -463,6 +472,7 @@ impl IrohEndpointHandle {
             let endpoint = self.endpoint.lock().await.take();
             let runtime = self.runtime.lock().await.take();
             let _ = self.runtime_handle.lock().await.take();
+            let _ = self.services_client.lock().await.take();
             *self.identity.lock().await = None;
             Ok::<_, IrohFfiError>((endpoint, runtime))
         })?;
@@ -479,33 +489,11 @@ impl IrohEndpointHandle {
         Ok(())
     }
 
-    /// Collect a snapshot of the endpoint's iroh metrics as a JSON string.
-    ///
-    /// Returns `Err(IrohFfiError::EndpointNotInitialized)` if the endpoint
-    /// has not been bootstrapped yet. Call this before `shutdown()`.
-    ///
-    /// The JSON schema is an implementation detail — callers should treat it
-    /// as an opaque blob and pass it directly to the Firestore audit logger.
-    /// A Cloud Function rolls these up into `ops/iroh_transport_daily_rollups/days`.
-    pub fn collect_metrics(self: Arc<Self>) -> Result<String, IrohFfiError> {
-        block_on(async {
-            let endpoint = self
-                .endpoint
-                .lock()
-                .await
-                .clone()
-                .ok_or(IrohFfiError::EndpointNotInitialized)?;
-            let metrics = endpoint.metrics();
-            serde_json::to_string(&*metrics).map_err(|err| IrohFfiError::RuntimeFailed {
-                detail: format!("failed to serialize iroh metrics: {err}"),
-            })
-        })
-    }
 }
 
 #[uniffi::export]
 pub fn generate_secret_key_material() -> IrohSecretKeyMaterial {
-    let secret = SecretKey::generate(&mut rand::thread_rng());
+    let secret = SecretKey::generate();
     IrohSecretKeyMaterial {
         raw: secret.to_bytes().to_vec(),
     }
@@ -519,6 +507,51 @@ pub fn openburnbar_alpn() -> Vec<u8> {
 #[uniffi::export]
 pub fn openburnbar_iroh_protocol_version() -> u32 {
     1
+}
+
+async fn start_iroh_services_if_configured(
+    endpoint: &Endpoint,
+) -> Result<Option<IrohServicesClient>, IrohFfiError> {
+    let secret = match std::env::var(IROH_SERVICES_API_SECRET_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => return Ok(None),
+    };
+    let required = std::env::var(OPENBURNBAR_IROH_SERVICES_REQUIRED_ENV)
+        .map(|value| value.eq_ignore_ascii_case("true") || value == "1")
+        .unwrap_or(false);
+    let endpoint_name = std::env::var(OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default_iroh_services_endpoint_name(endpoint.id()));
+
+    let build_client = || {
+        IrohServicesClient::builder(endpoint)
+            .api_secret_from_str(secret.trim())
+            .and_then(|builder| builder.name(endpoint_name.clone()))
+    };
+    let builder = match build_client() {
+        Ok(builder) => builder,
+        Err(err) if required => return Err(IrohFfiError::runtime(err)),
+        Err(_) => return Ok(None),
+    };
+    let client = match tokio::time::timeout(Duration::from_secs(15), builder.build()).await {
+        Ok(Ok(client)) => client,
+        Ok(Err(err)) if required => return Err(IrohFfiError::runtime(err)),
+        Err(_) if required => {
+            return Err(IrohFfiError::RuntimeFailed {
+                detail: "iroh services client build timed out".into(),
+            });
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(client))
+}
+
+fn default_iroh_services_endpoint_name(endpoint_id: EndpointId) -> String {
+    let id = endpoint_id.to_string();
+    let short = id.get(..12).unwrap_or(&id);
+    format!("openburnbar-{short}")
 }
 
 pub(crate) fn block_on<F, T>(future: F) -> T

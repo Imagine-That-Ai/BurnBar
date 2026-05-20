@@ -70,6 +70,7 @@ final class MercuryRouter: ObservableObject {
         _ request: HermesRealtimeRelayMirrorRequest,
         _ frame: HermesRealtimeRelayFrame
     ) async throws -> MediaStreamSink
+    typealias ComputerUseSessionEnsurer = @MainActor () async throws -> Void
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var lastError: String?
@@ -81,6 +82,7 @@ final class MercuryRouter: ObservableObject {
     private let consentStore: MercuryConsentStore
     private let cooldownSeconds: TimeInterval
     private let clock: @Sendable () -> Date
+    private let ensureComputerUseSession: ComputerUseSessionEnsurer?
 
     private var mirrorSinkFactory: MirrorSinkFactory?
     /// The frame + reply sender from the most recently accepted request.
@@ -95,12 +97,14 @@ final class MercuryRouter: ObservableObject {
         sessionCoordinator: MediaSessionCoordinator,
         peerSource: MercuryPeerSource,
         consentStore: MercuryConsentStore,
+        ensureComputerUseSession: ComputerUseSessionEnsurer? = nil,
         cooldownSeconds: TimeInterval = 30,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.sessionCoordinator = sessionCoordinator
         self.peerSource = peerSource
         self.consentStore = consentStore
+        self.ensureComputerUseSession = ensureComputerUseSession
         self.cooldownSeconds = cooldownSeconds
         self.clock = clock
     }
@@ -452,6 +456,15 @@ final class MercuryRouter: ObservableObject {
                 sink: sink,
                 streamClassOverride: .screenVideo
             )
+            do {
+                if let ensureComputerUseSession {
+                    try await ensureComputerUseSession()
+                }
+            } catch {
+                lastError = "Mirror is read-only: \(error.localizedDescription)"
+                Self.log.error("router_computer_use_session_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                Self.debugTrace("router_computer_use_session_failed requestID=\(request.id) error=\(error.localizedDescription)")
+            }
             await respond(
                 requestID: request.id,
                 decision: .accepted,

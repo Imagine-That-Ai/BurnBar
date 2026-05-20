@@ -1,6 +1,6 @@
 # Router rundown — seed and activation
 
-The website's daily Intelligent Router Rundown is generated from real
+The website's daily Model Board Rundown is generated from real
 benchmark research, not hand-edited fixtures. This directory contains:
 
 - `models.json` — operator-maintained model catalog. Each row carries the
