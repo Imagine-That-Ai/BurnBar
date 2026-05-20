@@ -10,11 +10,11 @@
  * Stations cycle through colored state strips that tell a five-beat story
  * synced to the pillar:
  *
- *   01 · OpenAI · 429 rate-limit (model token unchanged)
- *   02 · Z.ai   · healthy · serving the model
- *   03 · Z.ai   · pressure · preparing fallback
- *   04 · MiniMax · healthy · serving the model
- *   05 · Kimi    · healthy · serving the model
+ *   01 · OpenAI personal · 429 rate-limit (model token unchanged)
+ *   02 · OpenAI team     · healthy · serving the model
+ *   03 · OpenAI team     · pressure · preparing fallback
+ *   04 · OpenAI agency   · healthy · serving the model
+ *   05 · Codex plus      · healthy · serving the model
  *
  * Pure CSS. GPU-only animated properties (transform / opacity). One animation
  * variable (`--cycle`) drives the whole loop so big/mini variants stay in sync.
@@ -76,8 +76,9 @@ const STEPS = [
     five OpenAI-family accounts (OpenAI · personal, OpenAI · team, Codex · plus, OpenAI · agency, OpenAI
     · backup) cycle their availability below. The active routing pillar slides between healthy accounts
     every 2.4 seconds, demonstrating that failover swaps accounts without ever changing the model identity.
-    Only accounts that carry the requested model are eligible — Z.ai, MiniMax, Kimi and Ollama would be
-    filtered out for a {modelID} request.
+    Provider-Family Failover keeps the retry inside the selected provider family. Exact Model Failover
+    can look outside that family only when the destination proves the same canonical model ID; every merely
+    similar route is filtered out for a {modelID} request.
   </figcaption>
 
   {/* model token: anchored, breathing, never changes */}

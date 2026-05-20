@@ -5,7 +5,7 @@ import Foundation
 /// production implementation, but tests can supply a deterministic backend
 /// without booting the iroh runtime.
 ///
-/// The contract mirrors the Rust crate's eight-function surface
+/// The contract mirrors the Rust crate's endpoint surface
 /// (`crates/openburnbar-iroh/src/lib.rs`). Keeping it as a Swift protocol
 /// lets us:
 ///

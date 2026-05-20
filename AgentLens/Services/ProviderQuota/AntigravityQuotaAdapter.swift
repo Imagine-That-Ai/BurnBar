@@ -5,19 +5,26 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Model Catalog
 
+    /// Antigravity quota windows refresh every 5 hours (Pro/Ultra).
+    /// See: https://blog.google/feed/new-antigravity-rate-limits-pro-ultra-subsribers/
+    static let quotaWindowSeconds: TimeInterval = 5 * 60 * 60
+
     struct ModelTier {
         let name: String
-        let dailyCap: Double
+        /// Estimated requests per 5-hour window. Google uses a credit-based
+        /// system and does not publish exact per-model request limits.
+        /// These are best-effort estimates based on community observation.
+        let windowCap: Double
     }
 
     static let availableModels: [ModelTier] = [
-        ModelTier(name: "Gemini 3.5 Flash (High)", dailyCap: 1000),
-        ModelTier(name: "Gemini 3.5 Flash (Medium)", dailyCap: 1500),
-        ModelTier(name: "Gemini 3.1 Pro (High)", dailyCap: 250),
-        ModelTier(name: "Gemini 3.1 Pro (Low)", dailyCap: 500),
-        ModelTier(name: "Claude Sonnet 4.6 (Thinking)", dailyCap: 200),
-        ModelTier(name: "Claude Opus 4.6 (Thinking)", dailyCap: 100),
-        ModelTier(name: "GPT-OSS 120B (Medium)", dailyCap: 400),
+        ModelTier(name: "Gemini 3.5 Flash (High)", windowCap: 600),
+        ModelTier(name: "Gemini 3.5 Flash (Medium)", windowCap: 900),
+        ModelTier(name: "Gemini 3.1 Pro (High)", windowCap: 150),
+        ModelTier(name: "Gemini 3.1 Pro (Low)", windowCap: 300),
+        ModelTier(name: "Claude Sonnet 4.6 (Thinking)", windowCap: 120),
+        ModelTier(name: "Claude Opus 4.6 (Thinking)", windowCap: 60),
+        ModelTier(name: "GPT-OSS 120B (Medium)", windowCap: 240),
     ]
 
     static let defaultModelName = "Claude Opus 4.6 (Thinking)"
@@ -76,7 +83,7 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                 return model
             }()
 
-            // --- Parse history events in rolling 24h window ---
+            // --- Parse history events in rolling 5h quota window ---
             let data = try Data(contentsOf: historyURL)
             guard let contentString = String(data: data, encoding: .utf8) else {
                 throw NSError(domain: "AntigravityQuotaAdapter", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode history file as UTF-8"])
@@ -84,9 +91,10 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
 
             let lines = contentString.components(separatedBy: .newlines)
             let decoder = JSONDecoder()
-            let cutoff = now.addingTimeInterval(-24 * 60 * 60)
+            let windowSeconds = Self.quotaWindowSeconds
+            let cutoff = now.addingTimeInterval(-windowSeconds)
 
-            var eventsIn24h: [HistoryEvent] = []
+            var eventsInWindow: [HistoryEvent] = []
 
             for line in lines {
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -99,18 +107,18 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
 
                 let eventDate = Date(timeIntervalSince1970: event.timestamp / 1000.0)
                 if eventDate >= cutoff && eventDate <= now {
-                    eventsIn24h.append(event)
+                    eventsInWindow.append(event)
                 }
             }
 
-            let usedCount = Double(eventsIn24h.count)
+            let usedCount = Double(eventsInWindow.count)
 
-            // --- Compute resetsAt from the earliest event in the 24h window ---
+            // --- Compute resetsAt from the earliest event in the 5h window ---
             var resetsAt: Date? = nil
-            if !eventsIn24h.isEmpty {
-                let sortedTimestamps = eventsIn24h.map { $0.timestamp }.sorted()
+            if !eventsInWindow.isEmpty {
+                let sortedTimestamps = eventsInWindow.map { $0.timestamp }.sorted()
                 if let earliestTimestamp = sortedTimestamps.first {
-                    resetsAt = Date(timeIntervalSince1970: earliestTimestamp / 1000.0).addingTimeInterval(24 * 60 * 60)
+                    resetsAt = Date(timeIntervalSince1970: earliestTimestamp / 1000.0).addingTimeInterval(windowSeconds)
                 }
             }
 
@@ -119,7 +127,7 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
 
             // Active model bucket first.
             let activeModelTier = Self.availableModels.first(where: { $0.name == activeModelName })
-            let activeCap = activeModelTier?.dailyCap ?? 100.0
+            let activeCap = activeModelTier?.windowCap ?? 60.0
             let activeRemaining = max(0.0, activeCap - usedCount)
 
             let activeBucket = ProviderQuotaBucket(
@@ -132,7 +140,7 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                 usedPercent: (usedCount / activeCap) * 100.0,
                 resetsAt: resetsAt,
                 unit: .requests,
-                isEstimated: false
+                isEstimated: true
             )
             buckets.append(activeBucket)
 
@@ -143,12 +151,12 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                     label: model.name,
                     windowKind: .rollingHours,
                     usedValue: 0,
-                    limitValue: model.dailyCap,
-                    remainingValue: model.dailyCap,
+                    limitValue: model.windowCap,
+                    remainingValue: model.windowCap,
                     usedPercent: 0,
                     resetsAt: nil,
                     unit: .requests,
-                    isEstimated: false
+                    isEstimated: true
                 )
                 buckets.append(bucket)
             }
@@ -157,9 +165,9 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                 provider: .antigravity,
                 fetchedAt: now,
                 source: .localCLI,
-                confidence: .exact,
+                confidence: .estimated,
                 managementURL: nil,
-                statusMessage: "Active model: \(activeModelName). Rolling 24h quota across \(Self.availableModels.count) model tiers.",
+                statusMessage: "Active model: \(activeModelName). Rolling 5h quota across \(Self.availableModels.count) model tiers. Caps are community-estimated.",
                 buckets: buckets
             )
         } catch {

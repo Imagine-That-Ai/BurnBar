@@ -72,8 +72,9 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
             rows that <strong>list the same model you asked for</strong> — MiniMax or Kimi only handle
             traffic for the models they actually carry, never a generic OpenAI-shape stand-in. The wire-format
             family (OpenAI-shape, Anthropic-shape) is the outer boundary; the model id is the inner one.
-            If no row survives both filters, the gateway returns a structured 503 — never a stealth swap
-            into a different model.
+            Exact Model Failover can widen the provider/account search, but only after the destination
+            row proves the same canonical model ID. If no row survives the proof gate, the gateway returns
+            a structured 503 — never a stealth swap into a different model.
           </p>
         </li>
         <li class="accountrouting__card accountrouting__card--account glass-pane">

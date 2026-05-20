@@ -313,8 +313,11 @@ const surfaceShowcase = SURFACES.filter((s) =>
           <span class="mono">claude-opus-4-7</span> stays itself. The router picks from accounts in your
           library that already carry that model — and if none survive, it returns a structured 503 instead
           of a silent substitute. Two modes ship: <strong>Provider-Family Failover</strong>
-          (default) and <strong>Intelligent Model Router</strong> (opt-in, scored against Artificial Analysis,
-          Terminal-Bench, and Design Arena). Benchmarks are advisory. Pins always win.
+          (default, stay inside the selected provider family) and <strong
+            >Exact Model Failover</strong
+          >
+          (opt-in, cross provider/account only after canonical model proof). Benchmarks are advisory;
+          they never authorize a model swap.
         </p>
 
         <ul class="hydrantsec__modes mono">
@@ -323,10 +326,10 @@ const surfaceShowcase = SURFACES.filter((s) =>
             <strong>Provider-Family Failover</strong>
             <em>default · same model · multiple accounts</em>
           </li>
-          <li class="hydrantsec__mode hydrantsec__mode--intelligent">
+          <li class="hydrantsec__mode hydrantsec__mode--exact">
             <span class="hydrantsec__modedot" aria-hidden="true"></span>
-            <strong>Intelligent Model Router</strong>
-            <em>opt-in · researched per task · explainable</em>
+            <strong>Exact Model Failover</strong>
+            <em>opt-in · same canonical model · fail closed</em>
           </li>
         </ul>
       </header>
@@ -1024,11 +1027,11 @@ const surfaceShowcase = SURFACES.filter((s) =>
     background: var(--ember-core);
     box-shadow: 0 0 8px var(--ember-glow);
   }
-  .hydrantsec__mode--intelligent {
+  .hydrantsec__mode--exact {
     border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line));
     background: linear-gradient(180deg, rgba(214, 211, 223, 0.06) 0%, var(--ink-base) 100%);
   }
-  .hydrantsec__mode--intelligent .hydrantsec__modedot {
+  .hydrantsec__mode--exact .hydrantsec__modedot {
     background: var(--mercury-bright);
     box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 55%, transparent);
   }

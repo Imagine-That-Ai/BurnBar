@@ -573,6 +573,42 @@ Blocked / pending:
 - Publish the hosted relay URL to Firebase Remote Config only after Phase C dev validation and Phase D approval gates.
 - Deploy the new monitoring Function only in Phase D after dry-run review and explicit production deploy approval.
 
+## 2026-05-20 — Official Iroh Services endpoint metrics
+
+**Gate status:** implementation verified locally.
+
+Completed:
+- Upgraded the native Rust bridge to `iroh = 1.0.0-rc.0`,
+  `iroh-blobs = 0.101.0`, and `iroh-services = 1.0.0-rc.0` so the same
+  endpoint that carries Hermes traffic also registers official endpoint
+  metrics with Iroh Services.
+- Added optional runtime startup of `iroh_services::Client` when
+  `IROH_SERVICES_API_SECRET` is present. The client is held for the endpoint
+  lifetime and released on shutdown.
+- Kept normal app bootstrap tolerant of services-control-plane failures, with
+  `OPENBURNBAR_IROH_SERVICES_REQUIRED=true` available for CI/smoke runs that
+  must fail closed.
+- Added stderr warnings for optional Iroh Services configuration/startup
+  failures so a malformed secret does not look like successful observability
+  while the chat transport remains available.
+- Added `scripts/e2e/iroh-services-smoke.sh`, which starts a real endpoint,
+  authenticates to Iroh Services, pings it, and pushes one metrics snapshot.
+- Rebuilt `Vendor/OpenBurnBarIroh.xcframework` and
+  `Vendor/openburnbar-iroh.aar` from the services-enabled Rust bridge.
+
+Verified:
+- `cargo check`, `cargo check --examples`, and `cargo test` in
+  `crates/openburnbar-iroh`.
+- `./scripts/e2e/iroh-services-smoke.sh` against the local
+  `IROH_SERVICES_API_SECRET`.
+- `./scripts/build-iroh-xcframework.sh`.
+- `./scripts/build-iroh-android-aar.sh`.
+- Android relay and app JVM unit tests.
+
+Operator note:
+- Any API secret pasted into a chat or screenshot must be rotated before
+  relying on it for production observability.
+
 ## 2026-05-15 — Phase C dev round-trip coding guardrails
 
 **Gate status:** blocked on production Firestore rules rollout. Coding

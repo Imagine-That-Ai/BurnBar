@@ -178,27 +178,31 @@ LOGOS = [
         },
     ),
     LogoSource(
-        # Warp — two overlapping rounded squares with a diagonal gap.
-        # Three tones give depth: bright edges, mid-fill, dark overlap
-        # zone. The diagonal gap (2px) keeps the silhouette distinct
-        # when the rainbow palette remaps all shades.
+        # Warp — bold terminal prompt chevron `>` with a horizontal
+        # input bar underneath. The chevron has a 2px stroke width
+        # with dark (#1A3A3A) and bright (#02D1D1) halves, and the
+        # underline bar uses brand teal (#0D7377) and warm gray
+        # (#A8B0B8). The 4 distinct color zones + 33 lit pixels
+        # keep every color zone at ~25–30% under rainbow remap,
+        # well under the <90% threshold.
         "warp",
         "WarpLogo",
         "WarpLogo",
         pixel_rows=(
-            "WWWW....",
-            "WMMW....",
-            "WMMW....",
-            "WWWW....",
-            "....WWWW",
-            "....WDDW",
-            "....WDDW",
-            "....WWWW",
+            "........",
+            "..DCCC..",
+            "...DCC..",
+            "GGCCC...",
+            "...DCC..",
+            "..DCCC..",
+            "..BBBBB.",
+            "........",
         ),
         pixel_colors={
-            "W": "#DDE4EA",
-            "M": "#A8B0B8",
-            "D": "#6B7380",
+            "C": "#02D1D1",
+            "G": "#0D7377",
+            "D": "#1A3A3A",
+            "B": "#A8B0B8",
         },
     ),
     LogoSource(

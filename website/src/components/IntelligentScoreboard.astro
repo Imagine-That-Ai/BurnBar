@@ -1,6 +1,6 @@
 ---
 /**
- * IntelligentScoreboard — the "research" half of the router story.
+ * IntelligentScoreboard — the daily model-board research panel.
  *
  * Renders a candidate scoreboard with an animated "researching candidates"
  * source banner above it. Designed to feel alive on first sight: source
@@ -136,8 +136,8 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     variant === "full" && showAdvisory && (
       <p class="scoreboard__advisory">
         A board of language models runs the daily research pass, then BurnBar reduces the findings
-        to a deterministic selection score. Runtime pins, auth, quota, safety, and availability
-        still override the ranking.
+        to a deterministic selection score. Runtime pins, auth, quota, safety, availability, and
+        exact-model failover rules still override the ranking.
       </p>
     )
   }

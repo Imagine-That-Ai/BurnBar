@@ -578,7 +578,12 @@ final class OpenBurnBarRuntimeContext {
         let router = MercuryRouter(
             sessionCoordinator: session,
             peerSource: peerSource,
-            consentStore: consent
+            consentStore: consent,
+            ensureComputerUseSession: { [weak self] in
+                guard let self else { return }
+                self.startComputerUseServices()
+                _ = try await self.computerUseRuntimeController?.ensureSystemSession(trustMode: .manual)
+            }
         )
 
         self.mercuryConsentStore = consent

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Daily Intelligent Router Rundown — website data shape.
+ * @fileoverview Daily Model Board Rundown — website data shape.
  *
  * The router daemon's `refreshModelLandscapeBenchmarks` job (see
  * `functions/src/modelLandscape.ts`) writes sanitized benchmark snapshots and
@@ -8,9 +8,10 @@
  * English rationale, source attribution, and freshness — never the raw
  * snapshot stream, never any provider key, cookie, or auth material.
  *
- * Benchmark signals are advisory only. Provider-family constraints, user
- * pinning, account auth, quota state, safety policy, and availability are
- * always evaluated at runtime and can override any ranking shown here.
+ * Benchmark signals are advisory only. Provider-family constraints, exact-model
+ * failover rules, user pinning, account auth, quota state, safety policy, and
+ * availability are always evaluated at runtime and can override any ranking
+ * shown here.
  */
 
 export const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
