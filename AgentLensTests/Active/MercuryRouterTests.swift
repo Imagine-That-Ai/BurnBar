@@ -107,6 +107,24 @@ final class MercuryRouterTests: XCTestCase {
         )
     }
 
+    private func mirrorDisplaySelectFrame(
+        requestID: String = "req_test",
+        displayID: String
+    ) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .mediaMirrorDisplaySelect,
+            uid: "u",
+            connectionId: "c",
+            requestId: requestID,
+            media: HermesRealtimeRelayMediaPayload(
+                mirrorDisplaySelection: HermesRealtimeRelayMirrorDisplaySelection(
+                    requestId: requestID,
+                    displayId: displayID
+                )
+            )
+        )
+    }
+
     private func callInviteFrame(
         requestID: String = "call_test",
         requesterName: String = "Alberto's Android"
@@ -285,7 +303,11 @@ final class MercuryRouterTests: XCTestCase {
     }
 
     func testPhoneStopClearsActiveMirrorWithoutCooldown() async throws {
-        let (router, sink) = makeRouter(consent: true, cooldownSeconds: 30)
+        let (router, sink) = makeRouter(
+            consent: true,
+            cooldownSeconds: 30,
+            startScreenShare: { _, _, _, _ in }
+        )
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
         let requestID = try extractStreaming(from: router.phase)
 
@@ -318,6 +340,55 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(try extractStreaming(from: router.phase), "req_two")
         let decisions = await sink.frames.compactMap { $0.media?.mirrorAck?.decision }
         XCTAssertEqual(decisions, [.accepted, .denied, .accepted])
+    }
+
+    func testDisplaySelectionAcknowledgesSelectedDisplayAndKeepsMirrorStreaming() async throws {
+        guard let display = ScreenCapturePipeline.availableDisplays().first else {
+            throw XCTSkip("No displays available on this test host.")
+        }
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _ in }
+        )
+
+        await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
+        let requestID = try extractStreaming(from: router.phase)
+        await sink.reset()
+
+        await router.handleFrame(
+            mirrorDisplaySelectFrame(requestID: requestID, displayID: display.id),
+            replySender: sink.sender
+        )
+
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        let ack = frames[0].media?.mirrorAck
+        XCTAssertEqual(ack?.decision, .accepted)
+        XCTAssertEqual(ack?.selectedDisplayId, display.id)
+        XCTAssertEqual(try extractStreaming(from: router.phase), requestID)
+    }
+
+    func testMissingDisplaySelectionReturnsRecoverableAckWithoutEndingMirror() async throws {
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _ in }
+        )
+
+        await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
+        let requestID = try extractStreaming(from: router.phase)
+        await sink.reset()
+
+        await router.handleFrame(
+            mirrorDisplaySelectFrame(requestID: requestID, displayID: "missing-display-\(UUID().uuidString)"),
+            replySender: sink.sender
+        )
+
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        let ack = frames[0].media?.mirrorAck
+        XCTAssertEqual(ack?.decision, .unsupported)
+        XCTAssertNotNil(ack?.availableDisplays)
+        XCTAssertEqual(try extractStreaming(from: router.phase), requestID)
     }
 
     private func extractStreaming(from phase: MercuryRouter.Phase) throws -> String {

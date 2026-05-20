@@ -534,12 +534,13 @@ final class MercuryRouter: ObservableObject {
                 Self.log.error("router_computer_use_session_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                 Self.debugTrace("router_computer_use_session_failed requestID=\(request.id) error=\(error.localizedDescription)")
             }
+            let displays = ScreenCapturePipeline.availableDisplays()
             await respond(
                 requestID: request.id,
                 decision: .accepted,
                 detail: nil,
-                availableDisplays: ScreenCapturePipeline.availableDisplays(),
-                selectedDisplayId: ScreenCapturePipeline.availableDisplays().first?.id,
+                availableDisplays: displays,
+                selectedDisplayId: displays.first?.id,
                 frame: request.frame,
                 replySender: request.replySender
             )

@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without restarting either app. The iOS viewer also gains a draggable control
   panel, display selection, edge/button/volume scrolling options, and an
   auto-revealing glass trackpad mode.
+- **Mercury mirror audit hardening.** Display switching now treats
+  display-selection acknowledgements as in-session state updates instead of
+  rejected mirror requests, failed Mac display switches preserve the current
+  capture stream, point-click taps use a more forgiving intent resolver, and
+  the iPhone typing bar has explicit keyboard dismissal.
 - **Mercury mirror click and type control (iOS → Mac).** Full-screen iOS screen sharing now has explicit View/Control modes. Control mode maps taps through the current zoom/pan viewport into signed Phone Control click intents, adds a floating keyboard composer for Mac typing, and starts the existing Computer Use control stream when a mirror request is accepted.
 - **Redesigned Liquid Glass `MercuryLiveSheet` (iOS).** Completely redesigned the My Mac live sheet on iOS adopting standard Liquid Glass tokens. Added an elevated, glassy header card with an animated pulsing indicator, high-performance button styling (`LiquidGlassButtonStyle`) with spring scaling, custom glass capsule overlays, silver-shimmer border gradients, and a dedicated preferences card.
 - **Mac-to-iOS Wallpaper Sync (Zero-Latency).** Implemented a high-performance wallpaper sync system between the Mac client and the iOS app. Captures the Mac desktop wallpaper without screen recording TCC permissions by querying the active lockscreen caches under `/Library/Caches/Desktop Pictures/` and downscaling to a `120x80` thumbnail using `CGImageSourceCreateThumbnailAtIndex` to prevent OOM issues. Decodes the thumbnail on iOS in real-time, displaying it as a beautifully blurred (`.blur(radius: 30)`) background backdrop. Added a "Mimic Mac Wallpaper" toggle to toggle this sync dynamically.

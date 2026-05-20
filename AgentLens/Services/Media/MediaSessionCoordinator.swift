@@ -106,16 +106,19 @@ final class MediaSessionCoordinator: ObservableObject {
 
     func switchScreenShareDisplay(displayId: String) async throws {
         guard phase == .active(feature: .screenShare) else { return }
-        activeScreenCaptureConfiguration.displayId = displayId
-        if let screenCapture {
-            await screenCapture.stop()
-        }
-        let pipeline = ScreenCapturePipeline(configuration: activeScreenCaptureConfiguration) { [weak self] sample in
+        var nextConfiguration = activeScreenCaptureConfiguration
+        nextConfiguration.displayId = displayId
+        let pipeline = ScreenCapturePipeline(configuration: nextConfiguration) { [weak self] sample in
             guard let self else { return }
             try? await self.videoEncoder?.encode(sampleBuffer: sample)
         }
         try await pipeline.start()
+        let previousCapture = screenCapture
         self.screenCapture = pipeline
+        activeScreenCaptureConfiguration = nextConfiguration
+        if let previousCapture {
+            await previousCapture.stop()
+        }
     }
 
     func ingestBandwidthSample(_ sample: BitrateController.Sample) {
