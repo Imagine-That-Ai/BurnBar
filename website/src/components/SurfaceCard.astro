@@ -1,5 +1,6 @@
 ---
 import type { Surface } from "@data/surfaces";
+import SurfaceIcon from "./SurfaceIcon.astro";
 
 interface Props {
   surface: Surface;
@@ -19,12 +20,17 @@ const statusClass =
           : "tag--planned";
 ---
 
-<article class="surface-card" style={`--idx:${index}`}>
+<article class={`surface-card surface-card--${surface.status} surface-card--id-${surface.id}`} style={`--idx:${index}`}>
   <header class="surface-card__head">
-    <span class={`tag ${statusClass} tag--plain mono`}>{surface.statusLabel}</span>
-    <span class="surface-card__platform mono">{surface.platform}</span>
+    <SurfaceIcon id={surface.id} />
+    <div class="surface-card__head-info">
+      <div class="surface-card__head-meta">
+        <span class={`tag ${statusClass} tag--plain mono`}>{surface.statusLabel}</span>
+        <span class="surface-card__platform mono">{surface.platform}</span>
+      </div>
+      <h3 class="surface-card__title">{surface.name}</h3>
+    </div>
   </header>
-  <h3 class="surface-card__title">{surface.name}</h3>
   <p class="surface-card__blurb">{surface.description}</p>
   <ul class="surface-card__bullets">
     {surface.bullets.map((b) => <li>{b}</li>)}
@@ -39,9 +45,35 @@ const statusClass =
 </article>
 
 <style>
+  /* Brand color definitions for premium glowing effects */
+  .surface-card--id-macos {
+    --brand-color: #F0EBE2;
+  }
+  .surface-card--id-ios {
+    --brand-color: #E87060;
+  }
+  .surface-card--id-cursor {
+    --brand-color: #5FF5D2;
+  }
+  .surface-card--id-daemon {
+    --brand-color: #9080D8;
+  }
+  .surface-card--id-cli {
+    --brand-color: #2CCAC0;
+  }
+  .surface-card--id-widgets {
+    --brand-color: #E87060;
+  }
+  .surface-card--id-smart-display {
+    --brand-color: #4285F4;
+  }
+  .surface-card--id-android {
+    --brand-color: #3DDC84;
+  }
+
   .surface-card {
     display: grid;
-    gap: var(--s-3);
+    gap: var(--s-4);
     align-content: start;
     padding: var(--s-5);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -57,8 +89,11 @@ const statusClass =
     transition: border-color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
   }
   .surface-card:hover {
-    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
-    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--brand-color, var(--ember-core)) 40%, rgba(255, 255, 255, 0.08));
+    transform: translateY(-4px);
+    box-shadow: 
+      0 12px 36px rgba(0, 0, 0, 0.45),
+      0 0 20px color-mix(in oklab, var(--brand-color, var(--ember-core)) 10%, transparent);
   }
   .surface-card::after {
     content: "";
@@ -66,7 +101,7 @@ const statusClass =
     inset: 0;
     border-radius: inherit;
     background:
-      linear-gradient(180deg, rgba(255, 106, 26, 0.04), transparent 40%);
+      linear-gradient(180deg, color-mix(in oklab, var(--brand-color, var(--ember-core)) 8%, transparent), transparent 40%);
     pointer-events: none;
     opacity: 0;
     transition: opacity var(--dur-base) var(--ease-out);
@@ -76,43 +111,68 @@ const statusClass =
   }
   .surface-card__head {
     display: flex;
-    justify-content: space-between;
     gap: var(--s-3);
+    align-items: flex-start;
+  }
+  .surface-card__head-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    flex-grow: 1;
+    min-width: 0;
+  }
+  .surface-card__head-meta {
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+    flex-wrap: wrap;
   }
   .surface-card__platform {
     font-size: var(--t-caption);
-    color: var(--text-dim);
+    color: var(--text-mute);
     letter-spacing: 0.05em;
+    margin: 0;
   }
   .surface-card__title {
-    font-size: var(--t-h4);
+    font-size: 1.18rem;
     font-family: var(--font-display);
     color: var(--text-bright);
     font-variation-settings: "opsz" 36, "wght" 540;
-    letter-spacing: -0.018em;
+    letter-spacing: -0.014em;
+    margin: 0;
   }
   .surface-card__blurb {
     color: var(--text-base);
     font-size: 0.92rem;
+    line-height: 1.5;
+    margin: 0;
   }
   .surface-card__bullets {
     display: grid;
-    gap: var(--s-2);
-    font-size: 0.86rem;
+    gap: 6px;
+    font-size: 0.84rem;
     color: var(--text-mute);
+    list-style: none;
+    padding: 0;
+    margin: 0;
   }
   .surface-card__bullets li {
     position: relative;
-    padding-left: 1.1em;
+    padding-left: 1.25em;
     line-height: 1.45;
+    transition: color var(--dur-base) var(--ease-out);
   }
   .surface-card__bullets li::before {
     content: "→";
     position: absolute;
     left: 0;
-    color: var(--ember-bright);
+    color: var(--brand-color, var(--ember-bright));
     font-family: var(--font-mono);
+    transition: transform var(--dur-base) var(--ease-out);
+  }
+  .surface-card:hover .surface-card__bullets li::before {
+    transform: translateX(3px);
   }
   .surface-card__cta {
     margin-top: var(--s-2);
@@ -121,6 +181,6 @@ const statusClass =
     font-variation-settings: "wght" 500;
   }
   .surface-card__cta:hover {
-    color: var(--ember-glow);
+    color: var(--text-bright);
   }
 </style>

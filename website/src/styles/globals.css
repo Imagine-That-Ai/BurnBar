@@ -86,43 +86,43 @@ footer {
 }
 
 .glass-pane {
-  background: rgba(10, 10, 15, 0.82);
-  backdrop-filter: blur(48px) saturate(200%);
-  -webkit-backdrop-filter: blur(48px) saturate(200%);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-top: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-xl);
   box-shadow: 
-    0 8px 32px 0 rgba(0, 0, 0, 0.45),
+    0 32px 80px -16px rgba(0, 0, 0, 0.65),
     inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
   color: var(--text-base);
   transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
 }
 
 .glass-pane--elevated {
-  background: rgba(20, 20, 28, 0.88);
-  backdrop-filter: blur(48px) saturate(200%);
-  -webkit-backdrop-filter: blur(48px) saturate(200%);
+  background: var(--glass-bg-elevated);
+  backdrop-filter: var(--glass-blur-heavy);
+  -webkit-backdrop-filter: var(--glass-blur-heavy);
   border-color: rgba(255, 255, 255, 0.12);
   border-top: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow: 
-    0 12px 40px 0 rgba(0, 0, 0, 0.55),
+    0 48px 96px -16px rgba(0, 0, 0, 0.8),
     inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
 }
 
 .glass-pane:hover {
-  border-color: rgba(250, 107, 6, 0.3);
+  border-color: rgba(250, 107, 6, 0.35);
   box-shadow: 
-    0 12px 40px 0 rgba(250, 107, 6, 0.08),
-    0 8px 32px 0 rgba(0, 0, 0, 0.45),
+    0 16px 48px 0 rgba(250, 107, 6, 0.08),
+    0 32px 80px -16px rgba(0, 0, 0, 0.65),
     inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
 }
 
 .glass-inline {
   display: inline;
-  background: rgba(10, 10, 15, 0.82);
-  backdrop-filter: blur(48px) saturate(200%);
-  -webkit-backdrop-filter: blur(48px) saturate(200%);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-top: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--r-sm);
@@ -147,34 +147,20 @@ footer {
 
 .glass-line-pill {
   display: inline-block;
-  background: rgba(10, 10, 15, 0.82);
-  backdrop-filter: blur(48px) saturate(200%);
-  -webkit-backdrop-filter: blur(48px) saturate(200%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-top: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 9999px;
-  box-shadow: 
-    0 4px 16px 0 rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
   color: var(--text-bright);
-  padding: 8px 22px;
-  margin: 3px 0;
+  padding: 0;
+  margin: 0.1em 0;
   white-space: nowrap;
   max-width: 100%;
   box-sizing: border-box;
   text-overflow: ellipsis;
   overflow: hidden;
   vertical-align: top;
-  transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
+  transition: color var(--dur-base) var(--ease);
 }
 
 .glass-line-pill:hover {
-  border-color: rgba(250, 107, 6, 0.35);
-  box-shadow: 
-    0 8px 24px 0 rgba(250, 107, 6, 0.1),
-    0 4px 16px 0 rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
-  transform: translateY(-1px);
+  color: var(--ember-bright);
 }
 
 

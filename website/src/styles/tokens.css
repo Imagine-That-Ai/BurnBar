@@ -12,10 +12,10 @@
   --ink-line-bright: rgba(255, 255, 255, 0.15);
   
   /* ---------- Glassmorphism ---------- */
-  --glass-bg: rgba(15, 15, 20, 0.65);
-  --glass-bg-elevated: rgba(22, 22, 30, 0.75);
-  --glass-blur: blur(40px);
-  --glass-blur-heavy: blur(60px);
+  --glass-bg: rgba(10, 10, 15, 0.50);
+  --glass-bg-elevated: rgba(18, 18, 26, 0.62);
+  --glass-blur: blur(80px) saturate(220%);
+  --glass-blur-heavy: blur(100px) saturate(240%);
 
   /* ---------- text (High Contrast) ---------- */
   --text-bright: #ffffff;
