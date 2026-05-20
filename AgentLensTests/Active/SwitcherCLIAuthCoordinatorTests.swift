@@ -1405,7 +1405,7 @@ final class SwitcherAuthStoreTests: XCTestCase {
             allowDefaultKeychainFallback: false
         )
 
-        let credentials = try importer.load(allowUserInteraction: false)
+        let credentials = try importer.load(allowUserInteraction: true)
         XCTAssertEqual(credentials.accessToken, "security-tool-profile-token")
         XCTAssertEqual(credentials.organizationUuid, "security-tool-org")
         XCTAssertEqual(fallbackRequests.count, 1)
@@ -1454,7 +1454,7 @@ final class SwitcherAuthStoreTests: XCTestCase {
             allowDefaultKeychainFallback: false
         )
 
-        let credentials = try importer.load(allowUserInteraction: false)
+        let credentials = try importer.load(allowUserInteraction: true)
         XCTAssertEqual(credentials.accessToken, "security-tool-nil-profile-token")
         XCTAssertEqual(credentials.organizationUuid, "security-tool-nil-org")
         XCTAssertEqual(fallbackRequests.count, 1)
