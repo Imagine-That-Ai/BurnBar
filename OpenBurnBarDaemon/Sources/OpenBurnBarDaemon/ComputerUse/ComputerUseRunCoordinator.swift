@@ -455,6 +455,8 @@ public actor ComputerUseRunCoordinator {
             return .macInput(try decodeMacInput(invocation: invocation, kind: .dragDrop))
         case .macInputScroll:
             return .macInput(try decodeMacInput(invocation: invocation, kind: .scroll))
+        case .macInputPointerMove:
+            return .macInput(try decodeMacInput(invocation: invocation, kind: .pointerMove))
         case .macInspectAccessibility:
             return .macInspect(MacInspectAction(
                 kind: .accessibility,
@@ -478,6 +480,8 @@ public actor ComputerUseRunCoordinator {
             displayY: intArgument(invocation, key: "displayY"),
             dragEndX: intArgument(invocation, key: "dragEndX"),
             dragEndY: intArgument(invocation, key: "dragEndY"),
+            deltaX: intArgument(invocation, key: "deltaX"),
+            deltaY: intArgument(invocation, key: "deltaY"),
             mouseButton: intArgument(invocation, key: "mouseButton") ?? 0,
             text: stringArgument(invocation, key: "text"),
             key: stringArgument(invocation, key: "key"),
@@ -577,7 +581,8 @@ public actor ComputerUseRunCoordinator {
                 (action.modifiers ?? []).map { $0.lowercased() }.sorted().joined(separator: "+"),
                 action.text ?? "",
                 coordinateSignature(x: action.displayX, y: action.displayY),
-                coordinateSignature(x: action.dragEndX, y: action.dragEndY)
+                coordinateSignature(x: action.dragEndX, y: action.dragEndY),
+                coordinateSignature(x: action.deltaX, y: action.deltaY)
             ].joined(separator: "|")
         case .macInspect(let action):
             return [

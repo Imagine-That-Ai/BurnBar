@@ -73,7 +73,8 @@ final class MercuryRouter: ObservableObject {
     typealias ScreenShareStarter = @MainActor (
         _ peerDeviceID: String,
         _ sink: MediaStreamSink,
-        _ streamClassOverride: MediaStreamClass?
+        _ streamClassOverride: MediaStreamClass?,
+        _ displayId: String?
     ) async throws -> Void
     typealias ComputerUseSessionEnsurer = @MainActor () async throws -> Void
 
@@ -115,11 +116,12 @@ final class MercuryRouter: ObservableObject {
         if let startScreenShare {
             self.startScreenShare = startScreenShare
         } else {
-            self.startScreenShare = { [sessionCoordinator] peerDeviceID, sink, streamClassOverride in
+            self.startScreenShare = { [sessionCoordinator] peerDeviceID, sink, streamClassOverride, displayId in
                 try await sessionCoordinator.startScreenShare(
                     peerDeviceID: peerDeviceID,
                     sink: sink,
-                    streamClassOverride: streamClassOverride
+                    streamClassOverride: streamClassOverride,
+                    displayId: displayId
                 )
             }
         }
@@ -182,6 +184,8 @@ final class MercuryRouter: ObservableObject {
             await handleMirrorRequest(frame: frame, replySender: replySender)
         case .mediaMirrorStop:
             await handleMirrorStop(frame: frame)
+        case .mediaMirrorDisplaySelect:
+            await handleMirrorDisplaySelect(frame: frame, replySender: replySender)
         case .mediaMirrorAck:
             // Mac is the producer of acks, not the consumer. Ignore.
             break
@@ -266,7 +270,7 @@ final class MercuryRouter: ObservableObject {
         pendingRequest = nil
         activeSessionSender = nil
         activeSessionFrame = nil
-        startCooldown(seconds: Int(cooldownSeconds))
+        phase = .idle
     }
 
     // MARK: - Private
@@ -364,7 +368,7 @@ final class MercuryRouter: ObservableObject {
              .starting(let requestID):
             activeRequestID = requestID
         default:
-            activeRequestID = nil
+            activeRequestID = activeSessionFrame?.media?.mirrorRequest?.requestId
         }
         guard activeRequestID == stop.requestId else {
             Self.log.info("router_mirror_stop_ignored requestID=\(stop.requestId, privacy: .public) phase_mismatch=true")
@@ -378,6 +382,57 @@ final class MercuryRouter: ObservableObject {
         phase = .idle
         Self.log.info("router_mirror_stop_completed requestID=\(stop.requestId, privacy: .public)")
         Self.debugTrace("router_mirror_stop_completed requestID=\(stop.requestId)")
+    }
+
+    private func handleMirrorDisplaySelect(
+        frame: HermesRealtimeRelayFrame,
+        replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+    ) async {
+        guard let selection = frame.media?.mirrorDisplaySelection else { return }
+        let activeRequestID: String?
+        switch phase {
+        case .streaming(let requestID, _),
+             .starting(let requestID):
+            activeRequestID = requestID
+        default:
+            activeRequestID = nil
+        }
+        guard activeRequestID == selection.requestId else { return }
+        let displays = ScreenCapturePipeline.availableDisplays()
+        guard displays.contains(where: { $0.id == selection.displayId }) else {
+            await respond(
+                requestID: selection.requestId,
+                decision: .unsupported,
+                detail: "Display is no longer available",
+                availableDisplays: displays,
+                selectedDisplayId: displays.first?.id,
+                frame: frame,
+                replySender: replySender
+            )
+            return
+        }
+        do {
+            try await sessionCoordinator.switchScreenShareDisplay(displayId: selection.displayId)
+            await respond(
+                requestID: selection.requestId,
+                decision: .accepted,
+                detail: "Display switched",
+                availableDisplays: displays,
+                selectedDisplayId: selection.displayId,
+                frame: frame,
+                replySender: replySender
+            )
+        } catch {
+            await respond(
+                requestID: selection.requestId,
+                decision: .unsupported,
+                detail: error.localizedDescription,
+                availableDisplays: displays,
+                selectedDisplayId: displays.first?.id,
+                frame: frame,
+                replySender: replySender
+            )
+        }
     }
 
     private func handleCallInvite(
@@ -469,7 +524,7 @@ final class MercuryRouter: ObservableObject {
                 return
             }
             let sink = try await factory(mirrorRequest, request.frame)
-            try await startScreenShare(request.frame.connectionId, sink, .screenVideo)
+            try await startScreenShare(request.frame.connectionId, sink, .screenVideo, nil)
             do {
                 if let ensureComputerUseSession {
                     try await ensureComputerUseSession()
@@ -479,10 +534,13 @@ final class MercuryRouter: ObservableObject {
                 Self.log.error("router_computer_use_session_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                 Self.debugTrace("router_computer_use_session_failed requestID=\(request.id) error=\(error.localizedDescription)")
             }
+            let displays = ScreenCapturePipeline.availableDisplays()
             await respond(
                 requestID: request.id,
                 decision: .accepted,
                 detail: nil,
+                availableDisplays: displays,
+                selectedDisplayId: displays.first?.id,
                 frame: request.frame,
                 replySender: request.replySender
             )
@@ -511,6 +569,8 @@ final class MercuryRouter: ObservableObject {
         decision: HermesRealtimeRelayMirrorAck.Decision,
         detail: String?,
         cooldownSecondsRemaining: Int? = nil,
+        availableDisplays: [HermesRealtimeRelayDisplayDescriptor]? = nil,
+        selectedDisplayId: String? = nil,
         frame: HermesRealtimeRelayFrame,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
@@ -518,7 +578,9 @@ final class MercuryRouter: ObservableObject {
             requestId: requestID,
             decision: decision,
             detail: detail,
-            cooldownSecondsRemaining: cooldownSecondsRemaining
+            cooldownSecondsRemaining: cooldownSecondsRemaining,
+            availableDisplays: availableDisplays,
+            selectedDisplayId: selectedDisplayId
         )
         let outbound = HermesRealtimeRelayFrame(
             type: .mediaMirrorAck,

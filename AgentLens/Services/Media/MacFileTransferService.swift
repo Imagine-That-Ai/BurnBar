@@ -253,6 +253,7 @@ final class MacFileTransferService: ObservableObject {
                 case .mediaMirrorRequest,
                      .mediaMirrorAck,
                      .mediaMirrorStop,
+                     .mediaMirrorDisplaySelect,
                      .mediaPresenceHeartbeat,
                      .mediaCallInvite,
                      .mediaCallAck,

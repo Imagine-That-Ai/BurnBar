@@ -61,6 +61,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     public func canonicalInputIntentHashHex(intent: HermesRealtimeRelayInputIntent) throws -> String {
         struct SignableInputIntent: Encodable {
             let kind: HermesRealtimeRelayInputIntent.Kind
+            let displayId: String?
             let normalizedX: Double?
             let normalizedY: Double?
             let normalizedX2: Double?
@@ -72,6 +73,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         }
         return try canonicalIntentHashHex(intent: SignableInputIntent(
             kind: intent.kind,
+            displayId: intent.displayId,
             normalizedX: intent.normalizedX,
             normalizedY: intent.normalizedY,
             normalizedX2: intent.normalizedX2,
