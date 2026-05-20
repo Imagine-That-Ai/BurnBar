@@ -76,7 +76,7 @@ public struct InsightWidgetChrome<Body: View>: View {
         if let modelTag = widget.modelTag {
             HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
                 Image(systemName: modelTag.egressTier.symbolName)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                 Text(modelTag.displayName)
                     .font(UnifiedDesignSystem.Typography.tiny)
                 Text("·")
@@ -101,7 +101,7 @@ public struct InsightWidgetChrome<Body: View>: View {
         return HStack(spacing: 4) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
             } else {
                 Circle()
                     .fill(color)

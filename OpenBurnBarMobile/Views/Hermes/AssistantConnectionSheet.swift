@@ -248,7 +248,7 @@ struct AssistantConnectionSheet: View {
     private func sectionLabel(_ title: String, glyph: String, tint: Color, isSymbol: Bool = false) -> some View {
         HStack(spacing: 6) {
             if isSymbol {
-                Image(systemName: glyph).font(.system(size: 11, weight: .semibold))
+                Image(systemName: glyph).font(.system(size: 13, weight: .semibold))
             } else {
                 Text(glyph).font(.system(size: 12, weight: .semibold, design: .rounded))
             }

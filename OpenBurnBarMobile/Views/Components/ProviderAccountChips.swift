@@ -184,7 +184,7 @@ struct ProviderAccountStorageSummary: View {
             ForEach(Array(counts.enumerated()), id: \.offset) { _, entry in
                 HStack(spacing: 3) {
                     Image(systemName: ProviderAccountStorageVisual.iconName(entry.scope))
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProviderAccountStorageVisual.tint(entry.scope))
                     Text("\(entry.count) \(ProviderAccountStorageVisual.label(entry.scope))")
                         .font(MobileTheme.Typography.tiny)

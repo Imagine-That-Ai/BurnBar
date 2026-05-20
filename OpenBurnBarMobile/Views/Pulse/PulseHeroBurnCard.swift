@@ -104,7 +104,7 @@ struct PulseHeroBurnCard: View {
             let isAhead = pct >= 0
             HStack(spacing: 6) {
                 Image(systemName: isAhead ? "arrow.up.right" : "arrow.down.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                 Text(String(format: "%@ %.0f%%", isAhead ? "Ahead of" : "Below", abs(pct)) + " your \(trailingLabel) average")
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
@@ -153,9 +153,9 @@ struct PulseHeroBurnCard: View {
             if let total, total.requests > 0 {
                 HStack(spacing: 4) {
                     Image(systemName: "waveform.path.ecg")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                     Text("\(total.requests)")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .contentTransition(.numericText())
                     Text("calls")
                         .font(MobileTheme.Typography.tiny)
@@ -324,9 +324,9 @@ private struct BurnVelocityPill: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 9, weight: .heavy))
+                .font(.system(size: 12, weight: .heavy))
             Text(text)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.system(size: 13, weight: .bold, design: .rounded))
                 .contentTransition(.numericText())
         }
         .padding(.horizontal, 9)

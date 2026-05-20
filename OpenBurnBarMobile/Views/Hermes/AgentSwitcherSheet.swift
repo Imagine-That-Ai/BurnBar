@@ -230,13 +230,13 @@ struct AgentIdentityChip: View {
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                         .lineLimit(1)
                     Text(modelSnapshot.displayName)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
                         .lineLimit(1)
                 }
 
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .heavy))
+                    .font(.system(size: 12, weight: .heavy))
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
             }
             .padding(.horizontal, 10)
@@ -574,11 +574,11 @@ struct AgentTile: View {
 
                 VStack(spacing: 1) {
                     Text(runtime.displayName)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(isActive ? runtime.brandTint : MobileTheme.Colors.textPrimary)
                         .lineLimit(1)
                     Text(modelSnapshot.displayName)
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                         .lineLimit(1)
                 }

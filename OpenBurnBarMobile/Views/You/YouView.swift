@@ -361,7 +361,7 @@ private struct CloudMemberCrestRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text("PRO")
-                            .font(.system(size: 9, weight: .heavy, design: .rounded))
+                            .font(.system(size: 12, weight: .heavy, design: .rounded))
                             .tracking(1.6)
                             .foregroundStyle(Color.white)
                             .padding(.horizontal, 7)

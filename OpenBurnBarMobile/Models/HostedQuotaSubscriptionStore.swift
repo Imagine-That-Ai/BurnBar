@@ -72,8 +72,10 @@ typealias HostedQuotaAuthStateReader = @MainActor () -> Bool
 final class HostedQuotaSubscriptionStore {
     static let productID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
     static let legacyHostedQuotaProductID = "com.openburnbar.hostedQuotaSync.monthly"
-    static let hostedComputerUseProductID = "com.openburnbar.hostedComputerUseSync.monthly"
-    static let proMaxProductID = "com.openburnbar.proMax.monthly"
+    static let hostedComputerUseProductID = "com.openburnbar.computerUse.monthly"
+    static let proMaxProductID = "com.openburnbar.proMax.bundle.monthly"
+    static let legacyHostedComputerUseProductID = "com.openburnbar.hostedComputerUseSync.monthly"
+    static let legacyProMaxProductID = "com.openburnbar.proMax.monthly"
 
     /// Every auto-renewable subscription currently configured in App Store
     /// Connect for the iOS app. The App Review paywall uses this exact list so
@@ -91,6 +93,8 @@ final class HostedQuotaSubscriptionStore {
         legacyHostedQuotaProductID,
         hostedComputerUseProductID,
         proMaxProductID,
+        legacyHostedComputerUseProductID,
+        legacyProMaxProductID,
         "com.openburnbar.pro.monthly"
     ]
 

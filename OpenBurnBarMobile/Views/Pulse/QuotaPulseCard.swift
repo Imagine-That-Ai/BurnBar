@@ -69,7 +69,7 @@ struct QuotaPulseCard: View {
                 HStack(spacing: 3) {
                     Text("Open")
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                 }
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
@@ -287,7 +287,7 @@ private struct QuotaProviderRow: View {
                 .frame(minWidth: 38, alignment: .trailing)
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(MobileTheme.Colors.textMuted.opacity(0.6))
         }
         .padding(.vertical, 6)

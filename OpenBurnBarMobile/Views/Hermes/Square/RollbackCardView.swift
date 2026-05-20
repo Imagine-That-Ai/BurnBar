@@ -71,7 +71,7 @@ struct RollbackCardView: View {
                 if let newest = newestSnapshot {
                     HStack(spacing: 4) {
                         Image(systemName: "circle.fill")
-                            .font(.system(size: 5))
+                            .font(.system(size: 12))
                             .foregroundStyle(DesignSystemColors.whimsy)
                         Text("Latest: \(newest.actionLabel) • \(MissionConsoleFormatting.relativeTime(newest.takenAt))")
                             .font(.caption2)

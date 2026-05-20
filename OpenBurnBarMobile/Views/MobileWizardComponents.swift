@@ -384,7 +384,7 @@ struct MobileProviderConfirmHero: View {
             if let maskedCredential, !maskedCredential.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                     Text(maskedCredential)
                         .font(MobileTheme.Typography.monoSmall)

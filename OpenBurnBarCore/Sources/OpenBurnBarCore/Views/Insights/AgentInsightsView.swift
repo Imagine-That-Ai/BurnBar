@@ -168,7 +168,7 @@ public struct AgentInsightsView: View {
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
             }
             .padding(UnifiedDesignSystem.Spacing.md)
             .background(

@@ -1,69 +1,57 @@
 /* ============================================================
    OpenBurnBar Design Tokens
-   Aesthetic: "Furnace Console" — late-night developer ember
+   Aesthetic: "Glass Console over Furnace Core" — Premium High-Fidelity
    ============================================================ */
 
 :root {
-  /* ---------- canvas ---------- */
-  --ink-void: #07060a;          /* page background, near-black with warm tint */
-  --ink-base: #0c0a0f;          /* primary surface */
-  --ink-surface: #14101a;       /* card surface */
-  --ink-surface-2: #1a1422;     /* elevated surface */
-  --ink-line: #2a2030;          /* hairline divider */
-  --ink-line-soft: #1f1827;     /* subtle divider */
+  /* ---------- canvas (Rich Dark to Molten) ---------- */
+  --ink-void: #050508;          /* Absolute base */
+  --ink-base: #0a0a0e;          /* Secondary dark */
+  --ink-furnace: #180805;       /* Deep molten red/black */
+  --ink-line: rgba(255, 255, 255, 0.08); /* Crisp glass border */
+  --ink-line-bright: rgba(255, 255, 255, 0.15);
+  
+  /* ---------- Glassmorphism ---------- */
+  --glass-bg: rgba(15, 15, 20, 0.65);
+  --glass-bg-elevated: rgba(22, 22, 30, 0.75);
+  --glass-blur: blur(40px);
+  --glass-blur-heavy: blur(60px);
 
-  /* ---------- text ---------- */
-  --text-bright: #f6f1e7;       /* primary text, warm white */
-  --text-base: #d8d0c0;         /* default body */
-  --text-mute: #8b8275;         /* muted */
-  --text-dim: #5c5448;          /* very muted, captions */
-  --text-faint: #3a342c;        /* placeholder/disabled */
+  /* ---------- text (High Contrast) ---------- */
+  --text-bright: #ffffff;
+  --text-base: rgba(255, 255, 255, 0.85);
+  --text-mute: rgba(255, 255, 255, 0.55);
+  --text-dim: rgba(255, 255, 255, 0.35);
+  
+  /* ---------- the core (Fire & Heat) ---------- */
+  --core-fire: #FA6B06;         /* Brand Orange Mid-tone */
+  --core-amber: #FDC42C;        /* Brand Yellow-Gold Highlight */
+  --core-red: #EE1803;          /* Brand Deep Red */
+  --core-glow: rgba(250, 107, 6, 0.4);
+  --core-underglow: rgba(250, 107, 6, 0.12);
 
-  /* ---------- ember (the burn) ---------- */
-  --ember-core: #ff6a1a;        /* primary ember orange */
-  --ember-bright: #ffb547;      /* amber-gold flame tip */
-  --ember-deep: #c63d0f;        /* ruby coal */
-  --ember-glow: #ff8a3d;        /* secondary */
-  --ember-wash: rgba(255, 106, 26, 0.08); /* atmospheric wash */
-  --ember-wash-2: rgba(255, 106, 26, 0.12);
-
-  /* ---------- mercury (Hermes) ---------- */
-  --mercury-bright: #d6d3df;
-  --mercury-base: #aeacba;
-  --mercury-deep: #6e6c78;
-
-  /* ---------- confidence / status ---------- */
-  --status-exact: #6fd189;       /* terminal green */
-  --status-estimated: #ffc861;   /* warning amber */
-  --status-unavailable: #6a6a6a; /* muted */
-  --status-burn: #e5483c;        /* alarm red, used sparingly */
-
-  /* ---------- typography ---------- */
-  --font-display: "Fraunces Variable", "Iowan Old Style", "Apple Garamond", Georgia, serif;
+  /* ---------- typography (Outfit + Geist) ---------- */
+  --font-display: "Outfit", "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-body: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
-  --leading-tight: 1.04;
-  --leading-snug: 1.18;
+  --leading-tight: 0.95;
+  --leading-snug: 1.1;
   --leading-base: 1.5;
-  --leading-loose: 1.7;
+  
+  --tracking-tight: -0.05em;
+  --tracking-base: -0.01em;
+  --tracking-wide: 0.08em;
 
-  --tracking-tight: -0.04em;
-  --tracking-base: -0.012em;
-  --tracking-wide: 0.06em;
-  --tracking-uppercase: 0.18em;
-
-  /* type scale — semi-fluid */
-  --t-eyebrow: 0.74rem;
-  --t-caption: 0.78rem;
-  --t-small: 0.84rem;
-  --t-body: 0.95rem;
-  --t-lead: clamp(1.05rem, 1rem + 0.4vw, 1.2rem);
-  --t-h4: clamp(1.05rem, 1rem + 0.4vw, 1.25rem);
-  --t-h3: clamp(1.4rem, 1.2rem + 1vw, 2rem);
-  --t-h2: clamp(2rem, 1.6rem + 2vw, 3rem);
-  --t-h1: clamp(2.2rem, 1.5rem + 3vw, 5rem);
-  --t-display: clamp(2.5rem, 1.6rem + 5vw, 7rem);
+  /* fluid type scale */
+  --t-eyebrow: 0.75rem;
+  --t-caption: 0.8rem;
+  --t-body: 1rem;
+  --t-lead: 1.25rem;
+  --t-h3: 2rem;
+  --t-h2: 3rem;
+  --t-h1: 4.5rem;
+  --t-display: 6rem;
 
   /* ---------- space ---------- */
   --s-1: 0.25rem;
@@ -78,34 +66,21 @@
   --s-10: 8rem;
 
   /* ---------- layout ---------- */
-  --container-narrow: 64rem;
   --container: 78rem;
   --container-wide: 90rem;
-  --gutter: clamp(1rem, 4vw, 2.5rem);
 
   /* ---------- radii ---------- */
-  --r-1: 2px;
-  --r-2: 4px;
-  --r-3: 8px;
-  --r-4: 14px;
-  --r-5: 22px;
+  --r-sm: 8px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-xl: 32px;
   --r-pill: 999px;
 
   /* ---------- motion ---------- */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --dur-fast: 140ms;
-  --dur-base: 240ms;
-  --dur-slow: 420ms;
-  --dur-glow: 6s;
-
-  /* ---------- shadows / glows ---------- */
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.02), 0 24px 60px -36px rgba(0, 0, 0, 0.9);
-  --shadow-ring: 0 0 0 1px var(--ink-line);
-  --glow-ember:
-    0 0 0 1px rgba(255, 106, 26, 0.35),
-    0 12px 32px -8px rgba(255, 106, 26, 0.45),
-    0 0 80px -12px rgba(255, 106, 26, 0.35);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-base: 400ms;
+  --dur-slow: 8s;
 
   color-scheme: dark;
 }
+

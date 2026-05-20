@@ -111,9 +111,9 @@ private struct StatsOverlay: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 2) {
-            Text(stats.resolution).font(.system(size: 11, weight: .medium, design: .monospaced))
-            Text("\(stats.codec) · \(formattedBitrate)").font(.system(size: 11, weight: .medium, design: .monospaced))
-            Text("RTT \(stats.roundTripMillis) ms").font(.system(size: 11, weight: .medium, design: .monospaced))
+            Text(stats.resolution).font(.system(size: 13, weight: .medium, design: .monospaced))
+            Text("\(stats.codec) · \(formattedBitrate)").font(.system(size: 13, weight: .medium, design: .monospaced))
+            Text("RTT \(stats.roundTripMillis) ms").font(.system(size: 13, weight: .medium, design: .monospaced))
         }
         .foregroundStyle(.primary.opacity(0.85))
     }

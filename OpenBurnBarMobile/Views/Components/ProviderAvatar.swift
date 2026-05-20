@@ -155,7 +155,7 @@ struct ProviderAvatar: View {
                     VStack(spacing: 4) {
                         ProviderAvatar(provider: provider, mode: .tile, size: 48)
                         Text(provider.displayName)
-                            .font(.system(size: 10))
+                            .font(.system(size: 12))
                             .lineLimit(1)
                     }
                 }
@@ -169,7 +169,7 @@ struct ProviderAvatar: View {
                     VStack(spacing: 4) {
                         ProviderAvatar(provider: provider, mode: .aurora, size: 48)
                         Text(provider.displayName)
-                            .font(.system(size: 10))
+                            .font(.system(size: 12))
                             .lineLimit(1)
                     }
                 }

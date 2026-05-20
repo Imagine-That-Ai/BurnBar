@@ -2,7 +2,6 @@
    Global styles, base typography, utilities, atmospheric layers
    ============================================================ */
 
-@import "@fontsource-variable/fraunces/index.css";
 @import "@fontsource-variable/geist/index.css";
 @import "@fontsource-variable/jetbrains-mono/index.css";
 
@@ -17,35 +16,33 @@ body {
   color: var(--text-base);
   font-family: var(--font-body);
   font-size: var(--t-body);
-  font-variation-settings: "wght" 420;
+  font-variation-settings: "wght" 400;
   letter-spacing: var(--tracking-base);
 }
 
-/* atmospheric layer — a subtle furnace glow drifting from below */
+/* atmospheric layer — a premium furnace glow pulsing from the deep bottom */
 body::before {
   content: "";
   position: fixed;
-  inset: auto -10% -30% -10%;
-  height: 70vh;
-  background:
-    radial-gradient(60% 60% at 18% 80%, rgba(255, 106, 26, 0.12), transparent 65%),
-    radial-gradient(50% 50% at 85% 90%, rgba(198, 61, 15, 0.10), transparent 70%);
-  filter: blur(60px);
+  inset: auto -10% -25% -10%;
+  height: 60vh;
+  background: radial-gradient(ellipse at bottom, var(--core-fire) 0%, transparent 70%);
+  filter: var(--glass-blur-heavy);
   pointer-events: none;
   z-index: 0;
-  opacity: 1;
-  animation: emberDrift var(--dur-glow) ease-in-out infinite alternate;
+  opacity: 0.45;
+  animation: furnacePulse var(--dur-slow) ease-in-out infinite alternate;
 }
 
-/* very subtle grain — adds the "warmth" without competing with content */
+/* subtle overlay grain for physical texture */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.07  0 0 0 0 0.05  0 0 0 0 0.03  0 0 0 0.42 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-  opacity: 0.18;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.05 0 0 0 0 0.05 0 0 0 0 0.05 0 0 0 0.25 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.15;
   pointer-events: none;
-  z-index: 0;
+  z-index: 1;
   mix-blend-mode: overlay;
 }
 
@@ -53,18 +50,39 @@ main,
 header,
 footer {
   position: relative;
-  z-index: 1;
+  z-index: 10;
 }
 
-@keyframes emberDrift {
+@keyframes furnacePulse {
   0% {
-    transform: translate3d(-2%, 0, 0) scale(1);
-    opacity: 0.85;
+    opacity: 0.35;
+    transform: scaleY(0.95);
   }
   100% {
-    transform: translate3d(2%, -1%, 0) scale(1.04);
-    opacity: 1;
+    opacity: 0.55;
+    transform: scaleY(1.1);
   }
+}
+
+/* ---------- Glassmorphism & Cards ---------- */
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-lg);
+  box-shadow: 
+    0 4px 30px rgba(0, 0, 0, 0.4),
+    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  transition: all var(--dur-base) var(--ease);
+}
+
+.glass-card:hover {
+  border-color: var(--ink-line-bright);
+  box-shadow: 
+    0 10px 40px rgba(255, 69, 0, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
 /* ---------- typography ---------- */
@@ -75,7 +93,6 @@ h3,
 h4 {
   font-family: var(--font-display);
   color: var(--text-bright);
-  font-variation-settings: "opsz" 144, "SOFT" 10, "wght" 480;
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-tight);
   text-wrap: balance;
@@ -85,26 +102,24 @@ h4 {
 
 h1 {
   font-size: var(--t-h1);
-  font-variation-settings: "opsz" 144, "SOFT" 0, "wght" 460;
+  font-weight: 800;
 }
 
 h2 {
   font-size: var(--t-h2);
-  font-variation-settings: "opsz" 120, "SOFT" 0, "wght" 460;
+  font-weight: 800;
 }
 
 h3 {
   font-size: var(--t-h3);
-  font-variation-settings: "opsz" 80, "SOFT" 0, "wght" 500;
-  letter-spacing: -0.022em;
+  font-weight: 700;
   line-height: var(--leading-snug);
 }
 
 h4 {
-  font-size: var(--t-h4);
-  font-variation-settings: "opsz" 36, "wght" 540;
-  letter-spacing: -0.014em;
-  line-height: var(--leading-snug);
+  font-size: var(--t-body);
+  font-weight: 600;
+  line-height: var(--leading-base);
 }
 
 p {
@@ -112,6 +127,7 @@ p {
   line-height: var(--leading-base);
   text-wrap: pretty;
 }
+
 
 a {
   color: inherit;
@@ -348,82 +364,155 @@ section {
 
 /* ---------- buttons ---------- */
 
+/* ---------- buttons ---------- */
+
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--s-2);
-  padding: 0.85rem 1.35rem;
-  border-radius: var(--r-3);
+  padding: 0.85rem 1.85rem;
+  border-radius: 12px;
   font-family: var(--font-body);
-  font-size: 0.93rem;
-  font-variation-settings: "wght" 560;
-  letter-spacing: -0.005em;
-  border: 1px solid var(--ink-line);
-  background: var(--ink-surface);
-  color: var(--text-bright);
-  transition:
-    background var(--dur-base) var(--ease-out),
-    color var(--dur-base) var(--ease-out),
-    border-color var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out),
-    box-shadow var(--dur-base) var(--ease-out);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(135deg, rgba(15, 15, 20, 0.45) 0%, rgba(5, 5, 8, 0.65) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: rgba(255, 255, 255, 0.8);
+  box-shadow: 
+    0 4px 24px -4px rgba(0, 0, 0, 0.4), 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  transition: 
+    color 0.3s var(--ease),
+    background 0.3s var(--ease),
+    border-color 0.3s var(--ease),
+    transform 0.3s var(--ease),
+    box-shadow 0.3s var(--ease);
   white-space: nowrap;
+  cursor: pointer;
+  overflow: hidden;
 }
 
 .btn:hover,
 .btn:focus-visible {
-  border-color: color-mix(in oklab, var(--ember-core) 50%, var(--ink-line));
-  background: var(--ink-surface-2);
-  color: var(--text-bright);
-  transform: translateY(-1px);
+  color: #fff;
+  border-color: rgba(250, 107, 6, 0.35);
+  background: linear-gradient(135deg, rgba(25, 20, 25, 0.6) 0%, rgba(15, 10, 15, 0.8) 100%);
+  transform: translateY(-2px) scale(1.015);
+  box-shadow: 
+    0 12px 30px -6px rgba(0, 0, 0, 0.6), 
+    0 0 20px 0 rgba(250, 107, 6, 0.12),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
+}
+
+.btn:active {
+  transform: translateY(-0.5px) scale(0.985);
+  box-shadow: 
+    0 6px 15px -3px rgba(0, 0, 0, 0.5), 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
 }
 
 .btn--ember {
-  background: linear-gradient(135deg, var(--ember-deep) 0%, var(--ember-core) 60%, var(--ember-bright) 100%);
-  color: #150b03;
-  border-color: transparent;
-  font-variation-settings: "wght" 600;
-  box-shadow:
-    0 1px 0 rgba(255, 196, 130, 0.5) inset,
-    0 14px 28px -14px rgba(255, 106, 26, 0.7);
+  background: linear-gradient(135deg, var(--core-red) 0%, var(--core-fire) 35%, var(--core-amber) 70%, var(--core-red) 100%);
+  background-size: 200% auto;
+  animation: emberFlow 6s linear infinite;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: 
+    0 4px 20px -2px rgba(238, 24, 3, 0.35),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.3);
+}
+
+@keyframes emberFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.btn--ember::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  transform: skewX(-20deg);
+  pointer-events: none;
+  transition: left 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn--ember:hover::after {
+  left: 150%;
 }
 
 .btn--ember:hover,
 .btn--ember:focus-visible {
-  color: #0a0500;
-  box-shadow:
-    0 1px 0 rgba(255, 220, 170, 0.7) inset,
-    0 18px 34px -14px rgba(255, 106, 26, 0.85),
-    0 0 32px -8px rgba(255, 181, 71, 0.6);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 
+    0 16px 36px -4px rgba(238, 24, 3, 0.55),
+    0 0 25px 0 rgba(250, 107, 6, 0.35),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.45);
+  transform: translateY(-3px) scale(1.025);
+}
+
+.btn--ember:active {
+  transform: translateY(-1px) scale(0.99);
+  box-shadow: 
+    0 6px 15px -2px rgba(238, 24, 3, 0.4),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
 }
 
 .btn--ghost {
   background: transparent;
-  border-color: var(--ink-line);
-  color: var(--text-base);
+  border-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-mute);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
 }
 
 .btn--ghost:hover,
 .btn--ghost:focus-visible {
   color: var(--text-bright);
-  border-color: var(--text-mute);
-  background: var(--ink-surface);
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 
+    0 4px 15px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1.5px);
 }
 
 .btn--small {
-  padding: 0.5rem 0.9rem;
+  padding: 0.5rem 1rem;
   font-size: 0.82rem;
+  border-radius: 8px;
 }
 
 .btn .btn-arrow {
   width: 12px;
   display: inline-block;
-  transition: transform var(--dur-base) var(--ease-out);
+  transition: transform 0.35s var(--ease);
 }
 
 .btn:hover .btn-arrow {
-  transform: translateX(3px);
+  transform: translateX(4px);
 }
 
 /* ---------- focus ring ---------- */

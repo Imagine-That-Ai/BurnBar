@@ -72,7 +72,7 @@ struct AsciiCanvasView: View {
                 Circle().fill(Color(red: 0.36, green: 0.84, blue: 0.43)).frame(width: 10, height: 10)
                 Spacer()
                 Text(spec.variant.tabLabel)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(MobileTheme.Colors.textMuted)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
@@ -142,7 +142,7 @@ struct AsciiCanvasView: View {
                         .font(.system(size: 13, design: .monospaced))
                         .foregroundStyle(accentColor(for: block))
                     Text(label.uppercased())
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .tracking(1.4)
                         .foregroundStyle(MobileTheme.Colors.textSecondary.opacity(0.85))
                 }

@@ -94,11 +94,11 @@ struct MembershipBand: View {
         if variant == .upsell {
             HStack(spacing: 4) {
                 Text(ctaLabel)
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .tracking(1.4)
                     .foregroundStyle(ProTheme.Palette.aureate)
                 Image(systemName: "arrow.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(ProTheme.Palette.aureate)
             }
         } else {

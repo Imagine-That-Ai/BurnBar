@@ -34,6 +34,10 @@ struct MenuBarPopoverView: View {
     @AppStorage("popoverTrayWidth") private var storedPopoverTrayWidth = 340.0
     @AppStorage("popoverTrayHeight") private var storedPopoverTrayHeight = 540.0
     @AppStorage("popoverTraySectionOrder") private var storedPopoverTraySectionOrder = ""
+    @AppStorage("popoverTraySectionHeights") private var storedPopoverTraySectionHeights = ""
+
+    @State private var trayDividerDraggingIndex: Int? = nil
+    @State private var trayDividerStartHeights: [String: Double] = [:]
 
     private var isScanning: Bool { aggregator?.isRefreshing ?? false }
 
@@ -47,10 +51,6 @@ struct MenuBarPopoverView: View {
 
     private var popoverViewportHeight: CGFloat {
         clampPopoverHeight(CGFloat(storedPopoverTrayHeight))
-    }
-
-    private var popoverScrollMaxHeight: CGFloat {
-        max(popoverViewportHeight - 285, 210)
     }
 
     private var availableTraySections: [PopoverTraySection] {
@@ -74,6 +74,34 @@ struct MenuBarPopoverView: View {
             .filter { available.contains($0) }
         let appended = decoded + available.filter { !decoded.contains($0) }
         return appended.isEmpty ? available : appended
+    }
+
+    private func parseSectionHeights() -> [String: Double] {
+        storedPopoverTraySectionHeights
+            .split(separator: ",", omittingEmptySubsequences: true)
+            .compactMap { pair -> (String, Double)? in
+                let parts = pair.split(separator: ":", omittingEmptySubsequences: false)
+                guard parts.count == 2, let value = Double(parts[1]) else { return nil }
+                return (String(parts[0]), value)
+            }
+            .reduce(into: [String: Double]()) { $0[$1.0] = $1.1 }
+    }
+
+    private func sectionHeight(for section: PopoverTraySection) -> Double {
+        parseSectionHeights()[section.rawValue] ?? section.defaultHeight
+    }
+
+    private func clampSectionHeight(_ height: Double, for section: PopoverTraySection) -> Double {
+        min(max(height, section.minHeight), section.maxHeight)
+    }
+
+    private func updateSectionHeight(_ section: PopoverTraySection, height: Double) {
+        var heights = parseSectionHeights()
+        heights[section.rawValue] = clampSectionHeight(height, for: section)
+        storedPopoverTraySectionHeights = heights
+            .map { "\($0.key):\($0.value)" }
+            .sorted()
+            .joined(separator: ",")
     }
 
     private var menuBarSparklineSeries: [Double] {
@@ -171,13 +199,8 @@ struct MenuBarPopoverView: View {
                     )
                     Divider().background(DesignSystem.Colors.border)
 
-                    ScrollView(.vertical, showsIndicators: true) {
-                        trayContent
-                    }
-                    .frame(width: popoverWidth)
-                    .frame(height: popoverScrollMaxHeight)
-                    .contentShape(Rectangle())
-                    .clipped()
+                    trayContent
+                        .frame(width: popoverWidth)
 
                     Divider().background(DesignSystem.Colors.border)
                     cloudWhisperStrip
@@ -232,20 +255,79 @@ struct MenuBarPopoverView: View {
         VStack(spacing: 0) {
             let sections = orderedTraySections
             ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                let isLast = index == sections.count - 1
                 traySection(section)
+                    .frame(height: CGFloat(sectionHeight(for: section)), alignment: .top)
                     .overlay(alignment: .topTrailing) {
                         trayReorderControls(for: section, at: index, totalCount: sections.count)
                     }
-                if index < sections.count - 1 {
-                    Divider().background(DesignSystem.Colors.border)
-                }
+                    .overlay(alignment: .bottom) {
+                        if !isLast {
+                            sectionResizeGrip(for: section, below: sections[index + 1], index: index)
+                        }
+                    }
             }
         }
         .animation(DesignSystem.Animation.snappy, value: orderedTraySections)
+        .animation(DesignSystem.Animation.gentle, value: storedPopoverTraySectionHeights)
+    }
+
+    private func sectionResizeGrip(for section: PopoverTraySection, below: PopoverTraySection, index: Int) -> some View {
+        let isDragging = trayDividerDraggingIndex == index
+        return VStack(spacing: 0) {
+            Rectangle()
+                .fill(DesignSystem.Colors.border)
+                .frame(height: 0.5)
+            HStack(spacing: 3) {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(isDragging ? DesignSystem.Colors.textPrimary.opacity(0.7) : DesignSystem.Colors.textMuted.opacity(0.35))
+                    .frame(width: 24, height: isDragging ? 3 : 2)
+            }
+            .padding(.vertical, 3)
+            Rectangle()
+                .fill(isDragging ? DesignSystem.Colors.textSecondary.opacity(0.2) : Color.clear)
+                .frame(height: isDragging ? 2 : 0)
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    let aboveKey = section.rawValue
+                    let belowKey = below.rawValue
+                    if trayDividerDraggingIndex != index {
+                        trayDividerDraggingIndex = index
+                        var starts = parseSectionHeights()
+                        if starts[aboveKey] == nil { starts[aboveKey] = section.defaultHeight }
+                        if starts[belowKey] == nil { starts[belowKey] = below.defaultHeight }
+                        trayDividerStartHeights = starts
+                    }
+                    guard let aboveStart = trayDividerStartHeights[aboveKey],
+                          let belowStart = trayDividerStartHeights[belowKey] else { return }
+                    let translation = Double(value.translation.height)
+                    let proposedAbove = aboveStart + translation
+                    let clampedAbove = clampSectionHeight(proposedAbove, for: section)
+                    let actualDelta = clampedAbove - aboveStart
+                    let proposedBelow = belowStart - actualDelta
+                    let clampedBelow = clampSectionHeight(proposedBelow, for: below)
+                    updateSectionHeight(section, height: clampedAbove)
+                    updateSectionHeight(below, height: clampedBelow)
+                }
+                .onEnded { _ in
+                    trayDividerDraggingIndex = nil
+                    trayDividerStartHeights = [:]
+                }
+        )
+        .onHover { hovering in
+            if hovering {
+                NSCursor.resizeUpDown.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
     }
 
     @ViewBuilder
-    private func traySection(_ section: PopoverTraySection) -> some View {
+    private func traySectionContent(_ section: PopoverTraySection) -> some View {
         switch section {
         case .insights:
             InsightCardView(
@@ -310,6 +392,18 @@ struct MenuBarPopoverView: View {
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func traySection(_ section: PopoverTraySection) -> some View {
+        if section.isScrollable {
+            ScrollView(.vertical, showsIndicators: true) {
+                traySectionContent(section)
+            }
+            .clipped()
+        } else {
+            traySectionContent(section)
         }
     }
 
@@ -1068,6 +1162,40 @@ private enum PopoverTraySection: String, CaseIterable, Identifiable {
             return "Chat"
         case .quickSwitch:
             return "Quick Switch"
+        }
+    }
+
+    var defaultHeight: Double {
+        switch self {
+        case .insights: return 64
+        case .summary: return 120
+        case .providers: return 200
+        case .mercury: return 60
+        case .chat: return 60
+        case .quickSwitch: return 80
+        }
+    }
+
+    var minHeight: Double {
+        switch self {
+        case .insights: return 40
+        case .summary: return 80
+        case .providers: return 80
+        case .mercury: return 44
+        case .chat: return 44
+        case .quickSwitch: return 44
+        }
+    }
+
+    var maxHeight: Double { 400 }
+
+    /// Sections with variable-length content that should scroll internally
+    /// when constrained to a fixed height.
+    var isScrollable: Bool {
+        switch self {
+        case .providers: return true
+        case .summary: return true
+        default: return false
         }
     }
 }

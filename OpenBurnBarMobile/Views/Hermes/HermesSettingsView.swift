@@ -287,7 +287,7 @@ struct HermesSettingsView: View {
                     // Default model picker
                     HStack(spacing: MobileTheme.Spacing.sm) {
                         Image(systemName: "star.fill")
-                            .font(.system(size: 11))
+                            .font(.system(size: 13))
                             .foregroundStyle(MobileTheme.amber)
                         Text("Favorite models are pinned in the chat selector. Default:")
                             .font(MobileTheme.Typography.caption)

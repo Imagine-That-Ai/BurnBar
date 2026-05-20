@@ -295,7 +295,7 @@ public struct IntelligenceBriefView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             if let answer = result.briefingAnswer {
                 Image(systemName: heroEyebrowSymbol(for: answer))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(heroEyebrowColor(for: answer))
                 Text(heroEyebrowText(for: answer).uppercased())
                     .font(UnifiedDesignSystem.Typography.caption)
@@ -351,7 +351,7 @@ public struct IntelligenceBriefView: View {
     private var fallbackBadge: some View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
             Text("Showing local fallback")
                 .font(UnifiedDesignSystem.Typography.tiny)
                 .tracking(0.6)
@@ -1851,7 +1851,7 @@ private struct FootnoteChipFlow: View {
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: citation.kind.symbolName)
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                         Text(citation.label)
                             .font(UnifiedDesignSystem.Typography.monoTiny)
                             .lineLimit(1)

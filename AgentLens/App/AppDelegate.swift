@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func showPopover(_ sender: NSStatusBarButton) {
         if popover == nil {
             let popover = NSPopover()
-            popover.behavior = .semitransient
+            popover.behavior = .transient
             popover.animates = true
             popover.delegate = self
             self.popover = popover

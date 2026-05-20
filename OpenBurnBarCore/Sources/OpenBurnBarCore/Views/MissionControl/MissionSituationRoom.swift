@@ -76,10 +76,10 @@ public struct MissionSituationRoom: View {
     private var header: some View {
         HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
             Image(systemName: "dot.radiowaves.left.and.right")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
             Text("SITUATION ROOM")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(2.4)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Rectangle()
@@ -101,7 +101,7 @@ public struct MissionSituationRoom: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                 Text("Open BurnBar on the paired Mac to start execution.")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
             }
             Spacer(minLength: 0)
@@ -148,7 +148,7 @@ public struct MissionSituationRoom: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Text("Nothing flying. Compose a mission to fill the lane.")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
             Spacer(minLength: 0)
         }
@@ -176,7 +176,7 @@ public struct MissionSituationRoom: View {
     private func sectionLabel(_ text: String, trailing: String? = nil) -> some View {
         HStack {
             Text(text)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(1.6)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Rectangle()
@@ -185,7 +185,7 @@ public struct MissionSituationRoom: View {
                 .frame(maxWidth: .infinity)
             if let trailing {
                 Text(trailing)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             }
         }
@@ -246,7 +246,7 @@ public struct MissionLiveBurnGauge: View {
                         .contentTransition(.numericText())
                         .animation(UnifiedDesignSystem.Animation.gentle, value: burnPerHourUSD)
                     Text("PER HOUR")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .tracking(1.2)
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 }
@@ -260,7 +260,7 @@ public struct MissionLiveBurnGauge: View {
                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                         .contentTransition(.numericText())
                     Text("BURNED TODAY")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .tracking(1.4)
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 }
@@ -268,14 +268,14 @@ public struct MissionLiveBurnGauge: View {
                 if burnPerHourUSD > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                         Text("at this pace, ~\(MissionConsoleFormatting.cost(burnPerHourUSD * 8)) over 8h")
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
                     }
                     .foregroundStyle(burnPerHourUSD > 1.5 ? UnifiedDesignSystem.Colors.ember : UnifiedDesignSystem.Colors.textSecondary)
                 } else {
                     Text("idle")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 }
             }
@@ -349,12 +349,12 @@ public struct MissionActiveTile: View {
                 HStack(spacing: 6) {
                     phasePulse
                     Text(tile.phase.displayLabel.uppercased())
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .tracking(1.0)
                         .foregroundStyle(phaseColor)
                     Spacer(minLength: 0)
                     Text(tile.runtimeDisplayLabel)
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                         .lineLimit(1)
                 }
@@ -368,9 +368,9 @@ public struct MissionActiveTile: View {
                 if let tool = tile.currentToolName {
                     HStack(spacing: 4) {
                         Image(systemName: "hammer.fill")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                         Text(tool)
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     }
                     .foregroundStyle(UnifiedDesignSystem.Colors.amber)
                     .padding(.horizontal, 6)
@@ -382,7 +382,7 @@ public struct MissionActiveTile: View {
 
                 if let snippet = tile.lastEventSnippet {
                     Text(snippet)
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -399,7 +399,7 @@ public struct MissionActiveTile: View {
                     metaPair(label: "Burn", value: MissionConsoleFormatting.cost(tile.burnSoFarUSD, precise: tile.burnSoFarUSD < 1))
                     if tile.approvalPending {
                         Text("APPROVAL")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .tracking(1.0)
                             .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
                             .padding(.horizontal, 5)
@@ -471,11 +471,11 @@ public struct MissionActiveTile: View {
     private func metaPair(label: String, value: String) -> some View {
         HStack(spacing: 3) {
             Text(label.uppercased())
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(0.6)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Text(value)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
         }
     }
@@ -502,12 +502,12 @@ public struct MissionApprovalCard: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
                 Text("APPROVAL ASK")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(1.8)
                     .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
                 Spacer()
                 Text(MissionConsoleFormatting.relativeTime(ask.requestedAt).uppercased())
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             }
 
@@ -516,13 +516,13 @@ public struct MissionApprovalCard: View {
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                 Text(ask.message)
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text("Mission · \(ask.runtimeDisplayLabel)")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .tracking(0.8)
                     .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.85))
                     .padding(.top, 2)
@@ -531,7 +531,7 @@ public struct MissionApprovalCard: View {
             HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                 Button { onApprove(false) } label: {
                     Label("Reject", systemImage: "xmark")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(UnifiedDesignSystem.Colors.error)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
@@ -546,7 +546,7 @@ public struct MissionApprovalCard: View {
 
                 Button { onApprove(true) } label: {
                     Label("Approve", systemImage: "checkmark")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
@@ -616,7 +616,7 @@ public struct MissionActivityTicker: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Text("No events yet. Dispatch a mission and they'll stream in here.")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Spacer(minLength: 0)
         }
@@ -628,7 +628,7 @@ public struct MissionActivityTicker: View {
         HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
             // Glyph for kind
             Image(systemName: glyph(for: entry.kind))
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(color(for: entry.kind, isError: entry.isError))
                 .frame(width: 12, alignment: .center)
                 .padding(.top, 2)
@@ -637,17 +637,17 @@ public struct MissionActivityTicker: View {
                 HStack(spacing: 4) {
                     if let title = entry.title, !title.isEmpty {
                         Text(title)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
                             .foregroundStyle(entry.isError ? UnifiedDesignSystem.Colors.error : UnifiedDesignSystem.Colors.textPrimary)
                             .lineLimit(1)
                     } else {
                         Text(entry.phase.replacingOccurrences(of: "_", with: " ").capitalized)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
                             .foregroundStyle(entry.isError ? UnifiedDesignSystem.Colors.error : UnifiedDesignSystem.Colors.textPrimary)
                     }
                     if let tool = entry.toolName, !tool.isEmpty {
                         Text(tool)
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .tracking(0.4)
                             .foregroundStyle(UnifiedDesignSystem.Colors.amber)
                             .padding(.horizontal, 4)
@@ -656,20 +656,20 @@ public struct MissionActivityTicker: View {
                     }
                     Spacer(minLength: 0)
                     Text(MissionConsoleFormatting.relativeTime(entry.timestamp))
-                        .font(.system(size: 8, weight: .medium, design: .monospaced))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 }
                 Text(entry.message)
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                 if let path = entry.pathDetail, !path.isEmpty {
                     HStack(spacing: 3) {
                         Image(systemName: "doc.fill")
-                            .font(.system(size: 8))
+                            .font(.system(size: 12))
                         Text(path)
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }

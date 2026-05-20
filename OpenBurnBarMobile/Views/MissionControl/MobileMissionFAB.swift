@@ -125,10 +125,10 @@ struct MobileMissionFAB: View {
     private func resurrectToast(reason: MissionFABResurrectionController.AutoResurrectReason) -> some View {
         HStack(spacing: 6) {
             Image(systemName: glyph(for: reason))
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.amber)
             Text(reason.displayMessage)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
         }
         .padding(.horizontal, 10)
@@ -177,10 +177,10 @@ struct MobileMissionFAB: View {
     private var tooltipOverlay: some View {
         HStack(spacing: 4) {
             Image(systemName: "hand.tap.fill")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Text("Drag to move · flick to dismiss")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
         }
         .padding(.horizontal, 10)

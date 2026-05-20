@@ -221,7 +221,7 @@ struct MercuryLiveSheet: View {
             }
             if let cooldown = ack.cooldownSecondsRemaining, cooldown > 0 {
                 Text("Cooling down · \(cooldown)s")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
         }

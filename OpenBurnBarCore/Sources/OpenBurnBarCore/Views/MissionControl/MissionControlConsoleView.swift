@@ -319,14 +319,14 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.error)
                 Text(message)
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
             Button { host.clearInlineError() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             }
             .buttonStyle(.plain)

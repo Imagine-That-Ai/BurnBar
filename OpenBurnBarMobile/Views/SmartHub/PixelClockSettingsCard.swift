@@ -378,7 +378,7 @@ struct PixelClockSettingsCard: View {
     private var firmwareBadge: some View {
         HStack(spacing: 6) {
             Image(systemName: model.firmware.symbolName)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
             Text(model.firmware.displayName)
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)

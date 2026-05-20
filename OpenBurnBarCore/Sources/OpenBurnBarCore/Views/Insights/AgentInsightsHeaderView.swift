@@ -141,7 +141,7 @@ public struct AgentInsightsHeaderView: View {
         if !header.modelLineup.isEmpty {
             HStack(spacing: 6) {
                 Image(systemName: "circle.hexagongrid.fill")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 Text(header.modelLineup.joined(separator: " · "))
                     .font(UnifiedDesignSystem.Typography.monoTiny)

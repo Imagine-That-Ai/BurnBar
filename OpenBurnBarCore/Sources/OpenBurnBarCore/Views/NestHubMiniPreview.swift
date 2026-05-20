@@ -119,7 +119,7 @@ public struct NestHubMiniPreview: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             Text(snapshot.subheadline)
-                .font(.system(size: 10 * scale, weight: .medium))
+                .font(.system(size: 12 * scale, weight: .medium))
                 .foregroundStyle(themeText.opacity(0.7))
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -154,7 +154,7 @@ public struct NestHubMiniPreview: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                 Text(snapshot.headline)
-                    .font(.system(size: 10 * scale, weight: .semibold))
+                    .font(.system(size: 12 * scale, weight: .semibold))
                     .foregroundStyle(themeText.opacity(0.8))
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -166,7 +166,7 @@ public struct NestHubMiniPreview: View {
         VStack(alignment: .center, spacing: 4 * scale) {
             Spacer(minLength: 0)
             Text("TOTAL")
-                .font(.system(size: 8 * scale, weight: .bold))
+                .font(.system(size: 12 * scale, weight: .bold))
                 .tracking(2)
                 .foregroundStyle(themeText.opacity(0.55))
             Text(snapshot.totalSpend)
@@ -175,7 +175,7 @@ public struct NestHubMiniPreview: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.4)
             Text(snapshot.headline)
-                .font(.system(size: 10 * scale, weight: .semibold))
+                .font(.system(size: 12 * scale, weight: .semibold))
                 .foregroundStyle(themeText.opacity(0.7))
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -201,7 +201,7 @@ public struct NestHubMiniPreview: View {
                 .shadow(color: Color(hex: "#38D898").opacity(0.4), radius: 2 * scale)
 
             Text(snapshot.headerStatus)
-                .font(.system(size: 8 * scale, weight: .medium))
+                .font(.system(size: 12 * scale, weight: .medium))
                 .foregroundStyle(themeText.opacity(0.65))
                 .lineLimit(1)
 
@@ -225,7 +225,7 @@ public struct NestHubMiniPreview: View {
                     .font(.system(size: 7 * scale, weight: .medium))
                     .foregroundStyle(themeText.opacity(0.6))
                 Text(snapshot.clockText)
-                    .font(.system(size: 8 * scale, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12 * scale, weight: .semibold, design: .rounded))
                     .foregroundStyle(themeText.opacity(0.85))
                     .monospacedDigit()
             }
@@ -309,7 +309,7 @@ public struct NestHubMiniPreview: View {
                     .minimumScaleFactor(0.4)
                     .padding(.top, 1 * scale)
                 Text(provider.tokenTotalLabel)
-                    .font(.system(size: 5.5 * scale, weight: .bold))
+                    .font(.system(size: 12.5 * scale, weight: .bold))
                     .tracking(1)
                     .foregroundStyle(themeText.opacity(0.5))
                 Rectangle()
@@ -417,7 +417,7 @@ public struct NestHubMiniPreview: View {
             }
             if !bucket.subLabel.isEmpty {
                 Text(bucket.subLabel)
-                    .font(.system(size: 5.5 * scale, weight: .medium))
+                    .font(.system(size: 12.5 * scale, weight: .medium))
                     .foregroundStyle(themeText.opacity(0.45))
                     .lineLimit(1)
             }

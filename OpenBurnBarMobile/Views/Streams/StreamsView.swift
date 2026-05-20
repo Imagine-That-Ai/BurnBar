@@ -547,7 +547,7 @@ private struct ActivityCompactRow: View {
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .contentTransition(.numericText())
             Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
         }
         .padding(.horizontal, 14)

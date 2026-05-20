@@ -63,15 +63,15 @@ public enum UnifiedDesignSystem {
         public static let displayLarge = Font.system(size: 36, weight: .bold, design: .rounded)
         public static let display      = Font.system(size: 28, weight: .bold, design: .rounded)
         public static let title        = Font.system(size: 20, weight: .semibold, design: .rounded)
-        public static let headline     = Font.system(size: 16, weight: .semibold, design: .rounded)
-        public static let body         = Font.system(size: 14, weight: .regular, design: .rounded)
-        public static let caption      = Font.system(size: 12, weight: .medium, design: .rounded)
-        public static let tiny         = Font.system(size: 11, weight: .medium, design: .rounded)
+        public static let headline     = Font.system(size: 17, weight: .semibold, design: .rounded)
+        public static let body         = Font.system(size: 16, weight: .regular, design: .rounded)
+        public static let caption      = Font.system(size: 14, weight: .medium, design: .rounded)
+        public static let tiny         = Font.system(size: 13, weight: .medium, design: .rounded)
 
         public static let monoLarge = Font.system(size: 28, weight: .bold, design: .monospaced)
-        public static let mono      = Font.system(size: 14, weight: .medium, design: .monospaced)
-        public static let monoSmall = Font.system(size: 12, weight: .medium, design: .monospaced)
-        public static let monoTiny  = Font.system(size: 11, weight: .medium, design: .monospaced)
+        public static let mono      = Font.system(size: 15, weight: .medium, design: .monospaced)
+        public static let monoSmall = Font.system(size: 13, weight: .medium, design: .monospaced)
+        public static let monoTiny  = Font.system(size: 12, weight: .medium, design: .monospaced)
     }
 
     // MARK: - Spacing

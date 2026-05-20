@@ -79,7 +79,7 @@ private struct MissionCard: View {
                 if !mission.expectedImpact.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.up.right.circle.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(UnifiedDesignSystem.Colors.ember)
                         Text(mission.expectedImpact)
                             .font(UnifiedDesignSystem.Typography.monoTiny)

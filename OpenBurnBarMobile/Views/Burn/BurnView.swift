@@ -229,7 +229,7 @@ struct BurnView: View {
                                 .font(MobileTheme.Typography.caption)
                                 .fontWeight(.semibold)
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 12, weight: .bold))
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)

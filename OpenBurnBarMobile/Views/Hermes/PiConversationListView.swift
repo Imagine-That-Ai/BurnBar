@@ -464,7 +464,7 @@ struct PiChatThreadView: View {
                 if !isUser {
                     HStack(spacing: 4) {
                         Text(AssistantRuntimeID.pi.glyph)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
                         Text("via Pi")
                             .font(MobileTheme.Typography.tiny)
                             .fontWeight(.semibold)
@@ -510,7 +510,7 @@ struct PiChatThreadView: View {
             let color = piOutcomeColor(msg.outcome)
             HStack(spacing: 5) {
                 Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                 Text(label)
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
@@ -533,7 +533,7 @@ struct PiChatThreadView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                 Text("Try again")
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
@@ -615,7 +615,7 @@ struct PiChatThreadView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Image(systemName: PiChatThreadView.toolIcon(for: tool.name))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                 Text(tool.name)
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)

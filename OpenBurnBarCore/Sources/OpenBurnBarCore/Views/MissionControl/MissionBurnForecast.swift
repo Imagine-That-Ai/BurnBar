@@ -24,15 +24,15 @@ public struct MissionBurnForecastStrip: View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             HStack(spacing: 6) {
                 Image(systemName: "gauge.with.dots.needle.bottom.50percent")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(runtimeAccent)
                 Text("FORECAST")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(1.8)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 Spacer()
                 Text("via \(runtimeName)")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundStyle(runtimeAccent)
             }
 
@@ -72,7 +72,7 @@ public struct MissionBurnForecastStrip: View {
     private func forecastCell(label: String, value: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(1.4)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Text(value)
@@ -136,10 +136,10 @@ public struct MissionDispatchButton: View {
                 if !isDispatching {
                     HStack(spacing: 4) {
                         Text("via")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
                             .opacity(0.7)
                         Text(runtimeName.uppercased())
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
                             .tracking(1.2)
                     }
                     .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)

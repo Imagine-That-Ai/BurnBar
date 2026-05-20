@@ -85,7 +85,7 @@ struct CloudUpsellBanner: View {
             onDismiss()
         } label: {
             Image(systemName: "xmark")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(ProTheme.Palette.mercury.opacity(0.6))
                 .frame(width: 24, height: 24)
                 .background(

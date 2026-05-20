@@ -59,7 +59,7 @@ public struct MissionRuntimeConstellation: View {
     private var sectionHeader: some View {
         HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
             Text("02 · RUNTIME")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(2.4)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Rectangle()
@@ -68,7 +68,7 @@ public struct MissionRuntimeConstellation: View {
                 .frame(maxWidth: .infinity)
             if selectedRuntimeID == "auto" {
                 Text("Planner will route based on \(selectedKind.displayName.uppercased())")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -105,7 +105,7 @@ public struct MissionRuntimeConstellation: View {
                         }
                         availabilityDot(runtime.availability)
                         Text(runtime.callSign)
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
                             .tracking(1.4)
                             .foregroundStyle(tint)
                     }
@@ -116,30 +116,30 @@ public struct MissionRuntimeConstellation: View {
 
                     if let tagline = runtime.tagline {
                         Text(tagline)
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
                             .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                     } else if let median = runtime.recentMedianBurnUSD, runtime.recentSampleSize > 0 {
                         HStack(spacing: 4) {
                             Image(systemName: "scalemass")
-                                .font(.system(size: 8, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                             Text("\(MissionConsoleFormatting.cost(median, precise: median < 1)) median · n=\(runtime.recentSampleSize)")
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
                         }
                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     } else if !isAuto {
                         Text("No recent history")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
                             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                     }
 
                     if isPreferred && !isSelected && !isAuto {
                         HStack(spacing: 3) {
                             Image(systemName: "arrowshape.right.fill")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: 12, weight: .bold))
                             Text("Preferred for \(selectedKind.displayName)")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
                                 .tracking(0.6)
                         }
                         .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)

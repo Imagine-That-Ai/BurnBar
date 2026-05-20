@@ -38,7 +38,7 @@ struct ChartStudioPromptCarousel: View {
     private func chip(_ prompt: String, isHovering: Bool) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "sparkles")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
             Text(prompt)
                 .font(MobileTheme.Typography.caption)
                 .lineLimit(1)

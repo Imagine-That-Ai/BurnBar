@@ -102,20 +102,20 @@ public struct MissionConsoleHero: View {
     private var eyebrow: some View {
         HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
             Image(systemName: "scope")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.ember)
             Text("MISSION · CONTROL")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
                 .tracking(2.8)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
             if health.daemonState == .macOffline {
                 Text("· MAC OFFLINE")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(2.0)
                     .foregroundStyle(UnifiedDesignSystem.Colors.warning)
             } else if health.daemonState == .stale {
                 Text("· STALE")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(2.0)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             }
@@ -208,7 +208,7 @@ public struct MissionConsoleHero: View {
     private func metaCell(label: String, value: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(1.6)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Text(value)
@@ -222,7 +222,7 @@ public struct MissionConsoleHero: View {
     private func closeButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                 .frame(width: 26, height: 26)
                 .background(
