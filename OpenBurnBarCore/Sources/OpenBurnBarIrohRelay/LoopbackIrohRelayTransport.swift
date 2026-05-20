@@ -242,7 +242,6 @@ public final class LoopbackIrohRelayTransport: IrohRelayTransport, @unchecked Se
         rendezvous.deregister(nodeId: identity.nodeId)
         await acceptQueue.shutdown()
     }
-
     // MARK: - Rendezvous bridge
 
     /// Builds one shared `LoopbackStreamPair`, resolves the dialer's

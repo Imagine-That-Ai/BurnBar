@@ -93,7 +93,6 @@ class IrohJniTransport(
         backend.shutdown()
         cachedIdentity = null
     }
-
     companion object {
         private const val BOOTSTRAP_ATTEMPTS = 3
         private const val BOOTSTRAP_RETRY_DELAY_MILLIS = 750L

@@ -11,23 +11,31 @@ import { SITE } from "@data/site";
 const faqEntries = [
   {
     q: "Will failover ever change my model?",
-    a: "No. Failover stays inside the model identity you asked for. If you sent `gpt-5.5`, the router will only pick from accounts whose catalog also carries `gpt-5.5`. If no eligible account exists, BurnBar returns a structured 503 — never a silent substitute."
+    a: "No. Failover stays inside the model identity you asked for. If you sent `gpt-5.4`, the router must prove the destination route serves canonical model `gpt-5.4`. If no eligible account exists, BurnBar returns a structured 503 — never a silent substitute."
   },
   {
     q: "What is Provider-Family Failover?",
-    a: "The default mode. BurnBar extends capacity for the same model across multiple accounts inside the same wire-format family. If your pinned key throttles, any account in your library that ALSO carries that model picks up — never a different model."
+    a: "The default mode. BurnBar extends capacity inside the provider family you selected. A Codex route stays with Codex accounts, a Claude route stays with Claude accounts, and a Z.ai route stays with Z.ai accounts. It does not treat unrelated providers as one generic coding quota pool."
   },
   {
-    q: "What is the Intelligent Model Router?",
-    a: "The opt-in mode. You tell BurnBar what the task is; a daily board of language models researches the model landscape, and deterministic policy turns that work into a stable shortlist. Benchmarks are advisory; pins and quota always win."
+    q: "What is Exact Model Failover?",
+    a: "The opt-in mode for wider failover. BurnBar may try another provider or account after quota, rate-limit, or availability failure — but only if that destination proves the same canonical model ID as the request. `gpt-5.4` can move to another route that truly serves `gpt-5.4`; it cannot become `gpt-5.4-mini`, `gpt-5.4-pro`, `gpt-5-family`, or a generic `openai:standard` route."
+  },
+  {
+    q: "What counts as proof of the same model?",
+    a: "Explicit `canonicalModelID` wins. Otherwise BurnBar uses the real catalog model ID for direct models. Wrapper entries only count when they have one unambiguous exact alias, such as `factory-gpt-5.4-family` resolving to `gpt-5.4`. Broad capability labels, benchmark recommendations, and matcher-only similar models do not count."
+  },
+  {
+    q: "Is the daily model board a failover mode?",
+    a: "No. The daily model board is advisory research: it explains model-landscape recommendations, source freshness, and why certain models look strong for a task. It does not grant permission to silently swap the model on a failed request. Provider-Family Failover and Exact Model Failover are the runtime modes."
   },
   {
     q: "What benchmark sources does BurnBar use?",
-    a: "Artificial Analysis (intelligence + coding indices · pricing · TPS), Terminal-Bench via Hugging Face (verified shell-loop agents), and Design Arena (pairwise Elo). Manual cached fixtures cover gaps. Every signal carries a freshness state — fresh / stale / unavailable / error / manual — surfaced in `/router/daily`."
+    a: "Artificial Analysis (intelligence + coding indices · pricing · TPS), Terminal-Bench via Hugging Face (verified shell-loop agents), and Design Arena (pairwise Elo). Manual cached fixtures cover gaps. Every signal carries a freshness state — fresh / stale / unavailable / error / manual — surfaced in `/router/daily`. Those signals are advisory; they are never proof of exact model identity."
   },
   {
     q: "Can I pin a model in either mode?",
-    a: 'Yes. In Provider-Family Failover, you pin an account; the runner-up is pre-selected. In Intelligent Mode, you can pin a model, a family, or a tier (e.g. "always opus-class for autopilot"). A healthy pin always wins.'
+    a: "Yes. In Provider-Family Failover, the pinned account stays active while healthy and the runner-up is selected inside that provider family. In Exact Model Failover, the pin still wins while healthy; only recoverable failures open the door to another provider/account, and only after the canonical model ID matches."
   },
   {
     q: "Are routing logs safe?",
@@ -38,11 +46,11 @@ const faqEntries = [
 
 <BaseLayout
   title="The router — same model, every time"
-  description="BurnBar's local router preserves the exact model you asked for. Failover swaps accounts, never the model. Intelligent mode uses a daily board of language models to research candidates against Artificial Analysis, Terminal-Bench, and Design Arena — benchmarks advisory, pins always win."
+  description="BurnBar's local router preserves the exact model you asked for. Provider-Family Failover stays inside the selected provider family. Exact Model Failover may cross provider/account only after canonical model identity is proven."
 >
   <section class="pagehead" aria-labelledby="hero-h">
     <div class="container container--wide pagehead__inner">
-      <span class="eyebrow eyebrow--ember">The router · same-model · animated</span>
+      <span class="eyebrow eyebrow--ember">The router · exact model failover · animated</span>
       <h1 id="hero-h" class="pagehead__h">
         Same model.
         <span class="pagehead__hb">Different account.</span>
@@ -54,14 +62,16 @@ const faqEntries = [
           serves it. Your <code class="mono">gpt-5.5</code> stays
           <code class="mono">gpt-5.5</code>. Your
           <code class="mono">claude-opus-4-7</code> stays
-          <code class="mono">claude-opus-4-7</code>. The accounts swap; the model never does.
+          <code class="mono">claude-opus-4-7</code>. Default mode stays inside the selected provider
+          family. Exact Model Failover can look wider, but only after the next route proves the same
+          canonical model ID.
         </p>
       </div>
 
       <ul class="pagehead__chips mono" aria-label="Quick highlights">
         <li><span class="dot dot--ember"></span> 127.0.0.1:8317 · local-only</li>
-        <li><span class="dot dot--ember"></span> two modes · one daemon</li>
-        <li><span class="dot dot--mercury"></span> daily model board · pins win</li>
+        <li><span class="dot dot--ember"></span> two router modes · one daemon</li>
+        <li><span class="dot dot--mercury"></span> canonical model id · fail closed</li>
       </ul>
 
       <div class="pagehead__visual">
@@ -100,7 +110,7 @@ const faqEntries = [
           idx={1}
           variant="swap-account"
           model="gpt-5.5"
-          title="Primary OpenAI key throttled → backup OpenAI key, same model."
+          title="Provider-family mode: primary key throttled → backup account, same provider family."
           eyebrow="01 · gpt-5.5 · 429"
           client={{ name: "Forge", logo: "/brand/providers/forge.png" }}
           primary={{
@@ -120,24 +130,24 @@ const faqEntries = [
         <RuleVignette
           idx={2}
           variant="swap-auth"
-          model="claude-opus-4-7"
-          title="Pro plan capped → Console admin key, same model."
-          eyebrow="02 · claude-opus-4-7"
-          client={{ name: "Claude Code", logo: "/brand/providers/claude-code.png" }}
+          model="gpt-5.4"
+          title="Exact mode: Factory Standard exhausted → OpenAI route, same canonical model."
+          eyebrow="02 · gpt-5.4 · exact"
+          client={{ name: "Factory Droid", logo: "/brand/providers/factory.png" }}
           primary={{
-            name: "Anthropic Pro",
-            logo: "/brand/providers/anthropic.png",
-            state: "5h cap hit",
-            auth: "OAuth bearer"
+            name: "Factory Standard",
+            logo: "/brand/providers/factory.png",
+            state: "standard lane exhausted",
+            auth: "Factory key"
           }}
           fallback={{
-            name: "Console admin",
-            logo: "/brand/providers/anthropic.png",
+            name: "OpenAI",
+            logo: "/brand/providers/openai.png",
             state: "healthy",
             auth: "x-api-key"
           }}
-          failure="5h · cap"
-          swapDetail="Authorization → x-api-key · same model id on the wire"
+          failure="quota"
+          swapDetail="canonical gpt-5.4 → canonical gpt-5.4"
         />
 
         <RuleVignette
@@ -155,10 +165,8 @@ const faqEntries = [
       </div>
 
       <p class="rules__cap mono">
-        Implementation · <code>ProviderRoutingPolicy.decide</code> @
-        <code>ProviderAccountTypes.swift:735</code> · gate response @ <code
-          >OpenBurnBarHTTPGatewayServer.swift:361</code
-        >
+        Implementation · <code>ProviderRoutingPolicy.decide</code> ·
+        <code>BurnBarProviderRouter.scoreAndRankRoutes</code> · fail-closed gateway responses
       </p>
     </div>
   </section>
@@ -167,6 +175,62 @@ const faqEntries = [
   <div class="container container--wide">
     <ModeComparison />
   </div>
+
+  {/* ──────────────── 3.5 · EXACT MODEL TEST ──────────────── */}
+  <section class="exacttest" id="exact-model-test" aria-labelledby="exacttest-h">
+    <div class="container container--wide">
+      <header class="exacttest__head">
+        <span class="eyebrow eyebrow--mercury">Exact Model Failover</span>
+        <h2 id="exacttest-h" class="exacttest__h">
+          Cross-provider failover has to pass one simple test.
+        </h2>
+        <p class="exacttest__lead">
+          BurnBar does not ask "is this model similar?" or "is this provider good enough?" It asks a
+          narrower question: can the destination route prove the same canonical model ID as the
+          request? If yes, it may recover the request. If no, it stops.
+        </p>
+      </header>
+
+      <ol class="exacttest__grid" role="list">
+        <li class="exactstep glass-pane">
+          <span class="exactstep__num mono">01</span>
+          <h3>Start with the requested model.</h3>
+          <p>
+            The incoming request creates a required identity. A direct request for
+            <code>gpt-5.4</code> requires canonical <code>gpt-5.4</code>. The router carries that
+            value through ranking, retry, and audit.
+          </p>
+        </li>
+        <li class="exactstep glass-pane">
+          <span class="exactstep__num mono">02</span>
+          <h3>Accept only exact catalog proof.</h3>
+          <p>
+            Explicit <code>canonicalModelID</code> wins. Otherwise direct catalog IDs count. Wrapper families
+            count only when they have one unambiguous exact alias, like
+            <code>factory-gpt-5.4-family</code> resolving to <code>gpt-5.4</code>.
+          </p>
+        </li>
+        <li class="exactstep glass-pane">
+          <span class="exactstep__num mono">03</span>
+          <h3>Reject anything that merely looks close.</h3>
+          <p>
+            <code>gpt-5.4-mini</code>, <code>gpt-5.4-pro</code>, <code>gpt-5-family</code>,
+            <code>openai:standard</code>, benchmark picks, and "similar" matcher hits are not exact
+            proof. They stay advisory and never open the failover gate.
+          </p>
+        </li>
+        <li class="exactstep exactstep--result glass-pane">
+          <span class="exactstep__num mono">503</span>
+          <h3>No proof means no winner.</h3>
+          <p>
+            If the primary route is exhausted and no exact canonical match remains, BurnBar returns
+            a structured unavailable response. That is deliberate: a clean failure is safer than a
+            quiet model change your agent did not ask for.
+          </p>
+        </li>
+      </ol>
+    </div>
+  </section>
 
   {/* ──────────────── 4 · TODAY'S RUNDOWN ──────────────── */}
   <div class="container container--wide" id="daily-rundown">
@@ -194,9 +258,9 @@ const faqEntries = [
           <div>
             <h3 class="wontno__h">Will not swap your model on failover.</h3>
             <p>
-              Filter rule #F in <code class="mono">ProviderRoutingPolicy.decide</code> drops every candidate
-              account whose model catalog doesn't list your requested model. If no candidate survives,
-              the gateway returns a structured 503 — your IDE sees a clean error, never a silent substitute.
+              Exact Model Failover drops every candidate route whose canonical model ID does not
+              match the requested one. If no candidate survives, the gateway returns a structured
+              503 — your IDE sees a clean error, never a silent substitute.
             </p>
           </div>
         </li>
@@ -227,9 +291,10 @@ const faqEntries = [
           <div>
             <h3 class="wontno__h">Will not treat benchmarks as absolute truth.</h3>
             <p>
-              Benchmark snapshots feed the daily model board and inform deterministic selection.
-              They never override a pin. They never beat live quota state. A model that benchmarks
-              higher but is rate-limited right now still loses.
+              Benchmark snapshots feed the daily model board and inform deterministic
+              recommendations. They never prove exact model identity. They never override a pin.
+              They never beat live quota state. A model that benchmarks higher but is rate-limited
+              right now still loses.
             </p>
           </div>
         </li>
@@ -265,11 +330,12 @@ const faqEntries = [
 
   <section class="endcta endcta--inline">
     <div class="container container--narrow endcta__inner">
-      <h2>Pin a model. Add a second account. Sleep on it.</h2>
+      <h2>Pick the failover boundary once. Let the daemon enforce it.</h2>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
-          BurnBar keeps your model — and your work — running across whatever account is healthy
-          right now.
+          Use Provider-Family Failover for conservative same-provider recovery, or Exact Model
+          Failover when you want BurnBar to recover across providers without ever changing the
+          canonical model.
         </p>
       </div>
       <div class="endcta__ctas">
@@ -450,6 +516,102 @@ const faqEntries = [
     padding: 1px 6px;
     border-radius: var(--r-2);
     border: 1px solid var(--ink-line);
+  }
+
+  /* ────────── 3.5. EXACT MODEL TEST ────────── */
+  .exacttest {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background: radial-gradient(60% 55% at 84% 0%, rgba(214, 211, 223, 0.055), transparent 70%);
+  }
+  .exacttest__head {
+    max-width: 68ch;
+    margin: 0 auto var(--s-6);
+    text-align: center;
+    display: grid;
+    gap: var(--s-3);
+  }
+  .exacttest__h {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
+    color: var(--text-bright);
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+  .exacttest__lead {
+    color: var(--text-base);
+    max-width: 62ch;
+    margin: 0 auto;
+    line-height: 1.55;
+  }
+  .exacttest__grid {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--s-4);
+    margin: 0;
+    padding: 0;
+  }
+  .exactstep {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-5);
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 22%, var(--ink-line));
+    border-radius: var(--r-4);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+  }
+  .exactstep--result {
+    border-color: color-mix(in oklab, var(--status-burn) 34%, var(--ink-line));
+  }
+  .exactstep__num {
+    width: max-content;
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    color: var(--mercury-bright);
+    background: color-mix(in oklab, var(--mercury-bright) 10%, var(--ink-base));
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+  }
+  .exactstep--result .exactstep__num {
+    color: var(--status-burn);
+    background: color-mix(in oklab, var(--status-burn) 10%, var(--ink-base));
+    border-color: color-mix(in oklab, var(--status-burn) 34%, var(--ink-line));
+  }
+  .exactstep h3 {
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-size: 1.08rem;
+    line-height: 1.18;
+    letter-spacing: -0.014em;
+    text-wrap: balance;
+  }
+  .exactstep p {
+    color: var(--text-base);
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+  .exactstep code {
+    color: var(--text-bright);
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-2);
+    padding: 1px 6px;
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+  }
+  @media (max-width: 1080px) {
+    .exacttest__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 680px) {
+    .exacttest__grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ────────── 5. WONT DO ────────── */

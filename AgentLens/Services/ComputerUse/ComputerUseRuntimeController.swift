@@ -198,6 +198,16 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         return response
     }
 
+    @discardableResult
+    func ensureSystemSession(trustMode: ComputerUseTrustMode = .manual) async throws -> ComputerUseSessionStartResponse? {
+        if let state = coordinator.state,
+           state.endedAt == nil,
+           state.endReason == nil {
+            return nil
+        }
+        return try await startSystemSession(trustMode: trustMode)
+    }
+
     func endSession() async {
         await coordinator.endSession(reason: .userHalt)
         stopPanicMonitoring()

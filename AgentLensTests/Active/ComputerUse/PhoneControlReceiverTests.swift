@@ -565,6 +565,54 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertEqual(denied.control?.denied?.detail, "malformed_coordinates")
     }
 
+    func testSignedTypeIntentDispatchesMacTypeAction() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let signer = ComputerUsePhoneControlSigner()
+        let placeholder = emptyAuthority()
+        var intent = HermesRealtimeRelayInputIntent(
+            kind: .type,
+            text: "hello from iphone",
+            authority: placeholder
+        )
+        let signed = try signer.sign(
+            intent: intent,
+            peerNodeId: "phone-peer-type",
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        intent.authority = envelope(from: signed)
+
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "phone-peer-type", publicKey: privateKey.publicKey)
+        let capture = PhoneControlReceiverCapture()
+        let receiver = PhoneControlReceiver(
+            sessionId: ComputerUseSessionID("session-phone-type"),
+            validator: validator,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            dispatchHandler: { action, sessionId, _ in
+                await capture.record(action: action, sessionId: sessionId)
+            },
+            denyFrameSink: { frame in
+                await capture.recordDenied(frame)
+            }
+        )
+
+        await receiver.ingest(frame(intent))
+
+        let dispatched = try await capture.firstAction()
+        XCTAssertEqual(dispatched.sessionId, ComputerUseSessionID("session-phone-type"))
+        guard case let .macInput(action) = dispatched.action else {
+            return XCTFail("expected macInput action")
+        }
+        XCTAssertEqual(action.kind, .type)
+        XCTAssertEqual(action.text, "hello from iphone")
+        let deniedFrames = await capture.deniedFrames()
+        XCTAssertTrue(deniedFrames.isEmpty)
+    }
+
     func testReplayChaosRejectsOneThousandDuplicateIntentEnvelopes() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let signer = ComputerUsePhoneControlSigner()

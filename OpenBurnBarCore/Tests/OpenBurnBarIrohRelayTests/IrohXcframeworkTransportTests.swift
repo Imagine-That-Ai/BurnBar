@@ -3,10 +3,9 @@ import XCTest
 import OpenBurnBarCore
 
 /// Exercises `IrohXcframeworkTransport` end-to-end against a fake
-/// `IrohEndpointBackend`. The fake mirrors the Rust crate's eight-function
-/// surface (bootstrap / identity / connect / acceptOne / shutdown +
-/// stream send/recv/close) so the adapter behaves identically whether the
-/// underlying handle is UniFFI-generated or unit-tested.
+/// `IrohEndpointBackend`. The fake mirrors the Rust crate's endpoint surface
+/// so the adapter behaves identically whether the underlying handle is
+/// UniFFI-generated or unit-tested.
 final class IrohXcframeworkTransportTests: XCTestCase {
     func testBootstrapAndIdentityRoundTrip() async throws {
         let rendezvous = FakeBackendRendezvous()

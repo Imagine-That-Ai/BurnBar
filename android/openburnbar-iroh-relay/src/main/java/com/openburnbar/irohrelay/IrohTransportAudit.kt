@@ -44,4 +44,5 @@ object NoopIrohTransportAuditLogging : IrohTransportAuditLogging {
         rttMillis: Int?,
         detail: Map<String, String>,
     ) = Unit
+
 }

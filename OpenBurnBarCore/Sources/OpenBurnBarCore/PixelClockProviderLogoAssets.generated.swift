@@ -105,14 +105,14 @@ enum PixelClockProviderLogoAssets {
     static let warp = PixelClockProviderLogo(
         sourceName: "WarpLogo",
         pixels: [
-            ["#DDE4EA", "#DDE4EA", "#DDE4EA", "#DDE4EA", nil, nil, nil, nil],
-            ["#DDE4EA", "#A8B0B8", "#DDE4EA", "#DDE4EA", nil, nil, nil, nil],
-            ["#DDE4EA", "#DDE4EA", "#A8B0B8", "#DDE4EA", nil, nil, nil, nil],
-            [nil, "#6B7380", "#6B7380", "#DDE4EA", "#DDE4EA", nil, nil, nil],
-            [nil, nil, nil, "#DDE4EA", "#DDE4EA", "#6B7380", "#6B7380", nil],
-            [nil, nil, nil, nil, "#DDE4EA", "#A8B0B8", "#DDE4EA", "#DDE4EA"],
-            [nil, nil, nil, nil, "#DDE4EA", "#DDE4EA", "#A8B0B8", "#DDE4EA"],
-            [nil, nil, nil, nil, "#DDE4EA", "#DDE4EA", "#DDE4EA", "#DDE4EA"]
+            [nil, nil, nil, nil, nil, nil, nil, nil],
+            [nil, nil, "#1A3A3A", "#02D1D1", "#02D1D1", "#02D1D1", nil, nil],
+            [nil, nil, nil, "#1A3A3A", "#02D1D1", "#02D1D1", nil, nil],
+            ["#0D7377", "#0D7377", "#02D1D1", "#02D1D1", "#02D1D1", nil, nil, nil],
+            [nil, nil, nil, "#1A3A3A", "#02D1D1", "#02D1D1", nil, nil],
+            [nil, nil, "#1A3A3A", "#02D1D1", "#02D1D1", "#02D1D1", nil, nil],
+            [nil, nil, "#A8B0B8", "#A8B0B8", "#A8B0B8", "#A8B0B8", "#A8B0B8", nil],
+            [nil, nil, nil, nil, nil, nil, nil, nil]
         ]
     )
 

@@ -424,7 +424,7 @@ struct ConnectionsSettingsView: View {
     private var routingStrategyCard: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: daemonManager.routerMode == .intelligentModelRouter ? "brain.head.profile" : "rectangle.2.swap")
+                Image(systemName: daemonManager.routerMode.usesExactSameModelInvariant ? "equal.circle" : "rectangle.2.swap")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(DesignSystem.Colors.blaze)
                 VStack(alignment: .leading, spacing: 2) {

@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { fetchAntigravityQuota } from "../src/providers/antigravity.mjs";
 
-test("fetchAntigravityQuota calculates rolling 24h requests and reset timestamp", async (t) => {
+test("fetchAntigravityQuota calculates rolling 5h requests and reset timestamp", async (t) => {
   const tempHome = join(tmpdir(), `obb-test-home-${randomUUID()}`);
   await mkdir(tempHome, { recursive: true });
 
@@ -37,8 +37,8 @@ test("fetchAntigravityQuota calculates rolling 24h requests and reset timestamp"
   // 2. When history file exists with mixed events and settings.json present
   const mockLines = [
     JSON.stringify({ timestamp: nowMs - 2 * hourInMs, display: "Req 1" }),
-    JSON.stringify({ timestamp: nowMs - 5 * hourInMs, display: "Req 2" }),
-    JSON.stringify({ timestamp: nowMs - 25 * hourInMs, display: "Req 3 (too old)" }),
+    JSON.stringify({ timestamp: nowMs - 5 * hourInMs, display: "Req 2 (edge of window)" }),
+    JSON.stringify({ timestamp: nowMs - 6 * hourInMs, display: "Req 3 (too old)" }),
     "invalid json line",
     JSON.stringify({ timestamp: nowMs + 10 * hourInMs, display: "Req 4 (in future)" }),
   ];
@@ -48,7 +48,7 @@ test("fetchAntigravityQuota calculates rolling 24h requests and reset timestamp"
 
   const result = await fetchAntigravityQuota({ credential: "", accountID: "hosted" });
   assert.equal(result.provider, "antigravity");
-  assert.equal(result.confidence, "exact");
+  assert.equal(result.confidence, "estimated");
   assert.equal(result.buckets.length, 7, "Should have 7 per-model buckets");
   assert.match(result.statusMessage, /Claude Opus 4.6/);
 
@@ -56,14 +56,15 @@ test("fetchAntigravityQuota calculates rolling 24h requests and reset timestamp"
   const activeBucket = result.buckets.find((b) => b.name.includes("(Active)"));
   assert.ok(activeBucket, "Should have an active model bucket");
   assert.match(activeBucket.name, /Claude Opus 4.6 \(Thinking\) \(Active\)/);
-  assert.equal(activeBucket.used, 2);
-  assert.equal(activeBucket.limit, 100);
-  assert.equal(activeBucket.remaining, 98);
-  assert.equal(activeBucket.window, "24h");
+  // Only 1 event within 5h window (2h ago). 5h ago is exactly the cutoff — excluded.
+  assert.equal(activeBucket.used, 1);
+  assert.equal(activeBucket.limit, 60);
+  assert.equal(activeBucket.remaining, 59);
+  assert.equal(activeBucket.window, "5h");
   assert.equal(activeBucket.meta.unit, "requests");
 
-  // resetsAt should be earliest timestamp (nowMs - 5h) + 24 hours
-  const expectedResetTime = nowMs - 5 * hourInMs + 24 * hourInMs;
+  // resetsAt should be earliest timestamp (nowMs - 2h) + 5 hours
+  const expectedResetTime = nowMs - 2 * hourInMs + 5 * hourInMs;
   const expectedResetISO = new Date(expectedResetTime).toISOString();
   assert.equal(activeBucket.meta.resetsAt, expectedResetISO);
 
@@ -71,8 +72,8 @@ test("fetchAntigravityQuota calculates rolling 24h requests and reset timestamp"
   const flashBucket = result.buckets.find((b) => b.name === "Gemini 3.5 Flash (High)");
   assert.ok(flashBucket, "Should have a Gemini 3.5 Flash (High) bucket");
   assert.equal(flashBucket.used, 0);
-  assert.equal(flashBucket.limit, 1000);
-  assert.equal(flashBucket.remaining, 1000);
+  assert.equal(flashBucket.limit, 600);
+  assert.equal(flashBucket.remaining, 600);
   assert.equal(flashBucket.meta.resetsAt, undefined, "Inactive model should have no resetsAt");
 
   // 3. When settings.json is missing, defaults to Claude Opus 4.6 (Thinking)
@@ -81,6 +82,6 @@ test("fetchAntigravityQuota calculates rolling 24h requests and reset timestamp"
   const defaultActive = defaultResult.buckets.find((b) => b.name.includes("(Active)"));
   assert.ok(defaultActive, "Should default to an active bucket");
   assert.match(defaultActive.name, /Claude Opus 4.6 \(Thinking\) \(Active\)/);
-  assert.equal(defaultActive.used, 2);
-  assert.equal(defaultActive.limit, 100);
+  assert.equal(defaultActive.used, 1);
+  assert.equal(defaultActive.limit, 60);
 });

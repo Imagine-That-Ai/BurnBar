@@ -422,7 +422,7 @@ struct ProviderRoutingCockpit: View {
 
     @ViewBuilder
     private var benchmarkFreshnessRow: some View {
-        if state.routerMode == .intelligentModelRouter, let status = state.benchmarkStatus {
+        if let status = state.benchmarkStatus {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
                 Image(systemName: "chart.line.uptrend.xyaxis")
                     .font(.system(size: 11, weight: .semibold))

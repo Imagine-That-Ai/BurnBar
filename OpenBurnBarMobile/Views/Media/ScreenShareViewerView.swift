@@ -2,6 +2,25 @@ import SwiftUI
 import AVKit
 import OpenBurnBarMedia
 
+enum ScreenSharePhoneControlStatus: Equatable {
+    case unavailable(String)
+    case connecting
+    case live
+
+    var isLive: Bool {
+        if case .live = self { return true }
+        return false
+    }
+
+    var label: String {
+        switch self {
+        case .live: return "Control"
+        case .connecting: return "Connecting"
+        case .unavailable: return "Read only"
+        }
+    }
+}
+
 /// iOS Mercury screen-share viewer. Full-bleed video, optional stats
 /// overlay (three-finger tap toggles). Wraps an
 /// `AVSampleBufferDisplayLayer` via `UIViewRepresentable` so decoded
@@ -10,10 +29,34 @@ import OpenBurnBarMedia
 struct ScreenShareViewerView: View {
     @ObservedObject var coordinator: ScreenShareViewerCoordinator
     let resetToken: String?
+    let controlStatus: ScreenSharePhoneControlStatus
+    let sendTapIntent: (Double, Double) -> Void
+    let sendTextIntent: (String) -> Void
+    let sendShortcutIntent: (String, [String]) -> Void
     @State private var statsVisible: Bool = false
     @State private var viewport = ScreenShareViewportState()
+    @State private var interactionMode: ScreenShareInteractionMode = .view
+    @State private var isTyping = false
+    @State private var textToType = ""
     @GestureState private var magnification: CGFloat = 1
     @GestureState private var dragTranslation: CGSize = .zero
+    @FocusState private var typingFocused: Bool
+
+    init(
+        coordinator: ScreenShareViewerCoordinator,
+        resetToken: String?,
+        controlStatus: ScreenSharePhoneControlStatus = .unavailable("Phone control is not connected."),
+        sendTapIntent: @escaping (Double, Double) -> Void = { _, _ in },
+        sendTextIntent: @escaping (String) -> Void = { _ in },
+        sendShortcutIntent: @escaping (String, [String]) -> Void = { _, _ in }
+    ) {
+        self.coordinator = coordinator
+        self.resetToken = resetToken
+        self.controlStatus = controlStatus
+        self.sendTapIntent = sendTapIntent
+        self.sendTextIntent = sendTextIntent
+        self.sendShortcutIntent = sendShortcutIntent
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -35,6 +78,7 @@ struct ScreenShareViewerView: View {
                         statsVisible.toggle()
                     }
                     .onTapGesture(count: 2) {
+                        guard interactionMode == .view else { return }
                         withAnimation(.snappy) {
                             viewport.toggleQuickZoom(in: proxy.size)
                         }
@@ -46,8 +90,17 @@ struct ScreenShareViewerView: View {
                         viewport.reclamp(in: newSize)
                     }
                     .animation(.snappy, value: viewport)
+
+                if interactionMode == .control, controlStatus.isLive {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .gesture(controlTapGesture(in: proxy.size, viewport: visibleViewport))
+                        .accessibilityLabel("Mac screen control surface")
+                }
             }
             .ignoresSafeArea()
+
+            controlChrome
 
             if statsVisible {
                 StatsOverlay(stats: coordinator.lastStats)
@@ -76,9 +129,27 @@ struct ScreenShareViewerView: View {
                 .accessibilityLabel("Reset mirror zoom")
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if interactionMode == .control, isTyping {
+                typingBar
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
         .onChange(of: resetToken) { _, _ in
             withAnimation(.snappy) {
                 viewport.reset()
+                interactionMode = .view
+                isTyping = false
+                textToType = ""
+            }
+        }
+        .onChange(of: controlStatus) { _, newValue in
+            guard newValue.isLive == false, interactionMode == .control else { return }
+            withAnimation(.snappy) {
+                interactionMode = .view
+                isTyping = false
             }
         }
     }
@@ -87,19 +158,148 @@ struct ScreenShareViewerView: View {
         SimultaneousGesture(
             MagnifyGesture()
                 .updating($magnification) { value, state, _ in
+                    guard interactionMode == .view else { return }
                     state = value.magnification
                 }
                 .onEnded { value in
+                    guard interactionMode == .view else { return }
                     viewport.applyMagnification(value.magnification, in: size)
                 },
             DragGesture(minimumDistance: 2)
                 .updating($dragTranslation) { value, state, _ in
+                    guard interactionMode == .view else { return }
                     state = value.translation
                 }
                 .onEnded { value in
+                    guard interactionMode == .view else { return }
                     viewport.applyTranslation(value.translation, in: size)
                 }
         )
+    }
+
+    private func controlTapGesture(in size: CGSize, viewport: ScreenShareViewportState) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onEnded { value in
+                let distance = hypot(value.translation.width, value.translation.height)
+                guard distance < 10 else { return }
+                let normalized = viewport.normalizedPoint(for: value.location, in: size)
+                sendTapIntent(normalized.x, normalized.y)
+            }
+    }
+
+    private var controlChrome: some View {
+        VStack {
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.snappy) {
+                        interactionMode = .view
+                        isTyping = false
+                    }
+                } label: {
+                    Label("View", systemImage: "hand.draw")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 42, height: 36)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(interactionMode == .view ? .black : .white.opacity(0.78))
+                .background(interactionMode == .view ? .white : .clear, in: Capsule())
+                .accessibilityLabel("View mode")
+
+                Button {
+                    guard controlStatus.isLive else { return }
+                    withAnimation(.snappy) {
+                        interactionMode = .control
+                    }
+                } label: {
+                    Label(controlStatus.label, systemImage: controlStatus.isLive ? "cursorarrow.click.2" : "lock")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 42, height: 36)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(interactionMode == .control ? .black : .white.opacity(controlStatus.isLive ? 0.86 : 0.42))
+                .background(interactionMode == .control ? .white : .clear, in: Capsule())
+                .disabled(controlStatus.isLive == false)
+                .accessibilityLabel(controlStatus.label)
+            }
+            .padding(4)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.top, 18)
+            .padding(.trailing, 18)
+
+            Spacer()
+
+            if interactionMode == .control {
+                Button {
+                    guard controlStatus.isLive else { return }
+                    withAnimation(.snappy) {
+                        isTyping.toggle()
+                    }
+                    typingFocused = isTyping
+                } label: {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 48)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .shadow(radius: 8)
+                }
+                .disabled(controlStatus.isLive == false)
+                .padding(.trailing, 18)
+                .padding(.bottom, isTyping ? 6 : 24)
+                .accessibilityLabel("Type on Mac")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .allowsHitTesting(true)
+    }
+
+    private var typingBar: some View {
+        HStack(spacing: 8) {
+            TextField("Type on Mac", text: $textToType)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($typingFocused)
+                .textFieldStyle(.plain)
+                .foregroundStyle(.white)
+                .submitLabel(.send)
+                .onSubmit(sendTypedText)
+                .padding(.horizontal, 12)
+                .frame(height: 42)
+                .background(Color.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            Button(action: sendTypedText) {
+                Image(systemName: "paperplane.fill")
+                    .frame(width: 38, height: 38)
+            }
+            .disabled(textToType.isEmpty)
+            .accessibilityLabel("Send text")
+
+            Button {
+                sendShortcutIntent("Return", [])
+            } label: {
+                Image(systemName: "return")
+                    .frame(width: 38, height: 38)
+            }
+            .accessibilityLabel("Press Return on Mac")
+
+            Button {
+                sendShortcutIntent("Escape", [])
+            } label: {
+                Image(systemName: "escape")
+                    .frame(width: 38, height: 38)
+            }
+            .accessibilityLabel("Press Escape on Mac")
+        }
+        .buttonStyle(.bordered)
+        .tint(.white)
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func sendTypedText() {
+        guard textToType.isEmpty == false else { return }
+        sendTextIntent(textToType)
+        textToType = ""
     }
 }
 
@@ -151,6 +351,15 @@ struct ScreenShareViewportState: Equatable {
         )
     }
 
+    func normalizedPoint(for point: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
+        guard size.width > 0, size.height > 0 else { return (0, 0) }
+        let contentX = ((point.x - (size.width / 2) - offset.width) / scale) + (size.width / 2)
+        let contentY = ((point.y - (size.height / 2) - offset.height) / scale) + (size.height / 2)
+        let x = min(max(contentX / size.width, 0), 1)
+        let y = min(max(contentY / size.height, 0), 1)
+        return (Double(x), Double(y))
+    }
+
     static func clampScale(_ proposed: CGFloat) -> CGFloat {
         min(max(proposed, minimumScale), maximumScale)
     }
@@ -168,6 +377,11 @@ struct ScreenShareViewportState: Equatable {
             height: min(max(proposed.height, -verticalLimit), verticalLimit)
         )
     }
+}
+
+private enum ScreenShareInteractionMode {
+    case view
+    case control
 }
 
 private extension CGSize {

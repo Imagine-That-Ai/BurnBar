@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 import FirebaseAuth
 import OSLog
@@ -48,6 +49,8 @@ struct MercuryLiveSheet: View {
     @State private var mirrorTimeoutTask: Task<Void, Never>?
     @State private var cooldownTickerTask: Task<Void, Never>?
     @StateObject private var screenShareViewer = ScreenShareViewerCoordinator()
+    @StateObject private var phoneControlCoordinator = AgentWatchOverlayCoordinator()
+    @State private var phoneControlError: String?
     @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
     @AppStorage("mercuryMimicLoginBackground") private var mimicLoginBackground: Bool = true
     @State private var backgroundImage: UIImage? = nil
@@ -116,11 +119,22 @@ struct MercuryLiveSheet: View {
             cooldownTickerTask = nil
             awaitingRequestID = nil
             controlStreamCoordinator.mirrorFrameHandler = nil
+            Task { await phoneControlCoordinator.stop() }
         }
         .fullScreenCover(isPresented: $isShowingMirrorViewer) {
             MercuryMirrorViewerFullScreen(
                 coordinator: screenShareViewer,
                 resetToken: activeMirrorRequestID,
+                controlStatus: mirrorControlStatus,
+                sendTapIntent: { x, y in
+                    Task { try? await phoneControlCoordinator.receiver?.tap(normalizedX: x, normalizedY: y) }
+                },
+                sendTextIntent: { text in
+                    Task { try? await phoneControlCoordinator.receiver?.type(text) }
+                },
+                sendShortcutIntent: { key, modifiers in
+                    Task { try? await phoneControlCoordinator.receiver?.shortcut(key: key, modifiers: modifiers) }
+                },
                 onClose: {
                     isShowingMirrorViewer = false
                     Task { await stopActiveMirror(reason: "viewer_closed") }
@@ -559,9 +573,11 @@ struct MercuryLiveSheet: View {
                 if ack.decision == .accepted {
                     self.activeMirrorRequestID = ack.requestId
                     self.isShowingMirrorViewer = true
+                    Task { await self.startPhoneControlIfPossible() }
                 } else if ack.requestId == self.activeMirrorRequestID {
                     self.activeMirrorRequestID = nil
                     self.isShowingMirrorViewer = false
+                    Task { await self.phoneControlCoordinator.stop() }
                 }
                 self.refreshCooldownTicker(for: ack)
             }
@@ -583,9 +599,11 @@ struct MercuryLiveSheet: View {
         let requestID = UUID().uuidString
         awaitingRequestID = requestID
         activeMirrorRequestID = nil
+        phoneControlError = nil
         lastError = nil
         lastAck = nil
         lastAckReceivedAt = nil
+        await phoneControlCoordinator.stop()
         cooldownTickerTask?.cancel()
         cooldownTickerTask = nil
         let request = HermesRealtimeRelayMirrorRequest(
@@ -633,6 +651,7 @@ struct MercuryLiveSheet: View {
         }
         guard let requestID = activeMirrorRequestID else { return }
         activeMirrorRequestID = nil
+        await phoneControlCoordinator.stop()
         let stop = HermesRealtimeRelayMirrorStop(
             requestId: requestID,
             stoppedAt: Date(),
@@ -732,6 +751,40 @@ struct MercuryLiveSheet: View {
         #endif
     }
 
+    private var mirrorControlStatus: ScreenSharePhoneControlStatus {
+        if let phoneControlError {
+            return .unavailable(phoneControlError)
+        }
+        switch phoneControlCoordinator.phase {
+        case .live:
+            return .live
+        case .dialing, .reconnecting:
+            return .connecting
+        case .failed(let reason):
+            return .unavailable(reason)
+        case .idle, .stopped:
+            return activeMirrorRequestID == nil ? .unavailable("Mirror is read only.") : .connecting
+        }
+    }
+
+    private func startPhoneControlIfPossible() async {
+        guard let uid = uidProvider(), !uid.isEmpty else {
+            phoneControlError = "Sign in to control your Mac."
+            return
+        }
+        do {
+            let pairingPublicKey = try await FirestoreIrohPairingPublicKeyProvider.shared.fetchPublicKey(uid: uid)
+            phoneControlCoordinator.start(
+                uid: uid,
+                connectionID: connectionID,
+                relayPublicKey: pairingPublicKey
+            )
+            phoneControlError = nil
+        } catch {
+            phoneControlError = error.localizedDescription
+        }
+    }
+
     private var borderGradient: LinearGradient {
         LinearGradient(
             colors: [Self.mercurySilver, Self.mercuryGray],
@@ -744,11 +797,22 @@ struct MercuryLiveSheet: View {
 private struct MercuryMirrorViewerFullScreen: View {
     @ObservedObject var coordinator: ScreenShareViewerCoordinator
     let resetToken: String?
+    let controlStatus: ScreenSharePhoneControlStatus
+    let sendTapIntent: (Double, Double) -> Void
+    let sendTextIntent: (String) -> Void
+    let sendShortcutIntent: (String, [String]) -> Void
     let onClose: () -> Void
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            ScreenShareViewerView(coordinator: coordinator, resetToken: resetToken)
+            ScreenShareViewerView(
+                coordinator: coordinator,
+                resetToken: resetToken,
+                controlStatus: controlStatus,
+                sendTapIntent: sendTapIntent,
+                sendTextIntent: sendTextIntent,
+                sendShortcutIntent: sendShortcutIntent
+            )
             Button(action: onClose) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 32, weight: .semibold))

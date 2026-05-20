@@ -22,8 +22,8 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
 ---
 
 <BaseLayout
-  title="Daily Router Rundown · archive"
-  description="Every dated OpenBurnBar Intelligent Router model-board rundown — frozen, source-cited, and inspectable. Benchmark data is advisory; runtime constraints win."
+  title="Daily Model Board · archive"
+  description="Every dated OpenBurnBar model-board rundown — frozen, source-cited, and inspectable. Benchmark data is advisory; runtime constraints and exact-model failover rules win."
 >
   <section class="pagehead pagehead--archive">
     <div class="container container--wide">
@@ -36,11 +36,11 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
       <span class="eyebrow eyebrow--ember">Model board · the archive</span>
       <h1 class="pagehead__h">Every board verdict, frozen, cited, and inspectable.</h1>
       <p class="lead">
-        The Intelligent Router refreshes its model-landscape snapshot once every twenty-four hours,
-        then a board of language models runs research and analysis tasks over it. Each refresh
-        produces a dated rundown — what BurnBar would have recommended that day, the sources it
-        cited, the freshness of every signal, and the limitations of every claim. Nothing is
-        overwritten. Future humans can verify what was said.
+        BurnBar refreshes its model-landscape snapshot once every twenty-four hours, then a board of
+        language models runs research and analysis tasks over it. Each refresh produces a dated
+        rundown — what BurnBar would have recommended that day, the sources it cited, the freshness
+        of every signal, and the limitations of every claim. Nothing is overwritten. Future humans
+        can verify what was said.
       </p>
 
       <ul class="pagehead__chips mono" aria-label="Archive scope">
@@ -59,9 +59,9 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
       <p class="archive__advisory">
         Benchmark signals are <strong>advisory</strong>. Each rundown shows what the daily model
         board recommended, not what the router actually ran — provider-family mode, user pinning,
-        account auth, quota state, safety policy, and availability all override these
-        recommendations at runtime. Use this archive to inspect <em>why</em> a given recommendation was
-        made, not as proof a given route was executed.
+        account auth, quota state, safety policy, availability, and exact-model failover rules all
+        override these recommendations at runtime. Use this archive to inspect <em>why</em> a given recommendation
+        was made, not as proof a given route was executed.
       </p>
 
       {

@@ -110,6 +110,7 @@ const fullTitle =
         const canvas = document.getElementById("bgCanvas");
         if (!canvas) return;
         const ctx = canvas.getContext("2d");
+        if (!ctx) return;
 
         const isHome =
           window.location.pathname === "/" ||
@@ -173,9 +174,10 @@ const fullTitle =
 
         // Hide offscreen canvas for text point sampling
         const offscreen = document.createElement("canvas");
-        const oCtx = offscreen.getContext("2d");
+        const oCtx = offscreen.getContext("2d", { willReadFrequently: true });
 
         function samplePointsFromText(text, size = 280) {
+          if (!oCtx) return [];
           offscreen.width = 400;
           offscreen.height = 400;
           oCtx.fillStyle = "#000";
