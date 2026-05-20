@@ -70,6 +70,11 @@ final class MercuryRouter: ObservableObject {
         _ request: HermesRealtimeRelayMirrorRequest,
         _ frame: HermesRealtimeRelayFrame
     ) async throws -> MediaStreamSink
+    typealias ScreenShareStarter = @MainActor (
+        _ peerDeviceID: String,
+        _ sink: MediaStreamSink,
+        _ streamClassOverride: MediaStreamClass?
+    ) async throws -> Void
     typealias ComputerUseSessionEnsurer = @MainActor () async throws -> Void
 
     @Published private(set) var phase: Phase = .idle
@@ -82,6 +87,7 @@ final class MercuryRouter: ObservableObject {
     private let consentStore: MercuryConsentStore
     private let cooldownSeconds: TimeInterval
     private let clock: @Sendable () -> Date
+    private let startScreenShare: ScreenShareStarter
     private let ensureComputerUseSession: ComputerUseSessionEnsurer?
 
     private var mirrorSinkFactory: MirrorSinkFactory?
@@ -98,6 +104,7 @@ final class MercuryRouter: ObservableObject {
         peerSource: MercuryPeerSource,
         consentStore: MercuryConsentStore,
         ensureComputerUseSession: ComputerUseSessionEnsurer? = nil,
+        startScreenShare: ScreenShareStarter? = nil,
         cooldownSeconds: TimeInterval = 30,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -105,6 +112,17 @@ final class MercuryRouter: ObservableObject {
         self.peerSource = peerSource
         self.consentStore = consentStore
         self.ensureComputerUseSession = ensureComputerUseSession
+        if let startScreenShare {
+            self.startScreenShare = startScreenShare
+        } else {
+            self.startScreenShare = { [sessionCoordinator] peerDeviceID, sink, streamClassOverride in
+                try await sessionCoordinator.startScreenShare(
+                    peerDeviceID: peerDeviceID,
+                    sink: sink,
+                    streamClassOverride: streamClassOverride
+                )
+            }
+        }
         self.cooldownSeconds = cooldownSeconds
         self.clock = clock
     }
@@ -451,11 +469,7 @@ final class MercuryRouter: ObservableObject {
                 return
             }
             let sink = try await factory(mirrorRequest, request.frame)
-            try await sessionCoordinator.startScreenShare(
-                peerDeviceID: request.frame.connectionId,
-                sink: sink,
-                streamClassOverride: .screenVideo
-            )
+            try await startScreenShare(request.frame.connectionId, sink, .screenVideo)
             do {
                 if let ensureComputerUseSession {
                     try await ensureComputerUseSession()
