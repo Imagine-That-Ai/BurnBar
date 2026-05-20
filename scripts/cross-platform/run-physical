@@ -1,0 +1,45 @@
+#!/bin/bash
+# Verify, build, and deploy OpenBurnBarMobile to a physical iOS device.
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+
+echo "▶ Checking connected physical iOS devices..."
+DEVICES=$(xcrun xctrace list devices 2>/dev/null)
+
+# Search for connected physical iPhones (excluding simulators)
+ONLINE_IPHONE=$(echo "$DEVICES" | sed -n '/== Devices ==/,/== Devices Offline ==/p' | grep -i "iPhone" | grep -v "Simulator" || true)
+
+if [ -n "$ONLINE_IPHONE" ]; then
+    NAME=$(echo "$ONLINE_IPHONE" | cut -d'(' -f1 | xargs)
+    UDID=$(echo "$ONLINE_IPHONE" | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f]{40}' || true)
+
+    echo "✅ Found connected online physical device: $NAME ($UDID)"
+    echo "▶ Building scheme OpenBurnBarMobile for physical device..."
+
+    xcodebuild \
+      -project OpenBurnBar.xcodeproj \
+      -scheme "OpenBurnBarMobile" \
+      -destination "id=$UDID" \
+      -derivedDataPath "build/DerivedData" \
+      build
+
+    echo "✅ Build completed successfully."
+    echo "▶ Opening OpenBurnBar.xcodeproj in Xcode so you can hit cmd+R (Run) to install and launch instantly!"
+    open OpenBurnBar.xcodeproj
+else
+    echo "❌ No online physical iPhone found connected to this Mac."
+    echo ""
+    echo "🔎 Known Offline Devices:"
+    echo "$DEVICES" | sed -n '/== Devices Offline ==/,/== Simulators ==/p' | grep -i "iPhone" || true
+    echo ""
+    echo "💡 How to connect your iPhone:"
+    echo "1. Connect your iPhone to this Mac using a lightning/USB-C cable."
+    echo "2. Unlock your iPhone and tap 'Trust This Computer' if prompted."
+    echo "3. Ensure Developer Mode is enabled on your iPhone (Settings -> Privacy & Security -> Developer Mode)."
+    echo "4. Once connected, open the project in Xcode and hit cmd+R to build and deploy:"
+    echo "   open OpenBurnBar.xcodeproj"
+    echo ""
+    echo "▶ Opening Xcode for you now so you can easily run it once connected!"
+    open OpenBurnBar.xcodeproj
+fi

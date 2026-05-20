@@ -552,6 +552,39 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertEqual(cursor.colorHex(row: 4, column: 2), "#30343A")
         XCTAssertNil(cursor.colorHex(row: 0, column: 0))
         XCTAssertNil(cursor.colorHex(row: 7, column: 7))
+
+        // Antigravity CLI — rainbow gradient mountain/A-shape matching
+        // the CLI startup banner: blue → cyan → green → yellow → orange → pink.
+        let antigravity = logo(for: .antigravity)
+        XCTAssertEqual(antigravity.sourceName, "GeminiCLILogo")
+        XCTAssertEqual(antigravity.rows, [
+            "...##...",
+            "..####..",
+            ".##..##.",
+            ".##..##.",
+            "##....##",
+            "#......#",
+            "........",
+            "........"
+        ])
+        // Green (#34A853) — peak left
+        XCTAssertEqual(antigravity.colorHex(row: 0, column: 3), "#34A853")
+        // Yellow (#FFEB3B) — peak right
+        XCTAssertEqual(antigravity.colorHex(row: 0, column: 4), "#FFEB3B")
+        // Cyan (#00BCD4) — left slope
+        XCTAssertEqual(antigravity.colorHex(row: 1, column: 2), "#00BCD4")
+        XCTAssertEqual(antigravity.colorHex(row: 2, column: 1), "#00BCD4")
+        // Orange (#FF9800) — right slope
+        XCTAssertEqual(antigravity.colorHex(row: 1, column: 5), "#FF9800")
+        XCTAssertEqual(antigravity.colorHex(row: 2, column: 5), "#FF9800")
+        // Blue (#4285F4) — bottom left leg
+        XCTAssertEqual(antigravity.colorHex(row: 4, column: 0), "#4285F4")
+        XCTAssertEqual(antigravity.colorHex(row: 5, column: 0), "#4285F4")
+        // Pink (#E91E63) — bottom right leg
+        XCTAssertEqual(antigravity.colorHex(row: 4, column: 7), "#E91E63")
+        XCTAssertEqual(antigravity.colorHex(row: 5, column: 7), "#E91E63")
+        XCTAssertNil(antigravity.colorHex(row: 6, column: 0))
+        XCTAssertNil(antigravity.colorHex(row: 7, column: 7))
     }
 
     func testCursorLogoIsThinAngularNorthEastFacetedMark() {
@@ -1094,6 +1127,9 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         case .warp: return "WarpLogo"
         case .ollama: return "OllamaLogo"
         case .kimi: return "KimiLogo"
+        case .deepSeek: return "DeepSeekLogo"
+        case .openCode: return "OpenCodeLogo"
+        case .antigravity: return "GeminiCLILogo"
         default: return "monogram"
         }
     }

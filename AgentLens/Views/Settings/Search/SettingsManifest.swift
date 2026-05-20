@@ -326,10 +326,11 @@ enum SettingsManifest {
             pageRoute: .agentsAdvanced,
             anchorID: SettingsAnchor.agentsAdvanced,
             title: "Advanced Routing, Gateway, Browsers & Setup",
-            subtitle: "Routing strategy, local gateway, browser profiles, chat engines, Hermes models, inventory, setup wizard",
+            subtitle: "Exact model failover, provider-family routing, local gateway, browser profiles, chat engines, Hermes models, inventory, setup wizard",
             keywords: [
                 "agent", "agents",
-                "advanced", "router", "router mode", "routing strategy", "intelligent",
+                "advanced", "router", "router mode", "routing strategy",
+                "exact model failover", "same model", "same-model", "never swap model",
                 "provider family", "gateway", "host", "port", "token", "bearer",
                 "loopback", "log sources", "logs", "smart hubs", "quota",
                 "browser", "chrome", "safari", "profile",
@@ -663,6 +664,8 @@ enum SettingsManifest {
             keywords += ["open ai", "openai", "gpt", "chatgpt"]
         case .geminiCLI:
             keywords += ["gemini", "google", "google ai", "gemini cli"]
+        case .antigravity:
+            keywords += ["antigravity", "gemini", "antigravity cli", "google"]
         case .kiloCode:
             keywords += ["kilo", "kilo code", "kilocode"]
         case .rooCode:

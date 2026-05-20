@@ -95,8 +95,10 @@ final class MercuryPeerSource: ObservableObject {
             displayName: displayName,
             isOnline: isOnline,
             lastSeenAt: lastSeen,
-            capabilities: capabilities
+            capabilities: capabilities,
+            blurredWallpaperBase64: nil
         )
+
         if next != peer {
             peer = next
         }

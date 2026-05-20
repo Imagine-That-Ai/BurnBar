@@ -106,11 +106,11 @@ struct ProviderRoutingCockpit: View {
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
             routingPill(
-                state.routerMode == .intelligentModelRouter ? "Intelligent" : "Provider family",
-                tint: state.routerMode == .intelligentModelRouter ? DesignSystem.Colors.blaze : DesignSystem.Colors.primary(for: provider),
-                icon: state.routerMode == .intelligentModelRouter ? "brain.head.profile" : "rectangle.2.swap",
-                help: state.routerMode == .intelligentModelRouter
-                    ? "Compatible routes are ranked using advisory task, health, cost, latency, and benchmark signals."
+                state.routerMode.usesExactSameModelInvariant ? "Exact model" : "Provider family",
+                tint: state.routerMode.usesExactSameModelInvariant ? DesignSystem.Colors.blaze : DesignSystem.Colors.primary(for: provider),
+                icon: state.routerMode.usesExactSameModelInvariant ? "equal.circle" : "rectangle.2.swap",
+                help: state.routerMode.usesExactSameModelInvariant
+                    ? "Fallback may cross providers only when the next route proves the exact same canonical model."
                     : "Fallback is limited to accounts in the selected provider family."
             )
 

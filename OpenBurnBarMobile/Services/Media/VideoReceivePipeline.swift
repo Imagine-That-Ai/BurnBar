@@ -38,17 +38,25 @@ final class VideoReceivePipeline {
     private let onDecoded: DecodedHandler
     private var session: VTDecompressionSession?
     private var formatDescription: CMFormatDescription?
+    private var activeCodec: Codec
     private var currentGopID: UInt32 = .max
 
     init(codec: Codec = .hevc, onDecoded: @escaping DecodedHandler) {
         self.codec = codec
+        self.activeCodec = codec
         self.onDecoded = onDecoded
     }
 
     func ingest(frame: MediaFrame) async throws {
+        let decoderPayload = try VideoDecoderConfigurationPayload.decodeIfPresent(frame.payload)
+        let samplePayload = decoderPayload?.samplePayload ?? frame.payload
         if frame.flags.contains(.keyframe) || frame.gopID != currentGopID {
             currentGopID = frame.gopID
-            try buildFormatDescription(from: frame.payload)
+            if let decoderPayload {
+                try buildFormatDescription(from: decoderPayload)
+            } else {
+                try buildFormatDescription(from: samplePayload)
+            }
         }
         guard let formatDescription, let session else {
             // Cannot decode without a format description; drop until next keyframe.
@@ -59,17 +67,17 @@ final class VideoReceivePipeline {
         let createStatus = CMBlockBufferCreateWithMemoryBlock(
             allocator: kCFAllocatorDefault,
             memoryBlock: nil,
-            blockLength: frame.payload.count,
+            blockLength: samplePayload.count,
             blockAllocator: nil,
             customBlockSource: nil,
             offsetToData: 0,
-            dataLength: frame.payload.count,
+            dataLength: samplePayload.count,
             flags: 0,
             blockBufferOut: &blockBuffer
         )
         guard createStatus == noErr, let blockBuffer else { return }
 
-        try frame.payload.withUnsafeBytes { rawBuffer in
+        try samplePayload.withUnsafeBytes { rawBuffer in
             guard let baseAddress = rawBuffer.baseAddress else { return }
             let copyStatus = CMBlockBufferReplaceDataBytes(
                 with: baseAddress,
@@ -83,19 +91,28 @@ final class VideoReceivePipeline {
         }
 
         var sampleBuffer: CMSampleBuffer?
-        var sampleSize = frame.payload.count
+        var sampleSize = samplePayload.count
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: 30),
+            presentationTimeStamp: CMTime(
+                value: CMTimeValue(frame.presentationTimestampMillis),
+                timescale: 1_000
+            ),
+            decodeTimeStamp: .invalid
+        )
         let sampleStatus = CMSampleBufferCreateReady(
             allocator: kCFAllocatorDefault,
             dataBuffer: blockBuffer,
             formatDescription: formatDescription,
             sampleCount: 1,
-            sampleTimingEntryCount: 0,
-            sampleTimingArray: nil,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
             sampleSizeEntryCount: 1,
             sampleSizeArray: &sampleSize,
             sampleBufferOut: &sampleBuffer
         )
         guard sampleStatus == noErr, let sampleBuffer else { return }
+        markForImmediateDisplay(sampleBuffer)
 
         await onDecoded(sampleBuffer)
 
@@ -126,7 +143,7 @@ final class VideoReceivePipeline {
     }
 
     private func buildFormatDescription(from payload: Data) throws {
-        let codecType = codec == .hevc
+        let codecType = activeCodec == .hevc
             ? CMVideoCodecType(kCMVideoCodecType_HEVC)
             : CMVideoCodecType(kCMVideoCodecType_H264)
 
@@ -147,6 +164,99 @@ final class VideoReceivePipeline {
         }
         self.formatDescription = description
 
+        try recreateSession(with: description)
+    }
+
+    private func buildFormatDescription(from decoderPayload: VideoDecoderConfigurationPayload) throws {
+        activeCodec = decoderPayload.codec == .hevc ? .hevc : .h264
+        let parameterSets = decoderPayload.parameterSets
+        var description: CMFormatDescription?
+        let status: OSStatus
+
+        switch decoderPayload.codec {
+        case .hevc:
+            status = withUnsafeParameterSetPointers(parameterSets) { pointers, sizes in
+                CMVideoFormatDescriptionCreateFromHEVCParameterSets(
+                    allocator: kCFAllocatorDefault,
+                    parameterSetCount: parameterSets.count,
+                    parameterSetPointers: pointers,
+                    parameterSetSizes: sizes,
+                    nalUnitHeaderLength: 4,
+                    extensions: nil,
+                    formatDescriptionOut: &description
+                )
+            } ?? -1
+        case .h264:
+            status = withUnsafeParameterSetPointers(parameterSets) { pointers, sizes in
+                CMVideoFormatDescriptionCreateFromH264ParameterSets(
+                    allocator: kCFAllocatorDefault,
+                    parameterSetCount: parameterSets.count,
+                    parameterSetPointers: pointers,
+                    parameterSetSizes: sizes,
+                    nalUnitHeaderLength: 4,
+                    formatDescriptionOut: &description
+                )
+            } ?? -1
+        }
+
+        guard status == noErr, let description else {
+            throw Failure.formatDescription(status)
+        }
+        self.formatDescription = description
+        try recreateSession(with: description)
+    }
+
+    private func withUnsafeParameterSetPointers<R>(
+        _ parameterSets: [Data],
+        _ body: (UnsafePointer<UnsafePointer<UInt8>>, UnsafePointer<Int>) -> R
+    ) -> R? {
+        guard !parameterSets.isEmpty else { return nil }
+
+        var pointers: [UnsafePointer<UInt8>] = []
+        pointers.reserveCapacity(parameterSets.count)
+        let sizes = parameterSets.map(\.count)
+
+        func recurse(_ index: Int) -> R? {
+            if index == parameterSets.count {
+                return pointers.withUnsafeBufferPointer { pointerBuffer in
+                    sizes.withUnsafeBufferPointer { sizeBuffer in
+                        guard let pointerBase = pointerBuffer.baseAddress,
+                              let sizeBase = sizeBuffer.baseAddress else {
+                            return nil
+                        }
+                        return body(pointerBase, sizeBase)
+                    }
+                }
+            }
+
+            return parameterSets[index].withUnsafeBytes { rawBuffer in
+                guard let baseAddress = rawBuffer.bindMemory(to: UInt8.self).baseAddress else {
+                    return nil
+                }
+                pointers.append(baseAddress)
+                defer { _ = pointers.popLast() }
+                return recurse(index + 1)
+            }
+        }
+
+        return recurse(0)
+    }
+
+    private func markForImmediateDisplay(_ sampleBuffer: CMSampleBuffer) {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
+            sampleBuffer,
+            createIfNecessary: true
+        ) as? [NSMutableDictionary],
+              let attachment = attachments.first else {
+            return
+        }
+        attachment[kCMSampleAttachmentKey_DisplayImmediately] = true
+    }
+
+    private func recreateSession(with description: CMFormatDescription) throws {
+        if let session {
+            VTDecompressionSessionInvalidate(session)
+        }
         var session: VTDecompressionSession?
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange

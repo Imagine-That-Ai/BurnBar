@@ -92,7 +92,7 @@ extension ProviderBrand {
             candidates.append(contentsOf: ["OpenAILogo", "CodexLogo"])
         case "opencode", "open-code":
             candidates.append("OpenCodeLogo")
-        case "google", "gemini", "gemini-cli":
+        case "google", "gemini", "gemini-cli", "antigravity", "antigravitycli", "antigravity-cli":
             candidates.append(contentsOf: ["GoogleLogo", "GeminiCLILogo"])
         case "xai", "grok", "x-ai":
             candidates.append("GrokLogo")
@@ -152,6 +152,7 @@ extension ProviderBrand {
         case "openai":      return Color(hex: "00A67E")
         case "factory":     return Color(hex: "F97316")
         case "google":      return Color(hex: "4285F4")
+        case "antigravity", "antigravitycli", "antigravity-cli": return Color(hex: "6C63FF")
         case "xai":         return Color(hex: "1A1A2E")
         case "deepseek":    return Color(hex: "6366F1")
         case "mistral":     return Color(hex: "FF7000")
@@ -175,6 +176,7 @@ extension ProviderBrand {
         case "openai":      return "hammer.fill"
         case "factory":     return "gearshape.2.fill"
         case "google":      return "diamond.fill"
+        case "antigravity", "antigravitycli", "antigravity-cli": return "sparkles"
         case "xai":         return "bolt.fill"
         case "deepseek":    return "brain.head.profile"
         case "mistral":     return "wind"

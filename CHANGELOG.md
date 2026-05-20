@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added — Mercury Media user-facing surfaces (Phase 8)
+- **Redesigned Liquid Glass `MercuryLiveSheet` (iOS).** Completely redesigned the My Mac live sheet on iOS adopting standard Liquid Glass tokens. Added an elevated, glassy header card with an animated pulsing indicator, high-performance button styling (`LiquidGlassButtonStyle`) with spring scaling, custom glass capsule overlays, silver-shimmer border gradients, and a dedicated preferences card.
+- **Mac-to-iOS Wallpaper Sync (Zero-Latency).** Implemented a high-performance wallpaper sync system between the Mac client and the iOS app. Captures the Mac desktop wallpaper without screen recording TCC permissions by querying the active lockscreen caches under `/Library/Caches/Desktop Pictures/` and downscaling to a `120x80` thumbnail using `CGImageSourceCreateThumbnailAtIndex` to prevent OOM issues. Decodes the thumbnail on iOS in real-time, displaying it as a beautifully blurred (`.blur(radius: 30)`) background backdrop. Added a "Mimic Mac Wallpaper" toggle to toggle this sync dynamically.
+- **Instant Heartbeat Sync.** Updated `MediaControlStreamCoordinator` to fire a presence heartbeat immediately upon establishing a stream, guaranteeing that capability and wallpaper synchronization happens instantaneously when opening the sheets.
 - **iOS Hermes Square "My Mac" tile.** An auto-pinned tile in the Hermes Square
   pinned grid that opens a Mercury Live sheet with three actions: Ask to Mirror
   (sends `media.mirror.request` over the iroh control stream), Call Mac (existing

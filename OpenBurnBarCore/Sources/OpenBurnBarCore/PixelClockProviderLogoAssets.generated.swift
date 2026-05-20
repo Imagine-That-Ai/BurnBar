@@ -105,14 +105,14 @@ enum PixelClockProviderLogoAssets {
     static let warp = PixelClockProviderLogo(
         sourceName: "WarpLogo",
         pixels: [
-            ["#FFFFFF", "#FBFBFB", "#F4F5F6", "#F4F5F6", "#F5F6F7", "#F5F6F7", "#FBFBFB", "#FFFFFF"],
-            ["#FCFCFC", "#DCE0E3", "#D0D6DA", "#CFD5D9", "#D0D6DA", "#D0D6DA", "#DCE0E3", "#FBFCFC"],
-            ["#F6F7F8", "#CCD2D6", "#ADB2B6", "#A1A6AA", "#6E7173", "#777A7C", "#C4C9CD", "#F6F7F8"],
-            ["#F5F6F7", "#B3B8BC", "#3B3C3D", "#47494A", "#282828", "#373838", "#B2B7BB", "#F5F6F7"],
-            ["#F4F5F6", "#ACB1B4", "#313233", "#4B4C4D", "#323333", "#494A4B", "#B4B9BD", "#F4F5F6"],
-            ["#F4F5F6", "#C1C6CA", "#787B7D", "#8C8F92", "#ADB1B5", "#BBC0C4", "#CFD5D9", "#F3F5F5"],
-            ["#FBFCFC", "#E3E8EB", "#D4DADE", "#D2D8DC", "#D8DEE2", "#D6DCE0", "#E1E6E9", "#FBFCFC"],
-            ["#FFFFFF", "#FCFCFC", "#F5F7F7", "#F5F7F7", "#F6F7F8", "#F6F8F8", "#FCFCFD", "#FFFFFF"]
+            ["#DDE4EA", "#DDE4EA", "#DDE4EA", "#DDE4EA", nil, nil, nil, nil],
+            ["#DDE4EA", "#A8B0B8", "#DDE4EA", "#DDE4EA", nil, nil, nil, nil],
+            ["#DDE4EA", "#DDE4EA", "#A8B0B8", "#DDE4EA", nil, nil, nil, nil],
+            [nil, "#6B7380", "#6B7380", "#DDE4EA", "#DDE4EA", nil, nil, nil],
+            [nil, nil, nil, "#DDE4EA", "#DDE4EA", "#6B7380", "#6B7380", nil],
+            [nil, nil, nil, nil, "#DDE4EA", "#A8B0B8", "#DDE4EA", "#DDE4EA"],
+            [nil, nil, nil, nil, "#DDE4EA", "#DDE4EA", "#A8B0B8", "#DDE4EA"],
+            [nil, nil, nil, nil, "#DDE4EA", "#DDE4EA", "#DDE4EA", "#DDE4EA"]
         ]
     )
 
@@ -140,6 +140,48 @@ enum PixelClockProviderLogoAssets {
             ["#232323", "#DFDFDF", "#DDDDDD", "#D3D3D3", "#8D8D8D", nil, nil, nil],
             ["#242424", "#CDCDCD", "#404040", "#313131", "#B8B8B8", "#C3C3C3", "#2F2F2F", nil],
             [nil, "#7C7C7C", nil, nil, nil, "#6F6F6F", "#343434", nil],
+            [nil, nil, nil, nil, nil, nil, nil, nil]
+        ]
+    )
+
+    static let deepSeek = PixelClockProviderLogo(
+        sourceName: "DeepSeekLogo",
+        pixels: [
+            [nil, nil, "#6366F1", "#6366F1", "#6366F1", "#6366F1", nil, nil],
+            [nil, "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1", nil],
+            ["#6366F1", "#FFFFFF", "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1"],
+            ["#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1"],
+            [nil, "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1", "#6366F1"],
+            [nil, nil, "#6366F1", "#6366F1", "#6366F1", "#6366F1", nil, "#6366F1"],
+            [nil, nil, nil, "#6366F1", "#6366F1", nil, "#6366F1", "#6366F1"],
+            [nil, nil, nil, nil, nil, nil, nil, nil]
+        ]
+    )
+
+    static let openCode = PixelClockProviderLogo(
+        sourceName: "OpenCodeLogo",
+        pixels: [
+            ["#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF"],
+            ["#FFFFFF", nil, nil, nil, nil, nil, nil, "#FFFFFF"],
+            ["#FFFFFF", nil, nil, nil, nil, nil, nil, "#FFFFFF"],
+            ["#FFFFFF", nil, "#5A5858", "#5A5858", "#5A5858", "#5A5858", nil, "#FFFFFF"],
+            ["#FFFFFF", nil, "#5A5858", "#5A5858", "#5A5858", "#5A5858", nil, "#FFFFFF"],
+            ["#FFFFFF", nil, nil, nil, nil, nil, nil, "#FFFFFF"],
+            ["#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF"],
+            [nil, nil, nil, nil, nil, nil, nil, nil]
+        ]
+    )
+
+    static let antigravity = PixelClockProviderLogo(
+        sourceName: "GeminiCLILogo",
+        pixels: [
+            [nil, nil, nil, "#34A853", "#FFEB3B", nil, nil, nil],
+            [nil, nil, "#00BCD4", "#34A853", "#FFEB3B", "#FF9800", nil, nil],
+            [nil, "#00BCD4", "#00BCD4", nil, nil, "#FF9800", "#FF9800", nil],
+            [nil, "#4285F4", "#00BCD4", nil, nil, "#FF9800", "#E91E63", nil],
+            ["#4285F4", "#4285F4", nil, nil, nil, nil, "#E91E63", "#E91E63"],
+            ["#4285F4", nil, nil, nil, nil, nil, nil, "#E91E63"],
+            [nil, nil, nil, nil, nil, nil, nil, nil],
             [nil, nil, nil, nil, nil, nil, nil, nil]
         ]
     )

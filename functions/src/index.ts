@@ -161,6 +161,7 @@ const ALLOWED_PROVIDERS = new Set<string>([
   "claude-code",
   "codex",
   "opencode",
+  "antigravity",
 ]);
 
 const CONNECTION_SCHEMA_VERSION = 1;
@@ -174,7 +175,7 @@ const PI_AGENT_PAIRING_TTL_MS = 10 * 60 * 1000;
 const PI_AGENT_PAIRING_AUDIT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const PI_AGENT_MAX_FAILED_PAIRING_ATTEMPTS = 5;
 const HOSTED_QUOTA_PROVIDERS = new Set<string>(["codex"]);
-const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "opencode"]);
+const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "opencode", "antigravity"]);
 const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
@@ -638,6 +639,7 @@ function hostedProviderLabel(provider: string): string {
     case "codex": return "Codex";
     case "claude-code": return "Claude Code";
     case "kimi": return "Kimi";
+    case "antigravity": return "Antigravity";
     default: return provider;
   }
 }
@@ -646,6 +648,7 @@ function hostedCredentialKind(provider: string): CredentialKind {
   switch (provider) {
     case "codex":
     case "claude-code":
+    case "antigravity":
       return "session";
     default:
       return "bearer";

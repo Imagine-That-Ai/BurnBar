@@ -3,6 +3,8 @@ import Combine
 import OpenBurnBarCore
 import OpenBurnBarMedia
 import OSLog
+import AppKit
+import ImageIO
 
 /// Mac-side brain for Mercury Phase 8 user-facing entry points. Owns:
 ///
@@ -117,17 +119,47 @@ final class MercuryRouter: ObservableObject {
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         Self.log.info("router_handle_frame type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
-        Self.debugTrace("router_handle_frame type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
         switch frame.type {
         case .mediaPresenceHeartbeat:
+
             if let heartbeat = frame.media?.presence {
                 peerSource.ingestHeartbeat(
                     heartbeat,
                     connectionID: frame.connectionId
                 )
+
+                // Reply with our own presence heartbeat containing capabilities and blurred wallpaper base64
+                let macCapabilities = [
+                    MercuryPeer.Feature.mirrorHost.rawValue,
+                    MercuryPeer.Feature.fileSend.rawValue,
+                    MercuryPeer.Feature.fileReceive.rawValue,
+                    MercuryPeer.Feature.callReceive.rawValue
+                ]
+                let blurredWallpaper = getBlurredWallpaperBase64()
+                let responseBeat = HermesRealtimeRelayPresenceHeartbeat(
+                    sentAt: Date(),
+                    deviceDisplayName: Host.current().localizedName ?? "My Mac",
+                    capabilities: macCapabilities,
+                    blurredWallpaperBase64: blurredWallpaper
+                )
+                let responseFrame = HermesRealtimeRelayFrame(
+                    type: .mediaPresenceHeartbeat,
+                    uid: frame.uid,
+                    connectionId: frame.connectionId,
+                    media: HermesRealtimeRelayMediaPayload(presence: responseBeat)
+                )
+                do {
+                    try await replySender(responseFrame)
+                    Self.log.info("router_presence_reply_sent connectionID=\(frame.connectionId, privacy: .public)")
+                } catch {
+                    Self.log.error("router_presence_reply_failed connectionID=\(frame.connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                }
             }
+
         case .mediaMirrorRequest:
             await handleMirrorRequest(frame: frame, replySender: replySender)
+        case .mediaMirrorStop:
+            await handleMirrorStop(frame: frame)
         case .mediaMirrorAck:
             // Mac is the producer of acks, not the consumer. Ignore.
             break
@@ -296,6 +328,34 @@ final class MercuryRouter: ObservableObject {
         )
         Self.log.info("router_mirror_request_ringing requestID=\(req.requestId, privacy: .public)")
         Self.debugTrace("router_mirror_request_ringing requestID=\(req.requestId)")
+    }
+
+    private func handleMirrorStop(frame: HermesRealtimeRelayFrame) async {
+        guard let stop = frame.media?.mirrorStop else {
+            Self.log.error("router_mirror_stop_missing_payload requestID=\(frame.requestId ?? "", privacy: .public)")
+            Self.debugTrace("router_mirror_stop_missing_payload requestID=\(frame.requestId ?? "")")
+            return
+        }
+        let activeRequestID: String?
+        switch phase {
+        case .streaming(let requestID, _),
+             .starting(let requestID):
+            activeRequestID = requestID
+        default:
+            activeRequestID = nil
+        }
+        guard activeRequestID == stop.requestId else {
+            Self.log.info("router_mirror_stop_ignored requestID=\(stop.requestId, privacy: .public) phase_mismatch=true")
+            Self.debugTrace("router_mirror_stop_ignored requestID=\(stop.requestId) phase=\(String(describing: phase))")
+            return
+        }
+        await sessionCoordinator.stop(reason: .completedUserCancel)
+        pendingRequest = nil
+        activeSessionSender = nil
+        activeSessionFrame = nil
+        phase = .idle
+        Self.log.info("router_mirror_stop_completed requestID=\(stop.requestId, privacy: .public)")
+        Self.debugTrace("router_mirror_stop_completed requestID=\(stop.requestId)")
     }
 
     private func handleCallInvite(
@@ -495,5 +555,58 @@ final class MercuryRouter: ObservableObject {
                 }
             }
         }
+    }
+
+    private func getBlurredWallpaperBase64() -> String? {
+        var wallpaperURL: URL? = nil
+        if let screen = NSScreen.main {
+            wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen)
+        }
+
+        if wallpaperURL == nil {
+            let fileManager = FileManager.default
+            let desktopPicturesDir = "/Library/Caches/Desktop Pictures"
+            if fileManager.fileExists(atPath: desktopPicturesDir) {
+                if let enumerator = fileManager.enumerator(at: URL(fileURLWithPath: desktopPicturesDir), includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
+                    for case let fileURL as URL in enumerator {
+                        if fileURL.pathExtension.lowercased() == "png" || fileURL.pathExtension.lowercased() == "jpg" || fileURL.pathExtension.lowercased() == "jpeg" {
+                            wallpaperURL = fileURL
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        guard let url = wallpaperURL else {
+            return nil
+        }
+
+        guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            return nil
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 120,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary) else {
+            return nil
+        }
+
+        let width = cgImage.width
+        let height = cgImage.height
+        let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: width, height: height))
+
+        guard let tiffData = nsImage.tiffRepresentation,
+              let bitmapRep = NSBitmapImageRep(data: tiffData),
+              let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.6]) else {
+            return nil
+        }
+
+        return jpegData.base64EncodedString()
     }
 }

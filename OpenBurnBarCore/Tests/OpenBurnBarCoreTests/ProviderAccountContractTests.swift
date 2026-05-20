@@ -413,13 +413,14 @@ final class ProviderAccountContractTests: XCTestCase {
         XCTAssertEqual(decision.selected?.accountID, "codex_work")
     }
 
-    func test_intelligentModeCanUseCrossProviderCandidatesAfterHardConstraints() {
+    func test_sameModelFailoverCanUseCrossProviderCandidatesAfterHardConstraints() {
         let zai = ProviderID(rawValue: "zai")
         let decision = ProviderRoutingPolicy.decide(
             request: ProviderRoutingRequest(
                 modelID: "glm-5",
                 preferredProviderIDs: [zai, .codex],
-                routerMode: .intelligentModelRouter,
+                routerMode: .sameModelFailover,
+                requiredCanonicalModelID: "glm-5",
                 selectedProviderID: zai,
                 selectedAccountID: "zai_a",
                 taskCategory: .coding,
@@ -430,15 +431,17 @@ final class ProviderAccountContractTests: XCTestCase {
                 )
             ),
             candidates: [
-                routingCandidate("zai_a", providerID: zai, label: "Z.ai A", quotaState: .exhausted),
-                routingCandidate("codex_work", providerID: .codex, label: "Codex Work")
+                routingCandidate("zai_a", providerID: zai, label: "Z.ai A", quotaState: .exhausted, canonicalModelID: "glm-5"),
+                routingCandidate("codex_work", providerID: .codex, label: "Codex Work", canonicalModelID: "glm-5")
             ]
         )
 
-        XCTAssertEqual(decision.routerMode, .intelligentModelRouter)
+        XCTAssertEqual(decision.routerMode, ProviderRouterMode.sameModelFailover)
         XCTAssertEqual(decision.selected?.providerID, .codex)
         XCTAssertEqual(decision.event.benchmarkStatus?.freshness, .fresh)
-        XCTAssertTrue(decision.event.explanation.contains("Intelligent Model Router"))
+        XCTAssertTrue(decision.event.explanation.contains("Exact Model Failover"))
+        XCTAssertTrue(decision.event.exactModelInvariantPassed)
+        XCTAssertEqual(decision.event.failoverDestinationProviderID, ProviderID.codex)
     }
 
     func test_routingEventsNeverIncludeCredentialsOrSecretRefs() throws {
@@ -528,6 +531,7 @@ final class ProviderAccountContractTests: XCTestCase {
         quotaState: ProviderRoutingQuotaState = .healthy,
         cooldownUntil: Date? = nil,
         priority: Int = 0,
+        canonicalModelID: String? = nil,
         lastUsedAt: Date? = nil,
         lastFailureCode: String? = nil,
         localCredentialAvailable: Bool = true
@@ -539,6 +543,7 @@ final class ProviderAccountContractTests: XCTestCase {
             credentialHandle: credentialHandle,
             storageScope: .deviceKeychain,
             modelCompatibility: .compatible,
+            canonicalModelID: canonicalModelID,
             quotaState: quotaState,
             cooldownUntil: cooldownUntil,
             priority: priority,

@@ -126,4 +126,5 @@ val AgentProvider.logoRes: Int
         AgentProvider.OLLAMA      -> R.drawable.logo_ollama
         AgentProvider.WINDSURF    -> R.drawable.logo_windsurf
         AgentProvider.WARP        -> R.drawable.logo_warp
+        AgentProvider.ANTIGRAVITY -> R.drawable.logo_gemini_cli
     }

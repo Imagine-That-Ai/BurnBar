@@ -68,6 +68,22 @@ final class MercuryRouterTests: XCTestCase {
         )
     }
 
+    private func mirrorStopFrame(requestID: String = "req_test") -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .mediaMirrorStop,
+            uid: "u",
+            connectionId: "c",
+            requestId: requestID,
+            media: HermesRealtimeRelayMediaPayload(
+                mirrorStop: HermesRealtimeRelayMirrorStop(
+                    requestId: requestID,
+                    stoppedAt: Date(timeIntervalSince1970: 1_700_000_001),
+                    reason: "viewer_closed"
+                )
+            )
+        )
+    }
+
     private func callInviteFrame(
         requestID: String = "call_test",
         requesterName: String = "Alberto's Android"
@@ -178,7 +194,10 @@ final class MercuryRouterTests: XCTestCase {
         )
         await router.handleFrame(frame, replySender: sink.sender)
         let ackCount = await sink.count
-        XCTAssertEqual(ackCount, 0, "heartbeat must not produce an ack")
+        XCTAssertEqual(ackCount, 1, "heartbeat should receive Mac presence in reply")
+        let frames = await sink.frames
+        XCTAssertEqual(frames[0].type, .mediaPresenceHeartbeat)
+        XCTAssertEqual(frames[0].media?.presence?.deviceDisplayName.isEmpty, false)
         XCTAssertEqual(router.phase, .idle)
     }
 
@@ -245,6 +264,19 @@ final class MercuryRouterTests: XCTestCase {
         let ackCount = await sink.count
         XCTAssertEqual(ackCount, 0,
                        "stop from idle has no active request to ack")
+    }
+
+    func testPhoneStopClearsActiveMirrorWithoutCooldown() async throws {
+        let (router, sink) = makeRouter(consent: true, cooldownSeconds: 30)
+        await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
+        let requestID = try extractStreaming(from: router.phase)
+
+        await router.handleFrame(mirrorStopFrame(requestID: requestID), replySender: sink.sender)
+
+        XCTAssertEqual(router.phase, .idle)
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1, "phone stop is a control signal, not a second ack")
+        XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .accepted)
     }
 
     private func extractStreaming(from phase: MercuryRouter.Phase) throws -> String {

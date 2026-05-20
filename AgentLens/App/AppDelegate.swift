@@ -57,14 +57,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
-            button.image = OpenBurnBarStatusItemBrandMark.image
+            button.image = OpenBurnBarStatusItemBrandMark.image(
+                colorful: SettingsManager.shared.appearance.colorfulMenuBarIcon
+            )
             button.imagePosition = .imageOnly
+            button.toolTip = "OpenBurnBar"
+            button.setAccessibilityLabel("OpenBurnBar")
             button.target = self
             button.action = #selector(handleStatusItemClick(_:))
             button.sendAction(on: OpenBurnBarStatusItemClick.actionMask)
         }
         self.statusItem = item
         installStatusItemMouseFallback()
+        observeMenuBarIconStyle()
+    }
+
+    private var menuBarIconObservation: Any?
+
+    /// Watches `colorfulMenuBarIcon` and swaps the status item image live.
+    private func observeMenuBarIconStyle() {
+        menuBarIconObservation = withObservationTracking {
+            _ = SettingsManager.shared.appearance.colorfulMenuBarIcon
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self, let button = self.statusItem?.button else { return }
+                button.image = OpenBurnBarStatusItemBrandMark.image(
+                    colorful: SettingsManager.shared.appearance.colorfulMenuBarIcon
+                )
+                self.observeMenuBarIconStyle()
+            }
+        }
     }
 
     @objc private func handleStatusItemClick(_ sender: Any?) {
@@ -265,8 +287,10 @@ private extension NSStatusBarButton {
 }
 
 private enum OpenBurnBarStatusItemBrandMark {
-    static let image: NSImage = {
-        let side: CGFloat = 18
+    private static let side: CGFloat = 18
+
+    /// Returns the menu-bar icon in either monochrome template mode or full color.
+    static func image(colorful: Bool) -> NSImage {
         if let source = NSImage(named: "AppLogo") {
             let target = NSSize(width: side, height: side)
             let rendered = NSImage(size: target, flipped: false) { rect in
@@ -283,7 +307,7 @@ private enum OpenBurnBarStatusItemBrandMark {
                 NSGraphicsContext.restoreGraphicsState()
                 return true
             }
-            rendered.isTemplate = false
+            rendered.isTemplate = !colorful
             return rendered
         }
         let fallback = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
@@ -293,9 +317,9 @@ private enum OpenBurnBarStatusItemBrandMark {
             path.stroke()
             return true
         }
-        fallback.isTemplate = true
+        fallback.isTemplate = !colorful
         return fallback
-    }()
+    }
 }
 
 

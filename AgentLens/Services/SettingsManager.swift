@@ -164,6 +164,11 @@ final class SettingsManager {
         set { appearance.showInMenuBar = newValue }
     }
 
+    var colorfulMenuBarIcon: Bool {
+        get { appearance.colorfulMenuBarIcon }
+        set { appearance.colorfulMenuBarIcon = newValue }
+    }
+
     var preferredSwiftUIColorScheme: ColorScheme? {
         appearance.appearanceMode.colorScheme
     }

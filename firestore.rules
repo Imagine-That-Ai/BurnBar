@@ -704,7 +704,7 @@ service cloud.firestore {
         ])
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
-        && request.resource.data.agent in ["codex", "claude", "openclaw"]
+        && request.resource.data.agent in ["codex", "claude", "openclaw", "antigravity"]
         && (!("sourceKind" in request.resource.data) || request.resource.data.sourceKind in ["live_chat", "archived_log"])
         && request.resource.data.title is string
         && request.resource.data.title.size() <= 512
@@ -795,7 +795,7 @@ service cloud.firestore {
         && request.resource.data.prompt is string
         && request.resource.data.prompt.size() <= 20000
         && request.resource.data.missionKind in ["debt", "diligence", "creative", "accretive", "security", "ui_improvement", "modernization", "provider_routing", "cost_efficiency", "project_focus", "custom", "chat"]
-        && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama"]
+        && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity"]
         && (!("requestedModelID" in request.resource.data) || (request.resource.data.requestedModelID is string && request.resource.data.requestedModelID.size() <= 240))
         && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights", "ios-chat", "android-chat"]
         && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed"]
@@ -806,7 +806,7 @@ service cloud.firestore {
         && (!("commandsAllowed" in request.resource.data) || request.resource.data.commandsAllowed is bool)
         && (!("fileEditsAllowed" in request.resource.data) || request.resource.data.fileEditsAllowed is bool)
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
-        && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama"])
+        && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity"])
         && (!("selectedRuntimeName" in request.resource.data) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 80))
         && (!("selectedModelID" in request.resource.data) || (request.resource.data.selectedModelID is string && request.resource.data.selectedModelID.size() <= 240))
         && (!("sessionId" in request.resource.data) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
@@ -969,7 +969,7 @@ service cloud.firestore {
           && request.resource.data.source in ["ios", "android", "ios-chat", "android-chat", "mac"]
           && validCliAgentMissionEventSource(userId, requestId, eventId)
           && request.resource.data.isError is bool
-          && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto"])
+          && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto", "antigravity"])
           && (!("toolName" in request.resource.data) || (request.resource.data.toolName is string && request.resource.data.toolName.size() <= 160))
           && (!("artifactPath" in request.resource.data) || (request.resource.data.artifactPath is string && request.resource.data.artifactPath.size() <= 512))
           && (!("changedFilePath" in request.resource.data) || (request.resource.data.changedFilePath is string && request.resource.data.changedFilePath.size() <= 512));

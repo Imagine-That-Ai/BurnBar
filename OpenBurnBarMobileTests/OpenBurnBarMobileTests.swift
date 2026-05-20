@@ -500,6 +500,74 @@ final class OpenBurnBarMobileTests: XCTestCase {
     }
 }
 
+final class ScreenShareViewportStateTests: XCTestCase {
+    func testMagnificationClampsScaleToSupportedRange() {
+        var viewport = ScreenShareViewportState()
+
+        viewport.applyMagnification(10, in: CGSize(width: 390, height: 844))
+        XCTAssertEqual(viewport.scale, ScreenShareViewportState.maximumScale)
+
+        viewport.applyMagnification(0.01, in: CGSize(width: 390, height: 844))
+        XCTAssertEqual(viewport.scale, ScreenShareViewportState.minimumScale)
+        XCTAssertEqual(viewport.offset, .zero)
+    }
+
+    func testPanningIsClampedToScaledContentBounds() {
+        var viewport = ScreenShareViewportState(scale: 2)
+
+        viewport.applyTranslation(CGSize(width: 1_000, height: -1_000), in: CGSize(width: 400, height: 800))
+
+        XCTAssertEqual(viewport.offset.width, 200)
+        XCTAssertEqual(viewport.offset.height, -400)
+    }
+
+    func testPanningAtDefaultScaleAlwaysRecenters() {
+        var viewport = ScreenShareViewportState()
+
+        viewport.applyTranslation(CGSize(width: 100, height: 100), in: CGSize(width: 400, height: 800))
+
+        XCTAssertEqual(viewport.scale, 1)
+        XCTAssertEqual(viewport.offset, .zero)
+    }
+
+    func testPreviewDoesNotMutateCommittedViewport() {
+        let viewport = ScreenShareViewportState(scale: 2, offset: CGSize(width: 20, height: -40))
+
+        let preview = viewport.preview(
+            magnification: 1.5,
+            translation: CGSize(width: 10, height: 10),
+            in: CGSize(width: 400, height: 800)
+        )
+
+        XCTAssertEqual(viewport.scale, 2)
+        XCTAssertEqual(viewport.offset, CGSize(width: 20, height: -40))
+        XCTAssertEqual(preview.scale, 3)
+        XCTAssertEqual(preview.offset, CGSize(width: 30, height: -30))
+    }
+
+    func testReclampPreservesZoomAcrossRotationButConstrainsOffset() {
+        var viewport = ScreenShareViewportState(scale: 3, offset: CGSize(width: 600, height: 600))
+
+        viewport.reclamp(in: CGSize(width: 844, height: 390))
+
+        XCTAssertEqual(viewport.scale, 3)
+        XCTAssertEqual(viewport.offset.width, 600)
+        XCTAssertEqual(viewport.offset.height, 390)
+    }
+
+    func testQuickZoomTogglesBetweenFitAndZoomed() {
+        var viewport = ScreenShareViewportState()
+
+        viewport.toggleQuickZoom(in: CGSize(width: 400, height: 800))
+        XCTAssertEqual(viewport.scale, ScreenShareViewportState.quickZoomScale)
+        XCTAssertEqual(viewport.offset, .zero)
+
+        viewport.toggleQuickZoom(in: CGSize(width: 400, height: 800))
+        XCTAssertEqual(viewport.scale, ScreenShareViewportState.minimumScale)
+        XCTAssertEqual(viewport.offset, .zero)
+    }
+}
+
 private actor AgentWatchFakeStream: IrohRelayStream {
     private var inboundFrames: [HermesRealtimeRelayFrame] = []
     private var outboundFrames: [HermesRealtimeRelayFrame] = []

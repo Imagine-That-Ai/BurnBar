@@ -571,6 +571,24 @@ final class SmartHubBridgeController {
                 return nil
             }
 
+            // Hard staleness gate: if the snapshot is older than the
+            // display ceiling, the device must NOT show derived numbers
+            // (percent, bucket bars, reset countdowns) — they are
+            // arithmetic on data that may have rolled over multiple times.
+            // We still surface the card so the user knows the provider is
+            // tracked, but blank out the misleading fields and shout
+            // "stale" in the pill.
+            let primaryAge = now.timeIntervalSince(primary.fetchedAt)
+            if primaryAge > Self.displayStalenessCeiling {
+                return Self.staleProviderCard(
+                    provider: provider,
+                    primary: primary,
+                    age: primaryAge,
+                    runCostTotal: runCostTotals[provider],
+                    now: now
+                )
+            }
+
             // Primary bucket drives the legacy `percent` / `label` /
             // `windowLabel` fields so older readers (NestHubMiniPreview,
             // serialization tests) keep working.
@@ -872,6 +890,61 @@ final class SmartHubBridgeController {
         }
     }
 
+    /// Snapshots older than this never paint a bar / percent / bucket on
+    /// the Nest Hub. Past this horizon the card flips into a "stale"
+    /// presentation that blanks out derived numbers — the underlying
+    /// data is too old to project reset times, percentages, or anything
+    /// else without inventing values out of thin air.
+    static let displayStalenessCeiling: TimeInterval = 12 * 3600
+
+    /// Build the "stale" variant of a provider card. Surfaces the card
+    /// so the user knows the provider is still tracked, but blanks the
+    /// percent, label, buckets, and reset countdowns — those would all
+    /// be fictional projections off old data. The status pill shouts
+    /// how long ago the last sample was so the user knows to refresh.
+    private static func staleProviderCard(
+        provider: AgentProvider,
+        primary: ProviderQuotaSnapshot,
+        age: TimeInterval,
+        runCostTotal: ProviderRunCostTotals?,
+        now: Date
+    ) -> SmartHubBridgeSnapshot.Provider {
+        let staleSuffix: String
+        if age >= 86_400 {
+            staleSuffix = "stale · \(Int(age / 86_400))d ago"
+        } else {
+            staleSuffix = "stale · \(Int(age / 3600))h ago"
+        }
+        let footer = runCostTotal
+        let tokenTotal = bridgeTokenTotal(from: footer)
+        let tokenTotalCurrency = bridgeTokenTotalCurrency(totalCost: footer?.totalCost ?? 0)
+        let runsLabel = bridgeRunsLabel(footer?.sessionCount ?? 0)
+        let costLabel = bridgeCostLabel(footer?.totalCost ?? 0)
+        return SmartHubBridgeSnapshot.Provider(
+            name: provider.displayName,
+            percent: 0,
+            label: "no recent data",
+            tone: .warning,
+            windowLabel: "",
+            slug: provider.persistedToken,
+            accentHex: accentHex(for: provider),
+            logoSVG: logoSVG(for: provider),
+            tokenTotal: tokenTotal,
+            tokenTotalCurrency: tokenTotalCurrency,
+            tokenTotalLabel: "TOKENS",
+            statusPill: staleSuffix,
+            statusTone: .warning,
+            freshnessLabel: bridgeFreshnessLabel(fetchedAt: primary.fetchedAt, now: now),
+            fetchedAtLabel: bridgeAbsoluteTimestamp(primary.fetchedAt),
+            buckets: [],
+            accounts: [],
+            runsLabel: runsLabel,
+            costLabel: costLabel,
+            hasQuotaData: false,
+            burnRates: []
+        )
+    }
+
     /// Build the short pill that appears under the provider name (e.g.
     /// "source 3h ago", "reset passed", "live local"). The pill is the
     /// fastest signal the user has that the card is healthy; tied to
@@ -978,6 +1051,7 @@ final class SmartHubBridgeController {
         case .hermes:     return "A855F7"
         case .piAgent:    return "7C3AED"
         case .geminiCLI:  return "4285F4"
+        case .antigravity: return "6C63FF"
         case .goose:      return "0D9488"
         case .openClaw:   return "FF6B6B"
         case .ollama:     return "6B7280"

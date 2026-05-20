@@ -1933,11 +1933,11 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         XCTAssertEqual(response.statusCode, 503)
         let bodyText = String(decoding: body, as: UTF8.self)
-        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
+        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("no exact same-model fallback"))
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         let chatRequests = upstreamRequests.filter { $0.path == "/v1/chat/completions" }
-        XCTAssertEqual(chatRequests.count, 1, "Gateway must not jump to a lower capability class after a retryable failure.")
+        XCTAssertEqual(chatRequests.count, 1, "Gateway must not jump to a different canonical model after a retryable failure.")
     }
 
     func testGatewayKeepsOriginalFailureForNonFailoverErrorsEvenWhenLowerTierExists() async throws {
@@ -1971,7 +1971,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let bodyText = String(decoding: body, as: UTF8.self)
         XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("invalid request payload"))
         XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("routing failed"))
-        XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
+        XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("no exact same-model fallback"))
         let chatRequests = GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/chat/completions" }
         XCTAssertEqual(
             chatRequests.count,
@@ -2007,11 +2007,11 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         XCTAssertEqual(response.statusCode, 503)
         let bodyText = String(decoding: body, as: UTF8.self)
-        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
+        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("no exact same-model fallback"))
         XCTAssertEqual(
             GatewayUpstreamURLProtocol.recordedRequests().count,
             1,
-            "Anthropic gateway must stay in the selected capability class when primary quota is exhausted."
+            "Anthropic gateway must stay on the exact canonical model when primary quota is exhausted."
         )
     }
 
@@ -2044,7 +2044,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let bodyText = String(decoding: body, as: UTF8.self)
         XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("invalid request payload"))
         XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("routing failed"))
-        XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
+        XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("no exact same-model fallback"))
         XCTAssertEqual(
             GatewayUpstreamURLProtocol.recordedRequests().count,
             1,
@@ -2777,7 +2777,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     /// When Opus is requested and only the OAuth route exists, a 429 must
-    /// not silently retry against a different capability class (Haiku /
+    /// not silently retry against a different canonical model (Haiku /
     /// Sonnet). The user asked for Opus; if BurnBar can't serve Opus, it
     /// must say so precisely instead of returning a downgraded answer.
     func testGatewayDoesNotDowngradeOpusToHaikuOnOAuthFailure() async throws {
@@ -3170,14 +3170,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(response.statusCode, 503)
         let bodyText = String(decoding: body, as: UTF8.self)
         XCTAssertTrue(
-            bodyText.localizedCaseInsensitiveContains("downgrade is disabled"),
-            "Gateway must report downgrade disabled when catalog-resolved capability class is exhausted."
+            bodyText.localizedCaseInsensitiveContains("no exact same-model fallback"),
+            "Gateway must report exact-model fail-closed when the catalog-resolved exact route is exhausted."
         )
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         let chatRequests = upstreamRequests.filter { $0.path == "/v1/chat/completions" }
         XCTAssertEqual(
             chatRequests.count, 1,
-            "Gateway must only attempt the catalog-resolved same-class route (pro), not fall through to base."
+            "Gateway must only attempt the catalog-resolved exact route, not fall through to a similar base model."
         )
     }
 
@@ -3188,6 +3188,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             visibility: .public,
             aliases: ["shared-pro-model"],
             pricing: BurnBarModelPricing(inputPerMToken: 12, outputPerMToken: 24, cacheReadPerMToken: 1),
+            canonicalModelID: "shared-pro-model",
             capabilityClassID: "openai:pro",
             capabilityClassRank: 100
         )
@@ -3197,6 +3198,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             visibility: .public,
             aliases: ["shared-pro-model"],
             pricing: BurnBarModelPricing(inputPerMToken: 10, outputPerMToken: 20, cacheReadPerMToken: 0.8),
+            canonicalModelID: "shared-pro-model",
             capabilityClassID: "openai:pro",
             capabilityClassRank: 100
         )
@@ -3279,7 +3281,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             label: "Alt Pro",
             apiKey: "sk-alt-key"
         )
-        try await harness.configStore.setRouterMode(.intelligentModelRouter)
+        try await harness.configStore.setRouterMode(.providerFamilyFailover)
         try await harness.start()
         defer { Task { await harness.stop() } }
 
@@ -3291,14 +3293,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             body: Data(#"{"model":"shared-pro-model","messages":[{"role":"user","content":"hi"}]}"#.utf8)
         )
 
-        XCTAssertEqual(response.statusCode, 200, "Gateway must succeed by failing over to same-class alt provider.")
+        XCTAssertEqual(response.statusCode, 200, "Gateway must succeed by failing over to an exact same-model alt provider.")
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         let chatRequests = upstreamRequests.filter { $0.path == "/v1/chat/completions" }
         XCTAssertEqual(chatRequests.count, 2, "Gateway must try alpha-pro first, then alt-pro on 429.")
         let requestPaths = chatRequests.map(\.path)
         XCTAssertTrue(
             requestPaths.allSatisfy { !$0.contains("alpha-base") },
-            "Gateway must not try the base-tier route when same-class pro alternatives exist."
+            "Gateway must not try the base-tier route when exact-model alternatives exist."
         )
     }
 
@@ -3419,7 +3421,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             label: "Beta Base",
             apiKey: "beta-key"
         )
-        try await harness.configStore.setRouterMode(.intelligentModelRouter)
+        try await harness.configStore.setRouterMode(.providerFamilyFailover)
     }
 
     private func configureAnthropicCapabilityClassProviders(harness: GatewayHarness) async throws {
@@ -3453,7 +3455,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             label: "Anth Beta Base",
             apiKey: "sk-ant-api03-beta-key"
         )
-        try await harness.configStore.setRouterMode(.intelligentModelRouter)
+        try await harness.configStore.setRouterMode(.sameModelFailover)
     }
 
     private func sendGatewayRequest(

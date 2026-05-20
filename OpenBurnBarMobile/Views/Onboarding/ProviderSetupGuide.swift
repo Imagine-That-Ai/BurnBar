@@ -411,6 +411,26 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
+        case .antigravity:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.token, .bearer],
+                defaultKind: .token,
+                labelSuggestion: "Antigravity",
+                dashboardURL: URL(string: "https://aistudio.google.com/apikey"),
+                dashboardCTA: "Open Google AI Studio",
+                oneLineHint: "Google AI Studio API key for Antigravity-backed Gemini routing.",
+                instructions: [
+                    GuideStep(1, "Open Google AI Studio", detail: "Sign in with the Google account used by Antigravity."),
+                    GuideStep(2, "Create an API key", detail: "Get API Key -> Create API Key."),
+                    GuideStep(3, "Paste it below", detail: "OpenBurnBar uses it to validate and refresh provider state.")
+                ],
+                credentialPlaceholder: "AIza...",
+                credentialFooterMarkdown: "Antigravity keys are encrypted at rest.",
+                supportsHosted: false,
+                supportsSelfHosted: true
+            )
+
         case .goose:
             return ProviderSetupGuide(
                 provider: provider,
@@ -604,6 +624,8 @@ extension ProviderSetupGuide {
             ids.append(contentsOf: ["anthropic", "claude-code", "claude"])
         case .geminiCLI:
             ids.append(contentsOf: ["google", "gemini", "gemini-cli"])
+        case .antigravity:
+            ids.append(contentsOf: ["antigravity", "antigravitycli", "antigravity-cli"])
         case .openAI:
             ids.append("openai")
         case .zai:

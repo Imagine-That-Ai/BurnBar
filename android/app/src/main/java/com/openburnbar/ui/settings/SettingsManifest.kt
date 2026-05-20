@@ -254,6 +254,7 @@ object SettingsManifest {
             AgentProvider.ZAI -> keywords.addAll(listOf("z.ai", "z-ai", "zai"))
             AgentProvider.MINIMAX -> keywords.addAll(listOf("mini max", "minimax"))
             AgentProvider.COPILOT -> keywords.addAll(listOf("github", "github copilot"))
+            AgentProvider.ANTIGRAVITY -> keywords.addAll(listOf("antigravity", "antigravity cli", "antigravity-cli", "gemini", "deepmind"))
             else -> Unit
         }
 

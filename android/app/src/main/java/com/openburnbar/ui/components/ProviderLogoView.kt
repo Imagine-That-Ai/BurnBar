@@ -59,6 +59,7 @@ object ProviderLogo {
         AgentProvider.OLLAMA       -> R.drawable.ollama_logo
         AgentProvider.WINDSURF     -> R.drawable.windsurf_logo
         AgentProvider.WARP         -> R.drawable.warp_logo
+        AgentProvider.ANTIGRAVITY  -> R.drawable.gemini_cli_logo
     }
 
     /// Asset for an `AssistantRuntimeID`. Maps the 5 runtimes to their

@@ -6,27 +6,26 @@ import OpenBurnBarComputerUseCore
 /// Settings → Computer Use panel. Trust-mode pill picker, scope-rule
 /// list (with add/remove), latest audit-chain entries, panic-stop
 /// button. Plan § D.1.
-///
-/// The panel does NOT show an action queue — the active queue lives on
-/// the phone (Decision 6).
 public struct ComputerUseSessionPanel: View {
     @ObservedObject var model: ComputerUseSessionPanelModel
     @State private var showingScopeEditor = false
+    @State private var isPanicHovered = false
 
     public init(model: ComputerUseSessionPanelModel) { self.model = model }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            header
+        VStack(alignment: .leading, spacing: 20) {
             trustModePicker
+
             scopeRuleList
+
             recentAuditChain
-            Spacer()
+
             panicButton
+                .padding(.top, 4)
+
             footer
         }
-        .padding(24)
-        .frame(width: 720, height: 530)
         .sheet(isPresented: $showingScopeEditor) {
             ComputerUseScopeRuleEditor(
                 builtInDenies: model.scopeRules.filter { $0.effect == .deny && $0.origin == .builtIn },
@@ -40,107 +39,240 @@ public struct ComputerUseSessionPanel: View {
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("COMPUTER USE")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .tracking(1.2)
-            Text("Last 30 days")
-                .font(.system(size: 24, weight: .semibold))
-            Rectangle()
-                .fill(LinearGradient(
-                    colors: [.orange.opacity(0.6), .red.opacity(0.6)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ))
-                .frame(height: 1)
-                .padding(.top, 4)
-        }
-    }
-
     private var trustModePicker: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Trust mode")
-                .font(.system(size: 12, weight: .semibold))
-            HStack(spacing: 0) {
-                ForEach(ComputerUseTrustMode.allCases, id: \.self) { mode in
-                    Button(action: { model.setTrustMode(mode) }) {
-                        Text(mode.rawValue.capitalized)
-                            .font(.system(size: 12, weight: .medium))
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 8)
-                            .background(
-                                mode == model.liveTrustMode
-                                    ? AnyShapeStyle(LinearGradient(colors: [.orange, .red], startPoint: .leading, endPoint: .trailing))
-                                    : AnyShapeStyle(Color.secondary.opacity(0.1))
-                            )
-                            .foregroundStyle(mode == model.liveTrustMode ? .white : .primary)
-                    }
-                    .buttonStyle(.plain)
+        SettingsGlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "key.horizontal")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.amber)
+                    Text("Session Trust Mode")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                 }
+
+                Text("Enforce action approval policies for the current session. Trusted mode allows the agent to drive Playwright or post CGEvents without per-step user signoff.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                Divider()
+                    .opacity(0.3)
+
+                HStack(spacing: 0) {
+                    ForEach(ComputerUseTrustMode.allCases, id: \.self) { mode in
+                        Button(action: {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                model.setTrustMode(mode)
+                            }
+                        }) {
+                            Text(mode.rawValue.capitalized)
+                                .font(DesignSystem.Typography.caption)
+                                .fontWeight(.semibold)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 8)
+                                .background(
+                                    mode == model.liveTrustMode
+                                        ? AnyShapeStyle(DesignSystem.Colors.primaryGradient)
+                                        : AnyShapeStyle(Color.clear)
+                                )
+                                .foregroundStyle(mode == model.liveTrustMode ? .white : DesignSystem.Colors.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(4)
+                .background(
+                    Capsule()
+                        .fill(DesignSystem.Colors.surface.opacity(0.6))
+                        .overlay(
+                            Capsule()
+                                .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+                        )
+                )
+                .clipShape(Capsule())
             }
-            .clipShape(Capsule())
         }
     }
 
     private var scopeRuleList: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Scope rules")
-                .font(.system(size: 12, weight: .semibold))
-            ForEach(model.scopeRules, id: \.id) { rule in
-                HStack(spacing: 12) {
-                    Image(systemName: rule.effect == .allow ? "checkmark.circle" : "xmark.circle")
-                        .foregroundStyle(rule.effect == .allow ? .green : .red)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(rule.label)
-                            .font(.system(size: 12, design: .monospaced))
-                        Text(rule.origin.rawValue)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if rule.origin == .user {
-                        Button("Delete") { model.removeRule(rule.id) }
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 11))
-                    } else {
-                        Text("built-in")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.tertiary)
+        SettingsGlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "shield.righthalf.filled")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.whimsy)
+                    Text("Safety Boundary Rules")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                }
+
+                Text("Trusted mode will only execute without approval if the active browser URL, application bundle ID, or active window title matches one of these rules.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                Divider()
+                    .opacity(0.3)
+
+                VStack(spacing: 8) {
+                    ForEach(model.scopeRules, id: \.id) { rule in
+                        HStack(spacing: 12) {
+                            // Effect Badge
+                            Text(rule.effect == .allow ? "ALLOW" : "DENY")
+                                .font(DesignSystem.Typography.monoTiny)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(
+                                    Capsule()
+                                        .fill(rule.effect == .allow ? DesignSystem.Colors.success : DesignSystem.Colors.error)
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(rule.label)
+                                    .font(DesignSystem.Typography.monoSmall)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                Text(rule.origin.rawValue.uppercased())
+                                    .font(DesignSystem.Typography.monoTiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            }
+
+                            Spacer()
+
+                            if rule.origin == .user {
+                                Button(action: {
+                                    withAnimation(.easeOut(duration: 0.15)) {
+                                        model.removeRule(rule.id)
+                                    }
+                                }) {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(DesignSystem.Colors.error)
+                                        .padding(6)
+                                        .background(
+                                            Circle()
+                                                .fill(DesignSystem.Colors.error.opacity(0.08))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                Text("BUILT-IN SYSTEM")
+                                    .font(DesignSystem.Typography.monoTiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.75)
+                                    )
+                            }
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(DesignSystem.Colors.surface.opacity(0.4))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+                                )
+                        )
                     }
                 }
-                .padding(.vertical, 4)
-                .padding(.horizontal, 8)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 5))
+
+                SettingsGlassButton(title: "Add Scope Rule", icon: "plus.circle") {
+                    model.requestAddRule()
+                    showingScopeEditor = true
+                }
+                .padding(.top, 4)
             }
-            Button("+ Add scope rule") {
-                model.requestAddRule()
-                showingScopeEditor = true
-            }
-                .buttonStyle(.borderless)
-                .font(.system(size: 12, weight: .medium))
         }
     }
 
     private var recentAuditChain: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Recent audit chain")
-                .font(.system(size: 12, weight: .semibold))
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(model.recentAuditEntries.prefix(10), id: \.entryIndex) { entry in
+        SettingsGlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "list.number")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                    Text("Recent Cryptographic Audit Chain")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                }
+
+                Text("Real-time activity logs cryptographically sealed via hash linking.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                Divider()
+                    .opacity(0.3)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    // Terminal Column Headers
                     HStack(spacing: 12) {
-                        Text(String(format: "%02d", entry.entryIndex))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                        Image(systemName: glyph(for: entry.status))
-                            .foregroundStyle(color(for: entry.status))
-                        Text(entry.summary)
-                            .font(.system(size: 12, design: .monospaced))
-                            .lineLimit(1)
+                        Text("IDX")
+                            .frame(width: 26, alignment: .leading)
+                        Text("STATE")
+                            .frame(width: 44, alignment: .leading)
+                        Text("ACTION DETAILS / FORENSIC SUMMARY")
+                            .alignmentGuide(.leading) { d in d[.leading] }
                         Spacer()
-                        Text(entry.status.rawValue)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                        Text("STATUS")
+                            .frame(width: 78, alignment: .trailing)
+                    }
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 6)
+
+                    if model.recentAuditEntries.isEmpty {
+                        Text("No entries recorded for this active session.")
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 8)
+                    } else {
+                        VStack(spacing: 1) {
+                            ForEach(model.recentAuditEntries.prefix(10), id: \.entryIndex) { entry in
+                                HStack(spacing: 12) {
+                                    Text(String(format: "%02d", entry.entryIndex))
+                                        .font(DesignSystem.Typography.monoSmall)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .frame(width: 26, alignment: .leading)
+
+                                    Image(systemName: glyph(for: entry.status))
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(color(for: entry.status))
+                                        .frame(width: 44, alignment: .leading)
+
+                                    Text(entry.summary)
+                                        .font(DesignSystem.Typography.monoSmall)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        .lineLimit(1)
+
+                                    Spacer()
+
+                                    Text(entry.status.rawValue.uppercased())
+                                        .font(DesignSystem.Typography.monoTiny)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(color(for: entry.status))
+                                        .frame(width: 78, alignment: .trailing)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 8)
+                                .background(
+                                    entry.entryIndex % 2 == 0
+                                        ? Color.black.opacity(0.12)
+                                        : Color.black.opacity(0.06)
+                                )
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+                        )
                     }
                 }
             }
@@ -151,27 +283,78 @@ public struct ComputerUseSessionPanel: View {
         Button(role: .destructive) {
             model.panicHalt()
         } label: {
-            Text("⛔  PANIC STOP")
-                .font(.system(size: 16, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.octagon.fill")
+                    .font(.system(size: 18, weight: .bold))
+                Text("PANIC STOP — HALT DAEMON ENGINE")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .tracking(0.5)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: "FF3B30"), Color(hex: "C62828")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    if isPanicHovered {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(0.15))
+                    }
+                }
+            }
+            .clipShape(.rect(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.4), Color.white.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(
+                color: Color(hex: "FF3B30").opacity(isPanicHovered ? 0.45 : 0.25),
+                radius: isPanicHovered ? 12 : 6,
+                x: 0,
+                y: 3
+            )
+            .scaleEffect(isPanicHovered ? 1.015 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isPanicHovered)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.red)
+        .buttonStyle(.plain)
+        .onHover { isPanicHovered = $0 }
     }
 
     private var footer: some View {
         HStack {
-            Text("Audit · " + (model.auditHeadHashHex?.prefix(10).description ?? "—"))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.tertiary)
+            Label(
+                "Audit Root: " + (model.auditHeadHashHex?.prefix(10).description ?? "EMPTY"),
+                systemImage: "lock.shield.fill"
+            )
+            .font(DesignSystem.Typography.monoTiny)
+            .foregroundStyle(DesignSystem.Colors.textMuted)
+
             Spacer()
+
             if let started = model.currentSessionStartedAt {
-                Text("Session " + formatter.string(from: started))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                Label(
+                    "Session active since " + formatter.string(from: started),
+                    systemImage: "clock.fill"
+                )
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
             }
         }
+        .padding(.horizontal, 4)
     }
 
     private let formatter: DateFormatter = {
@@ -183,8 +366,8 @@ public struct ComputerUseSessionPanel: View {
     private func glyph(for status: HermesRealtimeRelayActionLogEntry.Status) -> String {
         switch status {
         case .planned: return "circle"
-        case .awaitingApproval: return "questionmark.circle"
-        case .executing: return "circle.fill"
+        case .awaitingApproval: return "questionmark.circle.fill"
+        case .executing: return "circle.dashed.inset.filled"
         case .completed: return "checkmark.circle.fill"
         case .failed, .rejected, .panicHalted: return "xmark.circle.fill"
         }
@@ -192,10 +375,10 @@ public struct ComputerUseSessionPanel: View {
 
     private func color(for status: HermesRealtimeRelayActionLogEntry.Status) -> Color {
         switch status {
-        case .planned, .awaitingApproval: return .secondary
-        case .executing: return .yellow
-        case .completed: return .green
-        case .failed, .rejected, .panicHalted: return .red
+        case .planned, .awaitingApproval: return DesignSystem.Colors.textMuted
+        case .executing: return DesignSystem.Colors.amber
+        case .completed: return DesignSystem.Colors.success
+        case .failed, .rejected, .panicHalted: return DesignSystem.Colors.error
         }
     }
 }

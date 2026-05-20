@@ -301,4 +301,26 @@ final class MediaFrameProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.type, .mediaMirrorRequest)
         XCTAssertEqual(decoded.media?.mirrorRequest?.requestId, "req_abc")
     }
+
+    func testMirrorStopFrameRoundTrips() throws {
+        let stop = HermesRealtimeRelayMirrorStop(
+            requestId: "req_stop",
+            stoppedAt: Date(timeIntervalSince1970: 1_700_000_010),
+            reason: "viewer_closed"
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaMirrorStop,
+            uid: "u1",
+            connectionId: "c1",
+            requestId: stop.requestId,
+            media: HermesRealtimeRelayMediaPayload(mirrorStop: stop)
+        )
+
+        let encoded = try JSONEncoder().encode(frame)
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayFrame.self, from: encoded)
+
+        XCTAssertEqual(decoded.type, .mediaMirrorStop)
+        XCTAssertEqual(decoded.requestId, "req_stop")
+        XCTAssertEqual(decoded.media?.mirrorStop, stop)
+    }
 }

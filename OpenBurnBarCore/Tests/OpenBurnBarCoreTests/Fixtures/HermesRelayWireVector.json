@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "lzOiCJRhK3SBmy8TWbBNhzgQXF4rDZNqHc4wLiMaNCpLc92uNCIjOMnPlEi5g2M=",
+  "chunkCiphertext" : "PrX9jWeVyljBGS0NIMzQFwMsZfabYrJYvTINs2R6XtWgqFBoGDOB4lhDbRy4XIk=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "Mw00VWdp5x4kY8bQgLBozTrJdrEAZ+KjOFtwxrO9BIZH\/iCJPFmBukGrGxR0CEr9xnZlI\/jjQxlSsisDdxCHKuBPcQhZ9IKLW957GLnD+nVxCTjvi\/u\/tUj6C9tZEc0MOuBSl9AG\/yP6CMIXDnE433TifgUQEefrIUfAXdmJdLjkVDWRAFkFLwEyXJd5KEmcO72HRMNB",
+  "payloadCiphertext" : "5gk0aK+EhEDn8eAi5zUlqYJdOTgMqXxJxJAXqjf1vOCHvFkkbSW2T\/Bd3nQAsnAlUenGHsqXK34axh2h8bTd47QT2COX7ybmowoYdf+WoSILUp+n1XSz74UgY7Ys7X80LEwMRFUNo\/6RlEd7fElnJDyLhzPqN2qZomAsu2TDQ8SuhjqH\/zBUKDoRb1BCd9PpB6HNxCtt",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BClW9YZb+Bj3LOgoZQv+LJzWMSpw5TnZdXEJDRWe1fGZs\/vxOuoHOtPOUKbTIpMc4bRgjXZu5f26VPUYBzVb3qQedXok2fWYqEf0A68N2ObThWWpgARiF4btbGmwLRM6x84EDJkp33sjOFl2OWpAe\/j5ahcxH7vZ9dz3V64="
+  "wrappedKey" : "BM0mmWoLpYl8j3mPYwssDDK3fQQGD0XxNgMnXPFPnvumOzID9XGI3xhb5bT77l\/MnVBv2hMEkmgOY+C2t4BSc+vJwfHyoA0UD1iMLlwI2B3NT6zsYw0QKMMu6GdDmB0ycDoZ2X\/nocLIHoC9kPrI1jWo7PHbhm1XUgCcGDc="
 }

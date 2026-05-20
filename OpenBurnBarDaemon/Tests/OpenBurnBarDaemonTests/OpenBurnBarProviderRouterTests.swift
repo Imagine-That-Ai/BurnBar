@@ -327,8 +327,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let routes = try await harness.router.candidateRoutes(
             modelName: "gpt-5.5",
             requestedFormatFamily: .openaiCompat,
-            requiredCapabilityClassID: "openai:gpt-5.5",
-            routerMode: .intelligentModelRouter
+            requiredCanonicalModelID: "gpt-5.5",
+            routerMode: .sameModelFailover
         )
 
         XCTAssertEqual(routes.map(\.credentialSlotID), ["max-b"])
@@ -954,8 +954,61 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(ranking.rankedRoutes.map { $0.route.providerID }, ["alpha"])
     }
 
-    func testIntelligentModeCanRankCompatibleCrossProviderRoutes() async throws {
-        let harness = try makeHarness(name: "intelligent-mode", catalog: sharedModelCatalog())
+    func testSameModelFailoverRoutesToAnotherProviderAfterPrimaryExhaustion() async throws {
+        let harness = try makeHarness(name: "same-model-exhausted-primary", catalog: exactSameModelFailoverCatalog())
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://alpha.example/v1",
+                preferredModelIDs: ["gpt-5.4"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "alpha",
+            slotID: "primary",
+            label: "Alpha Primary",
+            apiKey: "alpha-key"
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "beta",
+                isEnabled: true,
+                baseURL: "https://beta.example/v1",
+                preferredModelIDs: ["beta-gpt-5.4"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "beta",
+            slotID: "primary",
+            label: "Beta Primary",
+            apiKey: "beta-key"
+        )
+
+        let primary = try await harness.router.route(
+            modelName: "gpt-5.4",
+            routerMode: .sameModelFailover
+        )
+        XCTAssertEqual(primary.providerID, "alpha")
+        XCTAssertEqual(primary.canonicalModelID, "gpt-5.4")
+
+        await harness.router.markRouteFailure(
+            primary,
+            error: BurnBarProviderExecutorError.upstreamError(402, "quota exhausted")
+        )
+
+        let fallback = try await harness.router.route(
+            modelName: "gpt-5.4",
+            routerMode: .sameModelFailover
+        )
+        XCTAssertEqual(fallback.providerID, "beta")
+        XCTAssertEqual(fallback.canonicalModelID, "gpt-5.4")
+    }
+
+    func testSameModelFailoverCanRankExactCrossProviderRoutes() async throws {
+        let harness = try makeHarness(name: "same-model-mode", catalog: sharedModelCatalog())
         try await harness.configStore.setSecret("alpha-key", for: "alpha")
         try await harness.configStore.setSecret("beta-key", for: "beta")
         _ = try await harness.configStore.upsertProvider(
@@ -977,7 +1030,7 @@ final class BurnBarProviderRouterTests: XCTestCase {
 
         let ranking = try await harness.router.scoreAndRankRoutes(
             modelName: "shared-code-model",
-            routerMode: .intelligentModelRouter,
+            routerMode: .sameModelFailover,
             taskCategory: .coding,
             benchmarkSnapshots: [
                 ProviderModelBenchmarkSnapshot(
@@ -1001,16 +1054,19 @@ final class BurnBarProviderRouterTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(ranking.routerMode, .intelligentModelRouter)
-        XCTAssertEqual(ranking.winner?.providerID, "beta", "Cheaper compatible provider should win once Intelligent mode can consider cross-provider candidates")
+        XCTAssertEqual(ranking.routerMode, .sameModelFailover)
+        XCTAssertEqual(ranking.requiredCanonicalModelID, "shared-code-model")
+        XCTAssertEqual(ranking.winner?.providerID, "beta", "Cheaper exact same-model provider should win once exact failover can consider cross-provider candidates")
         let event = harness.router.routingDecisionEvent(ranking: ranking, modelName: "shared-code-model")
-        XCTAssertEqual(event.routerMode, .intelligentModelRouter)
+        XCTAssertEqual(event.routerMode, .sameModelFailover)
         XCTAssertEqual(event.benchmarkStatus?.freshness, .fresh)
+        XCTAssertTrue(event.exactModelInvariantPassed)
+        XCTAssertEqual(event.attemptedCanonicalModelID, "shared-code-model")
         XCTAssertFalse(event.explanation.localizedCaseInsensitiveContains("bearer "))
     }
 
-    func testIntelligentModeHandlesStaleBenchmarkDataSafely() async throws {
-        let harness = try makeHarness(name: "intelligent-stale", catalog: sharedModelCatalog())
+    func testLegacyIntelligentModeDecodesToSameModelFailoverBehavior() async throws {
+        let harness = try makeHarness(name: "legacy-intelligent-stale", catalog: sharedModelCatalog())
         try await harness.configStore.setSecret("alpha-key", for: "alpha")
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
@@ -1033,12 +1089,13 @@ final class BurnBarProviderRouterTests: XCTestCase {
             )
         )
 
+        XCTAssertEqual(ranking.routerMode, .sameModelFailover)
         XCTAssertEqual(ranking.winner?.providerID, "alpha")
         XCTAssertEqual(ranking.benchmarkStatus?.freshness, .stale)
     }
 
-    func testCandidateRoutes_filtersByRequiredCapabilityClassID() async throws {
-        let harness = try makeHarness(name: "capability-class-filter", catalog: capabilityClassCatalog())
+    func testSameModelFailoverRejectsSimilarModelInSameCapabilityClass() async throws {
+        let harness = try makeHarness(name: "same-model-rejects-similar", catalog: similarModelCatalog())
         try await harness.configStore.setSecret("alpha-key", for: "alpha")
         try await harness.configStore.setSecret("beta-key", for: "beta")
         _ = try await harness.configStore.upsertProvider(
@@ -1046,7 +1103,7 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 providerID: "alpha",
                 isEnabled: true,
                 baseURL: "https://alpha.example/v1",
-                preferredModelIDs: ["alpha-shared-pro"]
+                preferredModelIDs: ["gpt-5.4"]
             )
         )
         _ = try await harness.configStore.upsertProvider(
@@ -1054,27 +1111,22 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 providerID: "beta",
                 isEnabled: true,
                 baseURL: "https://beta.example/v1",
-                preferredModelIDs: ["beta-shared-base"]
+                preferredModelIDs: ["gpt-5.4-mini"]
             )
         )
 
-        let allCandidates = try await harness.router.candidateRoutes(
-            modelName: "shared-code-model",
-            routerMode: .intelligentModelRouter
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "gpt-5.4",
+            requiredCanonicalModelID: "gpt-5.4",
+            routerMode: .sameModelFailover
         )
-        XCTAssertEqual(Set(allCandidates.map(\.providerID)), Set(["alpha", "beta"]))
-
-        let filtered = try await harness.router.candidateRoutes(
-            modelName: "shared-code-model",
-            requiredCapabilityClassID: "openai:shared:pro",
-            routerMode: .intelligentModelRouter
-        )
-        XCTAssertEqual(filtered.map(\.providerID), ["alpha"])
-        XCTAssertTrue(filtered.allSatisfy { $0.modelCapabilityClassID == "openai:shared:pro" })
+        XCTAssertEqual(ranking.rankedRoutes.map { $0.route.providerID }, ["alpha"])
+        XCTAssertTrue(ranking.blockedExactModelRoutes.contains { $0.providerID == "beta" })
+        XCTAssertTrue(ranking.rankedRoutes.allSatisfy { $0.route.canonicalModelID == "gpt-5.4" })
     }
 
-    func testScoreAndRankReportsBlockedCapabilityClassRoutes() async throws {
-        let harness = try makeHarness(name: "blocked-class-report", catalog: capabilityClassCatalog())
+    func testSameModelFailoverFailsClosedWhenCanonicalIdentityIsAmbiguous() async throws {
+        let harness = try makeHarness(name: "ambiguous-exact-model-report", catalog: capabilityClassCatalog())
         try await harness.configStore.setSecret("alpha-key", for: "alpha")
         try await harness.configStore.setSecret("beta-key", for: "beta")
         _ = try await harness.configStore.upsertProvider(
@@ -1096,17 +1148,19 @@ final class BurnBarProviderRouterTests: XCTestCase {
 
         let ranking = try await harness.router.scoreAndRankRoutes(
             modelName: "shared-code-model",
-            requiredCapabilityClassID: "openai:shared:pro",
-            routerMode: .intelligentModelRouter
+            routerMode: .sameModelFailover
         )
-        XCTAssertTrue(ranking.rankedRoutes.allSatisfy { $0.route.modelCapabilityClassID == "openai:shared:pro" })
-        XCTAssertFalse(ranking.blockedCapabilityClassRoutes.isEmpty,
-                       "Must report the filtered-out lower-class routes.")
-        XCTAssertTrue(ranking.blockedCapabilityClassRoutes.allSatisfy { $0.modelCapabilityClassID != "openai:shared:pro" })
+        XCTAssertNil(ranking.winner)
+        XCTAssertNil(ranking.requiredCanonicalModelID)
+        XCTAssertEqual(Set(ranking.blockedExactModelRoutes.map(\.providerID)), Set(["alpha", "beta"]))
+
+        let event = harness.router.routingDecisionEvent(ranking: ranking, modelName: "shared-code-model")
+        XCTAssertFalse(event.exactModelInvariantPassed)
+        XCTAssertTrue(event.rejectedAlternatives.contains { $0.reason.contains("Exact model failover requires") })
     }
 
-    func testScoreAndRank_noBlockedRoutesWhenNoClassFilter() async throws {
-        let harness = try makeHarness(name: "no-class-filter-blocked", catalog: capabilityClassCatalog())
+    func testSameModelFailoverReportsNoBlockedRoutesWhenEveryRouteIsExact() async throws {
+        let harness = try makeHarness(name: "no-exact-filter-blocked", catalog: sharedModelCatalog())
         try await harness.configStore.setSecret("alpha-key", for: "alpha")
         try await harness.configStore.setSecret("beta-key", for: "beta")
         _ = try await harness.configStore.upsertProvider(
@@ -1114,7 +1168,7 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 providerID: "alpha",
                 isEnabled: true,
                 baseURL: "https://alpha.example/v1",
-                preferredModelIDs: ["alpha-shared-pro"]
+                preferredModelIDs: ["shared-code-model"]
             )
         )
         _ = try await harness.configStore.upsertProvider(
@@ -1122,16 +1176,17 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 providerID: "beta",
                 isEnabled: true,
                 baseURL: "https://beta.example/v1",
-                preferredModelIDs: ["beta-shared-base"]
+                preferredModelIDs: ["shared-code-model"]
             )
         )
 
         let ranking = try await harness.router.scoreAndRankRoutes(
             modelName: "shared-code-model",
-            routerMode: .intelligentModelRouter
+            routerMode: .sameModelFailover
         )
-        XCTAssertTrue(ranking.blockedCapabilityClassRoutes.isEmpty,
-                       "Must not report blocked routes when no class filter was applied.")
+        XCTAssertEqual(Set(ranking.rankedRoutes.map { $0.route.providerID }), Set(["alpha", "beta"]))
+        XCTAssertTrue(ranking.blockedExactModelRoutes.isEmpty,
+                       "Must not report blocked exact-model routes when every route serves the required canonical model.")
     }
 
     private func makeHarness(
@@ -1193,6 +1248,83 @@ final class BurnBarProviderRouterTests: XCTestCase {
                     visibility: .public,
                     capabilities: [.routing],
                     models: [cheap]
+                )
+            ]
+        )
+    }
+
+    private func exactSameModelFailoverCatalog() -> BurnBarCatalog {
+        let primary = BurnBarCatalogModel(
+            id: "gpt-5.4",
+            displayName: "GPT-5.4",
+            visibility: .public,
+            pricing: BurnBarModelPricing(inputPerMToken: 1, outputPerMToken: 2, cacheReadPerMToken: 0.1)
+        )
+        let alternate = BurnBarCatalogModel(
+            id: "beta-gpt-5.4",
+            displayName: "GPT-5.4 via Beta",
+            visibility: .public,
+            aliases: ["gpt-5.4"],
+            pricing: BurnBarModelPricing(inputPerMToken: 20, outputPerMToken: 40, cacheReadPerMToken: 1),
+            canonicalModelID: "gpt-5.4"
+        )
+        return BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://alpha.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [primary]
+                ),
+                BurnBarCatalogProvider(
+                    id: "beta",
+                    displayName: "Beta",
+                    baseURL: "https://beta.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [alternate]
+                )
+            ]
+        )
+    }
+
+    private func similarModelCatalog() -> BurnBarCatalog {
+        let exact = BurnBarCatalogModel(
+            id: "gpt-5.4",
+            displayName: "GPT-5.4",
+            visibility: .public,
+            pricing: BurnBarModelPricing(inputPerMToken: 5, outputPerMToken: 10, cacheReadPerMToken: 0.5),
+            capabilityClassID: "openai:standard"
+        )
+        let mini = BurnBarCatalogModel(
+            id: "gpt-5.4-mini",
+            displayName: "GPT-5.4 Mini",
+            visibility: .public,
+            aliases: ["gpt-5.4"],
+            pricing: BurnBarModelPricing(inputPerMToken: 1, outputPerMToken: 2, cacheReadPerMToken: 0.1),
+            capabilityClassID: "openai:standard"
+        )
+        return BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://alpha.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [exact]
+                ),
+                BurnBarCatalogProvider(
+                    id: "beta",
+                    displayName: "Beta",
+                    baseURL: "https://beta.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [mini]
                 )
             ]
         )

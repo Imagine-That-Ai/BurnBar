@@ -446,7 +446,7 @@ struct ConnectionsSettingsView: View {
                         }
                     }
                 )) {
-                    Text("Smart").tag(ProviderRouterMode.intelligentModelRouter)
+                    Text("Exact model failover").tag(ProviderRouterMode.sameModelFailover)
                     Text("Stay inside one provider").tag(ProviderRouterMode.providerFamilyFailover)
                 }
                 .pickerStyle(.segmented)
@@ -454,8 +454,8 @@ struct ConnectionsSettingsView: View {
                 .frame(maxWidth: 320)
                 .disabled(daemonManager.isBusy)
             }
-            Text(daemonManager.routerMode == .intelligentModelRouter
-                ? "Smart picks the best available account across providers using task fit, account health, cost, and latency."
+            Text(daemonManager.routerMode.usesExactSameModelInvariant
+                ? "BurnBar may switch provider or account after exhaustion, but only when the next route proves it serves the exact same model."
                 : "When the active account runs out, fail over only to other accounts for the same provider.")
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)

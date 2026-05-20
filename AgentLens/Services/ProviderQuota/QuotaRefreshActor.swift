@@ -87,6 +87,7 @@ actor QuotaRefreshActor {
             .warp: WarpQuotaAdapter(),
             .ollama: OllamaQuotaAdapter(),
             .kimi: KimiQuotaAdapter(),
+            .antigravity: AntigravityQuotaAdapter(),
         ]
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)

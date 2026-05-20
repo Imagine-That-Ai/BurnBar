@@ -103,12 +103,14 @@ public struct BurnBarRouteRankingResult: Hashable, Sendable {
     public let routerMode: ProviderRouterMode
     public let taskCategory: ProviderRoutingTaskCategory
     public let benchmarkStatus: ProviderModelBenchmarkStatus?
+    public let requiredCanonicalModelID: String?
 
     /// Routes that were excluded because they belong to a different capability class
     /// than the requested one. Non-empty only when `requiredCapabilityClassID` filtering
     /// was applied. Used by callers (e.g., the gateway) to report "downgrade disabled"
     /// when the same-class pool is exhausted.
     public let blockedCapabilityClassRoutes: [BurnBarProviderRoute]
+    public let blockedExactModelRoutes: [BurnBarProviderRoute]
 
     /// The winning route (same as rankedRoutes.first?.route).
     public var winner: BurnBarProviderRoute? {
@@ -120,13 +122,17 @@ public struct BurnBarRouteRankingResult: Hashable, Sendable {
         routerMode: ProviderRouterMode = .providerFamilyFailover,
         taskCategory: ProviderRoutingTaskCategory = .unknown,
         benchmarkStatus: ProviderModelBenchmarkStatus? = nil,
-        blockedCapabilityClassRoutes: [BurnBarProviderRoute] = []
+        requiredCanonicalModelID: String? = nil,
+        blockedCapabilityClassRoutes: [BurnBarProviderRoute] = [],
+        blockedExactModelRoutes: [BurnBarProviderRoute] = []
     ) {
         self.rankedRoutes = rankedRoutes
         self.routerMode = routerMode
         self.taskCategory = taskCategory
         self.benchmarkStatus = benchmarkStatus
+        self.requiredCanonicalModelID = BurnBarCatalogModel.normalizedCanonicalModelID(requiredCanonicalModelID)
         self.blockedCapabilityClassRoutes = blockedCapabilityClassRoutes
+        self.blockedExactModelRoutes = blockedExactModelRoutes
     }
 }
 
@@ -176,6 +182,7 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
     public let baseURL: String
     public let requestedModel: String
     public let resolvedModelID: String
+    public let canonicalModelID: String?
     public let apiKey: String
     public let pricing: BurnBarModelPricing
     /// Same-tier failover class. Retry attempts must stay inside this class
@@ -196,6 +203,7 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
         baseURL: String,
         requestedModel: String,
         resolvedModelID: String,
+        canonicalModelID: String? = nil,
         apiKey: String,
         pricing: BurnBarModelPricing,
         modelCapabilityClassID: String? = nil,
@@ -208,6 +216,7 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
         self.baseURL = baseURL
         self.requestedModel = requestedModel
         self.resolvedModelID = resolvedModelID
+        self.canonicalModelID = BurnBarCatalogModel.normalizedCanonicalModelID(canonicalModelID)
         self.apiKey = apiKey
         self.pricing = pricing
         self.modelCapabilityClassID = Self.normalizedCapabilityClassID(
@@ -271,6 +280,7 @@ public struct BurnBarProviderRouter: Sendable {
         excludedRouteKeys: Set<String> = [],
         requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
         requiredCapabilityClassID: String? = nil,
+        requiredCanonicalModelID: String? = nil,
         routerMode: ProviderRouterMode? = nil,
         taskCategory: ProviderRoutingTaskCategory = .unknown,
         benchmarkSnapshots: [ProviderModelBenchmarkSnapshot] = [],
@@ -285,6 +295,7 @@ public struct BurnBarProviderRouter: Sendable {
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
             requiredCapabilityClassID: requiredCapabilityClassID,
+            requiredCanonicalModelID: requiredCanonicalModelID,
             routerMode: routerMode,
             taskCategory: taskCategory,
             benchmarkSnapshots: benchmarkSnapshots,
@@ -313,6 +324,7 @@ public struct BurnBarProviderRouter: Sendable {
         excludedRouteKeys: Set<String> = [],
         requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
         requiredCapabilityClassID: String? = nil,
+        requiredCanonicalModelID: String? = nil,
         routerMode: ProviderRouterMode? = nil
     ) async throws -> [BurnBarProviderRoute] {
         let configurations = try await configStore.resolvedConfigurations()
@@ -326,13 +338,22 @@ public struct BurnBarProviderRouter: Sendable {
             )
             : nil
         let effectivePreferredProviderID = preferredProviderID ?? derivedPreferredProviderID
+        let resolvedRequiredCanonicalModelID = resolveRequiredCanonicalModelID(
+            explicitCanonicalModelID: requiredCanonicalModelID,
+            modelName: modelName,
+            preferredProviderID: effectivePreferredProviderID,
+            requestedFormatFamily: requestedFormatFamily,
+            configurations: configurations
+        )
         return try candidateRoutes(
             modelName: modelName,
             preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
             requiredCapabilityClassID: requiredCapabilityClassID,
+            requiredCanonicalModelID: resolvedRequiredCanonicalModelID,
             configurations: configurations,
+            routerMode: effectiveRouterMode,
             strictPreferredProvider: preferredProviderID != nil
         )
     }
@@ -343,7 +364,10 @@ public struct BurnBarProviderRouter: Sendable {
         excludedRouteKeys: Set<String>,
         requestedFormatFamily: BurnBarProviderFormatFamily?,
         requiredCapabilityClassID: String?,
+        requiredCanonicalModelID: String?,
         configurations: [BurnBarResolvedProviderConfiguration],
+        routerMode: ProviderRouterMode = .providerFamilyFailover,
+        enforceExactModelInvariant: Bool = true,
         strictPreferredProvider: Bool = true
     ) throws -> [BurnBarProviderRoute] {
         let trimmedModelName = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -398,13 +422,40 @@ public struct BurnBarProviderRouter: Sendable {
         }
 
         let routes: [BurnBarProviderRoute]
+        let capabilityScopedRoutes: [BurnBarProviderRoute]
         if let requiredCapabilityClassID {
             let normalizedClassID = requiredCapabilityClassID
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased()
-            routes = formatScopedRoutes.filter { $0.modelCapabilityClassID == normalizedClassID }
+            capabilityScopedRoutes = formatScopedRoutes.filter { $0.modelCapabilityClassID == normalizedClassID }
         } else {
-            routes = formatScopedRoutes
+            capabilityScopedRoutes = formatScopedRoutes
+        }
+
+        let shouldEnforceExactModel = enforceExactModelInvariant
+            && (requiredCanonicalModelID != nil || routerMode.usesExactSameModelInvariant)
+        if shouldEnforceExactModel {
+            guard let requiredCanonicalModelID else {
+                routes = []
+                if let route = routes.first {
+                    logger.notice(
+                        "route_selected",
+                        metadata: [
+                            "provider_id": route.providerID,
+                            "slot_id": route.credentialSlotID ?? "legacy",
+                            "resolved_model_id": route.resolvedModelID,
+                            "requested_model": route.requestedModel
+                        ]
+                    )
+                }
+                if !routes.isEmpty { return routes }
+                return []
+            }
+            routes = capabilityScopedRoutes.filter { route in
+                route.canonicalModelID == requiredCanonicalModelID
+            }
+        } else {
+            routes = capabilityScopedRoutes
         }
 
         if let route = routes.first {
@@ -670,6 +721,7 @@ public struct BurnBarProviderRouter: Sendable {
                             baseURL: configuration.settings.baseURL,
                             requestedModel: modelName,
                             resolvedModelID: resolvedModel.id,
+                            canonicalModelID: resolvedModel.canonicalModelID,
                             apiKey: key,
                             pricing: resolvedModel.pricing,
                             modelCapabilityClassID: resolvedModel.capabilityClassID,
@@ -688,6 +740,7 @@ public struct BurnBarProviderRouter: Sendable {
                         baseURL: configuration.settings.baseURL,
                         requestedModel: modelName,
                         resolvedModelID: resolvedModel.id,
+                        canonicalModelID: resolvedModel.canonicalModelID,
                         apiKey: apiKey,
                         pricing: resolvedModel.pricing,
                         modelCapabilityClassID: resolvedModel.capabilityClassID,
@@ -753,6 +806,7 @@ public struct BurnBarProviderRouter: Sendable {
                 aliases: [modelName],
                 matchers: [],
                 pricing: modelTemplate.pricing,
+                canonicalModelID: directCloudModelID,
                 capabilityClassID: capabilityClassID,
                 capabilityClassRank: cloudFamily?.capabilityClassRank ?? modelTemplate.capabilityClassRank
             )
@@ -785,6 +839,7 @@ public struct BurnBarProviderRouter: Sendable {
                 aliases: [modelName],
                 matchers: [],
                 pricing: matchedModel.pricing,
+                canonicalModelID: directCloudModelID,
                 capabilityClassID: matchedModel.capabilityClassID ?? matchedModel.id,
                 capabilityClassRank: matchedModel.capabilityClassRank
             )
@@ -816,6 +871,7 @@ public struct BurnBarProviderRouter: Sendable {
             aliases: [trimmed],
             matchers: [],
             pricing: capabilityTemplate.pricing,
+            canonicalModelID: trimmed,
             capabilityClassID: trimmed,
             capabilityClassRank: capabilityTemplate.capabilityClassRank
         )
@@ -835,8 +891,22 @@ public struct BurnBarProviderRouter: Sendable {
         let aliases = model.aliases
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+        let canonicalModelID = model.exactCanonicalModelID(forRequestedModelID: requestedModel)
         guard aliases.isEmpty == false else {
-            return model
+            guard model.canonicalModelID != canonicalModelID else {
+                return model
+            }
+            return BurnBarCatalogModel(
+                id: model.id,
+                displayName: model.displayName,
+                visibility: model.visibility,
+                aliases: model.aliases,
+                matchers: model.matchers,
+                pricing: model.pricing,
+                canonicalModelID: canonicalModelID,
+                capabilityClassID: model.capabilityClassID,
+                capabilityClassRank: model.capabilityClassRank
+            )
         }
 
         let normalizedRequestedModel = requestedModel
@@ -851,12 +921,38 @@ public struct BurnBarProviderRouter: Sendable {
         } else if let matchedAlias {
             wireModelID = matchedAlias
         } else {
-            return model
+            guard model.canonicalModelID != canonicalModelID else {
+                return model
+            }
+            return BurnBarCatalogModel(
+                id: model.id,
+                displayName: model.displayName,
+                visibility: model.visibility,
+                aliases: aliases,
+                matchers: model.matchers,
+                pricing: model.pricing,
+                canonicalModelID: canonicalModelID,
+                capabilityClassID: model.capabilityClassID,
+                capabilityClassRank: model.capabilityClassRank
+            )
         }
 
         guard wireModelID.isEmpty == false,
               wireModelID.lowercased() != model.id.lowercased() else {
-            return model
+            guard model.canonicalModelID != canonicalModelID else {
+                return model
+            }
+            return BurnBarCatalogModel(
+                id: model.id,
+                displayName: model.displayName,
+                visibility: model.visibility,
+                aliases: aliases,
+                matchers: model.matchers,
+                pricing: model.pricing,
+                canonicalModelID: canonicalModelID,
+                capabilityClassID: model.capabilityClassID,
+                capabilityClassRank: model.capabilityClassRank
+            )
         }
 
         let capabilityClassID = model.capabilityClassID ?? (isVirtualFamily ? nil : wireModelID)
@@ -867,6 +963,7 @@ public struct BurnBarProviderRouter: Sendable {
             aliases: aliases,
             matchers: model.matchers,
             pricing: model.pricing,
+            canonicalModelID: canonicalModelID,
             capabilityClassID: capabilityClassID,
             capabilityClassRank: model.capabilityClassRank
         )
@@ -888,9 +985,33 @@ public struct BurnBarProviderRouter: Sendable {
         return nil
     }
 
+    private func resolveRequiredCanonicalModelID(
+        explicitCanonicalModelID: String?,
+        modelName: String,
+        preferredProviderID: String?,
+        requestedFormatFamily: BurnBarProviderFormatFamily?,
+        configurations: [BurnBarResolvedProviderConfiguration]
+    ) -> String? {
+        if let normalized = BurnBarCatalogModel.normalizedCanonicalModelID(explicitCanonicalModelID) {
+            return normalized
+        }
+
+        let matchingConfigurations = configurations.filter { configuration in
+            configuration.settings.isEnabled
+                && (preferredProviderID == nil || configuration.provider.id == preferredProviderID)
+                && (requestedFormatFamily == nil || configuration.provider.formatFamily == requestedFormatFamily)
+        }
+
+        let canonicalIDs = matchingConfigurations.compactMap { configuration -> String? in
+            resolveModel(named: modelName, in: configuration)?.canonicalModelID
+        }
+        let uniqueCanonicalIDs = Set(canonicalIDs)
+        return uniqueCanonicalIDs.count == 1 ? uniqueCanonicalIDs.first : nil
+    }
+
     private func resolvedRouterMode(_ requested: ProviderRouterMode?) async throws -> ProviderRouterMode {
-        if let requested { return requested }
-        return try await configStore.snapshot().routerMode
+        if let requested { return requested.effectiveMode }
+        return try await configStore.snapshot().routerMode.effectiveMode
     }
 
     private func preferredProviderForProviderFamilyMode(
@@ -964,6 +1085,17 @@ public struct BurnBarProviderRouter: Sendable {
     ) -> ProviderRoutingDecisionEvent {
         let selected = ranking.rankedRoutes.first.map { candidate(from: $0.route) }
         let nextFallback = ranking.rankedRoutes.dropFirst().first.map { candidate(from: $0.route) }
+        let failedExactAlternatives = ranking.blockedExactModelRoutes.map { route in
+            ProviderRoutingRejectedAlternative(
+                providerID: ProviderID(rawValue: route.providerID),
+                accountID: route.credentialSlotID ?? "legacy",
+                accountLabel: route.credentialSlotLabel ?? route.providerDisplayName,
+                reason: exactModelBlockedReason(
+                    route: route,
+                    requiredCanonicalModelID: ranking.requiredCanonicalModelID
+                )
+            )
+        }
         let rejected = ranking.rankedRoutes.dropFirst().map { rankedRoute in
             ProviderRoutingRejectedAlternative(
                 providerID: ProviderID(rawValue: rankedRoute.route.providerID),
@@ -971,7 +1103,7 @@ public struct BurnBarProviderRouter: Sendable {
                 accountLabel: rankedRoute.route.credentialSlotLabel ?? rankedRoute.route.providerDisplayName,
                 reason: "Lower score than selected route"
             )
-        }
+        } + failedExactAlternatives
         let reason: String
         switch (selected, nextFallback) {
         case (.some(let selected), .some(let next)):
@@ -987,6 +1119,13 @@ public struct BurnBarProviderRouter: Sendable {
             routerMode: ranking.routerMode,
             selected: selected,
             nextFallback: nextFallback,
+            attemptedModelID: modelName,
+            attemptedCanonicalModelID: ranking.requiredCanonicalModelID,
+            exactModelInvariantPassed: exactModelInvariantPassed(
+                selected: selected,
+                requiredCanonicalModelID: ranking.requiredCanonicalModelID,
+                routerMode: ranking.routerMode
+            ),
             reason: reason,
             explanation: routingExplanation(ranking: ranking, modelName: modelName),
             rejectedAlternatives: rejected,
@@ -1003,6 +1142,7 @@ public struct BurnBarProviderRouter: Sendable {
             credentialHandle: "daemon-provider-slot",
             storageScope: .deviceKeychain,
             modelCompatibility: .compatible,
+            canonicalModelID: route.canonicalModelID,
             quotaState: .healthy,
             localCredentialAvailable: true
         )
@@ -1018,9 +1158,12 @@ public struct BurnBarProviderRouter: Sendable {
         switch ranking.routerMode {
         case .providerFamilyFailover:
             return "Provider-Family Failover selected \(winner.route.providerDisplayName) \(winner.route.credentialSlotLabel ?? "legacy") for \(modelName); cross-provider alternatives were not eligible."
+        case .sameModelFailover:
+            let canonical = ranking.requiredCanonicalModelID ?? "unknown"
+            return "Exact Model Failover selected \(winner.route.providerDisplayName) \(winner.route.credentialSlotLabel ?? "legacy") for \(modelName); every eligible fallback must serve canonical model \(canonical)."
         case .intelligentModelRouter:
             var parts = [
-                "Intelligent Model Router selected \(winner.route.providerDisplayName) \(winner.route.credentialSlotLabel ?? "legacy") for \(modelName)",
+                "Exact Model Failover selected \(winner.route.providerDisplayName) \(winner.route.credentialSlotLabel ?? "legacy") for \(modelName)",
                 "signals: capability \(String(format: "%.2f", winner.breakdown.score.capability)), cost \(String(format: "%.2f", winner.breakdown.score.cost)), latency \(String(format: "%.2f", winner.breakdown.score.latency)), trust \(String(format: "%.2f", winner.breakdown.score.trust))"
             ]
             if let status = ranking.benchmarkStatus {
@@ -1028,6 +1171,31 @@ public struct BurnBarProviderRouter: Sendable {
             }
             return parts.joined(separator: "; ") + "."
         }
+    }
+
+    private func exactModelBlockedReason(
+        route: BurnBarProviderRoute,
+        requiredCanonicalModelID: String?
+    ) -> String {
+        guard let requiredCanonicalModelID else {
+            return "Exact model failover requires a canonical model ID."
+        }
+        let served = route.canonicalModelID ?? "unknown"
+        return "Canonical model mismatch: \(served) is not \(requiredCanonicalModelID)."
+    }
+
+    private func exactModelInvariantPassed(
+        selected: ProviderRoutingCandidate?,
+        requiredCanonicalModelID: String?,
+        routerMode: ProviderRouterMode
+    ) -> Bool {
+        guard routerMode.usesExactSameModelInvariant || requiredCanonicalModelID != nil else {
+            return true
+        }
+        guard let selected, let requiredCanonicalModelID else {
+            return false
+        }
+        return selected.canonicalModelID == requiredCanonicalModelID
     }
 }
 
@@ -1047,6 +1215,7 @@ extension BurnBarProviderRouter {
         excludedRouteKeys: Set<String> = [],
         requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
         requiredCapabilityClassID: String? = nil,
+        requiredCanonicalModelID: String? = nil,
         routerMode: ProviderRouterMode? = nil,
         taskCategory: ProviderRoutingTaskCategory = .unknown,
         benchmarkSnapshots: [ProviderModelBenchmarkSnapshot] = [],
@@ -1063,13 +1232,22 @@ extension BurnBarProviderRouter {
             )
             : nil
         let effectivePreferredProviderID = preferredProviderID ?? derivedPreferredProviderID
+        let resolvedRequiredCanonicalModelID = resolveRequiredCanonicalModelID(
+            explicitCanonicalModelID: requiredCanonicalModelID,
+            modelName: modelName,
+            preferredProviderID: effectivePreferredProviderID,
+            requestedFormatFamily: requestedFormatFamily,
+            configurations: configurations
+        )
         let candidates = try candidateRoutes(
             modelName: modelName,
             preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
             requiredCapabilityClassID: requiredCapabilityClassID,
+            requiredCanonicalModelID: resolvedRequiredCanonicalModelID,
             configurations: configurations,
+            routerMode: effectiveRouterMode,
             strictPreferredProvider: preferredProviderID != nil
         )
 
@@ -1084,7 +1262,9 @@ extension BurnBarProviderRouter {
                 excludedRouteKeys: excludedRouteKeys,
                 requestedFormatFamily: requestedFormatFamily,
                 requiredCapabilityClassID: nil,
+                requiredCanonicalModelID: resolvedRequiredCanonicalModelID,
                 configurations: configurations,
+                routerMode: effectiveRouterMode,
                 strictPreferredProvider: preferredProviderID != nil
             )
             let sameClassIDs = Set(candidates.map(\.modelCapabilityClassID))
@@ -1093,13 +1273,37 @@ extension BurnBarProviderRouter {
             blockedByCapabilityClass = []
         }
 
+        let blockedByExactModel: [BurnBarProviderRoute]
+        if resolvedRequiredCanonicalModelID != nil || effectiveRouterMode.usesExactSameModelInvariant {
+            let unfilteredExactCandidates = try candidateRoutes(
+                modelName: modelName,
+                preferredProviderID: effectivePreferredProviderID,
+                excludedRouteKeys: excludedRouteKeys,
+                requestedFormatFamily: requestedFormatFamily,
+                requiredCapabilityClassID: requiredCapabilityClassID,
+                requiredCanonicalModelID: nil,
+                configurations: configurations,
+                routerMode: effectiveRouterMode,
+                enforceExactModelInvariant: false,
+                strictPreferredProvider: preferredProviderID != nil
+            )
+            blockedByExactModel = unfilteredExactCandidates.filter { route in
+                guard let resolvedRequiredCanonicalModelID else { return true }
+                return route.canonicalModelID != resolvedRequiredCanonicalModelID
+            }
+        } else {
+            blockedByExactModel = []
+        }
+
         guard !candidates.isEmpty else {
             return BurnBarRouteRankingResult(
                 rankedRoutes: [],
                 routerMode: effectiveRouterMode,
                 taskCategory: taskCategory,
                 benchmarkStatus: benchmarkStatus,
-                blockedCapabilityClassRoutes: blockedByCapabilityClass
+                requiredCanonicalModelID: resolvedRequiredCanonicalModelID,
+                blockedCapabilityClassRoutes: blockedByCapabilityClass,
+                blockedExactModelRoutes: blockedByExactModel
             )
         }
 
@@ -1162,7 +1366,9 @@ extension BurnBarProviderRouter {
             routerMode: effectiveRouterMode,
             taskCategory: taskCategory,
             benchmarkStatus: benchmarkStatus,
-            blockedCapabilityClassRoutes: blockedByCapabilityClass
+            requiredCanonicalModelID: resolvedRequiredCanonicalModelID,
+            blockedCapabilityClassRoutes: blockedByCapabilityClass,
+            blockedExactModelRoutes: blockedByExactModel
         )
     }
 
@@ -1180,6 +1386,7 @@ extension BurnBarProviderRouter {
             excludedRouteKeys: [],
             requestedFormatFamily: requestedFormatFamily,
             requiredCapabilityClassID: requiredCapabilityClassID,
+            requiredCanonicalModelID: nil,
             configurations: configurations
         )
 

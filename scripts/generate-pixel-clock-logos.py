@@ -177,7 +177,30 @@ LOGOS = [
             "D": "#30343A",
         },
     ),
-    LogoSource("warp", "WarpLogo", "WarpLogo", light_backdrop=True),
+    LogoSource(
+        # Warp — two overlapping rounded squares with a diagonal gap.
+        # Three tones give depth: bright edges, mid-fill, dark overlap
+        # zone. The diagonal gap (2px) keeps the silhouette distinct
+        # when the rainbow palette remaps all shades.
+        "warp",
+        "WarpLogo",
+        "WarpLogo",
+        pixel_rows=(
+            "WWWW....",
+            "WMMW....",
+            "WMMW....",
+            "WWWW....",
+            "....WWWW",
+            "....WDDW",
+            "....WDDW",
+            "....WWWW",
+        ),
+        pixel_colors={
+            "W": "#DDE4EA",
+            "M": "#A8B0B8",
+            "D": "#6B7380",
+        },
+    ),
     LogoSource(
         # Ollama — side-profile llama head. Avoid a symmetric face:
         # two eyes plus a mouth reads like a skull at 8x8. One blue eye
@@ -202,6 +225,80 @@ LOGOS = [
         },
     ),
     LogoSource("kimi", "KimiLogo", "KimiLogo"),
+    LogoSource(
+        # DeepSeek — side-profile whale/dolphin in the brand's indigo
+        # blue (#6366F1). The whale faces left with a round body, small
+        # white eye, fluke at the right, and a subtle belly curve.
+        "deepSeek",
+        "DeepSeekLogo",
+        "DeepSeekLogo",
+        pixel_rows=(
+            "..BBBB..",
+            ".BBBBBB.",
+            "BWBBBBBB",
+            "BBBBBBBB",
+            ".BBBBBBB",
+            "..BBBB.B",
+            "...BB.BB",
+            "........",
+        ),
+        pixel_colors={
+            "B": "#6366F1",
+            "W": "#FFFFFF",
+        },
+    ),
+    LogoSource(
+        # OpenCode — hollow white rectangle matching the SVG brand mark:
+        # a thick-bordered monitor/terminal frame on a dark background.
+        # A gray inner block represents the filled content area from the
+        # original SVG (rect at y=224..352).
+        "openCode",
+        "OpenCodeLogo",
+        "OpenCodeLogo",
+        pixel_rows=(
+            "WWWWWWWW",
+            "W......W",
+            "W......W",
+            "W.GGGG.W",
+            "W.GGGG.W",
+            "W......W",
+            "WWWWWWWW",
+            "........",
+        ),
+        pixel_colors={
+            "W": "#FFFFFF",
+            "G": "#5A5858",
+        },
+    ),
+    LogoSource(
+        # Antigravity CLI — rainbow gradient mountain/A-shape matching
+        # the CLI startup banner pixel art. The gradient flows through
+        # the full spectrum: blue (bottom-left) → cyan → green (peak)
+        # → yellow → orange → pink/magenta (bottom-right). The shape
+        # is an inverted V with 2-pixel-wide legs spreading from a
+        # center peak, forming the distinctive Antigravity "A" mark.
+        "antigravity",
+        "GeminiCLILogo",
+        "GeminiCLILogo",
+        pixel_rows=(
+            "...GY...",
+            "..CGYO..",
+            ".CC..OO.",
+            ".BC..OM.",
+            "BB....MM",
+            "B......M",
+            "........",
+            "........",
+        ),
+        pixel_colors={
+            "B": "#4285F4",
+            "C": "#00BCD4",
+            "G": "#34A853",
+            "Y": "#FFEB3B",
+            "O": "#FF9800",
+            "M": "#E91E63",
+        },
+    ),
 ]
 
 

@@ -312,13 +312,18 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private func startHeartbeatIfNeeded(uid: String, connectionID: String) {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
+            guard !Task.isCancelled, let self else { return }
+            // Establish presence immediately to fetch Mac capabilities & blurred wallpaper
+            await self.sendHeartbeat(uid: uid, connectionID: connectionID)
+
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 60_000_000_000) // 60s
-                guard !Task.isCancelled, let self else { return }
+                guard !Task.isCancelled else { return }
                 await self.sendHeartbeat(uid: uid, connectionID: connectionID)
             }
         }
     }
+
 
     private func sendHeartbeat(uid: String, connectionID: String) async {
         let beat = HermesRealtimeRelayPresenceHeartbeat(

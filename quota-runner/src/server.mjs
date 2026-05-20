@@ -3,6 +3,7 @@ import { fetchClaudeQuota } from "./providers/claude.mjs";
 import { fetchCodexQuota } from "./providers/codex.mjs";
 import { fetchOpenCodeQuota } from "./providers/opencode.mjs";
 import { fetchKimiQuota } from "./providers/kimi.mjs";
+import { fetchAntigravityQuota } from "./providers/antigravity.mjs";
 
 const MAX_BODY_BYTES = 128 * 1024;
 
@@ -88,6 +89,13 @@ async function route(req, res) {
   if (provider === "kimi") {
     writeJSON(res, 200, {
       snapshot: await fetchKimiQuota({ credential, accountID }),
+    });
+    return;
+  }
+
+  if (provider === "antigravity") {
+    writeJSON(res, 200, {
+      snapshot: await fetchAntigravityQuota({ credential, accountID }),
     });
     return;
   }

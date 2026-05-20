@@ -25,6 +25,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case hermes = "Hermes"
     case piAgent = "Pi Agent"
     case geminiCLI = "Gemini CLI"
+    case antigravity = "Antigravity"
     case goose = "Goose"
     case openClaw = "OpenClaw"
     case ollama = "Ollama"
@@ -50,6 +51,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .warp,
         .ollama,
         .kimi,
+        .antigravity,
     ]
 
     public var isQuotaSignalProvider: Bool {
@@ -72,6 +74,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .zai,
         .openAI,
         .kimi,
+        .antigravity,
     ]
 
     /// A stable, lowercased, space-stripped token for persisting provider identifiers.
@@ -153,6 +156,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .openCode
         case "google", "gemini", "gemini-cli":
             return .geminiCLI
+        case "antigravity", "antigravitycli", "antigravity-cli":
+            return .antigravity
         case "moonshot", "kimi":
             return .kimi
         case "minimax":
@@ -221,6 +226,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .hermes:     return "HermesLogo"
         case .piAgent:    return "PiAgentLogo"
         case .geminiCLI:  return "GeminiCLILogo"
+        case .antigravity: return "GeminiCLILogo"
         case .goose:      return "GooseLogo"
         case .openClaw:   return "OpenClawLogo"
         case .ollama:     return "OllamaLogo"
@@ -252,6 +258,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .hermes: return "wind"
         case .piAgent: return "circle.hexagongrid.fill"
         case .geminiCLI: return "diamond.fill"
+        case .antigravity: return "sparkles"
         case .goose: return "bird.fill"
         case .openClaw: return "point.3.connected.trianglepath.dotted"
         case .ollama: return "server.rack"
