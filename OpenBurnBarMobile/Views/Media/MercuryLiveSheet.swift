@@ -592,12 +592,27 @@ struct MercuryLiveSheet: View {
                     self.mirrorTimeoutTask = nil
                     self.awaitingRequestID = nil
                 }
+                let isActiveDisplaySelectionAck = ack.requestId == self.activeMirrorRequestID
+                    && (ack.availableDisplays != nil || ack.selectedDisplayId != nil)
+
                 if ack.decision == .accepted {
+                    if isActiveDisplaySelectionAck {
+                        self.selectedMirrorDisplayId = ack.selectedDisplayId ?? self.selectedMirrorDisplayId
+                        self.lastError = nil
+                        self.refreshCooldownTicker(for: ack)
+                        return
+                    }
                     self.activeMirrorRequestID = ack.requestId
                     self.selectedMirrorDisplayId = ack.selectedDisplayId ?? ack.availableDisplays?.first?.id ?? self.selectedMirrorDisplayId
                     self.isShowingMirrorViewer = true
                     Task { await self.startPhoneControlIfPossible() }
                 } else if ack.requestId == self.activeMirrorRequestID {
+                    if isActiveDisplaySelectionAck {
+                        self.selectedMirrorDisplayId = ack.selectedDisplayId ?? self.selectedMirrorDisplayId
+                        self.lastError = ack.detail ?? "Could not switch displays."
+                        self.refreshCooldownTicker(for: ack)
+                        return
+                    }
                     self.activeMirrorRequestID = nil
                     self.selectedMirrorDisplayId = nil
                     self.isShowingMirrorViewer = false
@@ -707,9 +722,14 @@ struct MercuryLiveSheet: View {
     }
 
     private func selectMirrorDisplay(_ displayId: String) {
+        let previousDisplayId = selectedMirrorDisplayId
         selectedMirrorDisplayId = displayId
         guard let uid = uidProvider(), !uid.isEmpty,
-              let requestID = activeMirrorRequestID else { return }
+              let requestID = activeMirrorRequestID else {
+            selectedMirrorDisplayId = previousDisplayId
+            return
+        }
+        lastError = nil
         let selection = HermesRealtimeRelayMirrorDisplaySelection(
             requestId: requestID,
             displayId: displayId
@@ -726,6 +746,7 @@ struct MercuryLiveSheet: View {
                 try await controlStreamCoordinator.send(frame: frame, timeout: 2)
             } catch {
                 await MainActor.run {
+                    selectedMirrorDisplayId = previousDisplayId
                     lastError = "Could not switch display: \(error.localizedDescription)"
                 }
             }

@@ -59,6 +59,7 @@ struct ScreenShareViewerView: View {
     @State private var cursorSize: CGFloat = 26
     @State private var cursorStyle: MirrorCursorStyle = .mercury
     @State private var tapFeedbackPoint: CGPoint?
+    @State private var lastControlClickPoint: CGPoint?
     @GestureState private var magnification: CGFloat = 1
     @GestureState private var dragTranslation: CGSize = .zero
     @FocusState private var typingFocused: Bool
@@ -129,14 +130,8 @@ struct ScreenShareViewerView: View {
                 if interactionMode == .control, controlStatus.isLive {
                     Color.clear
                         .contentShape(Rectangle())
-                        .gesture(controlTapGesture(in: proxy.size, viewport: visibleViewport))
+                        .gesture(controlSurfaceGesture(in: proxy.size, viewport: visibleViewport))
                         .accessibilityLabel("Mac screen control surface")
-                }
-
-                if interactionMode == .control, controlStatus.isLive, edgeScrollEnabled {
-                    EdgeScrollOverlay { start, end in
-                        sendScrollIntent(start.x, start.y, end.x, end.y, selectedDisplayId)
-                    }
                 }
 
                 if interactionMode == .trackpad, controlStatus.isLive {
@@ -242,6 +237,7 @@ struct ScreenShareViewerView: View {
                 textToType = ""
                 cursorNormalized = CGPoint(x: 0.5, y: 0.5)
                 tapFeedbackPoint = nil
+                lastControlClickPoint = nil
             }
         }
         .onChange(of: controlStatus) { _, newValue in
@@ -283,15 +279,58 @@ struct ScreenShareViewerView: View {
         )
     }
 
-    private func controlTapGesture(in size: CGSize, viewport: ScreenShareViewportState) -> some Gesture {
+    private func controlSurfaceGesture(in size: CGSize, viewport: ScreenShareViewportState) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onEnded { value in
                 let distance = hypot(value.translation.width, value.translation.height)
-                guard distance < 10 else { return }
-                let normalized = viewport.normalizedPoint(for: value.location, in: size)
-                showTapFeedback(at: value.location)
+                if edgeScrollEnabled,
+                   distance > 14,
+                   isEdgeScrollStart(value.startLocation, in: size) {
+                    let start = viewport.normalizedPoint(for: value.startLocation, in: size)
+                    let end = viewport.normalizedPoint(for: value.location, in: size)
+                    sendScrollIntent(start.x, start.y, end.x, end.y, selectedDisplayId)
+                    return
+                }
+
+                guard let clickPoint = resolvedClickPoint(for: value, distance: distance, in: size) else {
+                    return
+                }
+                let normalized = viewport.normalizedPoint(for: clickPoint, in: size)
+                lastControlClickPoint = clickPoint
+                showTapFeedback(at: clickPoint)
                 sendTapIntent(normalized.x, normalized.y)
             }
+    }
+
+    private func resolvedClickPoint(for value: DragGesture.Value, distance: CGFloat, in size: CGSize) -> CGPoint? {
+        let diagonal = max(1, hypot(size.width, size.height))
+        let preciseTapRadius = min(max(diagonal * 0.014, 12), 22)
+        let forgivingTapRadius = min(max(diagonal * 0.026, 26), 48)
+        let repeatedTapRadius = min(max(diagonal * 0.034, 32), 64)
+        if distance <= preciseTapRadius {
+            return value.location
+        }
+        if distance <= forgivingTapRadius {
+            return value.location
+        }
+        if let lastControlClickPoint,
+           distance <= repeatedTapRadius,
+           min(
+                hypot(value.startLocation.x - lastControlClickPoint.x, value.startLocation.y - lastControlClickPoint.y),
+                hypot(value.location.x - lastControlClickPoint.x, value.location.y - lastControlClickPoint.y)
+           ) <= repeatedTapRadius {
+            return value.location
+        }
+        return nil
+    }
+
+    private func isEdgeScrollStart(_ point: CGPoint, in size: CGSize) -> Bool {
+        guard size.width > 0, size.height > 0 else { return false }
+        let margin = max(28, min(size.width, size.height) * 0.07)
+        return point.x <= margin
+            || point.x >= size.width - margin
+            || point.y <= margin
+            || point.y >= size.height - margin
     }
 
     private func moveCursorByTrackpadDelta(_ delta: CGSize, in size: CGSize, viewport: ScreenShareViewportState) {
@@ -302,7 +341,9 @@ struct ScreenShareViewerView: View {
     }
 
     private func focusTypingBar() {
-        DispatchQueue.main.async {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 90_000_000)
+            guard isTyping else { return }
             typingFocused = true
         }
     }
@@ -359,6 +400,14 @@ struct ScreenShareViewerView: View {
                 .padding(.horizontal, 12)
                 .frame(height: 42)
                 .background(Color.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") {
+                            typingFocused = false
+                        }
+                    }
+                }
 
             Button(action: sendTypedText) {
                 Image(systemName: "paperplane.fill")
@@ -382,6 +431,14 @@ struct ScreenShareViewerView: View {
                     .frame(width: 38, height: 38)
             }
             .accessibilityLabel("Press Escape on Mac")
+
+            Button {
+                typingFocused = false
+            } label: {
+                Image(systemName: "keyboard.chevron.compact.down")
+                    .frame(width: 38, height: 38)
+            }
+            .accessibilityLabel("Dismiss iPhone keyboard")
         }
         .buttonStyle(.bordered)
         .tint(.white)
