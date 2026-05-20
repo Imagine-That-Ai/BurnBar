@@ -9,8 +9,7 @@ This document is the operator-facing companion to
 [`functions/src/modelLandscape.ts`](../functions/src/modelLandscape.ts) and
 [`docs/ROUTED_CLIENT_GATEWAY.md`](./ROUTED_CLIENT_GATEWAY.md). It lists every
 benchmark source BurnBar uses, how their signals are normalised, how
-freshness is tagged, and which rules the Intelligent Model Router refuses
-to bend.
+freshness is tagged, and which rules Exact Model Failover refuses to bend.
 
 ---
 
@@ -177,10 +176,11 @@ and
 - **Will not override live quota state.** A model that benchmarks two
   points higher but is currently rate-limited still loses to a healthy
   pin or healthy runner-up.
-- **Will not swap your model on failover.** Provider-Family Failover
-  only considers candidate accounts that carry the exact requested
-  model. If no candidate survives, the gateway returns a structured
-  `503` — never a silent substitute.
+- **Will not swap your model on failover.** Exact Model Failover only
+  considers routes whose canonical model ID matches the requested model.
+  Capability classes such as `openai:standard` and benchmark rankings are
+  not proof of model identity. If no exact candidate survives, the gateway
+  returns a structured `503` — never a silent substitute.
 - **Will not log secrets.** Decision events store account ids, skip
   reasons, and signal weights — never API keys, OAuth bearers, request
   bodies, or response bodies.
@@ -193,8 +193,8 @@ and
 
 ## Daily rundown · the public artifact
 
-The Intelligent Model Router's reasoning is pre-rendered once every
-twenty-four hours. Each rundown is frozen, dated, and inspectable:
+The public model-board rundown is pre-rendered once every twenty-four hours.
+Each rundown is frozen, dated, and inspectable:
 
 - **Index:** [`/router/daily`](https://burnbar.ai/router/daily)
 - **Per-day:** `/router/daily/<YYYY-MM-DD>` — e.g.
