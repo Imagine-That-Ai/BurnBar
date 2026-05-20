@@ -47,9 +47,12 @@ public final class MacInputController: @unchecked Sendable {
         let totalHeight = NSScreen.screens.first?.frame.maxY ?? 0
         let displays: [MacInputCore.DisplayBounds] = NSScreen.screens.map { screen in
             let frame = screen.frame
+            let displayId = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)
+                .map { String($0.uint32Value) }
             // Translate from bottom-left-origin AppKit points to the
             // top-left-origin event-tap pixels CGEventPost expects.
             return MacInputCore.DisplayBounds(
+                displayId: displayId,
                 originX: Int(frame.origin.x),
                 originY: Int(totalHeight - frame.maxY),
                 width: Int(frame.width),
@@ -81,6 +84,12 @@ public final class MacInputController: @unchecked Sendable {
         downEvent.post(tap: .cghidEventTap)
         upEvent.post(tap: .cghidEventTap)
         return Date().timeIntervalSince(started) * 1000.0
+    }
+
+    @discardableResult
+    public func clickCurrent(button: Int = 0) throws -> Double {
+        let current = CGEvent(source: nil)?.location ?? .zero
+        return try click(x: Int(current.x), y: Int(current.y), button: button)
     }
 
     /// Type a UTF-8 string by walking each scalar through the
@@ -171,6 +180,30 @@ public final class MacInputController: @unchecked Sendable {
             throw InputError.eventCreationFailed
         }
         event.location = CGPoint(x: CGFloat(x), y: CGFloat(y))
+        event.post(tap: .cghidEventTap)
+        return Date().timeIntervalSince(started) * 1000.0
+    }
+
+    @discardableResult
+    public func pointerMove(deltaX: Int, deltaY: Int) throws -> Double {
+        guard isAccessibilityTrusted() else { throw InputError.accessibilityNotTrusted }
+        let started = Date()
+        let current = CGEvent(source: nil)?.location ?? .zero
+        let proposed = CGPoint(
+            x: current.x + CGFloat(deltaX),
+            y: current.y + CGFloat(deltaY)
+        )
+        guard isPointOnConnectedDisplay(x: Int(proposed.x), y: Int(proposed.y)) else {
+            throw InputError.displayBoundsViolation(Int(proposed.x), Int(proposed.y))
+        }
+        guard let event = CGEvent(
+            mouseEventSource: nil,
+            mouseType: .mouseMoved,
+            mouseCursorPosition: proposed,
+            mouseButton: .left
+        ) else {
+            throw InputError.eventCreationFailed
+        }
         event.post(tap: .cghidEventTap)
         return Date().timeIntervalSince(started) * 1000.0
     }

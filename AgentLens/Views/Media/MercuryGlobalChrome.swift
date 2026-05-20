@@ -107,6 +107,7 @@ final class MercuryIncomingPanelPresenter {
     private let hudState: CallHUDState
     private var panel: NSPanel?
     private var cancellables: Set<AnyCancellable> = []
+    private var lastStreamingRequestID: String?
 
     init(
         router: MercuryRouter,
@@ -132,10 +133,19 @@ final class MercuryIncomingPanelPresenter {
     private func refresh(for phase: MercuryRouter.Phase) {
         switch phase {
         case .idle, .cooldown:
+            lastStreamingRequestID = nil
             Self.log.info("mercury_panel_close phase=\(String(describing: phase), privacy: .public)")
             Self.debugTrace("mercury_panel_close phase=\(String(describing: phase))")
             closePanel()
-        case .ringing, .callRinging, .starting, .streaming:
+        case .streaming(let requestID, let since):
+            if lastStreamingRequestID != requestID {
+                hudState.reset(startedAt: since)
+                lastStreamingRequestID = requestID
+            }
+            Self.log.info("mercury_panel_show phase=\(String(describing: phase), privacy: .public)")
+            Self.debugTrace("mercury_panel_show phase=\(String(describing: phase))")
+            showPanel()
+        case .ringing, .callRinging, .starting:
             Self.log.info("mercury_panel_show phase=\(String(describing: phase), privacy: .public)")
             Self.debugTrace("mercury_panel_show phase=\(String(describing: phase))")
             showPanel()

@@ -169,6 +169,47 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(state.actionsRejected, 1)
     }
 
+    func testMacPointerMoveToolPreservesDeltaArguments() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let approvals = ApprovalRecorder(decision: .approve)
+        let inputs = MacInputRecorder()
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            macInputDispatcher: { _, action in
+                inputs.record(action)
+                return .object(["posted": .bool(true)])
+            }
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .system, trustMode: .manual)
+        _ = try await coordinator.startSession(manifest: manifest)
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(
+                tool: .macInputPointerMove,
+                arguments: .object([
+                    "deltaX": .number(18),
+                    "deltaY": .number(-11)
+                ])
+            ),
+            scopeContext: ComputerUseScopeContext(bundleId: "com.apple.finder"),
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            capability: capability(
+                for: makeState(sessionId: sessionId, manifest: manifest),
+                accessibilityTrusted: true
+            )
+        )
+
+        XCTAssertEqual(response.status, .executed)
+        XCTAssertEqual(approvals.requests.first?.toolKind, BurnBarToolKind.macInputPointerMove.rawValue)
+        XCTAssertEqual(inputs.last?.kind, .pointerMove)
+        XCTAssertEqual(inputs.last?.deltaX, 18)
+        XCTAssertEqual(inputs.last?.deltaY, -11)
+    }
+
     func testBrowserApprovalApproveDispatchesAndAudits() async throws {
         let sessionId = ComputerUseSessionID.newRandom()
         let auditBaseDirectory = testAuditBaseDirectory()

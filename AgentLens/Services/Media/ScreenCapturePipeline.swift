@@ -1,8 +1,10 @@
 import Foundation
 import AVFoundation
+import AppKit
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
 #endif
+import OpenBurnBarCore
 import OpenBurnBarMedia
 
 /// Mac screen-capture pipeline driven by ScreenCaptureKit. Phase 3
@@ -35,6 +37,7 @@ final class ScreenCapturePipeline: NSObject {
         var height: Int = 1080
         var frameRate: Int = 30
         var captureFocusedWindowOnly: Bool = false
+        var displayId: String? = nil
     }
 
     typealias FrameHandler = @Sendable (CMSampleBuffer) async -> Void
@@ -50,6 +53,20 @@ final class ScreenCapturePipeline: NSObject {
         self.frameHandler = frameHandler
     }
 
+    static func availableDisplays() -> [HermesRealtimeRelayDisplayDescriptor] {
+        NSScreen.screens.enumerated().map { index, screen in
+            let displayId = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)
+                .map { String($0.uint32Value) } ?? "display-\(index + 1)"
+            return HermesRealtimeRelayDisplayDescriptor(
+                id: displayId,
+                name: index == 0 ? "Main Display" : "Display \(index + 1)",
+                width: Int(screen.frame.width),
+                height: Int(screen.frame.height),
+                isPrimary: index == 0
+            )
+        }
+    }
+
     func start() async throws {
         #if canImport(ScreenCaptureKit)
         let content: SCShareableContent
@@ -58,7 +75,10 @@ final class ScreenCapturePipeline: NSObject {
         } catch {
             throw Failure.screenRecordingPermissionDenied
         }
-        guard let display = content.displays.first else {
+        let display = configuration.displayId.flatMap { wanted in
+            content.displays.first { String($0.displayID) == wanted }
+        } ?? content.displays.first
+        guard let display else {
             throw Failure.noShareableContent
         }
         let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])

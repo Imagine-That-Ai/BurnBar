@@ -126,6 +126,7 @@ public struct MacInputAction: Codable, Hashable, Sendable {
         case shortcut
         case dragDrop = "drag_drop"
         case scroll
+        case pointerMove = "pointer_move"
     }
 
     public let kind: Kind
@@ -133,6 +134,8 @@ public struct MacInputAction: Codable, Hashable, Sendable {
     public let displayY: Int?
     public let dragEndX: Int?
     public let dragEndY: Int?
+    public let deltaX: Int?
+    public let deltaY: Int?
     public let mouseButton: Int
     public let text: String?
     public let key: String?
@@ -144,6 +147,8 @@ public struct MacInputAction: Codable, Hashable, Sendable {
         displayY: Int? = nil,
         dragEndX: Int? = nil,
         dragEndY: Int? = nil,
+        deltaX: Int? = nil,
+        deltaY: Int? = nil,
         mouseButton: Int = 0,
         text: String? = nil,
         key: String? = nil,
@@ -154,6 +159,8 @@ public struct MacInputAction: Codable, Hashable, Sendable {
         self.displayY = displayY
         self.dragEndX = dragEndX
         self.dragEndY = dragEndY
+        self.deltaX = deltaX
+        self.deltaY = deltaY
         self.mouseButton = mouseButton
         self.text = text
         self.key = key
@@ -184,6 +191,8 @@ public struct MacInputAction: Codable, Hashable, Sendable {
                 return "Scroll at (\(displayX), \(displayY)) in \(app)"
             }
             return "Scroll in \(app)"
+        case .pointerMove:
+            return "Move pointer in \(app)"
         }
     }
 }

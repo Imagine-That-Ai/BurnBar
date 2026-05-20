@@ -612,6 +612,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     .mediaMirrorRequest,
                     .mediaMirrorAck,
                     .mediaMirrorStop,
+                    .mediaMirrorDisplaySelect,
                     .mediaPresenceHeartbeat,
                     .mediaCallInvite,
                     .mediaCallAck,

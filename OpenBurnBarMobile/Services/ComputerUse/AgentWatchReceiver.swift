@@ -78,9 +78,10 @@ public final class AgentWatchReceiver: ObservableObject {
         state.setTrustMode(mode)
     }
 
-    public func tap(normalizedX: Double, normalizedY: Double) async throws {
+    public func tap(normalizedX: Double, normalizedY: Double, displayId: String? = nil) async throws {
         try await sendInputIntent(
             kind: .tap,
+            displayId: displayId,
             normalizedX: normalizedX,
             normalizedY: normalizedY
         )
@@ -90,10 +91,12 @@ public final class AgentWatchReceiver: ObservableObject {
         startNormalizedX: Double,
         startNormalizedY: Double,
         endNormalizedX: Double,
-        endNormalizedY: Double
+        endNormalizedY: Double,
+        displayId: String? = nil
     ) async throws {
         try await sendInputIntent(
             kind: .scroll,
+            displayId: displayId,
             normalizedX: startNormalizedX,
             normalizedY: startNormalizedY,
             normalizedX2: endNormalizedX,
@@ -110,6 +113,14 @@ public final class AgentWatchReceiver: ObservableObject {
         try await sendInputIntent(kind: .shortcut, key: key, modifiers: modifiers)
     }
 
+    public func pointerMove(deltaX: Double, deltaY: Double) async throws {
+        try await sendInputIntent(kind: .pointerMove, normalizedX2: deltaX, normalizedY2: deltaY)
+    }
+
+    public func pointerClick() async throws {
+        try await sendInputIntent(kind: .pointerClick)
+    }
+
     public func panicHalt() async throws {
         try await sendInputIntent(kind: .panic)
         state.clear()
@@ -117,6 +128,7 @@ public final class AgentWatchReceiver: ObservableObject {
 
     private func sendInputIntent(
         kind: HermesRealtimeRelayInputIntent.Kind,
+        displayId: String? = nil,
         normalizedX: Double? = nil,
         normalizedY: Double? = nil,
         normalizedX2: Double? = nil,
@@ -135,6 +147,7 @@ public final class AgentWatchReceiver: ObservableObject {
         )
         let intent = HermesRealtimeRelayInputIntent(
             kind: kind,
+            displayId: displayId,
             normalizedX: normalizedX,
             normalizedY: normalizedY,
             normalizedX2: normalizedX2,

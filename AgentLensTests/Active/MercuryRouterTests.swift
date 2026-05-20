@@ -79,7 +79,7 @@ final class MercuryRouterTests: XCTestCase {
             ensureComputerUseSession: {
                 events.append("computer-use")
             },
-            startScreenShare: { _, _, _ in
+            startScreenShare: { _, _, _, _ in
                 events.append("screen-share")
             }
         )
@@ -102,6 +102,24 @@ final class MercuryRouterTests: XCTestCase {
                     requestId: requestID,
                     stoppedAt: Date(timeIntervalSince1970: 1_700_000_001),
                     reason: "viewer_closed"
+                )
+            )
+        )
+    }
+
+    private func mirrorDisplaySelectFrame(
+        requestID: String = "req_test",
+        displayID: String
+    ) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .mediaMirrorDisplaySelect,
+            uid: "u",
+            connectionId: "c",
+            requestId: requestID,
+            media: HermesRealtimeRelayMediaPayload(
+                mirrorDisplaySelection: HermesRealtimeRelayMirrorDisplaySelection(
+                    requestId: requestID,
+                    displayId: displayID
                 )
             )
         )
@@ -272,25 +290,24 @@ final class MercuryRouterTests: XCTestCase {
         }
     }
 
-    func testStopMirrorEntersCooldownEvenWhenNotStreaming() async {
-        // We don't drive into actual streaming (host may lack screen
-        // recording permission). Calling stopMirror from idle should
-        // still settle into cooldown — defensive contract for the
-        // CallHUD end-call tap.
+    func testStopMirrorFromIdleStaysIdle() async {
+        // Normal hangup must reset only the active call surface. It must
+        // not force cooldown, because the user should be able to start a
+        // fresh mirror without restarting either app.
         let (router, sink) = makeRouter(cooldownSeconds: 4)
         await router.stopMirror()
-        if case let .cooldown(remaining) = router.phase {
-            XCTAssertEqual(remaining, 4)
-        } else {
-            XCTFail("expected .cooldown after stop, got \(router.phase)")
-        }
+        XCTAssertEqual(router.phase, .idle)
         let ackCount = await sink.count
         XCTAssertEqual(ackCount, 0,
                        "stop from idle has no active request to ack")
     }
 
     func testPhoneStopClearsActiveMirrorWithoutCooldown() async throws {
-        let (router, sink) = makeRouter(consent: true, cooldownSeconds: 30)
+        let (router, sink) = makeRouter(
+            consent: true,
+            cooldownSeconds: 30,
+            startScreenShare: { _, _, _, _ in }
+        )
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
         let requestID = try extractStreaming(from: router.phase)
 
@@ -300,6 +317,78 @@ final class MercuryRouterTests: XCTestCase {
         let frames = await sink.frames
         XCTAssertEqual(frames.count, 1, "phone stop is a control signal, not a second ack")
         XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .accepted)
+    }
+
+    func testNormalHangupAllowsImmediateNewMirrorSession() async throws {
+        var startCount = 0
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _ in
+                startCount += 1
+            }
+        )
+
+        await router.handleFrame(mirrorRequestFrame(requestID: "req_one"), replySender: sink.sender)
+        XCTAssertEqual(startCount, 1)
+        XCTAssertEqual(try extractStreaming(from: router.phase), "req_one")
+
+        await router.stopMirror()
+        XCTAssertEqual(router.phase, .idle)
+
+        await router.handleFrame(mirrorRequestFrame(requestID: "req_two"), replySender: sink.sender)
+        XCTAssertEqual(startCount, 2)
+        XCTAssertEqual(try extractStreaming(from: router.phase), "req_two")
+        let decisions = await sink.frames.compactMap { $0.media?.mirrorAck?.decision }
+        XCTAssertEqual(decisions, [.accepted, .denied, .accepted])
+    }
+
+    func testDisplaySelectionAcknowledgesSelectedDisplayAndKeepsMirrorStreaming() async throws {
+        guard let display = ScreenCapturePipeline.availableDisplays().first else {
+            throw XCTSkip("No displays available on this test host.")
+        }
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _ in }
+        )
+
+        await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
+        let requestID = try extractStreaming(from: router.phase)
+        await sink.reset()
+
+        await router.handleFrame(
+            mirrorDisplaySelectFrame(requestID: requestID, displayID: display.id),
+            replySender: sink.sender
+        )
+
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        let ack = frames[0].media?.mirrorAck
+        XCTAssertEqual(ack?.decision, .accepted)
+        XCTAssertEqual(ack?.selectedDisplayId, display.id)
+        XCTAssertEqual(try extractStreaming(from: router.phase), requestID)
+    }
+
+    func testMissingDisplaySelectionReturnsRecoverableAckWithoutEndingMirror() async throws {
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _ in }
+        )
+
+        await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
+        let requestID = try extractStreaming(from: router.phase)
+        await sink.reset()
+
+        await router.handleFrame(
+            mirrorDisplaySelectFrame(requestID: requestID, displayID: "missing-display-\(UUID().uuidString)"),
+            replySender: sink.sender
+        )
+
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        let ack = frames[0].media?.mirrorAck
+        XCTAssertEqual(ack?.decision, .unsupported)
+        XCTAssertNotNil(ack?.availableDisplays)
+        XCTAssertEqual(try extractStreaming(from: router.phase), requestID)
     }
 
     private func extractStreaming(from phase: MercuryRouter.Phase) throws -> String {
