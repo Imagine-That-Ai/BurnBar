@@ -10,6 +10,7 @@ export const SITE = {
   twitter: "",
   github: "https://github.com/Imagine-That-Ai/BurnBar",
   releasesUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases",
+  supportContact: "support@openburnbar.app",
   privacyContact: "privacy@imagine-that.ai",
   entity: "Imagine That AI LLC",
   license: "MIT",
@@ -45,6 +46,7 @@ export const NAV_FOOTER = {
     { href: "/providers", label: "Provider support" },
     { href: "/benefits", label: "Why it matters" },
     { href: "/download", label: "Download" },
+    { href: "/support", label: "Support" },
     { href: "/faq", label: "FAQ" }
   ],
   trust: [

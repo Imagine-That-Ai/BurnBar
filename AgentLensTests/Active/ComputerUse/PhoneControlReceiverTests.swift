@@ -42,8 +42,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             request: ComputerUseSessionStartRequest(
                 mode: ComputerUseMode.browser.rawValue,
                 trustMode: ComputerUseTrustMode.trusted.rawValue,
-                clientID: BurnBarClientID(rawValue: "client-soft-cap"),
-                actionCap: ComputerUseBudgetEnvelope.initialNormal.activeActionsPerRun
+                actionCap: ComputerUseBudgetEnvelope.initialNormal.activeActionsPerRun,
+                clientID: BurnBarClientID(rawValue: "client-soft-cap")
             )
         )
         coordinator.updateBudgetEnvelope(.softCapEnvelope(
@@ -619,6 +619,78 @@ final class PhoneControlReceiverTests: XCTestCase {
         let deniedFrames = await capture.deniedFrames()
         XCTAssertEqual(deniedFrames.count, 1_000)
         XCTAssertTrue(deniedFrames.allSatisfy { $0.control?.denied?.reason == .counterReplay })
+    }
+
+    func testDuplicateClientIntentIdWithFreshCounterDispatchesOnlyOnce() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let signer = ComputerUsePhoneControlSigner()
+        let placeholder = emptyAuthority()
+        let clientIntentId = "tap-once-\(UUID().uuidString)"
+        var firstIntent = HermesRealtimeRelayInputIntent(
+            kind: .tap,
+            normalizedX: 0.25,
+            normalizedY: 0.40,
+            clientIntentId: clientIntentId,
+            authority: placeholder
+        )
+        let firstSigned = try signer.sign(
+            intent: firstIntent,
+            peerNodeId: "phone-peer-idempotent",
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        firstIntent.authority = envelope(from: firstSigned)
+
+        var secondIntent = HermesRealtimeRelayInputIntent(
+            kind: .tap,
+            normalizedX: 0.25,
+            normalizedY: 0.40,
+            clientIntentId: clientIntentId,
+            authority: placeholder
+        )
+        let secondSigned = try signer.sign(
+            intent: secondIntent,
+            peerNodeId: "phone-peer-idempotent",
+            counter: 2,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        secondIntent.authority = envelope(from: secondSigned)
+
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "phone-peer-idempotent", publicKey: privateKey.publicKey)
+        let capture = PhoneControlReceiverCapture()
+        let receiver = PhoneControlReceiver(
+            sessionId: ComputerUseSessionID("session-phone-idempotent"),
+            validator: validator,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            dispatchHandler: { action, sessionId, _ in
+                await capture.record(action: action, sessionId: sessionId)
+            },
+            denyFrameSink: { frame in
+                await capture.recordDenied(frame)
+            }
+        )
+
+        await receiver.ingest(frame(firstIntent))
+        await receiver.ingest(frame(secondIntent))
+
+        let actions = await capture.actions()
+        XCTAssertEqual(actions.count, 1)
+        guard case let .macInput(action) = actions.first?.action else {
+            return XCTFail("expected first intent to dispatch as macInput")
+        }
+        XCTAssertEqual(action.kind, .click)
+        XCTAssertEqual(action.displayX, 250)
+        XCTAssertEqual(action.displayY, 200)
+
+        let deniedFrames = await capture.deniedFrames()
+        XCTAssertEqual(deniedFrames.count, 1)
+        XCTAssertEqual(deniedFrames.first?.control?.denied?.reason, .counterReplay)
+        XCTAssertEqual(deniedFrames.first?.control?.denied?.detail, "duplicate_client_intent")
     }
 
     private func frame(_ intent: HermesRealtimeRelayInputIntent) -> HermesRealtimeRelayFrame {

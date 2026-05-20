@@ -42,6 +42,17 @@ data class PinnedAgentGridConfig(
         )
     }
 
+    fun pinningPairedMac(uri: String): PinnedAgentGridConfig {
+        if (!uri.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)) {
+            return pinning(uri)
+        }
+        val reordered = listOf(uri) + pinnedURIs.filterNot { it == uri }
+        return copy(
+            pinnedURIs = reordered.take(MAX_SLOTS),
+            lastRearrangedAtEpoch = System.currentTimeMillis()
+        ).sanitized()
+    }
+
     fun unpinning(uri: String): PinnedAgentGridConfig =
         copy(
             pinnedURIs = pinnedURIs.filter { it != uri },

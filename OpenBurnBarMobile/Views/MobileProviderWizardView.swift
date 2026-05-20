@@ -308,7 +308,7 @@ struct MobileProviderWizardView: View {
                     )
                     .foregroundStyle(model.subscriptionStore.isActive ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
                     Spacer()
-                    if model.subscriptionStore.isLoading {
+                    if concreteStore?.isPurchasing == true {
                         MiningPickLoader(.inline)
                     } else if !model.subscriptionStore.isActive, let store = concreteStore {
                         Button("Subscribe") {
@@ -328,7 +328,7 @@ struct MobileProviderWizardView: View {
                         Label("Restore Purchases", systemImage: "arrow.clockwise")
                             .font(MobileTheme.Typography.caption)
                     }
-                    .disabled(model.subscriptionStore.isLoading)
+                    .disabled(model.subscriptionStore.isLoading || concreteStore?.isPurchasing == true)
                 }
             }
         }

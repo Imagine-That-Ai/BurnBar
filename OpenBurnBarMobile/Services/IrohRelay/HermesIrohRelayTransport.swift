@@ -86,6 +86,16 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// even if Mercury media is disabled or unavailable on the device.
     var mediaDispatcher: IrohMediaFrameDispatcher?
 
+    /// Mercury Phase 8 — callback for Mac → iOS presence heartbeats carried
+    /// on the persistent media-control stream. Hermes Square installs this
+    /// so its paired-Mac peer source can show the Mac's current display name
+    /// and capabilities as soon as they arrive.
+    var mediaPresenceHeartbeatHandler: ((HermesRealtimeRelayPresenceHeartbeat) async -> Void)? {
+        didSet {
+            mediaControlCoordinator?.presenceHeartbeatHandler = mediaPresenceHeartbeatHandler
+        }
+    }
+
     /// Hard cap on iroh dial latency. Keeping this independent from the
     /// request `timeout` (which is per-completion and can be 60-120s) means
     /// a slow NAT-traversal failure surfaces fast and the cascade can fall
@@ -177,7 +187,18 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// chat request has happened, so tapping "My Mac" is enough to bring
     /// Mercury online.
     func ensureMediaControlStream(connectionID: String) async throws {
-        guard mediaControlCoordinator == nil else { return }
+        if let existing = mediaControlCoordinator {
+            if existing.connectionID == connectionID {
+                switch existing.phase {
+                case .live, .dialing, .reconnecting:
+                    return
+                case .idle, .stopped, .failed:
+                    break
+                }
+            }
+            await existing.stop()
+            mediaControlCoordinator = nil
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw HermesServiceError.relayUnavailable("Mercury requires a signed-in Firebase user.")
         }
@@ -199,6 +220,10 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// outbound mirror requests onto the same stream.
     var currentMediaControlCoordinator: MediaControlStreamCoordinator? {
         mediaControlCoordinator
+    }
+
+    var currentMediaControlConnectionID: String? {
+        mediaControlCoordinator?.connectionID
     }
 
     /// Mercury Phase 8 — snapshot of the active control-stream phase, or
@@ -582,11 +607,14 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                  .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
                 continue
             case .mediaClassify,
-                 .mediaBlobAdvertise,
-                 .mediaBlobAck,
-                 .mediaMirrorRequest,
-                 .mediaMirrorAck,
-                 .mediaPresenceHeartbeat:
+                    .mediaBlobAdvertise,
+                    .mediaBlobAck,
+                    .mediaMirrorRequest,
+                    .mediaMirrorAck,
+                    .mediaPresenceHeartbeat,
+                    .mediaCallInvite,
+                    .mediaCallAck,
+                    .mediaStreamFrame:
                 guard let dispatcher = mediaDispatcher else { continue }
                 let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
                     [stream] outboundFrame in
@@ -718,6 +746,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             dialer: dialer,
             receiver: receiver
         )
+        coordinator.presenceHeartbeatHandler = mediaPresenceHeartbeatHandler
         coordinator.start(uid: uid, connectionID: connectionID)
         receiver.attachControlStream(coordinator)
         self.mediaControlCoordinator = coordinator

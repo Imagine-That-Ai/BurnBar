@@ -453,7 +453,7 @@ final class ProviderQuotaService {
 
     func startAutomaticRefresh(
         dataStore: DataStore,
-        initialDelay: Duration = .seconds(10),
+        initialDelay: Duration = .seconds(5 * 60),
         interval: Duration = .seconds(15 * 60)
     ) {
         automaticRefreshTask?.cancel()

@@ -866,6 +866,7 @@ final class HermesRelayHostService {
     /// `HermesRelayHostService` to drive paperclip + drag-and-drop
     /// sends.
     @MainActor private(set) var mercuryFileTransfer: MacFileTransferService?
+    @MainActor private weak var mercuryRouter: MercuryRouter?
 
     /// Mercury Phase 8 — the registry the iroh client hands inbound
     /// `media.control` streams to. Surfaced so the runtime context can
@@ -974,7 +975,14 @@ final class HermesRelayHostService {
     /// iroh client.
     @MainActor
     func attachMercuryRouter(_ router: MercuryRouter) {
-        guard let transfer = mercuryFileTransfer else { return }
+        mercuryRouter = router
+        installMercuryRouterIfPossible()
+    }
+
+    @MainActor
+    private func installMercuryRouterIfPossible() {
+        guard let router = mercuryRouter,
+              let transfer = mercuryFileTransfer else { return }
         transfer.setMercuryDispatcher { @Sendable frame, reply in
             await router.handleFrame(frame, replySender: reply)
         }
@@ -1060,8 +1068,8 @@ final class HermesRelayHostService {
                 "updatedAt": now,
                 "schemaVersion": 2
             ]
-            if let key = try? relayKeyStore.privateKey() {
-                data["relayPublicKey"] = key.publicKeyBase64
+            if let publicKey = try? relayKeyStore.existingPublicKeyBase64() {
+                data["relayPublicKey"] = publicKey
                 data["relayKeyVersion"] = HermesRelayCrypto.keyVersion
                 data["relayEncryption"] = HermesRelayCrypto.algorithm
             }
@@ -1869,6 +1877,14 @@ struct HermesRelayKeyStore {
         try keychain.set(key.rawRepresentation.base64EncodedString(), for: account)
         return key
     }
+
+    func existingPublicKeyBase64() throws -> String? {
+        guard let stored = try keychain.string(for: account),
+              let data = Data(base64Encoded: stored) else {
+            return nil
+        }
+        return try HermesRelayPrivateKey(rawRepresentation: data).publicKeyBase64
+    }
 }
 
 // MARK: - Pi Agent Remote Relay Host
@@ -1977,8 +1993,8 @@ final class PiAgentCloudRelayHostService {
                 "updatedAt": now,
                 "schemaVersion": 2
             ]
-            if let key = try? relayKeyStore.privateKey() {
-                data["relayPublicKey"] = key.publicKeyBase64
+            if let publicKey = try? relayKeyStore.existingPublicKeyBase64() {
+                data["relayPublicKey"] = publicKey
                 data["relayKeyVersion"] = PiAgentRelayCrypto.keyVersion
                 data["relayEncryption"] = PiAgentRelayCrypto.algorithm
             }
@@ -2546,5 +2562,13 @@ struct PiAgentRelayKeyStore {
         let key = PiAgentRelayCrypto.generatePrivateKey()
         try keychain.set(key.rawRepresentation.base64EncodedString(), for: account)
         return key
+    }
+
+    func existingPublicKeyBase64() throws -> String? {
+        guard let stored = try keychain.string(for: account),
+              let data = Data(base64Encoded: stored) else {
+            return nil
+        }
+        return try PiAgentRelayPrivateKey(rawRepresentation: data).publicKeyBase64
     }
 }

@@ -6,8 +6,8 @@ import FirebaseCore
 import OpenBurnBarCore
 
 private enum CloudStoreLegalURLs {
-    static let privacy = URL(string: "https://openburnbar.com/legal/privacy-policy")!
-    static let terms = URL(string: "https://openburnbar.com/legal/terms")!
+    static let privacy = URL(string: "https://burnbar.ai/legal/privacy-policy")!
+    static let terms = URL(string: "https://burnbar.ai/legal/terms")!
 }
 
 private enum CloudSubscriptionDisclosure {
@@ -15,6 +15,12 @@ private enum CloudSubscriptionDisclosure {
     static let period = "1 month, auto-renews monthly"
     static let included = "Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, Hermes Remote Relay, and Hosted Remote MCP."
     static let billing = "Billed by Apple. Auto-renews until canceled at least 24 hours before renewal. Manage or cancel in Settings -> Apple ID."
+    static let reviewVisiblePlans = [
+        "OpenBurnBar Cloud Monthly - 1 month - hosted quota refresh, session sync, conversation backup, and remote relay.",
+        "Hosted Quota Sync Monthly - 1 month - legacy hosted quota sync entitlement for existing App Store review catalog continuity.",
+        "OpenBurnBar Computer Use Monthly - 1 month - hosted computer-use sync entitlement.",
+        "OpenBurnBar Pro Max Monthly - 1 month - full hosted OpenBurnBar subscription bundle."
+    ]
 }
 
 // MARK: - Cloud Store View — Pro Poster
@@ -147,12 +153,9 @@ struct CloudStoreView: View {
             NavigationStack {
                 CapabilityDetailSheet(
                     capability: cap,
-                    ctaLabel: store.isActive ? "Manage Cloud" : "Become a Member",
+                    ctaLabel: store.isActive ? "Manage Cloud" : "View Cloud Plan",
                     onCTA: {
                         presentedCapability = nil
-                        if !store.isActive {
-                            Task { await store.purchase() }
-                        }
                     },
                     onDismiss: { presentedCapability = nil }
                 )
@@ -622,12 +625,12 @@ private struct CloudStoreRemoteMCPCard: View {
             }
 
             HStack(spacing: MobileTheme.Spacing.md) {
-                Link(destination: URL(string: "https://openburnbar.com/docs/remote-mcp")!) {
+                Link(destination: URL(string: "https://burnbar.ai/product")!) {
                     Label("Setup", systemImage: "arrow.up.right.square.fill")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.ember)
                 }
-                Link(destination: URL(string: "https://openburnbar.com/docs/remote-mcp-runbook")!) {
+                Link(destination: URL(string: "https://burnbar.ai/security")!) {
                     Label("Runbook", systemImage: "stethoscope")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.ember)
@@ -968,7 +971,7 @@ private struct CloudStoreTrustCard: View {
             }
 
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
-                Link(destination: URL(string: "https://openburnbar.com/cloud")!) {
+                Link(destination: URL(string: "https://burnbar.ai/pricing")!) {
                     HStack(spacing: 6) {
                         Text("Read the Hosted Quota Sync technical doc")
                         Image(systemName: "arrow.up.right.square.fill")
@@ -1023,6 +1026,9 @@ private struct CloudStoreSubscriptionDetails: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+
+                CloudStoreLegalLinks(alignment: .leading, verboseLabels: true)
+                    .padding(.top, MobileTheme.Spacing.xs)
             }
         }
         .padding(MobileTheme.Spacing.lg)
@@ -1041,54 +1047,10 @@ private struct CloudStoreActionBar: View {
 
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.sm) {
-            VStack(spacing: 2) {
-                Text("OpenBurnBar Cloud")
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-                Text(subtitleLine)
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Button {
-                Haptics.medium()
-                Task { await store.purchase() }
-            } label: {
-                HStack(spacing: MobileTheme.Spacing.sm) {
-                    if store.isLoading {
-                        MiningPickLoader(.inline, tint: .white)
-                        Text("Processing…")
-                    } else {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 14, weight: .bold))
-                        Text("Become a Member — \(store.product?.displayPrice ?? "$4.99")/mo")
-                    }
-                }
-            }
-            .buttonStyle(.aurora(.primary, fullWidth: true))
-            .disabled(store.isLoading || store.product == nil)
-
-            HStack(spacing: MobileTheme.Spacing.md) {
-                Button {
-                    Task { await store.restorePurchases() }
-                } label: {
-                    Text("Restore Purchases")
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                }
-                .disabled(store.isLoading)
-                .accessibilityIdentifier("cloudStore.restoreLink")
-
-                Spacer(minLength: 0)
-
-                CloudStoreLegalLinks(alignment: .trailing)
-            }
+            CloudStoreNativeSubscriptionStore(store: store)
         }
         .padding(.horizontal, MobileTheme.Spacing.lg)
-        .padding(.top, MobileTheme.Spacing.md)
+        .padding(.top, MobileTheme.Spacing.sm)
         .padding(.bottom, MobileTheme.Spacing.lg)
         .background(
             LinearGradient(
@@ -1104,10 +1066,55 @@ private struct CloudStoreActionBar: View {
             .allowsHitTesting(false)
         )
     }
+}
 
-    private var subtitleLine: String {
-        let price = store.product?.displayPrice ?? "$4.99"
-        return "\(price) / month · Apple-verified, billed monthly"
+private struct CloudStoreNativeSubscriptionStore: View {
+    @Bindable var store: HostedQuotaSubscriptionStore
+
+    var body: some View {
+        SubscriptionStoreView(productIDs: HostedQuotaSubscriptionStore.appStoreReviewVisibleProductIDs) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
+                Text("OpenBurnBar subscriptions")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+
+                Text("All App Store Connect subscriptions for this app are available here, billed monthly by Apple, and restorable from this screen.")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(CloudSubscriptionDisclosure.reviewVisiblePlans, id: \.self) { plan in
+                        Text(plan)
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, 2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .subscriptionStoreControlStyle(.buttons)
+        .storeButton(.visible, for: .restorePurchases)
+        .storeButton(.hidden, for: .cancellation)
+        .subscriptionStorePolicyDestination(url: CloudStoreLegalURLs.privacy, for: .privacyPolicy)
+        .subscriptionStorePolicyDestination(url: CloudStoreLegalURLs.terms, for: .termsOfService)
+        .subscriptionStorePolicyForegroundStyle(MobileTheme.ember)
+        .onInAppPurchaseStart { product in
+            Haptics.medium()
+            await MainActor.run {
+                store.nativeStorePurchaseStarted(productID: product.id)
+            }
+        }
+        .onInAppPurchaseCompletion { product, result in
+            await store.handleNativeStorePurchaseCompletion(product: product, result: result)
+        }
+        .tint(MobileTheme.ember)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 164)
+        .accessibilityIdentifier("cloudStore.subscriptionStoreView")
     }
 }
 
@@ -1121,14 +1128,15 @@ private struct CloudStoreLegalLinks: View {
     }
 
     var alignment: AlignmentMode = .center
+    var verboseLabels = false
 
     var body: some View {
         HStack(spacing: 8) {
-            Link("Privacy", destination: CloudStoreLegalURLs.privacy)
+            Link(verboseLabels ? "Privacy Policy" : "Privacy", destination: CloudStoreLegalURLs.privacy)
                 .accessibilityIdentifier("cloudStore.privacyPolicyLink")
             Text("·")
                 .foregroundStyle(MobileTheme.Colors.textPrimary.opacity(0.5))
-            Link("Terms", destination: CloudStoreLegalURLs.terms)
+            Link(verboseLabels ? "Terms of Use (EULA)" : "Terms", destination: CloudStoreLegalURLs.terms)
                 .accessibilityIdentifier("cloudStore.termsOfUseLink")
         }
         .font(MobileTheme.Typography.tiny)

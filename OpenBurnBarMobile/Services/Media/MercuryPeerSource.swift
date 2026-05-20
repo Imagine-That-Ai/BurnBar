@@ -16,16 +16,16 @@ import OpenBurnBarMedia
 ///      or the cached `pairing` document.
 ///
 /// Capabilities default to `MercuryPeer.macFallbackCapabilities` until
-/// the iOS app receives a `media.presence.heartbeat` from the Mac
-/// (Phase 8 follow-up — wire the heartbeat ingest once the control
-/// stream's read loop is extended). The capability advertise is
-/// best-effort, not load-bearing — `canRequestMirror` keeps returning
-/// `true` for an online Mac on the fallback set.
+/// the iOS app receives a `media.presence.heartbeat` from the Mac. The
+/// capability advertise is best-effort, not load-bearing —
+/// `canRequestMirror` keeps returning `true` for an online Mac on the
+/// fallback set.
 @MainActor
 final class MercuryPeerSource: ObservableObject {
     @Published private(set) var peer: MercuryPeer?
 
     private let transport: HermesIrohRelayTransport
+    private let relayConnectionProvider: @MainActor () -> HermesConnectionRecord?
     private let displayNameProvider: @MainActor () -> String?
     private let pollInterval: TimeInterval
     private let clock: @Sendable () -> Date
@@ -35,11 +35,13 @@ final class MercuryPeerSource: ObservableObject {
 
     init(
         transport: HermesIrohRelayTransport = .shared,
+        relayConnectionProvider: @escaping @MainActor () -> HermesConnectionRecord? = { nil },
         displayNameProvider: @escaping @MainActor () -> String? = { nil },
         pollInterval: TimeInterval = 1.0,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.transport = transport
+        self.relayConnectionProvider = relayConnectionProvider
         self.displayNameProvider = displayNameProvider
         self.pollInterval = pollInterval
         self.clock = clock
@@ -65,7 +67,7 @@ final class MercuryPeerSource: ObservableObject {
     /// Surface a freshly-received presence heartbeat from the Mac. The
     /// next poll will fold its display name + capabilities into the
     /// published snapshot. Called by the `MediaControlStreamCoordinator`
-    /// read loop once Phase 5's heartbeat ingest lands.
+    /// read loop through `HermesIrohRelayTransport.mediaPresenceHeartbeatHandler`.
     func ingestHeartbeat(_ heartbeat: HermesRealtimeRelayPresenceHeartbeat) {
         lastHeartbeat = heartbeat
         Task { @MainActor in await refresh() }
@@ -91,13 +93,11 @@ final class MercuryPeerSource: ObservableObject {
     }
 
     private func currentConnectionID() async -> String {
-        // For v1 the pinned tile is keyed on a stable per-user slot.
-        // Future Phase 9 work: surface multiple Macs by reading from a
-        // peer registry. Until then, derive a deterministic placeholder
-        // off the heartbeat or fall back to a singleton id.
-        if let heartbeat = lastHeartbeat {
-            return "paired-mac:\(heartbeat.deviceDisplayName.replacingOccurrences(of: " ", with: "_"))"
+        if let relay = relayConnectionProvider() {
+            return relay.id
         }
+        // Legacy fallback only. Current Hermes Square injects a relay
+        // provider so the tile URI matches Mac-side media frame filtering.
         return "paired-mac:default"
     }
 
@@ -105,6 +105,10 @@ final class MercuryPeerSource: ObservableObject {
         if let heartbeatName = lastHeartbeat?.deviceDisplayName,
            !heartbeatName.isEmpty {
             return heartbeatName
+        }
+        if let relayName = relayConnectionProvider()?.displayName,
+           !relayName.isEmpty {
+            return relayName
         }
         if let provided = displayNameProvider(), !provided.isEmpty {
             return provided

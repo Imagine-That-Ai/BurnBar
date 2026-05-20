@@ -68,6 +68,25 @@ final class MercuryRouterTests: XCTestCase {
         )
     }
 
+    private func callInviteFrame(
+        requestID: String = "call_test",
+        requesterName: String = "Alberto's Android"
+    ) -> HermesRealtimeRelayFrame {
+        let invite = HermesRealtimeRelayCallInvite(
+            requestId: requestID,
+            requestedAt: Date(),
+            requesterDisplayName: requesterName,
+            callKind: "video"
+        )
+        return HermesRealtimeRelayFrame(
+            type: .mediaCallInvite,
+            uid: "u",
+            connectionId: "c",
+            requestId: requestID,
+            media: HermesRealtimeRelayMediaPayload(callInvite: invite)
+        )
+    }
+
     // MARK: - Behavioral tests
 
     func testIncomingRequestEntersRingingPhase() async {
@@ -161,6 +180,54 @@ final class MercuryRouterTests: XCTestCase {
         let ackCount = await sink.count
         XCTAssertEqual(ackCount, 0, "heartbeat must not produce an ack")
         XCTAssertEqual(router.phase, .idle)
+    }
+
+    func testCallInviteEntersCallRingingPhase() async {
+        let (router, sink) = makeRouter()
+        await router.handleFrame(callInviteFrame(), replySender: sink.sender)
+        if case let .callRinging(_, name, _) = router.phase {
+            XCTAssertEqual(name, "Alberto's Android")
+        } else {
+            XCTFail("expected .callRinging, got \(router.phase)")
+        }
+        XCTAssertNotNil(router.pendingCall)
+        let ackCount = await sink.count
+        XCTAssertEqual(ackCount, 0, "call ringing must wait for the user's decision")
+    }
+
+    func testAcceptCallInviteEmitsAcceptedCallAck() async {
+        let (router, sink) = makeRouter()
+        await router.handleFrame(callInviteFrame(), replySender: sink.sender)
+        guard let pending = router.pendingCall else {
+            XCTFail("expected pending call")
+            return
+        }
+        await router.acceptCall(pending)
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(frames[0].type, .mediaCallAck)
+        XCTAssertEqual(frames[0].media?.callAck?.requestId, "call_test")
+        XCTAssertEqual(frames[0].media?.callAck?.decision, .accepted)
+        XCTAssertEqual(router.phase, .idle)
+    }
+
+    func testDeclineCallInviteEmitsDeniedCallAckAndCooldown() async {
+        let (router, sink) = makeRouter(cooldownSeconds: 6)
+        await router.handleFrame(callInviteFrame(), replySender: sink.sender)
+        guard let pending = router.pendingCall else {
+            XCTFail("expected pending call")
+            return
+        }
+        await router.declineCall(pending)
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(frames[0].type, .mediaCallAck)
+        XCTAssertEqual(frames[0].media?.callAck?.decision, .denied)
+        if case let .cooldown(remaining) = router.phase {
+            XCTAssertEqual(remaining, 6)
+        } else {
+            XCTFail("expected .cooldown after decline, got \(router.phase)")
+        }
     }
 
     func testStopMirrorEntersCooldownEvenWhenNotStreaming() async {

@@ -317,16 +317,13 @@ struct GlassBadge<Content: View>: View {
 struct ToolbarMetricBadge: View {
     let value: String
 
-    @State private var pulsing = false
-
     var body: some View {
         HStack(spacing: 7) {
             Circle()
                 .fill(DesignSystem.Colors.primaryGradient)
                 .frame(width: 5, height: 5)
-                .shadow(color: DesignSystem.Colors.ember.opacity(0.55), radius: pulsing ? 5 : 2.5, x: 0, y: 0)
-                .opacity(pulsing ? 1 : 0.78)
-                .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: pulsing)
+                .shadow(color: DesignSystem.Colors.ember.opacity(0.35), radius: 2.5, x: 0, y: 0)
+                .opacity(0.9)
 
             Text(value)
                 .font(.system(size: 11.5, weight: .bold, design: .monospaced))
@@ -340,7 +337,6 @@ struct ToolbarMetricBadge: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .toolbarPill()
-        .onAppear { pulsing = true }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("Total \(value)"))
     }

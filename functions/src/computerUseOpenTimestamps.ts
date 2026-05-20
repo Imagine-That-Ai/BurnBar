@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
+import { defineString } from "firebase-functions/params";
 import { enforceAuthAndAppCheck } from "./auth.js";
 import type {
   ComputerUseOpenTimestampsValidationRequest,
@@ -32,6 +33,13 @@ const execFileAsync = promisify(execFile);
 
 const DEFAULT_MAX_PROOF_BYTES = 256 * 1024;
 const DEFAULT_MAX_CHAIN_BYTES = 10 * 1024 * 1024;
+const OPENBURNBAR_OTS_VERIFY_URL_PARAM = defineString("OPENBURNBAR_OTS_VERIFY_URL", {
+  default: "",
+});
+const OPENBURNBAR_OTS_VERIFY_AUDIENCE_PARAM = defineString(
+  "OPENBURNBAR_OTS_VERIFY_AUDIENCE",
+  { default: "" },
+);
 
 export type ComputerUseOpenTimestampsVerifier = (
   proofBytes: Buffer,
@@ -123,9 +131,40 @@ function otsVerifierServiceURL(): string | undefined {
     (globalThis as any).functions?.config?.()?.openburnbar || {};
   const configured = (
     process.env.OPENBURNBAR_OTS_VERIFY_URL ??
-    cfg.ots_verify_url
+    cfg.ots_verify_url ??
+    OPENBURNBAR_OTS_VERIFY_URL_PARAM.value()
   )?.trim();
   return configured && configured.length > 0 ? configured : undefined;
+}
+
+function otsVerifierServiceAudience(serviceURL: string): string | undefined {
+  const cfg =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).functions?.config?.()?.openburnbar || {};
+  const configured = (
+    process.env.OPENBURNBAR_OTS_VERIFY_AUDIENCE ??
+    cfg.ots_verify_audience ??
+    OPENBURNBAR_OTS_VERIFY_AUDIENCE_PARAM.value()
+  )?.trim();
+  if (configured && configured.length > 0) return configured;
+  return undefined;
+}
+
+async function fetchGoogleIdentityToken(audience: string): Promise<string> {
+  const url = new URL(
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity",
+  );
+  url.searchParams.set("audience", audience);
+  url.searchParams.set("format", "full");
+  const response = await fetch(url, {
+    headers: { "Metadata-Flavor": "Google" },
+  });
+  if (!response.ok) {
+    throw new Error(`metadata identity token request failed: HTTP ${response.status}`);
+  }
+  const token = (await response.text()).trim();
+  if (!token) throw new Error("metadata identity token request returned empty token");
+  return token;
 }
 
 async function runOtsVerifyViaService(
@@ -144,14 +183,33 @@ async function runOtsVerifyViaService(
     };
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      proofBase64: proofBytes.toString("base64"),
-      chainFileBase64: chainBytes?.toString("base64"),
-    }),
-  });
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  const audience = otsVerifierServiceAudience(serviceURL);
+  if (audience) {
+    try {
+      headers.authorization = `Bearer ${await fetchGoogleIdentityToken(audience)}`;
+    } catch (error) {
+      return {
+        status: "ots_verifier_unavailable",
+        verified: false,
+        otsVerifierOutput: error instanceof Error
+          ? error.message
+          : "metadata identity token request failed",
+      };
+    }
+  }
+
+  const response = await fetch(
+    url,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        proofBase64: proofBytes.toString("base64"),
+        chainFileBase64: chainBytes?.toString("base64"),
+      }),
+    },
+  );
   const text = await response.text();
   let parsed: Record<string, unknown> = {};
   try {

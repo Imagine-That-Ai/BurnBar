@@ -18,7 +18,10 @@ class AgentIdentityRegistry private constructor() {
     var lastRefreshedAtEpoch by mutableStateOf<Long?>(null)
         private set
 
-    fun identity(uri: String): AgentIdentity? = identities.firstOrNull { it.id == uri }
+    fun identity(uri: String): AgentIdentity? =
+        identities.firstOrNull { it.id == uri }
+            ?: uri.takeIf { it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX) }
+                ?.let(AgentIdentity::pairedMacPlaceholder)
 
     fun upsertPairedMac(connection: HermesConnectionRecord): AgentIdentity {
         val identity = AgentIdentity.pairedMac(connection)
@@ -67,5 +70,7 @@ class AgentIdentityRegistry private constructor() {
             instance ?: synchronized(this) {
                 instance ?: AgentIdentityRegistry().also { instance = it }
             }
+
+        internal fun testInstance(): AgentIdentityRegistry = AgentIdentityRegistry()
     }
 }

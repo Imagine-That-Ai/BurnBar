@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import OpenBurnBarCore
 import OpenBurnBarMedia
+import OSLog
 
 /// Mac-side brain for Mercury Phase 8 user-facing entry points. Owns:
 ///
@@ -23,10 +24,17 @@ import OpenBurnBarMedia
 /// existing control-stream read loop fans non-blob frames into it.
 @MainActor
 final class MercuryRouter: ObservableObject {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
+    private static func debugTrace(_ message: String) {
+        #if DEBUG
+        NSLog("OpenBurnBarMercury \(message)")
+        #endif
+    }
 
     enum Phase: Equatable {
         case idle
         case ringing(requestID: String, requesterName: String, requestedAt: Date)
+        case callRinging(requestID: String, requesterName: String, requestedAt: Date)
         case starting(requestID: String)
         case streaming(requestID: String, since: Date)
         case cooldown(secondsRemaining: Int)
@@ -64,6 +72,7 @@ final class MercuryRouter: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var lastError: String?
     @Published private(set) var pendingRequest: PendingRequest?
+    @Published private(set) var pendingCall: PendingRequest?
 
     private let sessionCoordinator: MediaSessionCoordinator
     private let peerSource: MercuryPeerSource
@@ -107,6 +116,8 @@ final class MercuryRouter: ObservableObject {
         _ frame: HermesRealtimeRelayFrame,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
+        Self.log.info("router_handle_frame type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+        Self.debugTrace("router_handle_frame type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
         switch frame.type {
         case .mediaPresenceHeartbeat:
             if let heartbeat = frame.media?.presence {
@@ -119,6 +130,11 @@ final class MercuryRouter: ObservableObject {
             await handleMirrorRequest(frame: frame, replySender: replySender)
         case .mediaMirrorAck:
             // Mac is the producer of acks, not the consumer. Ignore.
+            break
+        case .mediaCallInvite:
+            await handleCallInvite(frame: frame, replySender: replySender)
+        case .mediaCallAck:
+            // Mac is the producer of call acks, not the consumer. Ignore.
             break
         default:
             break
@@ -140,6 +156,34 @@ final class MercuryRouter: ObservableObject {
             replySender: request.replySender
         )
         pendingRequest = nil
+        startCooldown(seconds: Int(cooldownSeconds))
+    }
+
+    /// User tapped "Accept" on a phone-originated call invite. This acks
+    /// the invitation over the live control stream; media negotiation is
+    /// still owned by the dedicated Mercury call transport.
+    func acceptCall(_ request: PendingRequest) async {
+        await respondToCall(
+            requestID: request.id,
+            decision: .accepted,
+            detail: "Mac accepted the call invite",
+            frame: request.frame,
+            replySender: request.replySender
+        )
+        pendingCall = nil
+        phase = .idle
+    }
+
+    /// User tapped "Decline" on a phone-originated call invite.
+    func declineCall(_ request: PendingRequest) async {
+        await respondToCall(
+            requestID: request.id,
+            decision: .denied,
+            detail: "Declined by user",
+            frame: request.frame,
+            replySender: request.replySender
+        )
+        pendingCall = nil
         startCooldown(seconds: Int(cooldownSeconds))
     }
 
@@ -177,10 +221,18 @@ final class MercuryRouter: ObservableObject {
         frame: HermesRealtimeRelayFrame,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
-        guard let req = frame.media?.mirrorRequest else { return }
+        guard let req = frame.media?.mirrorRequest else {
+            Self.log.error("router_mirror_request_missing_payload requestID=\(frame.requestId ?? "", privacy: .public)")
+            Self.debugTrace("router_mirror_request_missing_payload requestID=\(frame.requestId ?? "")")
+            return
+        }
+        Self.log.info("router_mirror_request_received requestID=\(req.requestId, privacy: .public) requester=\(req.requesterDisplayName, privacy: .public)")
+        Self.debugTrace("router_mirror_request_received requestID=\(req.requestId) requester=\(req.requesterDisplayName)")
 
         // Cooldown short-circuit — never bother the user mid-cooldown.
         if case let .cooldown(remaining) = phase {
+            Self.log.info("router_mirror_request_cooling_down requestID=\(req.requestId, privacy: .public) remaining=\(remaining, privacy: .public)")
+            Self.debugTrace("router_mirror_request_cooling_down requestID=\(req.requestId) remaining=\(remaining)")
             await respond(
                 requestID: req.requestId,
                 decision: .coolingDown,
@@ -194,6 +246,8 @@ final class MercuryRouter: ObservableObject {
 
         // Busy short-circuit — one mirror at a time.
         if case .streaming = phase {
+            Self.log.info("router_mirror_request_busy_streaming requestID=\(req.requestId, privacy: .public)")
+            Self.debugTrace("router_mirror_request_busy_streaming requestID=\(req.requestId)")
             await respond(
                 requestID: req.requestId,
                 decision: .busy,
@@ -204,6 +258,8 @@ final class MercuryRouter: ObservableObject {
             return
         }
         if case .starting = phase {
+            Self.log.info("router_mirror_request_busy_starting requestID=\(req.requestId, privacy: .public)")
+            Self.debugTrace("router_mirror_request_busy_starting requestID=\(req.requestId)")
             await respond(
                 requestID: req.requestId,
                 decision: .busy,
@@ -225,6 +281,8 @@ final class MercuryRouter: ObservableObject {
         // Consent fast-path: if the user has flipped "Always allow my
         // iPhone to mirror", auto-accept and bypass the ringing UI.
         if consentStore.alwaysAllow {
+            Self.log.info("router_mirror_request_auto_accept requestID=\(req.requestId, privacy: .public)")
+            Self.debugTrace("router_mirror_request_auto_accept requestID=\(req.requestId)")
             await beginMirror(for: pending)
             return
         }
@@ -236,12 +294,76 @@ final class MercuryRouter: ObservableObject {
             requesterName: req.requesterDisplayName,
             requestedAt: req.requestedAt
         )
+        Self.log.info("router_mirror_request_ringing requestID=\(req.requestId, privacy: .public)")
+        Self.debugTrace("router_mirror_request_ringing requestID=\(req.requestId)")
+    }
+
+    private func handleCallInvite(
+        frame: HermesRealtimeRelayFrame,
+        replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+    ) async {
+        guard let invite = frame.media?.callInvite else {
+            Self.log.error("router_call_invite_missing_payload requestID=\(frame.requestId ?? "", privacy: .public)")
+            Self.debugTrace("router_call_invite_missing_payload requestID=\(frame.requestId ?? "")")
+            return
+        }
+        Self.log.info("router_call_invite_received requestID=\(invite.requestId, privacy: .public) requester=\(invite.requesterDisplayName, privacy: .public)")
+        Self.debugTrace("router_call_invite_received requestID=\(invite.requestId) requester=\(invite.requesterDisplayName)")
+
+        if case .streaming = phase {
+            await respondToCall(
+                requestID: invite.requestId,
+                decision: .busy,
+                detail: "Another Mercury session is in progress",
+                frame: frame,
+                replySender: replySender
+            )
+            return
+        }
+        if case .starting = phase {
+            await respondToCall(
+                requestID: invite.requestId,
+                decision: .busy,
+                detail: "A Mercury session is starting",
+                frame: frame,
+                replySender: replySender
+            )
+            return
+        }
+        if case let .cooldown(remaining) = phase {
+            await respondToCall(
+                requestID: invite.requestId,
+                decision: .busy,
+                detail: "Cooling down for \(remaining)s",
+                frame: frame,
+                replySender: replySender
+            )
+            return
+        }
+
+        let pending = PendingRequest(
+            id: invite.requestId,
+            requesterName: invite.requesterDisplayName,
+            requestedAt: invite.requestedAt,
+            frame: frame,
+            replySender: replySender
+        )
+        pendingCall = pending
+        phase = .callRinging(
+            requestID: invite.requestId,
+            requesterName: invite.requesterDisplayName,
+            requestedAt: invite.requestedAt
+        )
+        Self.log.info("router_call_invite_ringing requestID=\(invite.requestId, privacy: .public)")
+        Self.debugTrace("router_call_invite_ringing requestID=\(invite.requestId)")
     }
 
     private func beginMirror(for request: PendingRequest) async {
         phase = .starting(requestID: request.id)
         pendingRequest = nil
         guard let factory = mirrorSinkFactory else {
+            Self.log.error("router_mirror_accept_unsupported_missing_sink requestID=\(request.id, privacy: .public)")
+            Self.debugTrace("router_mirror_accept_unsupported_missing_sink requestID=\(request.id)")
             await respond(
                 requestID: request.id,
                 decision: .unsupported,
@@ -284,6 +406,8 @@ final class MercuryRouter: ObservableObject {
             phase = .streaming(requestID: request.id, since: clock())
         } catch {
             lastError = error.localizedDescription
+            Self.log.error("router_mirror_start_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.debugTrace("router_mirror_start_failed requestID=\(request.id) error=\(error.localizedDescription)")
             await respond(
                 requestID: request.id,
                 decision: .unsupported,
@@ -316,7 +440,43 @@ final class MercuryRouter: ObservableObject {
             requestId: requestID,
             media: HermesRealtimeRelayMediaPayload(mirrorAck: ack)
         )
-        try? await replySender(outbound)
+        do {
+            try await replySender(outbound)
+            Self.log.info("router_mirror_ack_sent requestID=\(requestID, privacy: .public) decision=\(decision.rawValue, privacy: .public)")
+            Self.debugTrace("router_mirror_ack_sent requestID=\(requestID) decision=\(decision.rawValue)")
+        } catch {
+            Self.log.error("router_mirror_ack_send_failed requestID=\(requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.debugTrace("router_mirror_ack_send_failed requestID=\(requestID) error=\(error.localizedDescription)")
+        }
+    }
+
+    private func respondToCall(
+        requestID: String,
+        decision: HermesRealtimeRelayCallAck.Decision,
+        detail: String?,
+        frame: HermesRealtimeRelayFrame,
+        replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+    ) async {
+        let ack = HermesRealtimeRelayCallAck(
+            requestId: requestID,
+            decision: decision,
+            detail: detail
+        )
+        let outbound = HermesRealtimeRelayFrame(
+            type: .mediaCallAck,
+            uid: frame.uid,
+            connectionId: frame.connectionId,
+            requestId: requestID,
+            media: HermesRealtimeRelayMediaPayload(callAck: ack)
+        )
+        do {
+            try await replySender(outbound)
+            Self.log.info("router_call_ack_sent requestID=\(requestID, privacy: .public) decision=\(decision.rawValue, privacy: .public)")
+            Self.debugTrace("router_call_ack_sent requestID=\(requestID) decision=\(decision.rawValue)")
+        } catch {
+            Self.log.error("router_call_ack_send_failed requestID=\(requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.debugTrace("router_call_ack_send_failed requestID=\(requestID) error=\(error.localizedDescription)")
+        }
     }
 
     private func startCooldown(seconds: Int) {

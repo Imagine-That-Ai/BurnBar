@@ -154,7 +154,8 @@ final class HermesRuntimeLauncher {
 
     func openHermesAndGateway(
         baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
-        bearerToken: String? = nil
+        bearerToken: String? = nil,
+        launchDashboard: Bool = true
     ) async -> HermesRuntimeStatus {
         isBusy = true
         defer { isBusy = false }
@@ -179,7 +180,7 @@ final class HermesRuntimeLauncher {
                 }
             }
 
-            if !(await dashboardIsRunning(executable: executable)) {
+            if launchDashboard, !(await dashboardIsRunning(executable: executable)) {
                 try await dependencies.launchDetached(executable, ["dashboard", "--tui"])
             }
 

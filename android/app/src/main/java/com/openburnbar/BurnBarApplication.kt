@@ -9,25 +9,64 @@ import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
 import com.google.firebase.messaging.FirebaseMessaging
+import com.openburnbar.data.hermes.relay.FirestoreIrohPairingDirectory
+import com.openburnbar.data.hermes.relay.FirestoreIrohPairingPublicKeyProvider
 import com.openburnbar.data.hermes.relay.HermesRelayKeyStore
 import com.openburnbar.data.media.AndroidFileTransferService
+import com.openburnbar.data.media.IrohBlobKeyStore
+import com.openburnbar.data.media.MediaFileTransferService
 import com.openburnbar.data.media.MediaControlStreamCoordinator
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
 import com.openburnbar.irohrelay.IrohDialTarget
+import com.openburnbar.irohrelay.IrohPairingPublisher
+import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
 import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.IrohRelayTransport
 import com.openburnbar.irohrelay.LoopbackIrohRelayRendezvous
 import com.openburnbar.irohrelay.LoopbackIrohRelayTransport
+import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+
+internal object IrohPairingSelection {
+    data class Candidate(
+        val connectionId: String,
+        val publishedAtMillis: Long,
+    )
+
+    fun newest(documents: List<DocumentSnapshot>): Candidate? =
+        newestCandidates(
+            documents.mapNotNull { document ->
+                val connectionId = document.getString("connectionId")
+                    ?: document.getString("id")
+                    ?: document.id
+                val normalizedConnectionId = connectionId.trim().takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                Candidate(
+                    connectionId = normalizedConnectionId,
+                    publishedAtMillis = document.getLong("publishedAtMillis") ?: 0L,
+                )
+            }
+        )
+
+    fun newestCandidates(candidates: List<Candidate>): Candidate? =
+        candidates
+            .filter { it.connectionId.isNotBlank() }
+            .maxWithOrNull(
+                compareBy<Candidate> { it.publishedAtMillis }
+                    .thenBy { it.connectionId }
+            )
+}
 
 class BurnBarApplication : Application() {
     companion object {
@@ -51,6 +90,8 @@ class BurnBarApplication : Application() {
     private var pairingListener: ListenerRegistration? = null
     private var authListener: FirebaseAuth.AuthStateListener? = null
     @Volatile private var activeCoordinatorConnection: String? = null
+    @Volatile private var activeCoordinatorPublishedAtMillis: Long? = null
+    @Volatile private var activeCoordinatorTarget: IrohDialTarget? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -65,6 +106,7 @@ class BurnBarApplication : Application() {
         // Phase 6: Hermes iroh transport bootstraps lazily — first send on
         // `HermesIrohRelayTransport.transport()` brings the endpoint up.
         // Nothing eager required here.
+        installFileTransferService()
 
         // Phase 6: when Firebase Auth is ready AND a paired Mac iroh
         // record exists, dial the media-control coordinator so file
@@ -75,6 +117,28 @@ class BurnBarApplication : Application() {
         // users/{uid}/devices/{deviceId}/fcm_token so triggerVoIPCall
         // can send a Mercury push to this device.
         registerFcmToken()
+    }
+
+    private fun installFileTransferService() {
+        val blobKeyStore = IrohBlobKeyStore(applicationContext)
+        val transferService = MediaFileTransferService(
+            backend = OpenBurnBarIrohBlobFfiBackend(),
+            configuration = MediaFileTransferService.Configuration(
+                storeDirectory = File(filesDir, "mercury_blob_store"),
+                inboxDirectory = File(filesDir, "mercury_blob_inbox"),
+                secretKeyProvider = { blobKeyStore.secretKeyMaterial() },
+            ),
+        )
+        registerFileTransferService(
+            AndroidFileTransferService(
+                appContext = applicationContext,
+                service = transferService,
+                settingsProvider = {
+                    getSharedPreferences("mercury_media", MODE_PRIVATE)
+                        .getBoolean("media_blob_transfer_enabled", true)
+                },
+            )
+        )
     }
 
     private fun installAuthListener() {
@@ -99,18 +163,25 @@ class BurnBarApplication : Application() {
         pairingListener = FirebaseFirestore.getInstance()
             .collection("users").document(uid)
             .collection(IROH_PAIRING_COLLECTION)
+            .orderBy("publishedAtMillis", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.w("BurnBar", "Iroh pairing listener error: ${error.message}")
                     return@addSnapshotListener
                 }
-                val connectionId = snapshot?.documents
-                    ?.mapNotNull { it.getString("connectionId")?.takeIf { id -> id.isNotBlank() } }
-                    ?.firstOrNull()
-                    ?: return@addSnapshotListener
-                if (connectionId == activeCoordinatorConnection) return@addSnapshotListener
+                val selected = IrohPairingSelection.newest(snapshot?.documents.orEmpty())
+                if (selected == null) {
+                    stopMediaControlCoordinator()
+                    return@addSnapshotListener
+                }
+                if (
+                    selected.connectionId == activeCoordinatorConnection &&
+                    selected.publishedAtMillis == activeCoordinatorPublishedAtMillis
+                ) {
+                    return@addSnapshotListener
+                }
                 applicationScope.launch {
-                    ensureMediaControlCoordinator(uid = uid, connectionId = connectionId)
+                    ensureMediaControlCoordinator(uid = uid, selection = selected)
                 }
             }
     }
@@ -120,30 +191,37 @@ class BurnBarApplication : Application() {
         pairingListener = null
     }
 
-    private suspend fun ensureMediaControlCoordinator(uid: String, connectionId: String) {
+    private suspend fun ensureMediaControlCoordinator(uid: String, selection: IrohPairingSelection.Candidate) {
+        val connectionId = selection.connectionId
         val existing = mediaControlCoordinator
-        if (existing != null && activeCoordinatorConnection == connectionId) return
-        existing?.stop()
-        val receiver = fileTransferService ?: run {
-            // Phase 1a / 1b: AndroidFileTransferService is wired by the
-            // call surface once a `MediaFileTransferService` (with
-            // backend + storage configuration) is configured. Until
-            // then we keep the coordinator dormant — Mac → Android push
-            // is still served by the chat stream's piggy-back path.
-            Log.i("BurnBar", "MediaControlStreamCoordinator deferred: file transfer service not wired yet.")
+        if (
+            existing != null &&
+            activeCoordinatorConnection == connectionId &&
+            activeCoordinatorPublishedAtMillis == selection.publishedAtMillis
+        ) {
             return
         }
+        val target = fetchVerifiedPairingTarget(uid = uid, connectionId = connectionId)
+        existing?.stop()
         val dialer = MediaControlStreamCoordinator.StreamDialer { dialedUid, dialedConnection ->
-            dialControlStream(uid = dialedUid, connectionId = dialedConnection)
+            val dialTarget = activeCoordinatorTarget
+                ?: fetchVerifiedPairingTarget(uid = dialedUid, connectionId = dialedConnection)
+            dialControlStream(dialTarget)
         }
         val coordinator = MediaControlStreamCoordinator(
             dialer = dialer,
-            receiver = receiver,
+            receiver = fileTransferService,
         )
         mediaControlCoordinator = coordinator
         activeCoordinatorConnection = connectionId
-        runCatching { receiver.attachControlStream(coordinator) }
-            .onFailure { Log.w("BurnBar", "attachControlStream failed: ${it.message}") }
+        activeCoordinatorPublishedAtMillis = selection.publishedAtMillis
+        activeCoordinatorTarget = target
+        fileTransferService?.let { receiver ->
+            runCatching {
+                coordinator.attachReceiver(receiver)
+                receiver.attachControlStream(coordinator)
+            }.onFailure { Log.w("BurnBar", "attachControlStream failed: ${it.message}") }
+        }
         runCatching { coordinator.start(uid = uid, connectionID = connectionId) }
             .onFailure { Log.w("BurnBar", "MediaControlStreamCoordinator.start failed: ${it.message}") }
     }
@@ -156,10 +234,20 @@ class BurnBarApplication : Application() {
      */
     fun registerFileTransferService(service: AndroidFileTransferService) {
         fileTransferService = service
+        mediaControlCoordinator?.attachReceiver(service)
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         val connectionId = activeCoordinatorConnection
         if (uid != null && connectionId != null) {
-            applicationScope.launch { ensureMediaControlCoordinator(uid = uid, connectionId = connectionId) }
+            val publishedAtMillis = activeCoordinatorPublishedAtMillis ?: 0L
+            applicationScope.launch {
+                ensureMediaControlCoordinator(
+                    uid = uid,
+                    selection = IrohPairingSelection.Candidate(
+                        connectionId = connectionId,
+                        publishedAtMillis = publishedAtMillis,
+                    ),
+                )
+            }
         }
     }
 
@@ -168,6 +256,17 @@ class BurnBarApplication : Application() {
         applicationScope.launch { runCatching { coordinator.stop() } }
         mediaControlCoordinator = null
         activeCoordinatorConnection = null
+        activeCoordinatorPublishedAtMillis = null
+        activeCoordinatorTarget = null
+    }
+
+    private suspend fun fetchVerifiedPairingTarget(uid: String, connectionId: String): IrohDialTarget {
+        val publicKey = FirestoreIrohPairingPublicKeyProvider().fetchPublicKey(uid)
+        return IrohPairingPublisher(FirestoreIrohPairingDirectory()).fetchAndVerify(
+            uid = uid,
+            connectionId = connectionId,
+            publicKey = publicKey,
+        )
     }
 
     /**
@@ -177,15 +276,17 @@ class BurnBarApplication : Application() {
      * the in-process loopback transport so the wiring still completes
      * for tests and CI screenshots.
      */
-    private suspend fun dialControlStream(uid: String, connectionId: String): IrohRelayStream {
+    private suspend fun dialControlStream(target: IrohDialTarget): IrohRelayStream {
         val keyStore = HermesRelayKeyStore(applicationContext)
         val transport: IrohRelayTransport = runCatching {
-            com.openburnbar.data.hermes.relay.HermesIrohRelayTransport.defaultTransport(keyStore = keyStore)
+            com.openburnbar.data.hermes.relay.HermesIrohRelayTransport.defaultTransport(
+                keyStore = keyStore,
+                relayURL = target.relayURL,
+            )
         }.getOrElse { LoopbackIrohRelayTransport(rendezvous = LoopbackIrohRelayRendezvous()) }
-        val identity = transport.start()
         // Best-effort dial — the dialer surfaces TimedOut / EndpointNotReady
         // to the coordinator's reconnect loop.
-        val target = IrohDialTarget(nodeId = identity.nodeId)
+        transport.start()
         return transport.connect(target, timeoutMillis = 5_000L)
     }
 

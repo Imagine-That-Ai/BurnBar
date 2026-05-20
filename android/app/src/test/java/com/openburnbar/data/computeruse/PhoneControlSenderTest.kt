@@ -47,6 +47,7 @@ class PhoneControlSenderTest {
         assertEquals(HermesRealtimeRelayInputIntentKind.SCROLL, input?.kind)
         assertEquals(0.4, input?.normalizedX ?: -1.0, 0.0)
         assertEquals(0.2, input?.normalizedY2 ?: -1.0, 0.0)
+        assertNotNull(input?.clientIntentId)
         assertEquals("android-phone-1", input?.authority?.peerNodeId)
         assertEquals(1L, input?.authority?.counter)
         assertEquals(721_692_800.123, input?.authority?.timestamp ?: -1.0, 0.000_001)
@@ -59,6 +60,7 @@ class PhoneControlSenderTest {
                 normalizedY = 0.5,
                 normalizedX2 = 0.4,
                 normalizedY2 = 0.2,
+                clientIntentId = input?.clientIntentId,
             ),
             authority = authority,
             publicKey = PhoneControlSigner.publicKey(privateSeed),

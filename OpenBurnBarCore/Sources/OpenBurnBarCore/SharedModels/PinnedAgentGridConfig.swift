@@ -118,6 +118,21 @@ public struct PinnedAgentGridConfig: Codable, Sendable, Hashable {
         return copy
     }
 
+    public func pinningPairedMac(
+        _ uri: String,
+        pairedMacPrefix: String = "device://paired-mac/"
+    ) -> PinnedAgentGridConfig {
+        guard uri.hasPrefix(pairedMacPrefix) else {
+            return pinning(uri)
+        }
+        var copy = self
+        copy.pinnedURIs.removeAll { $0 == uri }
+        copy.pinnedURIs.insert(uri, at: 0)
+        copy.pinnedURIs = Array(copy.pinnedURIs.prefix(Self.maxSlots))
+        copy.lastRearrangedAt = Date()
+        return copy.sanitized()
+    }
+
     /// Remove `uri` from the grid. Returns the mutated config.
     public func unpinning(_ uri: String) -> PinnedAgentGridConfig {
         var copy = self

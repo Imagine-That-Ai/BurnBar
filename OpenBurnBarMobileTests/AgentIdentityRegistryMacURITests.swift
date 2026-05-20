@@ -1,5 +1,6 @@
 import XCTest
 import OpenBurnBarCore
+import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBarMobile
 
@@ -65,4 +66,131 @@ final class AgentIdentityRegistryMacURITests: XCTestCase {
         XCTAssertNotNil(builtIn)
         XCTAssertEqual(builtIn?.runtimeID, .hermes)
     }
+}
+
+@MainActor
+final class MediaControlStreamPresenceTests: XCTestCase {
+    func testReadLoopForwardsMacPresenceHeartbeatToInstalledHandler() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        let received = expectation(description: "presence heartbeat forwarded")
+        coordinator.presenceHeartbeatHandler = { heartbeat in
+            XCTAssertEqual(heartbeat.deviceDisplayName, "Alberto's Mac")
+            XCTAssertEqual(heartbeat.capabilities, [
+                MercuryPeer.Feature.mirrorHost.rawValue,
+                MercuryPeer.Feature.fileReceive.rawValue
+            ])
+            received.fulfill()
+        }
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        await stream.pushInbound(HermesRealtimeRelayFrame(
+            type: .mediaPresenceHeartbeat,
+            uid: "user-1",
+            connectionId: "conn-1",
+            media: HermesRealtimeRelayMediaPayload(
+                presence: HermesRealtimeRelayPresenceHeartbeat(
+                    sentAt: Date(timeIntervalSince1970: 1_700_000_000),
+                    deviceDisplayName: "Alberto's Mac",
+                    capabilities: [
+                        MercuryPeer.Feature.mirrorHost.rawValue,
+                        MercuryPeer.Feature.fileReceive.rawValue
+                    ]
+                )
+            )
+        ))
+
+        await fulfillment(of: [received], timeout: 1.0)
+        await coordinator.stop()
+    }
+
+    private func waitUntilLive(_ coordinator: MediaControlStreamCoordinator) async throws {
+        let deadline = Date().addingTimeInterval(1.0)
+        while coordinator.phase != .live {
+            if Date() > deadline {
+                XCTFail("media control stream did not become live")
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
+    private func makeReceiver() -> iOSFileTransferService {
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mercury-mobile-tests-\(UUID().uuidString)", isDirectory: true)
+        let service = MediaFileTransferService(
+            backend: MediaControlFakeBlobBackend(),
+            configuration: .init(
+                storeDirectoryURL: temp.appendingPathComponent("store", isDirectory: true),
+                inboxDirectoryURL: temp.appendingPathComponent("inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0xAB, count: 32) }
+            )
+        )
+        return iOSFileTransferService(service: service, settingsProvider: { true })
+    }
+}
+
+private actor MediaControlFakeStream: IrohRelayStream {
+    private var inboundFrames: [HermesRealtimeRelayFrame] = []
+    private var receiveWaiter: CheckedContinuation<HermesRealtimeRelayFrame?, Error>?
+    private var isClosed = false
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {}
+
+    func receive() async throws -> HermesRealtimeRelayFrame? {
+        if !inboundFrames.isEmpty { return inboundFrames.removeFirst() }
+        if isClosed { return nil }
+        return try await withCheckedThrowingContinuation { continuation in
+            receiveWaiter = continuation
+        }
+    }
+
+    func close() async {
+        isClosed = true
+        receiveWaiter?.resume(returning: nil)
+        receiveWaiter = nil
+    }
+
+    func pushInbound(_ frame: HermesRealtimeRelayFrame) {
+        if let receiveWaiter {
+            self.receiveWaiter = nil
+            receiveWaiter.resume(returning: frame)
+            return
+        }
+        inboundFrames.append(frame)
+    }
+}
+
+private final class MediaControlFakeBlobBackend: IrohBlobBackend, @unchecked Sendable {
+    func bootstrap(secret: Data, storeDirectoryPath: String, relayURL: String?) async throws -> IrohEndpointIdentity {
+        IrohEndpointIdentity(nodeId: "fake-node", rawPublicKey: Data(secret.prefix(32)))
+    }
+
+    func publishBlob(localPath: String) async throws -> String {
+        "blob1fake"
+    }
+
+    func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {
+        BlobTransferStats(
+            bytesTotal: 0,
+            blake3Hash: "blake3:fake",
+            durationMillis: 0,
+            didResume: false
+        )
+    }
+
+    func identity() async throws -> IrohEndpointIdentity {
+        IrohEndpointIdentity(nodeId: "fake-node", rawPublicKey: Data(repeating: 0, count: 32))
+    }
+
+    func shutdown() async {}
 }

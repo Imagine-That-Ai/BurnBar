@@ -690,6 +690,9 @@ final class CodexParser: LogParser, Sendable {
                 var cacheReadTokens: Int = 0
                 var foundExact = false
 
+                var parsedConversation: CodexConversationCacheEntry?
+                var shouldEmitConversation = expandedRolloutPath == nil
+
                 if let expandedPath = expandedRolloutPath {
                     let cacheKey = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
                     activePaths.insert(cacheKey)
@@ -703,6 +706,8 @@ final class CodexParser: LogParser, Sendable {
                             cacheReadTokens = tokenUsage.cacheRead
                             foundExact = true
                         }
+                        parsedConversation = cached.conversation
+                        shouldEmitConversation = cached.conversation != nil
                     } else {
                         let parsed = parseCodexSessionJSONL(path: expandedPath)
                         if let parsed {
@@ -711,6 +716,8 @@ final class CodexParser: LogParser, Sendable {
                             cacheReadTokens = parsed.cacheRead
                             foundExact = true
                         }
+                        parsedConversation = parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
+                        shouldEmitConversation = true
 
                         if let signature = FileSignature(for: URL(fileURLWithPath: expandedPath)) {
                             sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
@@ -721,7 +728,8 @@ final class CodexParser: LogParser, Sendable {
                                         output: $0.output,
                                         cacheRead: $0.cacheRead
                                     )
-                                }
+                                },
+                                conversation: parsedConversation
                             )
                             cacheMutated = true
                         }
@@ -762,35 +770,34 @@ final class CodexParser: LogParser, Sendable {
                     usages.append(usage)
                 }
 
-                let parsedConversation = expandedRolloutPath.flatMap {
-                    parseCodexConversationJSONL(path: $0, fallbackTitle: rawTitle)
+                if shouldEmitConversation {
+                    let inferredTitle = parsedConversation?.title
+                        ?? rawTitle.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                        ?? threadId
+                    let fullText = parsedConversation?.markdown
+                        ?? rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let conversation = ConversationRecord(
+                        id: ConversationRecord.stableId(provider: .codex, sessionId: threadId),
+                        provider: .codex,
+                        sessionId: threadId,
+                        projectName: projectName,
+                        startTime: startTime,
+                        endTime: endTime,
+                        messageCount: parsedConversation?.messageCount ?? (fullText.isEmpty ? 0 : 1),
+                        userWordCount: parsedConversation?.userWordCount ?? rawTitle.split(separator: " ").count,
+                        assistantWordCount: parsedConversation?.assistantWordCount ?? 0,
+                        keyFiles: parsedConversation?.keyFiles ?? [],
+                        keyCommands: parsedConversation?.keyCommands ?? [],
+                        keyTools: parsedConversation?.keyTools ?? [],
+                        inferredTaskTitle: inferredTitle,
+                        lastAssistantMessage: parsedConversation?.lastAssistantMessage ?? "",
+                        fullText: fullText,
+                        indexedAt: Date(),
+                        fileModifiedAt: expandedRolloutPath.flatMap { modificationDate(of: URL(fileURLWithPath: $0)) },
+                        summary: nil
+                    )
+                    conversations.append(conversation)
                 }
-                let inferredTitle = parsedConversation?.title
-                    ?? rawTitle.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                    ?? threadId
-                let fullText = parsedConversation?.markdown
-                    ?? rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                let conversation = ConversationRecord(
-                    id: ConversationRecord.stableId(provider: .codex, sessionId: threadId),
-                    provider: .codex,
-                    sessionId: threadId,
-                    projectName: projectName,
-                    startTime: startTime,
-                    endTime: endTime,
-                    messageCount: parsedConversation?.messageCount ?? (fullText.isEmpty ? 0 : 1),
-                    userWordCount: parsedConversation?.userWordCount ?? rawTitle.split(separator: " ").count,
-                    assistantWordCount: parsedConversation?.assistantWordCount ?? 0,
-                    keyFiles: parsedConversation?.keyFiles ?? [],
-                    keyCommands: parsedConversation?.keyCommands ?? [],
-                    keyTools: parsedConversation?.keyTools ?? [],
-                    inferredTaskTitle: inferredTitle,
-                    lastAssistantMessage: parsedConversation?.lastAssistantMessage ?? "",
-                    fullText: fullText,
-                    indexedAt: Date(),
-                    fileModifiedAt: expandedRolloutPath.flatMap { modificationDate(of: URL(fileURLWithPath: $0)) },
-                    summary: nil
-                )
-                conversations.append(conversation)
             }
         }
 
@@ -883,17 +890,7 @@ final class CodexParser: LogParser, Sendable {
         return foundDelta ? (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens) : nil
     }
 
-    private func parseCodexConversationJSONL(path: String, fallbackTitle: String) -> (
-        title: String,
-        markdown: String,
-        messageCount: Int,
-        userWordCount: Int,
-        assistantWordCount: Int,
-        keyFiles: [String],
-        keyCommands: [String],
-        keyTools: [String],
-        lastAssistantMessage: String
-    )? {
+    private func parseCodexConversationJSONL(path: String, fallbackTitle: String) -> CodexConversationCacheEntry? {
         guard fileManager.fileExists(atPath: path),
               let handle = FileHandle(forReadingAtPath: path) else {
             return nil
@@ -944,7 +941,7 @@ final class CodexParser: LogParser, Sendable {
             .filter { $0.role == "assistant" }
             .reduce(0) { $0 + $1.text.split(separator: " ").count }
 
-        return (
+        return CodexConversationCacheEntry(
             title: String(title.prefix(160)),
             markdown: markdown,
             messageCount: turns.count,
@@ -1255,9 +1252,22 @@ private struct CodexTokenUsage: Codable, Equatable {
     let cacheRead: Int
 }
 
+private struct CodexConversationCacheEntry: Codable, Equatable {
+    let title: String
+    let markdown: String
+    let messageCount: Int
+    let userWordCount: Int
+    let assistantWordCount: Int
+    let keyFiles: [String]
+    let keyCommands: [String]
+    let keyTools: [String]
+    let lastAssistantMessage: String
+}
+
 private struct CodexCacheEntry: Codable, Equatable {
     let signature: FileSignature
     let tokenUsage: CodexTokenUsage?
+    let conversation: CodexConversationCacheEntry?
 }
 
 // MARK: - Model Filter Parser (for Zai/MiniMax which use Factory sessions)

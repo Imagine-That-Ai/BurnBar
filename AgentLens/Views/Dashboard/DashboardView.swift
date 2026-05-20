@@ -235,6 +235,7 @@ struct DashboardView: View {
                     }
                 }
             }
+            .fixedSize()
             .padding(EdgeInsets(top: 24, leading: 20, bottom: 20, trailing: 20))
         }
         .toolbar { toolbarContent }
@@ -544,7 +545,10 @@ struct DashboardView: View {
                         }
                     }
                     .padding(DesignSystem.Spacing.xl)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .scrollContentBackground(.hidden)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

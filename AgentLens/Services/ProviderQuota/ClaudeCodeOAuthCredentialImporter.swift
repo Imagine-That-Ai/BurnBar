@@ -140,7 +140,8 @@ struct ClaudeCodeOAuthCredentialImporter {
                 payload = nil
             }
 
-            if payload?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+            if allowUserInteraction,
+               payload?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
                 payload = externalKeychainPasswordReader(service, account)
             }
 

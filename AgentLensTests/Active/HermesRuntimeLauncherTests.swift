@@ -59,6 +59,26 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         XCTAssertEqual(detachedCommands, [])
     }
 
+    func test_openHermesAndGateway_canStartGatewayWithoutOpeningDashboard() async {
+        let fake = FakeHermesRuntime(
+            gatewayAvailable: false,
+            dashboardStatusOutput: ""
+        )
+        let launcher = HermesRuntimeLauncher(dependencies: fake.dependencies)
+
+        let status = await launcher.openHermesAndGateway(launchDashboard: false)
+
+        XCTAssertTrue(status.gatewayRunning)
+        XCTAssertFalse(status.dashboardRunning)
+        let commands = await fake.commands
+        let detachedCommands = await fake.detachedCommands
+        XCTAssertEqual(commands, [
+            ["gateway", "--accept-hooks", "start"],
+            ["dashboard", "--status"]
+        ])
+        XCTAssertEqual(detachedCommands, [])
+    }
+
     func test_openHermesAndGateway_installsGatewayWhenStartFails() async {
         let fake = FakeHermesRuntime(
             gatewayAvailable: false,

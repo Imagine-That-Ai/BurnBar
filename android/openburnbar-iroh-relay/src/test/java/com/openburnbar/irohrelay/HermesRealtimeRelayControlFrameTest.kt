@@ -19,6 +19,7 @@ class HermesRealtimeRelayControlFrameTest {
                     normalizedY = 0.5,
                     normalizedX2 = 0.4,
                     normalizedY2 = 0.2,
+                    clientIntentId = "intent-1",
                     authority = HermesRealtimeRelayAuthorityEnvelope(
                         peerNodeId = "android-phone-1",
                         counter = 42,
@@ -38,6 +39,7 @@ class HermesRealtimeRelayControlFrameTest {
         assertNotNull(decoded.control?.inputIntent)
         assertEquals(HermesRealtimeRelayInputIntentKind.SCROLL, decoded.control?.inputIntent?.kind)
         assertEquals(0.2, decoded.control?.inputIntent?.normalizedY2 ?: -1.0, 0.0)
+        assertEquals("intent-1", decoded.control?.inputIntent?.clientIntentId)
         assertEquals(42L, decoded.control?.inputIntent?.authority?.counter)
         assertEquals("f".repeat(64), decoded.control?.inputIntent?.authority?.intentHashBlake3)
     }

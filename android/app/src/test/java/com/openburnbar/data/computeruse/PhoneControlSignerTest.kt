@@ -48,6 +48,21 @@ class PhoneControlSignerTest {
     }
 
     @Test
+    fun canonicalJsonIncludesClientIntentIdWhenPresent() {
+        val intent = PhoneControlIntent(
+            kind = PhoneControlIntentKind.TAP,
+            normalizedX = 0.25,
+            normalizedY = 0.75,
+            clientIntentId = "intent-1",
+        )
+
+        assertEquals(
+            """{"clientIntentId":"intent-1","kind":"tap","normalizedX":0.25,"normalizedY":0.75}""",
+            PhoneControlSigner.canonicalIntentJson(intent),
+        )
+    }
+
+    @Test
     fun signablePayloadIsStableAndBigEndian() {
         val payload = PhoneControlSigner.signablePayload(
             intentHashHex = "abc",

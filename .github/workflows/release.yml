@@ -23,7 +23,7 @@ env:
   SCHEME: OpenBurnBar
   PROJECT: OpenBurnBar.xcodeproj
   CONFIG: Release
-  DESTINATION: "platform=macOS"
+  DESTINATION: "platform=macOS,arch=arm64"
   CACHE_DIR: .spm-cache
   DERIVED_DATA: .derived-data
 
@@ -181,6 +181,8 @@ jobs:
             -destination "$DESTINATION" \
             -clonedSourcePackagesDirPath "$CACHE_DIR" \
             -derivedDataPath "$DERIVED_DATA" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -198,13 +200,12 @@ jobs:
             echo "::error::Daemon binary not found at $DAEMON_BIN"
             exit 1
           fi
-          if [[ ! -f "$DAEMON_CORE_DYLIB" ]]; then
-            echo "::error::Daemon support library not found at $DAEMON_CORE_DYLIB"
-            exit 1
-          fi
-
           cp "$DAEMON_BIN" "$HELPERS_DIR/OpenBurnBarDaemon"
-          cp "$DAEMON_CORE_DYLIB" "$HELPERS_DIR/libOpenBurnBarCore.dylib"
+          if [[ -f "$DAEMON_CORE_DYLIB" ]]; then
+            cp "$DAEMON_CORE_DYLIB" "$HELPERS_DIR/libOpenBurnBarCore.dylib"
+          else
+            echo "No daemon support dylib found at $DAEMON_CORE_DYLIB; daemon is statically linked."
+          fi
           chmod +x "$HELPERS_DIR/OpenBurnBarDaemon"
 
       - name: Embed OpenBurnBarCore framework in app bundle
@@ -213,14 +214,13 @@ jobs:
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
           CORE_FRAMEWORK_PATH="$DERIVED_DATA/Build/Products/$CONFIG/PackageFrameworks/OpenBurnBarCore.framework"
 
-          if [[ ! -d "$CORE_FRAMEWORK_PATH" ]]; then
-            echo "::error::OpenBurnBarCore framework not found at $CORE_FRAMEWORK_PATH"
-            exit 1
-          fi
-
           mkdir -p "$FRAMEWORKS_DIR"
-          rm -rf "$FRAMEWORKS_DIR/OpenBurnBarCore.framework"
-          cp -R "$CORE_FRAMEWORK_PATH" "$FRAMEWORKS_DIR/"
+          if [[ -d "$CORE_FRAMEWORK_PATH" ]]; then
+            rm -rf "$FRAMEWORKS_DIR/OpenBurnBarCore.framework"
+            cp -R "$CORE_FRAMEWORK_PATH" "$FRAMEWORKS_DIR/"
+          else
+            echo "No OpenBurnBarCore.framework found at $CORE_FRAMEWORK_PATH; app is statically linked."
+          fi
 
       - name: Import Developer ID signing certificate
         env:

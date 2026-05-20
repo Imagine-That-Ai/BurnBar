@@ -89,7 +89,7 @@ final class ComputerUseDaemonApprovalPresenter {
         let hostingView = NSHostingView(rootView: root)
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: 520),
-            styleMask: [.titled, .closable, .nonactivatingPanel],
+            styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )

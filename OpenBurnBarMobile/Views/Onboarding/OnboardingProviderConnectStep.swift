@@ -300,7 +300,7 @@ struct OnboardingProviderConnectStep: View {
                     )
                     .foregroundStyle(subscriptionStore.isActive ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
                     Spacer()
-                    if subscriptionStore.isLoading {
+                    if subscriptionStore.isPurchasing {
                         MiningPickLoader(.inline)
                     } else if !subscriptionStore.isActive {
                         Button("Subscribe") {
@@ -319,7 +319,7 @@ struct OnboardingProviderConnectStep: View {
                     Label("Restore Purchases", systemImage: "arrow.clockwise")
                         .font(MobileTheme.Typography.caption)
                 }
-                .disabled(subscriptionStore.isLoading)
+                .disabled(subscriptionStore.isLoading || subscriptionStore.isPurchasing)
             }
         }
     }

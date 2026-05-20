@@ -8,7 +8,6 @@ public struct UnifiedGlassCard<Content: View>: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
-    @State private var isPressed = false
 
     public init(interactive: Bool = false, @ViewBuilder content: @escaping () -> Content) {
         self.interactive = interactive
@@ -31,23 +30,15 @@ public struct UnifiedGlassCard<Content: View>: View {
                     .stroke(glassEdgeGradient, lineWidth: 0.5)
             )
             .clipShape(RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous))
-            .scaleEffect(isPressed ? 0.98 : (isHovered ? 1.01 : 1.0))
+            .scaleEffect(isHovered ? 1.01 : 1.0)
             .animation(UnifiedDesignSystem.Animation.hover, value: isHovered)
-            .animation(UnifiedDesignSystem.Animation.snappy, value: isPressed)
 
-        // Critical: only attach hover/drag gestures when the card is
-        // actually interactive. The previous unconditional
-        // `DragGesture(minimumDistance: 0)` was installed on every glass
-        // card and swallowed scroll touches, so any ScrollView with stacked
-        // glass cards (Session Detail, Settings, etc.) couldn't scroll.
+        // Critical: do not use zero-distance drag gestures for press feedback.
+        // They compete with SwiftUI Button and ScrollView gesture recognizers,
+        // which makes visible controls feel dead under normal mouse input.
         if interactive {
             card
                 .onHover { hovering in isHovered = hovering }
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in isPressed = true }
-                        .onEnded { _ in isPressed = false }
-                )
         } else {
             card
         }

@@ -234,6 +234,24 @@ data class AgentIdentity(
         fun pairedMacURI(connectionID: String): String =
             "$PAIRED_MAC_URI_PREFIX$connectionID"
 
+        fun pairedMacPlaceholder(uri: String): AgentIdentity =
+            AgentIdentity(
+                id = uri,
+                runtimeID = null,
+                displayName = "My Mac",
+                glyph = "🖥",
+                paletteHex = "8B9DC3",
+                tier = AgentTier.SERVICE,
+                availability = AgentAvailability.UNKNOWN,
+                installSource = AgentInstallSource.BuiltIn,
+                capabilities = AgentCapabilities.EMPTY,
+                dispatchTransport = AgentDispatchTransport.NativeRelay,
+                personas = emptyList(),
+                lastSevenDays = null,
+                lastRefreshedAtEpoch = null,
+                tagline = "Open BurnBar on your Mac to connect"
+            )
+
         fun pairedMac(connection: HermesConnectionRecord): AgentIdentity =
             AgentIdentity(
                 id = pairedMacURI(connection.id),
@@ -256,6 +274,19 @@ data class AgentIdentity(
                 lastRefreshedAtEpoch = connection.lastSeenAt ?: connection.updatedAt,
                 tagline = "Mirror, call, or control this Mac"
             )
+
+        fun preferredPairedMacConnection(connections: Iterable<HermesConnectionRecord>): HermesConnectionRecord? =
+            connections
+                .filter { connection ->
+                    connection.mode == com.openburnbar.data.hermes.HermesConnectionMode.RELAY_LINK &&
+                        connection.status != com.openburnbar.data.hermes.HermesConnectionStatus.REVOKED &&
+                        connection.status != com.openburnbar.data.hermes.HermesConnectionStatus.UNAUTHORIZED
+                }
+                .sortedWith(
+                    compareByDescending<HermesConnectionRecord> { it.status == com.openburnbar.data.hermes.HermesConnectionStatus.ONLINE }
+                        .thenByDescending { it.lastSeenAt ?: it.updatedAt }
+                )
+                .firstOrNull()
 
         fun builtIn(
             runtime: AssistantRuntimeID,

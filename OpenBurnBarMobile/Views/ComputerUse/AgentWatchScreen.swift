@@ -162,6 +162,8 @@ struct AgentWatchScreen: View {
             try? encoded.write(to: url, options: [.atomic])
         }
     }
+    #else
+    private func computerUseE2EProofLog(_ message: String) {}
     #endif
 }
 

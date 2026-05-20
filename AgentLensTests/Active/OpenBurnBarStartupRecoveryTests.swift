@@ -5,6 +5,13 @@ import XCTest
 final class OpenBurnBarStartupRecoveryTests: XCTestCase {
     private let fileManager = FileManager.default
 
+    func test_minimumAutomaticUsageRefreshInterval_isLaunchSafeBackgroundCadence() {
+        XCTAssertGreaterThanOrEqual(
+            OpenBurnBarStartupRecovery.minimumAutomaticUsageRefreshInterval,
+            15 * 60
+        )
+    }
+
     func test_failureDiagnostics_includeStoragePathsAndError() {
         let paths = OpenBurnBarAppPaths(applicationSupportRoot: URL(fileURLWithPath: "/tmp/openburnbar-tests"))
         let error = NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError, userInfo: [

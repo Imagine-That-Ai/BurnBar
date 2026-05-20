@@ -185,4 +185,53 @@ assert.rejects(
   }
 }
 
+{
+  const priorURL = process.env.OPENBURNBAR_OTS_VERIFY_URL;
+  const priorAudience = process.env.OPENBURNBAR_OTS_VERIFY_AUDIENCE;
+  const priorFetch = globalThis.fetch;
+  process.env.OPENBURNBAR_OTS_VERIFY_URL = "https://openburnbar-ots-verifier.example/verify";
+  process.env.OPENBURNBAR_OTS_VERIFY_AUDIENCE = "https://openburnbar-ots-verifier.example";
+  let sawMetadataRequest = false;
+  let sawAuthorizedVerifyRequest = false;
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    if (href.startsWith("http://metadata.google.internal/computeMetadata")) {
+      sawMetadataRequest = true;
+      assert.equal(init.headers?.["Metadata-Flavor"], "Google");
+      assert.ok(href.includes("audience=https%3A%2F%2Fopenburnbar-ots-verifier.example"));
+      return new Response("signed-id-token", { status: 200 });
+    }
+    assert.equal(href, "https://openburnbar-ots-verifier.example/verify");
+    assert.equal(init.headers.authorization, "Bearer signed-id-token");
+    sawAuthorizedVerifyRequest = true;
+    return new Response(JSON.stringify({
+      verified: true,
+      output: "Private Cloud Run verifier accepted ID token.",
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const response = await runOtsVerify(Buffer.from("proof"));
+    assert.equal(response.status, "verified");
+    assert.equal(response.verified, true);
+    assert.equal(response.otsVerifierOutput, "Private Cloud Run verifier accepted ID token.");
+    assert.equal(sawMetadataRequest, true);
+    assert.equal(sawAuthorizedVerifyRequest, true);
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorURL == null) {
+      delete process.env.OPENBURNBAR_OTS_VERIFY_URL;
+    } else {
+      process.env.OPENBURNBAR_OTS_VERIFY_URL = priorURL;
+    }
+    if (priorAudience == null) {
+      delete process.env.OPENBURNBAR_OTS_VERIFY_AUDIENCE;
+    } else {
+      process.env.OPENBURNBAR_OTS_VERIFY_AUDIENCE = priorAudience;
+    }
+  }
+}
+
 console.log("computer-use OpenTimestamps validation tests: OK");

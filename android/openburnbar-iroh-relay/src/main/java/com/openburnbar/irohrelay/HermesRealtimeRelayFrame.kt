@@ -50,6 +50,12 @@ enum class HermesRealtimeRelayFrameType {
     @SerialName("media.classify") MEDIA_CLASSIFY,
     @SerialName("media.blob.advertise") MEDIA_BLOB_ADVERTISE,
     @SerialName("media.blob.ack") MEDIA_BLOB_ACK,
+    @SerialName("media.mirror.request") MEDIA_MIRROR_REQUEST,
+    @SerialName("media.mirror.ack") MEDIA_MIRROR_ACK,
+    @SerialName("media.presence.heartbeat") MEDIA_PRESENCE_HEARTBEAT,
+    @SerialName("media.call.invite") MEDIA_CALL_INVITE,
+    @SerialName("media.call.ack") MEDIA_CALL_ACK,
+    @SerialName("media.stream.frame") MEDIA_STREAM_FRAME,
 
     // Computer Use control plane. Mirrors the Swift enum so Android can
     // receive Agent Watch frames and emit signed phone-control intents.
@@ -102,6 +108,12 @@ data class HermesRealtimeRelayMediaPayload(
     val attachment: HermesRealtimeRelayAttachmentManifest? = null,
     val blobTicket: String? = null,
     val ack: HermesRealtimeRelayMediaAck? = null,
+    val mirrorRequest: HermesRealtimeRelayMirrorRequest? = null,
+    val mirrorAck: HermesRealtimeRelayMirrorAck? = null,
+    val presence: HermesRealtimeRelayPresenceHeartbeat? = null,
+    val callInvite: HermesRealtimeRelayCallInvite? = null,
+    val callAck: HermesRealtimeRelayCallAck? = null,
+    val encodedFrameBase64: String? = null,
 )
 
 @Serializable
@@ -128,6 +140,67 @@ data class HermesRealtimeRelayMediaAck(
         @SerialName("rejected") REJECTED,
     }
 }
+
+@Serializable
+data class HermesRealtimeRelayMirrorRequest(
+    val requestId: String,
+    /** ISO-8601 string. Matches the Swift `Date` encoding via JSONEncoder default. */
+    val requestedAt: String,
+    val requesterDisplayName: String,
+    val streamClass: String,
+)
+
+@Serializable
+data class HermesRealtimeRelayMirrorAck(
+    val requestId: String,
+    val decision: Decision,
+    val detail: String? = null,
+    val cooldownSecondsRemaining: Int? = null,
+) {
+    @Serializable
+    enum class Decision {
+        @SerialName("accepted") ACCEPTED,
+        @SerialName("denied") DENIED,
+        @SerialName("cooling_down") COOLING_DOWN,
+        @SerialName("unsupported") UNSUPPORTED,
+        @SerialName("busy") BUSY,
+    }
+}
+
+@Serializable
+data class HermesRealtimeRelayCallInvite(
+    val requestId: String,
+    /** ISO-8601 string. Matches the Swift `Date` encoding via JSONEncoder default. */
+    val requestedAt: String,
+    val requesterDisplayName: String,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
+    val callKind: String = "video",
+)
+
+@Serializable
+data class HermesRealtimeRelayCallAck(
+    val requestId: String,
+    val decision: Decision,
+    val detail: String? = null,
+) {
+    @Serializable
+    enum class Decision {
+        @SerialName("accepted") ACCEPTED,
+        @SerialName("denied") DENIED,
+        @SerialName("unsupported") UNSUPPORTED,
+        @SerialName("busy") BUSY,
+    }
+}
+
+@Serializable
+data class HermesRealtimeRelayPresenceHeartbeat(
+    val peerDeviceId: String,
+    val displayName: String,
+    val capabilities: List<String> = emptyList(),
+    /** ISO-8601 string. Matches the Swift `Date` encoding via JSONEncoder default. */
+    val sentAt: String,
+)
 
 @Serializable
 data class HermesRealtimeRelayControlPayload(
@@ -185,6 +258,7 @@ data class HermesRealtimeRelayInputIntent(
     val text: String? = null,
     val key: String? = null,
     val modifiers: List<String>? = null,
+    val clientIntentId: String? = null,
     val authority: HermesRealtimeRelayAuthorityEnvelope,
 )
 

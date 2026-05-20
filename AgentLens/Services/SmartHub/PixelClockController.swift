@@ -366,6 +366,11 @@ final class PixelClockController {
             var forceNextPush = true
             while !Task.isCancelled {
                 guard let self else { return }
+                guard self.settingsManager.pixelClockConfig.enabled else {
+                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                    forceNextPush = true
+                    continue
+                }
                 await self.pushIfNeeded(force: forceNextPush)
                 forceNextPush = false
                 // After a successful push we normally tick every 5 s, but
@@ -393,6 +398,10 @@ final class PixelClockController {
                 let config = self.settingsManager.pixelClockConfig
                 guard config.enabled else {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    continue
+                }
+                if self.shouldBackOffInputPolling(for: config) {
+                    try? await Task.sleep(nanoseconds: self.offlineInputPollNanoseconds())
                     continue
                 }
                 let appName = await self.client.currentAppName(
@@ -941,11 +950,29 @@ final class PixelClockController {
         return working ? 1_500_000_000 : 5_000_000_000
     }
 
+    private func shouldBackOffInputPolling(for config: PixelClockConfig) -> Bool {
+        switch config.lastProbeStatus {
+        case .awtrixReady:
+            return false
+        case .stockUlanziFirmware:
+            return true
+        case .unknown, .unreachable, .unsupported, .error:
+            return consecutivePushFailures > 0
+        }
+    }
+
+    private func offlineInputPollNanoseconds() -> UInt64 {
+        let exponent = Double(min(max(consecutivePushFailures - 1, 0), 4))
+        let seconds = max(5.0, min(pow(2.0, exponent) * 5.0, 60.0))
+        return UInt64(seconds * 1_000_000_000)
+    }
+
     /// True whenever the agent-status store reports a running agent (either
     /// from OpenBurnBar's CLI bridge or the external `/bin/ps` scanner).
     /// Used by the heartbeat to decide between the fast spinner cadence and
     /// the idle five-second heartbeat.
     func hasWorkingActivity() async -> Bool {
+        guard settingsManager.pixelClockConfig.enabled else { return false }
         let statuses = await PixelClockAgentStatusStore.shared.snapshotIncludingExternalProcesses()
         return statuses.values.contains(.running)
     }

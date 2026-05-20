@@ -32,6 +32,8 @@ public final class PhoneControlReceiver: @unchecked Sendable {
     private let dispatchHandler: DispatchHandler
     private let denyFrameSink: FrameSink
     private let displayBoundsProvider: DisplayBoundsProvider
+    private let seenIntentQueue = DispatchQueue(label: "com.openburnbar.phoneControl.receiver.seenIntentIds")
+    private var seenClientIntentIds: Set<String> = []
 
     public init(
         sessionId: ComputerUseSessionID,
@@ -69,6 +71,17 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             return
         } catch {
             await emitDeniedFrame(reason: .signatureFailure, uid: frame.uid, connectionId: frame.connectionId)
+            return
+        }
+
+        if let clientIntentId = intent.clientIntentId, !clientIntentId.isEmpty,
+           markClientIntentSeen(clientIntentId) == false {
+            await emitDeniedFrame(
+                reason: .counterReplay,
+                detail: "duplicate_client_intent",
+                uid: frame.uid,
+                connectionId: frame.connectionId
+            )
             return
         }
 
@@ -153,6 +166,16 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             return nil
         }
         return (point.x, point.y)
+    }
+
+    private func markClientIntentSeen(_ clientIntentId: String) -> Bool {
+        seenIntentQueue.sync {
+            if seenClientIntentIds.contains(clientIntentId) {
+                return false
+            }
+            seenClientIntentIds.insert(clientIntentId)
+            return true
+        }
     }
 
     private func emitDeniedFrame(

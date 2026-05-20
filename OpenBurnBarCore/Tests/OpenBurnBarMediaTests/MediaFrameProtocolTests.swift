@@ -195,6 +195,82 @@ final class MediaFrameProtocolTests: XCTestCase {
                        ["mirror.viewer", "file.send", "call.receive"])
     }
 
+    func testCallInviteAndAckRoundTrip() throws {
+        let invite = HermesRealtimeRelayCallInvite(
+            requestId: "call_abc",
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_200),
+            requesterDisplayName: "Alberto's Android",
+            callKind: "video"
+        )
+        let inviteFrame = HermesRealtimeRelayFrame(
+            type: .mediaCallInvite,
+            uid: "u1",
+            connectionId: "c1",
+            requestId: invite.requestId,
+            media: HermesRealtimeRelayMediaPayload(callInvite: invite)
+        )
+
+        let inviteDecoded = try JSONDecoder().decode(
+            HermesRealtimeRelayFrame.self,
+            from: try JSONEncoder().encode(inviteFrame)
+        )
+        XCTAssertEqual(inviteDecoded, inviteFrame)
+        XCTAssertEqual(inviteDecoded.media?.callInvite?.requesterDisplayName, "Alberto's Android")
+        XCTAssertEqual(inviteDecoded.media?.callInvite?.callKind, "video")
+
+        let ack = HermesRealtimeRelayCallAck(
+            requestId: invite.requestId,
+            decision: .accepted,
+            detail: "Mac accepted"
+        )
+        let ackFrame = HermesRealtimeRelayFrame(
+            type: .mediaCallAck,
+            uid: "u1",
+            connectionId: "c1",
+            requestId: ack.requestId,
+            media: HermesRealtimeRelayMediaPayload(callAck: ack)
+        )
+        let ackDecoded = try JSONDecoder().decode(
+            HermesRealtimeRelayFrame.self,
+            from: try JSONEncoder().encode(ackFrame)
+        )
+        XCTAssertEqual(ackDecoded.type, .mediaCallAck)
+        XCTAssertEqual(ackDecoded.media?.callAck?.decision, .accepted)
+        XCTAssertEqual(ackDecoded.media?.callAck?.detail, "Mac accepted")
+    }
+
+    func testStreamFrameEnvelopeRoundTripsEncodedMediaPacket() throws {
+        let codec = MediaPacketCodec()
+        let mediaFrame = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 42,
+            frameIndex: 7,
+            presentationTimestampMillis: 1_234,
+            payload: Data([0, 1, 2, 3])
+        )
+        let packet = try codec.encode(mediaFrame)
+        let relayFrame = HermesRealtimeRelayFrame(
+            type: .mediaStreamFrame,
+            uid: "u1",
+            connectionId: "c1",
+            media: HermesRealtimeRelayMediaPayload(
+                streamClass: MediaStreamClass.screenVideo.rawValue,
+                encodedFrameBase64: packet.base64EncodedString()
+            )
+        )
+
+        let encoded = try JSONEncoder().encode(relayFrame)
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayFrame.self, from: encoded)
+        XCTAssertEqual(decoded.type, .mediaStreamFrame)
+        XCTAssertEqual(decoded.media?.streamClass, MediaStreamClass.screenVideo.rawValue)
+        XCTAssertEqual(decoded.media?.encodedFrameBase64, packet.base64EncodedString())
+
+        let decodedPacket = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(decoded.media?.encodedFrameBase64)))
+        let decodedMediaFrame = try codec.decode(decodedPacket).frame
+        XCTAssertEqual(decodedMediaFrame, mediaFrame)
+    }
+
     func testOlderDecoderIgnoresUnknownMirrorFields() throws {
         // Forward-compat probe: synthesize a payload with an extra future
         // field. The current decoder should still pull out the known

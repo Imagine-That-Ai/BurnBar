@@ -57,33 +57,25 @@ struct DashboardBackdrop: View {
             DesignSystem.Colors.background
                 .ignoresSafeArea()
 
-            BracketSwarmBackground(moodBand: moodBand)
-                .ignoresSafeArea()
-                .opacity(0.68)
-                .allowsHitTesting(false)
+            DesignSystem.Colors.ember
+                .opacity(0.035)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .mask(alignment: .topLeading) {
+                    Rectangle()
+                        .frame(width: 520)
+                        .rotationEffect(.degrees(-11))
+                        .offset(x: -260, y: -80)
+                }
 
-            RadialGradient(
-                colors: [
-                    DesignSystem.Colors.ember.opacity(0.09),
-                    DesignSystem.Colors.amber.opacity(0.04),
-                    Color.clear
-                ],
-                center: .topLeading,
-                startRadius: 40,
-                endRadius: 520
-            )
-            .ignoresSafeArea()
-
-            RadialGradient(
-                colors: [
-                    DesignSystem.Colors.whimsy.opacity(0.06),
-                    Color.clear
-                ],
-                center: .bottomTrailing,
-                startRadius: 80,
-                endRadius: 560
-            )
-            .ignoresSafeArea()
+            DesignSystem.Colors.whimsy
+                .opacity(0.025)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .mask(alignment: .bottomTrailing) {
+                    Rectangle()
+                        .frame(width: 460)
+                        .rotationEffect(.degrees(15))
+                        .offset(x: 220, y: 110)
+                }
         }
     }
 }

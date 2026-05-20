@@ -2,6 +2,7 @@ import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
+import OSLog
 
 /// Mac-side outbound + inbound file transfer driver. Wraps the
 /// platform-agnostic `MediaFileTransferService` and adds the chat-stream
@@ -28,6 +29,13 @@ import OpenBurnBarMedia
 ///   4. Service emits `media.blob.ack` back on the same chat stream.
 @MainActor
 final class MacFileTransferService: ObservableObject {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
+    private static func debugTrace(_ message: String) {
+        #if DEBUG
+        NSLog("OpenBurnBarMercury \(message)")
+        #endif
+    }
+
     enum Failure: Error, LocalizedError {
         case backendUnavailable
         case fileMissing(URL)
@@ -212,6 +220,8 @@ final class MacFileTransferService: ObservableObject {
             return
         }
         await registry.register(stream: stream, uid: uid, connectionID: connectionID)
+        Self.log.info("mac_control_stream_mounted connectionID=\(connectionID, privacy: .public)")
+        Self.debugTrace("mac_control_stream_mounted connectionID=\(connectionID)")
         // Bind a Sendable ack-sender to the same stream so inbound
         // advertise frames can write their ack back over the same path
         // the dispatcher expects.
@@ -222,6 +232,8 @@ final class MacFileTransferService: ObservableObject {
         do {
             while let frame = try await stream.receive() {
                 guard frame.uid == uid, frame.connectionId == connectionID else { continue }
+                Self.log.info("mac_control_stream_receive type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+                Self.debugTrace("mac_control_stream_receive type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
                 switch frame.type {
                 case .mediaBlobAdvertise:
                     await handleAdvertise(frame: frame, ackSender: ackSender)
@@ -240,22 +252,34 @@ final class MacFileTransferService: ObservableObject {
                     continue
                 case .mediaMirrorRequest,
                      .mediaMirrorAck,
-                     .mediaPresenceHeartbeat:
+                     .mediaPresenceHeartbeat,
+                     .mediaCallInvite,
+                     .mediaCallAck,
+                     .mediaStreamFrame:
                     // Mercury Phase 8 — fan out to `MercuryRouter` if
                     // one is attached. Same ackSender shape so the
                     // router can write a `media.mirror.ack` back on the
                     // same stream the request arrived on.
                     if let mercuryDispatcher {
+                        Self.log.info("mac_control_stream_dispatch_mercury type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")
+                        Self.debugTrace("mac_control_stream_dispatch_mercury type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "")")
                         await mercuryDispatcher(frame, ackSender)
+                    } else {
+                        Self.log.error("mac_control_stream_missing_mercury_dispatcher type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")
+                        Self.debugTrace("mac_control_stream_missing_mercury_dispatcher type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "")")
                     }
                 default:
                     continue
                 }
             }
         } catch {
+            Self.log.error("mac_control_stream_read_failed connectionID=\(connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.debugTrace("mac_control_stream_read_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
             lastError = .publishFailed("control stream read: \(error.localizedDescription)")
         }
         await registry.invalidate(uid: uid, connectionID: connectionID)
+        Self.log.info("mac_control_stream_closed connectionID=\(connectionID, privacy: .public)")
+        Self.debugTrace("mac_control_stream_closed connectionID=\(connectionID)")
         await stream.close()
     }
 
@@ -308,4 +332,80 @@ final class MacFileTransferService: ObservableObject {
         )
         try? await ackSender(ackFrame)
     }
+}
+
+/// Sends encoded Mercury media frames over the already-live `media.control`
+/// stream that iOS opened to the Mac. This is the v1 mirror transport used by
+/// phone-initiated "Ask to Mirror": approval stays on the control stream, and
+/// accepted video frames follow as `media.stream.frame` envelopes.
+final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable {
+    enum SinkError: Error, LocalizedError {
+        case streamUnavailable
+
+        var errorDescription: String? {
+            switch self {
+            case .streamUnavailable:
+                return "No live Mercury control stream is available."
+            }
+        }
+    }
+
+    private let stream: any IrohRelayStream
+    private let uid: String
+    private let connectionID: String
+    private let streamClass: MediaStreamClass
+    private let codec = MediaPacketCodec()
+
+    init(
+        stream: any IrohRelayStream,
+        uid: String,
+        connectionID: String,
+        streamClass: MediaStreamClass
+    ) {
+        self.stream = stream
+        self.uid = uid
+        self.connectionID = connectionID
+        self.streamClass = streamClass
+    }
+
+    static func make(
+        registry: MediaControlStreamRegistry,
+        uid: String,
+        connectionID: String,
+        streamClass: MediaStreamClass
+    ) async throws -> MercuryControlStreamMediaSink {
+        let exactStream = await registry.stream(uid: uid, connectionID: connectionID)
+        let latestStream = await registry.latestStream(uid: uid)?.stream
+        guard let stream = exactStream ?? latestStream else {
+            throw SinkError.streamUnavailable
+        }
+        return MercuryControlStreamMediaSink(
+            stream: stream,
+            uid: uid,
+            connectionID: connectionID,
+            streamClass: streamClass
+        )
+    }
+
+    func write(frame: MediaFrame) async {
+        do {
+            let encoded = try codec.encode(frame)
+            let outbound = HermesRealtimeRelayFrame(
+                type: .mediaStreamFrame,
+                uid: uid,
+                connectionId: connectionID,
+                media: HermesRealtimeRelayMediaPayload(
+                    streamClass: streamClass.rawValue,
+                    encodedFrameBase64: encoded.base64EncodedString()
+                )
+            )
+            try await stream.send(outbound)
+        } catch {
+            // `MediaStreamSink.write` is intentionally fire-and-forget. The
+            // session coordinator owns teardown; a failed send drops this
+            // frame without crashing the host app.
+        }
+    }
+
+    func close() async {}
 }

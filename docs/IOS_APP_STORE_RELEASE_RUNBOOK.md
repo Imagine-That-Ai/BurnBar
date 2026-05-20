@@ -10,16 +10,15 @@ repo commands plus a short web-only App Store Connect pass.
 - Apple app ID: `6766366964`
 - iOS bundle ID: `com.openburnbar.app`
 - iOS version: `1.0`
-- iOS version state: `WAITING_FOR_REVIEW` as of 2026-05-12 after the build-9
-  rejection repair and resubmission
-- Linked build: `9`
+- iOS version state: `WAITING_FOR_REVIEW` as of 2026-05-18 after build `16`
+  was uploaded, attached, and resubmitted as review submission
+  `5470c33e-958d-4435-8490-f82af825f8e1`.
+- Linked build: `16`
 - Hosted quota subscription product: `com.openburnbar.hostedQuotaSync.cloud.monthly`
 - Subscription reference name: `Hosted Quota Sync Monthly`
-- Subscription state: `DEVELOPER_ACTION_NEEDED` as of 2026-05-12. Apple's
-  subscription validator reports this as a non-blocking warning after the app
-  version resubmission; the subscription still has a rejected English
-  localization that Apple's public API and web UI do not allow editing while in
-  that state.
+- Subscription state: `WAITING_FOR_REVIEW` as of 2026-05-18 with an App Review
+  screenshot present. Promotional subscription images remain optional and
+  non-blocking unless the subscription is promoted on App Store surfaces.
 - App Store Server Notifications V2 URL:
   `https://us-central1-burnbar.cloudfunctions.net/appStoreServerNotificationsV2`
 
@@ -102,15 +101,16 @@ Before final submission, the status output must show:
 - `appReviewDetail.hasNotes` is `true`. App Store Connect does not echo the
   demo account password in status readback; `prepare-review-metadata` is the
   write gate for the password.
-- Subscription state is `READY_TO_SUBMIT` before final submission.
+- Subscription state is `READY_TO_SUBMIT` or `WAITING_FOR_REVIEW` before final
+  submission. Apple can keep the first subscription in review while the app
+  version is resubmitted.
 - Subscription `hasReviewScreenshot` is `true`.
 
 After final submission, the expected readback is:
 
 - `iosVersion.state` is `WAITING_FOR_REVIEW` or another Apple review state.
-- `npm --prefix tools/app-store-connect run review-submissions` shows the
-  unresolved iOS submission in `WAITING_FOR_REVIEW` with one app-version item
-  linked to the current iOS version.
+- `asc review status --app 6766366964 --pretty` shows `reviewState` as
+  `WAITING_FOR_REVIEW` and `latestSubmission.id` as the fresh submission.
 - `asc validate subscriptions --app 6766366964 --pretty` has no blocking
   errors. The first subscription may still report `DEVELOPER_ACTION_NEEDED`
   until Apple processes the resubmitted app review.
@@ -190,17 +190,29 @@ Apple-required subscription fields before purchase: subscription title, length,
 price, services provided during each period, and functional Privacy Policy /
 Terms of Use links. The current purchase screen uses the
 `cloudStore.subscriptionDisclosure` block for this; do not remove it without a
-replacement that keeps those fields grouped together.
+replacement that keeps those fields grouped together. Public App Store metadata
+must use the live `burnbar.ai` URLs:
+
+- Support URL: `https://burnbar.ai/support`
+- Terms of Use: `https://burnbar.ai/legal/terms`
+- Privacy Policy: `https://burnbar.ai/legal/privacy-policy`
+
+Do not use `openburnbar.com` or the old GitHub issues URL for App Review
+metadata unless those URLs are verified live with a non-404 page body.
 
 For any camera attachment changes, keep `NSCameraUsageDescription` in
 `OpenBurnBarMobile/Info.plist` and `project.yml`. iOS terminates the app before
 Swift can recover if the Take Photo flow reaches camera APIs without that key.
 
 For Guideline 2.1(b), the `Subscribe` button must never look dead because the
-reviewer is signed out of Firebase. `HostedQuotaSubscriptionStore.purchase()`
-must present StoreKit even when `AuthRepository.shared.isSignedIn` is false, and
-only require OpenBurnBar sign-in for server entitlement binding or restore. Keep
+reviewer is signed out of Firebase or because StoreKit product metadata is still
+loading. `HostedQuotaSubscriptionStore.purchase()` must fetch product metadata
+on demand and attempt StoreKit even when `AuthRepository.shared.isSignedIn` is
+false. Only require OpenBurnBar sign-in for server entitlement binding or
+restore. Keep both
 `HostedQuotaSubscriptionStoreTests.testSignedOutPurchaseStillPresentsStoreKitAndFinishesWithActionableRecovery`
+and
+`HostedQuotaSubscriptionStoreTests.testPurchaseFetchesProductWhenLoadHasNotCompleted`
 green before resubmitting any subscription build.
 
 The corresponding in-app account deletion path is

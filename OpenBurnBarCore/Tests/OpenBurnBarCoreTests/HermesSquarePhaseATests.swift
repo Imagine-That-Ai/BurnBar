@@ -274,6 +274,17 @@ final class HermesSquarePinnedGridTests: XCTestCase {
         XCTAssertEqual(moved.pinnedURIs, ["b", "c", "d", "a"])
     }
 
+    func testPairedMacPinIsVisibleEvenWhenGridIsFull() {
+        let full = PinnedAgentGridConfig(
+            pinnedURIs: (0..<PinnedAgentGridConfig.maxSlots).map { "agent://test/\($0)" }
+        )
+        let pinned = full.pinningPairedMac("device://paired-mac/relay-live")
+
+        XCTAssertEqual(pinned.pinnedURIs.count, PinnedAgentGridConfig.maxSlots)
+        XCTAssertEqual(pinned.pinnedURIs.first, "device://paired-mac/relay-live")
+        XCTAssertFalse(pinned.pinnedURIs.contains("agent://test/11"))
+    }
+
     func testJSONRoundTripPreservesOrderAndDisplayMode() {
         let config = PinnedAgentGridConfig(
             pinnedURIs: ["a", "b", "c"],

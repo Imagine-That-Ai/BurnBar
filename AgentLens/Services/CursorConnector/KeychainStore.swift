@@ -87,15 +87,13 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         if !allowUserInteraction {
-            let context = LAContext()
-            context.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext as String] = context
-            // Force Security.framework to fail fast instead of presenting a keychain prompt.
-            if #available(macOS 11.0, *) {
-                // LAContext.interactionNotAllowed (set above) handles this on macOS 11+
-            } else {
-                query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
-            }
+            // Force Security.framework to fail fast instead of presenting a
+            // keychain prompt. Creating an LAContext for every background
+            // probe wakes CoreAuthentication and generates a surprising amount
+            // of work/log traffic when quota refreshes fan out across many
+            // credential slots, so non-interactive reads use the Security UI
+            // policy directly.
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
         }
         var item: CFTypeRef?
         let status: OSStatus

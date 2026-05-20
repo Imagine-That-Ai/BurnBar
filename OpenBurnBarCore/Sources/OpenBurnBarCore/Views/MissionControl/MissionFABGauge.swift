@@ -24,8 +24,8 @@ import SwiftUI
 //   • Live mono — at the bottom of the gauge: today's burn-per-hour, mono
 //                 monospaced. Auto-hidden in `compact` size.
 //
-// Heartbeat: a single pulse driven by `mercuryShimmer` (3s) keeps every live
-// surface in the app in cadence.
+// The gauge is deliberately static in normal dashboard use. It can stay visible
+// all day, so it must not keep SwiftUI's render loop alive while idle.
 
 public struct MissionFABGauge: View {
     public enum Size {
@@ -115,9 +115,6 @@ public struct MissionFABGauge: View {
 
     public let configuration: Configuration
 
-    @SwiftUI.State private var heartbeat = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     public init(configuration: Configuration) { self.configuration = configuration }
 
     public var body: some View {
@@ -133,7 +130,7 @@ public struct MissionFABGauge: View {
             Circle()
                 .trim(from: 0, to: configuration.burnSweep)
                 .stroke(
-                    burnArcGradient,
+                    primaryArcColor,
                     style: StrokeStyle(
                         lineWidth: configuration.size.ringThickness,
                         lineCap: .round
@@ -156,15 +153,13 @@ public struct MissionFABGauge: View {
                         .multilineTextAlignment(.center)
                         .frame(width: width)
                         .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
-                        .opacity(heartbeat ? 0.92 : 0.70)
+                        .opacity(0.86)
                 }
                 .frame(width: configuration.size.diameter, height: configuration.size.diameter)
             } else {
                 Image(systemName: glyphName)
                     .font(.system(size: configuration.size.glyphSize, weight: .semibold))
                     .foregroundStyle(glyphForeground)
-                    .scaleEffect(heartbeat && configuration.activeMissionCount > 0 ? 1.04 : 1.0)
-                    .symbolEffect(.pulse, options: .repeating, isActive: configuration.approvalPendingCount > 0 && !reduceMotion)
             }
 
             // Tiny mono burn-rate readout (hero only)
@@ -181,12 +176,6 @@ public struct MissionFABGauge: View {
         .frame(width: configuration.size.diameter, height: configuration.size.diameter)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                heartbeat = true
-            }
-        }
     }
 
     // MARK: Geometry
@@ -231,19 +220,6 @@ public struct MissionFABGauge: View {
         if configuration.activeMissionCount > 0 { return UnifiedDesignSystem.Colors.amber }
         if configuration.hasCompletedSinceLastOpen { return UnifiedDesignSystem.Colors.success }
         return UnifiedDesignSystem.Colors.textMuted
-    }
-
-    private var burnArcGradient: AngularGradient {
-        AngularGradient(
-            gradient: Gradient(colors: [
-                primaryArcColor.opacity(0.30),
-                primaryArcColor,
-                primaryArcColor.opacity(0.85)
-            ]),
-            center: .center,
-            startAngle: .degrees(-90),
-            endAngle: .degrees(270)
-        )
     }
 
     private var glyphName: String {

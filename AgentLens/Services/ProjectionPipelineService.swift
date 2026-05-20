@@ -266,6 +266,9 @@ actor ProjectionPipelineService {
                 }
             }
 
+            if report.leasedJobs % ProjectionPipelineRuntimeTuning.sweepYieldInterval == 0 {
+                await Task.yield()
+            }
         }
 
         let sweepDurationMs = OpenBurnBarProjectionPerformanceTimer.elapsedMilliseconds(since: sweepStartedAt)

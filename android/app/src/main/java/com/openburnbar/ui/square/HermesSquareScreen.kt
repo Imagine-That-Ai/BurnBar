@@ -80,8 +80,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.AssistantRuntimeID
-import com.openburnbar.data.hermes.HermesConnectionMode
-import com.openburnbar.data.hermes.HermesConnectionStatus
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.missions.ApprovalAsk
 import com.openburnbar.data.missions.ApprovalDecision
@@ -99,6 +97,7 @@ import com.openburnbar.data.square.CLIAgentSessionRecord
 import com.openburnbar.data.square.PinnedAgentGridConfig
 import com.openburnbar.data.square.ThreadInboxItem
 import com.openburnbar.data.square.ThreadInboxStore
+import kotlinx.coroutines.delay
 import com.openburnbar.data.square.splitForInbox
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -118,7 +117,8 @@ import java.util.UUID
 @Composable
 fun HermesSquareScreen(
     onOpenLegacyRuntime: (AssistantRuntimeID) -> Unit = {},
-    onOpenBrandZone: (String) -> Unit = {}
+    onOpenBrandZone: (String) -> Unit = {},
+    onOpenPairedMac: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val registry = remember { AgentIdentityRegistry.shared() }
@@ -180,17 +180,18 @@ fun HermesSquareScreen(
         missionHost.start()
         rollbackService.startObservingRequests()
         projectsStore.load()
-        hermesService.refreshRelayConnections()
+        while (true) {
+            hermesService.refreshRelayConnections()
+            delay(10_000)
+        }
     }
 
     LaunchedEffect(hermesConnections) {
-        val mac = hermesConnections
-            .filter { it.mode == HermesConnectionMode.RELAY_LINK && it.status == HermesConnectionStatus.ONLINE }
-            .maxByOrNull { it.lastSeenAt ?: it.updatedAt }
+        val mac = AgentIdentity.preferredPairedMacConnection(hermesConnections)
         if (mac != null) {
             val identity = registry.upsertPairedMac(mac)
             if (!pinned.pinnedURIs.contains(identity.id)) {
-                persistPinned(pinned.pinning(identity.id).sanitized())
+                persistPinned(pinned.pinningPairedMac(identity.id))
             }
         }
     }
@@ -379,10 +380,16 @@ fun HermesSquareScreen(
                             // recognized runtime fall through to brand
                             // zone since they have no chat surface.
                             val runtime = registry.identity(uri)?.runtimeID
-                            if (runtime != null) {
-                                onOpenLegacyRuntime(runtime)
-                            } else {
-                                showBrandZoneURI = uri
+                            when {
+                                uri.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX) -> {
+                                    onOpenPairedMac()
+                                }
+                                runtime != null -> {
+                                    onOpenLegacyRuntime(runtime)
+                                }
+                                else -> {
+                                    showBrandZoneURI = uri
+                                }
                             }
                         },
                         onLongPress = { uri -> showBrandZoneURI = uri },

@@ -6,6 +6,15 @@ enum OpenBurnBarDaemonSocketClient {
         service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
         legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
     )
+    private static let daemonSocketAuthTokenLock = NSLock()
+    private static var cachedDaemonSocketAuthToken: String?
+
+    static func cacheDaemonSocketAuthToken(_ token: String?) {
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        daemonSocketAuthTokenLock.withLock {
+            cachedDaemonSocketAuthToken = trimmed?.isEmpty == false ? trimmed : nil
+        }
+    }
 
     static func health(at socketURL: URL) throws -> BurnBarHealthResponse {
         let envelope: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try send(
@@ -950,11 +959,17 @@ enum OpenBurnBarDaemonSocketClient {
     }
 
     private static func daemonSocketAuthToken() -> String? {
+        let cached = daemonSocketAuthTokenLock.withLock { cachedDaemonSocketAuthToken }
+        if let cached {
+            return cached
+        }
         guard let storedToken = try? controllerRuntimeSecrets.string(for: OpenBurnBarIdentity.daemonSocketAuthTokenAccount) else {
             return nil
         }
         let token = storedToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return token.isEmpty ? nil : token
+        let nonEmptyToken = token.isEmpty ? nil : token
+        cacheDaemonSocketAuthToken(nonEmptyToken)
+        return nonEmptyToken
     }
 
     private static func sendEncoded<Request: Encodable, Response: Codable & Sendable>(

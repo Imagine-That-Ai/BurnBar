@@ -166,6 +166,34 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         XCTAssertEqual(backend.deleteCount(for: service, account: "minimax"), 1)
     }
 
+    func test_hermesRelayPublicKeyLookup_doesNotCreateMissingBackgroundKey() throws {
+        let service = "tests.hermes.relay.\(UUID().uuidString)"
+        let backend = InteractionLockedWriteTestKeychainBackend()
+        let keyStore = HermesRelayKeyStore(
+            keychain: KeychainStore(service: service, legacyServices: [], backend: backend)
+        )
+
+        XCTAssertNil(try keyStore.existingPublicKeyBase64())
+        XCTAssertEqual(
+            backend.writeCount(for: service, account: "settings.chat.hermes.relay.p256.v1"),
+            0
+        )
+    }
+
+    func test_piRelayPublicKeyLookup_doesNotCreateMissingBackgroundKey() throws {
+        let service = "tests.pi.relay.\(UUID().uuidString)"
+        let backend = InteractionLockedWriteTestKeychainBackend()
+        let keyStore = PiAgentRelayKeyStore(
+            keychain: KeychainStore(service: service, legacyServices: [], backend: backend)
+        )
+
+        XCTAssertNil(try keyStore.existingPublicKeyBase64())
+        XCTAssertEqual(
+            backend.writeCount(for: service, account: "settings.chat.piagent.relay.p256.v1"),
+            0
+        )
+    }
+
     // MARK: - Keychain Migration Data-Loss Protection (D12)
 
     func test_load_keychainWriteFails_retainsLegacyDefaultsKey() throws {

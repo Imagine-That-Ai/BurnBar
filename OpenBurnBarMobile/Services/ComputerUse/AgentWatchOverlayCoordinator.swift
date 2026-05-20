@@ -266,6 +266,10 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
             try? encoded.write(to: url, options: [.atomic])
         }
     }
+    #else
+    private func runE2EInputProofIfNeeded(receiver: AgentWatchReceiver) {}
+
+    private func computerUseE2EProofLog(_ message: String) {}
     #endif
 }
 #endif

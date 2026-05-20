@@ -3312,7 +3312,10 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                  .mediaBlobAck,
                  .mediaMirrorRequest,
                  .mediaMirrorAck,
-                 .mediaPresenceHeartbeat:
+                 .mediaPresenceHeartbeat,
+                 .mediaCallInvite,
+                 .mediaCallAck,
+                 .mediaStreamFrame:
                 // Mercury media frames are iroh-transport-only and never
                 // appear on the WSS dialer's chat response stream.
                 break

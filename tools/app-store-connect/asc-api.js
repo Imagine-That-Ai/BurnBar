@@ -22,8 +22,12 @@ const STOREKIT_BASES = {
   Sandbox: "https://api.storekit-sandbox.apple.com",
 };
 const LEGAL_URLS = {
-  terms: "https://openburnbar.com/legal/terms",
-  privacy: "https://openburnbar.com/legal/privacy-policy",
+  terms: "https://burnbar.ai/legal/terms",
+  privacy: "https://burnbar.ai/legal/privacy-policy",
+};
+const PUBLIC_URLS = {
+  support: "https://burnbar.ai/support",
+  marketing: "https://burnbar.ai",
 };
 
 const APP = {
@@ -79,18 +83,18 @@ Use the supplied review account to see seeded companion-app data:
 2. Choose "Sign in with email".
 3. Sign in with the supplied App Review username and password.
 4. The Pulse, Burn, Quota, and You views show synced Mac usage, provider quota snapshots, connected devices, and provider accounts.
-5. To find the In-App Purchase: You tab -> Settings -> OpenBurnBar Cloud -> Subscribe. The purchase screen shows Hosted Quota Sync Monthly, monthly price/period, restore, Privacy Policy, and Terms of Use links.
+5. To find the In-App Purchase: You tab -> Settings -> OpenBurnBar Cloud -> Subscribe. The purchase screen shows Hosted Quota Sync Monthly, monthly price/period, restore, Privacy Policy, and Terms of Use (EULA) links.
 6. Alternate IAP path: You tab -> Provider connections -> Codex -> Hosted Quota Sync -> Subscribe.
 7. To verify account deletion: You tab -> Settings -> Account -> Delete account -> Delete account confirmation. This calls the server-side deleteUserCloudData function, deletes the Firebase Auth user, and returns to signed-out state.
 
 Guideline 3.1.2(c) subscription disclosure fix:
-The OpenBurnBar Cloud purchase screen now includes a dedicated "Subscription Details" section before purchase. It states the auto-renewing subscription title (OpenBurnBar Cloud Monthly), length (1 month, auto-renews monthly), price (StoreKit display price per month), services provided during each period (Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, and Hermes Remote Relay), Apple billing/cancel instructions, and functional Privacy Policy and Terms of Use links.
+The OpenBurnBar Cloud purchase screen now includes a dedicated "Subscription Details" section before purchase. It states the auto-renewing subscription title (OpenBurnBar Cloud Monthly), length (1 month, auto-renews monthly), price (StoreKit display price per month), services provided during each period (Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, and Hermes Remote Relay), Apple billing/cancel instructions, and functional Privacy Policy and Terms of Use (EULA) links.
 
 Guideline 2.1(a) camera crash fix:
 Build ${APP.buildVersion} adds NSCameraUsageDescription to the iOS app Info.plist for the Take Photo attachment flow. The attachment menu also checks camera availability before presenting the camera sheet.
 
 Guideline 2.1(b) subscription responsiveness fix:
-Build ${APP.buildVersion} no longer blocks the Subscribe button on a Firebase-authenticated entitlement preflight. If App Review opens the OpenBurnBar Cloud screen before signing in, tapping Subscribe still presents Apple's StoreKit purchase flow immediately. Signed-in users continue to get server-side entitlement binding through appAccountToken, and signed-out purchases finish cleanly with an actionable sign-in/restore message instead of an Unauthenticated error.
+Build ${APP.buildVersion} no longer blocks the Subscribe button on Firebase authentication or background StoreKit product metadata loading. If App Review opens the OpenBurnBar Cloud screen before signing in, tapping Subscribe still attempts Apple's StoreKit purchase flow immediately. Signed-in users continue to get server-side entitlement binding through appAccountToken, and signed-out purchases finish cleanly with an actionable sign-in/restore message instead of an Unauthenticated error.
 
 Terms of Use: ${LEGAL_URLS.terms}
 Privacy Policy: ${LEGAL_URLS.privacy}
@@ -131,10 +135,10 @@ Terms of Use: ${LEGAL_URLS.terms}
 Privacy Policy: ${LEGAL_URLS.privacy}`,
   keywords:
     "AI,Claude,Codex,Cursor,quota,tokens,cost,budget,developer,LLM,agent,tracker",
-  marketingUrl: "https://github.com/Ajnunezg/OpenBurnBar",
+  marketingUrl: PUBLIC_URLS.marketing,
   promotionalText:
     "Track AI agent spend and quota pressure across Mac, iPhone, and iPad.",
-  supportUrl: "https://github.com/Ajnunezg/OpenBurnBar/issues",
+  supportUrl: PUBLIC_URLS.support,
   whatsNew:
     "Initial iPhone and iPad release with AI spend tracking, provider quota visibility, connected device sync, and optional Hosted Quota Sync for on-demand Codex quota refreshes.",
 };

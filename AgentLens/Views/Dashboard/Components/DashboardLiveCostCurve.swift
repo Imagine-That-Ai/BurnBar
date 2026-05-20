@@ -5,14 +5,8 @@ import OpenBurnBarCore
 // MARK: - Dashboard Live Cost Curve (macOS)
 //
 // Cumulative cost / token curve that sits under the Dashboard hero stat row.
-// Mirrors the iOS / Android `PulseLiveCostCurve` aesthetic — ember→amber→
-// transparent area, brand-gradient stroke, pulsing "now" marker — adapted
-// for the wider, denser macOS Dashboard plate.
-//
-// Implementation note: this component draws via SwiftUI `Canvas` rather than
-// `Charts` so it has zero dependency on layout intrinsics, renders at a
-// guaranteed minimum height, and avoids any silent fall-through to a
-// zero-sized chart when the parent stack is doing its own sizing.
+// This intentionally uses static Shape drawing instead of Canvas/animated
+// gradients. The dashboard can stay open all day, so idle render cost matters.
 
 struct DashboardLiveCostCurve: View {
 
@@ -26,10 +20,7 @@ struct DashboardLiveCostCurve: View {
     var accent: Color = DesignSystem.Colors.ember
     var height: CGFloat = 140
 
-    @State private var pulsePhase: CGFloat = 0
-    @State private var sweepPhase: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let samples = buildSamples()
@@ -44,16 +35,14 @@ struct DashboardLiveCostCurve: View {
                     samples: samples,
                     peak: peak,
                     domain: domain,
-                    accent: accent,
-                    colorScheme: colorScheme,
-                    pulsePhase: pulsePhase
+                    accent: accent
                 )
 
                 if isEmpty {
                     EmptyOverlay(
                         accent: accent,
-                        sweepPhase: sweepPhase,
-                        reduceMotion: reduceMotion,
+                        sweepPhase: 0,
+                        reduceMotion: true,
                         message: emptyMessage
                     )
                 }
@@ -72,40 +61,17 @@ struct DashboardLiveCostCurve: View {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                     .fill(DesignSystem.Colors.surface.opacity(colorScheme == .dark ? 0.45 : 0.55))
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                accent.opacity(colorScheme == .dark ? 0.16 : 0.08),
-                                Color.clear,
-                                DesignSystem.Colors.amber.opacity(colorScheme == .dark ? 0.08 : 0.04)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(accent.opacity(colorScheme == .dark ? 0.08 : 0.04))
             }
         }
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            accent.opacity(0.45),
-                            DesignSystem.Colors.amber.opacity(0.25),
-                            DesignSystem.Colors.blaze.opacity(0.20)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.75
-                )
+                .stroke(accent.opacity(0.32), lineWidth: 0.75)
         )
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-        .shadow(color: accent.opacity(colorScheme == .dark ? 0.20 : 0.10), radius: 18, y: 8)
+        .shadow(color: accent.opacity(colorScheme == .dark ? 0.10 : 0.05), radius: 8, y: 4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary(peak: peak))
-        .onAppear { startAnimating() }
-        .onChange(of: reduceMotion) { _, _ in startAnimating() }
     }
 
     // MARK: - Header
@@ -247,18 +213,6 @@ struct DashboardLiveCostCurve: View {
         }
     }
 
-    // MARK: - Motion
-
-    private func startAnimating() {
-        guard !reduceMotion else { pulsePhase = 0; sweepPhase = 0; return }
-        withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-            pulsePhase = 1
-        }
-        withAnimation(.linear(duration: 4.2).repeatForever(autoreverses: false)) {
-            sweepPhase = 1
-        }
-    }
-
     private func accessibilitySummary(peak: Double) -> String {
         let formatted: String
         switch unit {
@@ -276,90 +230,64 @@ private struct CurveCanvas: View {
     let peak: Double
     let domain: ClosedRange<Date>
     let accent: Color
-    let colorScheme: ColorScheme
-    let pulsePhase: CGFloat
 
     var body: some View {
-        Canvas { ctx, size in
-            guard samples.count >= 2 else { return }
-            let yMax = max(peak * 1.08, 0.0001)
-            let total = max(domain.upperBound.timeIntervalSince(domain.lowerBound), 1)
-
-            func xFor(_ t: Date) -> CGFloat {
-                let f = t.timeIntervalSince(domain.lowerBound) / total
-                return CGFloat(f) * size.width
-            }
-            func yFor(_ v: Double) -> CGFloat {
-                let f = v / yMax
-                return size.height - CGFloat(f) * size.height
-            }
-
-            // Baseline rule
-            var baseline = Path()
-            baseline.move(to: CGPoint(x: 0, y: size.height - 0.5))
-            baseline.addLine(to: CGPoint(x: size.width, y: size.height - 0.5))
-            ctx.stroke(baseline, with: .color(DesignSystem.Colors.textMuted.opacity(0.10)), lineWidth: 0.5)
-
-            // Build smoothed monotone path
-            let points = samples.map { CGPoint(x: xFor($0.time), y: yFor($0.cumulative)) }
+        GeometryReader { proxy in
+            let size = proxy.size
+            let points = normalizedPoints(in: size)
             let linePath = monotonePath(points)
+            ZStack {
+                Path { path in
+                    path.move(to: CGPoint(x: 0, y: size.height - 0.5))
+                    path.addLine(to: CGPoint(x: size.width, y: size.height - 0.5))
+                }
+                .stroke(DesignSystem.Colors.textMuted.opacity(0.10), lineWidth: 0.5)
 
-            // Area fill underneath
-            var area = Path()
-            area.addPath(linePath)
-            area.addLine(to: CGPoint(x: points.last!.x, y: size.height))
-            area.addLine(to: CGPoint(x: points.first!.x, y: size.height))
-            area.closeSubpath()
+                if points.count >= 2 {
+                    areaPath(for: linePath, points: points, height: size.height)
+                        .fill(accent.opacity(0.16))
 
-            ctx.fill(
-                area,
-                with: .linearGradient(
-                    Gradient(colors: [
-                        accent.opacity(colorScheme == .dark ? 0.55 : 0.42),
-                        DesignSystem.Colors.amber.opacity(colorScheme == .dark ? 0.30 : 0.22),
-                        DesignSystem.Colors.blaze.opacity(0.0)
-                    ]),
-                    startPoint: .zero,
-                    endPoint: CGPoint(x: 0, y: size.height)
-                )
-            )
+                    linePath
+                        .stroke(
+                            accent,
+                            style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round)
+                        )
 
-            // Soft glow stroke under the crisp stroke
-            ctx.stroke(
-                linePath,
-                with: .color(accent.opacity(0.45)),
-                style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round)
-            )
-
-            // Brand gradient stroke on top
-            ctx.stroke(
-                linePath,
-                with: .linearGradient(
-                    Gradient(colors: [
-                        DesignSystem.Colors.amber,
-                        accent,
-                        DesignSystem.Colors.ember
-                    ]),
-                    startPoint: .zero,
-                    endPoint: CGPoint(x: size.width, y: 0)
-                ),
-                style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round)
-            )
-
-            // "Now" marker — pulsing halo + solid dot
-            if peak > 0, let last = points.last {
-                let haloR = 14 + 6 * pulsePhase
-                let halo = CGRect(x: last.x - haloR, y: last.y - haloR, width: haloR * 2, height: haloR * 2)
-                ctx.fill(
-                    Circle().path(in: halo),
-                    with: .color(accent.opacity(Double(0.20 * (1 - 0.5 * pulsePhase))))
-                )
-                let inner = CGRect(x: last.x - 7, y: last.y - 7, width: 14, height: 14)
-                ctx.fill(Circle().path(in: inner), with: .color(accent.opacity(0.30)))
-                let dot = CGRect(x: last.x - 4, y: last.y - 4, width: 8, height: 8)
-                ctx.fill(Circle().path(in: dot), with: .color(accent))
+                    if peak > 0, let last = points.last {
+                        Circle()
+                            .fill(accent)
+                            .frame(width: 8, height: 8)
+                            .position(last)
+                    }
+                }
             }
         }
+        .drawingGroup(opaque: false, colorMode: .linear)
+    }
+
+    private func normalizedPoints(in size: CGSize) -> [CGPoint] {
+        guard samples.count >= 2, size.width > 0, size.height > 0 else { return [] }
+        let yMax = max(peak * 1.08, 0.0001)
+        let total = max(domain.upperBound.timeIntervalSince(domain.lowerBound), 1)
+        return samples.map { sample in
+            let xFraction = sample.time.timeIntervalSince(domain.lowerBound) / total
+            let yFraction = sample.cumulative / yMax
+            return CGPoint(
+                x: CGFloat(xFraction) * size.width,
+                y: size.height - CGFloat(yFraction) * size.height
+            )
+        }
+    }
+
+    private func areaPath(for linePath: Path, points: [CGPoint], height: CGFloat) -> Path {
+        var area = Path()
+        area.addPath(linePath)
+        if let first = points.first, let last = points.last {
+            area.addLine(to: CGPoint(x: last.x, y: height))
+            area.addLine(to: CGPoint(x: first.x, y: height))
+            area.closeSubpath()
+        }
+        return area
     }
 
     private func monotonePath(_ points: [CGPoint]) -> Path {
@@ -405,15 +333,7 @@ private struct EmptyOverlay: View {
                     p.addLine(to: CGPoint(x: geo.size.width, y: y))
                 }
                 .stroke(
-                    LinearGradient(
-                        colors: [
-                            accent.opacity(0.25),
-                            DesignSystem.Colors.amber.opacity(0.50),
-                            accent.opacity(0.25)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ),
+                    accent.opacity(0.35),
                     style: StrokeStyle(lineWidth: 1.5, dash: [4, 6])
                 )
 
@@ -456,22 +376,18 @@ private struct EmptyOverlay: View {
 
 private struct LiveDotMac: View {
     let color: Color
-    @State private var pulsing = false
 
     var body: some View {
         ZStack {
             Circle()
                 .fill(color.opacity(0.35))
                 .frame(width: 14, height: 14)
-                .scaleEffect(pulsing ? 1.5 : 0.85)
-                .opacity(pulsing ? 0.0 : 0.6)
+                .opacity(0.35)
             Circle()
                 .fill(color)
                 .frame(width: 7, height: 7)
                 .shadow(color: color.opacity(0.7), radius: 3)
         }
-        .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: pulsing)
-        .onAppear { pulsing = true }
         .accessibilityHidden(true)
     }
 }

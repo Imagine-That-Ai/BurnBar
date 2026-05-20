@@ -122,6 +122,10 @@ struct MercuryTraySection: View {
             Text("\(name) is asking to mirror")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        case .callRinging(_, let name, _):
+            Text("\(name) is calling this Mac")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .starting:
             Text("Starting mirror…")
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -193,6 +197,7 @@ struct MercuryTraySection: View {
         switch router.phase {
         case .idle: phaseLabel = "Idle"
         case .ringing: phaseLabel = "Incoming mirror request"
+        case .callRinging: phaseLabel = "Incoming call invite"
         case .starting: phaseLabel = "Starting mirror"
         case .streaming: phaseLabel = "Mirroring"
         case .cooldown(let s): phaseLabel = "Cooling down \(s) seconds"

@@ -2,8 +2,15 @@ package com.openburnbar.data.media
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
+import com.openburnbar.irohrelay.HermesRealtimeRelayCallInvite
+import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
+import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
 import com.openburnbar.irohrelay.IrohRelayStream
+import java.time.Instant
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -42,11 +49,14 @@ import kotlin.random.Random
  */
 class MediaControlStreamCoordinator(
     private val dialer: StreamDialer,
-    private val receiver: AndroidFileTransferService,
+    private var receiver: AndroidFileTransferService? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val initialBackoffMillis: Long = 1_000L,
     private val maxBackoffMillis: Long = 30_000L,
     private val analytics: MediaAnalyticsLogger? = null,
+    private val peerDeviceIdProvider: () -> String = { android.os.Build.MODEL.orEmpty().ifBlank { "android" } },
+    private val displayNameProvider: () -> String = { android.os.Build.MODEL.orEmpty().ifBlank { "Android" } },
+    private val presenceHeartbeatIntervalMillis: Long = 60_000L,
 ) {
     fun interface StreamDialer {
         suspend fun dial(uid: String, connectionID: String): IrohRelayStream
@@ -61,6 +71,11 @@ class MediaControlStreamCoordinator(
         data class Failed(val reason: String) : Phase()
     }
 
+    data class ActivePair(
+        val uid: String,
+        val connectionID: String,
+    )
+
     private val mutex = Mutex()
     private var supervisorJob: Job? = null
     private var currentStream: IrohRelayStream? = null
@@ -74,11 +89,25 @@ class MediaControlStreamCoordinator(
     private val _consecutiveDialFailures = MutableStateFlow(0)
     val consecutiveDialFailures: StateFlow<Int> = _consecutiveDialFailures.asStateFlow()
 
+    private val _lastMirrorAck = MutableStateFlow<HermesRealtimeRelayMirrorAck?>(null)
+    val lastMirrorAck: StateFlow<HermesRealtimeRelayMirrorAck?> = _lastMirrorAck.asStateFlow()
+
+    private val _lastCallAck = MutableStateFlow<HermesRealtimeRelayCallAck?>(null)
+    val lastCallAck: StateFlow<HermesRealtimeRelayCallAck?> = _lastCallAck.asStateFlow()
+
+    private val _activePair = MutableStateFlow<ActivePair?>(null)
+    val activePair: StateFlow<ActivePair?> = _activePair.asStateFlow()
+
+    fun attachReceiver(nextReceiver: AndroidFileTransferService) {
+        receiver = nextReceiver
+    }
+
     suspend fun start(uid: String, connectionID: String) {
         mutex.withLock {
             if (supervisorJob?.isActive == true) return
             activeUID = uid
             activeConnectionID = connectionID
+            _activePair.value = ActivePair(uid = uid, connectionID = connectionID)
             _phase.value = Phase.Dialing
             supervisorJob = scope.launch { runSupervisor(uid = uid, connectionID = connectionID) }
         }
@@ -98,6 +127,7 @@ class MediaControlStreamCoordinator(
             _phase.value = Phase.Stopped
             activeUID = null
             activeConnectionID = null
+            _activePair.value = null
         }
         job?.cancel()
     }
@@ -105,6 +135,50 @@ class MediaControlStreamCoordinator(
     suspend fun send(frame: HermesRealtimeRelayFrame) {
         val stream = awaitLiveStream()
         stream.send(frame)
+    }
+
+    suspend fun requestMirror(requesterDisplayName: String): String {
+        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val requestID = UUID.randomUUID().toString()
+        val request = HermesRealtimeRelayMirrorRequest(
+            requestId = requestID,
+            requestedAt = Instant.now().toString(),
+            requesterDisplayName = requesterDisplayName,
+            streamClass = "media.screen.video",
+        )
+        send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_REQUEST,
+                uid = uid,
+                connectionId = connectionID,
+                requestId = requestID,
+                media = HermesRealtimeRelayMediaPayload(mirrorRequest = request),
+            )
+        )
+        return requestID
+    }
+
+    suspend fun requestCall(requesterDisplayName: String): String {
+        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val requestID = UUID.randomUUID().toString()
+        val invite = HermesRealtimeRelayCallInvite(
+            requestId = requestID,
+            requestedAt = Instant.now().toString(),
+            requesterDisplayName = requesterDisplayName,
+            callKind = "video",
+        )
+        send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_CALL_INVITE,
+                uid = uid,
+                connectionId = connectionID,
+                requestId = requestID,
+                media = HermesRealtimeRelayMediaPayload(callInvite = invite),
+            )
+        )
+        return requestID
     }
 
     private suspend fun awaitLiveStream(): IrohRelayStream {
@@ -147,7 +221,14 @@ class MediaControlStreamCoordinator(
                 analytics?.controlStreamConnected()
                 resolvePending(stream)
 
-                readLoop(stream = stream, uid = uid, connectionID = connectionID)
+                val heartbeatJob = scope.launch {
+                    presenceHeartbeatLoop(stream = stream, uid = uid, connectionID = connectionID)
+                }
+                try {
+                    readLoop(stream = stream, uid = uid, connectionID = connectionID)
+                } finally {
+                    heartbeatJob.cancel()
+                }
 
                 mutex.withLock { currentStream = null }
                 if (supervisorJob?.isActive != true) break
@@ -166,6 +247,9 @@ class MediaControlStreamCoordinator(
             try { delay(backoff) } catch (_: CancellationException) { break }
         }
         _phase.value = Phase.Stopped
+        activeUID = null
+        activeConnectionID = null
+        _activePair.value = null
     }
 
     private suspend fun readLoop(
@@ -180,9 +264,22 @@ class MediaControlStreamCoordinator(
                 if (frame.uid != uid || frame.connectionId != connectionID) continue
                 when (frame.type) {
                     HermesRealtimeRelayFrameType.MEDIA_BLOB_ADVERTISE ->
-                        receiver.handleAdvertise(frame = frame, ackSender = ackSender)
+                        receiver?.handleAdvertise(frame = frame, ackSender = ackSender)
                     HermesRealtimeRelayFrameType.MEDIA_BLOB_ACK -> {
                         // Phase 2 surfaces this to per-row UI state; Phase 1 logs only.
+                    }
+                    HermesRealtimeRelayFrameType.MEDIA_MIRROR_ACK -> {
+                        frame.media?.mirrorAck?.let { _lastMirrorAck.value = it }
+                    }
+                    HermesRealtimeRelayFrameType.MEDIA_CALL_ACK -> {
+                        frame.media?.callAck?.let { _lastCallAck.value = it }
+                    }
+                    HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME -> {
+                        // Android screen-share viewer decode is wired separately; keep the
+                        // control stream alive even before the viewer is opened.
+                    }
+                    HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT -> {
+                        // Presence updates are consumed by the Square connection store.
                     }
                     HermesRealtimeRelayFrameType.MEDIA_CLASSIFY -> {
                         // Re-classification mid-stream — protocol noise.
@@ -196,6 +293,37 @@ class MediaControlStreamCoordinator(
             _phase.value = Phase.Reconnecting(nextAttemptInMillis = initialBackoffMillis)
         }
     }
+
+    private suspend fun presenceHeartbeatLoop(
+        stream: IrohRelayStream,
+        uid: String,
+        connectionID: String,
+    ) {
+        while (scope.isActive && supervisorJob?.isActive == true) {
+            stream.send(makePresenceHeartbeat(uid = uid, connectionID = connectionID))
+            delay(presenceHeartbeatIntervalMillis)
+        }
+    }
+
+    private fun makePresenceHeartbeat(uid: String, connectionID: String): HermesRealtimeRelayFrame =
+        HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
+            uid = uid,
+            connectionId = connectionID,
+            media = HermesRealtimeRelayMediaPayload(
+                presence = HermesRealtimeRelayPresenceHeartbeat(
+                    peerDeviceId = peerDeviceIdProvider().ifBlank { "android" },
+                    displayName = displayNameProvider().ifBlank { "Android" },
+                    capabilities = listOf(
+                        "media.control",
+                        "media.mirror.request",
+                        "media.call.invite",
+                        "media.blob.transfer",
+                    ),
+                    sentAt = Instant.now().toString(),
+                )
+            ),
+        )
 
     private fun nextBackoff(attempt: Int): Long {
         val exp = min(
