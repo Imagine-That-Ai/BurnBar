@@ -357,7 +357,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             body: Data(#"{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}]}"#.utf8)
         )
 
-        XCTAssertEqual(failedResponse.statusCode, 402, String(decoding: failedBody, as: UTF8.self))
+        XCTAssertEqual(failedResponse.statusCode, 503, String(decoding: failedBody, as: UTF8.self))
+        XCTAssertTrue(String(decoding: failedBody, as: UTF8.self).localizedCaseInsensitiveContains("no exact same-model fallback"))
 
         let (modelsResponse, modelsBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -937,10 +938,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             body: Data(#"{"model":"claude-opus-4-7","max_tokens":8,"messages":[{"role":"user","content":"Reply exactly OK"}]}"#.utf8)
         )
 
-        XCTAssertEqual(failedResponse.statusCode, 429)
+        XCTAssertEqual(failedResponse.statusCode, 503)
         let failedText = String(decoding: failedBody, as: UTF8.self)
-        XCTAssertTrue(failedText.contains("Claude Max"), failedText)
-        XCTAssertTrue(failedText.contains("public Messages API"), failedText)
+        XCTAssertTrue(failedText.localizedCaseInsensitiveContains("no exact same-model fallback"), failedText)
+        XCTAssertTrue(failedText.contains("claude-opus-4-7"), failedText)
         XCTAssertFalse(failedText.contains(#""message":"Error""#), failedText)
 
         let (_, modelsAfterBody) = try await sendGatewayRequest(
@@ -2037,7 +2038,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/messages",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"shared-claude-model","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+            body: Data(#"{"model":"anth-alpha/shared-claude-model","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
         )
 
         XCTAssertEqual(response.statusCode, 400)
@@ -2818,7 +2819,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             body: Data(#"{"model":"claude-opus-4-7","max_tokens":16,"messages":[{"role":"user","content":"Reply OK"}]}"#.utf8)
         )
 
-        XCTAssertEqual(response.statusCode, 429, "Opus 429 on the only configured route must surface — not downgrade silently.")
+        XCTAssertEqual(response.statusCode, 503, "Opus 429 on the only configured route must fail closed when no exact same-model fallback remains.")
         let text = String(decoding: body, as: UTF8.self)
         XCTAssertFalse(text.contains("claude-haiku"), "Response must not hint at a Haiku downgrade. Body: \(text)")
         XCTAssertFalse(text.contains("claude-sonnet"), "Response must not hint at a Sonnet downgrade. Body: \(text)")

@@ -144,6 +144,7 @@ export interface BurnBarCatalogModel {
   displayName: string;
   visibility: 'public' | 'hidden' | 'internal';
   aliases: string[];
+  canonicalModelID?: string | null;
   pricing: BurnBarCatalogModelPricing;
 }
 

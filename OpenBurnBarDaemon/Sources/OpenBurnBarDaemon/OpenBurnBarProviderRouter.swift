@@ -98,18 +98,16 @@ public struct BurnBarRankedRoute: Hashable, Sendable {
 /// Result of scoring and ranking routes.
 public struct BurnBarRouteRankingResult: Hashable, Sendable {
     /// All candidate routes ranked by composite score (highest first).
-    /// When `requiredCapabilityClassID` was provided, this contains only same-class routes.
+    /// When `requiredCanonicalModelID` was provided, this contains only exact-model routes.
     public let rankedRoutes: [BurnBarRankedRoute]
     public let routerMode: ProviderRouterMode
     public let taskCategory: ProviderRoutingTaskCategory
     public let benchmarkStatus: ProviderModelBenchmarkStatus?
     public let requiredCanonicalModelID: String?
 
-    /// Routes that were excluded because they belong to a different capability class
-    /// than the requested one. Non-empty only when `requiredCapabilityClassID` filtering
-    /// was applied. Used by callers (e.g., the gateway) to report "downgrade disabled"
-    /// when the same-class pool is exhausted.
+    /// Legacy same-class blocked routes retained for older audit consumers.
     public let blockedCapabilityClassRoutes: [BurnBarProviderRoute]
+    /// Routes excluded because they could not prove the same canonical model identity.
     public let blockedExactModelRoutes: [BurnBarProviderRoute]
 
     /// The winning route (same as rankedRoutes.first?.route).
