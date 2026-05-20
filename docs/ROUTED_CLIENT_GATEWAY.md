@@ -13,12 +13,13 @@ OpenBurnBar now has a persisted router mode. Existing installs default to
 | Mode | What it does | What it will not do |
 |---|---|---|
 | **Provider-Family Failover** | Extends capacity across multiple accounts or subscriptions for the selected provider family. A Codex route stays with Codex accounts, a Claude route stays with Claude accounts, and a Z.ai route stays with Z.ai accounts. The exact selected account/model stays active while it is healthy. | It does not treat unrelated providers as one generic coding quota pool. It will not send Codex traffic to Claude, or Claude traffic to Z.ai, just because another provider has quota or looks cheaper. |
-| **Intelligent Model Router** | Ranks compatible routes using task intent, model capability, quota/account health, local availability, cost, latency, context-window, reliability, and benchmark freshness signals. User pinning, provider-family constraints, auth, quota exhaustion, safety, and availability still win. | It is advisory, not absolute. It only uses routes that the live catalog advertises for the requested local endpoint; it never silently swaps to another model or provider family. |
+| **Exact Model Failover** | Allows BurnBar to try another provider/account after quota, rate-limit, or availability failure only when the destination route proves it serves the same canonical model ID as the requested model. | It will not substitute `gpt-5.4-mini`, `gpt-5.4-pro`, a broad `gpt-5-family` wrapper, or another `openai:standard` route for `gpt-5.4`. Capability class, task fit, cost, latency, and benchmark data are advisory ranking signals, not proof of exact model identity. |
 
 The routing cockpit in Settings -> Agents -> CLIs exposes the mode toggle and
 shows the current mode, selected route, active route, next fallback, blocked
-routes, latest sanitized routing reason, and benchmark freshness status when
-Intelligent Model Router is enabled.
+routes, latest sanitized routing reason, and whether the exact-model invariant
+passed for the latest decision. Legacy configs that stored
+`intelligent_model_router` decode safely into Exact Model Failover.
 
 ## Benchmark source job
 
@@ -77,12 +78,15 @@ Anthropic bridge for those local endpoints.
 
 A request for a model not advertised for that local endpoint returns `503`
 with `No eligible route for <model>. Add or enable an account/provider that
-serves this model.` Within a compatible pool, the existing in-flight failover
-loop applies. When a real upstream route proves that a provider/account/model
-pair cannot serve the selected model, BurnBar records that model-level gateway
-health result and removes that slot from the advertised provider/model pool
-until the block expires. If another healthy slot can serve the same
-provider/model, the public row stays visible and failover remains automatic.
+serves this model.` A request whose route cannot prove an exact canonical model
+identity returns `503` before contacting upstream. Within a compatible pool,
+in-flight failover only retries routes whose `canonicalModelID` matches the
+requested canonical model. When a real upstream route proves that a
+provider/account/model pair cannot serve the selected model, BurnBar records
+that model-level gateway health result and removes that slot from the advertised
+provider/model pool until the block expires. If another healthy slot can serve
+the exact same provider/model, the public row stays visible and failover remains
+automatic.
 Other models on the same account remain visible if their own route is still
 healthy.
 

@@ -124,6 +124,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supervised read-only `droid exec` executor, reject silent Droid Core fallback,
   and fail over to another exact same-model route when Standard Usage is
   exhausted.
+- **Exact Model Failover replaces the visible Smart routing mode.** The new
+  `same_model_failover` mode may switch provider/account only after the
+  destination route proves the same canonical model ID. Legacy
+  `intelligent_model_router` configs decode safely into the exact-model mode,
+  while the default remains provider-family failover for existing installs.
+  Gateway retries now fail closed instead of treating broad capability classes
+  such as `openai:standard` as proof that two routes serve the same model.
 - **OpenCode credential entry accepts real route-key formats.** The Accounts
   wizard no longer treats OpenCode auth JSON as a generic JWT session token;
   it accepts the `opencode-go` object, the full `auth.json`, or the bare route
