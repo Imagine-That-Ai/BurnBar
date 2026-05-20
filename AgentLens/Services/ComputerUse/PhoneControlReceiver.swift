@@ -96,8 +96,22 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             let action: ComputerUseAction = .phoneIntent(PhoneControlIntent(kind: .panic))
             await dispatchHandler(action, sessionId, intent.authority.counter)
             return
+        case .pointerMove:
+            let deltaX = Int((intent.normalizedX2 ?? 0).rounded())
+            let deltaY = Int((intent.normalizedY2 ?? 0).rounded())
+            await dispatchHandler(
+                .macInput(MacInputAction(kind: .pointerMove, deltaX: deltaX, deltaY: deltaY)),
+                sessionId,
+                intent.authority.counter
+            )
+        case .pointerClick:
+            await dispatchHandler(
+                .macInput(MacInputAction(kind: .click)),
+                sessionId,
+                intent.authority.counter
+            )
         case .tap, .scroll, .dragStart, .dragMove, .dragEnd:
-            guard let (displayX, displayY) = denormalize(intent.normalizedX, intent.normalizedY) else {
+            guard let (displayX, displayY) = denormalize(intent.normalizedX, intent.normalizedY, displayId: intent.displayId) else {
                 await emitDeniedFrame(
                     reason: .unknown,
                     detail: "malformed_coordinates",
@@ -106,7 +120,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
                 )
                 return
             }
-            let endpoint = denormalize(intent.normalizedX2, intent.normalizedY2)
+            let endpoint = denormalize(intent.normalizedX2, intent.normalizedY2, displayId: intent.displayId)
             if requiresEndpoint(intent.kind), endpoint == nil {
                 await emitDeniedFrame(
                     reason: .unknown,
@@ -146,6 +160,8 @@ public final class PhoneControlReceiver: @unchecked Sendable {
         case .type: return .type
         case .shortcut: return .shortcut
         case .scroll: return .scroll
+        case .pointerMove: return .pointerMove
+        case .pointerClick: return .click
         case .panic: return .click  // unreachable; panic short-circuits above
         }
     }
@@ -154,15 +170,18 @@ public final class PhoneControlReceiver: @unchecked Sendable {
         switch kind {
         case .scroll, .dragStart, .dragMove, .dragEnd:
             return true
-        case .tap, .type, .shortcut, .panic:
+        case .tap, .type, .shortcut, .pointerMove, .pointerClick, .panic:
             return false
         }
     }
 
-    private func denormalize(_ nx: Double?, _ ny: Double?) -> (Int, Int)? {
+    private func denormalize(_ nx: Double?, _ ny: Double?, displayId: String?) -> (Int, Int)? {
         guard let nx, let ny else { return nil }
         let displays = displayBoundsProvider()
-        guard let point = MacInputCore.denormalize(normalizedX: nx, normalizedY: ny, in: displays.first) else {
+        let display = displayId.flatMap { id in
+            displays.first { $0.displayId == id }
+        } ?? displays.first
+        guard let point = MacInputCore.denormalize(normalizedX: nx, normalizedY: ny, in: display) else {
             return nil
         }
         return (point.x, point.y)

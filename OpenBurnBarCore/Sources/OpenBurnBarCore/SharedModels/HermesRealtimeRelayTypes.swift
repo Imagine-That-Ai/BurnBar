@@ -32,6 +32,7 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case mediaMirrorRequest = "media.mirror.request"
     case mediaMirrorAck = "media.mirror.ack"
     case mediaMirrorStop = "media.mirror.stop"
+    case mediaMirrorDisplaySelect = "media.mirror.display.select"
     case mediaPresenceHeartbeat = "media.presence.heartbeat"
     case mediaCallInvite = "media.call.invite"
     case mediaCallAck = "media.call.ack"
@@ -185,10 +186,13 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
         case type
         case shortcut
         case scroll
+        case pointerMove = "pointer_move"
+        case pointerClick = "pointer_click"
         case panic
     }
 
     public var kind: Kind
+    public var displayId: String?
     public var normalizedX: Double?
     public var normalizedY: Double?
     public var normalizedX2: Double?
@@ -201,6 +205,7 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
 
     public init(
         kind: Kind,
+        displayId: String? = nil,
         normalizedX: Double? = nil,
         normalizedY: Double? = nil,
         normalizedX2: Double? = nil,
@@ -212,6 +217,7 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
         authority: HermesRealtimeRelayAuthorityEnvelope
     ) {
         self.kind = kind
+        self.displayId = displayId
         self.normalizedX = normalizedX
         self.normalizedY = normalizedY
         self.normalizedX2 = normalizedX2
@@ -375,6 +381,9 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// iOS → Mac request to end an accepted mirror session. Set on
     /// `media.mirror.stop` frames; nil elsewhere.
     public var mirrorStop: HermesRealtimeRelayMirrorStop?
+    /// iOS -> Mac request to switch the active mirrored display without
+    /// ending the mirror session.
+    public var mirrorDisplaySelection: HermesRealtimeRelayMirrorDisplaySelection?
     /// iOS → Mac presence beacon. Set on `media.presence.heartbeat`
     /// frames; nil elsewhere.
     public var presence: HermesRealtimeRelayPresenceHeartbeat?
@@ -397,6 +406,7 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         mirrorRequest: HermesRealtimeRelayMirrorRequest? = nil,
         mirrorAck: HermesRealtimeRelayMirrorAck? = nil,
         mirrorStop: HermesRealtimeRelayMirrorStop? = nil,
+        mirrorDisplaySelection: HermesRealtimeRelayMirrorDisplaySelection? = nil,
         presence: HermesRealtimeRelayPresenceHeartbeat? = nil,
         callInvite: HermesRealtimeRelayCallInvite? = nil,
         callAck: HermesRealtimeRelayCallAck? = nil,
@@ -409,6 +419,7 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         self.mirrorRequest = mirrorRequest
         self.mirrorAck = mirrorAck
         self.mirrorStop = mirrorStop
+        self.mirrorDisplaySelection = mirrorDisplaySelection
         self.presence = presence
         self.callInvite = callInvite
         self.callAck = callAck
@@ -493,6 +504,22 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
     }
 }
 
+public struct HermesRealtimeRelayDisplayDescriptor: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var width: Int
+    public var height: Int
+    public var isPrimary: Bool
+
+    public init(id: String, name: String, width: Int, height: Int, isPrimary: Bool = false) {
+        self.id = id
+        self.name = name
+        self.width = width
+        self.height = height
+        self.isPrimary = isPrimary
+    }
+}
+
 /// Mercury Phase 8 — Mac-side reply to a `HermesRealtimeRelayMirrorRequest`.
 public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
     public enum Decision: String, Codable, Sendable, Equatable {
@@ -511,17 +538,35 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
     /// wire form otherwise to preserve byte-identical encoding when the
     /// field is absent (see `MirrorAckEncodingTests`).
     public var cooldownSecondsRemaining: Int?
+    public var availableDisplays: [HermesRealtimeRelayDisplayDescriptor]?
+    public var selectedDisplayId: String?
 
     public init(
         requestId: String,
         decision: Decision,
         detail: String? = nil,
-        cooldownSecondsRemaining: Int? = nil
+        cooldownSecondsRemaining: Int? = nil,
+        availableDisplays: [HermesRealtimeRelayDisplayDescriptor]? = nil,
+        selectedDisplayId: String? = nil
     ) {
         self.requestId = requestId
         self.decision = decision
         self.detail = detail
         self.cooldownSecondsRemaining = cooldownSecondsRemaining
+        self.availableDisplays = availableDisplays
+        self.selectedDisplayId = selectedDisplayId
+    }
+}
+
+public struct HermesRealtimeRelayMirrorDisplaySelection: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var displayId: String
+    public var selectedAt: Date
+
+    public init(requestId: String, displayId: String, selectedAt: Date = Date()) {
+        self.requestId = requestId
+        self.displayId = displayId
+        self.selectedAt = selectedAt
     }
 }
 

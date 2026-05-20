@@ -28,7 +28,8 @@ public struct BurnBarPolicyEngine {
              .browserClick, .browserFill, .browserGoto, .browserKey,
              .browserSelect, .browserScreenshot, .browserExtract,
              .macInputClick, .macInputType, .macInputKey,
-             .macInputShortcut, .macInputDragDrop, .macInputScroll, .macInspectAccessibility:
+             .macInputShortcut, .macInputDragDrop, .macInputScroll,
+             .macInputPointerMove, .macInspectAccessibility:
             return .high
         }
     }
@@ -74,7 +75,8 @@ public struct BurnBarPolicyEngine {
              .browserClick, .browserFill, .browserGoto, .browserKey,
              .browserSelect, .browserScreenshot, .browserExtract,
              .macInputClick, .macInputType, .macInputKey,
-             .macInputShortcut, .macInputDragDrop, .macInputScroll, .macInspectAccessibility:
+             .macInputShortcut, .macInputDragDrop, .macInputScroll,
+             .macInputPointerMove, .macInspectAccessibility:
             return true
         }
     }
@@ -97,7 +99,8 @@ public struct BurnBarPolicyEngine {
              .browserSelect, .browserScreenshot, .browserExtract:
             return "OpenBurnBar needs approval before controlling a browser for \(intent.summary.lowercased())."
         case .macInputClick, .macInputType, .macInputKey,
-             .macInputShortcut, .macInputDragDrop, .macInputScroll, .macInspectAccessibility:
+             .macInputShortcut, .macInputDragDrop, .macInputScroll,
+             .macInputPointerMove, .macInspectAccessibility:
             return "OpenBurnBar needs approval before controlling this Mac for \(intent.summary.lowercased())."
         }
     }

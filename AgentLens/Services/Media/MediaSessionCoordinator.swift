@@ -34,6 +34,7 @@ final class MediaSessionCoordinator: ObservableObject {
     private var sessionMetadata: MediaSessionMetadata?
     private var activeStreamClass: MediaStreamClass = .screenVideo
     private var cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)?
+    private var activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration()
 
     init(
         capabilityGate: any MediaCapabilityGate,
@@ -47,9 +48,10 @@ final class MediaSessionCoordinator: ObservableObject {
         peerDeviceID: String,
         sink: MediaStreamSink,
         streamClassOverride: MediaStreamClass? = nil,
+        displayId: String? = nil,
         cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)? = nil
     ) async throws {
-        guard phase == .idle || phase == .ended(reason: .completedSuccess) else {
+        guard phase.isRestartable else {
             return
         }
         let check = await capabilityGate.check(
@@ -92,13 +94,28 @@ final class MediaSessionCoordinator: ObservableObject {
         self.videoEncoder = encoder
         bitrateBitsPerSecond = bitrateController.currentBitsPerSecond
 
-        let pipeline = ScreenCapturePipeline { [weak self] sample in
+        activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration(displayId: displayId)
+        let pipeline = ScreenCapturePipeline(configuration: activeScreenCaptureConfiguration) { [weak self] sample in
             guard let self else { return }
             try? await self.videoEncoder?.encode(sampleBuffer: sample)
         }
         try await pipeline.start()
         self.screenCapture = pipeline
         phase = .active(feature: .screenShare)
+    }
+
+    func switchScreenShareDisplay(displayId: String) async throws {
+        guard phase == .active(feature: .screenShare) else { return }
+        activeScreenCaptureConfiguration.displayId = displayId
+        if let screenCapture {
+            await screenCapture.stop()
+        }
+        let pipeline = ScreenCapturePipeline(configuration: activeScreenCaptureConfiguration) { [weak self] sample in
+            guard let self else { return }
+            try? await self.videoEncoder?.encode(sampleBuffer: sample)
+        }
+        try await pipeline.start()
+        self.screenCapture = pipeline
     }
 
     func ingestBandwidthSample(_ sample: BitrateController.Sample) {
@@ -121,6 +138,9 @@ final class MediaSessionCoordinator: ObservableObject {
         }
         videoEncoder?.stop()
         await streamSink?.close()
+        screenCapture = nil
+        videoEncoder = nil
+        streamSink = nil
         cursorProvider = nil
         activeStreamClass = .screenVideo
 
@@ -147,6 +167,17 @@ final class MediaSessionCoordinator: ObservableObject {
         let x = max(Int(Int16.min), min(Int(Int16.max), Int(location.x.rounded())))
         let y = max(Int(Int16.min), min(Int(Int16.max), Int(location.y.rounded())))
         return MediaFrame.CursorMetadata(x: Int16(x), y: Int16(y))
+    }
+}
+
+private extension MediaSessionCoordinator.Phase {
+    var isRestartable: Bool {
+        switch self {
+        case .idle, .ended:
+            return true
+        case .starting, .active, .stopping:
+            return false
+        }
     }
 }
 

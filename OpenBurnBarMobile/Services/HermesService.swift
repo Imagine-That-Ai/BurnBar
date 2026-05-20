@@ -3313,6 +3313,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                  .mediaMirrorRequest,
                  .mediaMirrorAck,
                  .mediaMirrorStop,
+                 .mediaMirrorDisplaySelect,
                  .mediaPresenceHeartbeat,
                  .mediaCallInvite,
                  .mediaCallAck,

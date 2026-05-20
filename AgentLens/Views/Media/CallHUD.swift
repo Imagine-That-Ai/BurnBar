@@ -89,6 +89,14 @@ final class CallHUDState: ObservableObject {
     @Published var isSharingScreen: Bool = false
     @Published var pulse: Bool = false
 
+    func reset(startedAt: Date = Date()) {
+        self.startedAt = startedAt
+        isMicMuted = false
+        isCameraMuted = false
+        isSharingScreen = false
+        pulse = false
+    }
+
     var formattedDuration: String {
         let elapsed = Int(Date().timeIntervalSince(startedAt))
         let hours = elapsed / 3600

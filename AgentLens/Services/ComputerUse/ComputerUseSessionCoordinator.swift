@@ -143,7 +143,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             let totalHeight = NSScreen.screens.first?.frame.maxY ?? 0
             return NSScreen.screens.map { screen in
                 let frame = screen.frame
+                let displayId = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)
+                    .map { String($0.uint32Value) }
                 return MacInputCore.DisplayBounds(
+                    displayId: displayId,
                     originX: Int(frame.origin.x),
                     originY: Int(totalHeight - frame.maxY),
                     width: Int(frame.width),
@@ -835,6 +838,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             case .shortcut: tool = .macInputShortcut
             case .dragDrop: tool = .macInputDragDrop
             case .scroll: tool = .macInputScroll
+            case .pointerMove: tool = .macInputPointerMove
             }
             args = macInputArguments(mac)
         default:
@@ -896,6 +900,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             return .macInput(try decodeMacInput(invocation: invocation, kind: .dragDrop))
         case .macInputScroll:
             return .macInput(try decodeMacInput(invocation: invocation, kind: .scroll))
+        case .macInputPointerMove:
+            return .macInput(try decodeMacInput(invocation: invocation, kind: .pointerMove))
         case .macInspectAccessibility:
             guard case let .object(arguments) = invocation.arguments else {
                 return .macInspect(MacInspectAction(kind: .accessibility))
@@ -923,6 +929,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             displayY: arguments.intValue(forKey: "displayY"),
             dragEndX: arguments.intValue(forKey: "dragEndX"),
             dragEndY: arguments.intValue(forKey: "dragEndY"),
+            deltaX: arguments.intValue(forKey: "deltaX"),
+            deltaY: arguments.intValue(forKey: "deltaY"),
             mouseButton: arguments.intValue(forKey: "mouseButton") ?? 0,
             text: arguments.stringValue(forKey: "text"),
             key: arguments.stringValue(forKey: "key"),
@@ -1010,6 +1018,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         if let displayY = action.displayY { object["displayY"] = .number(Double(displayY)) }
         if let dragEndX = action.dragEndX { object["dragEndX"] = .number(Double(dragEndX)) }
         if let dragEndY = action.dragEndY { object["dragEndY"] = .number(Double(dragEndY)) }
+        if let deltaX = action.deltaX { object["deltaX"] = .number(Double(deltaX)) }
+        if let deltaY = action.deltaY { object["deltaY"] = .number(Double(deltaY)) }
         object["mouseButton"] = .number(Double(action.mouseButton))
         if let text = action.text { object["text"] = .string(text) }
         if let key = action.key { object["key"] = .string(key) }
