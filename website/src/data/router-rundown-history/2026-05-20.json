@@ -1,6 +1,6 @@
 {
   "date": "2026-05-20",
-  "generatedAt": "2026-05-20T05:51:08.277Z",
+  "generatedAt": "2026-05-20T05:56:20.293Z",
   "schemaVersion": 1,
   "sourceStatuses": [
     {
@@ -10,7 +10,7 @@
       "logo": "/brand/sources/artificial-analysis.svg",
       "url": "https://artificialanalysis.ai/",
       "status": "fresh",
-      "fetchedAt": "2026-05-20T05:51:08.277Z",
+      "fetchedAt": "2026-05-20T05:56:20.293Z",
       "ageHours": 0,
       "message": "Normalized 1038 Artificial Analysis benchmark rows."
     },
@@ -21,7 +21,7 @@
       "logo": "/brand/sources/terminal-bench.png",
       "url": "https://www.tbench.ai/",
       "status": "fresh",
-      "fetchedAt": "2026-05-20T05:51:08.277Z",
+      "fetchedAt": "2026-05-20T05:56:20.293Z",
       "ageHours": 0,
       "message": "Normalized 35 Terminal-Bench leaderboard rows."
     },
