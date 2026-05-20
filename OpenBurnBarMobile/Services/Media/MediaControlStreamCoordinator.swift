@@ -1,7 +1,11 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
+import OSLog
 
 /// iOS-side owner of the persistent media control stream. Risk-1 fix for
 /// the Mac → iOS push gap: rather than waiting for an active chat
@@ -25,6 +29,13 @@ import OpenBurnBarMedia
 /// piggyback inside `HermesIrohRelayTransport`.
 @MainActor
 final class MediaControlStreamCoordinator: ObservableObject {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "Mercury")
+    private static func debugTrace(_ message: String) {
+        #if DEBUG
+        NSLog("OpenBurnBarMercury \(message)")
+        #endif
+    }
+
     typealias StreamDialer = @MainActor (
         _ uid: String,
         _ connectionID: String
@@ -39,8 +50,20 @@ final class MediaControlStreamCoordinator: ObservableObject {
         case failed(reason: String)
     }
 
+    enum ControlStreamError: LocalizedError, Equatable {
+        case timedOutWaitingForLiveStream
+
+        var errorDescription: String? {
+            switch self {
+            case .timedOutWaitingForLiveStream:
+                return "Mercury is still connecting. Try again after the Mac shows as online."
+            }
+        }
+    }
+
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var consecutiveDialFailures: Int = 0
+    var connectionID: String? { activeConnectionID }
 
     private let dialer: StreamDialer
     private let receiver: iOSFileTransferService
@@ -50,15 +73,27 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private var currentStream: (any IrohRelayStream)?
     private var supervisorTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
-    private var streamReadyContinuations: [CheckedContinuation<any IrohRelayStream, Error>] = []
+    private var streamReadyContinuations: [UUID: CheckedContinuation<any IrohRelayStream, Error>] = [:]
     private var activeUID: String?
     private var activeConnectionID: String?
+    private let mediaPacketCodec = MediaPacketCodec()
 
     /// Mercury Phase 8 — iOS receives ack frames from the Mac in
     /// response to `mediaMirrorRequest` sends. The Hermes Square root
     /// installs a handler that maps `.accepted` → push to
     /// `ScreenShareViewerView`; other decisions → surface a toast.
     var mirrorAckHandler: ((HermesRealtimeRelayMirrorAck) async -> Void)?
+
+    /// Mercury Phase 8 — accepted mirror frames from the Mac. Frames arrive
+    /// on the same long-lived `media.control` stream as the approval ack and
+    /// are decoded from `media.stream.frame` envelopes.
+    var mirrorFrameHandler: ((MediaFrame) async -> Void)?
+
+    /// Mercury Phase 8 — Mac → iOS presence updates. The Hermes Square
+    /// root installs `MercuryPeerSource.ingestHeartbeat(_:)` here so the
+    /// paired-Mac tile and Live sheet reflect the Mac's current name and
+    /// capabilities instead of relying only on fallback assumptions.
+    var presenceHeartbeatHandler: ((HermesRealtimeRelayPresenceHeartbeat) async -> Void)?
 
     /// Mercury Phase 8 — opt-in display name that piggybacks on the
     /// presence heartbeat so the Mac can render it in the popover.
@@ -103,7 +138,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
             await currentStream.close()
         }
         currentStream = nil
-        for continuation in streamReadyContinuations {
+        for continuation in streamReadyContinuations.values {
             continuation.resume(throwing: CancellationError())
         }
         streamReadyContinuations.removeAll()
@@ -115,24 +150,41 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// Outbound send entry point. Blocks until the stream is live (or
     /// the supervisor gives up) so iOS-initiated sends don't race the
     /// initial dial.
-    func send(frame: HermesRealtimeRelayFrame) async throws {
-        let stream = try await awaitLiveStream()
+    func send(frame: HermesRealtimeRelayFrame, timeout: TimeInterval = 8) async throws {
+        let stream = try await awaitLiveStream(timeout: timeout)
+        Self.log.info("control_stream_send type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+        Self.debugTrace("control_stream_send type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
         try await stream.send(frame)
     }
 
-    private func awaitLiveStream() async throws -> any IrohRelayStream {
+    private func awaitLiveStream(timeout: TimeInterval) async throws -> any IrohRelayStream {
         if let currentStream, phase == .live {
             return currentStream
         }
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<any IrohRelayStream, Error>) in
-            streamReadyContinuations.append(continuation)
+        let waiterID = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<any IrohRelayStream, Error>) in
+                streamReadyContinuations[waiterID] = continuation
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    if let continuation = self.streamReadyContinuations.removeValue(forKey: waiterID) {
+                        continuation.resume(throwing: ControlStreamError.timedOutWaitingForLiveStream)
+                    }
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                if let continuation = self.streamReadyContinuations.removeValue(forKey: waiterID) {
+                    continuation.resume(throwing: CancellationError())
+                }
+            }
         }
     }
 
     private func resolvePending(with stream: any IrohRelayStream) {
         let waiting = streamReadyContinuations
         streamReadyContinuations.removeAll()
-        for continuation in waiting {
+        for continuation in waiting.values {
             continuation.resume(returning: stream)
         }
     }
@@ -156,12 +208,15 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 consecutiveDialFailures = 0
                 attempt = 0
                 phase = .live
+                Self.log.info("control_stream_live connectionID=\(connectionID, privacy: .public)")
+                Self.debugTrace("control_stream_live connectionID=\(connectionID)")
                 resolvePending(with: stream)
 
                 // Mercury Phase 8 — spawn the heartbeat task once the
                 // stream is live. Cancelled inside `stop()` or when the
                 // supervisor loop iterates after a peer-close.
                 startHeartbeatIfNeeded(uid: uid, connectionID: connectionID)
+                await sendHeartbeat(uid: uid, connectionID: connectionID)
 
                 // Drive the read loop. When it returns (peer close or
                 // error) we'll fall through to the reconnect arm.
@@ -178,6 +233,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 break
             } catch {
                 consecutiveDialFailures += 1
+                Self.log.error("control_stream_dial_failed connectionID=\(connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                Self.debugTrace("control_stream_dial_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
                 phase = .failed(reason: error.localizedDescription)
             }
 
@@ -201,6 +258,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
         do {
             while let frame = try await stream.receive() {
                 guard frame.uid == uid, frame.connectionId == connectionID else { continue }
+                Self.log.info("control_stream_receive type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+                Self.debugTrace("control_stream_receive type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
                 switch frame.type {
                 case .mediaBlobAdvertise:
                     await receiver.handleAdvertise(frame: frame, ackSender: ackSender)
@@ -215,11 +274,27 @@ final class MediaControlStreamCoordinator: ObservableObject {
                        let handler = mirrorAckHandler {
                         await handler(ack)
                     }
+                case .mediaStreamFrame:
+                    guard frame.media?.streamClass == MediaStreamClass.screenVideo.rawValue,
+                          let encoded = frame.media?.encodedFrameBase64,
+                          let data = Data(base64Encoded: encoded),
+                          let handler = mirrorFrameHandler else {
+                        continue
+                    }
+                    do {
+                        let decoded = try mediaPacketCodec.decode(data).frame
+                        await handler(decoded)
+                    } catch {
+                        continue
+                    }
                 case .mediaMirrorRequest:
                     // iOS is the requester, not the receiver.
                     continue
                 case .mediaPresenceHeartbeat:
-                    // Outbound-only from iOS.
+                    if let heartbeat = frame.media?.presence,
+                       let handler = presenceHeartbeatHandler {
+                        await handler(heartbeat)
+                    }
                     continue
                 case .mediaClassify:
                     // Re-classification mid-stream — protocol noise.

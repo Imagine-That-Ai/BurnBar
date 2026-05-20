@@ -14,6 +14,7 @@ struct QuotaPopoverBar: View {
     @Bindable var quotaService: ProviderQuotaService
     @Bindable var settingsManager: SettingsManager
     let dataStore: DataStore
+    var autoRefreshOnAppear = true
     @State private var expandedProvider: AgentProvider?
     @State private var isWorking = false
     // Local state for inline setup fields
@@ -128,7 +129,10 @@ struct QuotaPopoverBar: View {
             }
             .background(DesignSystem.Colors.surface.opacity(0.45))
         )
-        .task { await quotaService.refreshIfNeeded(dataStore: dataStore) }
+        .task {
+            guard autoRefreshOnAppear else { return }
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
+        }
     }
 
     @ViewBuilder

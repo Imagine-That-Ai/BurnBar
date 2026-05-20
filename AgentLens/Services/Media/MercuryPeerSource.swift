@@ -37,7 +37,7 @@ final class MercuryPeerSource: ObservableObject {
         registry: MediaControlStreamRegistry,
         uidProvider: @escaping @MainActor () -> String?,
         pollInterval: TimeInterval = 2.0,
-        clock: @escaping @Sendable () -> Date = Date.init
+        clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.registry = registry
         self.uidProvider = uidProvider

@@ -16,8 +16,6 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>OpenBurnBar uses Apple Events only during user-approved Computer Use sessions to coordinate browser and app automation you explicitly start.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

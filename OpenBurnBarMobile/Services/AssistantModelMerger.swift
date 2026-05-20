@@ -38,12 +38,17 @@ struct AssistantModelMerger {
             /// trustworthy — the user can route to it without further setup.
             case liveOnRelay
             /// Catalog row, no live coverage, but the user has the
-            /// corresponding provider account connected on iOS. Likely
-            /// reachable once a fresh relay session starts.
+            /// corresponding provider account connected on iOS. The relay
+            /// hasn't enumerated this model — the user can request it
+            /// but can't route to it until the Mac relay advertises it.
             case connectedOnIOS
             /// Catalog-only — neither relay nor account covers it. Picker
             /// dims this row and offers a "Connect" CTA.
             case unreachable
+            /// Relay data hasn't loaded yet (modelOptions is empty or
+            /// still loading). We can't determine true reachability —
+            /// treat same as live for selection but show a loading hint.
+            case pendingRelayData
         }
     }
 
@@ -56,7 +61,8 @@ struct AssistantModelMerger {
         runtime: AssistantRuntimeID,
         liveRelay: [HermesRuntimeModelOption],
         catalog: [AssistantModelOption],
-        connectedProviderIDs: Set<ProviderID>
+        connectedProviderIDs: Set<ProviderID>,
+        relayDataLoaded: Bool = true
     ) -> [Row] {
         let cleanLive = sanitize(liveRelay: liveRelay, runtime: runtime)
         let liveByModelID = cleanLive.reduce(into: [String: HermesRuntimeModelOption]()) { partialResult, live in
@@ -77,7 +83,17 @@ struct AssistantModelMerger {
                 ))
                 consumedLiveIDs.insert(live.modelID)
             } else if connectedProviderIDs.contains(catalogProviderID(catalogOption)) {
-                rows.append(Row(option: catalogOption, reachability: .connectedOnIOS))
+                // When relay data hasn't loaded yet (the service is still
+                // refreshing or has never completed a model fetch), mark
+                // as `.pendingRelayData` so the UI shows a loading hint
+                // instead of a misleading "Relay only" badge. Once relay
+                // data has loaded, `.connectedOnIOS` means the relay
+                // doesn't advertise this model — the user's Mac will
+                // need to be configured to route it.
+                let reachability: Row.Reachability = relayDataLoaded
+                    ? .connectedOnIOS
+                    : .pendingRelayData
+                rows.append(Row(option: catalogOption, reachability: reachability))
             } else {
                 rows.append(Row(option: catalogOption, reachability: .unreachable))
             }

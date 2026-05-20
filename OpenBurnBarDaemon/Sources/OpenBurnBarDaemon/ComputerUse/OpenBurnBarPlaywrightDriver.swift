@@ -310,8 +310,11 @@ public actor OpenBurnBarPlaywrightDriver {
                     }
                 }
             }
-            group.addTask {
+            group.addTask { [weak self] in
                 try await Task.sleep(nanoseconds: timeoutNs)
+                if let self {
+                    await self.handleRequestTimeout(id)
+                }
                 throw DriverError.rpcTimeout
             }
             defer { group.cancelAll() }
@@ -335,6 +338,21 @@ public actor OpenBurnBarPlaywrightDriver {
                 "id": "\(response.id)"
             ])
         }
+    }
+
+    private func handleRequestTimeout(_ id: Int) {
+        guard let cont = pendingContinuations.removeValue(forKey: id) else { return }
+        cont.resume(throwing: DriverError.rpcTimeout)
+        stoppedExplicitly = true
+        process?.terminate()
+        process = nil
+        stdinPipe = nil
+        stdoutPipe = nil
+        stderrPipe = nil
+        stdoutTask?.cancel()
+        stdoutTask = nil
+        stderrTask?.cancel()
+        stderrTask = nil
     }
 
     private func failPending(with error: DriverError) {

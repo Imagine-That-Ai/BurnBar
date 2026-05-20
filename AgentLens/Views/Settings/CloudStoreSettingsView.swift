@@ -303,7 +303,7 @@ struct CloudStoreSettingsView: View {
                 }
                 .buttonStyle(AuroraPrimaryButtonStyle())
 
-                Link("Open pricing on openburnbar.com", destination: URL(string: "https://openburnbar.com/pricing")!)
+                Link("Open pricing on burnbar.ai", destination: URL(string: "https://burnbar.ai/pricing")!)
                     .font(.system(size: 11))
                     .foregroundStyle(DesignSystem.Colors.ember)
             }
@@ -414,7 +414,7 @@ struct CloudStoreSettingsView: View {
 
                 MacRemoteMCPConnectedClientsSection(store: remoteMCPClients)
 
-                Link(destination: URL(string: "https://openburnbar.com/docs/remote-mcp")!) {
+                Link(destination: URL(string: "https://burnbar.ai/product")!) {
                     HStack(spacing: 6) {
                         Text("Open Remote MCP setup")
                         Image(systemName: "arrow.up.right.square.fill")
@@ -480,7 +480,7 @@ struct CloudStoreSettingsView: View {
                     detail: "Managed by Apple in Settings → Apple ID. We never store payment details."
                 )
 
-                Link(destination: URL(string: "https://openburnbar.com/cloud")!) {
+                Link(destination: URL(string: "https://burnbar.ai/pricing")!) {
                     HStack(spacing: 6) {
                         Text("Read the Hosted Quota Sync technical doc")
                         Image(systemName: "arrow.up.right.square.fill")

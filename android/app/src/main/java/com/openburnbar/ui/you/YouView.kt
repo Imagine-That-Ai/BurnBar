@@ -38,6 +38,7 @@ import com.openburnbar.ui.pro.CloudBadgePickerSheet
 import com.openburnbar.ui.pro.CloudBadgeSize
 import com.openburnbar.ui.pro.CloudBadgeWithHalo
 import com.openburnbar.ui.pro.MembershipBand
+import com.openburnbar.ui.computeruse.ComputerUseAgentWatchScreen
 import com.openburnbar.ui.pro.MembershipBandVariant
 import com.openburnbar.ui.pro.MercuryCrest
 import com.openburnbar.ui.pro.MercuryCrestSize
@@ -67,7 +68,7 @@ import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.AuroraTypography
 
-private enum class YouSubScreen { Root, SmartDisplays, MenuBarPrefs, ChatTiles, Settings }
+private enum class YouSubScreen { Root, SmartDisplays, MenuBarPrefs, ChatTiles, Settings, ComputerUse }
 
 @Composable
 fun YouView(
@@ -99,8 +100,10 @@ fun YouView(
             YouSubScreen.ChatTiles -> com.openburnbar.ui.hermes.ChatTilesSettingsScreen(onBack = { subScreen = YouSubScreen.Root })
             YouSubScreen.Settings -> SettingsRootScreen(
                 onBack = { subScreen = YouSubScreen.Root },
+                onComputerUse = { subScreen = YouSubScreen.ComputerUse },
                 onMenuBarPrefs = { onBack -> MenuBarPrefsView(onBack = onBack) },
             )
+            YouSubScreen.ComputerUse -> ComputerUseAgentWatchScreen()
         }
     }
 }

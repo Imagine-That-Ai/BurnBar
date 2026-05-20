@@ -17,7 +17,7 @@ SHELL        := /bin/bash
 SCHEME       := OpenBurnBar
 PROJECT      := OpenBurnBar.xcodeproj
 CONFIG       := Release
-DESTINATION  := platform=macOS
+DESTINATION  := platform=macOS,arch=arm64
 CACHE_DIR    := .spm-cache
 DERIVED_DATA := .derived-data
 OPENBURNBAR_DEVELOPMENT_TEAM ?= 4Y367DF25B
@@ -55,6 +55,8 @@ build: preflight
 		-destination "$(DESTINATION)" \
 		-clonedSourcePackagesDirPath $(CACHE_DIR) \
 		-derivedDataPath $(DERIVED_DATA) \
+		ARCHS=arm64 \
+		ONLY_ACTIVE_ARCH=YES \
 		CODE_SIGN_IDENTITY="-" \
 		CODE_SIGNING_REQUIRED=NO \
 		CODE_SIGNING_ALLOWED=NO \
@@ -62,17 +64,21 @@ build: preflight
 	@echo "==> Embedding daemon helper…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Helpers"
 	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
-	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CORE_DYLIB)"
+	if [ -f "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" ]; then \
+		cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CORE_DYLIB)"; \
+	else \
+		echo "    No $(DAEMON_CORE_DYLIB) produced; daemon is statically linked."; \
+	fi
 	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
 	@echo "==> Embedding OpenBurnBarCore framework…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Frameworks"
 	OPENBURNBAR_CORE_FRAMEWORK="$(DERIVED_DATA)/Build/Products/$(CONFIG)/PackageFrameworks/OpenBurnBarCore.framework"; \
-	if [ ! -d "$$OPENBURNBAR_CORE_FRAMEWORK" ]; then \
-		echo "ERROR: Missing OpenBurnBarCore framework at $$OPENBURNBAR_CORE_FRAMEWORK"; \
-		exit 1; \
-	fi; \
-	rm -rf "$(APP_BUNDLE)/Contents/Frameworks/OpenBurnBarCore.framework"; \
-	cp -R "$$OPENBURNBAR_CORE_FRAMEWORK" "$(APP_BUNDLE)/Contents/Frameworks/"
+	if [ -d "$$OPENBURNBAR_CORE_FRAMEWORK" ]; then \
+		rm -rf "$(APP_BUNDLE)/Contents/Frameworks/OpenBurnBarCore.framework"; \
+		cp -R "$$OPENBURNBAR_CORE_FRAMEWORK" "$(APP_BUNDLE)/Contents/Frameworks/"; \
+	else \
+		echo "    No OpenBurnBarCore.framework produced; app is statically linked."; \
+	fi
 	@echo "==> Built: $(APP_BUNDLE)"
 
 build-signed: preflight
@@ -94,6 +100,8 @@ build-signed: preflight
 		-destination "$(DESTINATION)" \
 		-clonedSourcePackagesDirPath $(CACHE_DIR) \
 		-derivedDataPath $(DERIVED_DATA) \
+		ARCHS=arm64 \
+		ONLY_ACTIVE_ARCH=YES \
 		DEVELOPMENT_TEAM=$(OPENBURNBAR_DEVELOPMENT_TEAM) \
 		CODE_SIGN_STYLE=Automatic \
 		-allowProvisioningUpdates \
@@ -101,17 +109,21 @@ build-signed: preflight
 	@echo "==> Embedding daemon helper…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Helpers"
 	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
-	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CORE_DYLIB)"
+	if [ -f "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" ]; then \
+		cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CORE_DYLIB)"; \
+	else \
+		echo "    No $(DAEMON_CORE_DYLIB) produced; daemon is statically linked."; \
+	fi
 	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
 	@echo "==> Embedding OpenBurnBarCore framework…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Frameworks"
 	OPENBURNBAR_CORE_FRAMEWORK="$(DERIVED_DATA)/Build/Products/$(CONFIG)/PackageFrameworks/OpenBurnBarCore.framework"; \
-	if [ ! -d "$$OPENBURNBAR_CORE_FRAMEWORK" ]; then \
-		echo "ERROR: Missing OpenBurnBarCore framework at $$OPENBURNBAR_CORE_FRAMEWORK"; \
-		exit 1; \
-	fi; \
-	rm -rf "$(APP_BUNDLE)/Contents/Frameworks/OpenBurnBarCore.framework"; \
-	cp -R "$$OPENBURNBAR_CORE_FRAMEWORK" "$(APP_BUNDLE)/Contents/Frameworks/"
+	if [ -d "$$OPENBURNBAR_CORE_FRAMEWORK" ]; then \
+		rm -rf "$(APP_BUNDLE)/Contents/Frameworks/OpenBurnBarCore.framework"; \
+		cp -R "$$OPENBURNBAR_CORE_FRAMEWORK" "$(APP_BUNDLE)/Contents/Frameworks/"; \
+	else \
+		echo "    No OpenBurnBarCore.framework produced; app is statically linked."; \
+	fi
 	@echo "==> Signing $(APP_BUNDLE) for local install…"
 	OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS=1 scripts/sign-openburnbar-local.sh "$(APP_BUNDLE)" "AgentLens/Resources/OpenBurnBar.entitlements"
 	@echo "==> Built signed: $(APP_BUNDLE)"

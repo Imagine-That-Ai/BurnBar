@@ -53,6 +53,7 @@ struct PopoverQuickSwitchView: View {
     let dataStore: DataStore
     let onOpenSettings: () -> Void
     let settingsManager: SettingsManager
+    let autoRefreshQuotaOnLoad: Bool
 
     @State private var profiles: [SwitcherProfileRecord] = []
     @State private var activeProfileID: String?
@@ -61,7 +62,7 @@ struct PopoverQuickSwitchView: View {
     @State private var launchState: LaunchState = .idle
     @State private var isLoading = true
     @State private var error: String?
-    @State private var showingLaunchMenu = false
+    @State private var showingProfilePicker = false
     @State private var accessibilityAnnouncement: String?
     @State private var recentDefaultChange: RecentDefaultChange?
     @State private var isHighlightingDefaultChange = false
@@ -92,6 +93,7 @@ struct PopoverQuickSwitchView: View {
         dataStore: DataStore,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared,
+        autoRefreshQuotaOnLoad: Bool = true,
         testInjectedError: String? = nil,
         skipLoadData: Bool = false,
         testAnnouncementHandler: ((String) -> Void)? = nil
@@ -99,6 +101,7 @@ struct PopoverQuickSwitchView: View {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
         self.settingsManager = settingsManager
+        self.autoRefreshQuotaOnLoad = autoRefreshQuotaOnLoad
         self.testInjectedError = testInjectedError
         self.skipLoadData = skipLoadData
         self.testAnnouncementHandler = testAnnouncementHandler
@@ -113,11 +116,13 @@ struct PopoverQuickSwitchView: View {
     init(
         dataStore: DataStore,
         onOpenSettings: @escaping () -> Void,
-        settingsManager: SettingsManager = .shared
+        settingsManager: SettingsManager = .shared,
+        autoRefreshQuotaOnLoad: Bool = true
     ) {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
         self.settingsManager = settingsManager
+        self.autoRefreshQuotaOnLoad = autoRefreshQuotaOnLoad
     }
     #endif
 
@@ -384,6 +389,10 @@ struct PopoverQuickSwitchView: View {
             // Quick switch row (VAL-POPOVER-001)
             quickSwitchRow
 
+            if showingProfilePicker {
+                profilePickerList
+            }
+
             // State feedback (VAL-POPOVER-003)
             stateFeedbackView
         }
@@ -602,23 +611,11 @@ struct PopoverQuickSwitchView: View {
     /// One-step popover switching flow (VAL-POPOVER-001, VAL-POPOVER-004)
     private var quickSwitchRow: some View {
         HStack(spacing: DesignSystem.Spacing.xs) {
-            // Compact profile picker
-            Menu {
-                ForEach(profiles) { profile in
-                    Button {
-                        selectAndSwitch(profile)
-                    } label: {
-                        HStack(spacing: DesignSystem.Spacing.xs) {
-                            targetIcon(for: profile)
-                            Text(profile.displayName)
-                                .font(DesignSystem.Typography.caption)
-                            if profile.id == activeProfileID {
-                                Text("Default")
-                                    .foregroundStyle(DesignSystem.Colors.success)
-                            }
-                        }
-                    }
-                    .disabled(switchState == .switching)
+            // In-panel picker instead of SwiftUI Menu: AppKit menus can miss
+            // clicks from a non-activating menu-bar NSPanel.
+            Button {
+                withAnimation(DesignSystem.Animation.snappy) {
+                    showingProfilePicker.toggle()
                 }
             } label: {
                 HStack(spacing: DesignSystem.Spacing.xs) {
@@ -644,12 +641,60 @@ struct PopoverQuickSwitchView: View {
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
             }
             .disabled(switchState == .switching)
+            .buttonStyle(.plain)
             .accessibilityLabel("Profile selector")
-            .accessibilityHint("Opens menu to select a different profile")
+            .accessibilityHint("Shows profiles to select a different launch default")
 
             // Launch button (VAL-POPOVER-006) - distinct from switch
             launchButton
         }
+    }
+
+    private var profilePickerList: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+            ForEach(profiles) { profile in
+                Button {
+                    selectAndSwitch(profile)
+                } label: {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        targetIcon(for: profile)
+
+                        Text(profile.displayName)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+
+                        Spacer(minLength: DesignSystem.Spacing.xs)
+
+                        if profile.id == activeProfileID {
+                            Text("Default")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.success)
+                        }
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, DesignSystem.Spacing.xs)
+                    .background(
+                        profile.id == selectedProfileID
+                            ? DesignSystem.Colors.ember.opacity(0.18)
+                            : DesignSystem.Colors.surfaceElevated
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(switchState == .switching)
+                .accessibilityLabel("Use \(profile.displayName) as launch default")
+            }
+        }
+        .padding(DesignSystem.Spacing.xxs)
+        .background(DesignSystem.Colors.surface.opacity(0.85))
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Profile choices")
     }
 
     // MARK: - Launch Button
@@ -658,35 +703,8 @@ struct PopoverQuickSwitchView: View {
     private var launchButton: some View {
         Group {
             if let selected = profiles.first(where: { $0.id == selectedProfileID }) {
-                Menu {
-                    // Switch action (VAL-POPOVER-001)
-                    Button {
-                        selectAndSwitch(selected)
-                    } label: {
-                        Label("Make Default", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .disabled(switchState == .switching || selected.id == activeProfileID)
-
-                    Divider()
-
-                    // Launch action (VAL-POPOVER-006)
-                    switch selected.targetKind {
-                    case .browser:
-                        Button {
-                            performLaunch(profile: selected)
-                        } label: {
-                            Label("Launch \(selected.browserType?.displayName ?? "Browser")", systemImage: selected.browserType == .safari ? "safari" : "globe")
-                        }
-                        .disabled(launchState == .launching)
-
-                    case .cli:
-                        Button {
-                            performLaunch(profile: selected)
-                        } label: {
-                            Label("Launch \(selected.cliType?.displayName ?? "CLI")", systemImage: "terminal")
-                        }
-                        .disabled(launchState == .launching)
-                    }
+                Button {
+                    performLaunch(profile: selected)
                 } label: {
                     HStack(spacing: DesignSystem.Spacing.xxs) {
                         if launchState == .launching {
@@ -707,7 +725,8 @@ struct PopoverQuickSwitchView: View {
                     .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
                 }
                 .disabled(launchState == .launching || switchState == .switching)
-                .accessibilityLabel("Launch menu")
+                .buttonStyle(.plain)
+                .accessibilityLabel("Launch \(selected.displayName)")
             } else {
                 // No profile selected
                 HStack(spacing: DesignSystem.Spacing.xxs) {
@@ -884,8 +903,10 @@ struct PopoverQuickSwitchView: View {
                 announceForAccessibility("\(count) profile\(count == 1 ? "" : "s") loaded.")
             }
 
-            Task { @MainActor in
-                await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: 15 * 60)
+            if autoRefreshQuotaOnLoad {
+                Task { @MainActor in
+                    await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: 15 * 60)
+                }
             }
         } catch {
             self.error = "Failed to load profiles: \(error.localizedDescription)"
@@ -902,6 +923,7 @@ struct PopoverQuickSwitchView: View {
         guard switchState != .switching else { return }
 
         selectedProfileID = profile.id
+        showingProfilePicker = false
 
         withAnimation(DesignSystem.Animation.snappy) {
             switchState = .switching
@@ -929,6 +951,7 @@ struct PopoverQuickSwitchView: View {
     /// Performs launch action (VAL-POPOVER-007)
     private func performLaunch(profile: SwitcherProfileRecord) {
         guard launchState != .launching else { return }
+        showingProfilePicker = false
 
         withAnimation(DesignSystem.Animation.snappy) {
             launchState = .launching

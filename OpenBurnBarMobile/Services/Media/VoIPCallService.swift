@@ -79,7 +79,7 @@ final class VoIPCallService: NSObject {
 }
 
 #if canImport(PushKit)
-extension VoIPCallService: PKPushRegistryDelegate {
+extension VoIPCallService: @preconcurrency PKPushRegistryDelegate {
     func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
         guard type == .voIP else { return }
         voipDeviceTokenHex = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
@@ -119,7 +119,7 @@ extension VoIPCallService: PKPushRegistryDelegate {
 #endif
 
 #if canImport(CallKit)
-extension VoIPCallService: CXProviderDelegate {
+extension VoIPCallService: @preconcurrency CXProviderDelegate {
     func providerDidReset(_ provider: CXProvider) {
         inFlightIncoming = nil
     }

@@ -24,7 +24,7 @@ final class ScreenShareViewerWindow {
         if panel != nil { return }
         let panel = NSPanel(
             contentRect: initialFrame,
-            styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .borderless],
+            styleMask: [.titled, .closable, .resizable, .borderless],
             backing: .buffered,
             defer: false
         )

@@ -18,7 +18,8 @@ import OpenBurnBarComputerUseCore
 public final class PhoneControlReceiver: @unchecked Sendable {
     public typealias DispatchHandler = @Sendable (
         _ action: ComputerUseAction,
-        _ sessionId: ComputerUseSessionID
+        _ sessionId: ComputerUseSessionID,
+        _ counter: UInt64
     ) async -> Void
 
     public typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
@@ -31,6 +32,8 @@ public final class PhoneControlReceiver: @unchecked Sendable {
     private let dispatchHandler: DispatchHandler
     private let denyFrameSink: FrameSink
     private let displayBoundsProvider: DisplayBoundsProvider
+    private let seenIntentQueue = DispatchQueue(label: "com.openburnbar.phoneControl.receiver.seenIntentIds")
+    private var seenClientIntentIds: Set<String> = []
 
     public init(
         sessionId: ComputerUseSessionID,
@@ -71,6 +74,17 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             return
         }
 
+        if let clientIntentId = intent.clientIntentId, !clientIntentId.isEmpty,
+           markClientIntentSeen(clientIntentId) == false {
+            await emitDeniedFrame(
+                reason: .counterReplay,
+                detail: "duplicate_client_intent",
+                uid: frame.uid,
+                connectionId: frame.connectionId
+            )
+            return
+        }
+
         // Translate the normalized intent into a typed
         // `ComputerUseAction`. Panic intents bypass dispatch and
         // signal the caller-supplied dispatcher to start the halt
@@ -80,7 +94,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             // Forward as a synthetic action; the coordinator interprets
             // it as a panic halt directly.
             let action: ComputerUseAction = .phoneIntent(PhoneControlIntent(kind: .panic))
-            await dispatchHandler(action, sessionId)
+            await dispatchHandler(action, sessionId, intent.authority.counter)
             return
         case .tap, .scroll, .dragStart, .dragMove, .dragEnd:
             guard let (displayX, displayY) = denormalize(intent.normalizedX, intent.normalizedY) else {
@@ -109,16 +123,18 @@ public final class PhoneControlReceiver: @unchecked Sendable {
                 dragEndX: endpoint?.0,
                 dragEndY: endpoint?.1
             )
-            await dispatchHandler(.macInput(macAction), sessionId)
+            await dispatchHandler(.macInput(macAction), sessionId, intent.authority.counter)
         case .type:
             await dispatchHandler(
                 .macInput(MacInputAction(kind: .type, text: intent.text)),
-                sessionId
+                sessionId,
+                intent.authority.counter
             )
         case .shortcut:
             await dispatchHandler(
                 .macInput(MacInputAction(kind: .shortcut, key: intent.key, modifiers: intent.modifiers)),
-                sessionId
+                sessionId,
+                intent.authority.counter
             )
         }
     }
@@ -150,6 +166,16 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             return nil
         }
         return (point.x, point.y)
+    }
+
+    private func markClientIntentSeen(_ clientIntentId: String) -> Bool {
+        seenIntentQueue.sync {
+            if seenClientIntentIds.contains(clientIntentId) {
+                return false
+            }
+            seenClientIntentIds.insert(clientIntentId)
+            return true
+        }
     }
 
     private func emitDeniedFrame(

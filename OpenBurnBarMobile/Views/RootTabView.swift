@@ -25,6 +25,7 @@ struct RootTabView: View {
     @State private var didApplyScreenshotRoute = false
     #if DEBUG
     @State private var didApplyHermesE2EPrompt = false
+    @State private var didApplyComputerUseE2EProof = false
     #endif
     @State private var router = PulseRouter()
     @State private var motionStore = MotionStore()
@@ -109,6 +110,7 @@ struct RootTabView: View {
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
+        .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
         .task { missionActivityCenter.start() }
         .task { missionConsoleHost.start() }
         .sheet(isPresented: $isMissionConsolePresented) {
@@ -119,6 +121,7 @@ struct RootTabView: View {
         .onAppear {
             applyScreenshotRouteIfNeeded()
             applyHermesE2EPromptIfNeeded()
+            applyComputerUseE2EProofIfNeeded()
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
@@ -298,6 +301,33 @@ struct RootTabView: View {
             print("OpenBurnBarMobile Hermes E2E RootTab send")
             Self.hermesE2ELogger.info("Sending Hermes E2E prompt through selected mobile harness")
             hermesService.sendMessage(prompt)
+        }
+        #endif
+    }
+
+    private func applyComputerUseE2EProofIfNeeded() {
+        #if DEBUG
+        guard !didApplyComputerUseE2EProof else { return }
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_COMPUTER_USE_PROOF"] == "1" else { return }
+        guard authStore.currentIdentity?.uid != nil else {
+            print("OpenBurnBarMobile ComputerUseE2E skip auth unavailable")
+            return
+        }
+        didApplyComputerUseE2EProof = true
+        Task { @MainActor in
+            print("OpenBurnBarMobile ComputerUseE2E refresh_runtime_start")
+            await hermesService.refreshRuntime()
+            if hermesService.selectedConnection.id == HermesConnectionRecord.localDefault.id {
+                let selected = hermesService.connectToSuggestedRelay(refresh: false)
+                print("OpenBurnBarMobile ComputerUseE2E suggested_relay_selected=\(selected) selected=\(hermesService.selectedConnection.id) mode=\(hermesService.selectedConnection.mode.rawValue)")
+            } else {
+                print("OpenBurnBarMobile ComputerUseE2E existing_connection selected=\(hermesService.selectedConnection.id) mode=\(hermesService.selectedConnection.mode.rawValue)")
+            }
+            selection = .you
+            if youPath.isEmpty {
+                youPath.append(YouRoute.computerUse)
+            }
+            print("OpenBurnBarMobile ComputerUseE2E opened Agent Watch")
         }
         #endif
     }

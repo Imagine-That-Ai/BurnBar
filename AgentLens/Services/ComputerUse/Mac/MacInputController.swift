@@ -90,19 +90,15 @@ public final class MacInputController: @unchecked Sendable {
     public func type(text: String) throws -> Double {
         guard isAccessibilityTrusted() else { throw InputError.accessibilityNotTrusted }
         let started = Date()
-        for char in text {
-            guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true) else {
+        for typingEvent in MacInputCore.unicodeTypingEvents(for: text) {
+            guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: typingEvent.isKeyDown) else {
                 throw InputError.eventCreationFailed
             }
-            var chars = Array(String(char).utf16)
-            event.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: &chars)
+            if typingEvent.carriesUnicodeText {
+                var chars = Array(typingEvent.text.utf16)
+                event.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: &chars)
+            }
             event.post(tap: .cghidEventTap)
-
-            guard let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else {
-                throw InputError.eventCreationFailed
-            }
-            up.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: &chars)
-            up.post(tap: .cghidEventTap)
         }
         return Date().timeIntervalSince(started) * 1000.0
     }

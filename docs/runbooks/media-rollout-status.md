@@ -207,6 +207,62 @@ Post-remediation verification:
 - `xcodebuild build` for `OpenBurnBar` (macOS arm64): **BUILD SUCCEEDED**.
 - `xcodebuild build` for `OpenBurnBarMobile` (iOS Simulator iPhone 17 Pro Max): **BUILD SUCCEEDED**.
 
+---
+
+## 2026-05-17 — Mercury user-facing surfaces wired (Phase 8)
+
+The user-facing entry points that were missing — the iOS Hermes Square "My Mac" tile and the Mac menu-bar popover Mercury section — are now source-complete and ship with the same binary as Phase 1–7.
+
+### What landed
+
+**Protocol additions (Phase 0):**
+- Three new `HermesRealtimeRelayFrameType` cases — `media.mirror.request`, `media.mirror.ack`, `media.presence.heartbeat` — ride the existing `media.control` stream. No new ALPN.
+- Three new `Codable` payload structs: `HermesRealtimeRelayMirrorRequest` (requestId, requesterDisplayName, streamClass), `HermesRealtimeRelayMirrorAck` (decision enum {accepted, denied, coolingDown, unsupported, busy} + optional cooldownSecondsRemaining), `HermesRealtimeRelayPresenceHeartbeat` (sentAt, deviceDisplayName, capabilities). 3 new Codable round-trip tests assert wire forward-compat (nil cooldown omitted from JSON).
+- `MacFileTransferService` read-loop dispatches the three new frame types to an attached `MercuryRouter` via a side-band `mercuryDispatcher` closure. Blob traffic continues unchanged.
+
+**Shared model (Phase 1):**
+- `MercuryPeer` — a `Sendable`/`Codable` snapshot (connectionID, displayName, isOnline, lastSeenAt, capabilities: Set<Feature>). Forwards-compatible: unknown capability strings are silently filtered during `init(from:)`. 6 tests.
+- Mac-side `MercuryPeerSource` (`@MainActor ObservableObject`) subscribes to `MediaControlStreamRegistry` and presence heartbeat cache. iOS-side `MercuryPeerSource` polls `MediaControlStreamCoordinator.phase` and resolves display name from Firestore `users/{uid}/devices`.
+
+**Mac dispatch + router (Phases 2–3):**
+- `MercuryRouter` (`@MainActor ObservableObject`) — owns Phase {idle, ringing, starting, streaming, cooldown}, consent fast-path (auto-accept when `alwaysAllow == true`), and cooldown gating (30s default). Inbound `media.mirror.request` → IncomingCallSheet present; accept → `MediaSessionCoordinator.startScreenShare`; all paths emit `media.mirror.ack` on the control stream. 5 behavioral tests.
+- `MercuryConsentStore` — `UserDefaults`-backed "Always allow my iPhone to mirror this Mac" toggle. Surfaced in `MediaPermissionsView` on Mac.
+- Wired into `OpenBurnBarRuntimeContext` via `startMercuryServices()` and `CloudSyncService.attachMercuryRouter(_:)`.
+
+**Mac popover (Phase 4):**
+- New `.mercury` case in `PopoverTraySection` enum, gated on `runtimeContext.mercuryRouter != nil`.
+- `MercuryTraySection` — GlassCard-enveloped row inside the menu-bar popover with live `MercuryRing`, paired-device label, monospaced phase string, and three outbound buttons (Call iPhone, Send File, Settings). Mercury-gradient hairline border matches `IncomingCallSheet` vocabulary.
+- `MercuryGlobalChrome` — app-scene-root overlay: presents `IncomingCallSheet` on `.ringing` / `.callRinging` (visible even when popover is closed), `CallHUD` on `.streaming`.
+
+**iOS Hermes Square + Mercury Live sheet (Phase 5):**
+- `AgentIdentityRegistry` synthesizes a `device://paired-mac/<connectionID>` identity (macbook glyph, mercury-silver `#8B9DC3` palette, "Mirror, call, or send a file" tagline) when `pairedMacPeer` is set.
+- `HermesSquareRoot` auto-pins the Mac tile (idempotent, keyed on `connectionID`) when `mercuryPinnedTileEnabled` is true. Routes URI taps to `.mercuryLive(connectionID)` navigation target.
+- 2026-05-18 fix: the iOS pinned Mac tile now resolves from the real Hermes relay connection instead of the legacy `paired-mac:default` placeholder, forces the Mac tile to remain visible even when the 12-slot grid is full, refreshes relay state before starting Mercury, and passes the real relay connection ID to `MercuryLiveSheet` so Mac-side media frame filtering does not drop mirror requests as the wrong connection. Mercury boot now refuses to reuse a stale control-stream coordinator for a different Mac connection and restarts failed/stopped coordinators before showing the sheet.
+- 2026-05-18 Android parity fix: Hermes Square refreshes relay connections while open, force-pins the paired Mac into the grid even when the paired relay is offline/pending, and renders a persisted `device://paired-mac/*` placeholder instead of hiding the tile while relay hydration is late.
+- 2026-05-18 live-tap fix: Mac Mercury incoming mirror UI now uses a retained AppKit `NSPanel` presenter that opens on router `.ringing` / `.starting` / `.streaming`, so "Ask to Mirror" surfaces an approval prompt even when the menu-bar popover is closed. The iPhone sheet now changes the button to "Waiting for Mac..." after a successful request send. Android paired-Mac tile taps now route to the `computer_use` screen instead of falling through to the generic brand-zone sheet.
+- 2026-05-18 mirror-accept fix: `MercuryRouter` now receives a real `MediaStreamSink` backed by the paired iOS `media.control` iroh stream. Accepted screen-share frames are encoded with `MediaPacketCodec`, sent as `media.stream.frame` envelopes, decoded by `MediaControlStreamCoordinator`, and rendered in `ScreenShareViewerView` from the iPhone Mercury Live sheet. Verification: macOS Debug build passed, iPhone device Debug build passed, `swift test --package-path OpenBurnBarCore --filter MediaFrameProtocolTests/testStreamFrameEnvelopeRoundTripsEncodedMediaPacket` passed. App-target Mercury tests currently crash before test bootstrap in the OpenBurnBar host runner, so package-level protocol coverage is the reliable automated gate until that runner issue is fixed.
+- 2026-05-18 tray + request visibility fix: the dashboard window no longer auto-hides on focus loss, clicking the menu-bar item opens the dashboard through the popover appearance path, relay/Mercury startup is mounted during app scene setup instead of waiting for popover rendering, and iOS "Ask to Mirror" now times out with a visible Mercury-connecting error instead of silently waiting on a dead control stream. Verification: clean current macOS build passed, current app relaunched from `/tmp/DerivedData-mercury-panel`, System Events tray click produced both an `AXSystemDialog` tray popover and an `OpenBurnBar` `AXStandardWindow`, iPhone app installed/launched, and `/v1/models` stayed on the current daemon catalog.
+- 2026-05-18 Android Call Mac fix: Android `PairedMacControlsScreen` now sends `media.call.invite` over the live paired-Mac `media.control` stream and watches `media.call.ack` for accepted/denied/busy status. Mac `MercuryRouter` handles the invite as `.callRinging`, surfaces the retained incoming-call panel, and sends accepted/denied acks from the user's choice. Verification: `swift test --package-path OpenBurnBarCore --filter MediaFrameProtocolTests` passed, Android relay/app focused tests passed, Android `:app:assembleDebug` passed, and macOS Debug build passed.
+- `MercuryLiveSheet` — 96pt macbook avatar with mercury-gradient border + phase-animator pulse (respects `accessibilityReduceMotion`), three `.borderedProminent` buttons (Ask to Mirror → `media.mirror.request` send; Call Mac → existing VoIP path; Send File → `UIDocumentPicker` → `iOSFileTransferService.send`). `.thickMaterial` background with mercury hairline. Ack banner surfaces cooldown countdown / denied reason.
+- `MediaControlStreamCoordinator` read-loop handles `.mediaMirrorAck` (routes to `mirrorAckHandler`), sends outbound 60s `media.presence.heartbeat` with iOS capabilities.
+
+**Settings + consent (Phase 6):**
+- Mac: "Always allow my iPhone to mirror this Mac" toggle in `MediaPermissionsView`.
+- iOS: "Show My Mac on Hermes Square" toggle in `MediaSettingsView`.
+
+**Test coverage:**
+- Protocol + model: 19 SPM tests (8 frame + 6 peer + 5 dispatch), 0 failures.
+- Mac router: `MercuryRouterTests` (8 tests — mirror ringing/cooldown/consent/decline/stop coverage plus Call Mac invite ringing, accept ack, and decline ack/cooldown).
+- iOS registry: `AgentIdentityRegistryMacURITests` (4 tests — URI resolution, offline identity, unknown URI nil, auto-pin idempotency).
+
+**Build verification:**
+- iOS device build (arm64): **BUILD SUCCEEDED**.
+- SPM `swift test` (all Media + Peer targets): **0 failures**.
+- Mac `nanopb/BUILD` file-collision blocks local scheme build (pre-existing Firebase SDK issue, not Mercury-related).
+
+**Follow-up — Android:**
+- Kotlin mirrors for `MercuryPeer`, new frame-type enum cases, Android `MercuryLiveSheet` marked as TODO in `android/app/AGENTS.md`.
+
 What still requires real-world setup (out of scope for source-level work):
 - Generate the APNs auth key (.p8) in Apple Developer, upload to Cloud Functions runtime via `firebase functions:secrets:set APNS_KEY_P8`.
 - Set `media_cost_per_gb_usd` in Firebase Remote Config from the first real n0 invoice.

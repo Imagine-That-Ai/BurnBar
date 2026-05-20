@@ -68,6 +68,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             let text: String?
             let key: String?
             let modifiers: [String]?
+            let clientIntentId: String?
         }
         return try canonicalIntentHashHex(intent: SignableInputIntent(
             kind: intent.kind,
@@ -77,7 +78,8 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             normalizedY2: intent.normalizedY2,
             text: intent.text,
             key: intent.key,
-            modifiers: intent.modifiers
+            modifiers: intent.modifiers,
+            clientIntentId: intent.clientIntentId
         ))
     }
 

@@ -27,36 +27,37 @@ enum OpenBurnBarRuntime {
     static var isRunningTests: Bool {
         isRunningTests(
             environment: ProcessInfo.processInfo.environment,
-            loadedBundlePaths: Bundle.allBundles.map(\.bundlePath),
-            mainBundleContainsXCTestPlugin: mainBundleContainsXCTestPlugin()
+            arguments: ProcessInfo.processInfo.arguments,
+            parentProcessPath: nil, // We don't easily have the parent process path here
+            loadedBundlePaths: Bundle.allBundles.map(\.bundlePath)
         )
     }
 
     static func isRunningTests(
         environment: [String: String],
-        loadedBundlePaths: [String],
-        mainBundleContainsXCTestPlugin: Bool
+        arguments: [String] = [],
+        parentProcessPath: String? = nil,
+        loadedBundlePaths: [String] = [],
+        loadedImagePaths: [String] = [],
+        xCTestFrameworkLoaded: Bool? = nil
     ) -> Bool {
+        if let xCTestFrameworkLoaded = xCTestFrameworkLoaded, xCTestFrameworkLoaded {
+            return true
+        }
+
         return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestSessionIdentifier"] != nil
             || environment["XCTestBundlePath"] != nil
             || environment["TEST_RUNNER_CI"] == "true"
             || environment["TEST_RUNNER_GITHUB_ACTIONS"] == "true"
             || environment["TEST_RUNNER_RUNNER_OS"] != nil
+            || environment["__XPC_DYLD_LIBRARY_PATH"]?.contains(".xctest") ?? false
+            || arguments.contains { $0.hasSuffix(".xctestconfiguration") }
+            || parentProcessPath.map { URL(fileURLWithPath: $0).lastPathComponent == "xcodebuild" } ?? false
             || loadedBundlePaths.contains { $0.hasSuffix(".xctest") }
-            || mainBundleContainsXCTestPlugin
+            || loadedImagePaths.contains { $0.contains("libXCTestBundleInject.dylib") }
     }
 
-    private static func mainBundleContainsXCTestPlugin() -> Bool {
-        guard let plugInsURL = Bundle.main.builtInPlugInsURL,
-              let contents = try? FileManager.default.contentsOfDirectory(
-                at: plugInsURL,
-                includingPropertiesForKeys: nil
-              ) else {
-            return false
-        }
-        return contents.contains { $0.pathExtension == "xctest" }
-    }
 
     /// Allows tests / harnesses to opt **in** to the live menu-bar scene by setting
     /// `OPENBURNBAR_FORCE_LIVE_SCENE=1`. Default is opt-out (skip the live scene under tests).
@@ -106,6 +107,35 @@ enum OpenBurnBarRuntime {
     }
 }
 
+/// SwiftUI auto-opens the first `Window` scene of an `App` on launch even when
+/// the app is `LSUIElement` and the live UI lives entirely in the
+/// `NSStatusItem` popover. This sentinel attaches an `NSWindow` accessor that
+/// closes the host window the moment SwiftUI hands it to AppKit, so the only
+/// visible OpenBurnBar surface at idle is the menu-bar icon.
+private struct BackgroundSceneSentinel: View {
+    var body: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .background(BackgroundSceneWindowDismisser())
+    }
+}
+
+private struct BackgroundSceneWindowDismisser: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            view.window?.close()
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            nsView.window?.close()
+        }
+    }
+}
+
 /// `MenuBarExtra` uses the label image's intrinsic size and commonly ignores SwiftUI `.frame` / layout on nested
 /// views. Rasterize the vector `AppLogo` to a small `NSImage` so the status item matches normal menu-bar icons.
 private enum MenuBarRasterBrandMark {
@@ -133,6 +163,8 @@ final class AppCommandRouter {
     var openDashboard: (() -> Void)?
     var openConversationSearch: (() -> Void)?
     var openChatPanel: (() -> Void)?
+    var openSettings: (() -> Void)?
+    var makeMenuBarPopoverContent: ((_ onDismiss: @escaping () -> Void) -> AnyView)?
 
     func handle(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "openburnbar" else { return false }
@@ -895,6 +927,10 @@ struct OpenBurnBarApp: App {
             AppCommandRouter.shared.openDashboard = { openStartupRecoveryWindow() }
             AppCommandRouter.shared.openConversationSearch = { openStartupRecoveryWindow() }
             AppCommandRouter.shared.openChatPanel = { openStartupRecoveryWindow() }
+            AppCommandRouter.shared.openSettings = { openStartupRecoveryWindow() }
+            AppCommandRouter.shared.makeMenuBarPopoverContent = { _ in
+                AnyView(EmptyView())
+            }
             return
         }
 
@@ -909,7 +945,224 @@ struct OpenBurnBarApp: App {
             openDashboard(context: context)
             navigationCoordinator.openChatPanel()
         }
+        AppCommandRouter.shared.openSettings = {
+            windowManager.openSettings(
+                settingsManager: context.settingsManager,
+                accountManager: context.accountManager,
+                cloudSyncService: context.cloudSyncService,
+                iCloudSessionMirrorService: context.iCloudSessionMirrorService,
+                dataStore: context.dataStore,
+                runtimeContext: context
+            )
+        }
+        AppCommandRouter.shared.makeMenuBarPopoverContent = { onDismiss in
+            AnyView(
+                MenuBarPopoverView(
+                    dataStore: context.dataStore,
+                    aggregator: context.aggregator,
+                    quotaService: context.quotaService,
+                    settingsManager: context.settingsManager,
+                    smartHubBridgeController: context.smartHubBridgeController,
+                    smartDisplayRepairCoordinator: context.smartDisplayRepairCoordinator,
+                    operatingLayer: context.operatingLayer,
+                    onOpenDashboard: {
+                        onDismiss()
+                        openDashboard(context: context)
+                    },
+                    onOpenSettings: {
+                        onDismiss()
+                        windowManager.openSettings(
+                            settingsManager: context.settingsManager,
+                            accountManager: context.accountManager,
+                            cloudSyncService: context.cloudSyncService,
+                            iCloudSessionMirrorService: context.iCloudSessionMirrorService,
+                            dataStore: context.dataStore,
+                            runtimeContext: context
+                        )
+                    },
+                    chatController: context.chatController,
+                    onOpenDashboardWithChat: {
+                        onDismiss()
+                        openDashboard(context: context)
+                        navigationCoordinator.openChatPanel()
+                    },
+                    onOpenOnboardingWizard: {
+                        onDismiss()
+                        windowManager.openOnboardingWizard(
+                            dataStore: context.dataStore,
+                            aggregator: context.aggregator,
+                            settingsManager: context.settingsManager,
+                            chatController: context.chatController,
+                            onOpenDashboard: {
+                                openDashboard(context: context)
+                            }
+                        )
+                    },
+                    runtimeContext: context
+                )
+                .environment(context.settingsManager)
+            )
+        }
+
+        startLiveServicesIfNeeded(context: context)
     }
+
+    @MainActor
+    private func startLiveServicesIfNeeded(context: OpenBurnBarRuntimeContext) {
+        guard !OpenBurnBarApp.didStartLiveServices else { return }
+        OpenBurnBarApp.didStartLiveServices = true
+        guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
+
+        Task { @MainActor in
+            let sync: CloudSyncService
+            if let existingSync = context.cloudSyncService {
+                sync = existingSync
+            } else {
+                sync = CloudSyncService(
+                    dataStore: context.dataStore,
+                    accountManager: context.accountManager,
+                    settingsManager: context.settingsManager
+                )
+            }
+            context.cloudSyncService = sync
+
+            context.startRelayServices()
+            context.startSmartDisplayServices()
+            context.startMercuryServices()
+
+            let mirror: ICloudSessionMirrorService
+            if let existingMirror = context.iCloudSessionMirrorService {
+                mirror = existingMirror
+            } else {
+                mirror = ICloudSessionMirrorService(settingsManager: context.settingsManager)
+            }
+            context.iCloudSessionMirrorService = mirror
+
+            let aggregator: UsageAggregator
+            if let existingAggregator = context.aggregator {
+                aggregator = existingAggregator
+            } else {
+                aggregator = UsageAggregator(
+                    dataStore: context.dataStore,
+                    cloudSync: sync,
+                    sessionMirror: mirror,
+                    settingsManager: context.settingsManager,
+                    quotaService: context.quotaService
+                )
+            }
+            context.aggregator = aggregator
+            context.operatingLayer.aggregator = aggregator
+            context.operatingLayer.chatController = context.chatController
+            context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
+            #if !DISTRIBUTION_MAS
+            ComputerUseDaemonApprovalPresenter.shared.start(daemonManager: context.daemonManager)
+            #endif
+            context.cursorConnectorManager.attach(dataStore: context.dataStore)
+            context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
+
+            if !hasShownInitialDashboard {
+                hasShownInitialDashboard = true
+                windowManager.openDashboard(
+                    dataStore: context.dataStore,
+                    aggregator: aggregator,
+                    accountManager: context.accountManager,
+                    cloudSyncService: sync,
+                    iCloudSessionMirrorService: mirror,
+                    chatController: context.chatController,
+                    operatingLayer: context.operatingLayer,
+                    navigationCoordinator: navigationCoordinator,
+                    settingsManager: context.settingsManager,
+                    runtimeContext: context
+                )
+            }
+
+            Task {
+                if context.settingsManager.launchHermesWithOpenBurnBar {
+                    let baseURL = URL(string: context.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+                        ?? URL(string: "http://127.0.0.1:8642")!
+                    let bearerToken = context.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                    await HermesRuntimeLauncher().openHermesAndGateway(
+                        baseURL: baseURL,
+                        bearerToken: bearerToken.isEmpty ? nil : bearerToken
+                    )
+                }
+                if context.settingsManager.launchPiAgentsWithOpenBurnBar {
+                    let baseURL = URL(string: context.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+                        ?? URL(string: "http://127.0.0.1:8765")!
+                    let bearerToken = context.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let preferred = context.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let redisRaw = context.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let piAdapter = PiAgentRuntimeAdapter(
+                        preferredInstanceID: preferred.isEmpty ? nil : preferred,
+                        redisURL: redisRaw.isEmpty ? nil : URL(string: redisRaw)
+                    )
+                    _ = await piAdapter.openManagedRuntime(
+                        baseURL: baseURL,
+                        bearerToken: bearerToken.isEmpty ? nil : bearerToken
+                    )
+                }
+                let enabledBackends = Set(context.settingsManager.enabledChatBackends)
+                if enabledBackends.contains(.hermes) || context.chatController.chatBackend == .hermes {
+                    await context.chatController.probeHermesAvailability()
+                } else {
+                    context.chatController.hermesAvailable = false
+                }
+                if enabledBackends.contains(.openclaw) || context.chatController.chatBackend == .openclaw {
+                    await context.chatController.probeOpenClawAvailability()
+                } else {
+                    context.chatController.openClawAvailable = false
+                }
+                if enabledBackends.contains(.piAgent) || context.chatController.chatBackend == .piAgent {
+                    await context.chatController.probePiAgentAvailability()
+                } else {
+                    context.chatController.piAgentAvailable = false
+                }
+                await context.daemonManager.refreshHealth()
+                await context.operatingLayer.refreshControllerRuntime()
+            }
+
+            Task(priority: .utility) {
+                for _ in 0..<30 where !context.accountManager.isSignedIn {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled else { return }
+                }
+                await sync.uploadPending()
+                let startupScanDelay: Duration = context.settingsManager.pixelClockConfig.enabled
+                    ? .seconds(600)
+                    : .seconds(15)
+                try? await Task.sleep(for: startupScanDelay)
+                guard !Task.isCancelled else { return }
+                await aggregator.refreshAll()
+                await sync.uploadPendingConversations()
+                await sync.uploadPendingChatThreads()
+                if context.settingsManager.dailyDigestEnabled {
+                    await DailyDigestManager.shared.requestAuthorization()
+                    DailyDigestManager.shared.scheduleDigest(
+                        from: context.dataStore,
+                        at: context.settingsManager.dailyDigestHour
+                    )
+                }
+            }
+
+            periodicRefreshTask?.cancel()
+            periodicRefreshTask = Task(priority: .utility) {
+                while !Task.isCancelled {
+                    let minimumRefreshInterval: TimeInterval = context.settingsManager.pixelClockConfig.enabled
+                        ? 10 * 60
+                        : 60
+                    let seconds = max(context.settingsManager.refreshInterval, minimumRefreshInterval)
+                    let nanos = UInt64(seconds * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: nanos)
+                    if Task.isCancelled { break }
+                    await aggregator.refreshAll()
+                    await context.daemonManager.refreshHealth()
+                    await context.operatingLayer.refreshControllerRuntime()
+                }
+            }
+        }
+    }
+
+    nonisolated(unsafe) private static var didStartLiveServices = false
 
     @MainActor
     private func openDashboard(context: OpenBurnBarRuntimeContext) {
@@ -1027,261 +1280,32 @@ struct OpenBurnBarApp: App {
     private var liveMenuBarScene: some Scene {
         let _ = installCommandRouter()
         let _ = OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
-        MenuBarExtra {
-            if OpenBurnBarRuntime.shouldUseTestStubScene {
-                EmptyView()
-            } else {
-                switch startupState {
-                case .ready(let context):
-                    MenuBarPopoverView(
-                        dataStore: context.dataStore,
-                        aggregator: context.aggregator,
-                        quotaService: context.quotaService,
-                        settingsManager: context.settingsManager,
-                        smartHubBridgeController: context.smartHubBridgeController,
-                        smartDisplayRepairCoordinator: context.smartDisplayRepairCoordinator,
-                        operatingLayer: context.operatingLayer,
-                        onOpenDashboard: {
-                            openDashboard(context: context)
-                        },
-                        onOpenSettings: {
-                            windowManager.openSettings(
-                                settingsManager: context.settingsManager,
-                                accountManager: context.accountManager,
-                                cloudSyncService: context.cloudSyncService,
-                                iCloudSessionMirrorService: context.iCloudSessionMirrorService,
-                                dataStore: context.dataStore,
-                                runtimeContext: context
-                            )
-                        },
-                        chatController: context.chatController,
-                        onOpenDashboardWithChat: {
-                            openDashboard(context: context)
-                            navigationCoordinator.openChatPanel()
-                        },
-                        onOpenOnboardingWizard: {
-                            windowManager.openOnboardingWizard(
-                                dataStore: context.dataStore,
-                                aggregator: context.aggregator,
-                                settingsManager: context.settingsManager,
-                                chatController: context.chatController,
-                                onOpenDashboard: {
-                                    openDashboard(context: context)
-                                }
-                            )
-                        },
-                        runtimeContext: context
-                    )
-                    .environment(context.settingsManager)
-                case .failed(let failure):
-                    DataStoreStartupRecoveryView(
-                        failure: failure,
-                        isRetrying: isRetryingStartup,
-                        isArchivingReset: isArchivingReset,
-                        actionError: startupRecoveryActionError,
-                        compact: true,
-                        onRetry: retryStartup,
-                        onRevealSupportFolder: revealStartupSupportFolder,
-                        onArchiveAndReset: archiveAndResetStartupDatabase,
-                        onCopyDiagnostics: copyStartupDiagnostics,
-                        onQuit: quitFromStartupRecovery
-                    )
-                }
-            }
-        } label: {
-            if OpenBurnBarRuntime.shouldUseTestStubScene {
-                EmptyView()
-            } else {
-                switch startupState {
-                case .ready(let context):
-                    MenuBarLabel(
-                        totalCostToday: context.dataStore.totalCostToday,
-                        totalTokensToday: context.dataStore.totalTokensToday,
-                        usageDisplayMode: context.settingsManager.usageDisplayMode,
-                        rollingDailyAverage: context.dataStore.rollingDailyAverage,
-                        isRefreshing: context.aggregator?.isRefreshing ?? false
-                    )
-                    .task {
-                        await Task.yield()
-                        guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
-                        let sync: CloudSyncService
-                        if let existingSync = context.cloudSyncService {
-                            sync = existingSync
-                        } else {
-                            sync = CloudSyncService(
-                                dataStore: context.dataStore,
-                                accountManager: context.accountManager,
-                                settingsManager: context.settingsManager
-                            )
-                        }
-                        context.cloudSyncService = sync
-
-                        context.startRelayServices()
-                        context.startSmartDisplayServices()
-                        // Mercury Phase 8 — mount the user-facing
-                        // services after relay services so the iroh
-                        // client exists and we can attach the router
-                        // to its control-stream dispatcher.
-                        context.startMercuryServices()
-
-                        let mirror: ICloudSessionMirrorService
-                        if let existingMirror = context.iCloudSessionMirrorService {
-                            mirror = existingMirror
-                        } else {
-                            mirror = ICloudSessionMirrorService(settingsManager: context.settingsManager)
-                        }
-                        context.iCloudSessionMirrorService = mirror
-
-                        let aggregator: UsageAggregator
-                        if let existingAggregator = context.aggregator {
-                            aggregator = existingAggregator
-                        } else {
-                            aggregator = UsageAggregator(
-                                dataStore: context.dataStore,
-                                cloudSync: sync,
-                                sessionMirror: mirror,
-                                settingsManager: context.settingsManager,
-                                quotaService: context.quotaService
-                            )
-                        }
-                        context.aggregator = aggregator
-                        context.operatingLayer.aggregator = aggregator
-                        context.operatingLayer.chatController = context.chatController
-                        context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
-                        #if !DISTRIBUTION_MAS
-                        ComputerUseDaemonApprovalPresenter.shared.start(daemonManager: context.daemonManager)
-                        #endif
-                        context.cursorConnectorManager.attach(dataStore: context.dataStore)
-                        context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
-                        if !hasShownInitialDashboard {
-                            hasShownInitialDashboard = true
-                            windowManager.openDashboard(
-                                dataStore: context.dataStore,
-                                aggregator: aggregator,
-                                accountManager: context.accountManager,
-                                cloudSyncService: sync,
-                                iCloudSessionMirrorService: mirror,
-                                chatController: context.chatController,
-                                operatingLayer: context.operatingLayer,
-                                navigationCoordinator: navigationCoordinator,
-                                settingsManager: context.settingsManager,
-                                runtimeContext: context
-                            )
-                        }
-                        // Probe managed runtime availability in the background.
-                        Task {
-                            if context.settingsManager.launchHermesWithOpenBurnBar {
-                                let baseURL = URL(string: context.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                                    ?? URL(string: "http://127.0.0.1:8642")!
-                                let bearerToken = context.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-                                await HermesRuntimeLauncher().openHermesAndGateway(
-                                    baseURL: baseURL,
-                                    bearerToken: bearerToken.isEmpty ? nil : bearerToken
-                                )
-                            }
-                            if context.settingsManager.launchPiAgentsWithOpenBurnBar {
-                                let baseURL = URL(string: context.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                                    ?? URL(string: "http://127.0.0.1:8765")!
-                                let bearerToken = context.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let preferred = context.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let redisRaw = context.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let piAdapter = PiAgentRuntimeAdapter(
-                                    preferredInstanceID: preferred.isEmpty ? nil : preferred,
-                                    redisURL: redisRaw.isEmpty ? nil : URL(string: redisRaw)
-                                )
-                                _ = await piAdapter.openManagedRuntime(
-                                    baseURL: baseURL,
-                                    bearerToken: bearerToken.isEmpty ? nil : bearerToken
-                                )
-                            }
-                            let enabledBackends = Set(context.settingsManager.enabledChatBackends)
-                            if enabledBackends.contains(.hermes) || context.chatController.chatBackend == .hermes {
-                                await context.chatController.probeHermesAvailability()
-                            } else {
-                                context.chatController.hermesAvailable = false
-                            }
-                            if enabledBackends.contains(.openclaw) || context.chatController.chatBackend == .openclaw {
-                                await context.chatController.probeOpenClawAvailability()
-                            } else {
-                                context.chatController.openClawAvailable = false
-                            }
-                            if enabledBackends.contains(.piAgent) || context.chatController.chatBackend == .piAgent {
-                                await context.chatController.probePiAgentAvailability()
-                            } else {
-                                context.chatController.piAgentAvailable = false
-                            }
-                            await context.daemonManager.refreshHealth()
-                            await context.operatingLayer.refreshControllerRuntime()
-                        }
-                        // Delay the first scan so app activation, menu-bar paint, SmartHub
-                        // bridge startup, and Pixel Clock setup are not competing with parser
-                        // and DB I/O. When a physical clock is enabled, the hardware control
-                        // path needs to become responsive before historical log backfill starts.
-                        Task(priority: .utility) {
-                            for _ in 0..<30 where !context.accountManager.isSignedIn {
-                                try? await Task.sleep(for: .seconds(1))
-                                guard !Task.isCancelled else { return }
-                            }
-                            await sync.uploadPending()
-                            let startupScanDelay: Duration = context.settingsManager.pixelClockConfig.enabled
-                                ? .seconds(600)
-                                : .seconds(15)
-                            try? await Task.sleep(for: startupScanDelay)
-                            guard !Task.isCancelled else { return }
-                            await aggregator.refreshAll()
-                            await sync.uploadPendingConversations()
-                            await sync.uploadPendingChatThreads()
-                            if context.settingsManager.dailyDigestEnabled {
-                                await DailyDigestManager.shared.requestAuthorization()
-                                DailyDigestManager.shared.scheduleDigest(
-                                    from: context.dataStore,
-                                    at: context.settingsManager.dailyDigestHour
-                                )
-                            }
-                        }
-                        periodicRefreshTask?.cancel()
-                        periodicRefreshTask = Task(priority: .utility) {
-                            while !Task.isCancelled {
-                                let minimumRefreshInterval: TimeInterval = context.settingsManager.pixelClockConfig.enabled
-                                    ? 10 * 60
-                                    : 60
-                                let seconds = max(context.settingsManager.refreshInterval, minimumRefreshInterval)
-                                let nanos = UInt64(seconds * 1_000_000_000)
-                                try? await Task.sleep(nanoseconds: nanos)
-                                if Task.isCancelled { break }
-                                await aggregator.refreshAll()
-                                await context.daemonManager.refreshHealth()
-                                await context.operatingLayer.refreshControllerRuntime()
-                            }
-                        }
-                    }
-                case .failed:
-                    Label {
-                        EmptyView()
-                    } icon: {
-                        Image(nsImage: MenuBarRasterBrandMark.image)
-                            .overlay(alignment: .topTrailing) {
-                                Image(systemName: "exclamationmark.circle.fill")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(DesignSystem.Colors.error)
-                                    .background(Circle().fill(Color(NSColor.windowBackgroundColor)))
-                                    .offset(x: 4, y: -3)
-                            }
-                    }
-                    .labelStyle(.iconOnly)
-                    .frame(width: MenuBarLabel.menuBarLabelSlotWidth, height: MenuBarLabel.menuBarLabelSlotHeight)
-                    .fixedSize()
-                    .help("OpenBurnBar recovery mode")
-                    .task {
-                        await Task.yield()
-                        guard !hasPresentedStartupRecoveryWindow else { return }
-                        hasPresentedStartupRecoveryWindow = true
-                        openStartupRecoveryWindow()
-                    }
-                }
-            }
+        let _ = presentStartupRecoveryIfNeeded()
+        // The AppDelegate owns the live status item + popover via AppKit
+        // (`NSPopover` survives SwiftUI's macOS-26/Tahoe `MenuBarExtra(.window)`
+        // regression). SceneBuilder still needs at least one Scene to satisfy
+        // the type checker, so we declare a `Window` whose body immediately
+        // closes its own host window. macOS auto-shows the first scene on
+        // launch, so we collapse that auto-opened window the instant SwiftUI
+        // hands us the chance.
+        Window("OpenBurnBar", id: "openburnbar.background") {
+            BackgroundSceneSentinel()
         }
-        .menuBarExtraStyle(.window)
+        .windowResizability(.contentSize)
+    }
+
+    /// When the app fails to open the data store, the AppDelegate's status item
+    /// still mounts but renders an empty popover. Surface the recovery window
+    /// so the user has actionable UI.
+    @MainActor
+    private func presentStartupRecoveryIfNeeded() {
+        guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
+        guard case .failed = startupState else { return }
+        guard !hasPresentedStartupRecoveryWindow else { return }
+        hasPresentedStartupRecoveryWindow = true
+        DispatchQueue.main.async { [self] in
+            openStartupRecoveryWindow()
+        }
     }
 
     /// The live menu-bar scene already short-circuits both `content` and `label`

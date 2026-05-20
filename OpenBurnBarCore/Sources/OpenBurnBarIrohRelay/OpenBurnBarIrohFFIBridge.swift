@@ -123,16 +123,18 @@ public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Se
 
 public final class OpenBurnBarIrohFFIStream: IrohBackendStream, @unchecked Sendable {
     private let stream: IrohStream
-    private let queue: DispatchQueue
+    private let sendQueue: DispatchQueue
+    private let receiveQueue: DispatchQueue
 
     init(stream: IrohStream, queue: DispatchQueue) {
         self.stream = stream
-        self.queue = queue
+        self.sendQueue = DispatchQueue(label: "\(queue.label).stream.send", qos: .userInitiated)
+        self.receiveQueue = DispatchQueue(label: "\(queue.label).stream.receive", qos: .userInitiated)
     }
 
     public func sendFrame(_ envelope: Data) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            queue.async { [stream] in
+            sendQueue.async { [stream] in
                 do {
                     try stream.sendFrame(frame: envelope)
                     continuation.resume()
@@ -147,7 +149,7 @@ public final class OpenBurnBarIrohFFIStream: IrohBackendStream, @unchecked Senda
 
     public func recvFrame() async throws -> Data? {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data?, Error>) in
-            queue.async { [stream] in
+            receiveQueue.async { [stream] in
                 do {
                     if let bytes = try stream.recvFrame() {
                         continuation.resume(returning: bytes)
@@ -165,7 +167,7 @@ public final class OpenBurnBarIrohFFIStream: IrohBackendStream, @unchecked Senda
 
     public func close() async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            queue.async { [stream] in
+            sendQueue.async { [stream] in
                 _ = try? stream.closeStream()
                 continuation.resume()
             }

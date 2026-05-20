@@ -129,6 +129,8 @@ targets:
         product: OpenBurnBarIrohRelay
       - package: OpenBurnBarCore
         product: OpenBurnBarMedia
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
       - package: GRDB
         product: GRDB
       - package: Firebase
@@ -187,6 +189,9 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
         link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
+        link: false
       - package: GRDB
         product: GRDB
       - sdk: UserNotifications.framework
@@ -205,6 +210,8 @@ targets:
       - target: OpenBurnBarDaemon
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
 
   OpenBurnBarTests:
     type: bundle.unit-test
@@ -232,6 +239,9 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarMedia
         link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
+        link: false
       - package: ViewInspector
         product: ViewInspector
       - package: SnapshotTesting
@@ -253,6 +263,8 @@ targets:
         embed: false
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
 
   OpenBurnBarMobile:
     type: application
@@ -274,7 +286,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: 15
+        CURRENT_PROJECT_VERSION: 20
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         # Apple sign-in + iOS Keychain access group; see
@@ -282,7 +294,13 @@ targets:
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
-        INFOPLIST_KEY_NSCameraUsageDescription: OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat.
+        INFOPLIST_KEY_NSCameraUsageDescription: OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat or start a trusted Mercury video call.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: OpenBurnBar uses the microphone only when you start voice commands or a trusted Mercury audio call.
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: OpenBurnBar uses speech recognition only while you hold the voice command control to turn your spoken command into text.
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: OpenBurnBar accesses selected photo library items only when you choose Photo Library to attach media to a Hermes chat.
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: OpenBurnBar saves received media to your photo library only when you choose Save.
+        INFOPLIST_KEY_NSMotionUsageDescription: OpenBurnBar reads device motion only to adapt the mobile dashboard while you are using the app.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: OpenBurnBar uses the local network to connect this iPhone or iPad to your trusted Mac for pairing, Hermes relay, and media sessions.
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
         INFOPLIST_KEY_UILaunchScreen_Generation: true
@@ -365,7 +383,13 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         ITSAppUsesNonExemptEncryption: false
-        NSCameraUsageDescription: OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat.
+        NSCameraUsageDescription: OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat or start a trusted Mercury video call.
+        NSMicrophoneUsageDescription: OpenBurnBar uses the microphone only when you start voice commands or a trusted Mercury audio call.
+        NSSpeechRecognitionUsageDescription: OpenBurnBar uses speech recognition only while you hold the voice command control to turn your spoken command into text.
+        NSPhotoLibraryUsageDescription: OpenBurnBar accesses selected photo library items only when you choose Photo Library to attach media to a Hermes chat.
+        NSPhotoLibraryAddUsageDescription: OpenBurnBar saves received media to your photo library only when you choose Save.
+        NSMotionUsageDescription: OpenBurnBar reads device motion only to adapt the mobile dashboard while you are using the app.
+        NSLocalNetworkUsageDescription: OpenBurnBar uses the local network to connect this iPhone or iPad to your trusted Mac for pairing, Hermes relay, and media sessions.
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.openburnbar.app.google-sign-in
@@ -382,6 +406,8 @@ targets:
         product: OpenBurnBarIrohRelay
       - package: OpenBurnBarCore
         product: OpenBurnBarMedia
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
@@ -455,7 +481,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: 15
+        CURRENT_PROJECT_VERSION: 20
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements

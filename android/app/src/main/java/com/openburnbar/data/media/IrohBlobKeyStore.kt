@@ -63,10 +63,11 @@ class IrohBlobKeyStore(context: Context) {
 
     private fun saveToStore(raw: ByteArray) {
         val secretKey = wrappingKey()
-        val iv = ByteArray(GCM_IV_BYTES).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORM).apply {
-            init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_BITS, iv))
+            init(Cipher.ENCRYPT_MODE, secretKey)
         }
+        val iv = cipher.iv
+        require(iv.size == GCM_IV_BYTES) { "Unexpected AES-GCM IV length ${iv.size}" }
         val wrapped = cipher.doFinal(raw)
         prefs.edit()
             .putString(KEY_WRAPPED_SECRET, Base64.encodeToString(wrapped, Base64.NO_WRAP))

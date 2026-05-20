@@ -39,6 +39,30 @@ final class UsageAggregatorTests: XCTestCase {
         )
     }
 
+    private func makeProjectionConversation(index: Int) -> ConversationRecord {
+        let base = Date(timeIntervalSince1970: 1_770_000_000 + Double(index))
+        return ConversationRecord(
+            id: "projection-backlog-\(index)",
+            provider: .factory,
+            sessionId: "projection-backlog-session-\(index)",
+            projectName: "OpenBurnBar",
+            startTime: base.addingTimeInterval(-60),
+            endTime: base,
+            messageCount: 2,
+            userWordCount: 4,
+            assistantWordCount: 6,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Projection backlog \(index)",
+            lastAssistantMessage: "Indexed.",
+            fullText: "User asked for projection backlog test \(index).\n\nAssistant indexed it.",
+            indexedAt: base,
+            fileModifiedAt: base,
+            summary: nil
+        )
+    }
+
     // MARK: - Initialization Tests
 
     func test_init_setsDefaultParsers() throws {
@@ -71,6 +95,45 @@ final class UsageAggregatorTests: XCTestCase {
     func test_init_lastRefresh_isNil() throws {
         let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
         XCTAssertNil(aggregator.lastRefresh)
+    }
+
+    func test_init_projectionBacklogStartsDrainingWithoutRefresh() async throws {
+        let dataStore = try makeTestDataStore()
+        let jobCount = ProjectionWorkerPolicy.maxJobsPerPass + 3
+        let now = Date(timeIntervalSince1970: 1_779_010_000)
+
+        for index in 0..<jobCount {
+            try dataStore.enqueueProjectionJob(
+                ProjectionJobRecord(
+                    id: "startup-projection-backlog-\(index)",
+                    jobType: .reproject,
+                    sourceKind: .conversation,
+                    sourceID: "missing-startup-conversation-\(index)",
+                    sourceVersionID: "missing-startup-version-\(index)",
+                    status: .queued,
+                    priority: index,
+                    scheduledAt: now,
+                    availableAt: now,
+                    createdAt: now,
+                    updatedAt: now
+                )
+            )
+        }
+
+        let aggregator = makeTestAggregator(dataStore: dataStore)
+        XCTAssertFalse(aggregator.isRefreshing)
+
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            let pending = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+            if pending == 0 { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        let pending = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        let completed = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
+        XCTAssertEqual(pending, 0)
+        XCTAssertEqual(completed, jobCount)
     }
 
     // MARK: - Refresh All Tests
@@ -193,6 +256,52 @@ final class UsageAggregatorTests: XCTestCase {
         } else {
             XCTFail("Expected .failed")
         }
+    }
+
+    func test_refreshAll_projectionBacklogDrainsAcrossBoundedBackgroundPasses() async throws {
+        let dataStore = try makeTestDataStore()
+        let jobCount = ProjectionWorkerPolicy.backlogCompactionThreshold + 5
+        let now = Date(timeIntervalSince1970: 1_779_000_000)
+
+        // Use orphaned projection jobs to isolate worker backlog behavior from
+        // semantic indexing throughput; projection content is covered by the
+        // ProjectionPipelineService suite.
+        for index in 0..<jobCount {
+            try dataStore.enqueueProjectionJob(
+                ProjectionJobRecord(
+                    id: "projection-backlog-orphan-\(index)",
+                    jobType: .reproject,
+                    sourceKind: .conversation,
+                    sourceID: "missing-conversation-\(index)",
+                    sourceVersionID: "missing-version-\(index)",
+                    status: .queued,
+                    priority: index,
+                    scheduledAt: now,
+                    availableAt: now,
+                    createdAt: now,
+                    updatedAt: now
+                )
+            )
+        }
+
+        let mockParser = MockParser(provider: .factory)
+        mockParser.parseResult = ParseResult(usages: [], conversations: [])
+        let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
+
+        await aggregator.refreshAll()
+
+        let deadline = Date().addingTimeInterval(25)
+        while Date() < deadline {
+            let completed = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
+            if completed >= jobCount { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        let completed = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
+        let pending = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        XCTAssertEqual(completed, jobCount)
+        XCTAssertEqual(pending, 0)
+        XCTAssertGreaterThan(ProjectionWorkerPolicy.catchUpMaxJobsPerPass, ProjectionWorkerPolicy.maxJobsPerPass)
     }
 
     // MARK: - Refresh Single Provider Tests

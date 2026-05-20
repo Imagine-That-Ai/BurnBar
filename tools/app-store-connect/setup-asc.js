@@ -60,9 +60,9 @@ All processing is local. No data leaves your machine unless you explicitly enabl
 
   keywords: 'AI,agents,Claude,Cursor,Codex,token,cost,budget,developer,menu bar,burn rate,LLM,tracking',
 
-  supportUrl: 'https://github.com/Ajnunezg/OpenBurnBar/issues',
-  marketingUrl: 'https://github.com/Ajnunezg/OpenBurnBar',
-  privacyPolicyUrl: 'https://openburnbar.com/legal/privacy-policy',
+  supportUrl: 'https://burnbar.ai/support',
+  marketingUrl: 'https://burnbar.ai',
+  privacyPolicyUrl: 'https://burnbar.ai/legal/privacy-policy',
 
   version: '0.1.3',
   buildString: '1',

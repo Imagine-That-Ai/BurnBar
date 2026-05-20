@@ -47,6 +47,7 @@ struct DashboardChatOverlay: View {
                 }
             }
         }
+        .fixedSize()
         .padding(EdgeInsets(top: 24, leading: 20, bottom: 20, trailing: 20))
     }
 

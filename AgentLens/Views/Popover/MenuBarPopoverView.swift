@@ -171,10 +171,13 @@ struct MenuBarPopoverView: View {
                     )
                     Divider().background(DesignSystem.Colors.border)
 
-                    ScrollView(.vertical, showsIndicators: false) {
+                    ScrollView(.vertical, showsIndicators: true) {
                         trayContent
                     }
-                    .frame(maxHeight: popoverScrollMaxHeight)
+                    .frame(width: popoverWidth)
+                    .frame(height: popoverScrollMaxHeight)
+                    .contentShape(Rectangle())
+                    .clipped()
 
                     Divider().background(DesignSystem.Colors.border)
                     cloudWhisperStrip

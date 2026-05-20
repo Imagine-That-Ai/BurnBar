@@ -935,13 +935,15 @@ final class UsageStore: Sendable {
         guard let dateRange else {
             return ("", StatementArguments())
         }
+        let lowerBound = OpenBurnBarDatabase.sqliteDateString(dateRange.lowerBound)
+        let upperBound = OpenBurnBarDatabase.sqliteDateString(dateRange.upperBound)
         return (
             " WHERE ((startTime <= ? AND endTime >= ?) OR (endTime <= ? AND startTime >= ?))",
             StatementArguments([
-                dateRange.upperBound,
-                dateRange.lowerBound,
-                dateRange.upperBound,
-                dateRange.lowerBound
+                upperBound,
+                lowerBound,
+                upperBound,
+                lowerBound
             ])
         )
     }

@@ -171,7 +171,10 @@ final class IrohRelayRequestHandler: Sendable {
                  .mediaBlobAck,
                  .mediaMirrorRequest,
                  .mediaMirrorAck,
-                 .mediaPresenceHeartbeat:
+                 .mediaPresenceHeartbeat,
+                 .mediaCallInvite,
+                 .mediaCallAck,
+                 .mediaStreamFrame:
                 guard let mediaDispatcher else { continue }
                 // Wrap the stream send in a Sendable closure so the
                 // dispatcher can ack without holding a reference to the

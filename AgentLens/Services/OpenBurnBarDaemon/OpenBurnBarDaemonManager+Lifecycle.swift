@@ -215,6 +215,7 @@ extension OpenBurnBarDaemonManager {
         let generatedToken = UUID().uuidString.replacingOccurrences(of: "-", with: "")
         do {
             try Self.controllerRuntimeSecrets.set(generatedToken, for: Self.daemonSocketAuthTokenAccount)
+            OpenBurnBarDaemonSocketClient.cacheDaemonSocketAuthToken(generatedToken)
             return generatedToken
         } catch {
             throw OpenBurnBarDaemonManagerError.daemonSocketAuthTokenUnavailable

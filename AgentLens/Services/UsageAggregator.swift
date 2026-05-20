@@ -105,6 +105,13 @@ final class UsageAggregator {
                 await self?.publishQuotaSnapshotsForIOS(snapshots)
             }
         }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let pendingProjectionJobs = (try? self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+            if pendingProjectionJobs > 0 {
+                self.requestProjectionSweep()
+            }
+        }
     }
 
     // MARK: - Refresh All
@@ -483,16 +490,27 @@ private extension UsageAggregator {
     func runProjectionWorkerLoop() async {
         defer { projectionWorkerTask = nil }
 
+        var continuousBacklogPasses = 0
         while !Task.isCancelled {
             guard projectionSweepRequested else { break }
             projectionSweepRequested = false
 
             let hasBacklog = await runProjectionSweep()
             if hasBacklog {
+                continuousBacklogPasses += 1
+                guard ProjectionWorkerPolicy.shouldContinueBacklogProcessing(
+                    afterCompletedPasses: continuousBacklogPasses
+                ) else {
+                    projectionSweepRequested = false
+                    break
+                }
                 projectionSweepRequested = true
                 try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.backlogDelayNanoseconds)
             } else if projectionSweepRequested {
+                continuousBacklogPasses = 0
                 try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.coalesceDelayNanoseconds)
+            } else {
+                continuousBacklogPasses = 0
             }
         }
     }

@@ -53,9 +53,13 @@ public final class PhoneControlSender: @unchecked Sendable {
     /// authority envelope so the UI can mirror the counter / timestamp
     /// in the local timeline.
     @discardableResult
-    public func send(intent: HermesRealtimeRelayInputIntent) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+    public func send(intent rawIntent: HermesRealtimeRelayInputIntent) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         guard let key = signingKeyProvider()?.privateKey else {
             throw SendError.signingFailed("no signing key")
+        }
+        var intent = rawIntent
+        if intent.clientIntentId?.isEmpty ?? true {
+            intent.clientIntentId = UUID().uuidString
         }
         let counter = nextCounter()
         let timestamp = Date()

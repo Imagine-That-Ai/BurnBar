@@ -41,16 +41,30 @@ final class ScreenShareViewerCoordinator: ObservableObject {
 
     let displayLayer: AVSampleBufferDisplayLayer
     @Published var lastStats: Stats = Stats()
+    private var pipeline: VideoReceivePipeline?
 
     init() {
         let layer = AVSampleBufferDisplayLayer()
         layer.videoGravity = .resizeAspect
         self.displayLayer = layer
+        self.pipeline = VideoReceivePipeline { [weak self] sampleBuffer in
+            await MainActor.run {
+                self?.enqueue(sampleBuffer: sampleBuffer)
+            }
+        }
     }
 
     func enqueue(sampleBuffer: CMSampleBuffer) {
         if displayLayer.isReadyForMoreMediaData {
             displayLayer.enqueue(sampleBuffer)
+        }
+    }
+
+    func ingest(frame: MediaFrame) async {
+        do {
+            try await pipeline?.ingest(frame: frame)
+        } catch {
+            displayLayer.flush()
         }
     }
 

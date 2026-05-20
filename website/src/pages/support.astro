@@ -1,0 +1,120 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { SITE } from "@data/site";
+---
+
+<BaseLayout
+  title="Support"
+  description="OpenBurnBar support information, contact paths, subscription help, account deletion, and troubleshooting resources."
+>
+  <section class="supportpage">
+    <div class="container container--narrow">
+      <span class="eyebrow eyebrow--ember">Support</span>
+      <h1>OpenBurnBar support</h1>
+      <p class="lead">
+        Get help with the macOS app, iPhone and iPad companion app, Hosted
+        Quota Sync subscription, provider connections, account deletion, or
+        privacy requests.
+      </p>
+
+      <div class="supportgrid">
+        <article class="supportcard">
+          <h2>Email support</h2>
+          <p>
+            For app support, billing-flow questions, App Store subscription
+            recovery, or account/data deletion help, email
+            <a href={`mailto:${SITE.supportContact}`}>{SITE.supportContact}</a>.
+          </p>
+          <p class="small muted">
+            Include your device type, app version, and the provider or screen
+            where the issue happens. Do not send API keys, session cookies, or
+            provider secrets.
+          </p>
+        </article>
+
+        <article class="supportcard">
+          <h2>Subscription help</h2>
+          <p>
+            OpenBurnBar Cloud is an auto-renewable monthly App Store
+            subscription. Billing is handled by Apple. You can manage, cancel,
+            or request refunds from your Apple ID subscription settings.
+          </p>
+          <a class="textlink" href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener noreferrer">
+            Manage Apple subscriptions
+          </a>
+        </article>
+
+        <article class="supportcard">
+          <h2>Account and data deletion</h2>
+          <p>
+            In the iOS app, go to <strong>You -> Settings -> Account -> Delete account</strong>.
+            This deletes OpenBurnBar cloud data for the signed-in account and
+            signs you out. Local macOS data remains on your Mac until you remove
+            the app support folder.
+          </p>
+        </article>
+
+        <article class="supportcard">
+          <h2>Privacy and terms</h2>
+          <p>
+            Review the data model, optional sync behavior, subscription terms,
+            and contact information before enabling cloud features.
+          </p>
+          <div class="linkrow">
+            <a class="textlink" href="/legal/privacy-policy">Privacy Policy</a>
+            <a class="textlink" href="/legal/terms">Terms of Use</a>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .supportpage {
+    padding-block: var(--s-9);
+  }
+  .supportpage h1 {
+    margin-top: var(--s-3);
+    margin-bottom: var(--s-3);
+  }
+  .lead {
+    max-width: 62ch;
+    margin-bottom: var(--s-6);
+  }
+  .supportgrid {
+    display: grid;
+    gap: var(--s-4);
+  }
+  .supportcard {
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: var(--ink-base);
+  }
+  .supportcard h2 {
+    margin-bottom: var(--s-3);
+    font-size: 1.35rem;
+    font-variation-settings: "opsz" 80, "wght" 520;
+  }
+  .supportcard p {
+    color: var(--text-base);
+    max-width: 64ch;
+  }
+  .small {
+    margin-top: var(--s-3);
+    font-size: var(--t-caption);
+  }
+  .supportcard a,
+  .textlink {
+    color: var(--ember-bright);
+    text-decoration: underline;
+    text-underline-offset: 0.16em;
+  }
+  .linkrow {
+    display: flex;
+    gap: var(--s-4);
+    flex-wrap: wrap;
+    margin-top: var(--s-3);
+  }
+</style>

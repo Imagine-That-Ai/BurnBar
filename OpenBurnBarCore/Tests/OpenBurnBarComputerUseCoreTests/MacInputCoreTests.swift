@@ -2,6 +2,28 @@ import XCTest
 @testable import OpenBurnBarComputerUseCore
 
 final class MacInputCoreTests: XCTestCase {
+    // MARK: unicode typing plan
+
+    func testUnicodeTypingEventsOnlyCarryTextOnKeyDown() {
+        let events = MacInputCore.unicodeTypingEvents(for: "ab")
+
+        XCTAssertEqual(events, [
+            .init(text: "a", isKeyDown: true, carriesUnicodeText: true),
+            .init(text: "a", isKeyDown: false, carriesUnicodeText: false),
+            .init(text: "b", isKeyDown: true, carriesUnicodeText: true),
+            .init(text: "b", isKeyDown: false, carriesUnicodeText: false)
+        ])
+    }
+
+    func testUnicodeTypingEventsPreserveExtendedGraphemeClusters() {
+        let events = MacInputCore.unicodeTypingEvents(for: "e\u{301}")
+
+        XCTAssertEqual(events, [
+            .init(text: "e\u{301}", isKeyDown: true, carriesUnicodeText: true),
+            .init(text: "e\u{301}", isKeyDown: false, carriesUnicodeText: false)
+        ])
+    }
+
     // MARK: virtual-key map
 
     func testVirtualKeyKnownNames() {

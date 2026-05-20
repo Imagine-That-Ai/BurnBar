@@ -23,10 +23,15 @@ class PhoneControlSender(
 
     suspend fun send(intent: PhoneControlIntent): PhoneControlAuthorityEnvelope {
         val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val outboundIntent = if (intent.clientIntentId.isNullOrBlank()) {
+            intent.copy(clientIntentId = java.util.UUID.randomUUID().toString())
+        } else {
+            intent
+        }
         val counter = counterStore.nextCounter(peerNodeId)
         val timestampMillis = nowMillis()
         val authority = PhoneControlSigner.sign(
-            intent = intent,
+            intent = outboundIntent,
             peerNodeId = peerNodeId,
             counter = counter,
             timestampMillis = timestampMillis,
@@ -39,7 +44,7 @@ class PhoneControlSender(
             connectionId = connectionId,
             control = HermesRealtimeRelayControlPayload(
                 streamClass = MediaStreamClass.CONTROL_INPUT.raw,
-                inputIntent = intent.toRelayIntent(relayAuthority),
+                inputIntent = outboundIntent.toRelayIntent(relayAuthority),
             ),
         )
         frameSink(frame)
@@ -76,6 +81,7 @@ class PhoneControlSender(
             text = text,
             key = key,
             modifiers = modifiers,
+            clientIntentId = clientIntentId,
             authority = authority,
         )
 }

@@ -261,10 +261,15 @@ export const kimiAdapter: ProviderAdapter = {
       }
     }
 
-    // Always include a models-accessible bucket. Use a positive synthetic
-    // limit so the iOS `isDisplayableQuotaSignal` filter (which rejects
-    // limit <= 0) doesn't strip this bucket.
-    if (modelCount > 0) {
+    // Only add a models-accessible signal when we have no real quota
+    // data. A synthetic `used: 0` bucket alongside real balance data
+    // pollutes the primary display bucket selection and makes the gauge
+    // show 100% remaining regardless of actual usage.
+    const hasRealQuotaData = buckets.some(
+      (b) => b.name !== "models" && b.name !== "connected"
+    );
+
+    if (modelCount > 0 && !hasRealQuotaData) {
       buckets.push({
         name: "models",
         used: 0,

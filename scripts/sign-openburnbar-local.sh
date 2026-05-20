@@ -64,8 +64,9 @@ else:
     entitlements = {
         "com.apple.security.app-sandbox": False,
         "com.apple.security.files.user-selected.read-only": True,
-        "keychain-access-groups": [f"{team_id}.{bundle_id}"],
     }
+    if full_entitlements == "keychain":
+        entitlements["keychain-access-groups"] = [f"{team_id}.{bundle_id}"]
     with Path(destination).open("wb") as file:
         plistlib.dump(entitlements, file)
 PY
@@ -79,6 +80,12 @@ sign_path() {
 sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon"
 sign_path "$APP_BUNDLE/Contents/Helpers/libOpenBurnBarCore.dylib"
 sign_path "$APP_BUNDLE/Contents/Frameworks/OpenBurnBarCore.framework"
+
+if [[ -d "$APP_BUNDLE/Contents/Frameworks" ]]; then
+  while IFS= read -r -d '' framework; do
+    sign_path "$framework"
+  done < <(find "$APP_BUNDLE/Contents/Frameworks" -maxdepth 1 -type d -name '*.framework' -print0 | sort -z)
+fi
 
 if [[ "${OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS:-0}" == "1" ]]; then
   /usr/bin/codesign \

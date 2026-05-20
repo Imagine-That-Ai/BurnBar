@@ -75,6 +75,11 @@ struct DataStoreRecoveryArchiveResult: Equatable {
 }
 
 enum OpenBurnBarStartupRecovery {
+    /// Launch must stay interactive. Full parser refreshes can traverse large
+    /// local agent histories, so automatic refreshes are paced like background
+    /// sync work instead of firing during the first dashboard render.
+    static let minimumAutomaticUsageRefreshInterval: TimeInterval = 15 * 60
+
     static func archiveDatabaseSidecars(
         paths: OpenBurnBarAppPaths = .live(),
         fileManager: FileManager = .default,
@@ -203,13 +208,18 @@ final class OpenBurnBarRuntimeContext {
 
     /// Live-share / file-transfer / call brain. Mounted into the
     /// menu-bar popover via `MercuryTraySection` and into the app
-    /// scene root via `MercuryGlobalChrome`.
+    /// scene root via a `WindowGroup` hosting `MercuryChromeRoot`.
     var mercuryPeerSource: MercuryPeerSource?
     var mercurySessionCoordinator: MediaSessionCoordinator?
     var mercuryRouter: MercuryRouter?
     var mercuryCallHUDState: CallHUDState?
     var mercuryConsentStore: MercuryConsentStore?
+    var mercuryIncomingPanelPresenter: MercuryIncomingPanelPresenter?
     var voipCallTrigger: VoIPCallTrigger?
+    private var didStartForegroundRuntimeServices = false
+    private var managedRuntimeProbeTask: Task<Void, Never>?
+    private var startupScanTask: Task<Void, Never>?
+    private var periodicRefreshTask: Task<Void, Never>?
 
     init(
         dataStore: DataStore,
@@ -272,6 +282,141 @@ final class OpenBurnBarRuntimeContext {
         piRelayHost.start()
     }
 
+    /// Starts the app-level runtime services that must be alive even when no
+    /// SwiftUI menu-bar popover has ever been opened. This keeps phone-facing
+    /// relay, Mercury, daemon approval, quota refresh, and cloud-sync work tied
+    /// to application startup rather than to a particular status-item view.
+    func startForegroundRuntimeServices() {
+        guard !didStartForegroundRuntimeServices else { return }
+        didStartForegroundRuntimeServices = true
+
+        let sync: CloudSyncService
+        if let existingSync = cloudSyncService {
+            sync = existingSync
+        } else {
+            sync = CloudSyncService(
+                dataStore: dataStore,
+                accountManager: accountManager,
+                settingsManager: settingsManager
+            )
+            cloudSyncService = sync
+        }
+
+        startRelayServices()
+        startSmartDisplayServices()
+        startMercuryServices()
+
+        let mirror: ICloudSessionMirrorService
+        if let existingMirror = iCloudSessionMirrorService {
+            mirror = existingMirror
+        } else {
+            mirror = ICloudSessionMirrorService(settingsManager: settingsManager)
+            iCloudSessionMirrorService = mirror
+        }
+
+        let usageAggregator: UsageAggregator
+        if let existingAggregator = aggregator {
+            usageAggregator = existingAggregator
+        } else {
+            usageAggregator = UsageAggregator(
+                dataStore: dataStore,
+                cloudSync: sync,
+                sessionMirror: mirror,
+                settingsManager: settingsManager,
+                quotaService: quotaService
+            )
+            aggregator = usageAggregator
+        }
+
+        operatingLayer.aggregator = usageAggregator
+        operatingLayer.chatController = chatController
+        daemonManager.attach(dataStore: dataStore, cloudSyncService: sync)
+        #if !DISTRIBUTION_MAS
+        ComputerUseDaemonApprovalPresenter.shared.start(daemonManager: daemonManager)
+        #endif
+        cursorConnectorManager.attach(dataStore: dataStore)
+        quotaService.startAutomaticRefresh(dataStore: dataStore)
+
+        managedRuntimeProbeTask?.cancel()
+        managedRuntimeProbeTask = Task {
+            if self.settingsManager.launchHermesWithOpenBurnBar {
+                let baseURL = URL(string: self.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+                    ?? URL(string: "http://127.0.0.1:8642")!
+                let bearerToken = self.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                _ = await HermesRuntimeLauncher().openHermesAndGateway(
+                    baseURL: baseURL,
+                    bearerToken: bearerToken.isEmpty ? nil : bearerToken,
+                    launchDashboard: false
+                )
+            }
+            if self.settingsManager.launchPiAgentsWithOpenBurnBar {
+                let baseURL = URL(string: self.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+                    ?? URL(string: "http://127.0.0.1:8765")!
+                let bearerToken = self.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                let preferred = self.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+                let redisRaw = self.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                let piAdapter = PiAgentRuntimeAdapter(
+                    preferredInstanceID: preferred.isEmpty ? nil : preferred,
+                    redisURL: redisRaw.isEmpty ? nil : URL(string: redisRaw)
+                )
+                _ = await piAdapter.openManagedRuntime(
+                    baseURL: baseURL,
+                    bearerToken: bearerToken.isEmpty ? nil : bearerToken
+                )
+            }
+            let enabledBackends = Set(self.settingsManager.enabledChatBackends)
+            if enabledBackends.contains(.hermes) || self.chatController.chatBackend == .hermes {
+                await self.chatController.probeHermesAvailability()
+            } else {
+                self.chatController.hermesAvailable = false
+            }
+            if enabledBackends.contains(.openclaw) || self.chatController.chatBackend == .openclaw {
+                await self.chatController.probeOpenClawAvailability()
+            } else {
+                self.chatController.openClawAvailable = false
+            }
+            if enabledBackends.contains(.piAgent) || self.chatController.chatBackend == .piAgent {
+                await self.chatController.probePiAgentAvailability()
+            } else {
+                self.chatController.piAgentAvailable = false
+            }
+            await self.daemonManager.refreshHealth()
+            await self.operatingLayer.refreshControllerRuntime()
+        }
+
+        startupScanTask?.cancel()
+        startupScanTask = Task(priority: .utility) {
+            for _ in 0..<30 where !self.accountManager.isSignedIn {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+            }
+            await sync.uploadPending()
+            await sync.uploadPendingConversations()
+            await sync.uploadPendingChatThreads()
+            if self.settingsManager.dailyDigestEnabled {
+                await DailyDigestManager.shared.requestAuthorization()
+                DailyDigestManager.shared.scheduleDigest(
+                    from: self.dataStore,
+                    at: self.settingsManager.dailyDigestHour
+                )
+            }
+        }
+
+        periodicRefreshTask?.cancel()
+        periodicRefreshTask = Task(priority: .utility) {
+            while !Task.isCancelled {
+                let minimumRefreshInterval = OpenBurnBarStartupRecovery.minimumAutomaticUsageRefreshInterval
+                let seconds = max(self.settingsManager.refreshInterval, minimumRefreshInterval)
+                let nanos = UInt64(seconds * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: nanos)
+                if Task.isCancelled { break }
+                await usageAggregator.refreshAll()
+                await self.daemonManager.refreshHealth()
+                await self.operatingLayer.refreshControllerRuntime()
+            }
+        }
+    }
+
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     func startComputerUseServices(relayHostService explicitRelayHostService: HermesRelayHostService? = nil) {
         let controller: ComputerUseRuntimeController
@@ -289,7 +434,9 @@ final class OpenBurnBarRuntimeContext {
         if let relayHost = explicitRelayHostService ?? hermesRelayHostService {
             controller.attach(relayHostService: relayHost)
         }
-        controller.startPanicMonitoring()
+        #if DEBUG
+        controller.startE2EProofSessionIfRequested()
+        #endif
     }
     #endif
 
@@ -439,6 +586,21 @@ final class OpenBurnBarRuntimeContext {
         self.mercurySessionCoordinator = session
         self.mercuryCallHUDState = hud
         self.mercuryRouter = router
+        self.mercuryIncomingPanelPresenter = MercuryIncomingPanelPresenter(
+            router: router,
+            peerSource: peerSource,
+            hudState: hud
+        )
+        if let registry = hermesRelayHostService?.mercuryControlStreamRegistry {
+            router.setMirrorSinkFactory { request, frame in
+                try await MercuryControlStreamMediaSink.make(
+                    registry: registry,
+                    uid: frame.uid,
+                    connectionID: frame.connectionId,
+                    streamClass: MediaStreamClass(rawValue: request.streamClass)
+                )
+            }
+        }
         self.voipCallTrigger = VoIPCallTrigger()
 
         peerSource.start()

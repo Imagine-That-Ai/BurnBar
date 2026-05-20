@@ -47,6 +47,7 @@ MAC_FILES = [
     "AgentLens/Views/ComputerUse/ComputerUseSetupWizard.swift",
 ]
 IOS_FILES = [
+    "OpenBurnBarMobile/Services/Media/MercuryPeerSource.swift",
     "OpenBurnBarMobile/Services/ComputerUse/AgentWatchOverlayCoordinator.swift",
     "OpenBurnBarMobile/Services/ComputerUse/AgentWatchReceiver.swift",
     "OpenBurnBarMobile/Services/ComputerUse/AgentWatchState.swift",

@@ -366,7 +366,7 @@ final class RoutingClientWiringTests: XCTestCase {
         let customModels = try XCTUnwrap(root["customModels"] as? [[String: Any]])
         XCTAssertEqual(customModels.count, 3)
         XCTAssertEqual(customModels.first?["model"] as? String, "glm-5")
-        XCTAssertEqual(customModels.first?["displayName"] as? String, "OpenBurnBar GLM-5")
+        XCTAssertEqual(customModels.first?["displayName"] as? String, "OBB GLM-5 Direct")
         XCTAssertEqual(customModels.first?["baseUrl"] as? String, "http://127.0.0.1:8317/v1")
         XCTAssertEqual(customModels.first?["apiKey"] as? String, "droid-token")
         XCTAssertEqual(customModels.first?["provider"] as? String, "generic-chat-completion-api")
@@ -728,12 +728,57 @@ final class RoutingClientWiringTests: XCTestCase {
         let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
         XCTAssertEqual(settingsModels.map { $0["model"] as? String }, ["kimi-k2.6:cloud", "deepseek-v4-pro:cloud"])
         XCTAssertEqual(settingsModels.map { $0["id"] as? String }, ["custom:OpenBurnBar-kimi-k2.6-cloud-0", "custom:OpenBurnBar-deepseek-v4-pro-cloud-1"])
+        XCTAssertEqual(settingsModels.map { $0["displayName"] as? String }, ["OBB Kimi K2.6 Ollama Cloud", "OBB DeepSeek V4 Pro Ollama Cloud"])
         XCTAssertEqual(settingsModels.map { $0["provider"] as? String }, ["generic-chat-completion-api", "generic-chat-completion-api"])
 
         let configRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/config.json"))
         let configModels = try XCTUnwrap(configRoot["custom_models"] as? [[String: Any]])
         XCTAssertEqual(configModels.map { $0["model"] as? String }, ["kimi-k2.6:cloud", "deepseek-v4-pro:cloud"])
+        XCTAssertEqual(configModels.map { $0["model_display_name"] as? String }, ["OBB Kimi K2.6 Ollama Cloud", "OBB DeepSeek V4 Pro Ollama Cloud"])
         XCTAssertEqual(configModels.map { $0["base_url"] as? String }, ["http://127.0.0.1:8317/v1", "http://127.0.0.1:8317/v1"])
+    }
+
+    func test_wireDroid_labelsSameModelByRouteSource() throws {
+        let wiring = makeWiring()
+
+        _ = try wiring.wire(
+            target: .droid,
+            gateway: exampleGateway(token: "droid-token"),
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "deepseek-v4-pro",
+                    displayName: "DeepSeek V4 Pro",
+                    providerID: "deepseek",
+                    providerName: "DeepSeek",
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "opencode/deepseek-v4-pro",
+                    displayName: "DeepSeek V4 Pro",
+                    providerID: "opencode",
+                    providerName: "OpenCode",
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "deepseek-v4-pro:cloud",
+                    displayName: "DeepSeek V4 Pro",
+                    providerID: "ollama",
+                    providerName: "Ollama Cloud",
+                    routeEligible: true
+                )
+            ]
+        )
+
+        let settingsRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.local.json"))
+        let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
+        XCTAssertEqual(
+            settingsModels.map { $0["displayName"] as? String },
+            [
+                "OBB DeepSeek V4 Pro Direct",
+                "OBB DeepSeek V4 Pro OpenCode",
+                "OBB DeepSeek V4 Pro Ollama Cloud",
+            ]
+        )
     }
 
     func test_wireOpenCode_writesLiveCatalogModels() throws {

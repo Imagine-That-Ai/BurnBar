@@ -313,11 +313,11 @@ struct SettingsHubView: View {
                     LabeledContent("Version", value: marketingVersion)
                         .settingsAnchor(SettingsAnchor.aboutVersion)
                     LabeledContent("Build", value: buildVersion)
-                    Link(destination: URL(string: "https://openburnbar.com/legal/privacy-policy")!) {
+                    Link(destination: URL(string: "https://burnbar.ai/legal/privacy-policy")!) {
                         SettingsLabel(icon: "hand.raised.fill", color: MobileTheme.whimsy, title: "Privacy policy")
                     }
                     .settingsAnchor(SettingsAnchor.aboutPrivacy)
-                    Link(destination: URL(string: "https://openburnbar.com/legal/terms")!) {
+                    Link(destination: URL(string: "https://burnbar.ai/legal/terms")!) {
                         SettingsLabel(icon: "doc.text.fill", color: MobileTheme.amber, title: "Terms of service")
                     }
                     .settingsAnchor(SettingsAnchor.aboutTerms)

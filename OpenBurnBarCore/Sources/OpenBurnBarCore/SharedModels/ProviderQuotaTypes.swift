@@ -238,7 +238,7 @@ public extension ProviderQuotaBucket {
         }
 
         if let unit = meta?["unit"]?.lowercased() {
-            if ["sessions", "session", "lines", "files"].contains(unit) {
+            if ["sessions", "session", "lines", "files", "models"].contains(unit) {
                 return false
             }
             if unit == "count" && !(marker.contains("credit") || marker.contains("budget")) {

@@ -39,6 +39,7 @@ import com.openburnbar.data.missions.MobileMissionConsoleHost
 import com.openburnbar.ui.hermes.AssistantsScreen
 import com.openburnbar.ui.hermes.HermesView
 import com.openburnbar.ui.computeruse.ComputerUseAgentWatchScreen
+import com.openburnbar.ui.media.PairedMacControlsScreen
 import com.openburnbar.ui.square.AgentBrandZoneScreen
 import com.openburnbar.ui.square.HermesSquareScreen
 import com.openburnbar.ui.square.HermesSquareSplitLayout
@@ -370,6 +371,11 @@ private fun BurnBarContent(
                     // The same route also serves long-press "Open chat"
                     // affordances from `AgentBrandZoneScreen`.
                     navController.navigate("assistants/${runtime.token}")
+                },
+                onOpenPairedMac = {
+                    navController.navigate("paired_mac") {
+                        launchSingleTop = true
+                    }
                 }
             )
         }
@@ -443,6 +449,12 @@ private fun BurnBarContent(
             deepLinks = listOf(navDeepLink { uriPattern = "burnbar://computer-use" })
         ) {
             ComputerUseAgentWatchScreen(modifier = Modifier.fillMaxSize())
+        }
+        composable(
+            "paired_mac",
+            deepLinks = listOf(navDeepLink { uriPattern = "burnbar://paired-mac" })
+        ) {
+            PairedMacControlsScreen(modifier = Modifier.fillMaxSize())
         }
         // Open Dashboard deep link → land on Pulse (closest analog to iOS dashboard).
         composable(

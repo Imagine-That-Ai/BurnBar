@@ -66,7 +66,9 @@ enum RefreshBackgroundWork {
                     ? .empty
                     : .healthy(sessionCount: usages.count)
                 allUsages.append(contentsOf: usages)
-                allConversations.append(contentsOf: parseResult.conversations)
+                if settings.conversationIndexingEnabled {
+                    allConversations.append(contentsOf: parseResult.conversations)
+                }
                 result.parserHealth[provider] = providerHealth
 
                 if !usages.isEmpty {

@@ -72,10 +72,25 @@ typealias HostedQuotaAuthStateReader = @MainActor () -> Bool
 final class HostedQuotaSubscriptionStore {
     static let productID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
     static let legacyHostedQuotaProductID = "com.openburnbar.hostedQuotaSync.monthly"
-    static let burnBarProProductID = "com.openburnbar.pro.monthly"
+    static let hostedComputerUseProductID = "com.openburnbar.hostedComputerUseSync.monthly"
+    static let proMaxProductID = "com.openburnbar.proMax.monthly"
+
+    /// Every auto-renewable subscription currently configured in App Store
+    /// Connect for the iOS app. The App Review paywall uses this exact list so
+    /// new ASC products cannot sit in the catalog without an in-app purchase
+    /// surface.
+    static let appStoreReviewVisibleProductIDs = [
+        productID,
+        legacyHostedQuotaProductID,
+        hostedComputerUseProductID,
+        proMaxProductID
+    ]
+
     private static let entitlementProductIDs: Set<String> = [
-        "com.openburnbar.hostedQuotaSync.cloud.monthly",
-        "com.openburnbar.hostedQuotaSync.monthly",
+        productID,
+        legacyHostedQuotaProductID,
+        hostedComputerUseProductID,
+        proMaxProductID,
         "com.openburnbar.pro.monthly"
     ]
 
@@ -90,6 +105,7 @@ final class HostedQuotaSubscriptionStore {
     private(set) var isActive = false
     private(set) var expirationDate: Date?
     private(set) var isLoading = false
+    private(set) var isPurchasing = false
     private(set) var error: String?
 
     /// First-purchase date of the user's currently-active entitlement, sourced
@@ -159,9 +175,10 @@ final class HostedQuotaSubscriptionStore {
     /// attribute the resulting JWS back to this Firebase UID without
     /// trusting any client-supplied identifier.
     func purchase() async {
-        isLoading = true
+        guard !isPurchasing else { return }
+        isPurchasing = true
         error = nil
-        defer { isLoading = false }
+        defer { isPurchasing = false }
         do {
             if product == nil {
                 product = try await fetchProducts([Self.productID]).first
@@ -196,6 +213,54 @@ final class HostedQuotaSubscriptionStore {
                     self.error = Self.signedOutPurchaseMessage
                 }
             case .pending, .userCancelled:
+                break
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// StoreKit SwiftUI views own the actual purchase button and disclosure
+    /// chrome. We still reconcile the completed transaction through the same
+    /// server verifier used by the custom purchase path.
+    func nativeStorePurchaseStarted(productID: String) {
+        guard Self.entitlementProductIDs.contains(productID) else { return }
+        isPurchasing = true
+        error = nil
+    }
+
+    func handleNativeStorePurchaseCompletion(
+        product: Product,
+        result: Result<Product.PurchaseResult, any Error>
+    ) async {
+        guard Self.entitlementProductIDs.contains(product.id) else {
+            isPurchasing = false
+            return
+        }
+        defer { isPurchasing = false }
+        do {
+            switch try result.get() {
+            case .success(let verification):
+                let transaction = try Self.checked(verification)
+                do {
+                    try await verifyOnServer(
+                        jws: verification.jwsRepresentation,
+                        productID: transaction.productID
+                    )
+                    await transaction.finish()
+                } catch {
+                    if await recoverEntitlementAfterVerificationFailure(
+                        jws: verification.jwsRepresentation,
+                        productID: transaction.productID
+                    ) {
+                        await transaction.finish()
+                    } else {
+                        throw error
+                    }
+                }
+            case .pending, .userCancelled:
+                break
+            @unknown default:
                 break
             }
         } catch {
@@ -478,7 +543,8 @@ final class HostedQuotaSubscriptionStore {
 
     private func loadProductMetadataIfAvailable() async {
         do {
-            product = try await fetchProducts([Self.productID]).first
+            product = try await fetchProducts(Self.appStoreReviewVisibleProductIDs)
+                .first(where: { $0.id == Self.productID })
         } catch {
             if self.error == nil {
                 self.error = error.localizedDescription
@@ -524,7 +590,7 @@ enum HostedQuotaSubscriptionError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .productUnavailable:
-            return "Hosted Quota Sync is not available in the App Store configuration."
+            return "OpenBurnBar Cloud is still loading from the App Store. Please try Subscribe again in a moment."
         case .invalidBindingToken:
             return "Could not initialize the entitlement binding token. Please try again."
         }

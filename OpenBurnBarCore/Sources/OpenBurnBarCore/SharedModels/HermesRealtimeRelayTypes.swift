@@ -32,6 +32,13 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case mediaMirrorRequest = "media.mirror.request"
     case mediaMirrorAck = "media.mirror.ack"
     case mediaPresenceHeartbeat = "media.presence.heartbeat"
+    case mediaCallInvite = "media.call.invite"
+    case mediaCallAck = "media.call.ack"
+    /// Encoded `OpenBurnBarMedia.MediaFrame` bytes carried over the existing
+    /// long-lived `media.control` stream after a mirror request is accepted.
+    /// The media payload's `streamClass` identifies the logical receiver
+    /// (`media.screen.video`, `control.surface.frame`, etc.).
+    case mediaStreamFrame = "media.stream.frame"
     // Computer Use control plane — see
     // plans/2026-05-16-computer-use-master-plan.md. Same
     // forward-compatibility contract as the media frame types.
@@ -188,6 +195,7 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
     public var text: String?
     public var key: String?
     public var modifiers: [String]?
+    public var clientIntentId: String?
     public var authority: HermesRealtimeRelayAuthorityEnvelope
 
     public init(
@@ -199,6 +207,7 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
         text: String? = nil,
         key: String? = nil,
         modifiers: [String]? = nil,
+        clientIntentId: String? = nil,
         authority: HermesRealtimeRelayAuthorityEnvelope
     ) {
         self.kind = kind
@@ -209,6 +218,7 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
         self.text = text
         self.key = key
         self.modifiers = modifiers
+        self.clientIntentId = clientIntentId
         self.authority = authority
     }
 }
@@ -364,6 +374,16 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// iOS → Mac presence beacon. Set on `media.presence.heartbeat`
     /// frames; nil elsewhere.
     public var presence: HermesRealtimeRelayPresenceHeartbeat?
+    /// Phone → Mac request to surface an incoming Mercury call prompt on
+    /// the Mac. Set on `media.call.invite` frames; nil elsewhere.
+    public var callInvite: HermesRealtimeRelayCallInvite?
+    /// Mac → phone response to a call invite. Set on `media.call.ack`
+    /// frames; nil elsewhere.
+    public var callAck: HermesRealtimeRelayCallAck?
+    /// Base64 text of `MediaPacketCodec.encode(MediaFrame)`. Kept as
+    /// opaque bytes here so `OpenBurnBarCore` does not depend on the
+    /// media target while the transport envelope remains Codable.
+    public var encodedFrameBase64: String?
 
     public init(
         streamClass: String? = nil,
@@ -372,7 +392,10 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         ack: HermesRealtimeRelayMediaAck? = nil,
         mirrorRequest: HermesRealtimeRelayMirrorRequest? = nil,
         mirrorAck: HermesRealtimeRelayMirrorAck? = nil,
-        presence: HermesRealtimeRelayPresenceHeartbeat? = nil
+        presence: HermesRealtimeRelayPresenceHeartbeat? = nil,
+        callInvite: HermesRealtimeRelayCallInvite? = nil,
+        callAck: HermesRealtimeRelayCallAck? = nil,
+        encodedFrameBase64: String? = nil
     ) {
         self.streamClass = streamClass
         self.attachment = attachment
@@ -381,6 +404,9 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         self.mirrorRequest = mirrorRequest
         self.mirrorAck = mirrorAck
         self.presence = presence
+        self.callInvite = callInvite
+        self.callAck = callAck
+        self.encodedFrameBase64 = encodedFrameBase64
     }
 }
 
@@ -490,6 +516,55 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         self.decision = decision
         self.detail = detail
         self.cooldownSecondsRemaining = cooldownSecondsRemaining
+    }
+}
+
+/// Mercury phone-originated call invite. This is the cross-platform
+/// sibling of the Mac -> phone PushKit/FCM call path: it rides the live
+/// `media.control` stream so an already-awake Mac can surface a real
+/// incoming-call prompt without needing a cloud wake.
+public struct HermesRealtimeRelayCallInvite: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var requestedAt: Date
+    public var requesterDisplayName: String
+    /// `"video"` today; kept as a string so future audio-only/group-call
+    /// invites do not break older clients.
+    public var callKind: String
+
+    public init(
+        requestId: String,
+        requestedAt: Date,
+        requesterDisplayName: String,
+        callKind: String = "video"
+    ) {
+        self.requestId = requestId
+        self.requestedAt = requestedAt
+        self.requesterDisplayName = requesterDisplayName
+        self.callKind = callKind
+    }
+}
+
+/// Mac-side response to `HermesRealtimeRelayCallInvite`.
+public struct HermesRealtimeRelayCallAck: Codable, Sendable, Equatable {
+    public enum Decision: String, Codable, Sendable, Equatable {
+        case accepted
+        case denied
+        case unsupported
+        case busy
+    }
+
+    public var requestId: String
+    public var decision: Decision
+    public var detail: String?
+
+    public init(
+        requestId: String,
+        decision: Decision,
+        detail: String? = nil
+    ) {
+        self.requestId = requestId
+        self.decision = decision
+        self.detail = detail
     }
 }
 

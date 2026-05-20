@@ -1222,7 +1222,7 @@ private fun CloudStoreActionBar(
                 fontSize = 11.sp,
                 color = Pal.ember,
                 modifier = Modifier.clickable {
-                    uriHandler.openUri("https://openburnbar.com/legal/privacy-policy")
+                    uriHandler.openUri("https://burnbar.ai/legal/privacy-policy")
                 }
             )
             Spacer(Modifier.width(8.dp))
@@ -1233,7 +1233,7 @@ private fun CloudStoreActionBar(
                 fontSize = 11.sp,
                 color = Pal.ember,
                 modifier = Modifier.clickable {
-                    uriHandler.openUri("https://openburnbar.com/legal/terms")
+                    uriHandler.openUri("https://burnbar.ai/legal/terms")
                 }
             )
         }

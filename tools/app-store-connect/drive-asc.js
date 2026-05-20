@@ -37,9 +37,9 @@ PRIVACY
 All processing is local. No data leaves your machine unless you explicitly enable optional cloud sync.`,
 
   keywords: 'AI,agents,Claude,Cursor,Codex,token,cost,budget,developer,menu bar,burn rate,LLM',
-  supportUrl: 'https://github.com/Ajnunezg/OpenBurnBar/issues',
-  marketingUrl: 'https://github.com/Ajnunezg/OpenBurnBar',
-  privacyPolicyUrl: 'https://openburnbar.com/legal/privacy-policy',
+  supportUrl: 'https://burnbar.ai/support',
+  marketingUrl: 'https://burnbar.ai',
+  privacyPolicyUrl: 'https://burnbar.ai/legal/privacy-policy',
   copyright: `Copyright © ${new Date().getFullYear()} Alberto Nunez`,
   whatsNew: `Initial App Store release.\n\n• Menu bar token & cost tracking for AI coding agents\n• Local-first — no cloud required\n• Supports Claude Code, Codex, Factory Droid, Cursor, Kimi, and more\n• Smart insights engine and daily digest`,
 };

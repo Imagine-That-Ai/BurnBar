@@ -1182,6 +1182,70 @@ final class SwitcherAuthStoreTests: XCTestCase {
         }
     }
 
+    func test_claudeCodeOAuthImporter_nonInteractiveLoadDoesNotInvokeExternalSecurityFallback() {
+        var fallbackCalls = 0
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            externalKeychainPasswordReader: { _, _ in
+                fallbackCalls += 1
+                return """
+                {
+                  "claudeAiOauth": {
+                    "accessToken": "external-token",
+                    "refreshToken": "external-refresh",
+                    "expiresAt": 4102444800000,
+                    "subscriptionType": "max",
+                    "rateLimitTier": "default_claude_max_20x"
+                  }
+                }
+                """
+            },
+            accounts: ["test-user"]
+        )
+
+        XCTAssertThrowsError(try importer.load(allowUserInteraction: false)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                ClaudeCodeOAuthCredentialImportError.missing.localizedDescription
+            )
+        }
+        XCTAssertEqual(fallbackCalls, 0)
+    }
+
+    func test_claudeCodeOAuthImporter_interactiveLoadCanUseExternalSecurityFallback() throws {
+        var fallbackCalls = 0
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            externalKeychainPasswordReader: { _, _ in
+                fallbackCalls += 1
+                return """
+                {
+                  "claudeAiOauth": {
+                    "accessToken": "external-token",
+                    "refreshToken": "external-refresh",
+                    "expiresAt": 4102444800000,
+                    "subscriptionType": "max",
+                    "rateLimitTier": "default_claude_max_20x"
+                  }
+                }
+                """
+            },
+            accounts: ["test-user"]
+        )
+
+        let credentials = try importer.load(allowUserInteraction: true)
+        XCTAssertEqual(credentials.accessToken, "external-token")
+        XCTAssertEqual(fallbackCalls, 1)
+    }
+
     func test_claudeCodeOAuthImporter_readsIsolatedConfigCredentialWithoutGlobalFallback() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-claude-isolated-\(UUID().uuidString)", isDirectory: true)
@@ -1341,7 +1405,7 @@ final class SwitcherAuthStoreTests: XCTestCase {
             allowDefaultKeychainFallback: false
         )
 
-        let credentials = try importer.load(allowUserInteraction: false)
+        let credentials = try importer.load(allowUserInteraction: true)
         XCTAssertEqual(credentials.accessToken, "security-tool-profile-token")
         XCTAssertEqual(credentials.organizationUuid, "security-tool-org")
         XCTAssertEqual(fallbackRequests.count, 1)
@@ -1390,7 +1454,7 @@ final class SwitcherAuthStoreTests: XCTestCase {
             allowDefaultKeychainFallback: false
         )
 
-        let credentials = try importer.load(allowUserInteraction: false)
+        let credentials = try importer.load(allowUserInteraction: true)
         XCTAssertEqual(credentials.accessToken, "security-tool-nil-profile-token")
         XCTAssertEqual(credentials.organizationUuid, "security-tool-nil-org")
         XCTAssertEqual(fallbackRequests.count, 1)

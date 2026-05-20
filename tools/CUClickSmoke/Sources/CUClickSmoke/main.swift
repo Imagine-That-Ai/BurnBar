@@ -102,7 +102,6 @@ func typeText(_ text: String) throws -> Double {
         }
         var chars = Array(String(char).utf16)
         down.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: &chars)
-        up.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: &chars)
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
         Thread.sleep(forTimeInterval: 0.03)

@@ -64,6 +64,12 @@ struct AssistantModelPickerSheet: View {
             }
             .task {
                 cliPreference = CLIAgentModelPreferences.preferredModelID(for: runtime)
+                // Ensure AccountStore has loaded connected provider IDs
+                // before the merger classifies reachability. Without this,
+                // the merger sees an empty connectedProviderIDs set and
+                // tags every connected account as .unreachable instead
+                // of .connectedOnIOS.
+                await accountStore.fetchConnections()
                 // Fire-and-forget remote refresh so the catalog stays in
                 // lockstep with the website's authoritative `models.json`.
                 // Bundled copy is shown immediately; this swaps it in
@@ -166,17 +172,24 @@ struct AssistantModelPickerSheet: View {
 
     /// Build the merger input and render grouped rows. Live rows win on
     /// conflict; catalog rows backed by a connected account get tagged
-    /// `.connectedOnIOS`; everything else is `.unreachable` (dimmed + CTA).
+    /// `.connectedOnIOS` (or `.pendingRelayData` while the relay hasn't
+    /// responded yet); everything else is `.unreachable` (dimmed + CTA).
     private func mergedGroups() -> some View {
         let liveRelay = currentLiveRelayOptions()
         let catalog = AssistantModelCatalog.options(for: runtime)
         let connected = accountStore.connectedProviderIDs
 
+        // If the relay data hasn't loaded yet (empty modelOptions while
+        // the service is still refreshing), mark connected models as
+        // pending so the UI shows a loading hint instead of "Relay only".
+        let relayDataLoaded = !currentLiveRelayOptions().isEmpty || !refreshing
+
         let rows = AssistantModelMerger.merge(
             runtime: runtime,
             liveRelay: liveRelay,
             catalog: catalog,
-            connectedProviderIDs: connected
+            connectedProviderIDs: connected,
+            relayDataLoaded: relayDataLoaded
         )
 
         let grouped = Dictionary(grouping: rows, by: { $0.option.providerName })
@@ -316,7 +329,9 @@ struct AssistantModelPickerSheet: View {
                 case .liveOnRelay:
                     applySelection(option)
                 case .connectedOnIOS:
-                    Task { await refreshLive() }
+                    break
+                case .pendingRelayData:
+                    break
                 case .unreachable:
                     showProviderWizard = inferAgentProvider(for: option)
                 }
@@ -390,7 +405,9 @@ struct AssistantModelPickerSheet: View {
         case .liveOnRelay:
             EmptyView()
         case .connectedOnIOS:
-            tagPill(text: "Not live", tint: MobileTheme.amber)
+            tagPill(text: "Relay only", tint: MobileTheme.Colors.textMuted)
+        case .pendingRelayData:
+            tagPill(text: "Loading…", tint: MobileTheme.Colors.textMuted)
         case .unreachable:
             tagPill(text: "Connect", tint: MobileTheme.amber)
         }
@@ -414,9 +431,12 @@ struct AssistantModelPickerSheet: View {
                     .foregroundStyle(MobileTheme.success)
             }
         case .connectedOnIOS:
-            Image(systemName: "arrow.clockwise.circle.fill")
-                .font(.system(size: 19, weight: .bold))
-                .foregroundStyle(MobileTheme.amber)
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+        case .pendingRelayData:
+            ProgressView()
+                .scaleEffect(0.7)
         }
     }
 
@@ -439,9 +459,10 @@ struct AssistantModelPickerSheet: View {
         reachability: AssistantModelMerger.Row.Reachability
     ) -> String {
         switch reachability {
-        case .liveOnRelay:    return "\(option.displayName), available on relay"
-        case .connectedOnIOS: return "\(option.displayName), account connected but not advertised by this Mac relay"
-        case .unreachable:    return "\(option.displayName), tap to connect provider"
+        case .liveOnRelay:        return "\(option.displayName), available on relay"
+        case .connectedOnIOS:     return "\(option.displayName), account connected but relay does not advertise this model"
+        case .pendingRelayData:   return "\(option.displayName), waiting for relay data"
+        case .unreachable:        return "\(option.displayName), tap to connect provider"
         }
     }
 

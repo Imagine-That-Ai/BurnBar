@@ -375,6 +375,29 @@ final class ComputerUsePhoneControlSignerTests: XCTestCase {
         )
     }
 
+    func testRealtimeInputIntentHashCoversClientIntentId() throws {
+        let placeholder = authority(peerNodeId: "", counter: 0, intentHash: "", signature: "")
+        let original = HermesRealtimeRelayInputIntent(
+            kind: .tap,
+            normalizedX: 0.4,
+            normalizedY: 0.5,
+            clientIntentId: "intent-a",
+            authority: placeholder
+        )
+        let changedClientIntent = HermesRealtimeRelayInputIntent(
+            kind: .tap,
+            normalizedX: 0.4,
+            normalizedY: 0.5,
+            clientIntentId: "intent-b",
+            authority: placeholder
+        )
+
+        XCTAssertNotEqual(
+            try signer.canonicalInputIntentHashHex(intent: original),
+            try signer.canonicalInputIntentHashHex(intent: changedClientIntent)
+        )
+    }
+
     func testRealtimeInputIntentTamperedActionFieldFailsAfterAuthorityAttached() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let placeholder = authority(peerNodeId: "", counter: 0, intentHash: "", signature: "")

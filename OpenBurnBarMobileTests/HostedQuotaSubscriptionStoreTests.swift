@@ -171,6 +171,39 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertFalse(store.error?.localizedCaseInsensitiveContains("Unauthenticated") == true)
     }
 
+    func testPurchaseFetchesProductWhenLoadHasNotCompleted() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let service = FakeHostedQuotaEntitlementService(
+            verifyResponse: .hostedQuota(active: true, expiresAt: expiresAt)
+        )
+        var purchasedProductID: String?
+        var didFinishTransaction = false
+        let store = HostedQuotaSubscriptionStore(
+            functions: service,
+            purchaseProduct: { product, _ in
+                purchasedProductID = product.id
+                return .success(
+                    signedTransactionJWS: "purchase-before-load-jws",
+                    finish: { didFinishTransaction = true }
+                )
+            },
+            isSignedIn: { true }
+        )
+
+        await store.purchase()
+
+        XCTAssertNil(store.error)
+        XCTAssertEqual(purchasedProductID, HostedQuotaSubscriptionStore.productID)
+        XCTAssertEqual(store.product?.id, HostedQuotaSubscriptionStore.productID)
+        XCTAssertTrue(store.isActive)
+        XCTAssertEqual(store.expirationDate, expiresAt)
+        XCTAssertTrue(didFinishTransaction)
+        XCTAssertEqual(service.bindingRequests.count, 1)
+        XCTAssertEqual(service.verifyRequests.count, 1)
+    }
+
     private func makeCleanStoreKitSession() throws -> SKTestSession {
         let session = try SKTestSession(configurationFileNamed: "OpenBurnBarHostedQuota")
         session.resetToDefaultState()

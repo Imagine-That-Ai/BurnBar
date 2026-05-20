@@ -48,7 +48,10 @@ struct DashboardOverviewView: View {
                     lanesRow
                 }
                 .padding(DesignSystem.Spacing.xl)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .scrollContentBackground(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

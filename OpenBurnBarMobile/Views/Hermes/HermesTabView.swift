@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import OpenBurnBarCore
 import PhotosUI
 import UniformTypeIdentifiers
@@ -1376,7 +1377,7 @@ struct HermesChatView: View {
         ) { result in
             handleFileImporterResult(result)
         }
-        .sheet(isPresented: $showCameraSheet) {
+        .fullScreenCover(isPresented: $showCameraSheet) {
             CameraCaptureSheet { image in
                 showCameraSheet = false
                 guard let image else { return }
@@ -1800,10 +1801,8 @@ struct HermesChatView: View {
                 Label("Photo or Video Library", systemImage: "photo.on.rectangle")
             }
             Button {
-                if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                    showCameraSheet = true
-                } else {
-                    attachmentImportError = "Camera is not available on this device. Choose Photo or Video Library instead."
+                Task {
+                    await prepareTakePhotoAttachment()
                 }
             } label: {
                 Label("Take Photo", systemImage: "camera")
@@ -1952,6 +1951,36 @@ struct HermesChatView: View {
         case .failure(let error):
             attachmentImportError = error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func prepareTakePhotoAttachment() async {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            attachmentImportError = "Camera is not available on this device. Choose Photo or Video Library instead."
+            return
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            await presentCameraAfterMenuDismissal()
+        case .notDetermined:
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            if granted {
+                await presentCameraAfterMenuDismissal()
+            } else {
+                attachmentImportError = "Camera access was not allowed. Open Settings > OpenBurnBar to allow camera access, or choose Photo or Video Library instead."
+            }
+        case .denied, .restricted:
+            attachmentImportError = "Camera access is off for OpenBurnBar. Open Settings > OpenBurnBar to allow camera access, or choose Photo or Video Library instead."
+        @unknown default:
+            attachmentImportError = "Camera access is unavailable on this device. Choose Photo or Video Library instead."
+        }
+    }
+
+    @MainActor
+    private func presentCameraAfterMenuDismissal() async {
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        showCameraSheet = true
     }
 
     private func ingestImage(_ image: UIImage) {

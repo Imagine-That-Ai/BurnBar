@@ -349,6 +349,7 @@ public actor ComputerUseRunCoordinator {
                     for: action,
                     approvalId: approvalId,
                     approvedBy: approvedBy,
+                    scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
                     denyReason: String(describing: error),
                     scopeContext: scopeContext
                 )

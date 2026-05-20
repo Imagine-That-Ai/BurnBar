@@ -1,4 +1,5 @@
 import XCTest
+import GRDB
 @testable import OpenBurnBar
 
 // MARK: - DashboardUsageViewModelTests
@@ -139,6 +140,52 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(summary.activeProviderCount, 2)
         XCTAssertEqual(Set(summary.providerSummaries.map(\.provider)), [.codex, .kimi])
         XCTAssertEqual(Set(summary.modelSummaries.map(\.modelName)), ["gpt-5", "kimi-for-coding"])
+    }
+
+    func test_dashboardSnapshotTodayUsesLocalSQLiteDateWindow() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        let earlyToday = todayStart.addingTimeInterval(60 * 60)
+        let yesterday = todayStart.addingTimeInterval(-60 * 60)
+
+        try usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "dashboard-local-today",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 50,
+            costUSD: 2,
+            startTime: earlyToday,
+            endTime: earlyToday.addingTimeInterval(60)
+        ))
+        try usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "dashboard-local-yesterday",
+            model: "droid",
+            inputTokens: 1_000,
+            outputTokens: 1_000,
+            costUSD: 20,
+            startTime: yesterday,
+            endTime: yesterday.addingTimeInterval(60)
+        ))
+
+        let snapshot = try usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let today = try XCTUnwrap(snapshot.windowSummaries[.today])
+
+        XCTAssertEqual(today.sessionCount, 1)
+        XCTAssertEqual(today.totalCost, 2, accuracy: 0.001)
+        XCTAssertEqual(today.totalTokens, 150)
+        XCTAssertEqual(today.providerSummaries.map(\.provider), [.codex])
+    }
+
+    func test_sqliteDateStringFormatsLocalWallTimeForDashboardWindows() {
+        let startOfToday = Calendar.current.startOfDay(for: Date())
+        let rendered = OpenBurnBarDatabase.sqliteDateString(startOfToday)
+
+        XCTAssertTrue(rendered.hasSuffix("00:00:00.000"))
     }
 
     func test_makeProviderSummaries_groupsProvidersAndModelsInOneDerivedSnapshot() throws {

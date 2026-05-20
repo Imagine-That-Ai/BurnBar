@@ -60,11 +60,13 @@ struct HermesSquareRoot: View {
     @State private var subscriptionTopicStore = AgentSubscriptionTopicStore.shared
     /// Mercury Phase 8 — paired Mac peer presence + Live sheet plumbing.
     /// The peer source polls `MediaControlStreamCoordinator.phase` and
-    /// (later) presence heartbeats; the registry's pinned-tile resolver
-    /// reads from `peer` to synthesize a `device://paired-mac/<id>`
-    /// identity.
-    @StateObject private var mercuryPeerSource = MercuryPeerSource()
+    /// ingests Mac presence heartbeats; the registry's pinned-tile
+    /// resolver reads from `peer` to synthesize a
+    /// `device://paired-mac/<id>` identity.
+    @StateObject private var mercuryPeerSource: MercuryPeerSource
     @State private var mercuryAckBanner: HermesRealtimeRelayMirrorAck?
+    @State private var bootingMercuryConnectionID: String?
+    @State private var mercuryBootError: String?
     @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
 
     private var pinnedGrid: PinnedAgentGridConfig {
@@ -80,6 +82,12 @@ struct HermesSquareRoot: View {
     init(hermesService: HermesService, missionHost: MobileMissionConsoleHost) {
         self.hermesService = hermesService
         self.missionHost = missionHost
+        _mercuryPeerSource = StateObject(wrappedValue: MercuryPeerSource(
+            relayConnectionProvider: {
+                hermesService.suggestedRelayConnection
+                    ?? (hermesService.selectedConnection.mode == .relayLink ? hermesService.selectedConnection : nil)
+            }
+        ))
         _inbox = State(initialValue: ThreadInboxStore(
             historyStore: MobileChatHistoryStore.shared,
             cliReader: .shared,
@@ -222,8 +230,12 @@ struct HermesSquareRoot: View {
         .task {
             // Mercury Phase 8 — start the peer-presence loop. The peer
             // source polls `HermesIrohRelayTransport`'s control-stream
-            // phase and updates `registry.pairedMacPeer` so the pinned
-            // tile resolver can synthesize the "My Mac" identity.
+            // phase, consumes Mac presence heartbeats, and updates
+            // `registry.pairedMacPeer` so the pinned tile resolver can
+            // synthesize the "My Mac" identity.
+            HermesIrohRelayTransport.shared.mediaPresenceHeartbeatHandler = { heartbeat in
+                mercuryPeerSource.ingestHeartbeat(heartbeat)
+            }
             mercuryPeerSource.start()
         }
         .onChange(of: mercuryPeerSource.peer) { _, newPeer in
@@ -295,18 +307,33 @@ struct HermesSquareRoot: View {
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
             case .mercuryLive(let connectionID):
+                let effectiveConnectionID = resolvedMercuryConnectionID(for: connectionID)
                 if let coordinator = HermesIrohRelayTransport.shared.currentMediaControlCoordinator,
+                   HermesIrohRelayTransport.shared.currentMediaControlConnectionID == effectiveConnectionID,
                    let peer = mercuryPeerSource.peer {
                     MercuryLiveSheet(
-                        connectionID: connectionID,
+                        connectionID: effectiveConnectionID,
                         peer: peer,
                         controlStreamCoordinator: coordinator,
                         fileTransferService: iOSFileTransferService.current,
                         uidProvider: { Auth.auth().currentUser?.uid }
                     )
                 } else {
-                    Text("Mercury unavailable")
-                        .foregroundStyle(DesignSystemColors.textMuted)
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text(bootingMercuryConnectionID == effectiveConnectionID ? "Connecting to Mercury..." : "Starting Mercury...")
+                            .foregroundStyle(DesignSystemColors.textSecondary)
+                        if let mercuryBootError {
+                            Text(mercuryBootError)
+                                .font(.footnote)
+                                .foregroundStyle(DesignSystemColors.textMuted)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                    }
+                    .task(id: effectiveConnectionID) {
+                        await ensureMercuryLive(connectionID: effectiveConnectionID)
+                    }
                 }
             }
         }
@@ -699,8 +726,21 @@ struct HermesSquareRoot: View {
         let uri = "\(AgentIdentityRegistry.pairedMacURIPrefix)\(peer.connectionID)"
         let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
         guard !grid.pinnedURIs.contains(uri) else { return }
-        let updated = grid.pinning(uri).sanitized()
+        let updated = grid.pinningPairedMac(uri)
         pinnedJSON = updated.jsonString()
+    }
+
+    private func resolvedMercuryConnectionID(for routedConnectionID: String) -> String {
+        if !routedConnectionID.hasPrefix("paired-mac:") {
+            return routedConnectionID
+        }
+        if let relay = hermesService.suggestedRelayConnection {
+            return relay.id
+        }
+        if hermesService.selectedConnection.mode == .relayLink {
+            return hermesService.selectedConnection.id
+        }
+        return routedConnectionID
     }
 
     private func handleThreadTap(_ item: ThreadInboxItem) {
@@ -916,6 +956,55 @@ struct HermesSquareRoot: View {
                 prompt: "What's important across my fleet right now? Summarize in 5 bullets."
             )
             navTarget = .runtimeNative(.hermes)
+        }
+    }
+
+    private func ensureMercuryLive(connectionID: String) async {
+        guard bootingMercuryConnectionID != connectionID else { return }
+        #if DEBUG
+        NSLog("OpenBurnBarMercury ensure_mercury_live_start connectionID=\(connectionID)")
+        #endif
+        bootingMercuryConnectionID = connectionID
+        mercuryBootError = nil
+        defer { bootingMercuryConnectionID = nil }
+
+        await hermesService.refreshConnections(refreshSelectedConnection: false)
+
+        let relay: HermesConnectionRecord?
+        if let exact = hermesService.relayConnections.first(where: { $0.id == connectionID }) {
+            _ = hermesService.selectConnection(exact, refresh: false)
+            relay = exact
+        } else if let selected = hermesService.relayConnections.first(where: { $0.id == hermesService.selectedConnection.id }) {
+            relay = selected
+        } else if let suggested = hermesService.suggestedRelayConnection {
+            _ = hermesService.selectConnection(suggested, refresh: false)
+            relay = suggested
+        } else {
+            relay = hermesService.suggestedRelayConnection
+            if let relay {
+                _ = hermesService.selectConnection(relay, refresh: false)
+            }
+        }
+
+        guard let relay else {
+            #if DEBUG
+            NSLog("OpenBurnBarMercury ensure_mercury_live_no_relay connectionID=\(connectionID)")
+            #endif
+            mercuryBootError = "No online Mac relay found. Open BurnBar on the Mac, enable Remote Relay, then refresh."
+            return
+        }
+
+        do {
+            try await HermesIrohRelayTransport.shared.ensureMediaControlStream(connectionID: relay.id)
+            #if DEBUG
+            NSLog("OpenBurnBarMercury ensure_mercury_live_started connectionID=\(relay.id)")
+            #endif
+            mercuryBootError = nil
+        } catch {
+            #if DEBUG
+            NSLog("OpenBurnBarMercury ensure_mercury_live_failed connectionID=\(relay.id) error=\(error.localizedDescription)")
+            #endif
+            mercuryBootError = error.localizedDescription
         }
     }
 

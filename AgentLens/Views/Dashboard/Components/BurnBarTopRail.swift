@@ -1077,15 +1077,13 @@ private struct BurnRailDivider: View {
 
 private struct BurnRailLivePulseDot: View {
     let isLive: Bool
-    @State private var pulse = false
 
     var body: some View {
         ZStack {
             Circle()
                 .fill(DesignSystem.Colors.ember.opacity(0.35))
                 .frame(width: 18, height: 18)
-                .scaleEffect(pulse ? 1.0 : 0.5)
-                .opacity(pulse ? 0 : 0.7)
+                .opacity(isLive ? 0.28 : 0)
             Circle()
                 .fill(isLive ? DesignSystem.Colors.ember : DesignSystem.Colors.textMuted)
                 .frame(width: 7, height: 7)
@@ -1093,12 +1091,6 @@ private struct BurnRailLivePulseDot: View {
                         radius: 4, y: 0)
         }
         .frame(width: 18, height: 18)
-        .onAppear {
-            guard isLive else { return }
-            withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
-                pulse = true
-            }
-        }
     }
 }
 
@@ -1185,7 +1177,6 @@ private struct BurnRailGhostIconButton: View {
     var spinning: Bool = false
     let action: () -> Void
     @State private var hover = false
-    @State private var spin = false
     @State private var pressTrigger = 0
 
     var body: some View {
@@ -1205,15 +1196,6 @@ private struct BurnRailGhostIconButton: View {
         .help(help)
         .onHover { hover = $0 }
         .animation(DesignSystem.Animation.hover, value: hover)
-        .onChange(of: spinning) { _, newValue in
-            if newValue {
-                withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
-                    spin = true
-                }
-            } else {
-                spin = false
-            }
-        }
     }
 
     @ViewBuilder
@@ -1226,7 +1208,7 @@ private struct BurnRailGhostIconButton: View {
                         ? DesignSystem.Colors.textPrimary
                         : DesignSystem.Colors.textSecondary
                 )
-                .rotationEffect(.degrees(spinning && spin ? 360 : 0))
+                .rotationEffect(.degrees(0))
                 .symbolEffect(.bounce, value: pressTrigger)
         } else {
             Image(systemName: symbol)
@@ -1236,7 +1218,7 @@ private struct BurnRailGhostIconButton: View {
                         ? DesignSystem.Colors.textPrimary
                         : DesignSystem.Colors.textSecondary
                 )
-                .rotationEffect(.degrees(spinning && spin ? 360 : 0))
+                .rotationEffect(.degrees(0))
         }
     }
 }

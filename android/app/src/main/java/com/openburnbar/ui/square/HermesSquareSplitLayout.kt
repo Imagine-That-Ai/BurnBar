@@ -40,13 +40,15 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 fun HermesSquareSplitLayout(
     onOpenLegacyRuntime: (AssistantRuntimeID) -> Unit = {},
     onOpenBrandZone: (String) -> Unit = {},
+    onOpenPairedMac: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
     if (configuration.screenWidthDp < 720) {
         HermesSquareScreen(
             onOpenLegacyRuntime = onOpenLegacyRuntime,
-            onOpenBrandZone = onOpenBrandZone
+            onOpenBrandZone = onOpenBrandZone,
+            onOpenPairedMac = onOpenPairedMac
         )
         return
     }
@@ -61,6 +63,10 @@ fun HermesSquareSplitLayout(
                 onOpenBrandZone = { uri ->
                     detail = DetailRoute.BrandZone(uri)
                     onOpenBrandZone(uri)
+                },
+                onOpenPairedMac = {
+                    detail = DetailRoute.PairedMac
+                    onOpenPairedMac()
                 }
             )
         }
@@ -87,6 +93,7 @@ fun HermesSquareSplitLayout(
                 }
                 is DetailRoute.RuntimeNative -> SplitPlaceholder("Open ${d.runtime.token} on the left to expand here.")
                 is DetailRoute.MissionDetail -> SplitPlaceholder("Mission detail: ${d.missionID}")
+                DetailRoute.PairedMac -> SplitPlaceholder("Opening paired Mac controls.")
             }
         }
     }
@@ -118,4 +125,5 @@ internal sealed class DetailRoute {
     data class BrandZone(val agentURI: String) : DetailRoute()
     data class RuntimeNative(val runtime: AssistantRuntimeID) : DetailRoute()
     data class MissionDetail(val missionID: String) : DetailRoute()
+    object PairedMac : DetailRoute()
 }

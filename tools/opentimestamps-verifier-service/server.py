@@ -50,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "OpenBurnBarOTSVerifier/1.0"
 
     def do_GET(self) -> None:
-        if self.path == "/healthz":
+        if self.path in ("/health", "/healthz"):
             _json_response(self, 200, {"ok": True, "service": "opentimestamps-verifier"})
             return
         _json_response(self, 404, {"error": "not_found"})

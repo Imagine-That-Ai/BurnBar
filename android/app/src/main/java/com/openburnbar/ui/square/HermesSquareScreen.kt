@@ -80,6 +80,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.missions.ApprovalAsk
 import com.openburnbar.data.missions.ApprovalDecision
 import com.openburnbar.data.missions.ApprovalPolicy
@@ -96,6 +97,7 @@ import com.openburnbar.data.square.CLIAgentSessionRecord
 import com.openburnbar.data.square.PinnedAgentGridConfig
 import com.openburnbar.data.square.ThreadInboxItem
 import com.openburnbar.data.square.ThreadInboxStore
+import kotlinx.coroutines.delay
 import com.openburnbar.data.square.splitForInbox
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -115,10 +117,12 @@ import java.util.UUID
 @Composable
 fun HermesSquareScreen(
     onOpenLegacyRuntime: (AssistantRuntimeID) -> Unit = {},
-    onOpenBrandZone: (String) -> Unit = {}
+    onOpenBrandZone: (String) -> Unit = {},
+    onOpenPairedMac: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val registry = remember { AgentIdentityRegistry.shared() }
+    val hermesService = remember(context) { HermesService(appContext = context.applicationContext) }
     val inbox = remember { ThreadInboxStore.shared() }
     val activityStore: ActivityStore = viewModel()
     val cloudHits by activityStore.cloudSearchHits.collectAsStateWithLifecycle()
@@ -133,6 +137,7 @@ fun HermesSquareScreen(
     val groupSnapshot by missionGroupObserver.snapshot.collectAsStateWithLifecycle()
     val snapshotsBySession by rollbackService.snapshotsBySession.collectAsStateWithLifecycle()
     val projectSummaries by projectsStore.summaries.collectAsStateWithLifecycle()
+    val hermesConnections by hermesService.connections.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     val pinnedPrefs = remember {
@@ -175,6 +180,20 @@ fun HermesSquareScreen(
         missionHost.start()
         rollbackService.startObservingRequests()
         projectsStore.load()
+        while (true) {
+            hermesService.refreshRelayConnections()
+            delay(10_000)
+        }
+    }
+
+    LaunchedEffect(hermesConnections) {
+        val mac = AgentIdentity.preferredPairedMacConnection(hermesConnections)
+        if (mac != null) {
+            val identity = registry.upsertPairedMac(mac)
+            if (!pinned.pinnedURIs.contains(identity.id)) {
+                persistPinned(pinned.pinningPairedMac(identity.id))
+            }
+        }
     }
 
     // Whenever the mission host surfaces new active missions, observe each
@@ -361,10 +380,16 @@ fun HermesSquareScreen(
                             // recognized runtime fall through to brand
                             // zone since they have no chat surface.
                             val runtime = registry.identity(uri)?.runtimeID
-                            if (runtime != null) {
-                                onOpenLegacyRuntime(runtime)
-                            } else {
-                                showBrandZoneURI = uri
+                            when {
+                                uri.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX) -> {
+                                    onOpenPairedMac()
+                                }
+                                runtime != null -> {
+                                    onOpenLegacyRuntime(runtime)
+                                }
+                                else -> {
+                                    showBrandZoneURI = uri
+                                }
                             }
                         },
                         onLongPress = { uri -> showBrandZoneURI = uri },

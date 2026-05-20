@@ -43,3 +43,15 @@ export JAVA_HOME="$HOME/.homebrew/opt/openjdk@21" # or /opt/homebrew/opt/openjdk
 ```
 
 Verify: `java -version` should show `21.x.x`.
+
+## Mercury Media follow-up (updated — 2026-05-18)
+
+iOS and Mac have complete user-facing Mercury surfaces (Hermes Square "My Mac" tile + popover Mercury section). Android parity work currently tracks these checkpoints:
+
+- **Kotlin `MercuryPeer` model.** Mirror `OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryPeer.swift` as a Kotlin data class with the same `Feature` enum and forward-compatible unknown-capability filtering.
+- **Three new frame-type enum cases.** `media.mirror.request`, `media.mirror.ack`, and `media.presence.heartbeat` are present in the Android `HermesRealtimeRelayFrameType` equivalent.
+- **Android paired-Mac controls.** `PairedMacControlsScreen` exposes Ask to Mirror, Check Mercury, Send File, and Call Mac. Ask to Mirror, Send File, and Call Mac use real `media.control` transport paths; Call Mac sends `media.call.invite` and listens for `media.call.ack` from the Mac.
+- **Android `MercuryPeerSource`.** Poll `MediaControlStreamCoordinator.phase` and Firestore `users/{uid}/devices` for the paired Mac display name. Wire into the Hermes Square pinned grid via `AgentIdentityRegistry` equivalent.
+- **Outbound presence heartbeat.** Android `MediaControlStreamCoordinator` sends `media.presence.heartbeat` every 60s with paired-device identity and Mercury capabilities.
+
+No new Cloud Function, no new ALPN. Keep future Android Mercury additions on the existing `media.control` stream unless the shared protocol changes first.

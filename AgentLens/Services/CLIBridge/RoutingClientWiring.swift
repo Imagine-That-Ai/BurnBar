@@ -1063,7 +1063,7 @@ struct RoutingClientWiring {
         customModels.removeAll { isOpenBurnBarDroidModel($0, gateway: gateway) }
         customModels.append(contentsOf: liveModels.map { model in
             [
-                "model_display_name": "OpenBurnBar \(model.displayName.isEmpty ? model.id : model.displayName)",
+                "model_display_name": droidDisplayName(for: model),
                 "model": model.id,
                 "base_url": model.droidBaseURL(gateway: gateway),
                 "api_key": gateway.effectiveClientToken,
@@ -1086,10 +1086,32 @@ struct RoutingClientWiring {
             "index": index,
             "baseUrl": model.droidBaseURL(gateway: gateway),
             "apiKey": gateway.effectiveClientToken,
-            "displayName": "OpenBurnBar \(model.displayName.isEmpty ? model.id : model.displayName)",
+            "displayName": droidDisplayName(for: model),
             "maxOutputTokens": 8192,
             "provider": model.droidProviderType,
         ]
+    }
+
+    private func droidDisplayName(for model: RoutingClientAdvertisedModel) -> String {
+        let trimmedDisplayName = model.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseName = trimmedDisplayName.isEmpty ? model.id : trimmedDisplayName
+        let sourceName = droidSourceDisplayName(for: model)
+        if baseName.localizedCaseInsensitiveContains(sourceName) {
+            return "OBB \(baseName)"
+        }
+        return "OBB \(baseName) \(sourceName)"
+    }
+
+    private func droidSourceDisplayName(for model: RoutingClientAdvertisedModel) -> String {
+        let providerID = model.providerID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let providerName = model.providerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourceText = "\(providerID) \(providerName)".lowercased()
+
+        if sourceText.contains("opencode") { return "OpenCode" }
+        if sourceText.contains("ollama") { return "Ollama Cloud" }
+        if sourceText.contains("factory") || sourceText.contains("droid") { return "Factory" }
+
+        return "Direct"
     }
 
     private func droidCustomModelID(
@@ -1155,6 +1177,7 @@ struct RoutingClientWiring {
             || id?.hasPrefix("openburnbar:") == true
             || id?.contains("vibeproxy") == true
             || displayName?.hasPrefix("openburnbar ") == true
+            || displayName?.hasPrefix("obb ") == true
             || displayName?.contains("vibeproxy") == true
             || model?.hasPrefix("openburnbar:") == true
             || ((provider == "openai"

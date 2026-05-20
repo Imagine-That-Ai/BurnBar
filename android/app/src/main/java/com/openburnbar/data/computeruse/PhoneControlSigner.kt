@@ -29,6 +29,7 @@ data class PhoneControlIntent(
     val text: String? = null,
     val key: String? = null,
     val modifiers: List<String>? = null,
+    val clientIntentId: String? = null,
 )
 
 data class PhoneControlAuthorityEnvelope(
@@ -159,6 +160,7 @@ object PhoneControlSigner {
 
     fun canonicalIntentJson(intent: PhoneControlIntent): String {
         val fields = linkedMapOf<String, String>()
+        intent.clientIntentId?.let { fields["clientIntentId"] = quote(it) }
         fields["kind"] = quote(intent.kind.wireValue)
         intent.key?.let { fields["key"] = quote(it) }
         intent.modifiers?.let { fields["modifiers"] = it.joinToString(prefix = "[", postfix = "]") { item -> quote(item) } }

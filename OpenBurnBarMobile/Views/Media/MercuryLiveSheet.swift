@@ -2,6 +2,7 @@ import SwiftUI
 import OpenBurnBarCore
 import OpenBurnBarMedia
 import FirebaseAuth
+import OSLog
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -19,9 +20,16 @@ import UIKit
 /// closure that updates the sheet's `lastAck` banner.
 @MainActor
 struct MercuryLiveSheet: View {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "Mercury")
+    private static func debugTrace(_ message: String) {
+        #if DEBUG
+        NSLog("OpenBurnBarMercury \(message)")
+        #endif
+    }
+
     let connectionID: String
     let peer: MercuryPeer
-    let controlStreamCoordinator: MediaControlStreamCoordinator
+    @ObservedObject var controlStreamCoordinator: MediaControlStreamCoordinator
     /// Optional — when present, "Send File…" is enabled. Looked up
     /// from `iOSFileTransferService.current` at presentation time.
     let fileTransferService: iOSFileTransferService?
@@ -33,6 +41,10 @@ struct MercuryLiveSheet: View {
     @State private var isShowingFileImporter = false
     @State private var sendingFile = false
     @State private var pulseTrigger = false
+    @State private var isShowingMirrorViewer = false
+    @State private var mirrorTimeoutTask: Task<Void, Never>?
+    @StateObject private var screenShareViewer = ScreenShareViewerCoordinator()
+    @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
 
@@ -52,6 +64,13 @@ struct MercuryLiveSheet: View {
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
             }
+            Divider()
+            Toggle(isOn: $mercuryPinnedTileEnabled) {
+                Text("Show My Mac on Hermes Square")
+                    .font(.subheadline)
+            }
+            .toggleStyle(.switch)
+            .accessibilityLabel("Show My Mac tile on Hermes Square pinned grid")
             Spacer(minLength: 0)
         }
         .padding(28)
@@ -65,6 +84,7 @@ struct MercuryLiveSheet: View {
         )
         .padding(20)
         .onAppear {
+            Self.debugTrace("mirror_sheet_appear connectionID=\(connectionID) peerOnline=\(peer.isOnline) phase=\(String(describing: controlStreamCoordinator.phase))")
             if !reduceMotion { pulseTrigger.toggle() }
             installAckHandler()
         }
@@ -72,7 +92,16 @@ struct MercuryLiveSheet: View {
             // Don't permanently remove — `HermesSquareRoot` may have
             // installed a longer-lived handler. Only clear our pending
             // banner state.
+            mirrorTimeoutTask?.cancel()
+            mirrorTimeoutTask = nil
             awaitingRequestID = nil
+            controlStreamCoordinator.mirrorFrameHandler = nil
+        }
+        .fullScreenCover(isPresented: $isShowingMirrorViewer) {
+            MercuryMirrorViewerFullScreen(
+                coordinator: screenShareViewer,
+                onClose: { isShowingMirrorViewer = false }
+            )
         }
         .fileImporter(
             isPresented: $isShowingFileImporter,
@@ -124,14 +153,34 @@ struct MercuryLiveSheet: View {
             Button {
                 Task { await requestMirror() }
             } label: {
-                Label("Ask to Mirror", systemImage: "rectangle.on.rectangle.angled")
+                Label(
+                    awaitingRequestID == nil ? "Ask to Mirror" : "Waiting for Mac...",
+                    systemImage: awaitingRequestID == nil ? "rectangle.on.rectangle.angled" : "hourglass"
+                )
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .tint(Self.mercuryGray)
-            .disabled(peer.canRequestMirror == false || awaitingRequestID != nil)
+            .disabled(!canRequestMirror)
             .accessibilityLabel("Ask to mirror Mac screen")
+
+            if awaitingRequestID != nil {
+                Text("Request sent. Check your Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else if let status = mercuryStatusMessage {
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else if !peer.isOnline {
+                Text("Mercury is still connecting. Ask will wait for the Mac and show the real error if it cannot connect.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
 
             Button {
                 Task { await placeCall() }
@@ -195,6 +244,31 @@ struct MercuryLiveSheet: View {
         }
     }
 
+    private var canRequestMirror: Bool {
+        awaitingRequestID == nil
+            && peer.isOnline
+            && peer.capabilities.contains(.mirrorHost)
+            && controlStreamCoordinator.phase == .live
+    }
+
+    private var mercuryStatusMessage: String? {
+        if !peer.capabilities.contains(.mirrorHost) {
+            return "This Mac is not advertising screen mirroring yet."
+        }
+        switch controlStreamCoordinator.phase {
+        case .live:
+            return peer.isOnline ? nil : "Mercury is connected, but the Mac presence is still catching up."
+        case .idle, .dialing:
+            return "Mercury is connecting to your Mac..."
+        case .reconnecting:
+            return "Mercury lost the Mac connection and is reconnecting..."
+        case .failed(let reason):
+            return "Mercury unavailable: \(reason)"
+        case .stopped:
+            return "Mercury is stopped. Reopen BurnBar on the Mac, then try again."
+        }
+    }
+
     // MARK: - Actions
 
     private func installAckHandler() {
@@ -202,15 +276,27 @@ struct MercuryLiveSheet: View {
             await MainActor.run {
                 self.lastAck = ack
                 if ack.requestId == self.awaitingRequestID {
+                    self.mirrorTimeoutTask?.cancel()
+                    self.mirrorTimeoutTask = nil
                     self.awaitingRequestID = nil
                 }
+                if ack.decision == .accepted {
+                    self.isShowingMirrorViewer = true
+                }
             }
+        }
+        controlStreamCoordinator.mirrorFrameHandler = { frame in
+            await screenShareViewer.ingest(frame: frame)
         }
     }
 
     private func requestMirror() async {
         guard let uid = uidProvider(), !uid.isEmpty else {
             lastError = "Sign in to mirror your Mac."
+            return
+        }
+        guard canRequestMirror else {
+            lastError = mercuryStatusMessage ?? "Mercury is not ready yet."
             return
         }
         let requestID = UUID().uuidString
@@ -231,10 +317,27 @@ struct MercuryLiveSheet: View {
             media: HermesRealtimeRelayMediaPayload(mirrorRequest: request)
         )
         do {
+            Self.log.info("mirror_request_send requestID=\(requestID, privacy: .public) connectionID=\(connectionID, privacy: .public)")
+            Self.debugTrace("mirror_request_send requestID=\(requestID) connectionID=\(connectionID)")
             try await controlStreamCoordinator.send(frame: frame)
+            Self.log.info("mirror_request_sent requestID=\(requestID, privacy: .public) connectionID=\(connectionID, privacy: .public)")
+            Self.debugTrace("mirror_request_sent requestID=\(requestID) connectionID=\(connectionID)")
+            startMirrorAckTimeout(requestID: requestID)
         } catch {
+            Self.log.error("mirror_request_send_failed requestID=\(requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.debugTrace("mirror_request_send_failed requestID=\(requestID) error=\(error.localizedDescription)")
             lastError = error.localizedDescription
             awaitingRequestID = nil
+        }
+    }
+
+    private func startMirrorAckTimeout(requestID: String) {
+        mirrorTimeoutTask?.cancel()
+        mirrorTimeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            guard !Task.isCancelled, awaitingRequestID == requestID else { return }
+            awaitingRequestID = nil
+            lastError = "No response from the Mac. Reopen BurnBar on the Mac, confirm Local Network is enabled, then try Ask to Mirror again."
         }
     }
 
@@ -290,5 +393,26 @@ struct MercuryLiveSheet: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+    }
+}
+
+private struct MercuryMirrorViewerFullScreen: View {
+    @ObservedObject var coordinator: ScreenShareViewerCoordinator
+    let onClose: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            ScreenShareViewerView(coordinator: coordinator)
+            Button(action: onClose) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 32, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.white)
+                    .shadow(radius: 6)
+                    .padding(18)
+            }
+            .accessibilityLabel("Close mirror viewer")
+        }
+        .background(Color.black.ignoresSafeArea())
     }
 }

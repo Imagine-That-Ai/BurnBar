@@ -6,8 +6,26 @@ import SwiftUI
 struct IncomingCallSheet: View {
     let pairedDeviceName: String
     let initial: String
+    let subtitle: String
+    let actionNoun: String
     let onAccept: () -> Void
     let onDecline: () -> Void
+
+    init(
+        pairedDeviceName: String,
+        initial: String,
+        subtitle: String = "Pair-debug call",
+        actionNoun: String = "call",
+        onAccept: @escaping () -> Void,
+        onDecline: @escaping () -> Void
+    ) {
+        self.pairedDeviceName = pairedDeviceName
+        self.initial = initial
+        self.subtitle = subtitle
+        self.actionNoun = actionNoun
+        self.onAccept = onAccept
+        self.onDecline = onDecline
+    }
 
     @State private var pulseTrigger: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -32,11 +50,11 @@ struct IncomingCallSheet: View {
                         .accessibilityHidden(true)
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Incoming call from \(pairedDeviceName)")
+                .accessibilityLabel("Incoming \(actionNoun) from \(pairedDeviceName)")
 
                 Text(pairedDeviceName)
                     .font(.system(size: 20, weight: .semibold))
-                Text("Pair-debug call")
+                Text(subtitle)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -51,7 +69,7 @@ struct IncomingCallSheet: View {
                 .buttonStyle(.bordered)
                 .controlSize(.large)
                 .tint(.red)
-                .accessibilityLabel("Decline call from \(pairedDeviceName)")
+                .accessibilityLabel("Decline \(actionNoun) from \(pairedDeviceName)")
                 .keyboardShortcut(.escape, modifiers: [])
 
                 Button {
@@ -63,7 +81,7 @@ struct IncomingCallSheet: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .tint(Color(red: 0.63, green: 0.67, blue: 0.73))
-                .accessibilityLabel("Accept call from \(pairedDeviceName)")
+                .accessibilityLabel("Accept \(actionNoun) from \(pairedDeviceName)")
                 .keyboardShortcut(.defaultAction)
             }
         }

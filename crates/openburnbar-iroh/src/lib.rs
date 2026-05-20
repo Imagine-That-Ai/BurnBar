@@ -123,14 +123,14 @@ pub struct IrohAcceptOptions {
 /// can keep the send/recv halves alive across UniFFI boundaries.
 #[derive(uniffi::Object)]
 pub struct IrohStream {
-    inner: Mutex<Option<IrohStreamInner>>,
+    /// Keep the QUIC connection alive while the send/recv halves are held by
+    /// separate locks. Do not use one mutex for the whole stream: `recv_frame`
+    /// intentionally blocks while waiting for remote data, and phone-control
+    /// must still be able to write approval/input frames during that wait.
+    conn: Mutex<Option<iroh::endpoint::Connection>>,
+    send: Mutex<Option<iroh::endpoint::SendStream>>,
+    recv: Mutex<Option<iroh::endpoint::RecvStream>>,
     runtime_handle: tokio::runtime::Handle,
-}
-
-struct IrohStreamInner {
-    _conn: iroh::endpoint::Connection,
-    send: iroh::endpoint::SendStream,
-    recv: iroh::endpoint::RecvStream,
 }
 
 #[uniffi::export]
@@ -140,20 +140,18 @@ impl IrohStream {
     pub fn send_frame(self: Arc<Self>, frame: Vec<u8>) -> Result<(), IrohFfiError> {
         let runtime_handle = self.runtime_handle.clone();
         runtime_handle.block_on(async move {
-            let mut guard = self.inner.lock().await;
-            let inner = guard.as_mut().ok_or(IrohFfiError::EndpointNotInitialized)?;
+            let mut guard = self.send.lock().await;
+            let send = guard.as_mut().ok_or(IrohFfiError::EndpointNotInitialized)?;
             let length = frame.len() as u32;
-            inner
-                .send
+            send
                 .write_all(&length.to_be_bytes())
                 .await
                 .map_err(IrohFfiError::stream)?;
-            inner
-                .send
+            send
                 .write_all(&frame)
                 .await
                 .map_err(IrohFfiError::stream)?;
-            inner.send.flush().await.map_err(IrohFfiError::stream)?;
+            send.flush().await.map_err(IrohFfiError::stream)?;
             Ok(())
         })
     }
@@ -163,18 +161,17 @@ impl IrohStream {
     pub fn recv_frame(self: Arc<Self>) -> Result<Option<Vec<u8>>, IrohFfiError> {
         let runtime_handle = self.runtime_handle.clone();
         runtime_handle.block_on(async move {
-            let mut guard = self.inner.lock().await;
-            let inner = guard.as_mut().ok_or(IrohFfiError::EndpointNotInitialized)?;
+            let mut guard = self.recv.lock().await;
+            let recv = guard.as_mut().ok_or(IrohFfiError::EndpointNotInitialized)?;
             let mut len_buf = [0u8; 4];
-            match inner.recv.read_exact(&mut len_buf).await {
+            match recv.read_exact(&mut len_buf).await {
                 Ok(_) => {}
                 Err(iroh::endpoint::ReadExactError::FinishedEarly(0)) => return Ok(None),
                 Err(err) => return Err(IrohFfiError::stream(err)),
             }
             let length = u32::from_be_bytes(len_buf) as usize;
             let mut payload = vec![0u8; length];
-            inner
-                .recv
+            recv
                 .read_exact(&mut payload)
                 .await
                 .map_err(IrohFfiError::stream)?;
@@ -186,12 +183,12 @@ impl IrohStream {
     pub fn close_stream(self: Arc<Self>) -> Result<(), IrohFfiError> {
         let runtime_handle = self.runtime_handle.clone();
         runtime_handle.block_on(async move {
-            let mut guard = self.inner.lock().await;
-            if let Some(inner) = guard.take() {
-                let mut send = inner.send;
+            if let Some(mut send) = self.send.lock().await.take() {
                 let _ = send.finish();
                 let _ = send.stopped().await;
             }
+            let _ = self.recv.lock().await.take();
+            let _ = self.conn.lock().await.take();
             Ok(())
         })
     }
@@ -403,11 +400,9 @@ impl IrohEndpointHandle {
                 detail: "iroh connect timed out".into(),
             })??;
             Ok(Arc::new(IrohStream {
-                inner: Mutex::new(Some(IrohStreamInner {
-                    _conn: conn,
-                    send,
-                    recv,
-                })),
+                conn: Mutex::new(Some(conn)),
+                send: Mutex::new(Some(send)),
+                recv: Mutex::new(Some(recv)),
                 runtime_handle: stream_runtime_handle,
             }))
         })
@@ -454,11 +449,9 @@ impl IrohEndpointHandle {
                 detail: "iroh accept timed out".into(),
             })??;
             Ok(Arc::new(IrohStream {
-                inner: Mutex::new(Some(IrohStreamInner {
-                    _conn: conn,
-                    send,
-                    recv,
-                })),
+                conn: Mutex::new(Some(conn)),
+                send: Mutex::new(Some(send)),
+                recv: Mutex::new(Some(recv)),
                 runtime_handle: stream_runtime_handle,
             }))
         })
