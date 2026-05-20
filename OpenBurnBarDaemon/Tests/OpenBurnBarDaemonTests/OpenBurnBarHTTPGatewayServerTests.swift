@@ -2002,7 +2002,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/messages",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"shared-claude-model","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+            body: Data(#"{"model":"anth-alpha/shared-claude-model","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
         )
 
         XCTAssertEqual(response.statusCode, 503)
@@ -3181,6 +3181,81 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
+    func testGatewayResponsesFailClosedWhenExactModelFallbackIsExhausted() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["shared-code-model"], times: 2)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"error":{"message":"rate limit exceeded","type":"rate_limit_error","code":"rate_limit_exceeded"}}"#
+        )
+
+        let harness = try GatewayHarness(
+            catalog: capabilityClassGatewayCatalog(),
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await configureCapabilityClassProviders(harness: harness)
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/responses",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"shared-code-model","input":"hi"}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).localizedCaseInsensitiveContains("no exact same-model fallback"))
+        let responseRequests = GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/responses" }
+        XCTAssertEqual(responseRequests.count, 1)
+    }
+
+    func testGatewayChatFailsClosedWhenExactCanonicalIdentityIsMissing() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["gpt-5-family"], times: 2)
+
+        let harness = try GatewayHarness(
+            catalog: ambiguousFamilyGatewayCatalog(),
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["gpt-5-family"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "alpha",
+            slotID: "primary",
+            label: "Alpha Family",
+            apiKey: "alpha-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"gpt-5-family","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).localizedCaseInsensitiveContains("canonical model identity"))
+        XCTAssertTrue(GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/chat/completions" }.isEmpty)
+    }
+
     func testGatewayRoutesWithinSameClassWhenCatalogDeclaresMultipleSameClassProviders() async throws {
         let pro = BurnBarCatalogModel(
             id: "alpha-pro",
@@ -3281,7 +3356,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             label: "Alt Pro",
             apiKey: "sk-alt-key"
         )
-        try await harness.configStore.setRouterMode(.providerFamilyFailover)
+        try await harness.configStore.setRouterMode(.sameModelFailover)
         try await harness.start()
         defer { Task { await harness.stop() } }
 
@@ -3341,6 +3416,33 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
                     visibility: .public,
                     capabilities: [.routing],
                     models: [base]
+                )
+            ]
+        )
+    }
+
+    private func ambiguousFamilyGatewayCatalog() -> BurnBarCatalog {
+        let family = BurnBarCatalogModel(
+            id: "gpt-5-family",
+            displayName: "GPT-5 Family",
+            visibility: .public,
+            aliases: [],
+            matchers: [
+                BurnBarModelMatcher(all: ["gpt", "5"], any: [], none: [])
+            ],
+            pricing: BurnBarModelPricing(inputPerMToken: 1, outputPerMToken: 2, cacheReadPerMToken: 0.1),
+            capabilityClassID: "openai:standard"
+        )
+        return BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://gateway-upstream.test/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [family]
                 )
             ]
         )
