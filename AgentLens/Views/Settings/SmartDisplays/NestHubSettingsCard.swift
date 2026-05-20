@@ -653,7 +653,7 @@ private struct NestHubProviderChipRow: View {
     let toggle: (AgentProvider) -> Void
 
     var body: some View {
-        let columns = [GridItem(.adaptive(minimum: 88), spacing: DesignSystem.Spacing.sm)]
+        let columns = [GridItem(.adaptive(minimum: 100), spacing: DesignSystem.Spacing.sm)]
         LazyVGrid(columns: columns, alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             ForEach(providers, id: \.self) { provider in
                 NestHubProviderChip(
@@ -680,6 +680,8 @@ private struct NestHubProviderChip: View {
                 Text(shortLabel)
                     .font(DesignSystem.Typography.tiny)
                     .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .foregroundStyle(isSelected
                 ? DesignSystem.Colors.textPrimary
@@ -711,17 +713,32 @@ private struct NestHubProviderChip: View {
 
     private var shortLabel: String {
         switch provider {
-        case .claudeCode: return "Claude"
-        case .factory:    return "Factory"
-        case .codex:      return "Codex"
-        case .copilot:    return "Copilot"
-        case .minimax:    return "MiniMax"
-        case .zai:        return "Z.ai"
-        case .cursor:     return "Cursor"
-        case .warp:       return "Warp"
-        case .ollama:     return "Ollama"
-        case .kimi:       return "Kimi"
-        default:          return provider.rawValue
+        case .claudeCode:   return "Claude"
+        case .factory:      return "Factory"
+        case .codex:        return "Codex"
+        case .copilot:      return "Copilot"
+        case .minimax:      return "MiniMax"
+        case .zai:          return "Z.ai"
+        case .cursor:       return "Cursor"
+        case .warp:         return "Warp"
+        case .ollama:       return "Ollama"
+        case .kimi:         return "Kimi"
+        case .openAI:       return "OpenAI"
+        case .openCode:     return "OpenCode"
+        case .deepSeek:     return "DeepSeek"
+        case .aider:        return "Aider"
+        case .cline:        return "Cline"
+        case .kiloCode:     return "KiloCode"
+        case .rooCode:      return "RooCode"
+        case .forgeDev:     return "ForgeDev"
+        case .augment:      return "Augment"
+        case .hermes:       return "Hermes"
+        case .piAgent:      return "Pi Agent"
+        case .geminiCLI:    return "Gemini"
+        case .antigravity:  return "Antigravity"
+        case .goose:        return "Goose"
+        case .openClaw:     return "OpenClaw"
+        case .windsurf:     return "Windsurf"
         }
     }
 }

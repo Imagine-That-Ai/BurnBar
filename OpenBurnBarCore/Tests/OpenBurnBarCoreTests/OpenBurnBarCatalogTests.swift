@@ -105,6 +105,65 @@ final class BurnBarCatalogTests: XCTestCase {
         )
     }
 
+    func test_canonicalModelID_usesDirectIDsAndExactFamilyAliasesOnly() {
+        let catalog = BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "openai",
+                    displayName: "OpenAI",
+                    baseURL: "https://api.openai.com/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [
+                        BurnBarCatalogModel(
+                            id: "gpt-5.4",
+                            displayName: "GPT-5.4",
+                            visibility: .public,
+                            matchers: [
+                                BurnBarModelMatcher(all: ["gpt-5.4"], none: ["mini", "pro"])
+                            ],
+                            pricing: .defaultFallback,
+                            capabilityClassID: "openai:standard"
+                        ),
+                        BurnBarCatalogModel(
+                            id: "gpt-5.4-mini",
+                            displayName: "GPT-5.4 Mini",
+                            visibility: .public,
+                            aliases: ["gpt-5.4-small"],
+                            pricing: .defaultFallback,
+                            capabilityClassID: "openai:standard"
+                        )
+                    ]
+                ),
+                BurnBarCatalogProvider(
+                    id: "factory",
+                    displayName: "Factory",
+                    baseURL: "https://factory.ai",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [
+                        BurnBarCatalogModel(
+                            id: "factory-gpt-5.4-family",
+                            displayName: "GPT-5.4 via Factory",
+                            visibility: .public,
+                            aliases: ["gpt-5.4"],
+                            pricing: .defaultFallback,
+                            capabilityClassID: "openai:standard"
+                        )
+                    ]
+                )
+            ]
+        )
+
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.4"), "gpt-5.4")
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.4-small", providerID: "openai"), "gpt-5.4-mini")
+        XCTAssertNil(
+            catalog.canonicalModelID(forModelName: "gpt-5.4-pro", providerID: "openai"),
+            "Matcher-only similarity must not prove exact model identity."
+        )
+    }
+
     func test_bundledCatalog_hasCapabilityClassesForAnthropicModels() {
         let catalog = BurnBarCatalogLoader.bundledCatalog
         XCTAssertEqual(catalog.capabilityClassID(forModelName: "claude-opus-4-7", providerID: "anthropic"), "anthropic:opus")

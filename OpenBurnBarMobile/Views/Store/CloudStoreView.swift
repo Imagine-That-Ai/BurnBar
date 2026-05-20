@@ -1071,28 +1071,7 @@ private struct CloudStoreNativeSubscriptionStore: View {
 
     var body: some View {
         SubscriptionStoreView(productIDs: HostedQuotaSubscriptionStore.appStoreReviewVisibleProductIDs) {
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
-                Text("OpenBurnBar subscriptions")
-                    .font(MobileTheme.Typography.headline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-
-                Text("All App Store Connect subscriptions for this app are available here, billed monthly by Apple, and restorable from this screen.")
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
-                    ForEach(CloudSubscriptionDisclosure.reviewVisiblePlans, id: \.self) { plan in
-                        Text(plan)
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(.top, MobileTheme.Spacing.xs)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            EmptyView()
         }
         .subscriptionStoreControlStyle(.buttons)
         .storeButton(.visible, for: .restorePurchases)

@@ -30,14 +30,12 @@ struct MenuBarPopoverView: View {
     @State private var isCastingSmartHub = false
     @State private var smartHubCastStatusMessage: String?
     @State private var resizingStartSize: CGSize?
+    @State private var hoveredSectionID: String? = nil
 
     @AppStorage("popoverTrayWidth") private var storedPopoverTrayWidth = 340.0
     @AppStorage("popoverTrayHeight") private var storedPopoverTrayHeight = 540.0
     @AppStorage("popoverTraySectionOrder") private var storedPopoverTraySectionOrder = ""
-    @AppStorage("popoverTraySectionHeights") private var storedPopoverTraySectionHeights = ""
-
-    @State private var trayDividerDraggingIndex: Int? = nil
-    @State private var trayDividerStartHeights: [String: Double] = [:]
+    @AppStorage("hasResetScrambledPopoverLayoutV2") private var hasResetScrambledPopoverLayoutV2 = false
 
     private var isScanning: Bool { aggregator?.isRefreshing ?? false }
 
@@ -51,6 +49,10 @@ struct MenuBarPopoverView: View {
 
     private var popoverViewportHeight: CGFloat {
         clampPopoverHeight(CGFloat(storedPopoverTrayHeight))
+    }
+
+    private var popoverScrollMaxHeight: CGFloat {
+        max(popoverViewportHeight - 285, 210)
     }
 
     private var availableTraySections: [PopoverTraySection] {
@@ -74,34 +76,6 @@ struct MenuBarPopoverView: View {
             .filter { available.contains($0) }
         let appended = decoded + available.filter { !decoded.contains($0) }
         return appended.isEmpty ? available : appended
-    }
-
-    private func parseSectionHeights() -> [String: Double] {
-        storedPopoverTraySectionHeights
-            .split(separator: ",", omittingEmptySubsequences: true)
-            .compactMap { pair -> (String, Double)? in
-                let parts = pair.split(separator: ":", omittingEmptySubsequences: false)
-                guard parts.count == 2, let value = Double(parts[1]) else { return nil }
-                return (String(parts[0]), value)
-            }
-            .reduce(into: [String: Double]()) { $0[$1.0] = $1.1 }
-    }
-
-    private func sectionHeight(for section: PopoverTraySection) -> Double {
-        parseSectionHeights()[section.rawValue] ?? section.defaultHeight
-    }
-
-    private func clampSectionHeight(_ height: Double, for section: PopoverTraySection) -> Double {
-        min(max(height, section.minHeight), section.maxHeight)
-    }
-
-    private func updateSectionHeight(_ section: PopoverTraySection, height: Double) {
-        var heights = parseSectionHeights()
-        heights[section.rawValue] = clampSectionHeight(height, for: section)
-        storedPopoverTraySectionHeights = heights
-            .map { "\($0.key):\($0.value)" }
-            .sorted()
-            .joined(separator: ",")
     }
 
     private var menuBarSparklineSeries: [Double] {
@@ -199,8 +173,13 @@ struct MenuBarPopoverView: View {
                     )
                     Divider().background(DesignSystem.Colors.border)
 
-                    trayContent
-                        .frame(width: popoverWidth)
+                    ScrollView(.vertical, showsIndicators: true) {
+                        trayContent
+                    }
+                    .frame(width: popoverWidth)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .clipped()
 
                     Divider().background(DesignSystem.Colors.border)
                     cloudWhisperStrip
@@ -230,6 +209,11 @@ struct MenuBarPopoverView: View {
             }
         }
         .onAppear {
+            if !hasResetScrambledPopoverLayoutV2 {
+                storedPopoverTrayHeight = 540.0
+                storedPopoverTraySectionOrder = ""
+                hasResetScrambledPopoverLayoutV2 = true
+            }
             clampStoredPopoverSize()
             Task { @MainActor in
                 listAppeared = true
@@ -255,52 +239,29 @@ struct MenuBarPopoverView: View {
         VStack(spacing: 0) {
             let sections = orderedTraySections
             ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-                let isLast = index == sections.count - 1
                 traySection(section)
-                    .frame(height: CGFloat(sectionHeight(for: section)), alignment: .top)
-                    .overlay(alignment: .topTrailing) {
-                        trayReorderControls(for: section, at: index, totalCount: sections.count)
-                    }
-
-                if !isLast {
-                    let below = sections[index + 1]
-                    SectionResizeHandle(
-                        index: index,
-                        isDragging: trayDividerDraggingIndex == index,
-                        onDragDelta: { delta in
-                            let key = section.rawValue
-                            let belowKey = below.rawValue
-                            if trayDividerDraggingIndex != index {
-                                trayDividerDraggingIndex = index
-                                var starts = parseSectionHeights()
-                                if starts[key] == nil { starts[key] = section.defaultHeight }
-                                if starts[belowKey] == nil { starts[belowKey] = below.defaultHeight }
-                                trayDividerStartHeights = starts
-                            }
-                            let aboveCurrent = sectionHeight(for: section)
-                            let belowCurrent = sectionHeight(for: below)
-                            let proposedAbove = aboveCurrent + Double(delta)
-                            let clampedAbove = clampSectionHeight(proposedAbove, for: section)
-                            let actualDelta = clampedAbove - aboveCurrent
-                            let proposedBelow = belowCurrent - actualDelta
-                            let clampedBelow = clampSectionHeight(proposedBelow, for: below)
-                            updateSectionHeight(section, height: clampedAbove)
-                            updateSectionHeight(below, height: clampedBelow)
-                        },
-                        onDragEnded: {
-                            trayDividerDraggingIndex = nil
-                            trayDividerStartHeights = [:]
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        withAnimation(.easeInOut(duration: 0.12)) {
+                            hoveredSectionID = hovering ? section.id : nil
                         }
-                    )
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if hoveredSectionID == section.id {
+                            trayReorderControls(for: section, at: index, totalCount: sections.count)
+                                .transition(.opacity)
+                        }
+                    }
+                if index < sections.count - 1 {
+                    Divider().background(DesignSystem.Colors.border)
                 }
             }
         }
         .animation(DesignSystem.Animation.snappy, value: orderedTraySections)
-        .animation(DesignSystem.Animation.gentle, value: storedPopoverTraySectionHeights)
     }
 
     @ViewBuilder
-    private func traySectionContent(_ section: PopoverTraySection) -> some View {
+    private func traySection(_ section: PopoverTraySection) -> some View {
         switch section {
         case .insights:
             InsightCardView(
@@ -365,18 +326,6 @@ struct MenuBarPopoverView: View {
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func traySection(_ section: PopoverTraySection) -> some View {
-        if section.isScrollable {
-            ScrollView(.vertical, showsIndicators: true) {
-                traySectionContent(section)
-            }
-            .clipped()
-        } else {
-            traySectionContent(section)
         }
     }
 
@@ -478,7 +427,7 @@ struct MenuBarPopoverView: View {
     private func clampPopoverHeight(_ height: CGFloat) -> CGFloat {
         let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
         let maxHeight = min(max(screenHeight * 0.86, 500), 760)
-        return min(max(height, 420), maxHeight)
+        return min(max(height, 500), maxHeight)
     }
 
     // MARK: - Header
@@ -1136,119 +1085,6 @@ private enum PopoverTraySection: String, CaseIterable, Identifiable {
         case .quickSwitch:
             return "Quick Switch"
         }
-    }
-
-    var defaultHeight: Double {
-        switch self {
-        case .insights: return 64
-        case .summary: return 120
-        case .providers: return 200
-        case .mercury: return 60
-        case .chat: return 60
-        case .quickSwitch: return 80
-        }
-    }
-
-    var minHeight: Double {
-        switch self {
-        case .insights: return 40
-        case .summary: return 80
-        case .providers: return 80
-        case .mercury: return 44
-        case .chat: return 44
-        case .quickSwitch: return 44
-        }
-    }
-
-    var maxHeight: Double { 400 }
-
-    /// Sections with variable-length content that should scroll internally
-    /// when constrained to a fixed height.
-    var isScrollable: Bool {
-        switch self {
-        case .providers: return true
-        case .summary: return true
-        default: return false
-        }
-    }
-}
-
-// MARK: - Section Resize Handle (NSView-backed)
-//
-// SwiftUI DragGesture is unreliable inside NSPopover — AppKit's event routing
-// swallows mouse events before SwiftUI's gesture recognizers see them.
-// This handle uses a custom NSView that intercepts mouseDown/mouseDragged/mouseUp
-// directly at the responder-chain level, guaranteeing reliable drag behavior.
-
-struct SectionResizeHandle: View {
-    let index: Int
-    let isDragging: Bool
-    let onDragDelta: (CGFloat) -> Void
-    let onDragEnded: () -> Void
-
-    var body: some View {
-        _SectionResizeHandleNSViewRepresentable(
-            onDragDelta: onDragDelta,
-            onDragEnded: onDragEnded
-        )
-        .frame(height: 14)
-        .overlay(alignment: .center) {
-            RoundedRectangle(cornerRadius: 1)
-                .fill(isDragging ? DesignSystem.Colors.textPrimary.opacity(0.7) : DesignSystem.Colors.textMuted.opacity(0.35))
-                .frame(width: 24, height: isDragging ? 3 : 2)
-        }
-    }
-}
-
-private struct _SectionResizeHandleNSViewRepresentable: NSViewRepresentable {
-    let onDragDelta: (CGFloat) -> Void
-    let onDragEnded: () -> Void
-
-    func makeNSView(context: Context) -> _ResizeHandleNSView {
-        let view = _ResizeHandleNSView()
-        view.onDragDelta = onDragDelta
-        view.onDragEnded = onDragEnded
-        return view
-    }
-
-    func updateNSView(_ nsView: _ResizeHandleNSView, context: Context) {
-        nsView.onDragDelta = onDragDelta
-        nsView.onDragEnded = onDragEnded
-    }
-}
-
-private final class _ResizeHandleNSView: NSView {
-    var onDragDelta: ((CGFloat) -> Void)?
-    var onDragEnded: (() -> Void)?
-    private var lastY: CGFloat?
-
-    override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: 14) }
-
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .resizeUpDown)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        lastY = event.locationInWindow.y
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let prevY = lastY else { return }
-        let currentY = event.locationInWindow.y
-        // In macOS, Y increases upward; dragging the divider down increases Y.
-        // But we want dragging down to increase the section above (which means
-        // a positive delta in SwiftUI coordinates where y increases downward).
-        // So delta = previousY - currentY = up movement = negative = shrink above.
-        // Wait: dragging the divider DOWN means currentY < prevY, so prevY - currentY > 0,
-        // which means the section above should grow. That's correct.
-        let delta = prevY - currentY
-        onDragDelta?(delta)
-        lastY = event.locationInWindow.y
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        lastY = nil
-        onDragEnded?()
     }
 }
 

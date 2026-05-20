@@ -446,9 +446,9 @@ final class BurnBarConfigStoreTests: XCTestCase {
     func testRouterModePersistsAndLegacySnapshotsDefaultSafely() async throws {
         let harness = try makeHarness(name: "router-mode")
 
-        try await harness.configStore.setRouterMode(.intelligentModelRouter)
+        try await harness.configStore.setRouterMode(.sameModelFailover)
         let updated = try await harness.configStore.snapshot()
-        XCTAssertEqual(updated.routerMode, .intelligentModelRouter)
+        XCTAssertEqual(updated.routerMode, .sameModelFailover)
 
         let legacyJSON = """
         {
@@ -457,6 +457,18 @@ final class BurnBarConfigStoreTests: XCTestCase {
         """.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(BurnBarProviderConfigurationSnapshot.self, from: legacyJSON)
         XCTAssertEqual(decoded.routerMode, .providerFamilyFailover)
+
+        let legacyIntelligentJSON = """
+        {
+          "providers": [],
+          "routerMode": "intelligent_model_router"
+        }
+        """.data(using: .utf8)!
+        let legacyIntelligent = try JSONDecoder().decode(
+            BurnBarProviderConfigurationSnapshot.self,
+            from: legacyIntelligentJSON
+        )
+        XCTAssertEqual(legacyIntelligent.routerMode, .sameModelFailover)
     }
 
     private func makeHarness(name: String) throws -> BurnBarConfigStoreHarness {

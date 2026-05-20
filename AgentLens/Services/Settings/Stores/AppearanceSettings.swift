@@ -15,6 +15,12 @@ final class AppearanceSettings {
         didSet { persistence.set(showInMenuBar, forKey: "showInMenuBar") }
     }
 
+    /// When `true`, the menu bar icon renders in full color instead of the
+    /// monochrome template style that adapts to system light/dark mode.
+    var colorfulMenuBarIcon: Bool = false {
+        didSet { persistence.set(colorfulMenuBarIcon, forKey: "colorfulMenuBarIcon") }
+    }
+
     var preferredSwiftUIColorScheme: ColorScheme? {
         appearanceMode.colorScheme
     }
@@ -31,5 +37,6 @@ final class AppearanceSettings {
         }
         let hasLaunched = persistence.bool(forKey: "hasLaunchedBefore")
         self.showInMenuBar = hasLaunched ? persistence.bool(forKey: "showInMenuBar") : true
+        self.colorfulMenuBarIcon = persistence.bool(forKey: "colorfulMenuBarIcon")
     }
 }

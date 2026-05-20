@@ -25,7 +25,8 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     OPEN_CLAW("openclaw", "OpenClaw", 0xFFFF6B6B, 0xFFF472B6),
     OLLAMA("ollama", "Ollama", 0xFF6B7280, 0xFF9CA3AF),
     WINDSURF("windsurf", "Windsurf", 0xFF06B6D4, 0xFF22D3EE),
-    WARP("warp", "Warp", 0xFFDDE4EA, 0xFF111111);
+    WARP("warp", "Warp", 0xFFDDE4EA, 0xFF111111),
+    ANTIGRAVITY("antigravity", "Antigravity", 0xFF6C63FF, 0xFF8F8AFF);
 
     companion object {
         /**
@@ -70,6 +71,8 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
             "gemini"        to GEMINI_CLI,
             "google"        to GEMINI_CLI,
             "googleai"      to GEMINI_CLI,
+            "antigravitycli" to ANTIGRAVITY,
+            "antigravity-cli" to ANTIGRAVITY,
             // Misc shorthand
             "minmax"        to MINIMAX,
             "rooclaw"       to OPEN_CLAW,

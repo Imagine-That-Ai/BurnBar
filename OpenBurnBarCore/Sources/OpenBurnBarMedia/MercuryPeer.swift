@@ -42,19 +42,22 @@ public struct MercuryPeer: Hashable, Sendable, Codable {
     /// default set when the peer is verifiably online via another
     /// channel.
     public let capabilities: Set<Feature>
+    public let blurredWallpaperBase64: String?
 
     public init(
         connectionID: String,
         displayName: String,
         isOnline: Bool,
         lastSeenAt: Date,
-        capabilities: Set<Feature>
+        capabilities: Set<Feature>,
+        blurredWallpaperBase64: String? = nil
     ) {
         self.connectionID = connectionID
         self.displayName = displayName
         self.isOnline = isOnline
         self.lastSeenAt = lastSeenAt
         self.capabilities = capabilities
+        self.blurredWallpaperBase64 = blurredWallpaperBase64
     }
 
     /// True when the peer is online and advertises `.mirrorHost`. Drives
@@ -82,6 +85,7 @@ public struct MercuryPeer: Hashable, Sendable, Codable {
         case isOnline
         case lastSeenAt
         case capabilities
+        case blurredWallpaperBase64
     }
 
     public init(from decoder: Decoder) throws {
@@ -95,6 +99,7 @@ public struct MercuryPeer: Hashable, Sendable, Codable {
         // not load-bearing.
         let rawCapabilities = try container.decode([String].self, forKey: .capabilities)
         self.capabilities = Set(rawCapabilities.compactMap { Feature(rawValue: $0) })
+        self.blurredWallpaperBase64 = try container.decodeIfPresent(String.self, forKey: .blurredWallpaperBase64)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -106,6 +111,7 @@ public struct MercuryPeer: Hashable, Sendable, Codable {
         // Sort so the wire form is deterministic — friendlier for diffs
         // when these get logged.
         try container.encode(capabilities.map(\.rawValue).sorted(), forKey: .capabilities)
+        try container.encodeIfPresent(blurredWallpaperBase64, forKey: .blurredWallpaperBase64)
     }
 }
 

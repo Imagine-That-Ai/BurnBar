@@ -1,5 +1,8 @@
 import SwiftUI
 import OpenBurnBarCore
+#if canImport(UIKit)
+import UIKit
+#endif
 #if DEBUG
 import FirebaseAuth
 import OSLog
@@ -97,8 +100,10 @@ struct AuthGateView: View {
 
     @ViewBuilder
     private var mainSignedInView: some View {
-        // Use horizontalSizeClass for runtime adaptivity on iPad in Split View / Stage Manager
-        if horizontalSizeClass == .regular {
+        // Keep iPhone on the tab root across rotation. Some large iPhones report
+        // a regular horizontal size class in landscape, and swapping root views
+        // tears down live full-screen Mercury sessions.
+        if shouldUseSidebarRoot {
             RootNavigationView(
                 authStore: authStore,
                 syncHealthStore: syncHealthStore,
@@ -115,6 +120,13 @@ struct AuthGateView: View {
                 transferStore: transferStore
             )
         }
+    }
+
+    private var shouldUseSidebarRoot: Bool {
+        #if canImport(UIKit)
+        guard UIDevice.current.userInterfaceIdiom == .pad else { return false }
+        #endif
+        return horizontalSizeClass == .regular
     }
 
     #if DEBUG

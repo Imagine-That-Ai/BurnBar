@@ -292,6 +292,20 @@ struct HermesConversationListView: View {
         self.dashboardSnapshot = dashboardSnapshot
         self.onSelectExistingThreadInSplit = onSelectExistingThreadInSplit
     }
+    private var activeProvider: AgentProvider {
+        let option = service.selectedModelOption
+        return option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
+    }
+
+    private var connectionStatusText: String {
+        if !service.isReachable,
+           service.selectedConnection.id == HermesConnectionRecord.localDefault.id,
+           let relay = service.suggestedRelayConnection {
+            return "Local offline · relay available · \(relay.displayName)"
+        }
+        let name = service.selectedConnection.displayName
+        return service.isReachable ? "Hermes online · \(name)" : "Hermes offline · \(name)"
+    }
 
     var body: some View {
         ZStack {
@@ -321,46 +335,6 @@ struct HermesConversationListView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        showConnectionSheet = true
-                    } label: {
-                        Label("Connections", systemImage: "network")
-                    }
-                    Button {
-                        showModelPicker = true
-                    } label: {
-                        Label("Switch model", systemImage: "cpu")
-                    }
-                    Button {
-                        showRuntimeSheet = true
-                    } label: {
-                        Label("Runtime", systemImage: "slider.horizontal.3")
-                    }
-                    Button {
-                        showSetupWizard = true
-                    } label: {
-                        Label("Setup Guide", systemImage: "list.number")
-                    }
-                    Divider()
-                    Button {
-                        Task { await service.refreshRuntime() }
-                    } label: {
-                        Label("Re-check connection", systemImage: "arrow.clockwise")
-                    }
-                    Button {
-                        Task { await libraryStore.refresh() }
-                    } label: {
-                        Label("Refresh Library", systemImage: "icloud.and.arrow.down")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .foregroundStyle(MobileTheme.hermesAureate)
-                }
-            }
-        }
         .sheet(isPresented: $showConnectionSheet) {
             HermesConnectionSheet(service: service)
         }
@@ -513,14 +487,62 @@ struct HermesConversationListView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            Button {
-                showConnectionSheet = true
+
+            Menu {
+                Section {
+                    Button {
+                        showConnectionSheet = true
+                    } label: {
+                        Label(
+                            connectionStatusText,
+                            systemImage: service.isReachable ? "checkmark.shield.fill" : "exclamationmark.shield.fill"
+                        )
+                    }
+                }
+
+                Section {
+                    Button {
+                        showConnectionSheet = true
+                    } label: {
+                        Label("Connections", systemImage: "network")
+                    }
+                    Button {
+                        showModelPicker = true
+                    } label: {
+                        Label("Switch model", systemImage: "cpu")
+                    }
+                    Button {
+                        showRuntimeSheet = true
+                    } label: {
+                        Label("Runtime", systemImage: "slider.horizontal.3")
+                    }
+                    Button {
+                        showSetupWizard = true
+                    } label: {
+                        Label("Setup Guide", systemImage: "list.number")
+                    }
+                }
+
+                Section {
+                    Button {
+                        Task { await service.refreshRuntime() }
+                    } label: {
+                        Label("Re-check connection", systemImage: "arrow.clockwise")
+                    }
+                    Button {
+                        Task { await libraryStore.refresh() }
+                    } label: {
+                        Label("Refresh Library", systemImage: "icloud.and.arrow.down")
+                    }
+                }
             } label: {
-                Image(systemName: "network")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(MobileTheme.hermesAureate)
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(MobileTheme.Colors.surface.opacity(0.65)))
+                HermesDynamicStatusWidget(
+                    provider: activeProvider,
+                    isReachable: service.isReachable,
+                    isRefreshing: service.isLoadingRuntime
+                ) {
+                    Task { await service.refreshRuntime() }
+                }
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Manage Hermes connection")
@@ -1177,10 +1199,6 @@ struct HermesChatView: View {
         ZStack {
             AuroraBackdrop()
             VStack(spacing: 0) {
-                connectionPill
-                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .padding(.bottom, 6)
-
                 relaySuggestionBanner
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .padding(.bottom, service.hasPendingRelaySuggestion ? 8 : 0)
@@ -1287,48 +1305,64 @@ struct HermesChatView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button {
-                        showConnectionSheet = true
-                    } label: {
-                        Label("Connections", systemImage: "network")
+                    Section {
+                        Button {
+                            showConnectionSheet = true
+                        } label: {
+                            Label(
+                                connectionStatusText,
+                                systemImage: service.isReachable ? "checkmark.shield.fill" : "exclamationmark.shield.fill"
+                            )
+                        }
                     }
-                    Button {
-                        showRuntimeSheet = true
-                    } label: {
-                        Label("Runtime", systemImage: "slider.horizontal.3")
+
+                    Section {
+                        Button {
+                            showConnectionSheet = true
+                        } label: {
+                            Label("Connections", systemImage: "network")
+                        }
+                        Button {
+                            showRuntimeSheet = true
+                        } label: {
+                            Label("Runtime", systemImage: "slider.horizontal.3")
+                        }
+                        Button {
+                            showSetupWizard = true
+                        } label: {
+                            Label("Setup Guide", systemImage: "list.number")
+                        }
                     }
-                    Button {
-                        showSetupWizard = true
-                    } label: {
-                        Label("Setup Guide", systemImage: "list.number")
+
+                    Section {
+                        Toggle(isOn: $showMessageTPS) {
+                            Label("Show tokens/sec", systemImage: "speedometer")
+                        }
+                        Toggle(isOn: $usePretextRendering) {
+                            Label("Rich text (mentions · code)", systemImage: "text.alignleft")
+                        }
+                        Button {
+                            showPretextPlayground = true
+                        } label: {
+                            Label("Text Layout Playground", systemImage: "textformat.size")
+                        }
                     }
-                    Divider()
-                    Toggle(isOn: $showMessageTPS) {
-                        Label("Show tokens/sec", systemImage: "speedometer")
-                    }
-                    Toggle(isOn: $usePretextRendering) {
-                        Label("Rich text (mentions · code)", systemImage: "text.alignleft")
-                    }
-                    Button {
-                        showPretextPlayground = true
-                    } label: {
-                        Label("Text Layout Playground", systemImage: "textformat.size")
-                    }
-                    Divider()
-                    Button(role: .destructive) {
-                        showClearConfirm = true
-                    } label: {
-                        Label("Clear chat", systemImage: "trash")
-                    }
-                    .disabled(service.messages.isEmpty)
-                    Button {
-                        Task { await service.refreshRuntime() }
-                    } label: {
-                        Label("Re-check connection", systemImage: "arrow.clockwise")
+
+                    Section {
+                        Button(role: .destructive) {
+                            showClearConfirm = true
+                        } label: {
+                            Label("Clear chat", systemImage: "trash")
+                        }
+                        .disabled(service.messages.isEmpty)
+                        Button {
+                            Task { await service.refreshRuntime() }
+                        } label: {
+                            Label("Re-check connection", systemImage: "arrow.clockwise")
+                        }
                     }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .foregroundStyle(MobileTheme.hermesAureate)
+                    ProviderStatusGlobeView(provider: activeProvider, isReachable: service.isReachable)
                 }
             }
             ToolbarItemGroup(placement: .keyboard) {
@@ -1527,31 +1561,9 @@ struct HermesChatView: View {
         }
     }
 
-    // MARK: - Connection Pill
-
-    private var connectionPill: some View {
-        Button {
-            showConnectionSheet = true
-        } label: {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(service.isReachable ? MobileTheme.success : MobileTheme.warning)
-                    .frame(width: 8, height: 8)
-                    .modifier(BreathingDot(active: service.isReachable))
-                Text(connectionStatusText)
-                    .font(MobileTheme.Typography.tiny)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(service.isReachable ? MobileTheme.success : MobileTheme.warning)
-                Spacer()
-                Image(systemName: "chevron.down.circle.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(service.isReachable ? MobileTheme.success : MobileTheme.warning)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .auroraGlass(.compact, cornerRadius: 12)
-        }
-        .buttonStyle(.plain)
+    private var activeProvider: AgentProvider {
+        let option = service.selectedModelOption
+        return option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
     }
 
     private var connectionStatusText: String {
@@ -2691,6 +2703,7 @@ func hermesAgentProvider(for raw: String) -> AgentProvider {
     if lower.contains("zai") || lower.contains("z.ai") || lower.contains("glm") { return .zai }
     if lower.contains("kimi") || lower.contains("moonshot") { return .kimi }
     if lower.contains("deepseek") { return .openClaw }
+    if lower.contains("antigravity") { return .antigravity }
     if lower.contains("google") || lower.contains("gemini") { return .geminiCLI }
     if lower.contains("meta") || lower.contains("llama") || lower.contains("qwen") { return .ollama }
     if lower.contains("codex") { return .codex }
@@ -3193,6 +3206,72 @@ struct HermesMessageBubble: View {
     }
 }
 
+// MARK: - Provider Status Globe View
+
+private struct ProviderStatusGlobeView: View {
+    let provider: AgentProvider
+    let isReachable: Bool
+    let size: CGFloat = 24
+
+    @State private var animateGlow = false
+
+    var body: some View {
+        ZStack {
+            // Animated Glow Background (Perfectly Centered)
+            Circle()
+                .fill((isReachable ? DesignSystemColors.primary(for: provider) : DesignSystemColors.error).opacity(0.2))
+                .frame(width: size * 1.4, height: size * 1.4)
+                .scaleEffect(animateGlow ? 1.25 : 0.85)
+                .blur(radius: 2)
+                .animation(
+                    .easeInOut(duration: 1.8)
+                    .repeatForever(autoreverses: true),
+                    value: animateGlow
+                )
+
+            // Globe icon with provider or offline color gradient (Perfectly Centered)
+            Image(systemName: "globe")
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: isReachable ? [
+                            DesignSystemColors.primary(for: provider),
+                            DesignSystemColors.accent(for: provider)
+                        ] : [
+                            DesignSystemColors.error,
+                            DesignSystemColors.error.opacity(0.7)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(
+                    color: (isReachable ? DesignSystemColors.primary(for: provider) : DesignSystemColors.error).opacity(0.45),
+                    radius: isReachable ? 4 : 1,
+                    x: 0,
+                    y: 1
+                )
+                .overlay(
+                    // Status Indicator Badge at bottom trailing of the globe, offset outward
+                    Circle()
+                        .fill(isReachable ? MobileTheme.success : MobileTheme.warning)
+                        .frame(width: size * 0.38, height: size * 0.38)
+                        .overlay(
+                            Circle()
+                                .stroke(MobileTheme.Colors.background, lineWidth: 1.2)
+                        )
+                        .modifier(BreathingDot(active: isReachable))
+                        .offset(x: 2.5, y: 2.5),
+                    alignment: .bottomTrailing
+                )
+        }
+        .frame(width: size, height: size)
+        .onAppear {
+            animateGlow = true
+        }
+    }
+}
+
 // MARK: - Breathing Dot
 
 private struct BreathingDot: ViewModifier {
@@ -3214,5 +3293,190 @@ private extension String {
     var nilIfBlank: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+// MARK: - Dynamic Status Widget
+
+private struct HermesDynamicStatusWidget: View {
+    let provider: AgentProvider
+    let isReachable: Bool
+    let isRefreshing: Bool
+    let refreshAction: () -> Void
+
+    @State private var activeState: WidgetState = .globe
+    @State private var animateGlow = false
+
+    enum WidgetState: Int, CaseIterable {
+        case globe
+        case model
+        case refresh
+
+        func next(isRefreshing: Bool) -> WidgetState {
+            switch self {
+            case .globe:
+                return .model
+            case .model:
+                return isRefreshing ? .refresh : .globe
+            case .refresh:
+                return .globe
+            }
+        }
+    }
+
+    private var stateBorderColors: [Color] {
+        if !isReachable {
+            return [DesignSystemColors.error.opacity(0.48), DesignSystemColors.error.opacity(0.18)]
+        }
+        switch activeState {
+        case .globe:
+            return [
+                DesignSystemColors.primary(for: provider).opacity(0.45),
+                DesignSystemColors.accent(for: provider).opacity(0.2)
+            ]
+        case .model:
+            return [
+                DesignSystemColors.primary(for: provider).opacity(0.45),
+                DesignSystemColors.accent(for: provider).opacity(0.2)
+            ]
+        case .refresh:
+            return [
+                MobileTheme.hermesAureate.opacity(0.6),
+                MobileTheme.hermesAureate.opacity(0.24)
+            ]
+        }
+    }
+
+    private var stateShadowColor: Color {
+        if !isReachable {
+            return DesignSystemColors.error.opacity(0.35)
+        }
+        switch activeState {
+        case .globe:
+            return DesignSystemColors.primary(for: provider).opacity(0.25)
+        case .model:
+            return DesignSystemColors.primary(for: provider).opacity(0.25)
+        case .refresh:
+            return MobileTheme.hermesAureate.opacity(0.25)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            if activeState == .globe {
+                ProviderStatusGlobeView(provider: provider, isReachable: isReachable)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
+                        removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.75))
+                    ))
+            } else if activeState == .model {
+                modelBadge
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
+                        removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.75))
+                    ))
+            } else {
+                refreshBadge
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
+                        removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.75))
+                    ))
+            }
+        }
+        .frame(width: 34, height: 34)
+        .background(
+            Circle()
+                .fill(MobileTheme.Colors.surface.opacity(0.65))
+                .shadow(color: stateShadowColor, radius: 4, x: 0, y: 0.8)
+        )
+        .overlay(
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: stateBorderColors,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.6
+                )
+        )
+        .onAppear {
+            if isRefreshing {
+                activeState = .refresh
+            }
+        }
+        .onReceive(Timer.publish(every: 4.5, on: .main, in: .common).autoconnect()) { _ in
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.76, blendDuration: 0)) {
+                activeState = activeState.next(isRefreshing: isRefreshing)
+            }
+        }
+        .onChange(of: isRefreshing) { _, refreshing in
+            if refreshing {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
+                    activeState = .refresh
+                }
+            } else {
+                if activeState == .refresh {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
+                        activeState = .globe
+                    }
+                }
+            }
+        }
+    }
+
+    private var modelBadge: some View {
+        ZStack {
+            // Pulse glow for model
+            Circle()
+                .fill(
+                    (isReachable ? DesignSystemColors.primary(for: provider) : DesignSystemColors.error)
+                        .opacity(0.15)
+                )
+                .frame(width: 28, height: 28)
+                .scaleEffect(animateGlow ? 1.15 : 0.9)
+                .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: animateGlow)
+                .onAppear { animateGlow = true }
+
+            UnifiedProviderLogoView(provider: provider, size: 20, useFallbackColor: true)
+                .grayscale(isReachable ? 0.0 : 0.6)
+                .opacity(isReachable ? 1.0 : 0.65)
+        }
+    }
+
+    private var refreshBadge: some View {
+        ZStack {
+            Circle()
+                .fill(MobileTheme.hermesAureate.opacity(0.12))
+                .frame(width: 28, height: 28)
+                .scaleEffect(animateGlow ? 1.15 : 0.9)
+                .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: animateGlow)
+                .onAppear { animateGlow = true }
+
+            SpinningRefreshIcon(isRefreshing: isRefreshing)
+        }
+    }
+}
+
+private struct SpinningRefreshIcon: View {
+    let isRefreshing: Bool
+    @State private var spinDegree = 0.0
+
+    var body: some View {
+        Image(systemName: "arrow.clockwise")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(MobileTheme.hermesAureate)
+            .rotationEffect(.degrees(spinDegree))
+            .id(isRefreshing) // Recreates the view when isRefreshing changes, killing any infinite animation cleanly!
+            .onAppear {
+                if isRefreshing {
+                    spinDegree = 0.0
+                    withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                        spinDegree = 360.0
+                    }
+                } else {
+                    spinDegree = 0.0
+                }
+            }
     }
 }

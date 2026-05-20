@@ -173,6 +173,8 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("openai"), .openAI)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("anthropic"), .claudeCode)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("google"), .geminiCLI)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("antigravity"), .antigravity)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("antigravity-cli"), .antigravity)
     }
 
     func test_storageScope_appKeychainHasAccountIdentifier() {

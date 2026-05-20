@@ -86,6 +86,7 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         case aliases
         case matchers
         case pricing
+        case canonicalModelID
         case capabilityClassID
         case capabilityClassRank
     }
@@ -96,6 +97,10 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
     public let aliases: [String]
     public let matchers: [BurnBarModelMatcher]
     public let pricing: BurnBarModelPricing
+    /// Exact model identity for same-model failover. This is stricter than
+    /// capability class: it proves the route serves the requested model, not a
+    /// neighboring model in the same broad family.
+    public let canonicalModelID: String?
     /// Optional same-tier failover class used to prevent silent downgrade
     /// across account switches. Defaults to `id` when omitted by the catalog.
     public let capabilityClassID: String?
@@ -111,6 +116,7 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         aliases: [String] = [],
         matchers: [BurnBarModelMatcher] = [],
         pricing: BurnBarModelPricing,
+        canonicalModelID: String? = nil,
         capabilityClassID: String? = nil,
         capabilityClassRank: Int? = nil
     ) {
@@ -120,6 +126,7 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         self.aliases = aliases
         self.matchers = matchers
         self.pricing = pricing
+        self.canonicalModelID = Self.normalizedCanonicalModelID(canonicalModelID)
         self.capabilityClassID = capabilityClassID
         self.capabilityClassRank = capabilityClassRank
     }
@@ -132,6 +139,9 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         self.aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
         self.matchers = try container.decodeIfPresent([BurnBarModelMatcher].self, forKey: .matchers) ?? []
         self.pricing = try container.decodeIfPresent(BurnBarModelPricing.self, forKey: .pricing) ?? .defaultFallback
+        self.canonicalModelID = Self.normalizedCanonicalModelID(
+            try container.decodeIfPresent(String.self, forKey: .canonicalModelID)
+        )
         self.capabilityClassID = try container.decodeIfPresent(String.self, forKey: .capabilityClassID)
         self.capabilityClassRank = try container.decodeIfPresent(Int.self, forKey: .capabilityClassRank)
     }
@@ -145,6 +155,41 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
             return true
         }
         return matchers.contains { $0.matches(normalized) }
+    }
+
+    public func exactCanonicalModelID(forRequestedModelID requestedModelID: String) -> String? {
+        if let canonicalModelID {
+            return canonicalModelID
+        }
+
+        let normalizedRequested = Self.normalizedCanonicalModelID(requestedModelID) ?? ""
+        guard !normalizedRequested.isEmpty else { return nil }
+
+        let normalizedID = Self.normalizedCanonicalModelID(id) ?? ""
+        let normalizedAliases = aliases.compactMap(Self.normalizedCanonicalModelID)
+        let isWrapperFamily = normalizedID.hasSuffix("-family")
+
+        if isWrapperFamily {
+            let uniqueAliases = Array(Set(normalizedAliases)).sorted()
+            guard uniqueAliases.count == 1 else { return nil }
+            let alias = uniqueAliases[0]
+            if normalizedRequested == alias || normalizedRequested == normalizedID {
+                return alias
+            }
+            return nil
+        }
+
+        if normalizedRequested == normalizedID || normalizedAliases.contains(normalizedRequested) {
+            return normalizedID
+        }
+
+        return nil
+    }
+
+    public static func normalizedCanonicalModelID(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty ? nil : normalized
     }
 }
 
@@ -345,6 +390,30 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
         }
 
         return nil
+    }
+
+    public func canonicalModelID(
+        forModelName modelName: String,
+        providerID: String? = nil
+    ) -> String? {
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+
+        let providersToSearch: [BurnBarCatalogProvider]
+        if let providerID, let provider = provider(id: providerID) {
+            providersToSearch = [provider]
+        } else {
+            providersToSearch = providers
+        }
+
+        let matches = providersToSearch.compactMap { provider -> String? in
+            guard let match = bestModelMatch(named: normalized, providersToSearch: [provider]) else {
+                return nil
+            }
+            return match.model.exactCanonicalModelID(forRequestedModelID: modelName)
+        }
+        let uniqueMatches = Set(matches)
+        return uniqueMatches.count == 1 ? uniqueMatches.first : nil
     }
 
     private func bestModelMatch(

@@ -39,6 +39,15 @@ struct AppearanceCorkboardSection: View {
                 Divider().background(DesignSystem.Colors.border)
 
                 SettingsToggle(
+                    title: "Colorful Menu Bar Icon",
+                    subtitle: "Use a full-color icon instead of a monochrome template.",
+                    icon: "paintpalette",
+                    isOn: $settingsManager.colorfulMenuBarIcon
+                )
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
                     title: "Launch at Login",
                     subtitle: "Start OpenBurnBar when you sign in to macOS.",
                     icon: "person.crop.circle.badge.checkmark",

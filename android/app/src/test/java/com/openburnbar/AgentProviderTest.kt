@@ -12,6 +12,8 @@ class AgentProviderTest {
         assertEquals(AgentProvider.CLAUDE_CODE, AgentProvider.fromKey("claude-code"))
         assertEquals(AgentProvider.GEMINI_CLI, AgentProvider.fromKey("gemini-cli"))
         assertEquals(AgentProvider.OLLAMA, AgentProvider.fromKey("ollama"))
+        assertEquals(AgentProvider.ANTIGRAVITY, AgentProvider.fromKey("antigravity"))
+        assertEquals(AgentProvider.ANTIGRAVITY, AgentProvider.fromKey("antigravity-cli"))
     }
 
     @Test

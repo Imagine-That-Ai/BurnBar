@@ -37,7 +37,7 @@ object ChartStudioPromptEngine {
             appendLine()
             appendLine("Color hints: provider brand colors auto-apply when you supply providerKey.")
             appendLine("Use AgentProvider keys: factory, claude-code, copilot, aider, cursor, openai, codex, zai, ")
-            appendLine("minimax, kimi, cline, kilo-code, roo-code, forge-dev, augment, hermes, gemini-cli, goose, openclaw, ollama, windsurf, warp.")
+            appendLine("minimax, kimi, cline, kilo-code, roo-code, forge-dev, augment, hermes, gemini-cli, antigravity, goose, openclaw, ollama, windsurf, warp.")
             appendLine()
             appendLine("Here is the user's recent activity digest:")
             appendLine(digestJson)

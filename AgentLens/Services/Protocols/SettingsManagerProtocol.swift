@@ -35,6 +35,9 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Whether to show the app in the menu bar.
     var showInMenuBar: Bool { get set }
 
+    /// Whether the menu bar icon uses full color instead of a monochrome template.
+    var colorfulMenuBarIcon: Bool { get set }
+
     /// Whether to launch the app at login.
     var launchAtLogin: Bool { get set }
 

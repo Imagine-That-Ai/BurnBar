@@ -50,7 +50,7 @@ public struct UnifiedProviderLogoView: View {
         switch provider {
         case .openAI, .codex, .cursor, .forgeDev, .claudeCode,
              .factory, .windsurf, .copilot, .aider, .ollama,
-             .openClaw, .geminiCLI, .goose, .augment, .cline,
+             .openClaw, .geminiCLI, .antigravity, .goose, .augment, .cline,
              .kiloCode, .rooCode, .hermes:
             return true
         default:

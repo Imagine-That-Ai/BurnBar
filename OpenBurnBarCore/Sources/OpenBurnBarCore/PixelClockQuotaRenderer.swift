@@ -773,6 +773,15 @@ public enum PixelClockQuotaRenderer {
         if token.contains("z.ai") || token.contains("zai") {
             return PixelClockProviderLogoAssets.zai
         }
+        if token.contains("deepseek") || token.contains("deep seek") || token.contains("deep-seek") {
+            return PixelClockProviderLogoAssets.deepSeek
+        }
+        if token.contains("opencode") || token.contains("open code") || token.contains("open-code") {
+            return PixelClockProviderLogoAssets.openCode
+        }
+        if token.contains("antigravity") || token.contains("gemini") {
+            return PixelClockProviderLogoAssets.antigravity
+        }
         return PixelClockProviderLogo(
             sourceName: "monogram",
             rows: monogramPattern(for: shortProviderCode(for: item)),

@@ -34,6 +34,7 @@ public struct ProviderID: RawRepresentable, Codable, Hashable, Sendable, Express
     public static let openAI = ProviderID(rawValue: "openai")
     public static let kimi = ProviderID(rawValue: "kimi")
     public static let factory = ProviderID(rawValue: "factory")
+    public static let antigravity = ProviderID(rawValue: "antigravity")
 }
 
 // MARK: - Provider Account Status
@@ -172,7 +173,50 @@ public enum ProviderRoutingRuntimeSignal: String, Codable, CaseIterable, Hashabl
 
 public enum ProviderRouterMode: String, Codable, CaseIterable, Hashable, Sendable {
     case providerFamilyFailover = "provider_family_failover"
+    case sameModelFailover = "same_model_failover"
     case intelligentModelRouter = "intelligent_model_router"
+
+    public static var allCases: [ProviderRouterMode] {
+        [.providerFamilyFailover, .sameModelFailover]
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        switch rawValue {
+        case Self.providerFamilyFailover.rawValue:
+            self = .providerFamilyFailover
+        case Self.sameModelFailover.rawValue, Self.intelligentModelRouter.rawValue:
+            self = .sameModelFailover
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown provider router mode '\(rawValue)'."
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(storageRawValue)
+    }
+
+    public var effectiveMode: ProviderRouterMode {
+        self == .intelligentModelRouter ? .sameModelFailover : self
+    }
+
+    public var usesExactSameModelInvariant: Bool {
+        effectiveMode == .sameModelFailover
+    }
+
+    private var storageRawValue: String {
+        switch effectiveMode {
+        case .providerFamilyFailover:
+            return Self.providerFamilyFailover.rawValue
+        case .sameModelFailover, .intelligentModelRouter:
+            return Self.sameModelFailover.rawValue
+        }
+    }
 }
 
 public enum ProviderRoutingTaskCategory: String, Codable, CaseIterable, Hashable, Sendable {
@@ -289,6 +333,7 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
     public let credentialHandle: String
     public let storageScope: ProviderAccountStorageScope
     public let modelCompatibility: ProviderRoutingModelCompatibility
+    public let canonicalModelID: String?
     public var quotaState: ProviderRoutingQuotaState
     public var cooldownUntil: Date?
     public let priority: Int
@@ -306,6 +351,7 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
         credentialHandle: String,
         storageScope: ProviderAccountStorageScope,
         modelCompatibility: ProviderRoutingModelCompatibility = .unknown,
+        canonicalModelID: String? = nil,
         quotaState: ProviderRoutingQuotaState = .unknown,
         cooldownUntil: Date? = nil,
         priority: Int = 0,
@@ -320,6 +366,9 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
         self.credentialHandle = ProviderRoutingPolicy.sanitizedAuditText(credentialHandle)
         self.storageScope = storageScope
         self.modelCompatibility = modelCompatibility
+        self.canonicalModelID = canonicalModelID
+            .map(ProviderRoutingPolicy.normalizedCanonicalModelID)
+            .flatMap { $0.isEmpty ? nil : $0 }
         self.quotaState = quotaState
         self.cooldownUntil = cooldownUntil
         self.priority = priority
@@ -385,6 +434,7 @@ public struct ProviderRoutingRequest: Codable, Hashable, Sendable {
     public let preferredProviderIDs: [ProviderID]
     public let allowProviderFallback: Bool
     public let routerMode: ProviderRouterMode
+    public let requiredCanonicalModelID: String?
     public let selectedProviderID: ProviderID?
     public let selectedAccountID: String?
     public let taskCategory: ProviderRoutingTaskCategory
@@ -395,6 +445,7 @@ public struct ProviderRoutingRequest: Codable, Hashable, Sendable {
         preferredProviderIDs: [ProviderID] = [],
         allowProviderFallback: Bool = true,
         routerMode: ProviderRouterMode = .providerFamilyFailover,
+        requiredCanonicalModelID: String? = nil,
         selectedProviderID: ProviderID? = nil,
         selectedAccountID: String? = nil,
         taskCategory: ProviderRoutingTaskCategory = .unknown,
@@ -404,6 +455,9 @@ public struct ProviderRoutingRequest: Codable, Hashable, Sendable {
         self.preferredProviderIDs = preferredProviderIDs
         self.allowProviderFallback = allowProviderFallback
         self.routerMode = routerMode
+        self.requiredCanonicalModelID = requiredCanonicalModelID
+            .map(ProviderRoutingPolicy.normalizedCanonicalModelID)
+            .flatMap { $0.isEmpty ? nil : $0 }
         self.selectedProviderID = selectedProviderID
         self.selectedAccountID = selectedAccountID.map(ProviderRoutingPolicy.sanitizedAuditText)
         self.taskCategory = taskCategory
@@ -476,6 +530,16 @@ public struct ProviderRoutingDecisionEvent: Codable, Identifiable, Hashable, Sen
     public let nextFallbackProviderID: ProviderID?
     public let nextFallbackAccountID: String?
     public let nextFallbackAccountLabel: String?
+    public let originalProviderID: ProviderID?
+    public let originalAccountID: String?
+    public let originalAccountLabel: String?
+    public let attemptedModelID: String?
+    public let attemptedCanonicalModelID: String?
+    public let failoverDestinationProviderID: ProviderID?
+    public let failoverDestinationAccountID: String?
+    public let failoverDestinationAccountLabel: String?
+    public let failoverReason: String?
+    public let exactModelInvariantPassed: Bool
     public let reason: String
     public let explanation: String
     public let rejectedAlternatives: [ProviderRoutingRejectedAlternative]
@@ -489,6 +553,14 @@ public struct ProviderRoutingDecisionEvent: Codable, Identifiable, Hashable, Sen
         routerMode: ProviderRouterMode = .providerFamilyFailover,
         selected: ProviderRoutingCandidate?,
         nextFallback: ProviderRoutingCandidate?,
+        originalProviderID: ProviderID? = nil,
+        originalAccountID: String? = nil,
+        originalAccountLabel: String? = nil,
+        attemptedModelID: String? = nil,
+        attemptedCanonicalModelID: String? = nil,
+        failoverDestination: ProviderRoutingCandidate? = nil,
+        failoverReason: String? = nil,
+        exactModelInvariantPassed: Bool? = nil,
         reason: String,
         explanation: String? = nil,
         rejectedAlternatives: [ProviderRoutingRejectedAlternative] = [],
@@ -505,6 +577,18 @@ public struct ProviderRoutingDecisionEvent: Codable, Identifiable, Hashable, Sen
         self.nextFallbackProviderID = nextFallback?.providerID
         self.nextFallbackAccountID = nextFallback?.accountID
         self.nextFallbackAccountLabel = nextFallback?.accountLabel
+        self.originalProviderID = originalProviderID
+        self.originalAccountID = originalAccountID.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.originalAccountLabel = originalAccountLabel.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.attemptedModelID = attemptedModelID.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.attemptedCanonicalModelID = attemptedCanonicalModelID
+            .map(ProviderRoutingPolicy.normalizedCanonicalModelID)
+            .flatMap { $0.isEmpty ? nil : $0 }
+        self.failoverDestinationProviderID = failoverDestination?.providerID
+        self.failoverDestinationAccountID = failoverDestination?.accountID
+        self.failoverDestinationAccountLabel = failoverDestination?.accountLabel
+        self.failoverReason = failoverReason.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.exactModelInvariantPassed = exactModelInvariantPassed ?? true
         self.reason = ProviderRoutingPolicy.sanitizedAuditText(reason)
         self.explanation = ProviderRoutingPolicy.sanitizedAuditText(explanation ?? reason)
         self.rejectedAlternatives = rejectedAlternatives
@@ -523,6 +607,16 @@ public struct ProviderRoutingDecisionEvent: Codable, Identifiable, Hashable, Sen
         case nextFallbackProviderID
         case nextFallbackAccountID
         case nextFallbackAccountLabel
+        case originalProviderID
+        case originalAccountID
+        case originalAccountLabel
+        case attemptedModelID
+        case attemptedCanonicalModelID
+        case failoverDestinationProviderID
+        case failoverDestinationAccountID
+        case failoverDestinationAccountLabel
+        case failoverReason
+        case exactModelInvariantPassed
         case reason
         case explanation
         case rejectedAlternatives
@@ -548,6 +642,34 @@ public struct ProviderRoutingDecisionEvent: Codable, Identifiable, Hashable, Sen
             .map(ProviderRoutingPolicy.sanitizedAuditText)
         self.nextFallbackAccountLabel = try container.decodeIfPresent(String.self, forKey: .nextFallbackAccountLabel)
             .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.originalProviderID = try container.decodeIfPresent(ProviderID.self, forKey: .originalProviderID)
+        self.originalAccountID = try container.decodeIfPresent(String.self, forKey: .originalAccountID)
+            .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.originalAccountLabel = try container.decodeIfPresent(String.self, forKey: .originalAccountLabel)
+            .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.attemptedModelID = try container.decodeIfPresent(String.self, forKey: .attemptedModelID)
+            .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.attemptedCanonicalModelID = try container.decodeIfPresent(String.self, forKey: .attemptedCanonicalModelID)
+            .map(ProviderRoutingPolicy.normalizedCanonicalModelID)
+            .flatMap { $0.isEmpty ? nil : $0 }
+        self.failoverDestinationProviderID = try container.decodeIfPresent(
+            ProviderID.self,
+            forKey: .failoverDestinationProviderID
+        )
+        self.failoverDestinationAccountID = try container.decodeIfPresent(
+            String.self,
+            forKey: .failoverDestinationAccountID
+        ).map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.failoverDestinationAccountLabel = try container.decodeIfPresent(
+            String.self,
+            forKey: .failoverDestinationAccountLabel
+        ).map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.failoverReason = try container.decodeIfPresent(String.self, forKey: .failoverReason)
+            .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.exactModelInvariantPassed = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .exactModelInvariantPassed
+        ) ?? true
         self.reason = ProviderRoutingPolicy.sanitizedAuditText(try container.decode(String.self, forKey: .reason))
         self.explanation = ProviderRoutingPolicy.sanitizedAuditText(
             try container.decodeIfPresent(String.self, forKey: .explanation) ?? self.reason
@@ -670,6 +792,32 @@ public enum ProviderRoutingPolicy {
                 reason: skip.detail
             )
         }
+        let originalProviderID = request.selectedProviderID ?? request.preferredProviderIDs.first
+        let originalAccountID = request.selectedAccountID
+        let failoverDestination: ProviderRoutingCandidate? = {
+            guard let selected,
+                  let originalProviderID else {
+                return nil
+            }
+            if selected.providerID != originalProviderID {
+                return selected
+            }
+            if let originalAccountID,
+               selected.accountID != originalAccountID {
+                return selected
+            }
+            return nil
+        }()
+        let exactModelInvariantPassed: Bool = {
+            guard request.routerMode.usesExactSameModelInvariant || request.requiredCanonicalModelID != nil else {
+                return true
+            }
+            guard let selected,
+                  let requiredCanonicalModelID = request.requiredCanonicalModelID else {
+                return false
+            }
+            return selected.canonicalModelID == requiredCanonicalModelID
+        }()
         let explanation = decisionExplanation(
             request: request,
             selected: selected,
@@ -682,6 +830,13 @@ public enum ProviderRoutingPolicy {
             routerMode: request.routerMode,
             selected: selected,
             nextFallback: nextFallback,
+            originalProviderID: originalProviderID,
+            originalAccountID: originalAccountID,
+            attemptedModelID: request.modelID,
+            attemptedCanonicalModelID: request.requiredCanonicalModelID,
+            failoverDestination: failoverDestination,
+            failoverReason: failoverDestination == nil ? nil : skipped.first?.detail,
+            exactModelInvariantPassed: exactModelInvariantPassed,
             reason: reason,
             explanation: explanation,
             rejectedAlternatives: rejectedAlternatives,
@@ -714,6 +869,10 @@ public enum ProviderRoutingPolicy {
         return result
     }
 
+    public static func normalizedCanonicalModelID(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     private static func skipReason(
         for candidate: ProviderRoutingCandidate,
         request: ProviderRoutingRequest,
@@ -723,6 +882,19 @@ public enum ProviderRoutingPolicy {
            let selectedProviderID = providerFamilyConstraint(for: request),
            candidate.providerID != selectedProviderID {
             return skip(candidate, .providerNotPreferred, "Provider-family mode only allows \(selectedProviderID.rawValue) accounts.")
+        }
+        if request.routerMode.usesExactSameModelInvariant || request.requiredCanonicalModelID != nil {
+            guard let requiredCanonicalModelID = request.requiredCanonicalModelID else {
+                return skip(candidate, .modelIncompatible, "Exact model failover requires a canonical model ID.")
+            }
+            guard candidate.canonicalModelID == requiredCanonicalModelID else {
+                let servedModel = candidate.canonicalModelID ?? "unknown"
+                return skip(
+                    candidate,
+                    .modelIncompatible,
+                    "\(candidate.accountLabel) serves canonical model \(servedModel), not \(requiredCanonicalModelID)."
+                )
+            }
         }
         if !request.allowProviderFallback,
            let preferred = request.preferredProviderIDs.first,
@@ -887,8 +1059,10 @@ public enum ProviderRoutingPolicy {
             switch request.routerMode {
             case .providerFamilyFailover:
                 return "Provider-Family Failover"
+            case .sameModelFailover:
+                return "Exact Model Failover"
             case .intelligentModelRouter:
-                return "Intelligent Model Router"
+                return "Exact Model Failover"
             }
         }()
         guard let selected else {
@@ -901,6 +1075,9 @@ public enum ProviderRoutingPolicy {
             parts.append("because provider-family mode is pinned to \(selectedProvider.rawValue)")
         } else if request.routerMode == .providerFamilyFailover {
             parts.append("because it is in the selected provider family")
+        } else if request.routerMode.usesExactSameModelInvariant,
+                  let requiredCanonicalModelID = request.requiredCanonicalModelID {
+            parts.append("because it serves canonical model \(requiredCanonicalModelID)")
         } else {
             parts.append("after applying availability, quota, account health, and advisory routing signals")
         }

@@ -31,6 +31,7 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     // frame types.
     case mediaMirrorRequest = "media.mirror.request"
     case mediaMirrorAck = "media.mirror.ack"
+    case mediaMirrorStop = "media.mirror.stop"
     case mediaPresenceHeartbeat = "media.presence.heartbeat"
     case mediaCallInvite = "media.call.invite"
     case mediaCallAck = "media.call.ack"
@@ -371,6 +372,9 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// Mac → iOS reply envelope. Set on `media.mirror.ack` frames; nil
     /// elsewhere.
     public var mirrorAck: HermesRealtimeRelayMirrorAck?
+    /// iOS → Mac request to end an accepted mirror session. Set on
+    /// `media.mirror.stop` frames; nil elsewhere.
+    public var mirrorStop: HermesRealtimeRelayMirrorStop?
     /// iOS → Mac presence beacon. Set on `media.presence.heartbeat`
     /// frames; nil elsewhere.
     public var presence: HermesRealtimeRelayPresenceHeartbeat?
@@ -392,6 +396,7 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         ack: HermesRealtimeRelayMediaAck? = nil,
         mirrorRequest: HermesRealtimeRelayMirrorRequest? = nil,
         mirrorAck: HermesRealtimeRelayMirrorAck? = nil,
+        mirrorStop: HermesRealtimeRelayMirrorStop? = nil,
         presence: HermesRealtimeRelayPresenceHeartbeat? = nil,
         callInvite: HermesRealtimeRelayCallInvite? = nil,
         callAck: HermesRealtimeRelayCallAck? = nil,
@@ -403,6 +408,7 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         self.ack = ack
         self.mirrorRequest = mirrorRequest
         self.mirrorAck = mirrorAck
+        self.mirrorStop = mirrorStop
         self.presence = presence
         self.callInvite = callInvite
         self.callAck = callAck
@@ -519,6 +525,23 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
     }
 }
 
+/// Mercury Phase 8 — requester-side end signal for an accepted mirror session.
+public struct HermesRealtimeRelayMirrorStop: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var stoppedAt: Date
+    public var reason: String?
+
+    public init(
+        requestId: String,
+        stoppedAt: Date = Date(),
+        reason: String? = nil
+    ) {
+        self.requestId = requestId
+        self.stoppedAt = stoppedAt
+        self.reason = reason
+    }
+}
+
 /// Mercury phone-originated call invite. This is the cross-platform
 /// sibling of the Mac -> phone PushKit/FCM call path: it rides the live
 /// `media.control` stream so an already-awake Mac can surface a real
@@ -577,17 +600,21 @@ public struct HermesRealtimeRelayPresenceHeartbeat: Codable, Sendable, Equatable
     public var sentAt: Date
     public var deviceDisplayName: String
     public var capabilities: [String]
+    public var blurredWallpaperBase64: String?
 
     public init(
         sentAt: Date,
         deviceDisplayName: String,
-        capabilities: [String]
+        capabilities: [String],
+        blurredWallpaperBase64: String? = nil
     ) {
         self.sentAt = sentAt
         self.deviceDisplayName = deviceDisplayName
         self.capabilities = capabilities
+        self.blurredWallpaperBase64 = blurredWallpaperBase64
     }
 }
+
 
 public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
     public var operation: HermesRelayOperation?

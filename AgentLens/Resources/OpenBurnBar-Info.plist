@@ -41,5 +41,9 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSCameraUsageDescription</key>
+	<string>OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat or start a trusted Mercury video call.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OpenBurnBar uses the microphone only when you start voice commands or a trusted Mercury audio call.</string>
 </dict>
 </plist>

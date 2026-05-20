@@ -393,7 +393,11 @@ public actor BurnBarHTTPGatewayServer {
             let ranking = try await router.scoreAndRankRoutes(
                 modelName: model.id,
                 requestedFormatFamily: formatFamily,
-                requiredCapabilityClassID: capabilityClassID(forModelName: model.id, providerID: model.providerID, catalog: catalog)
+                requiredCanonicalModelID: canonicalModelID(
+                    forModelName: model.id,
+                    providerID: model.providerID,
+                    catalog: catalog
+                )
             )
             return ranking.rankedRoutes.contains { rankedRoute in
                 routeKey(
@@ -703,7 +707,7 @@ public actor BurnBarHTTPGatewayServer {
             let catalog = configStore.catalogSupport.catalog
             let effectiveProviderID = requestedModel.providerID
                 ?? singleAdvertisedProviderID(in: advertisedRouteKeysByFamily)
-            let resolvedCapabilityClassID = capabilityClassID(
+            let requestedCanonicalModelID = canonicalModelID(
                 forModelName: requestedModel.modelID,
                 providerID: effectiveProviderID,
                 catalog: catalog
@@ -719,9 +723,12 @@ public actor BurnBarHTTPGatewayServer {
                     modelName: requestedModel.modelID,
                     preferredProviderID: effectiveProviderID,
                     requestedFormatFamily: formatFamily,
-                    requiredCapabilityClassID: resolvedCapabilityClassID
+                    requiredCanonicalModelID: requestedCanonicalModelID
                 )
                 await router.persistDecisionIfNeeded(ranking: ranking, modelName: requestedModel.modelID)
+                guard let requiredCanonicalModelID = ranking.requiredCanonicalModelID else {
+                    return exactModelIdentityUnavailableResponse(modelID: modelID)
+                }
                 let rankedRoutes = ranking.rankedRoutes
                     .map(\.route)
                     .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
@@ -729,23 +736,7 @@ public actor BurnBarHTTPGatewayServer {
                     continue
                 }
 
-                // When the router pre-filtered by capability class, use its reported
-                // blocked routes. Otherwise, discover the class from the top-ranked
-                // route and compute blocked alternatives post-hoc.
-                let selectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
-                let routes: [BurnBarProviderRoute]
-                let blockedCapabilityAlternatives: [BurnBarProviderRoute]
-                if let classID = selectedCapabilityClassID {
-                    routes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
-                    if !ranking.blockedCapabilityClassRoutes.isEmpty {
-                        blockedCapabilityAlternatives = ranking.blockedCapabilityClassRoutes
-                    } else {
-                        blockedCapabilityAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
-                    }
-                } else {
-                    routes = rankedRoutes
-                    blockedCapabilityAlternatives = []
-                }
+                let routes = rankedRoutes.filter { $0.canonicalModelID == requiredCanonicalModelID }
 
                 for (index, route) in routes.enumerated() {
                     if let slotID = route.credentialSlotID {
@@ -789,16 +780,9 @@ public actor BurnBarHTTPGatewayServer {
                     }
                 }
 
-                if !blockedCapabilityAlternatives.isEmpty,
-                   let lastError,
+                if let lastError,
                    shouldFailOverProviderError(lastError) {
-                    let classLabel = selectedCapabilityClassID ?? modelID
-                    return jsonResponse(
-                        status: 503,
-                        body: errorBody(
-                            "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
-                        )
-                    )
+                    return exactModelFailClosedResponse(canonicalModelID: requiredCanonicalModelID)
                 }
 
                 if let lastError {
@@ -863,7 +847,7 @@ public actor BurnBarHTTPGatewayServer {
             let catalog = configStore.catalogSupport.catalog
             let effectiveProviderID = requestedModel.providerID
                 ?? singleAdvertisedProviderID(in: advertisedRouteKeysByFamily)
-            let resolvedCapabilityClassID = capabilityClassID(
+            let requestedCanonicalModelID = canonicalModelID(
                 forModelName: requestedModel.modelID,
                 providerID: effectiveProviderID,
                 catalog: catalog
@@ -879,9 +863,12 @@ public actor BurnBarHTTPGatewayServer {
                     modelName: requestedModel.modelID,
                     preferredProviderID: effectiveProviderID,
                     requestedFormatFamily: formatFamily,
-                    requiredCapabilityClassID: resolvedCapabilityClassID
+                    requiredCanonicalModelID: requestedCanonicalModelID
                 )
                 await router.persistDecisionIfNeeded(ranking: ranking, modelName: requestedModel.modelID)
+                guard let requiredCanonicalModelID = ranking.requiredCanonicalModelID else {
+                    return exactModelIdentityUnavailableResponse(modelID: modelID)
+                }
                 let rankedRoutes = ranking.rankedRoutes
                     .map(\.route)
                     .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
@@ -889,20 +876,7 @@ public actor BurnBarHTTPGatewayServer {
                     continue
                 }
 
-                let selectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
-                let routes: [BurnBarProviderRoute]
-                let blockedCapabilityAlternatives: [BurnBarProviderRoute]
-                if let classID = selectedCapabilityClassID {
-                    routes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
-                    if !ranking.blockedCapabilityClassRoutes.isEmpty {
-                        blockedCapabilityAlternatives = ranking.blockedCapabilityClassRoutes
-                    } else {
-                        blockedCapabilityAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
-                    }
-                } else {
-                    routes = rankedRoutes
-                    blockedCapabilityAlternatives = []
-                }
+                let routes = rankedRoutes.filter { $0.canonicalModelID == requiredCanonicalModelID }
 
                 for (index, route) in routes.enumerated() {
                     if let slotID = route.credentialSlotID {
@@ -946,16 +920,9 @@ public actor BurnBarHTTPGatewayServer {
                     }
                 }
 
-                if !blockedCapabilityAlternatives.isEmpty,
-                   let lastError,
+                if let lastError,
                    shouldFailOverProviderError(lastError) {
-                    let classLabel = selectedCapabilityClassID ?? modelID
-                    return jsonResponse(
-                        status: 503,
-                        body: errorBody(
-                            "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
-                        )
-                    )
+                    return exactModelFailClosedResponse(canonicalModelID: requiredCanonicalModelID)
                 }
 
                 if let lastError {
@@ -1012,7 +979,7 @@ public actor BurnBarHTTPGatewayServer {
                 routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
             let catalog = configStore.catalogSupport.catalog
-            let resolvedCapabilityClassID = capabilityClassID(
+            let requestedCanonicalModelID = canonicalModelID(
                 forModelName: requestedModel.modelID,
                 providerID: requestedModel.providerID,
                 catalog: catalog
@@ -1021,9 +988,12 @@ public actor BurnBarHTTPGatewayServer {
                 modelName: requestedModel.modelID,
                 preferredProviderID: requestedModel.providerID,
                 requestedFormatFamily: .anthropic,
-                requiredCapabilityClassID: resolvedCapabilityClassID
+                requiredCanonicalModelID: requestedCanonicalModelID
             )
             await router.persistDecisionIfNeeded(ranking: ranking, modelName: requestedModel.modelID)
+            guard let requiredCanonicalModelID = ranking.requiredCanonicalModelID else {
+                return exactModelIdentityUnavailableResponse(modelID: modelID)
+            }
             let rankedRoutes = ranking.rankedRoutes
                 .map(\.route)
                 .filter {
@@ -1039,20 +1009,7 @@ public actor BurnBarHTTPGatewayServer {
                 )
             }
 
-            let anthropicSelectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
-            let anthropicRoutes: [BurnBarProviderRoute]
-            let anthropicBlockedAlternatives: [BurnBarProviderRoute]
-            if let classID = anthropicSelectedCapabilityClassID {
-                anthropicRoutes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
-                if !ranking.blockedCapabilityClassRoutes.isEmpty {
-                    anthropicBlockedAlternatives = ranking.blockedCapabilityClassRoutes
-                } else {
-                    anthropicBlockedAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
-                }
-            } else {
-                anthropicRoutes = rankedRoutes
-                anthropicBlockedAlternatives = []
-            }
+            let anthropicRoutes = rankedRoutes.filter { $0.canonicalModelID == requiredCanonicalModelID }
 
             var lastError: Error?
             var lastFailedRoute: BurnBarProviderRoute?
@@ -1097,16 +1054,9 @@ public actor BurnBarHTTPGatewayServer {
                 }
             }
 
-            if !anthropicBlockedAlternatives.isEmpty,
-               let lastError,
+            if let lastError,
                shouldFailOverProviderError(lastError) {
-                let classLabel = anthropicSelectedCapabilityClassID ?? modelID
-                return jsonResponse(
-                    status: 503,
-                    body: errorBody(
-                        "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
-                    )
-                )
+                return exactModelFailClosedResponse(canonicalModelID: requiredCanonicalModelID)
             }
 
             if let lastError {
@@ -1173,6 +1123,24 @@ public actor BurnBarHTTPGatewayServer {
         jsonResponse(
             status: 503,
             body: errorBody("No eligible route for \(modelID). Add or enable an account/provider that serves this model.")
+        )
+    }
+
+    private func exactModelIdentityUnavailableResponse(modelID: String) -> GatewayHTTPResponse {
+        jsonResponse(
+            status: 503,
+            body: errorBody(
+                "No exact canonical model identity is available for \(modelID). Add or enable a direct model entry that proves the route serves this exact model."
+            )
+        )
+    }
+
+    private func exactModelFailClosedResponse(canonicalModelID: String) -> GatewayHTTPResponse {
+        jsonResponse(
+            status: 503,
+            body: errorBody(
+                "All routed accounts serving exact model \(canonicalModelID) failed; no exact same-model fallback remained."
+            )
         )
     }
 
@@ -1305,6 +1273,21 @@ public actor BurnBarHTTPGatewayServer {
             return normalized
         }
         return catalog.capabilityClassID(forModelName: modelName, providerID: providerID)
+    }
+
+    private func canonicalModelID(
+        forModelName modelName: String,
+        providerID requestedProviderID: String?,
+        catalog: BurnBarCatalog
+    ) -> String? {
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+        let providerID = requestedProviderID ?? (normalized.contains(":cloud") || normalized.contains("-cloud") ? "ollama" : nil)
+        if providerID?.caseInsensitiveCompare("ollama") == .orderedSame,
+           let cloudModelID = ollamaCloudWireModelID(from: modelName) {
+            return cloudModelID.lowercased()
+        }
+        return catalog.canonicalModelID(forModelName: modelName, providerID: providerID)
     }
 
     private func ollamaCloudWireModelID(from modelName: String) -> String? {

@@ -163,8 +163,9 @@ final class VideoEncoder {
             dataPointerOut: &dataPointer
         )
         guard status == noErr, let dataPointer else { return }
-        let payload = Data(bytes: dataPointer, count: totalLength)
         let isKeyframe = await isKeyframe(sampleBuffer: sampleBuffer)
+        let samplePayload = Data(bytes: dataPointer, count: totalLength)
+        let payload = await payloadForWire(samplePayload: samplePayload, sampleBuffer: sampleBuffer, isKeyframe: isKeyframe)
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let ptsMillis = UInt64(pts.seconds * 1000)
 
@@ -179,6 +180,118 @@ final class VideoEncoder {
             payload: payload
         )
         await onEncoded(frame)
+    }
+
+    nonisolated private func payloadForWire(
+        samplePayload: Data,
+        sampleBuffer: CMSampleBuffer,
+        isKeyframe: Bool
+    ) async -> Data {
+        guard isKeyframe,
+              let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let configuration = decoderConfigurationPayload(
+                samplePayload: samplePayload,
+                formatDescription: formatDescription
+              )
+        else {
+            return samplePayload
+        }
+        return configuration
+    }
+
+    nonisolated private func decoderConfigurationPayload(
+        samplePayload: Data,
+        formatDescription: CMFormatDescription
+    ) -> Data? {
+        let codecType = CMFormatDescriptionGetMediaSubType(formatDescription)
+        switch codecType {
+        case CMVideoCodecType(kCMVideoCodecType_HEVC):
+            return hevcConfigurationPayload(samplePayload: samplePayload, formatDescription: formatDescription)
+        case CMVideoCodecType(kCMVideoCodecType_H264):
+            return h264ConfigurationPayload(samplePayload: samplePayload, formatDescription: formatDescription)
+        default:
+            return nil
+        }
+    }
+
+    nonisolated private func hevcConfigurationPayload(
+        samplePayload: Data,
+        formatDescription: CMFormatDescription
+    ) -> Data? {
+        var count = 0
+        var nalHeaderLength: Int32 = 0
+        let probe = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(
+            formatDescription,
+            parameterSetIndex: 0,
+            parameterSetPointerOut: nil,
+            parameterSetSizeOut: nil,
+            parameterSetCountOut: &count,
+            nalUnitHeaderLengthOut: &nalHeaderLength
+        )
+        guard probe == noErr, count > 0 else { return nil }
+
+        var parameterSets: [Data] = []
+        parameterSets.reserveCapacity(count)
+        for index in 0..<count {
+            var pointer: UnsafePointer<UInt8>?
+            var size = 0
+            let status = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(
+                formatDescription,
+                parameterSetIndex: index,
+                parameterSetPointerOut: &pointer,
+                parameterSetSizeOut: &size,
+                parameterSetCountOut: nil,
+                nalUnitHeaderLengthOut: nil
+            )
+            guard status == noErr, let pointer, size > 0 else { continue }
+            parameterSets.append(Data(bytes: pointer, count: size))
+        }
+        guard !parameterSets.isEmpty else { return nil }
+        return try? VideoDecoderConfigurationPayload(
+            codec: .hevc,
+            parameterSets: parameterSets,
+            samplePayload: samplePayload
+        ).encoded()
+    }
+
+    nonisolated private func h264ConfigurationPayload(
+        samplePayload: Data,
+        formatDescription: CMFormatDescription
+    ) -> Data? {
+        var count = 0
+        var nalHeaderLength: Int32 = 0
+        let probe = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
+            formatDescription,
+            parameterSetIndex: 0,
+            parameterSetPointerOut: nil,
+            parameterSetSizeOut: nil,
+            parameterSetCountOut: &count,
+            nalUnitHeaderLengthOut: &nalHeaderLength
+        )
+        guard probe == noErr, count > 0 else { return nil }
+
+        var parameterSets: [Data] = []
+        parameterSets.reserveCapacity(count)
+        for index in 0..<count {
+            var pointer: UnsafePointer<UInt8>?
+            var size = 0
+            let status = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
+                formatDescription,
+                parameterSetIndex: index,
+                parameterSetPointerOut: &pointer,
+                parameterSetSizeOut: &size,
+                parameterSetCountOut: nil,
+                nalUnitHeaderLengthOut: nil
+            )
+            guard status == noErr, let pointer, size > 0 else { continue }
+            parameterSets.append(Data(bytes: pointer, count: size))
+        }
+        guard !parameterSets.isEmpty else { return nil }
+        return try? VideoDecoderConfigurationPayload(
+            codec: .h264,
+            parameterSets: parameterSets,
+            samplePayload: samplePayload
+        ).encoded()
     }
 
     private static func nextFrameIndices(

@@ -24,6 +24,7 @@ export const SUPPORTED_PROVIDERS = [
   "claude-code",
   "codex",
   "opencode",
+  "antigravity",
 ] as const;
 
 export type Provider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -39,7 +40,7 @@ export const BACKEND_REFRESH_PROVIDERS: readonly Provider[] = [
 ];
 
 /** Providers that are treated as local-only (no backend refresh). */
-export const LOCAL_ONLY_PROVIDERS: readonly Provider[] = ["claude-code", "codex", "opencode"];
+export const LOCAL_ONLY_PROVIDERS: readonly Provider[] = ["claude-code", "codex", "opencode", "antigravity"];
 
 // ---------------------------------------------------------------------------
 // Credential kinds
