@@ -32,10 +32,11 @@ public final class MacActionDispatcher: @unchecked Sendable {
         let elapsedMillis: Double
         switch action.kind {
         case .click:
-            guard let x = action.displayX, let y = action.displayY else {
-                throw DispatchError.missingCoordinates("click")
+            if let x = action.displayX, let y = action.displayY {
+                elapsedMillis = try inputController.click(x: x, y: y, button: action.mouseButton)
+            } else {
+                elapsedMillis = try inputController.clickCurrent(button: action.mouseButton)
             }
-            elapsedMillis = try inputController.click(x: x, y: y, button: action.mouseButton)
         case .type:
             guard let text = action.text else { throw DispatchError.missingText }
             elapsedMillis = try inputController.type(text: text)
@@ -62,9 +63,14 @@ public final class MacActionDispatcher: @unchecked Sendable {
             guard let x = action.displayX, let y = action.displayY else {
                 throw DispatchError.missingCoordinates("scroll")
             }
-            let deltaX = (action.dragEndX ?? x) - x
-            let deltaY = (action.dragEndY ?? (y - 600)) - y
+            let deltaX = action.deltaX ?? ((action.dragEndX ?? x) - x)
+            let deltaY = action.deltaY ?? ((action.dragEndY ?? (y - 600)) - y)
             elapsedMillis = try inputController.scroll(x: x, y: y, deltaX: deltaX, deltaY: deltaY)
+        case .pointerMove:
+            elapsedMillis = try inputController.pointerMove(
+                deltaX: action.deltaX ?? 0,
+                deltaY: action.deltaY ?? 0
+            )
         }
 
         return .object([

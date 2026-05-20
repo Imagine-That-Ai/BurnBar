@@ -131,12 +131,14 @@ public enum MacInputCore {
     /// connected-display rectangles (already converted to the global
     /// `CGEventPost` top-left-origin coordinate space).
     public struct DisplayBounds: Sendable, Equatable, Codable {
+        public let displayId: String?
         public let originX: Int
         public let originY: Int
         public let width: Int
         public let height: Int
 
-        public init(originX: Int, originY: Int, width: Int, height: Int) {
+        public init(displayId: String? = nil, originX: Int, originY: Int, width: Int, height: Int) {
+            self.displayId = displayId
             self.originX = originX
             self.originY = originY
             self.width = width

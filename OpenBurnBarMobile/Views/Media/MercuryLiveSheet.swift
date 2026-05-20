@@ -51,6 +51,7 @@ struct MercuryLiveSheet: View {
     @StateObject private var screenShareViewer = ScreenShareViewerCoordinator()
     @StateObject private var phoneControlCoordinator = AgentWatchOverlayCoordinator()
     @State private var phoneControlError: String?
+    @State private var selectedMirrorDisplayId: String?
     @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
     @AppStorage("mercuryMimicLoginBackground") private var mimicLoginBackground: Bool = true
     @State private var backgroundImage: UIImage? = nil
@@ -126,8 +127,28 @@ struct MercuryLiveSheet: View {
                 coordinator: screenShareViewer,
                 resetToken: activeMirrorRequestID,
                 controlStatus: mirrorControlStatus,
+                displays: lastAck?.availableDisplays ?? [],
+                selectedDisplayId: selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
                 sendTapIntent: { x, y in
-                    Task { try? await phoneControlCoordinator.receiver?.tap(normalizedX: x, normalizedY: y) }
+                    let displayId = selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
+                    Task { try? await phoneControlCoordinator.receiver?.tap(normalizedX: x, normalizedY: y, displayId: displayId) }
+                },
+                sendScrollIntent: { x1, y1, x2, y2, displayId in
+                    Task {
+                        try? await phoneControlCoordinator.receiver?.scrollDrag(
+                            startNormalizedX: x1,
+                            startNormalizedY: y1,
+                            endNormalizedX: x2,
+                            endNormalizedY: y2,
+                            displayId: displayId ?? selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
+                        )
+                    }
+                },
+                sendPointerMoveIntent: { dx, dy in
+                    Task { try? await phoneControlCoordinator.receiver?.pointerMove(deltaX: dx, deltaY: dy) }
+                },
+                sendPointerClickIntent: {
+                    Task { try? await phoneControlCoordinator.receiver?.pointerClick() }
                 },
                 sendTextIntent: { text in
                     Task { try? await phoneControlCoordinator.receiver?.type(text) }
@@ -135,6 +156,7 @@ struct MercuryLiveSheet: View {
                 sendShortcutIntent: { key, modifiers in
                     Task { try? await phoneControlCoordinator.receiver?.shortcut(key: key, modifiers: modifiers) }
                 },
+                onSelectDisplay: selectMirrorDisplay,
                 onClose: {
                     isShowingMirrorViewer = false
                     Task { await stopActiveMirror(reason: "viewer_closed") }
@@ -572,10 +594,12 @@ struct MercuryLiveSheet: View {
                 }
                 if ack.decision == .accepted {
                     self.activeMirrorRequestID = ack.requestId
+                    self.selectedMirrorDisplayId = ack.selectedDisplayId ?? ack.availableDisplays?.first?.id ?? self.selectedMirrorDisplayId
                     self.isShowingMirrorViewer = true
                     Task { await self.startPhoneControlIfPossible() }
                 } else if ack.requestId == self.activeMirrorRequestID {
                     self.activeMirrorRequestID = nil
+                    self.selectedMirrorDisplayId = nil
                     self.isShowingMirrorViewer = false
                     Task { await self.phoneControlCoordinator.stop() }
                 }
@@ -599,6 +623,7 @@ struct MercuryLiveSheet: View {
         let requestID = UUID().uuidString
         awaitingRequestID = requestID
         activeMirrorRequestID = nil
+        selectedMirrorDisplayId = nil
         phoneControlError = nil
         lastError = nil
         lastAck = nil
@@ -647,10 +672,19 @@ struct MercuryLiveSheet: View {
     private func stopActiveMirror(reason: String) async {
         guard let uid = uidProvider(), !uid.isEmpty else {
             activeMirrorRequestID = nil
+            selectedMirrorDisplayId = nil
+            isShowingMirrorViewer = false
+            await phoneControlCoordinator.stop()
             return
         }
         guard let requestID = activeMirrorRequestID else { return }
         activeMirrorRequestID = nil
+        selectedMirrorDisplayId = nil
+        isShowingMirrorViewer = false
+        lastAck = nil
+        lastAckReceivedAt = nil
+        cooldownTickerTask?.cancel()
+        cooldownTickerTask = nil
         await phoneControlCoordinator.stop()
         let stop = HermesRealtimeRelayMirrorStop(
             requestId: requestID,
@@ -669,6 +703,32 @@ struct MercuryLiveSheet: View {
         } catch {
             Self.log.error("mirror_stop_send_failed requestID=\(requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
             Self.debugTrace("mirror_stop_send_failed requestID=\(requestID) error=\(error.localizedDescription)")
+        }
+    }
+
+    private func selectMirrorDisplay(_ displayId: String) {
+        selectedMirrorDisplayId = displayId
+        guard let uid = uidProvider(), !uid.isEmpty,
+              let requestID = activeMirrorRequestID else { return }
+        let selection = HermesRealtimeRelayMirrorDisplaySelection(
+            requestId: requestID,
+            displayId: displayId
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaMirrorDisplaySelect,
+            uid: uid,
+            connectionId: connectionID,
+            requestId: requestID,
+            media: HermesRealtimeRelayMediaPayload(mirrorDisplaySelection: selection)
+        )
+        Task {
+            do {
+                try await controlStreamCoordinator.send(frame: frame, timeout: 2)
+            } catch {
+                await MainActor.run {
+                    lastError = "Could not switch display: \(error.localizedDescription)"
+                }
+            }
         }
     }
 
@@ -798,31 +858,33 @@ private struct MercuryMirrorViewerFullScreen: View {
     @ObservedObject var coordinator: ScreenShareViewerCoordinator
     let resetToken: String?
     let controlStatus: ScreenSharePhoneControlStatus
+    let displays: [HermesRealtimeRelayDisplayDescriptor]
+    let selectedDisplayId: String?
     let sendTapIntent: (Double, Double) -> Void
+    let sendScrollIntent: (Double, Double, Double, Double, String?) -> Void
+    let sendPointerMoveIntent: (Double, Double) -> Void
+    let sendPointerClickIntent: () -> Void
     let sendTextIntent: (String) -> Void
     let sendShortcutIntent: (String, [String]) -> Void
+    let onSelectDisplay: (String) -> Void
     let onClose: () -> Void
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            ScreenShareViewerView(
-                coordinator: coordinator,
-                resetToken: resetToken,
-                controlStatus: controlStatus,
-                sendTapIntent: sendTapIntent,
-                sendTextIntent: sendTextIntent,
-                sendShortcutIntent: sendShortcutIntent
-            )
-            Button(action: onClose) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 32, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.white)
-                    .shadow(radius: 6)
-                    .padding(18)
-            }
-            .accessibilityLabel("Close mirror viewer")
-        }
+        ScreenShareViewerView(
+            coordinator: coordinator,
+            resetToken: resetToken,
+            controlStatus: controlStatus,
+            displays: displays,
+            selectedDisplayId: selectedDisplayId,
+            sendTapIntent: sendTapIntent,
+            sendScrollIntent: sendScrollIntent,
+            sendPointerMoveIntent: sendPointerMoveIntent,
+            sendPointerClickIntent: sendPointerClickIntent,
+            sendTextIntent: sendTextIntent,
+            sendShortcutIntent: sendShortcutIntent,
+            onSelectDisplay: onSelectDisplay,
+            onClose: onClose
+        )
         .background(Color.black.ignoresSafeArea())
     }
 }
