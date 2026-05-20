@@ -12,8 +12,9 @@ as Factory-served.
 - Droid Core models (`glm-5.1`, `kimi-k2.6`, `deepseek-v4-pro`,
   `minimax-m2.7`, etc.) are separate Droid Core routes.
 - Standard Usage exhaustion is treated as a same-model failover event. BurnBar
-  must switch to another exact same-model route instead of accepting Factory's
-  native Standard-to-Droid-Core downgrade.
+  may switch to another provider/account only when that route proves the same
+  canonical model ID. It must never accept Factory's native
+  Standard-to-Droid-Core downgrade as proof.
 - Extra Usage is not used unless the user explicitly enables prepaid overage
   and has positive balance.
 - For routed Standard accounts, the recommended Factory setting is **Ask me
@@ -38,5 +39,6 @@ slot states.
 
 `/v1/models` and Settings should say `Factory Droid` / `via Factory`. A request
 for `gpt-5.5` can fail over to another Factory Max account's `gpt-5.5`, but it
-must not become `glm-5.1` unless the user explicitly picked a Droid Core model
-or enabled a downgrade policy in a future release.
+must not become `glm-5.1`, `gpt-5.5-fast`, or a generic `openai:standard`
+route. Exact model failover is keyed by canonical model ID, not provider family,
+capability class, benchmark ranking, or Factory's own fallback lane.
