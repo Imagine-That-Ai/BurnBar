@@ -101,8 +101,8 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
     /// capability class: it proves the route serves the requested model, not a
     /// neighboring model in the same broad family.
     public let canonicalModelID: String?
-    /// Optional same-tier failover class used to prevent silent downgrade
-    /// across account switches. Defaults to `id` when omitted by the catalog.
+    /// Optional advisory capability class retained for scoring, grouping, and
+    /// legacy audit surfaces. It is not proof of exact model identity.
     public let capabilityClassID: String?
     /// Optional relative rank inside one provider's capability lattice.
     /// Higher rank means more capable. Used only when explicit downgrade
@@ -364,9 +364,8 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
         }
     }
 
-    /// Returns the normalized capability-class ID for a model when known.
-    /// Falls back to the resolved model ID so callers can still enforce
-    /// same-class retry policies even when the catalog omits explicit classes.
+    /// Returns the normalized advisory capability-class ID for a model when known.
+    /// Falls back to the resolved model ID for legacy callers.
     public func capabilityClassID(
         forModelName modelName: String,
         providerID: String? = nil
