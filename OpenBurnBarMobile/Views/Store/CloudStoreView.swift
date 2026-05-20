@@ -18,8 +18,8 @@ private enum CloudSubscriptionDisclosure {
     static let reviewVisiblePlans = [
         "OpenBurnBar Cloud Monthly - 1 month - hosted quota refresh, session sync, conversation backup, and remote relay.",
         "Hosted Quota Sync Monthly - 1 month - legacy hosted quota sync entitlement for existing App Store review catalog continuity.",
-        "OpenBurnBar Computer Use Monthly - 1 month - hosted computer-use sync entitlement.",
-        "OpenBurnBar Pro Max Monthly - 1 month - full hosted OpenBurnBar subscription bundle."
+        "OpenBurnBar Computer Use Monthly - 1 month - trusted Mac computer use.",
+        "OpenBurnBar Pro Max Monthly - 1 month - all OpenBurnBar cloud features."
     ]
 }
 
@@ -226,7 +226,7 @@ private struct CloudStorePlanTile: View {
                     .foregroundStyle(MobileTheme.ember)
                 Spacer(minLength: 0)
                 Text("MONTHLY")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .tracking(1.4)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -387,11 +387,11 @@ private struct CloudStoreCapabilityCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 4) {
                         Text("SEE HOW IT FEELS")
-                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .font(.system(size: 12, weight: .heavy, design: .rounded))
                             .tracking(1.4)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                     }
                     .padding(.top, 2)
@@ -1006,21 +1006,21 @@ private struct CloudStoreSubscriptionDetails: View {
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
             Text("SUBSCRIPTION DETAILS")
-                .font(MobileTheme.Typography.tiny)
+                .font(MobileTheme.Typography.caption)
                 .fontWeight(.bold)
-                .tracking(2.4)
+                .tracking(1.2)
                 .foregroundStyle(MobileTheme.ember)
 
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
                 ForEach(rows, id: \.0) { row in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(row.0)
-                            .font(MobileTheme.Typography.tiny)
+                            .font(MobileTheme.Typography.caption)
                             .fontWeight(.semibold)
-                            .tracking(1.0)
+                            .tracking(0.4)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                         Text(row.1)
-                            .font(MobileTheme.Typography.caption)
+                            .font(MobileTheme.Typography.body)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -1075,24 +1075,24 @@ private struct CloudStoreNativeSubscriptionStore: View {
         SubscriptionStoreView(productIDs: HostedQuotaSubscriptionStore.appStoreReviewVisibleProductIDs) {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
                 Text("OpenBurnBar subscriptions")
-                    .font(MobileTheme.Typography.caption)
+                    .font(MobileTheme.Typography.headline)
                     .fontWeight(.semibold)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
 
                 Text("All App Store Connect subscriptions for this app are available here, billed monthly by Apple, and restorable from this screen.")
-                    .font(MobileTheme.Typography.tiny)
+                    .font(MobileTheme.Typography.body)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
                     ForEach(CloudSubscriptionDisclosure.reviewVisiblePlans, id: \.self) { plan in
                         Text(plan)
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(.top, 2)
+                .padding(.top, MobileTheme.Spacing.xs)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -1190,7 +1190,7 @@ private struct CloudStoreMemberCard: View {
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
                             Text("PRO")
-                                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                .font(.system(size: 12, weight: .heavy, design: .rounded))
                                 .tracking(1.8)
                                 .foregroundStyle(Color.white)
                                 .padding(.horizontal, 8)
@@ -1253,7 +1253,7 @@ private struct CloudStoreMemberCard: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "rosette")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                     Text("Change badge")
                         .font(MobileTheme.Typography.caption)
                         .fontWeight(.semibold)
@@ -1360,7 +1360,7 @@ private struct CloudStoreMemberCard: View {
     private func serialChip(_ serial: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "lock.shield")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             Text(serial)
                 .font(MobileTheme.Typography.monoTiny)

@@ -147,7 +147,7 @@ struct PulseSectionRule: View {
         HStack(spacing: 10) {
             if let label {
                 Text(label.uppercased())
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .tracking(2.0)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
             }

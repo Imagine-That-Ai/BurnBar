@@ -207,7 +207,7 @@ public struct AgentWatchView: View {
                         .lineLimit(2)
                     Spacer()
                     Image(systemName: "chevron.up")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                     }
                 }
                 .font(.system(size: 13))

@@ -61,7 +61,7 @@ struct AssistantBrandHeader: View {
                     .fill(runtimeStatus.color)
                     .frame(width: 6, height: 6)
                 Text(endpointLabel ?? runtimeStatus.label)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
                     .lineLimit(1)
             }
@@ -88,11 +88,11 @@ struct AssistantBrandHeader: View {
             HStack(spacing: 5) {
                 UnifiedProviderLogoView(provider: modelSnapshot.provider, size: 12)
                 Text(modelSnapshot.displayName)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .heavy))
+                    .font(.system(size: 12, weight: .heavy))
                     .foregroundStyle(MobileTheme.Colors.textMuted)
             }
             .padding(.horizontal, 8)

@@ -75,7 +75,7 @@ struct HermesAtomDetailSheet: View {
     private var actionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Action".uppercased())
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .tracking(0.6)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
 

@@ -102,7 +102,7 @@ struct GalleryItemCard: View {
                             .font(MobileTheme.Typography.tiny)
                             .fontWeight(.semibold)
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(MobileTheme.hermesAureate)
                 }

@@ -144,7 +144,7 @@ struct ProviderRoutingCockpit: View {
     ) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(accentTint)
             // `fixedSize` so titles like "Active" / "Next" / "Blocked" don't
             // clip at large Dynamic Type sizes; the spacer below absorbs the
@@ -184,7 +184,7 @@ struct ProviderRoutingCockpit: View {
         if blockedAccounts.isEmpty {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(MobileTheme.Colors.success)
                 Text("Blocked")
                     .font(MobileTheme.Typography.tiny)
@@ -199,7 +199,7 @@ struct ProviderRoutingCockpit: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Image(systemName: "pause.circle.fill")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(MobileTheme.Colors.warning)
                     Text("Blocked")
                         .font(MobileTheme.Typography.tiny)
@@ -246,7 +246,7 @@ struct ProviderRoutingCockpit: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(accentTint)
                 Text(title)
                     .font(MobileTheme.Typography.tiny)
@@ -270,7 +270,7 @@ struct ProviderRoutingCockpit: View {
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
                         .lineLimit(1)
                     Image(systemName: ProviderAccountStorageVisual.iconName(candidate.storageScope))
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProviderAccountStorageVisual.tint(candidate.storageScope))
                 }
             } else {
@@ -288,7 +288,7 @@ struct ProviderRoutingCockpit: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
                 Image(systemName: blockedAccounts.isEmpty ? "checkmark.shield.fill" : "pause.circle.fill")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(blockedAccounts.isEmpty ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
                 Text("Blocked")
                     .font(MobileTheme.Typography.tiny)
@@ -331,7 +331,7 @@ struct ProviderRoutingCockpit: View {
         if let reason = sanitizedReason(state.lastSwitchReason) {
             HStack(alignment: .top, spacing: MobileTheme.Spacing.xs) {
                 Image(systemName: "text.bubble")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(MobileTheme.Colors.textMuted)
                 Text(reason)
                     .font(MobileTheme.Typography.tiny)
@@ -346,7 +346,7 @@ struct ProviderRoutingCockpit: View {
     private func routingPill(_ text: String, tint: Color, icon: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
             Text(text)
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.medium)

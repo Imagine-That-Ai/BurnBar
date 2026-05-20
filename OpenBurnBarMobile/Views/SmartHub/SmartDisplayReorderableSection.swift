@@ -97,7 +97,7 @@ struct SmartDisplayReorderableSection<Content: View>: View {
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
             Spacer(minLength: 0)
             Image(systemName: "line.3.horizontal")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
                 .accessibilityLabel("Drag handle. Touch and hold to move this display.")
         }

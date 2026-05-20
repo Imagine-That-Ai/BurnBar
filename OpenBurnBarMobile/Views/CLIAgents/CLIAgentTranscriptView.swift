@@ -183,7 +183,7 @@ struct CLIAgentTranscriptView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Image(systemName: iconName(for: tool.name))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                 Text(tool.name)
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)

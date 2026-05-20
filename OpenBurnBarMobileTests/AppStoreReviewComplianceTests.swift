@@ -64,6 +64,7 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("OpenBurnBar Computer Use Monthly"))
         XCTAssertTrue(source.contains("OpenBurnBar Pro Max Monthly"))
         XCTAssertTrue(source.contains("All App Store Connect subscriptions for this app are available here"))
+        XCTAssertFalse(source.contains(".font(.system(size: 10"))
         XCTAssertTrue(source.contains(".storeButton(.visible, for: .restorePurchases)"))
         XCTAssertTrue(source.contains(".subscriptionStorePolicyDestination(url: CloudStoreLegalURLs.privacy, for: .privacyPolicy)"))
         XCTAssertTrue(source.contains(".subscriptionStorePolicyDestination(url: CloudStoreLegalURLs.terms, for: .termsOfService)"))
@@ -83,9 +84,50 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("static let appStoreReviewVisibleProductIDs"))
         XCTAssertTrue(source.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
         XCTAssertTrue(source.contains("com.openburnbar.hostedQuotaSync.monthly"))
-        XCTAssertTrue(source.contains("com.openburnbar.hostedComputerUseSync.monthly"))
-        XCTAssertTrue(source.contains("com.openburnbar.proMax.monthly"))
+        XCTAssertTrue(source.contains("com.openburnbar.computerUse.monthly"))
+        XCTAssertTrue(source.contains("com.openburnbar.proMax.bundle.monthly"))
+        XCTAssertTrue(source.contains("legacyHostedComputerUseProductID"))
+        XCTAssertTrue(source.contains("legacyProMaxProductID"))
         XCTAssertTrue(source.contains("fetchProducts(Self.appStoreReviewVisibleProductIDs)"))
+    }
+
+    func testSharedTypographyMeetsReadableMobileFloorForAppReview() throws {
+        let designSystemURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarCore")
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("OpenBurnBarCore")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("UnifiedDesignSystem.swift")
+        let source = try String(contentsOf: designSystemURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("public static let body         = Font.system(size: 16"))
+        XCTAssertTrue(source.contains("public static let caption      = Font.system(size: 14"))
+        XCTAssertTrue(source.contains("public static let tiny         = Font.system(size: 13"))
+        XCTAssertTrue(source.contains("public static let monoTiny  = Font.system(size: 12"))
+    }
+
+    func testMobileReviewSurfacesDoNotShipHardCodedMicroTypography() throws {
+        let roots = [
+            repoRoot().appendingPathComponent("OpenBurnBarMobile").appendingPathComponent("Views"),
+            repoRoot().appendingPathComponent("OpenBurnBarCore").appendingPathComponent("Sources").appendingPathComponent("OpenBurnBarCore").appendingPathComponent("Views")
+        ]
+        let microFontPattern = try NSRegularExpression(pattern: #"font\(\.system\(size:\s*(?:5|8|9|10|11)(?:\b|\s*\*)"#)
+
+        for root in roots {
+            let urls = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: nil
+            )?.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" } ?? []
+
+            for url in urls {
+                let source = try String(contentsOf: url, encoding: .utf8)
+                let range = NSRange(source.startIndex..<source.endIndex, in: source)
+                XCTAssertNil(
+                    microFontPattern.firstMatch(in: source, range: range),
+                    "\(url.path) contains hard-coded type below 12pt"
+                )
+            }
+        }
     }
 
     func testTakePhotoFlowPreflightsPermissionAndUsesFullScreenCameraPresentation() throws {

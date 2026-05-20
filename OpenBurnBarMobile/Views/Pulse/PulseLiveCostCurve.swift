@@ -194,7 +194,7 @@ struct PulseLiveCostCurve: View {
             .overlay(alignment: .center) {
                 HStack(spacing: 6) {
                     Image(systemName: "waveform.path")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                     Text(emptyMessage)
                         .font(MobileTheme.Typography.tiny)
                         .fontWeight(.semibold)
@@ -232,7 +232,7 @@ struct PulseLiveCostCurve: View {
         HStack(spacing: 0) {
             ForEach(Array(labels.enumerated()), id: \.offset) { _, label in
                 Text(label)
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(MobileTheme.Colors.textMuted.opacity(0.7))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

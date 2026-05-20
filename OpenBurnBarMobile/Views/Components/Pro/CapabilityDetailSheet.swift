@@ -289,7 +289,7 @@ private struct QuotaRefreshStage: View {
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                     Spacer()
                     Text("CODEX QUOTA")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .tracking(1.8)
                         .foregroundStyle(MobileTheme.ember)
                     Spacer()
@@ -321,11 +321,11 @@ private struct QuotaRefreshStage: View {
                     Image(systemName: "arrow.up.circle.fill")
                         .foregroundStyle(MobileTheme.ember)
                     Text("Hosted refresh · \(Int(fill * 100))%")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                     Spacer()
                     Text("12s avg")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: 13, design: .monospaced))
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
             }
@@ -379,7 +379,7 @@ private struct CrossDeviceStage: View {
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
             }
             Text(label)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .tracking(1.2)
                 .foregroundStyle(MobileTheme.Colors.textPrimary.opacity(0.75))
         }
@@ -422,7 +422,7 @@ private struct SessionSearchStage: View {
                                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                     .foregroundStyle(MobileTheme.Colors.textPrimary)
                                 Text(["Wed · 6h ago · 42k tokens", "Wed · 8h ago · 31k tokens", "Wed · 9h ago · 12k tokens"][i])
-                                    .font(.system(size: 10, design: .monospaced))
+                                    .font(.system(size: 12, design: .monospaced))
                                     .foregroundStyle(MobileTheme.Colors.textPrimary.opacity(0.55))
                             }
                             Spacer()
@@ -479,7 +479,7 @@ private struct RemoteRelayStage: View {
             }
             .frame(width: 64, height: 64)
             Text(label.uppercased())
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .tracking(1.2)
                 .foregroundStyle(MobileTheme.Colors.textPrimary.opacity(0.75))
         }

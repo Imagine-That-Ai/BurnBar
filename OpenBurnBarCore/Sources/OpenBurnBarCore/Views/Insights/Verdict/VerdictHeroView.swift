@@ -95,7 +95,7 @@ public struct VerdictHeroView: View {
                 Button(action: { onRefresh?() }) {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                         Text("Stale · Refresh")
                             .font(UnifiedDesignSystem.Typography.tiny)
                     }
@@ -117,7 +117,7 @@ public struct VerdictHeroView: View {
     private func chipPill(text: String, systemImage: String, tint: Color) -> some View {
         HStack(spacing: 4) {
             Image(systemName: systemImage)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
             Text(text)
                 .font(UnifiedDesignSystem.Typography.tiny)
         }
@@ -204,7 +204,7 @@ public struct VerdictHeroView: View {
                         Text(rec.acceptAction.label)
                             .font(UnifiedDesignSystem.Typography.caption)
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                     }
                     .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
                     .padding(.vertical, UnifiedDesignSystem.Spacing.xs)
@@ -239,7 +239,7 @@ public struct VerdictHeroView: View {
                 Button(action: { onFollowUpTap(question) }) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                         Text(question)
                             .font(UnifiedDesignSystem.Typography.caption)
                     }

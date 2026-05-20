@@ -75,11 +75,11 @@ private struct AgentInsightsKPITile: View {
         switch kpi.trendDirection {
         case .up:
             Image(systemName: "arrow.up.right")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.success)
         case .down:
             Image(systemName: "arrow.down.right")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.warning)
         case .flat:
             EmptyView()

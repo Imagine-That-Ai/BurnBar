@@ -882,7 +882,10 @@ final class SmartHubBridgeController {
         if snapshot.confidence == .unavailable { return "unavailable" }
         if snapshot.confidence == .estimated { return "estimated" }
         switch snapshot.source {
-        case .localCLI, .localSession: return "live local"
+        case .localCLI, .localSession:
+            if age > 6 * 3600 { return "source \(Int(age / 3600))h ago" }
+            if age > 60 * 60 { return "live local · \(Int(age / 60))m ago" }
+            return "live local"
         case .officialAPI:
             return age > 6 * 3600 ? "source \(Int(age / 3600))h ago" : "source live"
         case .manualEstimate: return "manual"

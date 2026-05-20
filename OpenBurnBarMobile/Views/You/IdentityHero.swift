@@ -160,7 +160,7 @@ struct IdentityHero: View {
         if syncHealth.isHealthy {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.icloud.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(MobileTheme.success)
                 Text("Live cloud sync · App Check active")
                     .font(MobileTheme.Typography.tiny)

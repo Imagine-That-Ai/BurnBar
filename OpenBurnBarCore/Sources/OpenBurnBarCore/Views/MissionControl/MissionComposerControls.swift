@@ -59,7 +59,7 @@ public struct MissionTitlePromptFields: View {
                     fieldLabel("MISSION BRIEF")
                     Spacer()
                     Text("\(prompt.count) chars")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 }
                 TextEditor(text: $prompt)
@@ -105,7 +105,7 @@ public struct MissionTitlePromptFields: View {
     private var sectionHeader: some View {
         HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
             Text("03 · BRIEF")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(2.4)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Rectangle()
@@ -117,7 +117,7 @@ public struct MissionTitlePromptFields: View {
 
     private func fieldLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
             .tracking(1.5)
             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
     }
@@ -159,11 +159,11 @@ public struct MissionDepthDial: View {
                 HStack(spacing: 4) {
                     depthGlyph(for: stop, isSelected: isSelected)
                     Text(stop.displayName)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(isSelected ? UnifiedDesignSystem.Colors.textPrimary : UnifiedDesignSystem.Colors.textSecondary)
                 }
                 Text(stop.subtitle)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(isSelected ? UnifiedDesignSystem.Colors.textSecondary : UnifiedDesignSystem.Colors.textMuted)
                     .lineLimit(1)
             }
@@ -206,7 +206,7 @@ public struct MissionDepthDial: View {
 
     private func fieldLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
             .tracking(1.5)
             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
     }
@@ -239,7 +239,7 @@ public struct MissionApprovalLever: View {
             .scrollClipDisabled(false)
 
             Text(mode.caption)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -253,9 +253,9 @@ public struct MissionApprovalLever: View {
         return Button { mode = value } label: {
             HStack(spacing: 6) {
                 Image(systemName: glyph)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                 Text(value.displayName)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .lineLimit(1)
             }
             .foregroundStyle(
@@ -291,7 +291,7 @@ public struct MissionApprovalLever: View {
 
     private func fieldLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
             .tracking(1.5)
             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
     }
@@ -371,9 +371,9 @@ public struct MissionPermissionsRow: View {
             if commandsAllowed && fileEditsAllowed {
                 HStack(spacing: 6) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                     Text("Highest blast radius — agent can run anything and rewrite files.")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
                 }
                 .foregroundStyle(UnifiedDesignSystem.Colors.ember)
                 .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
@@ -415,10 +415,10 @@ public struct MissionPermissionsRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
                         Text(label)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                         Text(isOn.wrappedValue ? "ON" : "OFF")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .tracking(0.6)
                             .foregroundStyle(
                                 isOn.wrappedValue
@@ -427,7 +427,7 @@ public struct MissionPermissionsRow: View {
                             )
                     }
                     Text(subtitle)
-                        .font(.system(size: 10, weight: .regular, design: .rounded))
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                         .lineLimit(1)
                 }
@@ -457,7 +457,7 @@ public struct MissionPermissionsRow: View {
 
     private func fieldLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
             .tracking(1.5)
             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
     }
@@ -488,7 +488,7 @@ public struct MissionProjectField: View {
                 Spacer()
                 if !project.isEmpty {
                     Text(normalizedPath)
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -582,7 +582,7 @@ public struct MissionProjectField: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
                 Text("Recent")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(0.8)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 ForEach(Array((recentProjects + knownProjects).uniqueOrderPreserving.prefix(8)), id: \.self) { name in
@@ -597,7 +597,7 @@ public struct MissionProjectField: View {
     private func suggestionChip(_ name: String) -> some View {
         Button { project = name } label: {
             Text(name)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                 .lineLimit(1)
                 .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
@@ -614,7 +614,7 @@ public struct MissionProjectField: View {
 
     private func fieldLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
             .tracking(1.5)
             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
     }

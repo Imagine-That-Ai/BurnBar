@@ -53,7 +53,7 @@ public struct VerdictBulletRow: View {
         HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.md) {
             // Glyph leader (recommendation/anomaly/etc).
             Image(systemName: glyph)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(glyphTint)
                 .frame(width: 14, alignment: .leading)
                 .padding(.top, 4)
@@ -109,7 +109,7 @@ public struct VerdictBulletRow: View {
                 Text(action.label)
                     .font(UnifiedDesignSystem.Typography.caption)
                 Image(systemName: "arrow.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
             }
             .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
             .padding(.vertical, UnifiedDesignSystem.Spacing.xs)

@@ -30,6 +30,14 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         /// OpenBurnBar is the only thing refreshing, so old hook output must
         /// not pin quota UI to stale percentages.
         static let maxSnapshotAge: TimeInterval = 15 * 60
+
+        /// Maximum age for a stale statusline snapshot to be used as a
+        /// fallback on the Nest Hub / dashboard. After this threshold the data
+        /// is too old to be meaningful — the 5h window has long since rolled
+        /// over — and the adapter returns unavailable instead. Prevents the
+        /// "shows data from 5 days ago" failure mode where a one-time bridge
+        /// write pins stale percentages indefinitely.
+        static let maxStaleFallbackAge: TimeInterval = 12 * 3600
     }
 
     /// Anthropic's published 5-hour / 7-day token allowances per plan
@@ -347,11 +355,13 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private func staleStatuslineSnapshotIfAvailable(
         status: ClaudeQuotaBridgeStatus,
         context: ProviderQuotaAdapterContext,
-        messagePrefix: String
+        messagePrefix: String,
+        now: Date = Date()
     ) -> ProviderQuotaSnapshot? {
         guard status.state == .ready,
               let lastPayloadAt = status.lastPayloadAt,
               !Self.isFreshStatuslineSnapshot(lastPayloadAt),
+              now.timeIntervalSince(lastPayloadAt) <= StatuslinePolicy.maxStaleFallbackAge,
               let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
               let rateLimitsDict = payload["rate_limits"] as? [String: Any] else {
             return nil

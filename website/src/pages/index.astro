@@ -47,7 +47,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
           OpenBurnBar is a <strong>local-first developer tool</strong> that watches the AI
           coding agents you already use — Claude Code, Codex, Cursor, Copilot, Factory,
           MiniMax, and more — and gives you a live read on tokens burned, dollars spent,
-          and quota left, across all of them, on your machine.
+          and quota left, across all of them, on your machine. <em>Every token leaves a trail. BurnBar reads the fire.</em>
         </p>
 
         <div class="hero__ctas">
@@ -594,8 +594,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
   .band {
     padding-block: var(--s-6);
     border-bottom: 1px solid var(--ink-line);
-    background:
-      linear-gradient(180deg, transparent 0%, rgba(255, 106, 26, 0.025) 100%);
+    background: linear-gradient(180deg, transparent 0%, rgba(255, 69, 0, 0.05) 100%);
   }
   .band__inner {
     display: flex;
@@ -654,12 +653,19 @@ const surfaceShowcase = SURFACES.filter((s) =>
   .pillar {
     display: grid;
     gap: var(--s-3);
-    padding: var(--s-5);
+    padding: var(--s-6);
     border: 1px solid var(--ink-line);
-    border-radius: var(--r-4);
-    background:
-      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
     position: relative;
+    transition: all var(--dur-base) var(--ease);
+  }
+  .pillar:hover {
+    border-color: var(--ink-line-bright);
+    background: var(--glass-bg-elevated);
+    transform: translateY(-5px);
   }
   .pillar__num {
     color: var(--ember-bright);
@@ -683,10 +689,10 @@ const surfaceShowcase = SURFACES.filter((s) =>
 
   /* ────────── dashshow ────────── */
   .dashshow {
-    padding-block: var(--s-8);
+    padding-block: var(--s-10);
     border-block: 1px solid var(--ink-line);
     background:
-      radial-gradient(80% 80% at 80% 0%, rgba(255, 106, 26, 0.04), transparent 60%);
+      radial-gradient(100% 100% at 50% 100%, var(--core-underglow), transparent 70%);
   }
   .dashshow__frame {
     margin-top: var(--s-6);
@@ -856,11 +862,12 @@ const surfaceShowcase = SURFACES.filter((s) =>
   }
   .hydrantsec__rules {
     margin-top: var(--s-8);
-    padding: var(--s-6);
+    padding: var(--s-7);
     border: 1px solid var(--ink-line);
-    border-radius: var(--r-5);
-    background:
-      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    border-radius: var(--r-xl);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
     position: relative;
     overflow: hidden;
   }
@@ -987,11 +994,13 @@ const surfaceShowcase = SURFACES.filter((s) =>
   }
   .hermes__visual {
     border: 1px solid var(--ink-line);
-    background:
-      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
-    border-radius: var(--r-4);
-    padding: var(--s-5);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: var(--r-lg);
+    padding: var(--s-6);
     position: relative;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   }
   .hermes__chat {
     display: grid;
@@ -1116,12 +1125,19 @@ const surfaceShowcase = SURFACES.filter((s) =>
   }
   .ptcard {
     border: 1px solid var(--ink-line);
-    border-radius: var(--r-4);
-    padding: var(--s-6);
-    background:
-      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    border-radius: var(--r-lg);
+    padding: var(--s-7);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
     display: grid;
-    gap: var(--s-4);
+    gap: var(--s-5);
+    transition: all var(--dur-base) var(--ease);
+  }
+  .ptcard:hover {
+    border-color: var(--ink-line-bright);
+    background: var(--glass-bg-elevated);
+    transform: translateY(-8px);
   }
   .ptcard__price {
     font-family: var(--font-display);
@@ -1171,7 +1187,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
   .endcta {
     padding-block: var(--s-10);
     background:
-      radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.08), transparent 70%);
+      radial-gradient(100% 100% at 50% 50%, var(--core-underglow), transparent 70%);
   }
   .endcta__inner {
     text-align: center;

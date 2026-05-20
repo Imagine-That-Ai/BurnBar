@@ -535,7 +535,7 @@ private struct AccountRow: View {
     private func deviceLinksChip(_ text: String) -> some View {
         HStack(spacing: 3) {
             Image(systemName: "macbook.and.iphone")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
             Text(text)
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
@@ -552,7 +552,7 @@ private struct AccountRow: View {
         let style = routingHintStyle(hint)
         return HStack(spacing: 3) {
             Image(systemName: style.icon)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
             Text(style.label)
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)

@@ -219,7 +219,7 @@ struct NestHubSettingsCard: View {
     private var bridgeStatus: some View {
         HStack(spacing: MobileTheme.Spacing.sm) {
             Image(systemName: model.bridgeStatusSymbol)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(bridgeColor)
             Text(smartHubStore.hasLiveMacBridge ? model.bridgeStatusMessage : smartHubStore.bridgeFreshnessMessage)
                 .font(MobileTheme.Typography.tiny)

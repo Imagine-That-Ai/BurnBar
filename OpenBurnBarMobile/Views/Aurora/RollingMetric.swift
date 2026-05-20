@@ -98,7 +98,7 @@ struct RollingMetric: View {
     private func trendPill(_ trend: Trend) -> some View {
         HStack(spacing: 4) {
             Image(systemName: trend.icon)
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
             Text(String(format: "%.1f%%", abs(trend.deltaPercent)))
                 .font(MobileTheme.Typography.caption)
                 .fontWeight(.semibold)

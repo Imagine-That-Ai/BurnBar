@@ -241,7 +241,7 @@ private struct CloudBadgePickerTile: View {
                     HStack(spacing: 4) {
                         if isSelected {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(MobileTheme.ember)
                         }
                         Text(style.title)

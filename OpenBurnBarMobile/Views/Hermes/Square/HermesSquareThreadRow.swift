@@ -152,7 +152,7 @@ private struct MobileAttachmentSummaryChip: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         } else {
             Image(systemName: iconName)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(MobileTheme.hermesAureate)
                 .frame(width: 22, height: 22)
                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(MobileTheme.Colors.surfaceElevated))

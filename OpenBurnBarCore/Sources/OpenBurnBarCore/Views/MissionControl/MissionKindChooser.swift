@@ -53,7 +53,7 @@ public struct MissionKindChooser: View {
     private var sectionHeader: some View {
         HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
             Text("01 · KIND")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(2.4)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Rectangle()
@@ -61,7 +61,7 @@ public struct MissionKindChooser: View {
                 .frame(height: 1)
                 .frame(maxWidth: .infinity)
             Text(selectedKind.displayName.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(1.6)
                 .foregroundStyle(UnifiedDesignSystem.Colors.ember)
         }
@@ -95,7 +95,7 @@ public struct MissionKindChooser: View {
                         .lineLimit(1)
 
                     Text(kind.tagline)
-                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -105,7 +105,7 @@ public struct MissionKindChooser: View {
                             Image(systemName: "arrowshape.right.fill")
                                 .font(.system(size: 7, weight: .bold))
                             Text("Recommends \(name)")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
                                 .tracking(0.5)
                         }
                         .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.85))

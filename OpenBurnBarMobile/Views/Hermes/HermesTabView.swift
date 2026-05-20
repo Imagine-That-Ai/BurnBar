@@ -910,7 +910,7 @@ private struct ConversationRow: View {
     private var messageChip: some View {
         HStack(spacing: 6) {
             Image(systemName: "text.bubble.fill")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
             Text("\(session.messageCount)")
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
@@ -1627,7 +1627,7 @@ struct HermesChatView: View {
     private func runtimeChip(icon: String, label: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
             Text(label)
                 .lineLimit(1)
                 .font(MobileTheme.Typography.tiny)
@@ -1653,11 +1653,11 @@ struct HermesChatView: View {
                     .fontWeight(.semibold)
                 Text("Switch model")
                     .lineLimit(1)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
             }
             Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
         }
         .foregroundStyle(MobileTheme.Colors.textPrimary)
@@ -1706,7 +1706,7 @@ struct HermesChatView: View {
     private func contextChip(icon: String, label: String, value: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
             Text(label).font(MobileTheme.Typography.tiny)
             Text(value)
                 .font(MobileTheme.Typography.tiny)
@@ -2838,7 +2838,7 @@ struct HermesMessageBubble: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Image(systemName: toolCallIcon(for: tool.name))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                 Text(tool.name)
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
@@ -2947,7 +2947,7 @@ struct HermesMessageBubble: View {
         if shouldRenderTPS, let display = message.tokensPerSecondDisplayText {
             HStack(spacing: 5) {
                 Image(systemName: "speedometer")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                 Text(display)
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
@@ -2969,7 +2969,7 @@ struct HermesMessageBubble: View {
             // Tell the user we're hiding the rate instead of fabricating one.
             HStack(spacing: 5) {
                 Image(systemName: "speedometer")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                 Text("rate hidden — buffered stream")
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
@@ -3105,7 +3105,7 @@ struct HermesMessageBubble: View {
            let symbol = message.outcome.badgeSymbol {
             HStack(spacing: 5) {
                 Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                 Text(label)
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
@@ -3146,7 +3146,7 @@ struct HermesMessageBubble: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                 Text("Try again")
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)

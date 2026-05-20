@@ -29,7 +29,7 @@ public struct VerdictProvenanceChip: View {
     public var body: some View {
         HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
             Image(systemName: provenance.egressTier.symbolName)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(tint)
             Text(displayText)
                 .font(UnifiedDesignSystem.Typography.monoTiny)

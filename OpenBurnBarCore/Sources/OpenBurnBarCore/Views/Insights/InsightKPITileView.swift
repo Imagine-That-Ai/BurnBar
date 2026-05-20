@@ -35,7 +35,7 @@ public struct InsightKPITileView: View {
             : UnifiedDesignSystem.Colors.error
         HStack(spacing: 2) {
             Image(systemName: positive ? "arrow.up.right" : "arrow.down.right")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
             Text(InsightFormatting.formatDelta(delta, asPercent: data.deltaIsPercent))
                 .font(UnifiedDesignSystem.Typography.caption)
         }

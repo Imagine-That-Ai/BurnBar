@@ -50,7 +50,7 @@ struct InsightCardView: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "chart.xyaxis.line")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                             Text("Show me the chart")
                                 .font(MobileTheme.Typography.caption)
                                 .fontWeight(.semibold)

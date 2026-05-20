@@ -49,7 +49,7 @@ public struct UnifiedCacheHitRateBadge: View {
     public var body: some View {
         HStack(spacing: 4) {
             Image(systemName: tier.iconName)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
             Text(efficiency.formattedHitRate)
                 .font(UnifiedDesignSystem.Typography.tiny)
                 .fontWeight(.semibold)

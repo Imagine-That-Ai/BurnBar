@@ -63,7 +63,7 @@ public struct VerdictTraceStripView: View {
         }
         .overlay(alignment: .leading) {
             Text(lane.label)
-                .font(.system(size: 8, weight: .medium, design: .monospaced))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 .padding(.leading, 2)
                 .offset(y: -10)
@@ -93,7 +93,7 @@ public struct VerdictTraceStripView: View {
                 .frame(width: 1, height: 5)
             if let label = tick.label {
                 Text(label)
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                     .lineLimit(1)
             }
@@ -115,7 +115,7 @@ public struct VerdictTraceStripView: View {
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                 if strip.didTimeout {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 12))
                         .foregroundStyle(UnifiedDesignSystem.Colors.warning)
                 }
             }

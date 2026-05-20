@@ -442,7 +442,7 @@ struct AssistantModelPickerSheet: View {
 
     private func tagPill(text: String, tint: Color) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .font(.system(size: 12, weight: .heavy, design: .rounded))
             .foregroundStyle(tint)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)

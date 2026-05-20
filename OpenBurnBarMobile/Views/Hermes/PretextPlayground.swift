@@ -258,7 +258,7 @@ struct PretextPlayground: View {
     private func stat(label: String, value: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label.uppercased())
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .tracking(0.6)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             Text(value)
@@ -353,7 +353,7 @@ struct PretextPlayground: View {
     private var richHint: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Inline syntax")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .tracking(0.6)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             Text("Type @mentions and `code spans` directly in the text below to see how pretext keeps them atomic and breaks the rest of the line around them.")
@@ -415,7 +415,7 @@ struct PretextPlayground: View {
     private var textEditor: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Sample text")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .tracking(0.6)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             TextEditor(text: $sampleText)

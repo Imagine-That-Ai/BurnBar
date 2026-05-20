@@ -245,7 +245,7 @@ struct HermesChatBubble: View {
                     // "via Hermes" badge
                     HStack(spacing: 4) {
                         Text("☿")
-                            .font(.system(size: 10))
+                            .font(.system(size: 12))
                         Text("via Hermes")
                             .font(MobileTheme.Typography.tiny)
                     }
