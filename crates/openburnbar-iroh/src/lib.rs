@@ -17,7 +17,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use iroh::{Endpoint, NodeAddr, NodeId, RelayMap, RelayMode, RelayUrl, SecretKey, Watcher};
-use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
