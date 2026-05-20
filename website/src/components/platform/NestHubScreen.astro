@@ -24,8 +24,9 @@ interface Props {
 
 const { id } = Astro.props;
 
-const codingTask = LATEST_RUNDOWN?.taskRankings.find((t) => t.taskID === "coding")
-  ?? LATEST_RUNDOWN?.taskRankings[0];
+const codingTask =
+  LATEST_RUNDOWN?.taskRankings.find((t) => t.taskID === "coding") ??
+  LATEST_RUNDOWN?.taskRankings[0];
 const topPick = codingTask?.recommendations[0];
 const rundownDate = LATEST_RUNDOWN?.date ?? "—";
 const sourceCount = LATEST_RUNDOWN?.sourceStatuses.filter((s) => s.status === "fresh").length ?? 0;
@@ -48,10 +49,16 @@ const providers = [
     isLive: true,
     buckets: [
       { name: "5-hour limit", percent: 8, headline: "8%", sub: "92% left", tone: "ember" as const },
-      { name: "Weekly limit", percent: 18, headline: "18%", sub: "82% left", tone: "ember" as const },
+      {
+        name: "Weekly limit",
+        percent: 18,
+        headline: "18%",
+        sub: "82% left",
+        tone: "ember" as const
+      }
     ],
     runs: "1,002 runs",
-    cost: "$5,835.40",
+    cost: "$5,835.40"
   },
   {
     id: "codex",
@@ -66,11 +73,23 @@ const providers = [
     freshness: "updated just now",
     isLive: true,
     buckets: [
-      { name: "5-hour window", percent: 33, headline: "33%", sub: "67% left", tone: "whimsy" as const },
-      { name: "7-day window", percent: 45, headline: "45%", sub: "55% left", tone: "whimsy" as const },
+      {
+        name: "5-hour window",
+        percent: 33,
+        headline: "33%",
+        sub: "67% left",
+        tone: "whimsy" as const
+      },
+      {
+        name: "7-day window",
+        percent: 45,
+        headline: "45%",
+        sub: "55% left",
+        tone: "whimsy" as const
+      }
     ],
     runs: "852 runs",
-    cost: "$52,262.22",
+    cost: "$52,262.22"
   },
   {
     id: "cursor",
@@ -85,11 +104,17 @@ const providers = [
     freshness: "updated 4m ago",
     isLive: true,
     buckets: [
-      { name: "Auto + Composer", percent: 8, headline: "8%", sub: "92% left", tone: "mercury" as const },
-      { name: "API usage", percent: 78, headline: "78%", sub: "22% left", tone: "warning" as const },
+      {
+        name: "Auto + Composer",
+        percent: 8,
+        headline: "8%",
+        sub: "92% left",
+        tone: "mercury" as const
+      },
+      { name: "API usage", percent: 78, headline: "78%", sub: "22% left", tone: "warning" as const }
     ],
     runs: "216 runs",
-    cost: "$620.13",
+    cost: "$620.13"
   },
   {
     id: "droid",
@@ -104,12 +129,24 @@ const providers = [
     freshness: "updated 4m ago",
     isLive: true,
     buckets: [
-      { name: "5-hour window", percent: 35, headline: "350.8M", sub: "resets May 8", tone: "whimsy" as const },
-      { name: "7-day window", percent: 39, headline: "3.9B", sub: "resets May 14", tone: "whimsy" as const },
+      {
+        name: "5-hour window",
+        percent: 35,
+        headline: "350.8M",
+        sub: "resets May 8",
+        tone: "whimsy" as const
+      },
+      {
+        name: "7-day window",
+        percent: 39,
+        headline: "3.9B",
+        sub: "resets May 14",
+        tone: "whimsy" as const
+      }
     ],
     runs: "2,750 runs",
-    cost: "$12,309.98",
-  },
+    cost: "$12,309.98"
+  }
 ];
 
 const TONE_HEX: Record<string, string> = {
@@ -117,7 +154,7 @@ const TONE_HEX: Record<string, string> = {
   whimsy: "#A294F0",
   success: "#38D898",
   warning: "#F0C040",
-  mercury: "#C8BFB5",
+  mercury: "#C8BFB5"
 };
 ---
 
@@ -133,67 +170,82 @@ const TONE_HEX: Record<string, string> = {
   <div class="nesthub-screen__dotgrid" aria-hidden="true"></div>
 
   <header class="nesthub-screen__head">
-    <img class="nesthub-screen__brand" src="/brand/logo-64.png" alt="" width="22" height="22" loading="lazy" />
+    <img
+      class="nesthub-screen__brand"
+      src="/brand/logo-64.png"
+      alt=""
+      width="22"
+      height="22"
+      loading="lazy"
+    />
     <span class="nesthub-screen__livedot" aria-hidden="true"></span>
     <span class="nesthub-screen__status">live provider pressure</span>
     <span class="nesthub-screen__refresh">Refresh</span>
     <div class="nesthub-screen__time">
       <span class="nesthub-screen__date" data-platform-date>Tue, May 13</span>
-      <span class="nesthub-screen__clock" data-platform-clock data-platform-clock-format="hm">10:43 PM</span>
+      <span class="nesthub-screen__clock" data-platform-clock data-platform-clock-format="hm"
+        >10:43 PM</span
+      >
     </div>
   </header>
 
   <ol class="nesthub-screen__rail" data-platform-provider-rail>
-    {providers.map((p) => (
-      <li class="ncard" style={`--accent:${p.accent};`}>
-        <header class="ncard__head">
-          <div class="ncard__logo" style={`--accent:${p.accent};`}>
-            {p.logo ? (
-              <img src={p.logo} alt="" width="20" height="20" loading="lazy" decoding="async" />
-            ) : (
-              <span>{p.monogram}</span>
-            )}
-          </div>
-          <div class="ncard__id">
-            <strong class="ncard__name">{p.name}</strong>
-            <span class="ncard__fresh">{p.freshness}</span>
-          </div>
-          <span class={`ncard__live ${p.isLive ? "ncard__live--on" : ""}`} aria-hidden="true"></span>
-        </header>
-
-        <span class="ncard__pill" style={`--tone:${TONE_HEX[p.statusTone]};`}>{p.statusPill}</span>
-
-        <div class="ncard__total">{p.tokens}</div>
-        <div class="ncard__total-label">{p.tokenLabel}</div>
-        <hr class="ncard__rule" />
-
-        {p.buckets.map((b) => (
-          <div class="bucket">
-            <div class="bucket__row">
-              <span class="bucket__name">{b.name}</span>
-              <span class="bucket__headline">{b.headline}</span>
+    {
+      providers.map((p) => (
+        <li class="ncard" style={`--accent:${p.accent};`}>
+          <header class="ncard__head">
+            <div class="ncard__logo" style={`--accent:${p.accent};`}>
+              {p.logo ? (
+                <img src={p.logo} alt="" width="20" height="20" loading="lazy" decoding="async" />
+              ) : (
+                <span>{p.monogram}</span>
+              )}
             </div>
-            <div class="bucket__track">
-              <div
-                class="bucket__fill"
-                style={`width:${Math.max(2, Math.min(100, b.percent))}%; --tone:${TONE_HEX[b.tone]};`}
-              ></div>
+            <div class="ncard__id">
+              <strong class="ncard__name">{p.name}</strong>
+              <span class="ncard__fresh">{p.freshness}</span>
             </div>
-            <span class="bucket__sub">{b.sub}</span>
-          </div>
-        ))}
+            <span class={`ncard__live ${p.isLive ? "ncard__live--on" : ""}`} aria-hidden="true" />
+          </header>
 
-        <footer class="ncard__foot">
-          <span class="ncard__runs">{p.runs}</span>
-          <span class="ncard__cost">{p.cost}</span>
-        </footer>
-      </li>
-    ))}
+          <span class="ncard__pill" style={`--tone:${TONE_HEX[p.statusTone]};`}>
+            {p.statusPill}
+          </span>
+
+          <div class="ncard__total">{p.tokens}</div>
+          <div class="ncard__total-label">{p.tokenLabel}</div>
+          <hr class="ncard__rule" />
+
+          {p.buckets.map((b) => (
+            <div class="bucket">
+              <div class="bucket__row">
+                <span class="bucket__name">{b.name}</span>
+                <span class="bucket__headline">{b.headline}</span>
+              </div>
+              <div class="bucket__track">
+                <div
+                  class="bucket__fill"
+                  style={`width:${Math.max(2, Math.min(100, b.percent))}%; --tone:${TONE_HEX[b.tone]};`}
+                />
+              </div>
+              <span class="bucket__sub">{b.sub}</span>
+            </div>
+          ))}
+
+          <footer class="ncard__foot">
+            <span class="ncard__runs">{p.runs}</span>
+            <span class="ncard__cost">{p.cost}</span>
+          </footer>
+        </li>
+      ))
+    }
   </ol>
 
   <footer class="nesthub-screen__footer" data-platform-rundown-footer>
     <span class="nesthub-screen__footer-label">Today · Coding</span>
-    <span class="nesthub-screen__footer-model" data-platform-top-pick-model>{topPick?.modelDisplay ?? "no rundown yet"}</span>
+    <span class="nesthub-screen__footer-model" data-platform-top-pick-model
+      >{topPick?.modelDisplay ?? "no rundown yet"}</span
+    >
     <span class="nesthub-screen__footer-score" data-platform-top-pick-score>
       {topPick ? `${Math.round((topPick.selectionScore ?? topPick.score) * 100)}/100` : "—"}
     </span>
@@ -216,8 +268,7 @@ const TONE_HEX: Record<string, string> = {
     position: relative;
     aspect-ratio: 16 / 9;
     width: 100%;
-    background:
-      linear-gradient(180deg, #1a1422 0%, #0c0a0f 100%);
+    background: linear-gradient(180deg, #1a1422 0%, #0c0a0f 100%);
     color: #f6f1e7;
     overflow: hidden;
     display: grid;
@@ -234,7 +285,7 @@ const TONE_HEX: Record<string, string> = {
     z-index: 0;
     background:
       radial-gradient(40% 60% at 18% 22%, rgba(214, 211, 223, 0.18), transparent 70%),
-      radial-gradient(50% 70% at 86% 80%, rgba(255, 106, 26, 0.10), transparent 70%);
+      radial-gradient(50% 70% at 86% 80%, rgba(255, 106, 26, 0.1), transparent 70%);
   }
   .nesthub-screen__dotgrid {
     position: absolute;
@@ -269,13 +320,20 @@ const TONE_HEX: Record<string, string> = {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #38D898;
+    background: #38d898;
     box-shadow: 0 0 6px rgba(56, 216, 152, 0.7);
     animation: nesthub-livedot 2.4s ease-in-out infinite;
   }
   @keyframes nesthub-livedot {
-    0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(56, 216, 152, 0.7); }
-    50% { opacity: 0.55; box-shadow: 0 0 2px rgba(56, 216, 152, 0.3); }
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 6px rgba(56, 216, 152, 0.7);
+    }
+    50% {
+      opacity: 0.55;
+      box-shadow: 0 0 2px rgba(56, 216, 152, 0.3);
+    }
   }
   .nesthub-screen__status {
     font-family: var(--font-mono);
@@ -327,11 +385,12 @@ const TONE_HEX: Record<string, string> = {
   .ncard {
     border-radius: 8px;
     padding: clamp(4px, 0.65vw, 7px) clamp(5px, 0.85vw, 9px);
-    background:
-      linear-gradient(180deg,
-        color-mix(in oklab, var(--accent) 22%, transparent) 0%,
-        color-mix(in oklab, var(--accent) 5%, transparent) 35%,
-        rgba(0, 0, 0, 0.35) 100%);
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--accent) 22%, transparent) 0%,
+      color-mix(in oklab, var(--accent) 5%, transparent) 35%,
+      rgba(0, 0, 0, 0.35) 100%
+    );
     border: 0.75px solid color-mix(in oklab, var(--accent) 55%, transparent);
     box-shadow: 0 4px 18px color-mix(in oklab, var(--accent) 22%, transparent);
     display: flex;
@@ -366,12 +425,17 @@ const TONE_HEX: Record<string, string> = {
     object-fit: contain;
     display: block;
   }
-  .ncard__id { display: grid; min-width: 0; }
+  .ncard__id {
+    display: grid;
+    min-width: 0;
+  }
   .ncard__name {
     color: #f6f1e7;
     font-family: var(--font-display);
     font-size: clamp(0.7rem, 0.95vw, 0.95rem);
-    font-variation-settings: "wght" 720, "opsz" 60;
+    font-variation-settings:
+      "wght" 720,
+      "opsz" 60;
     line-height: 1.05;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -396,12 +460,15 @@ const TONE_HEX: Record<string, string> = {
     background: rgba(246, 241, 231, 0.2);
     flex-shrink: 0;
   }
-  .ncard__live--on { background: #38D898; box-shadow: 0 0 5px rgba(56, 216, 152, 0.6); }
+  .ncard__live--on {
+    background: #38d898;
+    box-shadow: 0 0 5px rgba(56, 216, 152, 0.6);
+  }
 
   .ncard__pill {
     align-self: start;
-    color: var(--tone, #C8BFB5);
-    background: color-mix(in oklab, var(--tone, #C8BFB5) 18%, transparent);
+    color: var(--tone, #c8bfb5);
+    background: color-mix(in oklab, var(--tone, #c8bfb5) 18%, transparent);
     border-radius: 999px;
     padding: 1px 7px;
     font-family: var(--font-mono);
@@ -414,7 +481,9 @@ const TONE_HEX: Record<string, string> = {
   .ncard__total {
     color: #f6f1e7;
     font-family: var(--font-display);
-    font-variation-settings: "wght" 800, "opsz" 144;
+    font-variation-settings:
+      "wght" 800,
+      "opsz" 144;
     font-size: clamp(1.05rem, 1.85vw, 1.6rem);
     line-height: 1;
     letter-spacing: -0.02em;
@@ -433,7 +502,10 @@ const TONE_HEX: Record<string, string> = {
     margin: clamp(2px, 0.35vw, 4px) 0;
   }
 
-  .bucket { display: grid; gap: 1px; }
+  .bucket {
+    display: grid;
+    gap: 1px;
+  }
   .bucket__row {
     display: flex;
     align-items: baseline;
@@ -473,13 +545,22 @@ const TONE_HEX: Record<string, string> = {
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.45) 50%,
+      transparent 100%
+    );
     transform: translateX(-100%);
     animation: bucket-scan 5.4s linear infinite;
   }
   @keyframes bucket-scan {
-    0%   { transform: translateX(-100%); }
-    100% { transform: translateX(220%); }
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(220%);
+    }
   }
   .bucket__sub {
     color: rgba(246, 241, 231, 0.45);
@@ -512,8 +593,7 @@ const TONE_HEX: Record<string, string> = {
     padding: clamp(2px, 0.4vw, 4px) clamp(5px, 0.7vw, 8px);
     border-radius: 6px;
     border: 0.5px dashed rgba(255, 181, 71, 0.45);
-    background:
-      linear-gradient(90deg, rgba(255, 106, 26, 0.10), transparent 80%);
+    background: linear-gradient(90deg, rgba(255, 106, 26, 0.1), transparent 80%);
     color: rgba(246, 241, 231, 0.7);
     font-size: clamp(0.5rem, 0.6vw, 0.62rem);
   }
@@ -527,7 +607,9 @@ const TONE_HEX: Record<string, string> = {
   .nesthub-screen__footer-model {
     color: #f6f1e7;
     font-family: var(--font-display);
-    font-variation-settings: "wght" 640, "opsz" 80;
+    font-variation-settings:
+      "wght" 640,
+      "opsz" 80;
   }
   .nesthub-screen__footer-score {
     margin-left: auto;
@@ -542,10 +624,14 @@ const TONE_HEX: Record<string, string> = {
 
   @media (prefers-reduced-motion: reduce) {
     .nesthub-screen__livedot,
-    .bucket__fill::after { animation: none !important; }
+    .bucket__fill::after {
+      animation: none !important;
+    }
   }
 
   @container (max-width: 460px) {
-    .nesthub-screen__rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .nesthub-screen__rail {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 </style>

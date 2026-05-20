@@ -1,6 +1,6 @@
 {
   "date": "2026-05-20",
-  "generatedAt": "2026-05-20T05:22:21.998Z",
+  "generatedAt": "2026-05-20T05:51:08.277Z",
   "schemaVersion": 1,
   "sourceStatuses": [
     {
@@ -10,7 +10,7 @@
       "logo": "/brand/sources/artificial-analysis.svg",
       "url": "https://artificialanalysis.ai/",
       "status": "fresh",
-      "fetchedAt": "2026-05-20T05:22:21.998Z",
+      "fetchedAt": "2026-05-20T05:51:08.277Z",
       "ageHours": 0,
       "message": "Normalized 1038 Artificial Analysis benchmark rows."
     },
@@ -21,7 +21,7 @@
       "logo": "/brand/sources/terminal-bench.png",
       "url": "https://www.tbench.ai/",
       "status": "fresh",
-      "fetchedAt": "2026-05-20T05:22:21.998Z",
+      "fetchedAt": "2026-05-20T05:51:08.277Z",
       "ageHours": 0,
       "message": "Normalized 35 Terminal-Bench leaderboard rows."
     },
@@ -66,7 +66,7 @@
             "benchmarkScore": 0.549,
             "benchmarkFreshness": 1,
             "sourceConfidence": 0.7999999999999999,
-            "latency": 0.4400276666666667,
+            "latency": 0.44002766666666665,
             "cost": 0.22,
             "contextWindowTokens": 400000,
             "availability": "unknown",
@@ -88,7 +88,7 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "score": 0.486,
+              "score": 0.585,
               "ageHours": 0,
               "freshness": "fresh"
             },
@@ -108,6 +108,16 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
+              "score": 0.486,
+              "ageHours": 0,
+              "freshness": "fresh"
+            },
+            {
+              "source": "artificial_analysis",
+              "attribution": "Artificial Analysis",
+              "shortLabel": "AA",
+              "logo": "/brand/sources/artificial-analysis.svg",
+              "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
               "score": 0.521,
               "ageHours": 0,
               "freshness": "fresh"
@@ -118,16 +128,6 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "ageHours": 0,
-              "freshness": "fresh"
-            },
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "score": 0.585,
               "ageHours": 0,
               "freshness": "fresh"
             },
@@ -255,7 +255,7 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "score": 0.434,
+              "score": 0.358,
               "ageHours": 0,
               "freshness": "fresh"
             },
@@ -265,7 +265,7 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "score": 0.358,
+              "score": 0.434,
               "ageHours": 0,
               "freshness": "fresh"
             }
@@ -694,7 +694,7 @@
             "benchmarkScore": 0.5349999999999999,
             "benchmarkFreshness": 1,
             "sourceConfidence": 0.7999999999999999,
-            "latency": 0.4400276666666667,
+            "latency": 0.44002766666666665,
             "cost": 0.22,
             "contextWindowTokens": 400000,
             "availability": "unknown",
@@ -716,7 +716,7 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "score": 0.409,
+              "score": 0.589,
               "ageHours": 0,
               "freshness": "fresh"
             },
@@ -736,6 +736,16 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
+              "score": 0.409,
+              "ageHours": 0,
+              "freshness": "fresh"
+            },
+            {
+              "source": "artificial_analysis",
+              "attribution": "Artificial Analysis",
+              "shortLabel": "AA",
+              "logo": "/brand/sources/artificial-analysis.svg",
+              "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
               "score": 0.508,
               "ageHours": 0,
               "freshness": "fresh"
@@ -746,16 +756,6 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "ageHours": 0,
-              "freshness": "fresh"
-            },
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "score": 0.589,
               "ageHours": 0,
               "freshness": "fresh"
             },
@@ -883,7 +883,7 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "score": 0.514,
+              "score": 0.43799999999999994,
               "ageHours": 0,
               "freshness": "fresh"
             },
@@ -893,7 +893,7 @@
               "shortLabel": "AA",
               "logo": "/brand/sources/artificial-analysis.svg",
               "sourceURL": "https://artificialanalysis.ai/api/v2/data/llms/models",
-              "score": 0.43799999999999994,
+              "score": 0.514,
               "ageHours": 0,
               "freshness": "fresh"
             }
@@ -944,9 +944,9 @@
           "providerID": "deepseek",
           "providerDisplay": "DeepSeek",
           "providerLogo": "/brand/providers/deepseek.svg",
-          "evidenceScore": 0.5809456868770765,
+          "evidenceScore": 0.5809456868770764,
           "selectionScore": 0.81,
-          "benchmarkScore": 0.46866666666666673,
+          "benchmarkScore": 0.4686666666666666,
           "reason": "Selection policy did not clear the leader's margin for this task.",
           "evidence": "Evidence 58/100; selection 81/100 vs. leader 99/100."
         },

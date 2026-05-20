@@ -52,12 +52,12 @@ export const PLATFORM_DEVICES: PlatformDevice[] = [
     marqueeBullets: [
       "Cast V2 + Home Assistant blueprints — no third-party server",
       "Provider rail, big-total, ambient, photo-blend layouts ship today",
-      "Acceptance probe before \"healthy\" — `docs/SMART_DISPLAY_DEVICE_QA.md`",
+      'Acceptance probe before "healthy" — `docs/SMART_DISPLAY_DEVICE_QA.md`'
     ],
     setupHref:
       "https://github.com/Imagine-That-Ai/BurnBar/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md",
     setupLabel: "Smart display QA matrix",
-    caption: "Faithful re-render · mirrors NestHubMiniPreview.swift",
+    caption: "Faithful re-render · mirrors NestHubMiniPreview.swift"
   },
   {
     id: "ulanzi-tc001",
@@ -71,13 +71,13 @@ export const PLATFORM_DEVICES: PlatformDevice[] = [
     marqueeBullets: [
       "AWTRIX HTTP — works on stock or community firmware",
       "Four layouts · provider dashboard, quota carousel, burn status, alerts",
-      "Ember & whimsy palette by default · five palettes ship",
+      "Ember & whimsy palette by default · five palettes ship"
     ],
     setupHref:
       "https://github.com/Imagine-That-Ai/BurnBar/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md#ulanzi-tc001",
     setupLabel: "ULANZI setup guide",
-    caption: "Faithful re-render · mirrors PixelClockPreviewView.swift",
-  },
+    caption: "Faithful re-render · mirrors PixelClockPreviewView.swift"
+  }
 ];
 
 /** Convenience accessor — returns undefined if the device id isn't known. */

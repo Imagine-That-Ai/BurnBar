@@ -34,20 +34,20 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
       </nav>
 
       <span class="eyebrow eyebrow--ember">Model board · the archive</span>
-      <h1 class="pagehead__h">
-        Every board verdict, frozen, cited, and inspectable.
-      </h1>
+      <h1 class="pagehead__h">Every board verdict, frozen, cited, and inspectable.</h1>
       <p class="lead">
-        The Intelligent Router refreshes its model-landscape snapshot once
-        every twenty-four hours, then a board of language models runs research
-        and analysis tasks over it. Each refresh produces a dated rundown —
-        what BurnBar would have recommended that day, the sources it cited,
-        the freshness of every signal, and the limitations of every claim.
-        Nothing is overwritten. Future humans can verify what was said.
+        The Intelligent Router refreshes its model-landscape snapshot once every twenty-four hours,
+        then a board of language models runs research and analysis tasks over it. Each refresh
+        produces a dated rundown — what BurnBar would have recommended that day, the sources it
+        cited, the freshness of every signal, and the limitations of every claim. Nothing is
+        overwritten. Future humans can verify what was said.
       </p>
 
       <ul class="pagehead__chips mono" aria-label="Archive scope">
-        <li><span class="dot dot--ember"></span> {ALL_RUNDOWNS.length} dated rundown{ALL_RUNDOWNS.length === 1 ? "" : "s"}</li>
+        <li>
+          <span class="dot dot--ember"></span>
+          {ALL_RUNDOWNS.length} dated rundown{ALL_RUNDOWNS.length === 1 ? "" : "s"}
+        </li>
         <li><span class="dot dot--mercury"></span> newest · {newestDate}</li>
         <li><span class="dot dot--mercury"></span> oldest · {oldestDate}</li>
       </ul>
@@ -57,105 +57,153 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
   <section class="archive">
     <div class="container container--wide">
       <p class="archive__advisory">
-        Benchmark signals are <strong>advisory</strong>. Each rundown shows
-        what the daily model board recommended, not what the router actually ran —
-        provider-family mode, user pinning, account auth, quota state, safety
-        policy, and availability all override these recommendations at
-        runtime. Use this archive to inspect <em>why</em> a given
-        recommendation was made, not as proof a given route was executed.
+        Benchmark signals are <strong>advisory</strong>. Each rundown shows what the daily model
+        board recommended, not what the router actually ran — provider-family mode, user pinning,
+        account auth, quota state, safety policy, and availability all override these
+        recommendations at runtime. Use this archive to inspect <em>why</em> a given recommendation was
+        made, not as proof a given route was executed.
       </p>
 
-      {months.map((month) => (
-        <article class="month">
-          <header class="month__head">
-            <h2 class="month__h mono">{month}</h2>
-            <span class="month__count mono">{groupedByMonth.get(month)?.length} rundown{(groupedByMonth.get(month)?.length ?? 0) === 1 ? "" : "s"}</span>
-          </header>
+      {
+        months.map((month) => (
+          <article class="month">
+            <header class="month__head">
+              <h2 class="month__h mono">{month}</h2>
+              <span class="month__count mono">
+                {groupedByMonth.get(month)?.length} rundown
+                {(groupedByMonth.get(month)?.length ?? 0) === 1 ? "" : "s"}
+              </span>
+            </header>
 
-          <ul class="archive__list">
-            {groupedByMonth.get(month)?.map((rundown) => {
-              const top = rundown.taskRankings.find((t) => t.taskID === "coding")?.recommendations[0]
-                ?? rundown.taskRankings[0]?.recommendations[0];
-              const freshSources = rundown.sourceStatuses.filter((s) => s.status === "fresh").length;
-              return (
-                <li class="archcard">
-                  <a class="archcard__link" href={`/router/daily/${rundown.date}`}>
-                    <header class="archcard__head">
-                      <span class="archcard__date mono">{rundown.date}</span>
-                      <span class="archcard__time mono">{rundown.generatedAt.slice(11, 16)} UTC</span>
-                    </header>
+            <ul class="archive__list">
+              {groupedByMonth.get(month)?.map((rundown) => {
+                const top =
+                  rundown.taskRankings.find((t) => t.taskID === "coding")?.recommendations[0] ??
+                  rundown.taskRankings[0]?.recommendations[0];
+                const freshSources = rundown.sourceStatuses.filter(
+                  (s) => s.status === "fresh"
+                ).length;
+                return (
+                  <li class="archcard">
+                    <a class="archcard__link" href={`/router/daily/${rundown.date}`}>
+                      <header class="archcard__head">
+                        <span class="archcard__date mono">{rundown.date}</span>
+                        <span class="archcard__time mono">
+                          {rundown.generatedAt.slice(11, 16)} UTC
+                        </span>
+                      </header>
 
-                    {top ? (
-                      <div class="archcard__top">
-                        <div class="archcard__topmodel">
-                          {top.providerLogo && (
-                            <img class="archcard__topimg" src={top.providerLogo} alt="" width="32" height="32" loading="lazy" />
-                          )}
-                          <div>
-                            <strong class="archcard__name">{top.modelDisplay}</strong>
-                            <span class="archcard__provider mono">{top.providerDisplay}</span>
+                      {top ? (
+                        <div class="archcard__top">
+                          <div class="archcard__topmodel">
+                            {top.providerLogo && (
+                              <img
+                                class="archcard__topimg"
+                                src={top.providerLogo}
+                                alt=""
+                                width="32"
+                                height="32"
+                                loading="lazy"
+                              />
+                            )}
+                            <div>
+                              <strong class="archcard__name">{top.modelDisplay}</strong>
+                              <span class="archcard__provider mono">{top.providerDisplay}</span>
+                            </div>
                           </div>
+                          <span class="archcard__score mono">
+                            {pct(top.selectionScore ?? top.score)} / 100
+                          </span>
                         </div>
-                        <span class="archcard__score mono">{pct(top.selectionScore ?? top.score)} / 100</span>
-                      </div>
-                    ) : (
-                      <p class="archcard__empty">No task rankings — sources were unavailable.</p>
-                    )}
+                      ) : (
+                        <p class="archcard__empty">No task rankings — sources were unavailable.</p>
+                      )}
 
-                    <ul class="archcard__sources">
-                      {rundown.sourceStatuses.map((s) => (
-                        <li class={`archcard__src archcard__src--${freshnessTone(s.status)}`} title={`${s.attribution} · ${s.status}${s.ageHours != null ? " · " + formatAge(s.ageHours) : ""}`}>
-                          <img src={s.logo} alt={s.attribution} width="18" height="18" loading="lazy" />
-                        </li>
-                      ))}
-                    </ul>
+                      <ul class="archcard__sources">
+                        {rundown.sourceStatuses.map((s) => (
+                          <li
+                            class={`archcard__src archcard__src--${freshnessTone(s.status)}`}
+                            title={`${s.attribution} · ${s.status}${s.ageHours != null ? " · " + formatAge(s.ageHours) : ""}`}
+                          >
+                            <img
+                              src={s.logo}
+                              alt={s.attribution}
+                              width="18"
+                              height="18"
+                              loading="lazy"
+                            />
+                          </li>
+                        ))}
+                      </ul>
 
-                    <footer class="archcard__foot mono">
-                      <span>{rundown.taskRankings.length} task{rundown.taskRankings.length === 1 ? "" : "s"}</span>
-                      <span>{freshSources}/{rundown.sourceStatuses.length} sources fresh</span>
-                      <span class="archcard__cta">inspect →</span>
-                    </footer>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </article>
-      ))}
+                      <footer class="archcard__foot mono">
+                        <span>
+                          {rundown.taskRankings.length} task
+                          {rundown.taskRankings.length === 1 ? "" : "s"}
+                        </span>
+                        <span>
+                          {freshSources}/{rundown.sourceStatuses.length} sources fresh
+                        </span>
+                        <span class="archcard__cta">inspect →</span>
+                      </footer>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </article>
+        ))
+      }
 
-      {ALL_RUNDOWNS.length === 0 && (
-        <p class="archive__empty">
-          No dated rundowns are committed in this build. The daily generator
-          (<code>website/scripts/generate-rundown.mjs</code>) emits these from
-          the production benchmark pipeline; run it locally to populate the
-          archive.
-        </p>
-      )}
+      {
+        ALL_RUNDOWNS.length === 0 && (
+          <p class="archive__empty">
+            No dated rundowns are committed in this build. The daily generator (
+            <code>website/scripts/generate-rundown.mjs</code>) emits these from the production
+            benchmark pipeline; run it locally to populate the archive.
+          </p>
+        )
+      }
 
       <div class="archive__sources">
         <h2 class="archive__sh mono">Sources we cite</h2>
         <p class="archive__sd">
-          Each daily rundown attributes its claims back to a documented
-          public source. Citations carry logos so operators can audit
-          provenance at a glance. We <em>never</em> fabricate benchmark
-          numbers, scrape authenticated dashboards, or persist API keys
-          inside snapshots.
+          Each daily rundown attributes its claims back to a documented public source. Citations
+          carry logos so operators can audit provenance at a glance. We <em>never</em> fabricate benchmark
+          numbers, scrape authenticated dashboards, or persist API keys inside snapshots.
         </p>
         <ul class="archive__srcgrid">
-          {(["artificial_analysis","terminal_bench","design_arena","huggingface","manual_fixture"] as const).map((id) => {
-            const m = sourceMeta(id);
-            return (
-              <li class="archsrc">
-                <img src={m.logo} alt="" width="36" height="36" loading="lazy" />
-                <div>
-                  <strong>{m.attribution}</strong>
-                  <span class="archsrc__short mono">{m.shortLabel}</span>
-                  <p>{m.blurb}</p>
-                  <a class="archsrc__link mono" href={m.url} target="_blank" rel="noopener noreferrer">{m.url.replace(/^https?:\/\//, "")} →</a>
-                </div>
-              </li>
-            );
-          })}
+          {
+            (
+              [
+                "artificial_analysis",
+                "terminal_bench",
+                "design_arena",
+                "huggingface",
+                "manual_fixture"
+              ] as const
+            ).map((id) => {
+              const m = sourceMeta(id);
+              return (
+                <li class="archsrc">
+                  <img src={m.logo} alt="" width="36" height="36" loading="lazy" />
+                  <div>
+                    <strong>{m.attribution}</strong>
+                    <span class="archsrc__short mono">{m.shortLabel}</span>
+                    <p>{m.blurb}</p>
+                    <a
+                      class="archsrc__link mono"
+                      href={m.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {m.url.replace(/^https?:\/\//, "")} →
+                    </a>
+                  </div>
+                </li>
+              );
+            })
+          }
         </ul>
       </div>
     </div>
@@ -163,7 +211,9 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
 </BaseLayout>
 
 <style>
-  .pagehead--archive { padding-block: var(--s-8) var(--s-5); }
+  .pagehead--archive {
+    padding-block: var(--s-8) var(--s-5);
+  }
   .archive-bread {
     display: flex;
     gap: var(--s-2);
@@ -172,24 +222,34 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     letter-spacing: 0.06em;
     margin-bottom: var(--s-4);
   }
-  .archive-bread a { color: var(--text-mute); text-decoration: none; }
-  .archive-bread a:hover { color: var(--ember-bright); }
+  .archive-bread a {
+    color: var(--text-mute);
+    text-decoration: none;
+  }
+  .archive-bread a:hover {
+    color: var(--ember-bright);
+  }
 
-  .archive { padding-block: var(--s-3) var(--s-9); }
+  .archive {
+    padding-block: var(--s-3) var(--s-9);
+  }
   .archive__advisory {
     padding: var(--s-3) var(--s-4);
     border: 1px dashed color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
     border-radius: var(--r-3);
-    background:
-      linear-gradient(90deg, rgba(255, 106, 26, 0.06), transparent);
+    background: linear-gradient(90deg, rgba(255, 106, 26, 0.06), transparent);
     color: var(--text-base);
     font-size: 0.88rem;
     margin-bottom: var(--s-6);
     max-width: 92ch;
   }
-  .archive__advisory strong { color: var(--ember-bright); }
+  .archive__advisory strong {
+    color: var(--ember-bright);
+  }
 
-  .month { margin-bottom: var(--s-7); }
+  .month {
+    margin-bottom: var(--s-7);
+  }
   .month__head {
     display: flex;
     align-items: baseline;
@@ -230,12 +290,12 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     padding: var(--s-4);
     border: 1px solid var(--ink-line);
     border-radius: var(--r-4);
-    background:
-      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
     color: var(--text-base);
     text-decoration: none;
-    transition: border-color var(--dur-fast) var(--ease-out),
-                transform var(--dur-fast) var(--ease-out);
+    transition:
+      border-color var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
   }
   .archcard__link:hover {
     border-color: color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
@@ -286,7 +346,9 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     display: block;
     color: var(--text-bright);
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 60, "wght" 480;
+    font-variation-settings:
+      "opsz" 60,
+      "wght" 480;
     font-size: 0.98rem;
   }
   .archcard__provider {
@@ -326,11 +388,24 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     background: #f6f1e7;
     overflow: hidden;
   }
-  .archcard__src img { width: 18px; height: 18px; object-fit: contain; padding: 1px; }
-  .archcard__src--fresh { border-color: color-mix(in oklab, var(--status-exact) 40%, var(--ink-line)); }
-  .archcard__src--warn { border-color: color-mix(in oklab, var(--status-estimated) 40%, var(--ink-line)); }
-  .archcard__src--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
-  .archcard__src--off { opacity: 0.55; }
+  .archcard__src img {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    padding: 1px;
+  }
+  .archcard__src--fresh {
+    border-color: color-mix(in oklab, var(--status-exact) 40%, var(--ink-line));
+  }
+  .archcard__src--warn {
+    border-color: color-mix(in oklab, var(--status-estimated) 40%, var(--ink-line));
+  }
+  .archcard__src--stale {
+    border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line));
+  }
+  .archcard__src--off {
+    opacity: 0.55;
+  }
 
   .archcard__foot {
     display: flex;
@@ -343,7 +418,9 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     border-top: 1px dashed var(--ink-line);
     padding-top: var(--s-2);
   }
-  .archcard__cta { color: var(--ember-bright); }
+  .archcard__cta {
+    color: var(--ember-bright);
+  }
 
   /* sources block */
   .archive__sources {
@@ -360,7 +437,12 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     text-transform: uppercase;
     margin-bottom: var(--s-3);
   }
-  .archive__sd { color: var(--text-base); max-width: 88ch; margin-bottom: var(--s-4); font-size: 0.92rem; }
+  .archive__sd {
+    color: var(--text-base);
+    max-width: 88ch;
+    margin-bottom: var(--s-4);
+    font-size: 0.92rem;
+  }
   .archive__srcgrid {
     list-style: none;
     padding: 0;
@@ -387,7 +469,11 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     padding: 4px;
     object-fit: contain;
   }
-  .archsrc strong { color: var(--text-bright); display: inline-block; margin-right: 0.4rem; }
+  .archsrc strong {
+    color: var(--text-bright);
+    display: inline-block;
+    margin-right: 0.4rem;
+  }
   .archsrc__short {
     color: var(--ember-bright);
     font-size: 0.7rem;
@@ -396,14 +482,20 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     border: 1px solid color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
     border-radius: var(--r-2);
   }
-  .archsrc p { color: var(--text-mute); font-size: 0.84rem; margin: 4px 0; }
+  .archsrc p {
+    color: var(--text-mute);
+    font-size: 0.84rem;
+    margin: 4px 0;
+  }
   .archsrc__link {
     color: var(--text-dim);
     font-size: 0.7rem;
     letter-spacing: 0.04em;
     text-decoration: none;
   }
-  .archsrc__link:hover { color: var(--ember-bright); }
+  .archsrc__link:hover {
+    color: var(--ember-bright);
+  }
 
   .archive__empty {
     padding: var(--s-5);

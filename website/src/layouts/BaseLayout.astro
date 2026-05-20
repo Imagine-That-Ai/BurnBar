@@ -64,34 +64,41 @@ const fullTitle =
     <!-- Preconnect: none. We self-host fonts. -->
 
     <!-- JSON-LD -->
-    <script is:inline type="application/ld+json" set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      name: SITE.name,
-      applicationCategory: "DeveloperApplication",
-      operatingSystem: "macOS 14+, iOS 17+",
-      description,
-      url: SITE.url,
-      offers: [
-        {
-          "@type": "Offer",
-          price: "0",
-          priceCurrency: "USD",
-          name: "Local-first (free)"
-        },
-        {
-          "@type": "Offer",
-          price: SITE.iapPriceUSD,
-          priceCurrency: "USD",
-          name: "Hosted Quota Sync (monthly)"
-        }
-      ]
-    })} />
+    <script
+      is:inline
+      type="application/ld+json"
+      set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: SITE.name,
+        applicationCategory: "DeveloperApplication",
+        operatingSystem: "macOS 14+, iOS 17+",
+        description,
+        url: SITE.url,
+        offers: [
+          {
+            "@type": "Offer",
+            price: "0",
+            priceCurrency: "USD",
+            name: "Local-first (free)"
+          },
+          {
+            "@type": "Offer",
+            price: SITE.iapPriceUSD,
+            priceCurrency: "USD",
+            name: "Hosted Quota Sync (monthly)"
+          }
+        ]
+      })}
+    />
   </head>
   <body>
     <!-- Interactive Token Ember Swarm Canvas Background -->
-    <canvas id="bgCanvas" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 0;"></canvas>
-    
+    <canvas
+      id="bgCanvas"
+      style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 0;"
+    ></canvas>
+
     <Header />
     <main id="main">
       <slot />
@@ -99,13 +106,16 @@ const fullTitle =
     <Footer />
 
     <script is:inline>
-      (function() {
-        const canvas = document.getElementById('bgCanvas');
+      (function () {
+        const canvas = document.getElementById("bgCanvas");
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
 
-        const isHome = window.location.pathname === '/' || window.location.pathname === '/index.html' || window.location.pathname.endsWith('/');
-        const isRouter = window.location.pathname.includes('/router');
+        const isHome =
+          window.location.pathname === "/" ||
+          window.location.pathname === "/index.html" ||
+          window.location.pathname.endsWith("/");
+        const isRouter = window.location.pathname.includes("/router");
 
         // Dynamic Pace Settings based on user page preference:
         // - Home page: snappy, energetic, responsive murmuration pace (previous style)
@@ -118,7 +128,7 @@ const fullTitle =
           maxSpeedPixel: isHome ? 2.4 : 0.6,
           morphAttract: isHome ? 0.6 : 0.12,
           morphNoise: isHome ? 0.045 : 0.008,
-          morphDrag: isHome ? 0.88 : 0.90,
+          morphDrag: isHome ? 0.88 : 0.9,
           cycleInterval: isHome ? 8000 : 14000,
           mouseForceMultiplier: isHome ? 1.8 : 0.7
         };
@@ -129,14 +139,16 @@ const fullTitle =
           height = canvas.height = window.innerHeight;
           updateInteractiveElements();
         }
-        window.addEventListener('resize', resize);
+        window.addEventListener("resize", resize);
 
         // Tracking UI elements for atmospheric light emission/proximity glow
         let interactiveBoxes = [];
         function updateInteractiveElements() {
           interactiveBoxes = [];
-          const elements = document.querySelectorAll('.btn, .eyebrow, .hero__h, .console, .card, .pillar, .ptcard');
-          elements.forEach(el => {
+          const elements = document.querySelectorAll(
+            ".btn, .eyebrow, .hero__h, .console, .card, .pillar, .ptcard"
+          );
+          elements.forEach((el) => {
             const rect = el.getBoundingClientRect();
             interactiveBoxes.push({
               x: rect.left,
@@ -150,28 +162,28 @@ const fullTitle =
 
         // Custom Mouse Tracker for ripple repulsion physics
         let mouse = { x: null, y: null, active: false };
-        window.addEventListener('mousemove', (e) => {
+        window.addEventListener("mousemove", (e) => {
           mouse.x = e.clientX;
           mouse.y = e.clientY;
           mouse.active = true;
         });
-        window.addEventListener('mouseleave', () => {
+        window.addEventListener("mouseleave", () => {
           mouse.active = false;
         });
 
         // Hide offscreen canvas for text point sampling
-        const offscreen = document.createElement('canvas');
-        const oCtx = offscreen.getContext('2d');
+        const offscreen = document.createElement("canvas");
+        const oCtx = offscreen.getContext("2d");
 
         function samplePointsFromText(text, size = 280) {
           offscreen.width = 400;
           offscreen.height = 400;
-          oCtx.fillStyle = '#000';
+          oCtx.fillStyle = "#000";
           oCtx.fillRect(0, 0, 400, 400);
-          oCtx.fillStyle = '#fff';
+          oCtx.fillStyle = "#fff";
           oCtx.font = `800 ${size}px monospace`;
-          oCtx.textAlign = 'center';
-          oCtx.textBaseline = 'middle';
+          oCtx.textAlign = "center";
+          oCtx.textBaseline = "middle";
           oCtx.fillText(text, 200, 200);
 
           const imgData = oCtx.getImageData(0, 0, 400, 400).data;
@@ -196,7 +208,7 @@ const fullTitle =
         function generateRingPoints(numRings = 3) {
           const pts = [];
           for (let ring = 0; ring < numRings; ring++) {
-            const radius = 0.2 + (ring * 0.25);
+            const radius = 0.2 + ring * 0.25;
             const numPts = 80 + ring * 50;
             for (let i = 0; i < numPts; i++) {
               const angle = (i / numPts) * Math.PI * 2;
@@ -212,7 +224,7 @@ const fullTitle =
         // Generate router failover network flow visual explanation
         function generateRouterFlowPoints() {
           const pts = [];
-          
+
           // 1. Central Gateway Node (Circle on left-center: -0.45, 0.0)
           const numCenterPts = 100;
           for (let i = 0; i < numCenterPts; i++) {
@@ -221,15 +233,15 @@ const fullTitle =
             pts.push({
               x: -0.45 + Math.cos(angle) * r,
               y: 0.0 + Math.sin(angle) * r,
-              role: 'gateway'
+              role: "gateway"
             });
           }
 
           // 2. Three Target Account Nodes on the right (Circles at 0.45, -0.28; 0.45, 0.0; 0.45, 0.28)
           const targets = [
-            { x: 0.45, y: -0.28, role: 'target-1' },
-            { x: 0.45, y: 0.0, role: 'target-2' },
-            { x: 0.45, y: 0.28, role: 'target-3' }
+            { x: 0.45, y: -0.28, role: "target-1" },
+            { x: 0.45, y: 0.0, role: "target-2" },
+            { x: 0.45, y: 0.28, role: "target-3" }
           ];
 
           targets.forEach((tgt) => {
@@ -250,9 +262,9 @@ const fullTitle =
             const numLinePts = 60;
             for (let i = 0; i < numLinePts; i++) {
               const t = i / numLinePts;
-              const px = -0.45 + (tgt.x - (-0.45)) * t;
+              const px = -0.45 + (tgt.x - -0.45) * t;
               const py = 0.0 + (tgt.y - 0.0) * (3 * t * t - 2 * t * t * t);
-              
+
               pts.push({
                 x: px,
                 y: py,
@@ -266,17 +278,17 @@ const fullTitle =
         }
 
         const shapes = {
-          'swarm': [],
-          'shape-dollar': samplePointsFromText('$'),
-          'shape-code': samplePointsFromText('</>', 220),
-          'shape-rings': generateRingPoints(),
-          'shape-router-flow': generateRouterFlowPoints()
+          swarm: [],
+          "shape-dollar": samplePointsFromText("$"),
+          "shape-code": samplePointsFromText("</>", 220),
+          "shape-rings": generateRingPoints(),
+          "shape-router-flow": generateRouterFlowPoints()
         };
 
         const PARTICLE_COUNT = 1500;
-        const GLYPHS = ['$', '{}', '</>', 'tok', 'ctx', '429', '503', 'run', 'cache'];
+        const GLYPHS = ["$", "{}", "</>", "tok", "ctx", "429", "503", "run", "cache"];
         let particles = [];
-        let currentMode = 'swarm';
+        let currentMode = "swarm";
         let flowTime = 0;
 
         class EmberParticle {
@@ -286,7 +298,7 @@ const fullTitle =
             this.vx = (Math.random() - 0.5) * 1.5;
             this.vy = (Math.random() - 0.5) * 1.5;
             this.size = 1 + Math.random() * 2;
-            this.type = Math.random() < 0.08 ? 'glyph' : 'pixel';
+            this.type = Math.random() < 0.08 ? "glyph" : "pixel";
             this.text = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
             this.colorIndex = Math.random();
 
@@ -301,8 +313,10 @@ const fullTitle =
 
           update() {
             flowTime += pace.timeStep;
-            const noiseX = Math.sin(this.y * 0.005 + flowTime * 2) * Math.cos(this.x * 0.003 + flowTime);
-            const noiseY = Math.cos(this.x * 0.005 + flowTime * 3) * Math.sin(this.y * 0.003 + flowTime * 2);
+            const noiseX =
+              Math.sin(this.y * 0.005 + flowTime * 2) * Math.cos(this.x * 0.003 + flowTime);
+            const noiseY =
+              Math.cos(this.x * 0.005 + flowTime * 3) * Math.sin(this.y * 0.003 + flowTime * 2);
 
             // Mouse interactions (repulsion field) - dynamic mouse multiplier based on pace
             let mouseForceX = 0;
@@ -318,14 +332,14 @@ const fullTitle =
               }
             }
 
-            if (currentMode === 'swarm') {
+            if (currentMode === "swarm") {
               this.vx += noiseX * pace.swarmNoise + mouseForceX;
               this.vy += noiseY * pace.swarmNoise + mouseForceY;
               this.vx *= pace.swarmDrag;
               this.vy *= pace.swarmDrag;
 
               const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-              const maxSpeed = this.type === 'glyph' ? pace.maxSpeedGlyph : pace.maxSpeedPixel;
+              const maxSpeed = this.type === "glyph" ? pace.maxSpeedGlyph : pace.maxSpeedPixel;
               if (speed > maxSpeed) {
                 this.vx = (this.vx / speed) * maxSpeed;
                 this.vy = (this.vy / speed) * maxSpeed;
@@ -340,32 +354,32 @@ const fullTitle =
               if (this.y > height) this.y = 0;
             } else {
               // Morphing shape mode or special Router Flow mode
-              if (currentMode === 'shape-router-flow' && this.role) {
+              if (currentMode === "shape-router-flow" && this.role) {
                 // Dynamically re-evaluate coordinates based on resizing bounds to keep flow paths beautiful
                 let centerX = width * 0.5;
                 let centerY = height * 0.48;
                 let scaleFactor = width > 960 ? 0.7 : 0.8;
                 const scale = Math.min(width, height) * scaleFactor;
 
-                if (this.role === 'gateway') {
-                  const angle = (this.colorIndex * Math.PI * 2) + flowTime * 15;
+                if (this.role === "gateway") {
+                  const angle = this.colorIndex * Math.PI * 2 + flowTime * 15;
                   const r = 0.08;
                   this.tx = centerX + (-0.45 + Math.cos(angle) * r) * scale;
                   this.ty = centerY + (0.0 + Math.sin(angle) * r) * scale;
-                } else if (this.role.startsWith('target-')) {
+                } else if (this.role.startsWith("target-")) {
                   let tgtX = 0.45;
                   let tgtY = 0.0;
-                  if (this.role === 'target-1') tgtY = -0.28;
-                  if (this.role === 'target-3') tgtY = 0.28;
-                  
-                  const angle = (this.colorIndex * Math.PI * 2) + flowTime * 12;
+                  if (this.role === "target-1") tgtY = -0.28;
+                  if (this.role === "target-3") tgtY = 0.28;
+
+                  const angle = this.colorIndex * Math.PI * 2 + flowTime * 12;
                   const r = 0.05;
                   this.tx = centerX + (tgtX + Math.cos(angle) * r) * scale;
                   this.ty = centerY + (tgtY + Math.sin(angle) * r) * scale;
-                } else if (this.role.startsWith('path-')) {
+                } else if (this.role.startsWith("path-")) {
                   let tgtY = 0.0;
-                  if (this.role === 'path-1') tgtY = -0.28;
-                  if (this.role === 'path-3') tgtY = 0.28;
+                  if (this.role === "path-1") tgtY = -0.28;
+                  if (this.role === "path-3") tgtY = 0.28;
 
                   // Advance flow progress along Bezier path (snappier speed on home, slow cinematic elsewhere)
                   this.flowProgress += isHome ? 0.006 : 0.003;
@@ -374,9 +388,9 @@ const fullTitle =
                   }
 
                   const t = this.flowProgress;
-                  const px = -0.45 + (0.45 - (-0.45)) * t;
+                  const px = -0.45 + (0.45 - -0.45) * t;
                   const py = 0.0 + (tgtY - 0.0) * (3 * t * t - 2 * t * t * t);
-                  
+
                   this.tx = centerX + px * scale;
                   this.ty = centerY + py * scale;
                 }
@@ -420,35 +434,42 @@ const fullTitle =
             let glowMultiplier = 1;
             for (let i = 0; i < interactiveBoxes.length; i++) {
               const box = interactiveBoxes[i];
-              const distToCenter = Math.sqrt((this.x - box.center.x) * (this.x - box.center.x) + (this.y - box.center.y) * (this.y - box.center.y));
-              
-              if (this.x >= box.x - 30 && this.x <= box.x + box.w + 30 &&
-                  this.y >= box.y - 30 && this.y <= box.y + box.h + 30) {
+              const distToCenter = Math.sqrt(
+                (this.x - box.center.x) * (this.x - box.center.x) +
+                  (this.y - box.center.y) * (this.y - box.center.y)
+              );
+
+              if (
+                this.x >= box.x - 30 &&
+                this.x <= box.x + box.w + 30 &&
+                this.y >= box.y - 30 &&
+                this.y <= box.y + box.h + 30
+              ) {
                 nearElement = true;
-                const normalizedDist = Math.max(0, 1 - (distToCenter / 200));
+                const normalizedDist = Math.max(0, 1 - distToCenter / 200);
                 glowMultiplier = 1 + normalizedDist * 2.8;
                 break;
               }
             }
 
             this.opacity = this.baseOpacity * glowMultiplier;
-            if (nearElement && this.type === 'pixel') {
+            if (nearElement && this.type === "pixel") {
               this.size = 2 + Math.random();
-            } else if (this.type === 'pixel') {
+            } else if (this.type === "pixel") {
               this.size = 1 + Math.random();
             }
           }
 
           draw() {
             let color;
-            if (currentMode === 'shape-router-flow') {
-              if (this.role === 'gateway') {
+            if (currentMode === "shape-router-flow") {
+              if (this.role === "gateway") {
                 color = `rgba(128, 128, 255, ${this.opacity * 1.6})`; // Lavender-Blue (#8080ff) - bright intake gateway
-              } else if (this.role === 'path-1' || this.role === 'target-1') {
+              } else if (this.role === "path-1" || this.role === "target-1") {
                 color = `rgba(238, 24, 3, ${this.opacity * 1.5})`; // Deep Red (#EE1803) - throttled failover route
-              } else if (this.role === 'path-2' || this.role === 'target-2') {
+              } else if (this.role === "path-2" || this.role === "target-2") {
                 color = `rgba(253, 196, 44, ${this.opacity * 1.5})`; // Glowing Yellow-Gold (#FDC42C) - active backup
-              } else if (this.role === 'path-3' || this.role === 'target-3') {
+              } else if (this.role === "path-3" || this.role === "target-3") {
                 color = `rgba(250, 107, 6, ${this.opacity * 1.5})`; // Orange Mid-Tone (#FA6B06) - standby
               } else {
                 color = `rgba(238, 24, 3, ${this.opacity * 0.35})`; // Dim swirling background embers
@@ -466,7 +487,7 @@ const fullTitle =
               }
             }
 
-            if (this.type === 'glyph') {
+            if (this.type === "glyph") {
               ctx.font = `600 9px monospace`;
               ctx.fillStyle = color;
               ctx.fillText(this.text, this.x, this.y);
@@ -491,7 +512,7 @@ const fullTitle =
           currentMode = shapeName;
           const shapePts = shapes[shapeName];
           if (!shapePts || shapePts.length === 0) {
-            particles.forEach(p => {
+            particles.forEach((p) => {
               p.tx = null;
               p.ty = null;
               p.role = null;
@@ -508,29 +529,30 @@ const fullTitle =
           let scaleFactor = 0.35;
 
           if (width > 960) {
-            if (shapeName === 'shape-rings') {
+            if (shapeName === "shape-rings") {
               centerX = width * 0.72;
               centerY = height * 0.45;
               scaleFactor = 0.42;
-            } else if (shapeName === 'shape-router-flow') {
+            } else if (shapeName === "shape-router-flow") {
               centerX = width * 0.5;
               centerY = height * 0.48;
               scaleFactor = 0.7; // Spans wider to make a readable, stunning visual dashboard
-            } else { // shape-dollar & shape-code
+            } else {
+              // shape-dollar & shape-code
               centerX = width * 0.53;
               centerY = height * 0.45;
               scaleFactor = 0.36;
             }
           } else {
             // Mobile positioning overrides
-            if (shapeName === 'shape-rings') {
+            if (shapeName === "shape-rings") {
               centerY = height * 0.75;
-            } else if (shapeName === 'shape-router-flow') {
+            } else if (shapeName === "shape-router-flow") {
               centerX = width * 0.5;
               centerY = height * 0.5;
               scaleFactor = 0.8;
             } else {
-              centerY = height * 0.40;
+              centerY = height * 0.4;
             }
           }
           const scale = Math.min(width, height) * scaleFactor;
@@ -543,7 +565,8 @@ const fullTitle =
               p.tx = centerX + shapePts[i].x * scale;
               p.ty = centerY + shapePts[i].y * scale;
               p.role = shapePts[i].role || null;
-              p.flowProgress = shapePts[i].progress !== undefined ? shapePts[i].progress : Math.random();
+              p.flowProgress =
+                shapePts[i].progress !== undefined ? shapePts[i].progress : Math.random();
             } else {
               p.tx = null;
               p.ty = null;
@@ -554,9 +577,9 @@ const fullTitle =
 
         // Auto cycling engine representing AI computational state cycles
         let cycle = 0;
-        const modesList = isRouter 
-          ? ['swarm', 'shape-router-flow', 'swarm', 'shape-rings', 'swarm', 'shape-router-flow']
-          : ['swarm', 'shape-dollar', 'swarm', 'shape-code', 'swarm', 'shape-rings'];
+        const modesList = isRouter
+          ? ["swarm", "shape-router-flow", "swarm", "shape-rings", "swarm", "shape-router-flow"]
+          : ["swarm", "shape-dollar", "swarm", "shape-code", "swarm", "shape-rings"];
 
         // Dynamic cycle scheduling based on page interval limits
         function scheduleNextCycle() {
@@ -568,53 +591,71 @@ const fullTitle =
 
         function animate() {
           // Subtle frame decay to preserve trails without layout stutter
-          ctx.fillStyle = 'rgba(5, 5, 8, 0.12)';
+          ctx.fillStyle = "rgba(5, 5, 8, 0.12)";
           ctx.fillRect(0, 0, width, height);
 
-          particles.forEach(p => {
+          particles.forEach((p) => {
             p.update();
             p.draw();
           });
 
           requestAnimationFrame(animate);
         }
-        
+
         animate();
 
         // Dynamically re-evaluate coordinates when content scrolls or windows resize
-        window.addEventListener('scroll', updateInteractiveElements);
+        window.addEventListener("scroll", updateInteractiveElements);
         setInterval(updateInteractiveElements, 1200);
       })();
     </script>
 
     <!-- chenglou/pretext-powered High-Performance Text Shrinkwrap Layout Engine -->
     <script type="module">
-      import { prepareWithSegments, layoutWithLines } from 'https://esm.sh/@chenglou/pretext';
+      import { prepareWithSegments, layoutWithLines } from "https://esm.sh/@chenglou/pretext";
 
       async function initPretextShrinkwrap() {
         try {
           await document.fonts.ready;
         } catch (e) {
-          console.warn('Font loading check skipped:', e);
+          console.warn("Font loading check skipped:", e);
         }
 
         // Query all key copy elements for tight word wrapping
         const elements = document.querySelectorAll(
-          '.pretext-wrap, .glass-wrap-text, .hero__h, .hero__copy .lead, .hero__attest > span, .trust__head h2, .trust__head .lead, .trust__quote blockquote p, .endcta__h, .endcta__inner h2, .endcta__inner p, .endcta__inner .lead, .pagehead__inner h1, .pagehead__inner p, .pagehead__inner .lead, .pagehead__lead'
+          ".pretext-wrap, .glass-wrap-text, .hero__h, .hero__copy .lead, .hero__attest > span, .trust__head h2, .trust__head .lead, .trust__quote blockquote p, .endcta__h, .endcta__inner h2, .endcta__inner p, .endcta__inner .lead, .pagehead__inner h1, .pagehead__inner p, .pagehead__inner .lead, .pagehead__lead"
         );
 
         // Styling reconstructor to restore semantic styling highlights on wrapped lines
         function reconstructLineHTML(lineText) {
           let html = lineText.trim();
-          
+
           const highlights = [
-            { phrase: 'Before the bill.', replace: '<span class="hero__h-second">Before the bill.</span>' },
-            { phrase: 'local-first developer tool', replace: '<strong>local-first developer tool</strong>' },
-            { phrase: 'Every token leaves a trail. BurnBar reads the fire.', replace: '<em>Every token leaves a trail. BurnBar reads the fire.</em>' },
-            { phrase: 'Keep building.', replace: '<span class="ember">Keep building.</span>' },
-            { phrase: '● No telemetry by default', replace: '<span class="ember">●</span> No telemetry by default' },
-            { phrase: '● No account required', replace: '<span class="ember">●</span> No account required' },
-            { phrase: '● Reads logs, not your API keys', replace: '<span class="ember">●</span> Reads logs, not your API keys' }
+            {
+              phrase: "Before the bill.",
+              replace: '<span class="hero__h-second">Before the bill.</span>'
+            },
+            {
+              phrase: "local-first developer tool",
+              replace: "<strong>local-first developer tool</strong>"
+            },
+            {
+              phrase: "Every token leaves a trail. BurnBar reads the fire.",
+              replace: "<em>Every token leaves a trail. BurnBar reads the fire.</em>"
+            },
+            { phrase: "Keep building.", replace: '<span class="ember">Keep building.</span>' },
+            {
+              phrase: "● No telemetry by default",
+              replace: '<span class="ember">●</span> No telemetry by default'
+            },
+            {
+              phrase: "● No account required",
+              replace: '<span class="ember">●</span> No account required'
+            },
+            {
+              phrase: "● Reads logs, not your API keys",
+              replace: '<span class="ember">●</span> Reads logs, not your API keys'
+            }
           ];
 
           for (const item of highlights) {
@@ -629,22 +670,26 @@ const fullTitle =
         function parseOriginalBlocks(el) {
           const blocks = [];
           let currentText = "";
-          
-          el.childNodes.forEach(node => {
+
+          el.childNodes.forEach((node) => {
             if (node.nodeType === Node.ELEMENT_NODE) {
-              const isSecond = node.className && (node.className.includes('-second') || node.classList.contains('hero__h-second') || node.classList.contains('pagehead__h-second'));
-              const isBr = node.nodeName === 'BR';
-              
+              const isSecond =
+                node.className &&
+                (node.className.includes("-second") ||
+                  node.classList.contains("hero__h-second") ||
+                  node.classList.contains("pagehead__h-second"));
+              const isBr = node.nodeName === "BR";
+
               if (isBr || isSecond) {
                 if (currentText.trim()) {
-                  blocks.push({ text: currentText.trim().replace(/\s+/g, ' '), className: "" });
+                  blocks.push({ text: currentText.trim().replace(/\s+/g, " "), className: "" });
                   currentText = "";
                 }
                 if (isBr) {
                   blocks.push({ isBr: true });
                 } else {
                   blocks.push({
-                    text: node.textContent.trim().replace(/\s+/g, ' '),
+                    text: node.textContent.trim().replace(/\s+/g, " "),
                     className: node.className
                   });
                 }
@@ -656,16 +701,16 @@ const fullTitle =
               currentText += " " + node.textContent;
             }
           });
-          
+
           if (currentText.trim()) {
-            blocks.push({ text: currentText.trim().replace(/\s+/g, ' '), className: "" });
+            blocks.push({ text: currentText.trim().replace(/\s+/g, " "), className: "" });
           }
-          
+
           return blocks;
         }
 
         function relayout() {
-          elements.forEach(el => {
+          elements.forEach((el) => {
             // Retrieve or parse the cached blocks array to maintain consistency
             let blocks = el.__pretextBlocks;
             if (!blocks) {
@@ -673,34 +718,89 @@ const fullTitle =
               el.__pretextBlocks = blocks;
             }
 
+            // Cache original max-width on first pass before overriding it
+            if (el.__pretextMaxWidth === undefined) {
+              const originalMaxWidth = window.getComputedStyle(el).maxWidth;
+              if (originalMaxWidth && originalMaxWidth !== "none") {
+                el.__pretextMaxWidth = parseFloat(originalMaxWidth) || null;
+              } else {
+                el.__pretextMaxWidth = null;
+              }
+            }
+
             // Set parent styles to fit tight inline elements cleanly
-            el.style.width = '100%';
-            el.style.maxWidth = 'none';
-            el.style.background = 'none';
-            el.style.border = 'none';
-            el.style.boxShadow = 'none';
-            el.style.backdropFilter = 'none';
-            el.style.webkitBackdropFilter = 'none';
+            el.style.width = "100%";
+            el.style.maxWidth = "none";
+            el.style.background = "none";
+            el.style.border = "none";
+            el.style.boxShadow = "none";
+            el.style.backdropFilter = "none";
+            el.style.webkitBackdropFilter = "none";
 
             const style = window.getComputedStyle(el);
             const fontSize = parseFloat(style.fontSize);
             const fontFamily = style.fontFamily;
-            const font = `${style.fontWeight || '400'} ${fontSize}px ${fontFamily}`;
-            const lineHeight = parseFloat(style.lineHeight) || (fontSize * 1.5);
+            const font = `${style.fontWeight || "400"} ${fontSize}px ${fontFamily}`;
+            const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5;
 
             // Compute available parent width
             const parent = el.parentElement;
             if (!parent) return;
-            const parentWidth = parent.clientWidth - parseFloat(window.getComputedStyle(parent).paddingLeft) - parseFloat(window.getComputedStyle(parent).paddingRight);
-            
+
+            // To prevent progressive shrink loops on "fit-content" glass wrappers,
+            // measure the width of the stable block-level grandparent container instead.
+            let measureContainer = parent;
+            let parentWasFitContent = false;
+            if (
+              parent.classList.contains("lead-glass-wrap") ||
+              parent.classList.contains("glass-pane")
+            ) {
+              measureContainer = parent.parentElement || parent;
+              parentWasFitContent = true;
+            }
+
+            // Save original parent styles if it has fit-content
+            let prevParentWidth = "";
+            let prevParentMaxWidth = "";
+            let prevParentDisplay = "";
+            if (parentWasFitContent) {
+              prevParentWidth = parent.style.width;
+              prevParentMaxWidth = parent.style.maxWidth;
+              prevParentDisplay = parent.style.display;
+
+              // Force to full width block temporarily to get the natural grandparent width
+              parent.style.width = "100%";
+              parent.style.maxWidth = "none";
+              parent.style.display = "block";
+            }
+
+            const parentWidth =
+              measureContainer.clientWidth -
+              parseFloat(window.getComputedStyle(measureContainer).paddingLeft) -
+              parseFloat(window.getComputedStyle(measureContainer).paddingRight);
+
+            // Restore parent styles immediately after measuring
+            if (parentWasFitContent) {
+              parent.style.width = prevParentWidth;
+              parent.style.maxWidth = prevParentMaxWidth;
+              parent.style.display = prevParentDisplay;
+            }
+
+            // Limit the maximum target wrapping width based on cached original max-width or sensible defaults for readability
+            const maxConstraint =
+              el.__pretextMaxWidth ||
+              (el.classList.contains("lead") || el.classList.contains("pagehead__lead")
+                ? 580
+                : 99999);
+
             // Apply a slight safety buffer so spans don't wrap prematurely
-            const targetWidth = Math.max(160, parentWidth - 32);
+            const targetWidth = Math.max(160, Math.min(maxConstraint, parentWidth - 32));
 
             try {
-              el.innerHTML = '';
+              el.innerHTML = "";
               blocks.forEach((block, blockIndex) => {
                 if (block.isBr) {
-                  el.appendChild(document.createElement('br'));
+                  el.appendChild(document.createElement("br"));
                   return;
                 }
 
@@ -711,31 +811,31 @@ const fullTitle =
                   // If block has a specific class name (e.g. hero__h-second), create a container wrapper
                   let container = el;
                   if (block.className) {
-                    const wrapper = document.createElement('span');
+                    const wrapper = document.createElement("span");
                     wrapper.className = block.className;
                     el.appendChild(wrapper);
                     container = wrapper;
                   }
 
                   lines.forEach((line, lineIndex) => {
-                    const span = document.createElement('span');
-                    span.className = 'glass-line-pill';
+                    const span = document.createElement("span");
+                    span.className = "glass-line-pill";
                     span.innerHTML = reconstructLineHTML(line.text);
                     container.appendChild(span);
-                    
+
                     if (lineIndex < lines.length - 1) {
-                      container.appendChild(document.createElement('br'));
+                      container.appendChild(document.createElement("br"));
                     }
                   });
                 }
-                
+
                 // Add a newline between blocks if it's not the last block and not followed by a BR block
                 if (blockIndex < blocks.length - 1 && !blocks[blockIndex + 1].isBr) {
-                  el.appendChild(document.createElement('br'));
+                  el.appendChild(document.createElement("br"));
                 }
               });
             } catch (err) {
-              console.debug('Pretext layout failed for element:', el, err);
+              console.debug("Pretext layout failed for element:", el, err);
             }
           });
         }
@@ -745,22 +845,18 @@ const fullTitle =
 
         // Listen for window resizes
         let resizeTimeout;
-        window.addEventListener('resize', () => {
+        window.addEventListener("resize", () => {
           clearTimeout(resizeTimeout);
           resizeTimeout = setTimeout(relayout, 100);
         });
-
-        // Re-run periodically to account for dynamic content loading
-        setInterval(relayout, 2000);
       }
 
       // Initialize
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initPretextShrinkwrap);
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initPretextShrinkwrap);
       } else {
         initPretextShrinkwrap();
       }
     </script>
   </body>
 </html>
-

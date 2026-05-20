@@ -15,8 +15,9 @@ import IntelligentScoreboard from "./IntelligentScoreboard.astro";
 import type { ScoreboardCandidate, ScoreboardSource } from "./IntelligentScoreboard.astro";
 import { LATEST_RUNDOWN } from "@data/router-rundown-loader";
 
-const codingTask = LATEST_RUNDOWN?.taskRankings.find((t) => t.taskID === "coding")
-  ?? LATEST_RUNDOWN?.taskRankings[0];
+const codingTask =
+  LATEST_RUNDOWN?.taskRankings.find((t) => t.taskID === "coding") ??
+  LATEST_RUNDOWN?.taskRankings[0];
 
 const candidates: ScoreboardCandidate[] = (codingTask?.recommendations ?? [])
   .slice(0, 3)
@@ -25,7 +26,7 @@ const candidates: ScoreboardCandidate[] = (codingTask?.recommendations ?? [])
     modelDisplay: r.modelDisplay,
     providerDisplay: r.providerDisplay,
     providerLogo: r.providerLogo,
-    score: r.selectionScore ?? r.score,
+    score: r.selectionScore ?? r.score
   }));
 
 const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
@@ -36,14 +37,11 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
 <section class="modes" aria-labelledby="modes-h">
   <header class="modes__head">
     <span class="eyebrow eyebrow--ember">Two modes · one switch</span>
-    <h2 id="modes-h" class="modes__h">
-      Pick a posture. The model stays itself either way.
-    </h2>
+    <h2 id="modes-h" class="modes__h">Pick a posture. The model stays itself either way.</h2>
     <p class="modes__lead">
-      Most days you want the router to honor what you asked for and only
-      stretch capacity behind the scenes. Some days you'd rather it look at
-      the task in front of you and pick the right tool from a researched
-      shortlist. Same gateway. Same accounts. Different posture.
+      Most days you want the router to honor what you asked for and only stretch capacity behind the
+      scenes. Some days you'd rather it look at the task in front of you and pick the right tool
+      from a researched shortlist. Same gateway. Same accounts. Different posture.
     </p>
   </header>
 
@@ -53,7 +51,9 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
       <header class="modecard__head">
         <span class="modecard__tag mono">01 · default · provider-family failover</span>
         <h3 class="modecard__title">Same model. Different account.</h3>
-        <p class="modecard__sub mono">protects your model identity · scales your account capacity</p>
+        <p class="modecard__sub mono">
+          protects your model identity · scales your account capacity
+        </p>
       </header>
 
       <div class="modecard__viz">
@@ -61,10 +61,22 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
       </div>
 
       <ul class="modecard__bullets">
-        <li><strong>Model identity is non-negotiable.</strong> Failover only considers accounts that already carry your model.</li>
-        <li><strong>Account-level capacity.</strong> Add a second key, pin a third — they all serve the same model.</li>
-        <li><strong>Pre-selected runner-up.</strong> If the primary stumbles, the next account is already chosen.</li>
-        <li><strong>Cool-downs heal themselves.</strong> 5-min parking on transient failures, auto-rejoin after.</li>
+        <li>
+          <strong>Model identity is non-negotiable.</strong> Failover only considers accounts that already
+          carry your model.
+        </li>
+        <li>
+          <strong>Account-level capacity.</strong> Add a second key, pin a third — they all serve the
+          same model.
+        </li>
+        <li>
+          <strong>Pre-selected runner-up.</strong> If the primary stumbles, the next account is already
+          chosen.
+        </li>
+        <li>
+          <strong>Cool-downs heal themselves.</strong> 5-min parking on transient failures, auto-rejoin
+          after.
+        </li>
       </ul>
 
       <p class="modecard__foot mono">
@@ -76,7 +88,9 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     {/* RIGHT — intelligent */}
     <article class="modecard modecard--intelligent" data-animate-onview="">
       <header class="modecard__head">
-        <span class="modecard__tag modecard__tag--mercury mono">02 · opt-in · intelligent model router</span>
+        <span class="modecard__tag modecard__tag--mercury mono"
+          >02 · opt-in · intelligent model router</span
+        >
         <h3 class="modecard__title">Different model — when you ask for one.</h3>
         <p class="modecard__sub mono">model board researches candidates · your pin still wins</p>
       </header>
@@ -91,11 +105,26 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
       </div>
 
       <ul class="modecard__bullets">
-        <li><strong>Daily model board.</strong> A board of language models runs research and analysis tasks before the deterministic ranking is published.</li>
-        <li><strong>Benchmarks are advisory.</strong> Pulled from Artificial Analysis, Terminal-Bench, Design Arena. Older signals weigh less.</li>
-        <li><strong>Selection is deliberately stable.</strong> Favorites are only dethroned after clear evidence and benchmark margins repeat.</li>
-        <li><strong>Your pin still wins.</strong> A pinned model that meets the floor beats a higher-scored alternative.</li>
-        <li><strong>Every pick is explainable.</strong> Today's rundown ships with citations, freshness states, and board verdicts.</li>
+        <li>
+          <strong>Daily model board.</strong> A board of language models runs research and analysis tasks
+          before the deterministic ranking is published.
+        </li>
+        <li>
+          <strong>Benchmarks are advisory.</strong> Pulled from Artificial Analysis, Terminal-Bench, Design
+          Arena. Older signals weigh less.
+        </li>
+        <li>
+          <strong>Selection is deliberately stable.</strong> Favorites are only dethroned after clear
+          evidence and benchmark margins repeat.
+        </li>
+        <li>
+          <strong>Your pin still wins.</strong> A pinned model that meets the floor beats a higher-scored
+          alternative.
+        </li>
+        <li>
+          <strong>Every pick is explainable.</strong> Today's rundown ships with citations, freshness
+          states, and board verdicts.
+        </li>
       </ul>
 
       <a class="modecard__foot modecard__foot--cta mono" href="/router/daily">
@@ -130,7 +159,10 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     -webkit-mask-image: radial-gradient(70% 60% at 50% 50%, black 30%, transparent 80%);
     pointer-events: none;
   }
-  .modes > * { position: relative; z-index: 1; }
+  .modes > * {
+    position: relative;
+    z-index: 1;
+  }
   .modes__head {
     max-width: 64ch;
     margin: 0 auto var(--s-7);
@@ -142,11 +174,18 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
-  .modes__lead { color: var(--text-base); max-width: 56ch; margin: 0 auto; line-height: 1.55; }
+  .modes__lead {
+    color: var(--text-base);
+    max-width: 56ch;
+    margin: 0 auto;
+    line-height: 1.55;
+  }
 
   .modes__grid {
     display: grid;
@@ -155,7 +194,9 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     align-items: stretch;
   }
   @media (max-width: 1000px) {
-    .modes__grid { grid-template-columns: 1fr; }
+    .modes__grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   .modecard {
@@ -186,9 +227,14 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     border-color: color-mix(in oklab, var(--mercury-bright) 28%, var(--ink-line));
     color: var(--mercury-bright);
   }
-  .modecard > * { color: var(--text-base); }
+  .modecard > * {
+    color: var(--text-base);
+  }
 
-  .modecard__head { display: grid; gap: var(--s-2); }
+  .modecard__head {
+    display: grid;
+    gap: var(--s-2);
+  }
   .modecard__tag {
     display: inline-block;
     width: max-content;
@@ -210,7 +256,9 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     font-family: var(--font-display);
     font-size: clamp(1.4rem, 1.1rem + 1vw, 2rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
     letter-spacing: -0.022em;
     line-height: 1.08;
     text-wrap: balance;
@@ -220,7 +268,9 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     font-size: 0.78rem;
     letter-spacing: 0.04em;
   }
-  .modecard--intelligent .modecard__sub { color: var(--mercury-bright); }
+  .modecard--intelligent .modecard__sub {
+    color: var(--mercury-bright);
+  }
 
   .modecard__viz {
     margin-top: var(--s-2);
@@ -250,8 +300,13 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     font-family: var(--font-mono);
     font-size: 0.9em;
   }
-  .modecard--intelligent .modecard__bullets li::before { color: var(--mercury-bright); }
-  .modecard__bullets strong { color: var(--text-bright); font-variation-settings: "wght" 540; }
+  .modecard--intelligent .modecard__bullets li::before {
+    color: var(--mercury-bright);
+  }
+  .modecard__bullets strong {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 540;
+  }
 
   .modecard__foot {
     display: inline-flex;
@@ -267,27 +322,39 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
     color: var(--mercury-bright);
     transition: color var(--dur-fast) var(--ease-out);
   }
-  .modecard__foot--cta:hover { color: var(--ember-bright); }
+  .modecard__foot--cta:hover {
+    color: var(--ember-bright);
+  }
   .modecard__dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     display: inline-block;
   }
-  .modecard__dot--ember { background: var(--ember-core); box-shadow: 0 0 8px var(--ember-glow); }
-  .modecard__dot--mercury { background: var(--mercury-bright); box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 60%, transparent); }
+  .modecard__dot--ember {
+    background: var(--ember-core);
+    box-shadow: 0 0 8px var(--ember-glow);
+  }
+  .modecard__dot--mercury {
+    background: var(--mercury-bright);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 60%, transparent);
+  }
 
   /* entrance */
   .modecard[data-animate-onview] {
     opacity: 0;
     transform: translateY(8px);
-    transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out);
+    transition:
+      opacity 700ms var(--ease-out),
+      transform 700ms var(--ease-out);
   }
   .modecard[data-animate-onview].is-visible {
     opacity: 1;
     transform: none;
   }
-  .modecard--intelligent[data-animate-onview] { transition-delay: 120ms; }
+  .modecard--intelligent[data-animate-onview] {
+    transition-delay: 120ms;
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .modecard[data-animate-onview] {

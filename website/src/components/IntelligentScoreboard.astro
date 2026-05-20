@@ -58,7 +58,7 @@ const {
   sources,
   ctaURL,
   ctaLabel = "Browse today's rundown",
-  showAdvisory = false,
+  showAdvisory = false
 } = Astro.props;
 
 function pct(x: number): string {
@@ -66,10 +66,14 @@ function pct(x: number): string {
 }
 function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" | "off" {
   switch (s) {
-    case "fresh": return "fresh";
-    case "stale": return "warn";
-    case "manual": return "stale";
-    default: return "off";
+    case "fresh":
+      return "fresh";
+    case "stale":
+      return "warn";
+    case "manual":
+      return "stale";
+    default:
+      return "off";
   }
 }
 ---
@@ -79,77 +83,108 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
   data-animate-onview=""
   aria-labelledby={`scoreboard-${heading.replace(/\W+/g, "-").toLowerCase()}`}
 >
-  {variant === "full" && (
-    <header class="scoreboard__head">
-      <span class="scoreboard__eyebrow mono">model board running research</span>
-      <h3 id={`scoreboard-${heading.replace(/\W+/g, "-").toLowerCase()}`} class="scoreboard__h">{heading}</h3>
-      {sub && <p class="scoreboard__sub">{sub}</p>}
-    </header>
-  )}
+  {
+    variant === "full" && (
+      <header class="scoreboard__head">
+        <span class="scoreboard__eyebrow mono">model board running research</span>
+        <h3 id={`scoreboard-${heading.replace(/\W+/g, "-").toLowerCase()}`} class="scoreboard__h">
+          {heading}
+        </h3>
+        {sub && <p class="scoreboard__sub">{sub}</p>}
+      </header>
+    )
+  }
 
   {/* SOURCE BANNER */}
-  <ul class={`scoreboard__sources scoreboard__sources--${variant}`} aria-label="Benchmark sources consulted">
+  <ul
+    class={`scoreboard__sources scoreboard__sources--${variant}`}
+    aria-label="Benchmark sources consulted"
+  >
     <li class="scoreboard__sourcestag mono" aria-hidden="true">
       <span class="scoreboard__sourcestagdot" aria-hidden="true"></span>
       sources
     </li>
-    {sources.map((s, i) => {
-      const meta = sourceMeta(s.source as SourceID);
-      const tone = statusTone(s.status);
-      return (
-        <li class={`srcchip srcchip--${tone}`} style={`--chip-idx:${i}`}>
-          {meta?.logo ? (
-            <img class="srcchip__logo" src={meta.logo} alt="" width="20" height="20" loading="lazy" />
-          ) : (
-            <span class="srcchip__placeholder mono" aria-hidden="true">{(meta?.shortLabel ?? "·").charAt(0)}</span>
-          )}
-          <span class="srcchip__lab mono">{meta?.shortLabel ?? s.source}</span>
-          <span class={`srcchip__dot srcchip__dot--${tone}`} aria-hidden="true"></span>
-        </li>
-      );
-    })}
+    {
+      sources.map((s, i) => {
+        const meta = sourceMeta(s.source as SourceID);
+        const tone = statusTone(s.status);
+        return (
+          <li class={`srcchip srcchip--${tone}`} style={`--chip-idx:${i}`}>
+            {meta?.logo ? (
+              <img
+                class="srcchip__logo"
+                src={meta.logo}
+                alt=""
+                width="20"
+                height="20"
+                loading="lazy"
+              />
+            ) : (
+              <span class="srcchip__placeholder mono" aria-hidden="true">
+                {(meta?.shortLabel ?? "·").charAt(0)}
+              </span>
+            )}
+            <span class="srcchip__lab mono">{meta?.shortLabel ?? s.source}</span>
+            <span class={`srcchip__dot srcchip__dot--${tone}`} aria-hidden="true" />
+          </li>
+        );
+      })
+    }
   </ul>
 
-  {variant === "full" && showAdvisory && (
-    <p class="scoreboard__advisory">
-      A board of language models runs the daily research pass, then BurnBar
-      reduces the findings to a deterministic selection score. Runtime pins,
-      auth, quota, safety, and availability still override the ranking.
-    </p>
-  )}
+  {
+    variant === "full" && showAdvisory && (
+      <p class="scoreboard__advisory">
+        A board of language models runs the daily research pass, then BurnBar reduces the findings
+        to a deterministic selection score. Runtime pins, auth, quota, safety, and availability
+        still override the ranking.
+      </p>
+    )
+  }
 
   {/* CANDIDATE ROWS */}
   <ol class="scoreboard__rows" aria-label="Ranked candidate models">
-    {candidates.map((c, idx) => {
-      const widthPct = Math.max(2, Math.round(c.score * 100));
-      const isWinner = c.rank === 1;
-      return (
-        <li class={`scbrow ${isWinner ? "scbrow--winner" : ""}`} style={`--row-idx:${idx}`}>
-          <span class="scbrow__rank mono">#{c.rank}</span>
-          {c.providerLogo && (
-            <img class="scbrow__logo" src={c.providerLogo} alt="" width="28" height="28" loading="lazy" />
-          )}
-          <span class="scbrow__id">
-            <strong class="scbrow__model">{c.modelDisplay}</strong>
-            <span class="scbrow__provider mono">{c.providerDisplay}</span>
-          </span>
-          {c.badge && <span class="scbrow__badge mono">{c.badge}</span>}
-          <span class="scbrow__bar" aria-hidden="true">
-            <span class="scbrow__barfill" style={`--target:${widthPct}%`}></span>
-          </span>
-          <span class="scbrow__score mono">{pct(c.score)}</span>
-          {isWinner && <span class="scbrow__stamp mono">selected</span>}
-        </li>
-      );
-    })}
+    {
+      candidates.map((c, idx) => {
+        const widthPct = Math.max(2, Math.round(c.score * 100));
+        const isWinner = c.rank === 1;
+        return (
+          <li class={`scbrow ${isWinner ? "scbrow--winner" : ""}`} style={`--row-idx:${idx}`}>
+            <span class="scbrow__rank mono">#{c.rank}</span>
+            {c.providerLogo && (
+              <img
+                class="scbrow__logo"
+                src={c.providerLogo}
+                alt=""
+                width="28"
+                height="28"
+                loading="lazy"
+              />
+            )}
+            <span class="scbrow__id">
+              <strong class="scbrow__model">{c.modelDisplay}</strong>
+              <span class="scbrow__provider mono">{c.providerDisplay}</span>
+            </span>
+            {c.badge && <span class="scbrow__badge mono">{c.badge}</span>}
+            <span class="scbrow__bar" aria-hidden="true">
+              <span class="scbrow__barfill" style={`--target:${widthPct}%`} />
+            </span>
+            <span class="scbrow__score mono">{pct(c.score)}</span>
+            {isWinner && <span class="scbrow__stamp mono">selected</span>}
+          </li>
+        );
+      })
+    }
   </ol>
 
-  {ctaURL && (
-    <a class="scoreboard__cta mono" href={ctaURL}>
-      <span>{ctaLabel}</span>
-      <span aria-hidden="true">→</span>
-    </a>
-  )}
+  {
+    ctaURL && (
+      <a class="scoreboard__cta mono" href={ctaURL}>
+        <span>{ctaLabel}</span>
+        <span aria-hidden="true">→</span>
+      </a>
+    )
+  }
 </section>
 
 <style>
@@ -167,18 +202,30 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     overflow: hidden;
     isolation: isolate;
   }
-  .scoreboard--mini { padding: var(--s-4); gap: var(--s-3); border-radius: var(--r-3); }
+  .scoreboard--mini {
+    padding: var(--s-4);
+    gap: var(--s-3);
+    border-radius: var(--r-3);
+  }
   .scoreboard::before {
     content: "";
     position: absolute;
     inset: 0 0 auto 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--mercury-bright) 65%, transparent), transparent);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--mercury-bright) 65%, transparent),
+      transparent
+    );
     opacity: 0.6;
   }
 
   /* head */
-  .scoreboard__head { display: grid; gap: var(--s-2); }
+  .scoreboard__head {
+    display: grid;
+    gap: var(--s-2);
+  }
   .scoreboard__eyebrow {
     color: var(--mercury-bright);
     font-size: 0.68rem;
@@ -189,12 +236,18 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     font-family: var(--font-display);
     font-size: clamp(1.15rem, 1rem + 0.6vw, 1.45rem);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     letter-spacing: -0.014em;
     line-height: 1.18;
     text-wrap: balance;
   }
-  .scoreboard__sub { color: var(--text-mute); font-size: 0.9rem; line-height: 1.5; }
+  .scoreboard__sub {
+    color: var(--text-mute);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
 
   /* SOURCE BANNER */
   .scoreboard__sources {
@@ -203,9 +256,7 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     padding: var(--s-2) var(--s-3);
     border: 1px dashed color-mix(in oklab, var(--mercury-bright) 22%, var(--ink-line));
     border-radius: var(--r-3);
-    background:
-      linear-gradient(90deg, rgba(214, 211, 223, 0.05), transparent 80%),
-      var(--ink-base);
+    background: linear-gradient(90deg, rgba(214, 211, 223, 0.05), transparent 80%), var(--ink-base);
     display: flex;
     align-items: center;
     gap: var(--s-3);
@@ -231,8 +282,12 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     pointer-events: none;
   }
   @keyframes scoreboard-scan {
-    0%   { transform: translateX(-30%); }
-    100% { transform: translateX(330%); }
+    0% {
+      transform: translateX(-30%);
+    }
+    100% {
+      transform: translateX(330%);
+    }
   }
 
   .scoreboard__sourcestag {
@@ -271,8 +326,14 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     animation-delay: calc(var(--chip-idx) * 220ms);
   }
   @keyframes srcchip-blink {
-    0%, 40%, 100% { opacity: 1; }
-    45% { opacity: 0.55; }
+    0%,
+    40%,
+    100% {
+      opacity: 1;
+    }
+    45% {
+      opacity: 0.55;
+    }
   }
   .srcchip__logo {
     width: 16px;
@@ -305,14 +366,31 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     height: 6px;
     border-radius: 50%;
   }
-  .srcchip--fresh { border-color: color-mix(in oklab, var(--status-exact) 38%, var(--ink-line)); }
-  .srcchip--fresh .srcchip__dot { background: var(--status-exact); box-shadow: 0 0 6px var(--status-exact); }
-  .srcchip--warn  { border-color: color-mix(in oklab, var(--status-estimated) 32%, var(--ink-line)); }
-  .srcchip--warn  .srcchip__dot { background: var(--status-estimated); }
-  .srcchip--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
-  .srcchip--stale .srcchip__dot { background: var(--mercury-base); }
-  .srcchip--off   { opacity: 0.7; }
-  .srcchip--off   .srcchip__dot { background: var(--status-unavailable); }
+  .srcchip--fresh {
+    border-color: color-mix(in oklab, var(--status-exact) 38%, var(--ink-line));
+  }
+  .srcchip--fresh .srcchip__dot {
+    background: var(--status-exact);
+    box-shadow: 0 0 6px var(--status-exact);
+  }
+  .srcchip--warn {
+    border-color: color-mix(in oklab, var(--status-estimated) 32%, var(--ink-line));
+  }
+  .srcchip--warn .srcchip__dot {
+    background: var(--status-estimated);
+  }
+  .srcchip--stale {
+    border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line));
+  }
+  .srcchip--stale .srcchip__dot {
+    background: var(--mercury-base);
+  }
+  .srcchip--off {
+    opacity: 0.7;
+  }
+  .srcchip--off .srcchip__dot {
+    background: var(--status-unavailable);
+  }
 
   .scoreboard__advisory {
     color: var(--text-base);
@@ -354,7 +432,9 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     padding: var(--s-2) var(--s-3);
   }
   .scoreboard--mini .scbrow__badge,
-  .scoreboard--mini .scbrow__stamp { display: none; }
+  .scoreboard--mini .scbrow__stamp {
+    display: none;
+  }
 
   .scbrow__rank {
     color: var(--text-mute);
@@ -362,7 +442,10 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     letter-spacing: 0.06em;
     width: 1.6rem;
   }
-  .scbrow--winner .scbrow__rank { color: var(--ember-bright); font-variation-settings: "wght" 540; }
+  .scbrow--winner .scbrow__rank {
+    color: var(--ember-bright);
+    font-variation-settings: "wght" 540;
+  }
   .scbrow__logo {
     width: 28px;
     height: 28px;
@@ -372,8 +455,15 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     padding: 2px;
     object-fit: contain;
   }
-  .scoreboard--mini .scbrow__logo { width: 24px; height: 24px; }
-  .scbrow__id { display: grid; gap: 1px; min-width: 0; }
+  .scoreboard--mini .scbrow__logo {
+    width: 24px;
+    height: 24px;
+  }
+  .scbrow__id {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
   .scbrow__model {
     color: var(--text-bright);
     font-size: 0.9rem;
@@ -382,7 +472,9 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .scoreboard--mini .scbrow__model { font-size: 0.82rem; }
+  .scoreboard--mini .scbrow__model {
+    font-size: 0.82rem;
+  }
   .scbrow__provider {
     color: var(--text-mute);
     font-size: 0.68rem;
@@ -413,19 +505,25 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     inset: 0 auto 0 0;
     width: 0;
     border-radius: inherit;
-    background: linear-gradient(90deg,
+    background: linear-gradient(
+      90deg,
       color-mix(in oklab, var(--mercury-bright) 60%, transparent) 0%,
-      var(--mercury-bright) 100%);
+      var(--mercury-bright) 100%
+    );
     transition: width 1200ms var(--ease-out);
     transition-delay: calc(var(--row-idx) * var(--enter-stagger));
   }
   .scbrow--winner .scbrow__barfill {
-    background: linear-gradient(90deg,
+    background: linear-gradient(
+      90deg,
       color-mix(in oklab, var(--ember-core) 70%, transparent) 0%,
-      var(--ember-bright) 100%);
+      var(--ember-bright) 100%
+    );
     box-shadow: 0 0 12px color-mix(in oklab, var(--ember-core) 55%, transparent);
   }
-  .scoreboard.is-visible .scbrow__barfill { width: var(--target); }
+  .scoreboard.is-visible .scbrow__barfill {
+    width: var(--target);
+  }
 
   .scbrow__score {
     color: var(--text-bright);
@@ -436,7 +534,9 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     min-width: 2ch;
     text-align: right;
   }
-  .scbrow--winner .scbrow__score { color: var(--ember-bright); }
+  .scbrow--winner .scbrow__score {
+    color: var(--ember-bright);
+  }
   .scbrow__stamp {
     color: var(--ember-bright);
     font-size: 0.6rem;
@@ -451,14 +551,23 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     animation-delay: calc(var(--row-idx) * var(--enter-stagger) + 900ms);
   }
   @keyframes scbrow-stamp-in {
-    from { opacity: 0; transform: translateY(2px) scale(0.92); }
-    to   { opacity: 1; transform: none; }
+    from {
+      opacity: 0;
+      transform: translateY(2px) scale(0.92);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 
   .scbrow--winner {
     border-color: color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
-    background:
-      linear-gradient(180deg, color-mix(in oklab, var(--ember-core) 10%, var(--ink-base)) 0%, var(--ink-base) 70%);
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--ember-core) 10%, var(--ink-base)) 0%,
+      var(--ink-base) 70%
+    );
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--ember-core) 28%, transparent);
   }
 
@@ -475,13 +584,17 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     border-top: 1px dashed var(--ink-line-soft);
     transition: color var(--dur-fast) var(--ease-out);
   }
-  .scoreboard__cta:hover { color: var(--ember-bright); }
+  .scoreboard__cta:hover {
+    color: var(--ember-bright);
+  }
 
   /* entrance */
   .scoreboard[data-animate-onview] {
     opacity: 0;
     transform: translateY(6px);
-    transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out);
+    transition:
+      opacity 600ms var(--ease-out),
+      transform 600ms var(--ease-out);
   }
   .scoreboard[data-animate-onview].is-visible {
     opacity: 1;
@@ -496,13 +609,28 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
         "bar  bar  bar bar"
         "badge badge stamp stamp";
     }
-    .scbrow__rank   { grid-area: rank; }
-    .scbrow__logo   { grid-area: logo; }
-    .scbrow__id     { grid-area: id;   }
-    .scbrow__bar    { grid-area: bar;  }
-    .scbrow__badge  { grid-area: badge; }
-    .scbrow__score  { grid-area: score; }
-    .scbrow__stamp  { grid-area: stamp; justify-self: end; }
+    .scbrow__rank {
+      grid-area: rank;
+    }
+    .scbrow__logo {
+      grid-area: logo;
+    }
+    .scbrow__id {
+      grid-area: id;
+    }
+    .scbrow__bar {
+      grid-area: bar;
+    }
+    .scbrow__badge {
+      grid-area: badge;
+    }
+    .scbrow__score {
+      grid-area: score;
+    }
+    .scbrow__stamp {
+      grid-area: stamp;
+      justify-self: end;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -519,6 +647,8 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
       opacity: 1 !important;
       transform: none !important;
     }
-    .scbrow__stamp { opacity: 1 !important; }
+    .scbrow__stamp {
+      opacity: 1 !important;
+    }
   }
 </style>

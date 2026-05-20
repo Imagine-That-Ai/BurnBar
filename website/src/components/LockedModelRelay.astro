@@ -37,23 +37,32 @@ const {
   variant = "big",
   modelID = "gpt-5.5",
   modelTag = "model identity · invariant",
-  animateOnView = true,
+  animateOnView = true
 } = Astro.props;
 
 const STATIONS = [
-  { id: "openai-a", name: "OpenAI · personal", logo: "/brand/providers/openai.png", role: "primary" },
-  { id: "openai-b", name: "OpenAI · team",     logo: "/brand/providers/openai.png", role: "active"  },
-  { id: "codex",    name: "Codex · plus",      logo: "/brand/providers/codex.png",  role: "healthy" },
-  { id: "openai-c", name: "OpenAI · agency",   logo: "/brand/providers/openai.png", role: "healthy" },
-  { id: "openai-d", name: "OpenAI · backup",   logo: "/brand/providers/openai.png", role: "healthy" },
+  {
+    id: "openai-a",
+    name: "OpenAI · personal",
+    logo: "/brand/providers/openai.png",
+    role: "primary"
+  },
+  { id: "openai-b", name: "OpenAI · team", logo: "/brand/providers/openai.png", role: "active" },
+  { id: "codex", name: "Codex · plus", logo: "/brand/providers/codex.png", role: "healthy" },
+  { id: "openai-c", name: "OpenAI · agency", logo: "/brand/providers/openai.png", role: "healthy" },
+  { id: "openai-d", name: "OpenAI · backup", logo: "/brand/providers/openai.png", role: "healthy" }
 ] as const;
 
 const STEPS = [
-  { idx: 1, label: `OpenAI · personal · 429 rate-limit`,        detail: `model ${modelID} unchanged` },
-  { idx: 2, label: `OpenAI · team · healthy · active route`,    detail: `serving ${modelID}` },
-  { idx: 3, label: `OpenAI · team · 14% remaining · pressure`,   detail: `pre-selecting next fallback` },
-  { idx: 4, label: `OpenAI · agency · healthy · active route`,   detail: `serving ${modelID}` },
-  { idx: 5, label: `Codex · plus · healthy · active route`,      detail: `serving ${modelID}` },
+  { idx: 1, label: `OpenAI · personal · 429 rate-limit`, detail: `model ${modelID} unchanged` },
+  { idx: 2, label: `OpenAI · team · healthy · active route`, detail: `serving ${modelID}` },
+  {
+    idx: 3,
+    label: `OpenAI · team · 14% remaining · pressure`,
+    detail: `pre-selecting next fallback`
+  },
+  { idx: 4, label: `OpenAI · agency · healthy · active route`, detail: `serving ${modelID}` },
+  { idx: 5, label: `Codex · plus · healthy · active route`, detail: `serving ${modelID}` }
 ] as const;
 ---
 
@@ -63,13 +72,11 @@ const STEPS = [
   aria-labelledby="relay-title"
 >
   <figcaption id="relay-title" class="sr-only">
-    Locked-Model Relay — a model token labelled <strong>{modelID}</strong> stays
-    anchored at the top while five OpenAI-family accounts (OpenAI · personal,
-    OpenAI · team, Codex · plus, OpenAI · agency, OpenAI · backup) cycle their
-    availability below. The active routing pillar slides between healthy
-    accounts every 2.4 seconds, demonstrating that failover swaps accounts
-    without ever changing the model identity. Only accounts that carry the
-    requested model are eligible — Z.ai, MiniMax, Kimi and Ollama would be
+    Locked-Model Relay — a model token labelled <strong>{modelID}</strong> stays anchored at the top while
+    five OpenAI-family accounts (OpenAI · personal, OpenAI · team, Codex · plus, OpenAI · agency, OpenAI
+    · backup) cycle their availability below. The active routing pillar slides between healthy accounts
+    every 2.4 seconds, demonstrating that failover swaps accounts without ever changing the model identity.
+    Only accounts that carry the requested model are eligible — Z.ai, MiniMax, Kimi and Ollama would be
     filtered out for a {modelID} request.
   </figcaption>
 
@@ -97,27 +104,38 @@ const STEPS = [
 
     {/* 5 stations */}
     <ol class="relay__stations" role="list">
-      {STATIONS.map((s, i) => (
-        <li class={`relay__station relay__station--${s.id}`} data-station={i + 1}>
-          <span class="relay__stationhalo" aria-hidden="true"></span>
-          <img class="relay__stationlogo" src={s.logo} alt="" width="36" height="36" loading="lazy" />
-          <span class="relay__stationname mono">{s.name}</span>
-          <span class="relay__stationstate mono"></span>
-          <span class="relay__stationstrip" aria-hidden="true"></span>
-        </li>
-      ))}
+      {
+        STATIONS.map((s, i) => (
+          <li class={`relay__station relay__station--${s.id}`} data-station={i + 1}>
+            <span class="relay__stationhalo" aria-hidden="true" />
+            <img
+              class="relay__stationlogo"
+              src={s.logo}
+              alt=""
+              width="36"
+              height="36"
+              loading="lazy"
+            />
+            <span class="relay__stationname mono">{s.name}</span>
+            <span class="relay__stationstate mono" />
+            <span class="relay__stationstrip" aria-hidden="true" />
+          </li>
+        ))
+      }
     </ol>
   </div>
 
   {/* caption cycler */}
   <div class="relay__caption mono" aria-live="off" aria-hidden="true">
-    {STEPS.map((s) => (
-      <span class={`relay__capstep relay__capstep--${s.idx}`}>
-        <span class="relay__capidx">0{s.idx}</span>
-        <span class="relay__caplab">{s.label}</span>
-        <span class="relay__capdet">{s.detail}</span>
-      </span>
-    ))}
+    {
+      STEPS.map((s) => (
+        <span class={`relay__capstep relay__capstep--${s.idx}`}>
+          <span class="relay__capidx">0{s.idx}</span>
+          <span class="relay__caplab">{s.label}</span>
+          <span class="relay__capdet">{s.detail}</span>
+        </span>
+      ))
+    }
     {/* spacer to fix height — uses the longest caption */}
     <span class="relay__capspacer" aria-hidden="true">
       <span class="relay__capidx">0X</span>
@@ -138,8 +156,8 @@ const STEPS = [
   /* ────────── container ────────── */
   .relay {
     --cycle: 12s;
-    --step-on-pct: 18%;       /* keyframe window where a station is "active" */
-    --rail-pad: 8%;            /* horizontal padding of the rail */
+    --step-on-pct: 18%; /* keyframe window where a station is "active" */
+    --rail-pad: 8%; /* horizontal padding of the rail */
     --col-1: 10%;
     --col-2: 30%;
     --col-3: 50%;
@@ -169,7 +187,10 @@ const STEPS = [
     background: radial-gradient(120% 100% at 50% 0%, rgba(255, 106, 26, 0.05), transparent 60%);
     z-index: 0;
   }
-  .relay > * { position: relative; z-index: 1; }
+  .relay > * {
+    position: relative;
+    z-index: 1;
+  }
 
   .relay--mini {
     --cycle: 8s;
@@ -192,8 +213,11 @@ const STEPS = [
     padding: var(--s-3) var(--s-5);
     border: 1.5px solid color-mix(in oklab, var(--ember-core) 55%, var(--ink-line));
     border-radius: var(--r-pill);
-    background:
-      linear-gradient(180deg, color-mix(in oklab, var(--ember-core) 12%, var(--ink-base)) 0%, var(--ink-base) 100%);
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--ember-core) 12%, var(--ink-base)) 0%,
+      var(--ink-base) 100%
+    );
     box-shadow:
       inset 0 1px 0 rgba(255, 181, 71, 0.15),
       0 0 0 1px color-mix(in oklab, var(--ember-core) 30%, transparent),
@@ -241,15 +265,28 @@ const STEPS = [
     letter-spacing: 0.04em;
     max-width: 56ch;
   }
-  .relay--mini .relay__chipnote { display: none; }
+  .relay--mini .relay__chipnote {
+    display: none;
+  }
 
   @keyframes relay-token-breathe {
-    0%   { transform: translateY(0) scale(1); }
-    100% { transform: translateY(-2px) scale(1.012); }
+    0% {
+      transform: translateY(0) scale(1);
+    }
+    100% {
+      transform: translateY(-2px) scale(1.012);
+    }
   }
   @keyframes relay-spark-pulse {
-    0%, 100% { transform: scale(1);  opacity: 0.85; }
-    50%      { transform: scale(1.3); opacity: 1; }
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.85;
+    }
+    50% {
+      transform: scale(1.3);
+      opacity: 1;
+    }
   }
 
   /* ────────── board: rail + stations + pillar ────────── */
@@ -285,28 +322,56 @@ const STEPS = [
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      var(--ember-bright) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg, transparent 0%, var(--ember-bright) 50%, transparent 100%);
     opacity: 0;
     filter: blur(2px);
     animation: relay-rail-glint var(--cycle) linear infinite;
   }
   @keyframes relay-rail-glint {
-    0% { transform: translateX(-30%); opacity: 0; }
-    8% { opacity: 0.5; }
-    18%, 22% { transform: translateX(-10%); opacity: 0; }
-    28% { transform: translateX(10%); opacity: 0.5; }
-    38%, 42% { opacity: 0; }
-    48% { transform: translateX(30%); opacity: 0.5; }
-    58%, 62% { opacity: 0; }
-    68% { transform: translateX(50%); opacity: 0.5; }
-    78%, 82% { opacity: 0; }
-    88% { transform: translateX(70%); opacity: 0.5; }
-    100% { transform: translateX(110%); opacity: 0; }
+    0% {
+      transform: translateX(-30%);
+      opacity: 0;
+    }
+    8% {
+      opacity: 0.5;
+    }
+    18%,
+    22% {
+      transform: translateX(-10%);
+      opacity: 0;
+    }
+    28% {
+      transform: translateX(10%);
+      opacity: 0.5;
+    }
+    38%,
+    42% {
+      opacity: 0;
+    }
+    48% {
+      transform: translateX(30%);
+      opacity: 0.5;
+    }
+    58%,
+    62% {
+      opacity: 0;
+    }
+    68% {
+      transform: translateX(50%);
+      opacity: 0.5;
+    }
+    78%,
+    82% {
+      opacity: 0;
+    }
+    88% {
+      transform: translateX(70%);
+      opacity: 0.5;
+    }
+    100% {
+      transform: translateX(110%);
+      opacity: 0;
+    }
   }
 
   /* the active pillar — vertical glowing wire connecting the model chip to
@@ -314,7 +379,7 @@ const STEPS = [
      so the link "model id → serving account" is one drawn line. */
   .relay__pillar {
     position: absolute;
-    top: -90px;        /* reaches up into the chip area */
+    top: -90px; /* reaches up into the chip area */
     bottom: 0;
     left: var(--col-1);
     width: 2px;
@@ -323,7 +388,9 @@ const STEPS = [
     animation: relay-pillar-slide var(--cycle) var(--ease-in-out) infinite;
     will-change: left;
   }
-  .relay--mini .relay__pillar { top: -56px; }
+  .relay--mini .relay__pillar {
+    top: -56px;
+  }
   .relay__pillarhead {
     /* the bright dot that visually "anchors" to the chip's bottom edge */
     position: absolute;
@@ -370,16 +437,39 @@ const STEPS = [
   }
   @keyframes relay-pillar-slide {
     /* dwell 20% at each station, ease between */
-    0%, 19%  { left: var(--col-1); }
-    20%, 39% { left: var(--col-2); }
-    40%, 59% { left: var(--col-2); }    /* dwell at Z.ai through pressure */
-    60%, 79% { left: var(--col-4); }
-    80%, 99% { left: var(--col-3); }
-    100%     { left: var(--col-1); }
+    0%,
+    19% {
+      left: var(--col-1);
+    }
+    20%,
+    39% {
+      left: var(--col-2);
+    }
+    40%,
+    59% {
+      left: var(--col-2);
+    } /* dwell at Z.ai through pressure */
+    60%,
+    79% {
+      left: var(--col-4);
+    }
+    80%,
+    99% {
+      left: var(--col-3);
+    }
+    100% {
+      left: var(--col-1);
+    }
   }
   @keyframes relay-pillar-pulse {
-    0%   { transform: translateX(-50%) scale(1);   opacity: 0.92; }
-    100% { transform: translateX(-50%) scale(1.18); opacity: 1; }
+    0% {
+      transform: translateX(-50%) scale(1);
+      opacity: 0.92;
+    }
+    100% {
+      transform: translateX(-50%) scale(1.18);
+      opacity: 1;
+    }
   }
 
   /* station list */
@@ -404,7 +494,11 @@ const STEPS = [
     position: absolute;
     inset: 32% 18% auto 18%;
     border-radius: var(--r-3);
-    background: radial-gradient(closest-side, color-mix(in oklab, var(--ember-core) 25%, transparent), transparent 70%);
+    background: radial-gradient(
+      closest-side,
+      color-mix(in oklab, var(--ember-core) 25%, transparent),
+      transparent 70%
+    );
     opacity: 0;
     transition: opacity var(--dur-base) var(--ease-out);
     pointer-events: none;
@@ -420,14 +514,20 @@ const STEPS = [
     position: relative;
     z-index: 1;
   }
-  .relay--mini .relay__stationlogo { width: 28px; height: 28px; padding: 2px; }
+  .relay--mini .relay__stationlogo {
+    width: 28px;
+    height: 28px;
+    padding: 2px;
+  }
   .relay__stationname {
     color: var(--text-mute);
     font-size: 0.7rem;
     letter-spacing: 0.06em;
     text-transform: lowercase;
   }
-  .relay--mini .relay__stationname { font-size: 0.62rem; }
+  .relay--mini .relay__stationname {
+    font-size: 0.62rem;
+  }
   .relay__stationstate {
     font-size: 0.6rem;
     letter-spacing: 0.08em;
@@ -435,7 +535,9 @@ const STEPS = [
     color: var(--text-dim);
     min-height: 1em;
   }
-  .relay--mini .relay__stationstate { display: none; }
+  .relay--mini .relay__stationstate {
+    display: none;
+  }
   .relay__stationstrip {
     width: 30px;
     height: 3px;
@@ -496,56 +598,232 @@ const STEPS = [
 
   @keyframes relay-state-burn {
     /* 0-20% burn, 20-40% amber recovering, 40-100% healthy */
-    0%   { background: var(--status-burn); opacity: 1; }
-    19%  { background: var(--status-burn); opacity: 1; }
-    21%  { background: var(--status-estimated); opacity: 0.85; }
-    39%  { background: var(--status-estimated); opacity: 0.85; }
-    41%  { background: var(--status-exact); opacity: 0.6; }
-    100% { background: var(--status-exact); opacity: 0.6; }
+    0% {
+      background: var(--status-burn);
+      opacity: 1;
+    }
+    19% {
+      background: var(--status-burn);
+      opacity: 1;
+    }
+    21% {
+      background: var(--status-estimated);
+      opacity: 0.85;
+    }
+    39% {
+      background: var(--status-estimated);
+      opacity: 0.85;
+    }
+    41% {
+      background: var(--status-exact);
+      opacity: 0.6;
+    }
+    100% {
+      background: var(--status-exact);
+      opacity: 0.6;
+    }
   }
   @keyframes relay-state-active-then-press {
     /* step 2 (20-40%) active, step 3 (40-60%) pressure */
-    0%   { background: var(--status-exact); opacity: 0.6; }
-    19%  { background: var(--status-exact); opacity: 0.6; }
-    21%  { background: var(--status-exact); opacity: 1; box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent); }
-    39%  { background: var(--status-exact); opacity: 1; box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent); }
-    41%  { background: var(--status-estimated); opacity: 0.95; box-shadow: 0 0 12px color-mix(in oklab, var(--status-estimated) 60%, transparent); }
-    59%  { background: var(--status-estimated); opacity: 0.95; box-shadow: 0 0 12px color-mix(in oklab, var(--status-estimated) 60%, transparent); }
-    61%  { background: var(--status-exact); opacity: 0.6; box-shadow: none; }
-    100% { background: var(--status-exact); opacity: 0.6; box-shadow: none; }
+    0% {
+      background: var(--status-exact);
+      opacity: 0.6;
+    }
+    19% {
+      background: var(--status-exact);
+      opacity: 0.6;
+    }
+    21% {
+      background: var(--status-exact);
+      opacity: 1;
+      box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent);
+    }
+    39% {
+      background: var(--status-exact);
+      opacity: 1;
+      box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent);
+    }
+    41% {
+      background: var(--status-estimated);
+      opacity: 0.95;
+      box-shadow: 0 0 12px color-mix(in oklab, var(--status-estimated) 60%, transparent);
+    }
+    59% {
+      background: var(--status-estimated);
+      opacity: 0.95;
+      box-shadow: 0 0 12px color-mix(in oklab, var(--status-estimated) 60%, transparent);
+    }
+    61% {
+      background: var(--status-exact);
+      opacity: 0.6;
+      box-shadow: none;
+    }
+    100% {
+      background: var(--status-exact);
+      opacity: 0.6;
+      box-shadow: none;
+    }
   }
   @keyframes relay-state-healthy-then-active4 {
     /* step 4 (60-80%) active */
-    0%   { background: var(--status-exact); opacity: 0.6; }
-    59%  { background: var(--status-exact); opacity: 0.6; }
-    61%  { background: var(--status-exact); opacity: 1; box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent); }
-    79%  { background: var(--status-exact); opacity: 1; box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent); }
-    81%  { background: var(--status-exact); opacity: 0.6; box-shadow: none; }
-    100% { background: var(--status-exact); opacity: 0.6; box-shadow: none; }
+    0% {
+      background: var(--status-exact);
+      opacity: 0.6;
+    }
+    59% {
+      background: var(--status-exact);
+      opacity: 0.6;
+    }
+    61% {
+      background: var(--status-exact);
+      opacity: 1;
+      box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent);
+    }
+    79% {
+      background: var(--status-exact);
+      opacity: 1;
+      box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent);
+    }
+    81% {
+      background: var(--status-exact);
+      opacity: 0.6;
+      box-shadow: none;
+    }
+    100% {
+      background: var(--status-exact);
+      opacity: 0.6;
+      box-shadow: none;
+    }
   }
   @keyframes relay-state-healthy-then-active5 {
     /* step 5 (80-100%) active */
-    0%   { background: var(--status-exact); opacity: 0.6; }
-    79%  { background: var(--status-exact); opacity: 0.6; }
-    81%  { background: var(--status-exact); opacity: 1; box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent); }
-    99%  { background: var(--status-exact); opacity: 1; box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent); }
-    100% { background: var(--status-exact); opacity: 0.6; box-shadow: none; }
+    0% {
+      background: var(--status-exact);
+      opacity: 0.6;
+    }
+    79% {
+      background: var(--status-exact);
+      opacity: 0.6;
+    }
+    81% {
+      background: var(--status-exact);
+      opacity: 1;
+      box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent);
+    }
+    99% {
+      background: var(--status-exact);
+      opacity: 1;
+      box-shadow: 0 0 14px color-mix(in oklab, var(--status-exact) 60%, transparent);
+    }
+    100% {
+      background: var(--status-exact);
+      opacity: 0.6;
+      box-shadow: none;
+    }
   }
   @keyframes relay-state-healthy {
-    0%, 100% { background: var(--status-exact); opacity: 0.55; }
+    0%,
+    100% {
+      background: var(--status-exact);
+      opacity: 0.55;
+    }
   }
 
   /* halo glows when the pillar is parked on a station */
-  .relay__station[data-station="1"] .relay__stationhalo { animation: relay-halo-1 var(--cycle) ease-in-out infinite; }
-  .relay__station[data-station="2"] .relay__stationhalo { animation: relay-halo-2 var(--cycle) ease-in-out infinite; }
-  .relay__station[data-station="3"] .relay__stationhalo { animation: relay-halo-3 var(--cycle) ease-in-out infinite; }
-  .relay__station[data-station="4"] .relay__stationhalo { animation: relay-halo-4 var(--cycle) ease-in-out infinite; }
-  .relay__station[data-station="5"] .relay__stationhalo { animation: relay-halo-5 var(--cycle) ease-in-out infinite; }
-  @keyframes relay-halo-1 { 0% { opacity: 1; } 19% { opacity: 1; } 22% { opacity: 0; } 100% { opacity: 0; } }
-  @keyframes relay-halo-2 { 0% { opacity: 0; } 19% { opacity: 0; } 22% { opacity: 1; } 59% { opacity: 1; } 62% { opacity: 0; } 100% { opacity: 0; } }
-  @keyframes relay-halo-3 { 0% { opacity: 0; } 79% { opacity: 0; } 82% { opacity: 1; } 99% { opacity: 1; } 100% { opacity: 0; } }
-  @keyframes relay-halo-4 { 0% { opacity: 0; } 59% { opacity: 0; } 62% { opacity: 1; } 79% { opacity: 1; } 82% { opacity: 0; } 100% { opacity: 0; } }
-  @keyframes relay-halo-5 { 0% { opacity: 0; } 100% { opacity: 0; } }
+  .relay__station[data-station="1"] .relay__stationhalo {
+    animation: relay-halo-1 var(--cycle) ease-in-out infinite;
+  }
+  .relay__station[data-station="2"] .relay__stationhalo {
+    animation: relay-halo-2 var(--cycle) ease-in-out infinite;
+  }
+  .relay__station[data-station="3"] .relay__stationhalo {
+    animation: relay-halo-3 var(--cycle) ease-in-out infinite;
+  }
+  .relay__station[data-station="4"] .relay__stationhalo {
+    animation: relay-halo-4 var(--cycle) ease-in-out infinite;
+  }
+  .relay__station[data-station="5"] .relay__stationhalo {
+    animation: relay-halo-5 var(--cycle) ease-in-out infinite;
+  }
+  @keyframes relay-halo-1 {
+    0% {
+      opacity: 1;
+    }
+    19% {
+      opacity: 1;
+    }
+    22% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes relay-halo-2 {
+    0% {
+      opacity: 0;
+    }
+    19% {
+      opacity: 0;
+    }
+    22% {
+      opacity: 1;
+    }
+    59% {
+      opacity: 1;
+    }
+    62% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes relay-halo-3 {
+    0% {
+      opacity: 0;
+    }
+    79% {
+      opacity: 0;
+    }
+    82% {
+      opacity: 1;
+    }
+    99% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes relay-halo-4 {
+    0% {
+      opacity: 0;
+    }
+    59% {
+      opacity: 0;
+    }
+    62% {
+      opacity: 1;
+    }
+    79% {
+      opacity: 1;
+    }
+    82% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes relay-halo-5 {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
 
   /* ────────── caption ────────── */
   .relay__caption {
@@ -556,7 +834,10 @@ const STEPS = [
     letter-spacing: 0.04em;
     min-height: 2.2em;
   }
-  .relay--mini .relay__caption { font-size: 0.7rem; min-height: 2em; }
+  .relay--mini .relay__caption {
+    font-size: 0.7rem;
+    min-height: 2em;
+  }
   .relay__capstep {
     position: absolute;
     inset: 0;
@@ -568,23 +849,50 @@ const STEPS = [
     transform: translateY(4px);
     animation: relay-cap-step var(--cycle) ease-in-out infinite;
   }
-  .relay__capstep--1 { animation-delay: 0s; }
-  .relay__capstep--2 { animation-delay: calc(var(--cycle) * -0.8); }   /* equivalent to + 0.2 cycle */
-  .relay__capstep--3 { animation-delay: calc(var(--cycle) * -0.6); }
-  .relay__capstep--4 { animation-delay: calc(var(--cycle) * -0.4); }
-  .relay__capstep--5 { animation-delay: calc(var(--cycle) * -0.2); }
+  .relay__capstep--1 {
+    animation-delay: 0s;
+  }
+  .relay__capstep--2 {
+    animation-delay: calc(var(--cycle) * -0.8);
+  } /* equivalent to + 0.2 cycle */
+  .relay__capstep--3 {
+    animation-delay: calc(var(--cycle) * -0.6);
+  }
+  .relay__capstep--4 {
+    animation-delay: calc(var(--cycle) * -0.4);
+  }
+  .relay__capstep--5 {
+    animation-delay: calc(var(--cycle) * -0.2);
+  }
   @keyframes relay-cap-step {
-    0%        { opacity: 0; transform: translateY(4px); }
-    3%        { opacity: 1; transform: translateY(0); }
-    17%       { opacity: 1; transform: translateY(0); }
-    20%, 100% { opacity: 0; transform: translateY(-4px); }
+    0% {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    3% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    17% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    20%,
+    100% {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
   }
   .relay__capidx {
     color: var(--ember-bright);
     font-variation-settings: "wght" 540;
   }
-  .relay__caplab { color: var(--text-bright); }
-  .relay__capdet { color: var(--text-dim); }
+  .relay__caplab {
+    color: var(--text-bright);
+  }
+  .relay__capdet {
+    color: var(--text-dim);
+  }
   .relay__capspacer {
     visibility: hidden;
     display: flex;
@@ -606,36 +914,67 @@ const STEPS = [
     font-size: 0.7rem;
     letter-spacing: 0.04em;
   }
-  .relay--mini .relay__legend { display: none; }
-  .relay__legend li { display: inline-flex; align-items: center; gap: var(--s-2); }
+  .relay--mini .relay__legend {
+    display: none;
+  }
+  .relay__legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
   .relay__legdot {
     width: 12px;
     height: 3px;
     border-radius: var(--r-pill);
     background: var(--ink-line);
   }
-  .relay__legdot--active { background: var(--status-exact); box-shadow: 0 0 8px color-mix(in oklab, var(--status-exact) 60%, transparent); }
-  .relay__legdot--press  { background: var(--status-estimated); }
-  .relay__legdot--burn   { background: var(--status-burn); }
-  .relay__legdot--cool   { background: var(--text-dim); }
+  .relay__legdot--active {
+    background: var(--status-exact);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--status-exact) 60%, transparent);
+  }
+  .relay__legdot--press {
+    background: var(--status-estimated);
+  }
+  .relay__legdot--burn {
+    background: var(--status-burn);
+  }
+  .relay__legdot--cool {
+    background: var(--text-dim);
+  }
 
   /* ────────── responsive ────────── */
   @media (max-width: 720px) {
-    .relay__stationname { font-size: 0.62rem; }
-    .relay__stationlogo { width: 28px; height: 28px; padding: 2px; }
-    .relay__board { height: 180px; }
-    .relay__chipnote { display: none; }
+    .relay__stationname {
+      font-size: 0.62rem;
+    }
+    .relay__stationlogo {
+      width: 28px;
+      height: 28px;
+      padding: 2px;
+    }
+    .relay__board {
+      height: 180px;
+    }
+    .relay__chipnote {
+      display: none;
+    }
   }
   @media (max-width: 480px) {
-    .relay__chiptag { display: none; }
-    .relay__caption { font-size: 0.7rem; }
+    .relay__chiptag {
+      display: none;
+    }
+    .relay__caption {
+      font-size: 0.7rem;
+    }
   }
 
   /* ────────── on-view entrance ────────── */
   .relay[data-animate-onview] {
     opacity: 0;
     transform: translateY(8px);
-    transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out);
+    transition:
+      opacity 600ms var(--ease-out),
+      transform 600ms var(--ease-out);
   }
   .relay[data-animate-onview].is-visible {
     opacity: 1;
@@ -665,11 +1004,18 @@ const STEPS = [
       animation: none !important;
     }
     /* park pillar on station 2 (Z.ai · active) */
-    .relay__pillar { left: var(--col-2) !important; }
+    .relay__pillar {
+      left: var(--col-2) !important;
+    }
     /* show only caption step 2 */
-    .relay__capstep--2 { opacity: 1 !important; transform: none !important; }
+    .relay__capstep--2 {
+      opacity: 1 !important;
+      transform: none !important;
+    }
     /* show station 2 as active */
-    .relay__station[data-station="2"] .relay__stationhalo { opacity: 1 !important; }
+    .relay__station[data-station="2"] .relay__stationhalo {
+      opacity: 1 !important;
+    }
     .relay__station[data-station="2"] .relay__stationstrip::before {
       background: var(--status-exact) !important;
       opacity: 1 !important;

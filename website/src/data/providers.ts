@@ -116,8 +116,7 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
     cost: "exact",
     quota: "yes",
     cred: "API key",
-    notes:
-      "Endpoint is undocumented — works today, vendor reserves the right to break it.",
+    notes: "Endpoint is undocumented — works today, vendor reserves the right to break it.",
     category: "api",
     shippedToday: true
   },

@@ -30,9 +30,8 @@ const faqLd = {
       <span class="eyebrow eyebrow--ember">FAQ</span>
       <h1 class="pagehead__h">Questions, answered.</h1>
       <p class="lead">
-        The questions we hear most. Each one points back at the architecture
-        choice that drove the answer. If the answer you need isn't here,
-        open an issue.
+        The questions we hear most. Each one points back at the architecture choice that drove the
+        answer. If the answer you need isn't here, open an issue.
       </p>
     </div>
   </section>
@@ -51,37 +50,61 @@ const faqLd = {
       </header>
       <ul class="moremore__list">
         <li>
-          <a href={`${SITE.github}/blob/main/docs/MISSION.md`} target="_blank" rel="noopener noreferrer">
+          <a
+            href={`${SITE.github}/blob/main/docs/MISSION.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <strong>MISSION.md</strong>
             <span>The why, in the team's own words.</span>
           </a>
         </li>
         <li>
-          <a href={`${SITE.github}/blob/main/docs/PROVIDERS.md`} target="_blank" rel="noopener noreferrer">
+          <a
+            href={`${SITE.github}/blob/main/docs/PROVIDERS.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <strong>PROVIDERS.md</strong>
             <span>The canonical provider table.</span>
           </a>
         </li>
         <li>
-          <a href={`${SITE.github}/blob/main/docs/PRIVACY.md`} target="_blank" rel="noopener noreferrer">
+          <a
+            href={`${SITE.github}/blob/main/docs/PRIVACY.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <strong>PRIVACY.md</strong>
             <span>Every byte that does or doesn't leave your machine.</span>
           </a>
         </li>
         <li>
-          <a href={`${SITE.github}/blob/main/docs/THREAT_MODEL.md`} target="_blank" rel="noopener noreferrer">
+          <a
+            href={`${SITE.github}/blob/main/docs/THREAT_MODEL.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <strong>THREAT_MODEL.md</strong>
             <span>What we defend against and what we don't pretend.</span>
           </a>
         </li>
         <li>
-          <a href={`${SITE.github}/blob/main/docs/HOSTED_QUOTA_SYNC.md`} target="_blank" rel="noopener noreferrer">
+          <a
+            href={`${SITE.github}/blob/main/docs/HOSTED_QUOTA_SYNC.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <strong>HOSTED_QUOTA_SYNC.md</strong>
             <span>Why hosted quota sync exists and how it's verified.</span>
           </a>
         </li>
         <li>
-          <a href={`${SITE.github}/blob/main/CHANGELOG.md`} target="_blank" rel="noopener noreferrer">
+          <a
+            href={`${SITE.github}/blob/main/CHANGELOG.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <strong>CHANGELOG.md</strong>
             <span>Everything that's landed, in chronological order.</span>
           </a>
@@ -92,12 +115,30 @@ const faqLd = {
 </BaseLayout>
 
 <style>
-  .pagehead { padding-block: var(--s-9) var(--s-6); }
-  .pagehead__h { margin-top: var(--s-3); }
-  .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
-  .faqsec { padding-block: var(--s-6) var(--s-9); border-top: 1px solid var(--ink-line); }
-  .moremore { padding-block: var(--s-9); border-top: 1px solid var(--ink-line); }
-  .sec-head { display: grid; gap: var(--s-3); margin-bottom: var(--s-6); max-width: 64ch; }
+  .pagehead {
+    padding-block: var(--s-9) var(--s-6);
+  }
+  .pagehead__h {
+    margin-top: var(--s-3);
+  }
+  .pagehead .lead {
+    margin-top: var(--s-4);
+    max-width: 60ch;
+  }
+  .faqsec {
+    padding-block: var(--s-6) var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .moremore {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .sec-head {
+    display: grid;
+    gap: var(--s-3);
+    margin-bottom: var(--s-6);
+    max-width: 64ch;
+  }
   .moremore__list {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -121,6 +162,13 @@ const faqLd = {
     color: var(--text-bright);
     font-size: 0.95rem;
   }
-  .moremore__list span { font-size: 0.88rem; color: var(--text-mute); }
-  @media (max-width: 720px) { .moremore__list { grid-template-columns: 1fr; } }
+  .moremore__list span {
+    font-size: 0.88rem;
+    color: var(--text-mute);
+  }
+  @media (max-width: 720px) {
+    .moremore__list {
+      grid-template-columns: 1fr;
+    }
+  }
 </style>

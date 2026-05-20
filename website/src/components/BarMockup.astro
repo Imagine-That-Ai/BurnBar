@@ -6,12 +6,22 @@
 // the popover reads cleanly without translucent desktop bleed.
 ---
 
-<figure class="bar-mockup" aria-label="OpenBurnBar menu-bar popover showing live quota windows for Anthropic and Codex plus the LaHormigaDormida mission with $2,662.51 burned across 15.12 billion tokens">
+<figure
+  class="bar-mockup"
+  aria-label="OpenBurnBar menu-bar popover showing live quota windows for Anthropic and Codex plus the LaHormigaDormida mission with $2,662.51 burned across 15.12 billion tokens"
+>
   <div class="bar-mockup__chrome" aria-hidden="true">
     <div class="bar-mockup__menubar">
       <span class="dot"></span><span class="dot"></span><span class="dot"></span>
       <span class="bar-mockup__menubar-spacer"></span>
-      <img src="/brand/logo-64.png" srcset="/brand/logo-64.png 1x, /brand/logo-256.png 2x" alt="" width="14" height="14" class="bar-mockup__menubar-logo" />
+      <img
+        src="/brand/logo-64.png"
+        srcset="/brand/logo-64.png 1x, /brand/logo-256.png 2x"
+        alt=""
+        width="14"
+        height="14"
+        class="bar-mockup__menubar-logo"
+      />
       <span class="bar-mockup__menubar-label">OpenBurnBar</span>
       <span class="bar-mockup__menubar-cap mono">Today · 2.17B</span>
     </div>
@@ -28,7 +38,9 @@
 
     <div class="popover__meta">
       <span class="popover__updated">Updated 4m ago</span>
-      <span class="popover__sessions mono"><span class="popover__sessions-dot" aria-hidden="true"></span>11,377 sessions</span>
+      <span class="popover__sessions mono"
+        ><span class="popover__sessions-dot" aria-hidden="true"></span>11,377 sessions</span
+      >
     </div>
 
     <div class="popover__sectionhead mono">QUOTAS</div>
@@ -36,8 +48,17 @@
     <ul class="popover__quotas">
       <li>
         <div class="qrow">
-          <img class="qicon" src="/brand/providers/anthropic.png" alt="" width="22" height="22" loading="lazy" decoding="async" />
+          <img
+            class="qicon"
+            src="/brand/providers/anthropic.png"
+            alt=""
+            width="22"
+            height="22"
+            loading="lazy"
+            decoding="async"
+          />
           <div class="qrow__bars">
+            <span class="qrow__name">Anthropic</span>
             <div class="qline">
               <span class="qline__lbl mono">5h</span>
               <div class="qbar"><div class="qfill qfill--anthropic" style="width:69%"></div></div>
@@ -53,7 +74,15 @@
       </li>
       <li>
         <div class="qrow">
-          <img class="qicon" src="/brand/providers/codex.png" alt="" width="22" height="22" loading="lazy" decoding="async" />
+          <img
+            class="qicon"
+            src="/brand/providers/codex.png"
+            alt=""
+            width="22"
+            height="22"
+            loading="lazy"
+            decoding="async"
+          />
           <div class="qrow__bars">
             <span class="qrow__name">Codex</span>
             <div class="qline">
@@ -70,7 +99,15 @@
         </div>
       </li>
       <li class="popover__claudeline">
-        <img class="qicon qicon--small" src="/brand/providers/claude-code.png" alt="" width="18" height="18" loading="lazy" decoding="async" />
+        <img
+          class="qicon qicon--small"
+          src="/brand/providers/claude-code.png"
+          alt=""
+          width="18"
+          height="18"
+          loading="lazy"
+          decoding="async"
+        />
         <span class="popover__claude-name">Claude Code</span>
       </li>
     </ul>
@@ -98,7 +135,9 @@
         <div><span class="lbl">Questions</span><span class="val">0</span></div>
         <div><span class="lbl">Followups</span><span class="val val--ember">2</span></div>
         <div><span class="lbl">Mission</span><span class="val">Planned</span></div>
-        <div><span class="lbl">Runtime</span><span class="val val--ember">Local inference</span></div>
+        <div>
+          <span class="lbl">Runtime</span><span class="val val--ember">Local inference</span>
+        </div>
       </div>
       <a class="popover__mission-cta" href="#">Review mission approval →</a>
     </div>
@@ -128,7 +167,9 @@
     font-family: var(--font-body);
     font-size: 13px;
   }
-  .bar-mockup__chrome { position: relative; }
+  .bar-mockup__chrome {
+    position: relative;
+  }
   .bar-mockup__menubar {
     background: linear-gradient(180deg, #1a1822 0%, #14111c 100%);
     border: 1px solid var(--ink-line);
@@ -146,8 +187,12 @@
     border-radius: 50%;
     background: #2a2434;
   }
-  .bar-mockup__menubar-spacer { flex: 1; }
-  .bar-mockup__menubar-logo { border-radius: 22%; }
+  .bar-mockup__menubar-spacer {
+    flex: 1;
+  }
+  .bar-mockup__menubar-logo {
+    border-radius: 22%;
+  }
   .bar-mockup__menubar-label {
     color: var(--text-bright);
     font-size: 12.5px;
@@ -172,13 +217,12 @@
   }
 
   .popover {
-    background:
-      linear-gradient(180deg, #1f1b2a 0%, #14101a 100%);
+    background: linear-gradient(180deg, #1f1b2a 0%, #14101a 100%);
     border: 1px solid var(--ink-line);
     border-radius: 16px;
     padding: 14px 14px 12px;
     box-shadow:
-      0 24px 64px -28px rgba(0,0,0,0.9),
+      0 24px 64px -28px rgba(0, 0, 0, 0.9),
       0 0 0 1px rgba(255, 106, 26, 0.06),
       0 0 60px -8px rgba(255, 106, 26, 0.18);
     color: var(--text-base);
@@ -191,16 +235,21 @@
     align-items: center;
     gap: 8px;
   }
-  .popover__icon { border-radius: 22%; }
+  .popover__icon {
+    border-radius: 22%;
+  }
   .popover__name {
     color: var(--text-bright);
     font-family: var(--font-display);
     font-size: 15px;
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     letter-spacing: -0.012em;
     flex: 1;
   }
-  .popover__refresh, .popover__power {
+  .popover__refresh,
+  .popover__power {
     color: var(--text-mute);
     font-size: 13px;
   }
@@ -219,7 +268,9 @@
     gap: 6px;
   }
   .popover__sessions-dot {
-    width: 5px; height: 5px; border-radius: 50%;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
     background: var(--ember-core);
     box-shadow: 0 0 6px rgba(255, 138, 61, 0.6);
   }
@@ -263,7 +314,11 @@
     font-size: 12px;
     font-variation-settings: "wght" 540;
   }
-  .qrow__bars { display: grid; gap: 4px; min-width: 0; }
+  .qrow__bars {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
   .qrow__name {
     color: var(--text-bright);
     font-size: 12px;
@@ -277,11 +332,13 @@
     align-items: center;
     font-size: 10.5px;
   }
-  .qline__lbl { color: var(--text-dim); }
+  .qline__lbl {
+    color: var(--text-dim);
+  }
   .qbar {
     height: 5px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.06);
+    background: rgba(255, 255, 255, 0.06);
     overflow: hidden;
   }
   .qfill {
@@ -290,11 +347,11 @@
   }
   .qfill--anthropic {
     background: linear-gradient(90deg, #c63d0f, #ff6a1a, #ffb547);
-    box-shadow: 0 0 6px rgba(255,138,61,0.45);
+    box-shadow: 0 0 6px rgba(255, 138, 61, 0.45);
   }
   .qfill--codex {
     background: linear-gradient(90deg, #2f7a4a, #6fd189);
-    box-shadow: 0 0 6px rgba(111,209,137,0.35);
+    box-shadow: 0 0 6px rgba(111, 209, 137, 0.35);
   }
   .qline__pct {
     color: var(--text-bright);
@@ -322,8 +379,7 @@
     margin-top: 6px;
     padding: 12px;
     border-radius: 12px;
-    background:
-      linear-gradient(180deg, #2a2233 0%, #1c1626 100%);
+    background: linear-gradient(180deg, #2a2233 0%, #1c1626 100%);
     border: 1px solid var(--ink-line);
     display: grid;
     gap: 6px;
@@ -338,12 +394,14 @@
     color: var(--text-bright);
     font-family: var(--font-display);
     font-size: 13.5px;
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
   }
   .popover__mission-status {
     font-size: 10px;
     color: var(--text-mute);
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--ink-line);
     border-radius: 999px;
     padding: 2px 8px;
@@ -362,18 +420,20 @@
     letter-spacing: 0.04em;
   }
   .popover__mission-dot {
-    width: 6px; height: 6px; border-radius: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
     background: var(--ember-core);
   }
   .popover__mission-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0,1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px 12px;
     margin-top: 2px;
     font-size: 11px;
   }
   .popover__mission-grid--two {
-    grid-template-columns: repeat(4, minmax(0,1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .popover__mission-grid > div {
     display: grid;
@@ -412,7 +472,7 @@
     gap: 6px;
     padding: 7px 10px;
     border-radius: 8px;
-    background: rgba(255,255,255,0.04);
+    background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--ink-line);
     color: var(--text-bright);
     font-size: 11.5px;
@@ -424,7 +484,9 @@
     color: #150b03;
     border-color: transparent;
   }
-  .popover__btn-icon { font-size: 11px; }
+  .popover__btn-icon {
+    font-size: 11px;
+  }
 
   .bar-mockup__cap {
     font-size: var(--t-caption);
@@ -432,5 +494,7 @@
     text-align: center;
     letter-spacing: 0.04em;
   }
-  .muted { color: var(--text-mute); }
+  .muted {
+    color: var(--text-mute);
+  }
 </style>

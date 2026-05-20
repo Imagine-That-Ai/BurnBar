@@ -9,14 +9,16 @@ import { SITE } from "@data/site";
   description="How OpenBurnBar handles your data — local-first by default, no telemetry, optional cloud sync, optional iCloud mirror. Detailed architecture diagram and threat model."
 >
   <section class="pagehead">
-    <div class="container pagehead__inner glass-pane">
+    <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Privacy &amp; trust</span>
       <h1 class="pagehead__h">By default, OpenBurnBar collects nothing.</h1>
-      <p class="lead">
-        All processing happens on your device. No telemetry, no analytics, no
-        crash reports leave the device unless you explicitly opt in. Every
-        opt-in is a separate switch and behaves like one.
-      </p>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          All processing happens on your device. No telemetry, no analytics, no crash reports leave
+          the device unless you explicitly opt in. Every opt-in is a separate switch and behaves
+          like one.
+        </p>
+      </div>
     </div>
   </section>
 
@@ -26,10 +28,9 @@ import { SITE } from "@data/site";
         <span class="eyebrow eyebrow--ember">Three trust zones</span>
         <h2>Where your data actually lives.</h2>
         <p class="lead">
-          OpenBurnBar's data flow is a few concentric rings. Zone A is your
-          Mac. Zone B is your Apple ID, on Apple's infrastructure. Zone C is
-          OpenBurnBar's Firebase and Google Cloud, behind sign-in and
-          App Check attestation.
+          OpenBurnBar's data flow is a few concentric rings. Zone A is your Mac. Zone B is your
+          Apple ID, on Apple's infrastructure. Zone C is OpenBurnBar's Firebase and Google Cloud,
+          behind sign-in and App Check attestation.
         </p>
       </header>
 
@@ -46,15 +47,24 @@ import { SITE } from "@data/site";
             <h3>Canonical. Works offline.</h3>
           </header>
           <ul>
-            <li><strong>Local SQLite</strong> at <code>~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite</code></li>
+            <li>
+              <strong>Local SQLite</strong> at <code
+                >~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite</code>
+            </li>
             <li><strong>Local daemon</strong> over a UNIX socket, auth-token-gated</li>
-            <li><strong>macOS Keychain</strong> for any provider keys you supply, scoped <code>kSecAttrAccessibleWhenUnlockedThisDeviceOnly</code></li>
-            <li><strong>Read-only agent logs</strong> in <code>~/.claude/</code>, <code>~/.codex/</code>, <code>~/.factory/</code> and more</li>
+            <li>
+              <strong>macOS Keychain</strong> for any provider keys you supply, scoped <code
+                >kSecAttrAccessibleWhenUnlockedThisDeviceOnly</code>
+            </li>
+            <li>
+              <strong>Read-only agent logs</strong> in <code>~/.claude/</code>, <code
+                >~/.codex/</code
+              >, <code>~/.factory/</code> and more
+            </li>
             <li><strong>Editor extension &amp; CLI</strong> connect to the same socket</li>
           </ul>
           <p class="muted small">
-            Disabling sync entirely does not affect local data. The full product
-            keeps working.
+            Disabling sync entirely does not affect local data. The full product keeps working.
           </p>
         </article>
 
@@ -64,8 +74,14 @@ import { SITE } from "@data/site";
             <h3>Opt-in · your Apple ID.</h3>
           </header>
           <ul>
-            <li><strong>Session-log mirror</strong> copies selected local session files into <code>iCloud.com.openburnbar.app</code></li>
-            <li>Mirrored files can contain prompts, assistant responses, file paths, and code snippets — they are copies of the originals</li>
+            <li>
+              <strong>Session-log mirror</strong> copies selected local session files into <code
+                >iCloud.com.openburnbar.app</code>
+            </li>
+            <li>
+              Mirrored files can contain prompts, assistant responses, file paths, and code snippets
+              — they are copies of the originals
+            </li>
             <li>Uses your Apple ID, not OpenBurnBar's servers</li>
             <li>Delete files from iCloud Drive to remove them</li>
           </ul>
@@ -78,11 +94,27 @@ import { SITE } from "@data/site";
           </header>
           <ul>
             <li><strong>Firebase Auth</strong> handles Apple / Google sign-in</li>
-            <li><strong>Firestore</strong> stores usage rows, quota snapshots, chat thread metadata, sync watermarks. Owner-scoped rules. App Check enforced</li>
-            <li><strong>Google Cloud Secret Manager</strong> holds hosted-quota provider secrets when used. Firestore only carries a redacted label</li>
-            <li><strong>Cloud Functions</strong> verify Apple JWS against pinned root CAs and reconcile entitlements against the App Store Server API</li>
-            <li><strong>Cloud Run · Hermes relay</strong> routes encrypted frames; never sees plaintext request or response bodies</li>
-            <li><strong>Owner-scoped, secret-field-name-denied</strong> — Firestore rules reject documents with field names like <code>apiKey</code>, <code>token</code>, <code>cookie</code>, <code>credential</code></li>
+            <li>
+              <strong>Firestore</strong> stores usage rows, quota snapshots, chat thread metadata, sync
+              watermarks. Owner-scoped rules. App Check enforced
+            </li>
+            <li>
+              <strong>Google Cloud Secret Manager</strong> holds hosted-quota provider secrets when used.
+              Firestore only carries a redacted label
+            </li>
+            <li>
+              <strong>Cloud Functions</strong> verify Apple JWS against pinned root CAs and reconcile
+              entitlements against the App Store Server API
+            </li>
+            <li>
+              <strong>Cloud Run · Hermes relay</strong> routes encrypted frames; never sees plaintext
+              request or response bodies
+            </li>
+            <li>
+              <strong>Owner-scoped, secret-field-name-denied</strong> — Firestore rules reject documents
+              with field names like <code>apiKey</code>, <code>token</code>, <code>cookie</code>, <code
+                >credential</code>
+            </li>
           </ul>
         </article>
       </div>
@@ -97,12 +129,27 @@ import { SITE } from "@data/site";
       </header>
 
       <ul class="never__list">
-        <li><strong>No telemetry by default.</strong> No analytics. No crash reports unless you turn on Sentry diagnostics.</li>
-        <li><strong>No API keys read</strong> for local-only usage tracking. Local tracking reads usage logs, not credentials.</li>
-        <li><strong>No conversation content uploaded</strong> unless you enable chat backup. The default Firestore sync is metadata only — usage row summaries, thread IDs, sync watermarks.</li>
-        <li><strong>No payment data on our servers.</strong> The App Store handles billing; we never see card numbers.</li>
+        <li>
+          <strong>No telemetry by default.</strong> No analytics. No crash reports unless you turn on
+          Sentry diagnostics.
+        </li>
+        <li>
+          <strong>No API keys read</strong> for local-only usage tracking. Local tracking reads usage
+          logs, not credentials.
+        </li>
+        <li>
+          <strong>No conversation content uploaded</strong> unless you enable chat backup. The default
+          Firestore sync is metadata only — usage row summaries, thread IDs, sync watermarks.
+        </li>
+        <li>
+          <strong>No payment data on our servers.</strong> The App Store handles billing; we never see
+          card numbers.
+        </li>
         <li><strong>No data from other apps</strong>, ever — explicitly not collected.</li>
-        <li><strong>No PII beyond Apple/Google sign-in attributes.</strong> Even those are only used to scope your private Firestore tree.</li>
+        <li>
+          <strong>No PII beyond Apple/Google sign-in attributes.</strong> Even those are only used to
+          scope your private Firestore tree.
+        </li>
       </ul>
     </div>
   </section>
@@ -118,41 +165,38 @@ import { SITE } from "@data/site";
         <li class="glass-pane">
           <h3>Firebase sync</h3>
           <p>
-            Off by default. Enable in <em>Settings → Account</em>. Even when on,
-            only metadata syncs unless you separately enable Chat backup,
-            Conversation metadata backup, or Session-log sync.
+            Off by default. Enable in <em>Settings → Account</em>. Even when on, only metadata syncs
+            unless you separately enable Chat backup, Conversation metadata backup, or Session-log
+            sync.
           </p>
         </li>
         <li class="glass-pane">
           <h3>iCloud session-log mirror</h3>
           <p>
-            Off by default. Uses your Apple ID and iCloud Drive; deletions in
-            iCloud Drive remove the data. Conflict copies are possible — iCloud
-            owns sync semantics.
+            Off by default. Uses your Apple ID and iCloud Drive; deletions in iCloud Drive remove
+            the data. Conflict copies are possible — iCloud owns sync semantics.
           </p>
         </li>
         <li class="glass-pane">
           <h3>Hosted provider credentials</h3>
           <p>
-            Off by default. When used, the secret value is encrypted and stored
-            in Google Cloud Secret Manager; Firestore stores only the redacted
-            label. Remove the account in OpenBurnBar to delete it.
+            Off by default. When used, the secret value is encrypted and stored in Google Cloud
+            Secret Manager; Firestore stores only the redacted label. Remove the account in
+            OpenBurnBar to delete it.
           </p>
         </li>
         <li class="glass-pane">
           <h3>Hermes Remote Relay (paid)</h3>
           <p>
-            Off by default; paid entitlement required to activate. Frames are
-            end-to-end encrypted from OpenBurnBar's perspective — the relay
-            never receives plaintext.
+            Off by default; paid entitlement required to activate. Frames are end-to-end encrypted
+            from OpenBurnBar's perspective — the relay never receives plaintext.
           </p>
         </li>
         <li class="glass-pane">
           <h3>Sentry diagnostics</h3>
           <p>
-            Off by default. When on, anonymized crash reports are sent to Sentry.
-            User identifier is a SHA seed derived from bundle id and full user
-            name — not direct PII.
+            Off by default. When on, anonymized crash reports are sent to Sentry. User identifier is
+            a SHA seed derived from bundle id and full user name — not direct PII.
           </p>
         </li>
       </ul>
@@ -167,51 +211,99 @@ import { SITE } from "@data/site";
       </header>
 
       <ul class="cdelete__list">
-        <li><strong>Local data</strong> — delete the app and <code>~/Library/Application Support/OpenBurnBar/</code>.</li>
-        <li><strong>Cloud data</strong> — sign out and choose <em>Delete my data</em> in <em>Settings → Account</em>.</li>
+        <li>
+          <strong>Local data</strong> — delete the app and <code
+            >~/Library/Application Support/OpenBurnBar/</code
+          >.
+        </li>
+        <li>
+          <strong>Cloud data</strong> — sign out and choose <em>Delete my data</em> in <em
+            >Settings → Account</em
+          >.
+        </li>
         <li><strong>Hosted credentials</strong> — remove the provider account from OpenBurnBar.</li>
-        <li><strong>iCloud mirrored files</strong> — delete from <code>iCloud.com.openburnbar.app</code> in iCloud Drive.</li>
+        <li>
+          <strong>iCloud mirrored files</strong> — delete from <code
+            >iCloud.com.openburnbar.app</code
+          > in iCloud Drive.
+        </li>
         <li><strong>Subscription</strong> — managed by Apple in <em>Settings → Apple ID</em>.</li>
       </ul>
 
       <div class="cdelete__contact">
         <p>
           Privacy controller: <strong>{SITE.entity}</strong>. <br />
-          For privacy questions, write to <a href={`mailto:${SITE.privacyContact}`}>{SITE.privacyContact}</a>.
+          For privacy questions, write to <a href={`mailto:${SITE.privacyContact}`}
+            >{SITE.privacyContact}</a
+          >.
         </p>
       </div>
     </div>
   </section>
 
   <section class="endcta endcta--inline">
-    <div class="container container--narrow endcta__inner glass-pane">
+    <div class="container container--narrow endcta__inner">
       <h2>Read it in code, not just in copy.</h2>
-      <p class="lead">
-        Every promise on this page points at a file you can read — the threat
-        model, the Firestore rules, the JWS verifier.
-      </p>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          Every promise on this page points at a file you can read — the threat model, the Firestore
+          rules, the JWS verifier.
+        </p>
+      </div>
       <div class="endcta__ctas">
-        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/PRIVACY.md`} target="_blank" rel="noopener noreferrer">docs/PRIVACY.md</a>
-        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/THREAT_MODEL.md`} target="_blank" rel="noopener noreferrer">docs/THREAT_MODEL.md</a>
-        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/firestore.rules`} target="_blank" rel="noopener noreferrer">firestore.rules</a>
+        <a
+          class="btn btn--ghost"
+          href={`${SITE.github}/blob/main/docs/PRIVACY.md`}
+          target="_blank"
+          rel="noopener noreferrer">docs/PRIVACY.md</a
+        >
+        <a
+          class="btn btn--ghost"
+          href={`${SITE.github}/blob/main/docs/THREAT_MODEL.md`}
+          target="_blank"
+          rel="noopener noreferrer">docs/THREAT_MODEL.md</a
+        >
+        <a
+          class="btn btn--ghost"
+          href={`${SITE.github}/blob/main/firestore.rules`}
+          target="_blank"
+          rel="noopener noreferrer">firestore.rules</a
+        >
       </div>
     </div>
   </section>
 </BaseLayout>
 
 <style>
-  .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead {
+    padding-block: var(--s-9) var(--s-6);
+  }
   .pagehead__inner {
-    padding: var(--s-7) var(--s-6);
-    border-radius: var(--r-xl);
     max-width: 960px;
     margin: 0 auto;
   }
-  .pagehead__h { margin-top: var(--s-3); max-width: 22ch; }
-  .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
-  .zones { padding-block: var(--s-7); border-top: 1px solid var(--ink-line); }
-  .sec-head { display: grid; gap: var(--s-3); margin-bottom: var(--s-6); max-width: 64ch; }
-  .zonepairs { padding-block: var(--s-7); border-top: 1px solid var(--ink-line); }
+  .pagehead__h {
+    margin-top: var(--s-3);
+    max-width: 22ch;
+  }
+  .pagehead .lead {
+    margin-top: var(--s-4);
+    max-width: 60ch;
+  }
+  .zones {
+    padding-block: var(--s-7);
+    border-top: 1px solid var(--ink-line);
+  }
+  .sec-head {
+    display: grid;
+    gap: var(--s-3);
+    margin-bottom: var(--s-6);
+    max-width: 64ch;
+  }
+  .zonepairs {
+    padding-block: var(--s-7);
+    border-top: 1px solid var(--ink-line);
+  }
   .zonepairs__grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -233,7 +325,9 @@ import { SITE } from "@data/site";
     font-family: var(--font-display);
     color: var(--text-bright);
     font-size: 1.2rem;
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     letter-spacing: -0.014em;
   }
   .zonecard ul {
@@ -255,27 +349,45 @@ import { SITE } from "@data/site";
     font-family: var(--font-mono);
     font-size: 0.8em;
   }
-  .zonecard strong { color: var(--text-bright); }
+  .zonecard strong {
+    color: var(--text-bright);
+  }
   .zonecard code {
     font-size: 0.86em;
   }
-  .zonecard--a { border-color: color-mix(in oklab, var(--ember-core) 30%, rgba(255, 255, 255, 0.08)); border-top-color: color-mix(in oklab, var(--ember-core) 45%, rgba(255, 255, 255, 0.16)); }
-  .zonecard--b { border-color: color-mix(in oklab, var(--mercury-bright) 25%, rgba(255, 255, 255, 0.08)); border-top-color: color-mix(in oklab, var(--mercury-bright) 38%, rgba(255, 255, 255, 0.16)); }
-  .zonecard--c { border-color: color-mix(in oklab, var(--ember-core) 22%, rgba(255, 255, 255, 0.12)); border-top-color: color-mix(in oklab, var(--ember-core) 35%, rgba(255, 255, 255, 0.22)); border-style: dashed; }
-
-  @media (max-width: 1080px) {
-    .zonepairs__grid { grid-template-columns: 1fr; }
+  .zonecard--a {
+    border-color: color-mix(in oklab, var(--ember-core) 30%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--ember-core) 45%, rgba(255, 255, 255, 0.16));
+  }
+  .zonecard--b {
+    border-color: color-mix(in oklab, var(--mercury-bright) 25%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--mercury-bright) 38%, rgba(255, 255, 255, 0.16));
+  }
+  .zonecard--c {
+    border-color: color-mix(in oklab, var(--ember-core) 22%, rgba(255, 255, 255, 0.12));
+    border-top-color: color-mix(in oklab, var(--ember-core) 35%, rgba(255, 255, 255, 0.22));
+    border-style: dashed;
   }
 
-  .never, .optins, .cdelete {
+  @media (max-width: 1080px) {
+    .zonepairs__grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .never,
+  .optins,
+  .cdelete {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
   }
-  .never__list, .cdelete__list {
+  .never__list,
+  .cdelete__list {
     display: grid;
     gap: var(--s-3);
   }
-  .never__list li, .cdelete__list li {
+  .never__list li,
+  .cdelete__list li {
     padding: var(--s-3) var(--s-4) var(--s-3) 2.2em;
     position: relative;
     color: var(--text-base);
@@ -288,16 +400,23 @@ import { SITE } from "@data/site";
     border-radius: var(--r-3);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   }
-  .never__list li::before, .cdelete__list li::before {
+  .never__list li::before,
+  .cdelete__list li::before {
     content: "✕";
     position: absolute;
     left: var(--s-4);
     color: var(--status-burn);
     font-family: var(--font-mono);
   }
-  .never__list strong, .cdelete__list strong { color: var(--text-bright); }
+  .never__list strong,
+  .cdelete__list strong {
+    color: var(--text-bright);
+  }
 
-  .optins__list { display: grid; gap: var(--s-5); }
+  .optins__list {
+    display: grid;
+    gap: var(--s-5);
+  }
   .optins__list li {
     padding: var(--s-5);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -313,9 +432,13 @@ import { SITE } from "@data/site";
     font-size: 1.1rem;
     color: var(--text-bright);
     margin-bottom: var(--s-2);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
   }
-  .optins__list p { color: var(--text-base); }
+  .optins__list p {
+    color: var(--text-base);
+  }
 
   .cdelete__contact {
     margin-top: var(--s-6);
@@ -323,23 +446,37 @@ import { SITE } from "@data/site";
     border-top: 1px solid var(--ink-line);
     color: var(--text-mute);
   }
-  .cdelete__contact strong { color: var(--text-bright); }
-  .cdelete__contact a { color: var(--ember-bright); text-decoration: underline; }
+  .cdelete__contact strong {
+    color: var(--text-bright);
+  }
+  .cdelete__contact a {
+    color: var(--ember-bright);
+    text-decoration: underline;
+  }
 
-  .small { font-size: 0.85rem; }
+  .small {
+    font-size: 0.85rem;
+  }
   .endcta--inline {
     padding-block: var(--s-9);
     text-align: center;
-    background:
-      radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
+    background: radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
   }
-  .endcta--inline h2 { margin-bottom: var(--s-3); }
-  .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta--inline h2 {
+    margin-bottom: var(--s-3);
+  }
+  .endcta__ctas {
+    display: flex;
+    justify-content: center;
+    gap: var(--s-3);
+    margin-top: var(--s-5);
+    flex-wrap: wrap;
+  }
   .endcta__inner {
     text-align: center;
     display: grid;
     gap: var(--s-5);
     justify-items: center;
-    padding: var(--s-7) var(--s-6);
+    padding: var(--s-4) 0;
   }
 </style>

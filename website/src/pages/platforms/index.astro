@@ -7,12 +7,18 @@ import SurfaceIcon from "@components/SurfaceIcon.astro";
 
 const statusTint = (s: Surface["status"]) => {
   switch (s) {
-    case "shipping": return "exact";
-    case "review": return "estimated";
-    case "beta": return "ember";
-    case "source-only": return "mercury";
-    case "planned": return "planned";
-    default: return "mercury";
+    case "shipping":
+      return "exact";
+    case "review":
+      return "estimated";
+    case "beta":
+      return "ember";
+    case "source-only":
+      return "mercury";
+    case "planned":
+      return "planned";
+    default:
+      return "mercury";
   }
 };
 ---
@@ -29,21 +35,26 @@ const statusTint = (s: Surface["status"]) => {
         <span class="ember">you actually look at</span>.
       </h1>
       <p class="lead">
-        One Mac, one daemon, one local journal — surfaced anywhere it matters.
-        The menu bar is the home base; the phone, the tablet, the Nest Hub on
-        the kitchen counter, and the pixel clock on the desk are everywhere
-        else. Below: live re-renders of the in-app preview code on every
+        One Mac, one daemon, one local journal — surfaced anywhere it matters. The menu bar is the
+        home base; the phone, the tablet, the Nest Hub on the kitchen counter, and the pixel clock
+        on the desk are everywhere else. Below: live re-renders of the in-app preview code on every
         device. No screenshots.
       </p>
       <div class="pagehead__ctas">
-        <a class="btn btn--ember" href="/download">Download for macOS <span aria-hidden="true">→</span></a>
+        <a class="btn btn--ember" href="/download"
+          >Download for macOS <span aria-hidden="true">→</span></a
+        >
         <a class="btn btn--ghost" href="#smart-displays">Jump to smart displays</a>
         <a class="btn btn--ghost" href="#surface-matrix">All surfaces</a>
       </div>
     </div>
   </section>
 
-  <PlatformShowcase variant="hero" eyebrow="The smart-display showcase" heading="Faithful re-renders. Live data. Today's pick." />
+  <PlatformShowcase
+    variant="hero"
+    eyebrow="The smart-display showcase"
+    heading="Faithful re-renders. Live data. Today's pick."
+  />
 
   <section class="surfacematrix" aria-labelledby="surfacematrix-h" id="surface-matrix">
     <div class="container container--wide">
@@ -51,83 +62,358 @@ const statusTint = (s: Surface["status"]) => {
         <span class="eyebrow eyebrow--mercury">Surface matrix</span>
         <h2 id="surfacematrix-h">Every surface BurnBar ships on. Status pill on every one.</h2>
         <p class="lead">
-          The two devices above have live mockups. Every other surface is
-          listed here with its current shipping status, scope, and CTA.
-          Nothing is hidden, even the planned ones.
+          The two devices above have live mockups. Every other surface is listed here with its
+          current shipping status, scope, and CTA. Nothing is hidden, even the planned ones.
         </p>
       </header>
 
       <ul class="surfacematrix__grid">
-        {SURFACES.map((s) => (
-          <li class={`surfacecard surfacecard--${s.status} surfacecard--id-${s.id}`}>
-            <header class="surfacecard__head">
-              <SurfaceIcon id={s.id} />
-              <div class="surfacecard__head-info">
-                <div class="surfacecard__head-meta">
-                  <span class={`tag tag--${statusTint(s.status)} mono`}>{s.statusLabel}</span>
-                  <span class="surfacecard__platform mono">{s.platform}</span>
+        {
+          SURFACES.map((s) => (
+            <li class={`surfacecard surfacecard--${s.status} surfacecard--id-${s.id}`}>
+              <header class="surfacecard__head">
+                <SurfaceIcon id={s.id} />
+                <div class="surfacecard__head-info">
+                  <div class="surfacecard__head-meta">
+                    <span class={`tag tag--${statusTint(s.status)} mono`}>{s.statusLabel}</span>
+                    <span class="surfacecard__platform mono">{s.platform}</span>
+                  </div>
+                  <h3 class="surfacecard__h">{s.name}</h3>
                 </div>
-                <h3 class="surfacecard__h">{s.name}</h3>
-              </div>
-            </header>
-            <p class="surfacecard__desc">{s.description}</p>
-            <ul class="surfacecard__bullets">
-              {s.bullets.map((b) => <li>{b}</li>)}
-            </ul>
-            {s.cta && (
-              <footer class="surfacecard__foot">
-                <a
-                  class="surfacecard__cta mono"
-                  href={s.cta.href}
-                  target={s.cta.external ? "_blank" : undefined}
-                  rel={s.cta.external ? "noopener noreferrer" : undefined}
-                >
-                  {s.cta.label} <span aria-hidden="true">→</span>
-                </a>
-              </footer>
-            )}
-          </li>
-        ))}
+              </header>
+              <p class="surfacecard__desc">{s.description}</p>
+              <ul class="surfacecard__bullets">
+                {s.bullets.map((b) => (
+                  <li>{b}</li>
+                ))}
+              </ul>
+              {s.cta && (
+                <footer class="surfacecard__foot">
+                  <a
+                    class="surfacecard__cta mono"
+                    href={s.cta.href}
+                    target={s.cta.external ? "_blank" : undefined}
+                    rel={s.cta.external ? "noopener noreferrer" : undefined}
+                  >
+                    {s.cta.label} <span aria-hidden="true">→</span>
+                  </a>
+                </footer>
+              )}
+            </li>
+          ))
+        }
       </ul>
-
-      <p class="surfacematrix__cap mono">
-        Surface registry · <code>website/src/data/surfaces.ts</code> · Device registry · <code>website/src/data/platform-surfaces.ts</code>
-      </p>
+         <!-- Registry Config Console -->
+      <div class="surfacematrix__console glass-card">
+        <div class="console__header">
+          <span class="console__dot"></span>
+          <span class="console__title mono">Registry Config Paths</span>
+        </div>
+        <div class="console__body">
+          <div class="console__item">
+            <span class="console__label mono">Surface registry</span>
+            <code class="console__code">website/src/data/surfaces.ts</code>
+          </div>
+          <span class="console__divider" aria-hidden="true"></span>
+          <div class="console__item">
+            <span class="console__label mono">Device registry</span>
+            <code class="console__code">website/src/data/platform-surfaces.ts</code>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
-  <section class="extending" aria-labelledby="extending-h">
-    <div class="container container--narrow">
-      <header class="sec-head sec-head--mini">
-        <span class="eyebrow eyebrow--ember">Add a surface</span>
-        <h2 id="extending-h">The next device is one config row away.</h2>
-        <p class="lead">
-          BurnBar's surface system is data-driven. Adding a new platform (Apple
-          TV, Pi-zero pixel screen, smart fridge) is two files of work:
-        </p>
-      </header>
+      <!-- Pure CSS Interactive Step Dispatcher -->
+      <div class="extending__flow-wrapper">
+        <input type="radio" id="step-1" name="extending-steps" class="step-radio-state" checked />
+        <input type="radio" id="step-2" name="extending-steps" class="step-radio-state" />
+        <input type="radio" id="step-3" name="extending-steps" class="step-radio-state" />
 
-      <ol class="extending__steps">
-        <li>
-          <strong>Declare it.</strong> Add a row to <code>SURFACES</code> in
-          <code>website/src/data/surfaces.ts</code> — name, platform pill, shipping
-          status, bullets, optional CTA. It shows up in the matrix above
-          immediately.
-        </li>
-        <li>
-          <strong>Mock it (optional).</strong> If it has a screen, add a row
-          to <code>PLATFORM_DEVICES</code> in
-          <code>website/src/data/platform-surfaces.ts</code> and drop a new
-          screen component next to <code>NestHubScreen.astro</code>.
-          <code>PlatformShowcase</code> picks it up via the
-          <code>mockup</code> dispatch key.
-        </li>
-        <li>
-          <strong>Ship its claim.</strong> Update the QA matrix at
-          <code>docs/SMART_DISPLAY_DEVICE_QA.md</code> with a probe + acceptance
-          test before flipping the status pill to <code>shipping</code>.
-        </li>
-      </ol>
+        <!-- 1. Beautiful Interactive Pipeline Schematic Monitor -->
+        <div class="console-deck__header glass-card">
+          <div class="monitor-screen">
+            <div class="crt-scanlines"></div>
+            <div class="monitor-header">
+              <span class="monitor-title mono">[SYSTEM PORT STATUS // DATA PIPELINE CAST]</span>
+              <div class="monitor-indicators">
+                <span class="indicator-led pulse-fast green"></span>
+                <span class="indicator-label mono">DAEMON LINK: OK</span>
+              </div>
+            </div>
+            <div class="monitor-schematic">
+              <svg class="schematic-svg" viewBox="0 0 800 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <pattern id="grid-pattern" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255, 255, 255, 0.015)" stroke-width="1"/>
+                  </pattern>
+                  <linearGradient id="flow-glow-1" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="rgba(238, 24, 3, 0.9)" />
+                    <stop offset="100%" stop-color="rgba(250, 107, 6, 0.9)" />
+                  </linearGradient>
+                  <linearGradient id="flow-glow-2" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="rgba(250, 107, 6, 0.9)" />
+                    <stop offset="100%" stop-color="rgba(253, 196, 44, 0.9)" />
+                  </linearGradient>
+                  <linearGradient id="flow-glow-3" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="rgba(253, 196, 44, 0.9)" />
+                    <stop offset="100%" stop-color="rgba(61, 220, 132, 0.9)" />
+                  </linearGradient>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid-pattern)" />
+
+                <!-- Daemon Core node -->
+                <circle cx="100" cy="60" r="32" class="schematic-core-bg" fill="rgba(250, 107, 6, 0.02)" stroke="rgba(250, 107, 6, 0.12)" stroke-width="1" />
+                <circle cx="100" cy="60" r="22" class="schematic-core-inner" fill="rgba(250, 107, 6, 0.06)" stroke="var(--core-fire)" stroke-width="1.5" />
+                <text x="100" y="63" text-anchor="middle" class="schematic-text mono core-text" fill="var(--text-bright)" font-size="9" font-weight="bold">DAEMON</text>
+
+                <!-- Channel lines connecting to active steps -->
+                <!-- Step 1 Wire -->
+                <path d="M 132 60 Q 220 30 300 30" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
+                <path d="M 132 60 Q 220 30 300 30" class="wire-active active-path-1" stroke="url(#flow-glow-1)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+
+                <!-- Step 2 Wire -->
+                <path d="M 132 60 H 300" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
+                <path d="M 132 60 H 300" class="wire-active active-path-2" stroke="url(#flow-glow-2)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+
+                <!-- Step 3 Wire -->
+                <path d="M 132 60 Q 220 90 300 90" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
+                <path d="M 132 60 Q 220 90 300 90" class="wire-active active-path-3" stroke="url(#flow-glow-3)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+
+                <!-- Step Nodes -->
+                <!-- Node 1 -->
+                <g class="node-group node-group-1">
+                  <rect x="300" y="15" width="140" height="30" rx="6" class="node-rect rect-1" fill="var(--ink-void)" stroke="var(--ink-line)" stroke-width="1.5" />
+                  <circle cx="316" cy="30" r="4" class="node-status status-1" fill="var(--core-red)" />
+                  <text x="330" y="34" class="schematic-text mono" fill="var(--text-mute)" font-size="8.5">01 // SCHEMA DECLARE</text>
+                </g>
+
+                <!-- Node 2 -->
+                <g class="node-group node-group-2">
+                  <rect x="300" y="45" width="140" height="30" rx="6" class="node-rect rect-2" fill="var(--ink-void)" stroke="var(--ink-line)" stroke-width="1.5" />
+                  <circle cx="316" cy="60" r="4" class="node-status status-2" fill="var(--core-fire)" />
+                  <text x="330" y="64" class="schematic-text mono" fill="var(--text-mute)" font-size="8.5">02 // MODEL LAYOUT</text>
+                </g>
+
+                <!-- Node 3 -->
+                <g class="node-group node-group-3">
+                  <rect x="300" y="75" width="140" height="30" rx="6" class="node-rect rect-3" fill="var(--ink-void)" stroke="var(--ink-line)" stroke-width="1.5" />
+                  <circle cx="316" cy="90" r="4" class="node-status status-3" fill="var(--core-amber)" />
+                  <text x="330" y="94" class="schematic-text mono" fill="var(--text-mute)" font-size="8.5">03 // HARDWARE QA</text>
+                </g>
+
+                <!-- Channels from Steps to Destination Shipped Core -->
+                <!-- Step 1 Out -->
+                <path d="M 440 30 Q 510 30 580 60" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
+                <path d="M 440 30 Q 510 30 580 60" class="wire-active active-path-1" stroke="url(#flow-glow-1)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+
+                <!-- Step 2 Out -->
+                <path d="M 440 60 H 580" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
+                <path d="M 440 60 H 580" class="wire-active active-path-2" stroke="url(#flow-glow-2)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+
+                <!-- Step 3 Out -->
+                <path d="M 440 90 Q 510 90 580 60" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
+                <path d="M 440 90 Q 510 90 580 60" class="wire-active active-path-3" stroke="url(#flow-glow-3)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+
+                <!-- Destination Core node -->
+                <circle cx="612" cy="60" r="32" class="schematic-dest-bg" fill="rgba(61, 220, 132, 0.02)" stroke="rgba(61, 220, 132, 0.12)" stroke-width="1" />
+                <circle cx="612" cy="60" r="22" class="schematic-dest-inner" fill="rgba(61, 220, 132, 0.06)" stroke="#3DDC84" stroke-width="1.5" />
+                <text x="612" y="63" text-anchor="middle" class="schematic-text mono dest-text" fill="var(--text-bright)" font-size="8.5" font-weight="bold">CASTED</text>
+
+                <!-- Outbound flows to peripheral mockups -->
+                <path d="M 644 60 C 690 60 700 30 735 30" class="wire-bg" stroke="var(--ink-line)" stroke-width="1" />
+                <path d="M 644 60 C 690 60 700 60 735 60" class="wire-bg" stroke="var(--ink-line)" stroke-width="1" />
+                <path d="M 644 60 C 690 60 700 90 735 90" class="wire-bg" stroke="var(--ink-line)" stroke-width="1" />
+
+                <path d="M 644 60 C 690 60 700 30 735 30" class="wire-active active-cast-flow" stroke="#3DDC84" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="6 10" />
+                <path d="M 644 60 C 690 60 700 60 735 60" class="wire-active active-cast-flow" stroke="#3DDC84" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="6 10" />
+                <path d="M 644 60 C 690 60 700 90 735 90" class="wire-active active-cast-flow" stroke="#3DDC84" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="6 10" />
+
+                <circle cx="735" cy="30" r="2.5" fill="var(--text-dim)" />
+                <circle cx="735" cy="60" r="2.5" fill="var(--text-dim)" />
+                <circle cx="735" cy="90" r="2.5" fill="var(--text-dim)" />
+
+                <text x="746" y="33" class="schematic-text mono" fill="var(--text-dim)" font-size="8">tvOS</text>
+                <text x="746" y="63" class="schematic-text mono" fill="var(--text-dim)" font-size="8">iOS</text>
+                <text x="746" y="93" class="schematic-text mono" fill="var(--text-dim)" font-size="8">Nest</text>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Dual-Column Grid System -->
+        <div class="console-deck__main">
+          <!-- Left: Modular Steps Cassette Panels -->
+          <div class="console-deck__selectors">
+            <!-- Cassette 1 -->
+            <label for="step-1" class="step-cassette step-cassette--1 glass-card">
+              <div class="cassette__body">
+                <div class="cassette__glow-ring"></div>
+                <div class="cassette__icon-box">
+                  <svg class="cassette-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 6C4 4.9 7.6 4 12 4s8 .9 8 2M4 6c0 1.1 3.6 2 8 2s8-.9 8-2M4 6v12c0 1.1 3.6 2 8 2s8-.9 8-2V6" />
+                    <path d="M20 12c0 1.1-3.6 2-8 2s-8-.9-8-2" />
+                  </svg>
+                </div>
+                <div class="cassette__content">
+                  <div class="cassette__header">
+                    <span class="cassette__num mono">[01 // REGISTRY]</span>
+                    <span class="cassette__status-dot"></span>
+                  </div>
+                  <h3>Declare the physical schema</h3>
+                  <p>Add a structured data row in <code>website/src/data/surfaces.ts</code>. It mounts into the grid instantly.</p>
+                </div>
+              </div>
+            </label>
+
+            <!-- Cassette 2 -->
+            <label for="step-2" class="step-cassette step-cassette--2 glass-card">
+              <div class="cassette__body">
+                <div class="cassette__glow-ring"></div>
+                <div class="cassette__icon-box">
+                  <svg class="cassette-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2" />
+                    <line x1="8" y1="21" x2="16" y2="21" />
+                    <line x1="12" y1="17" x2="12" y2="21" />
+                  </svg>
+                </div>
+                <div class="cassette__content">
+                  <div class="cassette__header">
+                    <span class="cassette__num mono">[02 // VIEWPORT]</span>
+                    <span class="cassette__status-dot"></span>
+                  </div>
+                  <h3>Define mockup telemetry</h3>
+                  <p>Establish coordinates and aspect ratios in <code>platform-surfaces.ts</code> to bind screen shapes.</p>
+                </div>
+              </div>
+            </label>
+
+            <!-- Cassette 3 -->
+            <label for="step-3" class="step-cassette step-cassette--3 glass-card">
+              <div class="cassette__body">
+                <div class="cassette__glow-ring"></div>
+                <div class="cassette__icon-box">
+                  <svg class="cassette-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                  </svg>
+                </div>
+                <div class="cassette__content">
+                  <div class="cassette__header">
+                    <span class="cassette__num mono">[03 // HARDWARE]</span>
+                    <span class="cassette__status-dot"></span>
+                  </div>
+                  <h3>Commit network hardware QA</h3>
+                  <p>Execute diagnostics loopback, probe remote pixel densities, and verify Iroh transport handshakes.</p>
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <!-- Right: smudged-glass IDE and diagnostic terminal screen -->
+          <div class="console-deck__code-showcase glass-card">
+            <div class="crt-scanlines"></div>
+            <!-- IDE Header Bar -->
+            <div class="ide__header">
+              <div class="ide__dots">
+                <span class="ide__dot dot--red"></span>
+                <span class="ide__dot dot--yellow"></span>
+                <span class="ide__dot dot--green"></span>
+              </div>
+              <div class="ide__tabs">
+                <label for="step-1" class="ide__tab tab--1 mono">
+                  <span class="tab-icon">ts</span> surfaces.ts
+                </label>
+                <label for="step-2" class="ide__tab tab--2 mono">
+                  <span class="tab-icon">ts</span> platform-surfaces.ts
+                </label>
+                <label for="step-3" class="ide__tab tab--3 mono">
+                  <span class="tab-icon">md</span> SMART_DISPLAY_DEVICE_QA.md
+                </label>
+              </div>
+              <div class="ide__actions">
+                <span class="ide__badge mono">READONLY</span>
+              </div>
+            </div>
+
+            <!-- IDE Code & Terminal Window -->
+            <div class="ide__window">
+              <!-- STEP 1 CODE: surfaces.ts -->
+              <div class="ide__pane pane--1">
+                <div class="ide__line-numbers mono">
+                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span>
+                </div>
+                <pre class="ide__code mono"><code><span class="keyword">export const</span> <span class="variable">SURFACES</span>: <span class="type">Surface</span>[] = [
+  <span class="comment">// ... previous surfaces ...</span>
+  &#123;
+    <span class="property">id</span>: <span class="string">"apple-tv"</span>,
+    <span class="property">name</span>: <span class="string">"Apple TV Dashboard"</span>,
+    <span class="property">platform</span>: <span class="string">"tvOS 17+"</span>,
+    <span class="property">status</span>: <span class="string">"beta"</span>,
+    <span class="property">statusLabel</span>: <span class="string">"Public Beta"</span>,
+    <span class="property">bullets</span>: [
+      <span class="string">"Native tvOS Swift charts"</span>,
+      <span class="string">"Real-time Local Daemon Cast"</span>
+    ]
+  &#125;
+];</code></pre>
+              </div>
+
+              <!-- STEP 2 CODE: platform-surfaces.ts -->
+              <div class="ide__pane pane--2">
+                <div class="ide__line-numbers mono">
+                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span>
+                </div>
+                <pre class="ide__code mono"><code><span class="keyword">export const</span> <span class="variable">PLATFORM_DEVICES</span>: <span class="type">PlatformDevice</span>[] = [
+  <span class="comment">// ... previous devices ...</span>
+  &#123;
+    <span class="property">id</span>: <span class="string">"apple-tv-4k"</span>,
+    <span class="property">name</span>: <span class="string">"Apple TV 4K"</span>,
+    <span class="property">formFactor</span>: <span class="string">"Apple · 4K Smart TV box"</span>,
+    <span class="property">surfaceId</span>: <span class="string">"apple-tv"</span>,
+    <span class="property">mockup</span>: <span class="string">"apple-tv-mockup"</span>,
+    <span class="property">aspect</span>: &#123; <span class="property">w</span>: <span class="number">16</span>, <span class="property">h</span>: <span class="number">9</span> &#125;,
+    <span class="property">marqueeBullets</span>: [
+      <span class="string">"Full 4K HDR layout casting support"</span>
+    ]
+  &#125;
+];</code></pre>
+              </div>
+
+              <!-- STEP 3 CODE: Split Markdown Checklist + Simulated Network Diagnostic Terminal -->
+              <div class="ide__pane pane--3 split-pane">
+                <div class="pane__file-view">
+                  <div class="ide__line-numbers mono">
+                    <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+                  </div>
+                  <pre class="ide__code mono"><code><span class="heading"># Smart Display Hardware QA Matrix</span>
+<span class="subheading">## tvOS [apple-tv]</span>
+- <span class="checkbox">[ ]</span> **Acceptance**: Run `scripts/qa-tvos-relay`
+- <span class="checkbox">[ ]</span> **Acceptance**: Validate Cast V2 connection
+- <span class="checkbox">[ ]</span> **Probe**: Screen size/aspect ratio validation</code></pre>
+                </div>
+
+                <div class="pane__terminal-view">
+                  <div class="terminal__header">
+                    <span class="terminal__indicator mono">SYS.DIAGNOSTIC.PROBE v1.0.4</span>
+                    <span class="terminal__status mono text-green">CONNECTED</span>
+                  </div>
+                  <div class="terminal__output mono">
+                    <div class="terminal__line"><span class="term-time">[00:42:01]</span> <span class="term-sys">[SYSTEM]</span> Spawning local network tvOS hardware probe...</div>
+                    <div class="terminal__line"><span class="term-time">[00:42:02]</span> <span class="term-sys">[SYSTEM]</span> Pinging Apple TV 4K at 192.168.1.144:8080...</div>
+                    <div class="terminal__line"><span class="term-time">[00:42:02]</span> <span class="term-info">[PROBE]</span>  Negotiating Ed25519 secure pairing... <span class="term-success">SUCCESS</span></div>
+                    <div class="terminal__line"><span class="term-time">[00:42:03]</span> <span class="term-info">[PROBE]</span>  Verifying iroh transport layer latency: 4.2ms... <span class="term-success">OPTIMAL</span></div>
+                    <div class="terminal__line"><span class="term-time">[00:42:04]</span> <span class="term-info">[PROBE]</span>  Validating Cast v2 local daemon loopback... <span class="term-success">SUCCESS</span></div>
+                    <div class="terminal__line"><span class="term-time">[00:42:04]</span> <span class="term-info">[PROBE]</span>  Resolving display aspect ratio: 16:9 (3840x2160)... <span class="term-success">MATCH</span></div>
+                    <div class="terminal__line"><span class="term-time">[00:42:05]</span> <span class="term-sys">[SYSTEM]</span> All acceptance checks passed. Committing tvOS status to SHIPPING.</div>
+                    <div class="terminal__line cursor-blink"><span class="term-time">[00:42:05]</span> <span class="term-sys">[SYSTEM]</span> Ready. _</div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -135,24 +421,38 @@ const statusTint = (s: Surface["status"]) => {
     <div class="container container--narrow">
       <h2>Pick the screen you'll actually look at.</h2>
       <p class="lead">
-        Free menu-bar app, $400 of hosted quota per month covered by the
-        included plans, every surface optional.
+        Free menu-bar app, $400 of hosted quota per month covered by the included plans, every
+        surface optional.
       </p>
       <div class="endcta__ctas">
-        <a class="btn btn--ember" href="/download">Download for macOS <span aria-hidden="true">→</span></a>
-        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md`} target="_blank" rel="noopener noreferrer">Smart display QA matrix</a>
+        <a class="btn btn--ember" href="/download"
+          >Download for macOS <span aria-hidden="true">→</span></a
+        >
+        <a
+          class="btn btn--ghost"
+          href={`${SITE.github}/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md`}
+          target="_blank"
+          rel="noopener noreferrer">Smart display QA matrix</a
+        >
       </div>
     </div>
   </section>
 </BaseLayout>
 
 <style>
-  .pagehead--platforms { padding-block: var(--s-9) var(--s-5); }
-  .pagehead--platforms .pagehead__h { max-width: 22ch; }
+  .pagehead--platforms {
+    padding-block: var(--s-9) var(--s-5);
+  }
+  .pagehead--platforms .pagehead__h {
+    max-width: 22ch;
+  }
   .pagehead--platforms .pagehead__h .ember {
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 360,
+      "ital" 1;
   }
 
   .surfacematrix {
@@ -169,54 +469,59 @@ const statusTint = (s: Surface["status"]) => {
   }
   /* Brand color definitions for premium glowing effects */
   .surfacecard--id-macos {
-    --brand-color: #F0EBE2;
+    --brand-color: #f0ebe2;
   }
   .surfacecard--id-ios {
-    --brand-color: #E87060;
+    --brand-color: #e87060;
   }
   .surfacecard--id-cursor {
-    --brand-color: #5FF5D2;
+    --brand-color: #5ff5d2;
   }
   .surfacecard--id-daemon {
-    --brand-color: #9080D8;
+    --brand-color: #9080d8;
   }
   .surfacecard--id-cli {
-    --brand-color: #2CCAC0;
+    --brand-color: #2ccac0;
   }
   .surfacecard--id-widgets {
-    --brand-color: #E87060;
+    --brand-color: #e87060;
   }
   .surfacecard--id-smart-display {
-    --brand-color: #4285F4;
+    --brand-color: #4285f4;
   }
   .surfacecard--id-android {
-    --brand-color: #3DDC84;
+    --brand-color: #3ddc84;
   }
 
   .surfacecard {
     border: 1px solid var(--ink-line);
     border-radius: var(--r-4);
-    background:
-      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
     padding: var(--s-5);
     display: grid;
     gap: var(--s-4);
     position: relative;
-    transition: 
+    transition:
       transform var(--dur-base) var(--ease-out),
       border-color var(--dur-base) var(--ease-out),
       box-shadow var(--dur-base) var(--ease-out);
   }
-  .surfacecard--shipping { border-color: color-mix(in oklab, var(--status-exact) 20%, var(--ink-line)); }
+  .surfacecard--shipping {
+    border-color: color-mix(in oklab, var(--status-exact) 20%, var(--ink-line));
+  }
   .surfacecard--review,
-  .surfacecard--beta { border-color: color-mix(in oklab, var(--ember-core) 20%, var(--ink-line)); }
+  .surfacecard--beta {
+    border-color: color-mix(in oklab, var(--ember-core) 20%, var(--ink-line));
+  }
   .surfacecard--planned,
-  .surfacecard--source-only { opacity: 0.85; }
+  .surfacecard--source-only {
+    opacity: 0.85;
+  }
 
   .surfacecard:hover {
     border-color: color-mix(in oklab, var(--brand-color, var(--ember-core)) 40%, var(--ink-line));
     transform: translateY(-4px);
-    box-shadow: 
+    box-shadow:
       0 12px 36px rgba(0, 0, 0, 0.45),
       0 0 20px color-mix(in oklab, var(--brand-color, var(--ember-core)) 10%, transparent);
   }
@@ -243,13 +548,25 @@ const statusTint = (s: Surface["status"]) => {
   .surfacecard__h {
     font-family: var(--font-display);
     font-size: 1.18rem;
-    font-variation-settings: "opsz" 80, "wght" 540;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 540;
     color: var(--text-bright);
     margin: 0;
     letter-spacing: -0.014em;
   }
-  .surfacecard__platform { color: var(--text-mute); font-size: 0.78rem; letter-spacing: 0.04em; margin: 0; }
-  .surfacecard__desc { color: var(--text-base); font-size: 0.92rem; line-height: 1.5; margin: 0; }
+  .surfacecard__platform {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    margin: 0;
+  }
+  .surfacecard__desc {
+    color: var(--text-base);
+    font-size: 0.92rem;
+    line-height: 1.5;
+    margin: 0;
+  }
   .surfacecard__bullets {
     list-style: none;
     margin: 0;
@@ -286,66 +603,887 @@ const statusTint = (s: Surface["status"]) => {
     font-size: 0.82rem;
     letter-spacing: 0.04em;
   }
-  .surfacecard__cta:hover { color: var(--text-bright); }
-  .surfacematrix__cap {
-    color: var(--text-dim);
-    font-size: 0.72rem;
-    letter-spacing: 0.04em;
-    margin-top: var(--s-5);
-    padding-top: var(--s-3);
-    border-top: 1px dashed var(--ink-line-soft);
+  .surfacecard__cta:hover {
+    color: var(--text-bright);
   }
-  .surfacematrix__cap code {
-    color: var(--text-mute);
-    background: var(--ink-base);
-    padding: 1px 6px;
-    border-radius: var(--r-2);
+  /* Console and Registry info */
+  .surfacematrix__console {
+    margin-top: var(--s-6);
+    padding: var(--s-4) var(--s-5);
+    border-radius: var(--r-md);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
     border: 1px solid var(--ink-line);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
   }
 
-  .extending {
-    padding-block: var(--s-7) var(--s-7);
-    border-top: 1px solid var(--ink-line);
+  .console__header {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
   }
-  .extending__steps {
-    counter-reset: step;
-    list-style: none;
-    padding: 0;
-    margin: 0;
+
+  .console__dot {
+    width: 6px;
+    height: 6px;
+    background-color: #3DDC84;
+    border-radius: 50%;
+    box-shadow:
+      0 0 8px #3DDC84,
+      0 0 16px rgba(61, 220, 132, 0.5);
+    animation: consoleGlow 2s infinite alternate;
+  }
+
+  @keyframes consoleGlow {
+    0% { opacity: 0.5; transform: scale(0.9); }
+    100% { opacity: 1; transform: scale(1.1); }
+  }
+
+  .console__title {
+    font-size: 0.7rem;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    font-weight: 700;
+  }
+
+  .console__body {
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    flex-wrap: wrap;
+  }
+
+  .console__item {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  .console__label {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+
+  .console__code {
+    font-size: 0.82rem;
+    color: var(--ember-bright) !important;
+    background: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid var(--ink-line) !important;
+    padding: 2px 8px !important;
+    border-radius: var(--r-sm) !important;
+    transition: all var(--dur-base) var(--ease-out);
+  }
+
+  .console__code:hover {
+    color: var(--text-bright) !important;
+    border-color: rgba(250, 107, 6, 0.3) !important;
+    background: rgba(250, 107, 6, 0.05) !important;
+    box-shadow: 0 0 10px rgba(250, 107, 6, 0.08);
+  }
+
+  .console__divider {
+    width: 1px;
+    height: 14px;
+    background-color: var(--ink-line);
+  }
+
+  /* ---------- Interactive Flow Styles ---------- */
+  .extending {
+    padding-block: var(--s-9) var(--s-10);
+    border-top: 1px solid var(--ink-line);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Deep furnace glow centered underneath console deck */
+  .extending::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 800px;
+    height: 800px;
+    background: radial-gradient(circle, rgba(250, 107, 6, 0.05) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .extending__container {
+    position: relative;
+    z-index: 10;
+  }
+
+  .step-radio-state {
+    display: none !important;
+  }
+
+  .extending__flow-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-5);
+    margin-top: var(--s-6);
+  }
+
+  /* --- 1. Console Schematic Monitor Styles --- */
+  .console-deck__header {
+    background: rgba(8, 8, 12, 0.7);
+    border-radius: var(--r-md);
+    border: 1px solid var(--ink-line);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+      0 12px 40px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .monitor-screen {
+    padding: var(--s-4) var(--s-5);
+    position: relative;
+  }
+
+  .crt-scanlines {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      rgba(18, 16, 16, 0) 50%,
+      rgba(0, 0, 0, 0.25) 50-0.2%
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0.12;
+    animation: crtFlicker 0.15s infinite alternate;
+  }
+
+  @keyframes crtFlicker {
+    0% { opacity: 0.1; }
+    100% { opacity: 0.14; }
+  }
+
+  .monitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    padding-bottom: var(--s-3);
+    margin-bottom: var(--s-3);
+  }
+
+  .monitor-title {
+    font-size: 0.72rem;
+    color: var(--text-mute);
+    letter-spacing: var(--tracking-wide);
+    font-weight: 700;
+  }
+
+  .monitor-indicators {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  .indicator-led {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #3DDC84;
+    box-shadow: 0 0 8px #3DDC84, 0 0 16px rgba(61, 220, 132, 0.4);
+  }
+
+  .indicator-led.pulse-fast {
+    animation: ledPulse 1s ease-in-out infinite alternate;
+  }
+
+  @keyframes ledPulse {
+    0% { opacity: 0.4; }
+    100% { opacity: 1; }
+  }
+
+  .indicator-label {
+    font-size: 0.68rem;
+    color: #3DDC84;
+    font-weight: 700;
+  }
+
+  .monitor-schematic {
+    position: relative;
+    z-index: 1;
+    overflow-x: auto;
+  }
+
+  .schematic-svg {
+    min-width: 760px;
+    height: auto;
+    display: block;
+  }
+
+  .schematic-text {
+    font-family: var(--font-mono);
+  }
+
+  .core-text, .dest-text {
+    font-variation-settings: "wght" 800;
+    letter-spacing: 0.02em;
+  }
+
+  .wire-active {
+    opacity: 0.06;
+    stroke-width: 1.5px;
+    transition: opacity var(--dur-base) var(--ease), stroke-width var(--dur-base) var(--ease);
+  }
+
+  .active-cast-flow {
+    opacity: 0.55;
+    animation: traceFlow 4s linear infinite;
+  }
+
+  .node-rect {
+    transition: stroke var(--dur-base) var(--ease), fill var(--dur-base) var(--ease);
+  }
+
+  .node-status {
+    opacity: 0.3;
+    transition: opacity var(--dur-base) var(--ease), r var(--dur-base) var(--ease);
+  }
+
+  .node-group text {
+    transition: fill var(--dur-base) var(--ease);
+  }
+
+  @keyframes traceFlow {
+    to {
+      stroke-dashoffset: -40;
+    }
+  }
+
+  /* --- 2. Dual Column Layout --- */
+  .console-deck__main {
     display: grid;
+    grid-template-columns: 1fr 1.25fr;
+    gap: var(--s-5);
+    align-items: stretch;
+  }
+
+  .console-deck__selectors {
+    display: flex;
+    flex-direction: column;
     gap: var(--s-4);
   }
-  .extending__steps li {
-    counter-increment: step;
-    padding-left: var(--s-7);
+
+  .step-cassette {
+    display: block;
+    cursor: pointer;
+    background: rgba(10, 10, 15, 0.45);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
     position: relative;
-    color: var(--text-base);
-    font-size: 0.94rem;
-    line-height: 1.55;
+    z-index: 1;
+    overflow: hidden;
+    transition:
+      border-color var(--dur-base) var(--ease),
+      background var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease),
+      box-shadow var(--dur-base) var(--ease);
   }
-  .extending__steps li::before {
-    content: counter(step);
+
+  .step-cassette::before {
+    content: "";
     position: absolute;
-    left: 0;
-    top: 0;
-    width: 2rem;
-    height: 2rem;
+    inset: 0;
+    background: radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.01) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .step-cassette:hover {
+    border-color: rgba(250, 107, 6, 0.2);
+    background: rgba(250, 107, 6, 0.02);
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .cassette__body {
+    display: flex;
+    gap: var(--s-4);
+    padding: var(--s-4) var(--s-5);
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cassette__glow-ring {
+    position: absolute;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
-    border: 1px solid color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
-    color: var(--ember-bright);
+    left: 10px;
+    top: 10px;
+    background: radial-gradient(circle, var(--cassette-glow, rgba(250, 107, 6, 0.12)) 0%, transparent 70%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-base) var(--ease);
+    z-index: 0;
+  }
+
+  .step-cassette:hover .cassette__glow-ring {
+    opacity: 0.6;
+  }
+
+  .cassette__icon-box {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--r-sm);
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--ink-line);
+    color: var(--text-mute);
     display: grid;
     place-items: center;
-    font-family: var(--font-mono);
-    font-size: 0.84rem;
+    transition: all var(--dur-base) var(--ease);
+    position: relative;
+    z-index: 1;
   }
-  .extending__steps strong { color: var(--text-bright); }
-  .extending__steps code {
-    font-family: var(--font-mono);
-    font-size: 0.82em;
-    color: var(--ember-bright);
-    background: var(--ink-base);
-    padding: 1px 6px;
-    border-radius: var(--r-2);
+
+  .cassette-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .step-cassette:hover .cassette__icon-box {
+    color: var(--text-bright);
+    border-color: rgba(250, 107, 6, 0.25);
+    background: rgba(250, 107, 6, 0.04);
+  }
+
+  .cassette__content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    flex-grow: 1;
+  }
+
+  .cassette__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .cassette__num {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+    font-weight: 700;
+  }
+
+  .cassette__status-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: var(--text-dim);
+    transition: all var(--dur-base) var(--ease);
+  }
+
+  .cassette__content h3 {
+    font-size: 1.02rem;
+    color: var(--text-bright);
+    margin: 0;
+    font-variation-settings: "wght" 600;
+    letter-spacing: -0.01em;
+  }
+
+  .cassette__content p {
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--text-mute);
+    margin: 0;
+  }
+
+  .cassette__content code {
+    font-size: 0.86em;
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.04);
+    color: var(--text-bright);
+  }
+
+  /* --- 3. Glassmorphic IDE + Diagnostic Terminal --- */
+  .console-deck__code-showcase {
+    background: rgba(6, 6, 9, 0.85);
+    border-radius: var(--r-md);
     border: 1px solid var(--ink-line);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+      0 24px 64px rgba(0, 0, 0, 0.7),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .console-deck__code-showcase::after {
+    content: "";
+    position: absolute;
+    bottom: -120px;
+    right: -120px;
+    width: 240px;
+    height: 240px;
+    background: radial-gradient(circle, rgba(238, 24, 3, 0.05) 0%, transparent 70%);
+    filter: blur(40px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .ide__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #08080c;
+    border-bottom: 1px solid var(--ink-line);
+    padding: 0 var(--s-4);
+    height: 38px;
+    position: relative;
+    z-index: 10;
+  }
+
+  .ide__dots {
+    display: flex;
+    gap: 6px;
+  }
+
+  .ide__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    opacity: 0.65;
+  }
+  .dot--red { background-color: #EE1803; }
+  .dot--yellow { background-color: #FDC42C; }
+  .dot--green { background-color: #3DDC84; }
+
+  .ide__tabs {
+    display: flex;
+    gap: 2px;
+    height: 100%;
+    align-items: flex-end;
+  }
+
+  .ide__tab {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0 var(--s-3);
+    height: 30px;
+    font-size: 0.74rem;
+    color: var(--text-dim);
+    background: transparent;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition:
+      background var(--dur-base) var(--ease),
+      color var(--dur-base) var(--ease),
+      border-color var(--dur-base) var(--ease);
+  }
+
+  .ide__tab:hover {
+    color: var(--text-mute);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .tab-icon {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    opacity: 0.6;
+  }
+
+  .ide__actions {
+    display: flex;
+    align-items: center;
+  }
+
+  .ide__badge {
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    border: 1px solid var(--ink-line);
+    padding: 2px 6px;
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .ide__window {
+    padding: var(--s-4);
+    min-height: 310px;
+    position: relative;
+    z-index: 1;
+    overflow-x: auto;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ide__pane {
+    display: flex;
+    gap: var(--s-4);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px);
+    transition:
+      opacity 300ms var(--ease),
+      transform 300ms var(--ease);
+    position: absolute;
+    inset: var(--s-4);
+  }
+
+  .ide__line-numbers {
+    display: flex;
+    flex-direction: column;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    text-align: right;
+    user-select: none;
+    line-height: 1.5;
+    padding-right: var(--s-2);
+    border-right: 1px solid rgba(255, 255, 255, 0.03);
+  }
+
+  .ide__code {
+    margin: 0;
+    padding: 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--text-base);
+    background: transparent !important;
+    border: none !important;
+  }
+
+  /* Step 3 Split Pane Layout */
+  .ide__pane.split-pane {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-4);
+    overflow: hidden;
+  }
+
+  .pane__file-view {
+    display: flex;
+    gap: var(--s-4);
+    flex-shrink: 0;
+  }
+
+  .pane__terminal-view {
+    background: #030305;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.9);
+    flex-grow: 1;
+  }
+
+  .terminal__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.01);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding: 4px 10px;
+  }
+
+  .terminal__indicator {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+
+  .terminal__status {
+    font-size: 0.65rem;
+    font-weight: 700;
+  }
+
+  .text-green {
+    color: #3DDC84;
+    text-shadow: 0 0 6px rgba(61, 220, 132, 0.3);
+  }
+
+  .terminal__output {
+    padding: var(--s-3);
+    overflow-y: auto;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-grow: 1;
+  }
+
+  .terminal__line {
+    white-space: nowrap;
+  }
+
+  .term-time {
+    color: var(--text-dim);
+    margin-right: 4px;
+  }
+
+  .term-sys {
+    color: var(--core-red);
+    font-weight: bold;
+  }
+
+  .term-info {
+    color: var(--core-fire);
+  }
+
+  .term-success {
+    color: #3DDC84;
+    font-weight: bold;
+  }
+
+  .cursor-blink::after {
+    content: "█";
+    animation: termCursor 1s infinite step-start;
+    font-size: 0.7rem;
+    margin-left: 2px;
+  }
+
+  @keyframes termCursor {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+  }
+
+  /* --- Furnace-Themed Syntax Highlighting --- */
+  .keyword { color: #EE1803; font-weight: 600; }
+  .variable { color: #ffffff; font-weight: 600; }
+  .type { color: #FDC42C; }
+  .property { color: #FA6B06; }
+  .string { color: #5FF5D2; }
+  .number { color: #3DDC84; }
+  .comment { color: rgba(255, 255, 255, 0.35); font-style: italic; }
+  .heading { color: var(--core-amber); font-weight: 700; }
+  .subheading { color: var(--core-fire); font-weight: 600; }
+  .checkbox { color: #EE1803; font-weight: bold; }
+
+  /* --- Pure CSS Interactive Cascade Logic --- */
+
+  /* Step 1 checked */
+  #step-1:checked ~ .console-deck__header .active-path-1 {
+    opacity: 1;
+    stroke-width: 2.5px;
+    animation: traceFlow 1.6s linear infinite;
+  }
+  #step-1:checked ~ .console-deck__header .rect-1 {
+    stroke: var(--core-red);
+    fill: rgba(238, 24, 3, 0.03);
+    filter: drop-shadow(0 0 6px rgba(238, 24, 3, 0.25));
+  }
+  #step-1:checked ~ .console-deck__header .status-1 {
+    opacity: 1;
+    r: 5px;
+    filter: drop-shadow(0 0 4px var(--core-red));
+  }
+  #step-1:checked ~ .console-deck__header .node-group-1 text {
+    fill: var(--text-bright);
+    font-weight: 700;
+  }
+  #step-1:checked ~ .console-deck__main .step-cassette--1 {
+    border-color: rgba(238, 24, 3, 0.45);
+    background: rgba(238, 24, 3, 0.05);
+    box-shadow:
+      0 12px 30px rgba(0, 0, 0, 0.45),
+      0 0 20px rgba(238, 24, 3, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transform: translateY(-2px);
+    --cassette-glow: rgba(238, 24, 3, 0.25);
+  }
+  #step-1:checked ~ .console-deck__main .step-cassette--1 .cassette__glow-ring {
+    opacity: 0.7;
+  }
+  #step-1:checked ~ .console-deck__main .step-cassette--1 .cassette__icon-box {
+    color: var(--core-red);
+    border-color: rgba(238, 24, 3, 0.35);
+    background: rgba(238, 24, 3, 0.06);
+  }
+  #step-1:checked ~ .console-deck__main .step-cassette--1 .cassette__status-dot {
+    background-color: var(--core-red);
+    box-shadow: 0 0 6px var(--core-red);
+  }
+  #step-1:checked ~ .console-deck__main .step-cassette--1 .cassette__num {
+    color: var(--core-red);
+  }
+  #step-1:checked ~ .console-deck__main .tab--1 {
+    color: var(--text-bright);
+    background: var(--ink-void);
+    border-bottom-color: var(--core-red);
+  }
+  #step-1:checked ~ .console-deck__main .pane--1 {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Step 2 checked */
+  #step-2:checked ~ .console-deck__header .active-path-2 {
+    opacity: 1;
+    stroke-width: 2.5px;
+    animation: traceFlow 1.6s linear infinite;
+  }
+  #step-2:checked ~ .console-deck__header .rect-2 {
+    stroke: var(--core-fire);
+    fill: rgba(250, 107, 6, 0.03);
+    filter: drop-shadow(0 0 6px rgba(250, 107, 6, 0.25));
+  }
+  #step-2:checked ~ .console-deck__header .status-2 {
+    opacity: 1;
+    r: 5px;
+    filter: drop-shadow(0 0 4px var(--core-fire));
+  }
+  #step-2:checked ~ .console-deck__header .node-group-2 text {
+    fill: var(--text-bright);
+    font-weight: 700;
+  }
+  #step-2:checked ~ .console-deck__main .step-cassette--2 {
+    border-color: rgba(250, 107, 6, 0.45);
+    background: rgba(250, 107, 6, 0.05);
+    box-shadow:
+      0 12px 30px rgba(0, 0, 0, 0.45),
+      0 0 20px rgba(250, 107, 6, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transform: translateY(-2px);
+    --cassette-glow: rgba(250, 107, 6, 0.25);
+  }
+  #step-2:checked ~ .console-deck__main .step-cassette--2 .cassette__glow-ring {
+    opacity: 0.7;
+  }
+  #step-2:checked ~ .console-deck__main .step-cassette--2 .cassette__icon-box {
+    color: var(--core-fire);
+    border-color: rgba(250, 107, 6, 0.35);
+    background: rgba(250, 107, 6, 0.06);
+  }
+  #step-2:checked ~ .console-deck__main .step-cassette--2 .cassette__status-dot {
+    background-color: var(--core-fire);
+    box-shadow: 0 0 6px var(--core-fire);
+  }
+  #step-2:checked ~ .console-deck__main .step-cassette--2 .cassette__num {
+    color: var(--core-fire);
+  }
+  #step-2:checked ~ .console-deck__main .tab--2 {
+    color: var(--text-bright);
+    background: var(--ink-void);
+    border-bottom-color: var(--core-fire);
+  }
+  #step-2:checked ~ .console-deck__main .pane--2 {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Step 3 checked */
+  #step-3:checked ~ .console-deck__header .active-path-3 {
+    opacity: 1;
+    stroke-width: 2.5px;
+    animation: traceFlow 1.6s linear infinite;
+  }
+  #step-3:checked ~ .console-deck__header .rect-3 {
+    stroke: var(--core-amber);
+    fill: rgba(253, 196, 44, 0.03);
+    filter: drop-shadow(0 0 6px rgba(253, 196, 44, 0.25));
+  }
+  #step-3:checked ~ .console-deck__header .status-3 {
+    opacity: 1;
+    r: 5px;
+    filter: drop-shadow(0 0 4px var(--core-amber));
+  }
+  #step-3:checked ~ .console-deck__header .node-group-3 text {
+    fill: var(--text-bright);
+    font-weight: 700;
+  }
+  #step-3:checked ~ .console-deck__main .step-cassette--3 {
+    border-color: rgba(253, 196, 44, 0.45);
+    background: rgba(253, 196, 44, 0.05);
+    box-shadow:
+      0 12px 30px rgba(0, 0, 0, 0.45),
+      0 0 20px rgba(253, 196, 44, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transform: translateY(-2px);
+    --cassette-glow: rgba(253, 196, 44, 0.25);
+  }
+  #step-3:checked ~ .console-deck__main .step-cassette--3 .cassette__glow-ring {
+    opacity: 0.7;
+  }
+  #step-3:checked ~ .console-deck__main .step-cassette--3 .cassette__icon-box {
+    color: var(--core-amber);
+    border-color: rgba(253, 196, 44, 0.35);
+    background: rgba(253, 196, 44, 0.06);
+  }
+  #step-3:checked ~ .console-deck__main .step-cassette--3 .cassette__status-dot {
+    background-color: var(--core-amber);
+    box-shadow: 0 0 6px var(--core-amber);
+  }
+  #step-3:checked ~ .console-deck__main .step-cassette--3 .cassette__num {
+    color: var(--core-amber);
+  }
+  #step-3:checked ~ .console-deck__main .tab--3 {
+    color: var(--text-bright);
+    background: var(--ink-void);
+    border-bottom-color: var(--core-amber);
+  }
+  #step-3:checked ~ .console-deck__main .pane--3 {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+    position: relative;
+    z-index: 2;
+  }
+
+  /* --- Responsiveness & Visual Collapses --- */
+  @media (max-width: 992px) {
+    .console-deck__main {
+      grid-template-columns: 1fr;
+      gap: var(--s-5);
+    }
+
+    .console-deck__code-showcase {
+      margin-top: var(--s-2);
+    }
+
+    .ide__window {
+      min-height: 290px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .console__body {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--s-3);
+    }
+
+    .console__divider {
+      display: none;
+    }
+
+    .schematic-svg {
+      min-width: 700px;
+    }
   }
 </style>

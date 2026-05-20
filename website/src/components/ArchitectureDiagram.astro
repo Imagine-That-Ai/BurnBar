@@ -3,44 +3,75 @@
 ---
 
 <figure class="arch">
-  <svg viewBox="0 0 920 520" xmlns="http://www.w3.org/2000/svg" aria-labelledby="archTitle archDesc" role="img">
+  <svg
+    viewBox="0 0 920 520"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-labelledby="archTitle archDesc"
+    role="img"
+  >
     <title id="archTitle">OpenBurnBar privacy and data-flow architecture</title>
     <desc id="archDesc">
-      Three concentric trust zones: Zone A is your Mac with the local app, daemon, Keychain, SQLite, and editor extension — all data stays here by default.
-      Zone B is opt-in Apple iCloud, your Apple ID, separate from OpenBurnBar's servers. Zone C is opt-in Firebase plus Google Cloud, operated by OpenBurnBar, requiring sign-in plus App Check attestation.
-      Secrets never traverse default-tier arrows — only metadata, redacted labels, and ciphertext do.
+      Three concentric trust zones: Zone A is your Mac with the local app, daemon, Keychain, SQLite,
+      and editor extension — all data stays here by default. Zone B is opt-in Apple iCloud, your
+      Apple ID, separate from OpenBurnBar's servers. Zone C is opt-in Firebase plus Google Cloud,
+      operated by OpenBurnBar, requiring sign-in plus App Check attestation. Secrets never traverse
+      default-tier arrows — only metadata, redacted labels, and ciphertext do.
     </desc>
 
     <defs>
       <linearGradient id="zA" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#13101a"/>
-        <stop offset="100%" stop-color="#0c0a12"/>
+        <stop offset="0%" stop-color="#13101a"></stop>
+        <stop offset="100%" stop-color="#0c0a12"></stop>
       </linearGradient>
       <linearGradient id="zB" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#100e16"/>
-        <stop offset="100%" stop-color="#0b0a10"/>
+        <stop offset="0%" stop-color="#100e16"></stop>
+        <stop offset="100%" stop-color="#0b0a10"></stop>
       </linearGradient>
       <linearGradient id="zC" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#120e1a"/>
-        <stop offset="100%" stop-color="#0b0910"/>
+        <stop offset="0%" stop-color="#120e1a"></stop>
+        <stop offset="100%" stop-color="#0b0910"></stop>
       </linearGradient>
-      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-        <path d="M0 0 L 10 5 L 0 10 Z" fill="#ff8a3d"/>
+      <marker
+        id="arrow"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="6"
+        markerHeight="6"
+        orient="auto-start-reverse"
+      >
+        <path d="M0 0 L 10 5 L 0 10 Z" fill="#ff8a3d"></path>
       </marker>
-      <marker id="arrowM" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-        <path d="M0 0 L 10 5 L 0 10 Z" fill="#aeacba"/>
+      <marker
+        id="arrowM"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="6"
+        markerHeight="6"
+        orient="auto-start-reverse"
+      >
+        <path d="M0 0 L 10 5 L 0 10 Z" fill="#aeacba"></path>
       </marker>
     </defs>
 
     <!-- Zone A: Your Mac -->
     <g class="zone zone-a">
-      <rect x="24" y="32" width="380" height="440" rx="18" fill="url(#zA)" stroke="#ff6a1a" stroke-opacity="0.55"/>
+      <rect
+        x="24"
+        y="32"
+        width="380"
+        height="440"
+        rx="18"
+        fill="url(#zA)"
+        stroke="#ff6a1a"
+        stroke-opacity="0.55"></rect>
       <text x="44" y="62" class="zlabel" fill="#ff8a3d">ZONE A · YOUR MAC</text>
       <text x="44" y="82" class="zsub" fill="#8b8275">Single-user. Canonical. Works offline.</text>
 
       <!-- macOS App -->
       <g transform="translate(48, 110)">
-        <rect width="160" height="74" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="160" height="74" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="14" y="24" class="title" fill="#f6f1e7">macOS App</text>
         <text x="14" y="44" class="sub" fill="#8b8275">Menu bar · Dashboard</text>
         <text x="14" y="60" class="sub" fill="#8b8275">Hermes panel</text>
@@ -48,7 +79,7 @@
 
       <!-- Local Daemon -->
       <g transform="translate(220, 110)">
-        <rect width="160" height="74" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="160" height="74" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="14" y="24" class="title" fill="#f6f1e7">Local Daemon</text>
         <text x="14" y="44" class="sub" fill="#8b8275">launchd · UNIX socket</text>
         <text x="14" y="60" class="sub" fill="#8b8275">JSON-RPC · gateway</text>
@@ -56,58 +87,85 @@
 
       <!-- Keychain -->
       <g transform="translate(48, 204)">
-        <rect width="160" height="64" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="160" height="64" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="14" y="24" class="title" fill="#f6f1e7">macOS Keychain</text>
         <text x="14" y="44" class="sub" fill="#8b8275">Provider keys, SQLCipher key</text>
       </g>
 
       <!-- SQLite -->
       <g transform="translate(220, 204)">
-        <rect width="160" height="64" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="160" height="64" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="14" y="24" class="title" fill="#f6f1e7">Local SQLite</text>
         <text x="14" y="44" class="sub" fill="#8b8275">Usage · sessions · retrieval</text>
       </g>
 
       <!-- Editor extension -->
       <g transform="translate(48, 288)">
-        <rect width="160" height="58" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="160" height="58" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="14" y="24" class="title" fill="#f6f1e7">Cursor / VS Code</text>
         <text x="14" y="40" class="sub" fill="#8b8275">Activity bar panel</text>
       </g>
 
       <!-- CLI -->
       <g transform="translate(220, 288)">
-        <rect width="160" height="58" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="160" height="58" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="14" y="24" class="title" fill="#f6f1e7">openburnbar CLI</text>
         <text x="14" y="40" class="sub" fill="#8b8275">health · controller · missions</text>
       </g>
 
       <!-- Agent log readers -->
       <g transform="translate(48, 366)">
-        <rect width="332" height="74" rx="10" fill="#13101a" stroke="#2a2030"/>
+        <rect width="332" height="74" rx="10" fill="#13101a" stroke="#2a2030"></rect>
         <text x="14" y="24" class="title" fill="#f6f1e7">On-disk agent logs (read-only)</text>
-        <text x="14" y="44" class="sub mono" fill="#8b8275">~/.claude/projects/  ·  ~/.codex/sessions/</text>
-        <text x="14" y="60" class="sub mono" fill="#8b8275">~/.factory/sessions/  ·  ~/forge/.forge.db  ·  ~/.aider/</text>
+        <text x="14" y="44" class="sub mono" fill="#8b8275"
+          >~/.claude/projects/ · ~/.codex/sessions/</text
+        >
+        <text x="14" y="60" class="sub mono" fill="#8b8275"
+          >~/.factory/sessions/ · ~/forge/.forge.db · ~/.aider/</text
+        >
       </g>
 
       <!-- internal connectors -->
-      <path d="M208 145 L 218 145" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"/>
-      <path d="M218 145 L 208 145" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"/>
-      <path d="M128 184 L 128 204" stroke="#ff8a3d" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
-      <path d="M300 184 L 300 204" stroke="#ff8a3d" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
-      <path d="M128 268 L 128 288" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"/>
-      <path d="M300 268 L 300 288" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"/>
-      <path d="M214 346 L 214 366" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M208 145 L 218 145" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"
+      ></path>
+      <path d="M218 145 L 208 145" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"
+      ></path>
+      <path
+        d="M128 184 L 128 204"
+        stroke="#ff8a3d"
+        stroke-width="1.2"
+        stroke-dasharray="3 3"
+        marker-end="url(#arrow)"></path>
+      <path
+        d="M300 184 L 300 204"
+        stroke="#ff8a3d"
+        stroke-width="1.2"
+        stroke-dasharray="3 3"
+        marker-end="url(#arrow)"></path>
+      <path d="M128 268 L 128 288" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"
+      ></path>
+      <path d="M300 268 L 300 288" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"
+      ></path>
+      <path d="M214 346 L 214 366" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arrow)"
+      ></path>
     </g>
 
     <!-- Zone B: Apple iCloud (opt-in) -->
     <g class="zone zone-b">
-      <rect x="430" y="32" width="200" height="200" rx="18" fill="url(#zB)" stroke="#aeacba" stroke-opacity="0.45"/>
+      <rect
+        x="430"
+        y="32"
+        width="200"
+        height="200"
+        rx="18"
+        fill="url(#zB)"
+        stroke="#aeacba"
+        stroke-opacity="0.45"></rect>
       <text x="446" y="62" class="zlabel" fill="#d6d3df">ZONE B · iCLOUD</text>
       <text x="446" y="82" class="zsub" fill="#8b8275">Opt-in · your Apple ID</text>
 
       <g transform="translate(450, 110)">
-        <rect width="160" height="98" rx="10" fill="#1a1822" stroke="#2a2434"/>
+        <rect width="160" height="98" rx="10" fill="#1a1822" stroke="#2a2434"></rect>
         <text x="14" y="24" class="title" fill="#f6f1e7">iCloud session mirror</text>
         <text x="14" y="44" class="sub mono" fill="#8b8275">iCloud.com.openburnbar.app</text>
         <text x="14" y="62" class="sub" fill="#8b8275">Copies of selected</text>
@@ -117,37 +175,48 @@
 
     <!-- Zone C: Firebase / GCP (opt-in) -->
     <g class="zone zone-c">
-      <rect x="430" y="256" width="466" height="216" rx="18" fill="url(#zC)" stroke="#ff6a1a" stroke-opacity="0.35" stroke-dasharray="6 4"/>
+      <rect
+        x="430"
+        y="256"
+        width="466"
+        height="216"
+        rx="18"
+        fill="url(#zC)"
+        stroke="#ff6a1a"
+        stroke-opacity="0.35"
+        stroke-dasharray="6 4"></rect>
       <text x="446" y="286" class="zlabel" fill="#ff8a3d">ZONE C · FIREBASE + GCP</text>
-      <text x="446" y="306" class="zsub" fill="#8b8275">Opt-in · OpenBurnBar-operated · gated by Auth + App Check</text>
+      <text x="446" y="306" class="zsub" fill="#8b8275"
+        >Opt-in · OpenBurnBar-operated · gated by Auth + App Check</text
+      >
 
       <g transform="translate(446, 326)">
-        <rect width="148" height="60" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="148" height="60" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="12" y="22" class="title" fill="#f6f1e7">Firebase Auth</text>
         <text x="12" y="40" class="sub" fill="#8b8275">Apple · Google</text>
       </g>
       <g transform="translate(604, 326)">
-        <rect width="148" height="60" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="148" height="60" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="12" y="22" class="title" fill="#f6f1e7">Firestore</text>
         <text x="12" y="40" class="sub" fill="#8b8275">Owner-scoped · App Check</text>
       </g>
       <g transform="translate(762, 326)">
-        <rect width="120" height="60" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="120" height="60" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="12" y="22" class="title" fill="#f6f1e7">Cloud Run</text>
         <text x="12" y="40" class="sub" fill="#8b8275">Hermes relay</text>
       </g>
       <g transform="translate(446, 398)">
-        <rect width="148" height="60" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="148" height="60" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="12" y="22" class="title" fill="#f6f1e7">Secret Manager</text>
         <text x="12" y="40" class="sub" fill="#8b8275">Hosted provider secrets</text>
       </g>
       <g transform="translate(604, 398)">
-        <rect width="148" height="60" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="148" height="60" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="12" y="22" class="title" fill="#f6f1e7">Cloud Functions</text>
         <text x="12" y="40" class="sub" fill="#8b8275">JWS verify · entitlements</text>
       </g>
       <g transform="translate(762, 398)">
-        <rect width="120" height="60" rx="10" fill="#1a1422" stroke="#2a2030"/>
+        <rect width="120" height="60" rx="10" fill="#1a1422" stroke="#2a2030"></rect>
         <text x="12" y="22" class="title" fill="#f6f1e7">Cloud Run</text>
         <text x="12" y="40" class="sub" fill="#8b8275">Quota runner</text>
       </g>
@@ -155,19 +224,30 @@
 
     <!-- cross-zone flows -->
     <!-- Mac → iCloud (opt-in) -->
-    <path d="M380 230 Q 410 200 446 200" stroke="#aeacba" stroke-width="1.3" fill="none" marker-end="url(#arrowM)" stroke-dasharray="4 3"/>
+    <path
+      d="M380 230 Q 410 200 446 200"
+      stroke="#aeacba"
+      stroke-width="1.3"
+      fill="none"
+      marker-end="url(#arrowM)"
+      stroke-dasharray="4 3"></path>
     <text x="385" y="194" class="edgelabel" fill="#aeacba">opt-in session mirror</text>
 
     <!-- Mac → Firestore (metadata only) -->
-    <path d="M380 320 Q 410 360 446 360" stroke="#ff8a3d" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>
+    <path
+      d="M380 320 Q 410 360 446 360"
+      stroke="#ff8a3d"
+      stroke-width="1.4"
+      fill="none"
+      marker-end="url(#arrow)"></path>
     <text x="385" y="350" class="edgelabel" fill="#ff8a3d">metadata · ciphertext only</text>
 
     <!-- Hosted Quota runner ↔ Codex hosted creds -->
-    <path d="M752 428 L 766 428" stroke="#ff8a3d" stroke-width="1.4" fill="none"/>
+    <path d="M752 428 L 766 428" stroke="#ff8a3d" stroke-width="1.4" fill="none"></path>
 
     <!-- gate ribbon -->
     <g transform="translate(380, 264)">
-      <rect x="-2" y="0" width="78" height="20" rx="10" fill="#1a1422" stroke="#ff6a1a"/>
+      <rect x="-2" y="0" width="78" height="20" rx="10" fill="#1a1422" stroke="#ff6a1a"></rect>
       <text x="6" y="14" class="ribbon" fill="#ff8a3d">AUTH · APP CHECK</text>
     </g>
   </svg>

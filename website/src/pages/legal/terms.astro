@@ -15,51 +15,56 @@ const updated = "May 12, 2026";
       <p class="muted small mono">Last updated: {updated}</p>
 
       <p class="lead">
-        OpenBurnBar is open-source software offered under the MIT License, plus
-        an optional in-app subscription billed through the Apple App Store. By
-        installing or using OpenBurnBar, you agree to the terms below. If you
-        don't, please don't install the software.
+        OpenBurnBar is open-source software offered under the MIT License, plus an optional in-app
+        subscription billed through the Apple App Store. By installing or using OpenBurnBar, you
+        agree to the terms below. If you don't, please don't install the software.
       </p>
 
       <h2>1. License — the app</h2>
       <p>
         The OpenBurnBar source code is released under the
-        <a href={`${SITE.github}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">MIT License</a>.
-        The MIT terms govern your use, modification, and distribution of the
-        source. The disclaimer of warranty in the MIT License applies.
+        <a href={`${SITE.github}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer"
+          >MIT License</a
+        >. The MIT terms govern your use, modification, and distribution of the source. The
+        disclaimer of warranty in the MIT License applies.
       </p>
 
       <h2>2. License — this website</h2>
       <p>
-        Content on burnbar.ai (copy, illustrations, generated mockups) is the
-        property of <strong>{SITE.entity}</strong>. You may quote and reference
-        with attribution. You may not reproduce the site in full or use it to
-        imply endorsement.
+        Content on burnbar.ai (copy, illustrations, generated mockups) is the property of <strong
+          >{SITE.entity}</strong
+        >. You may quote and reference with attribution. You may not reproduce the site in full or
+        use it to imply endorsement.
       </p>
 
       <h2>3. Subscription terms (Hosted Quota Sync)</h2>
       <ul>
         <li>
-          The OpenBurnBar Cloud subscription (product id <code>{SITE.iapProductId}</code>)
-          is offered as an in-app purchase through the Apple App Store at an
-          intended price of US ${SITE.iapPriceUSD} per {SITE.iapPeriod}.
+          The OpenBurnBar Cloud subscription (product id <code>{SITE.iapProductId}</code>) is
+          offered as an in-app purchase through the Apple App Store at an intended price of US ${
+            SITE.iapPriceUSD
+          } per {SITE.iapPeriod}.
         </li>
         <li>
-          Billing, taxes, and currency conversion are handled by Apple under
-          the terms of the App Store. We do not see or store payment cards.
+          Billing, taxes, and currency conversion are handled by Apple under the terms of the App
+          Store. We do not see or store payment cards.
         </li>
         <li>
-          The subscription auto-renews monthly unless canceled. Manage or
-          cancel in <em>Settings → Apple ID → Subscriptions</em> on iPhone or iPad.
+          The subscription auto-renews monthly unless canceled. Manage or cancel in <em
+            >Settings → Apple ID → Subscriptions</em
+          > on iPhone or iPad.
         </li>
         <li>
           Refunds are governed by Apple's standard App Store refund policy at
-          <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer">reportaproblem.apple.com</a>.
+          <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer"
+            >reportaproblem.apple.com</a
+          >.
         </li>
         <li>
           The subscription is bound to your Firebase UID via a signed Apple
-          <code>appAccountToken</code> UUID and verified server-side against
-          Apple's <em>getAllSubscriptionStatuses</em> endpoint.
+          <code>appAccountToken</code> UUID and verified server-side against Apple's <em
+            >getAllSubscriptionStatuses</em
+          > endpoint.
         </li>
         <li>
           We may rate-limit hosted refresh and relay capacity (see the
@@ -69,46 +74,42 @@ const updated = "May 12, 2026";
 
       <h2>4. Acceptable use</h2>
       <p>
-        You agree not to: (a) attempt to circumvent the entitlement model or
-        rate limits; (b) use OpenBurnBar's hosted infrastructure to relay
-        traffic that doesn't belong to you; (c) reverse-engineer the JWS
-        verification or App Check chain; (d) use OpenBurnBar to violate any
+        You agree not to: (a) attempt to circumvent the entitlement model or rate limits; (b) use
+        OpenBurnBar's hosted infrastructure to relay traffic that doesn't belong to you; (c)
+        reverse-engineer the JWS verification or App Check chain; (d) use OpenBurnBar to violate any
         provider's terms of service for the credentials you connect.
       </p>
 
       <h2>5. Trust boundaries</h2>
       <p>
-        OpenBurnBar reads provider data only with credentials or session
-        material you explicitly provide. You are responsible for ensuring you
-        have the right to connect any credential you supply, and for keeping
-        those credentials secret. We will not knowingly process credentials we
-        believe are not authorized by their issuer.
+        OpenBurnBar reads provider data only with credentials or session material you explicitly
+        provide. You are responsible for ensuring you have the right to connect any credential you
+        supply, and for keeping those credentials secret. We will not knowingly process credentials
+        we believe are not authorized by their issuer.
       </p>
 
       <h2>6. Disclaimer of warranty</h2>
       <p>
-        OpenBurnBar is provided "as is" and "as available," without warranty
-        of any kind, express or implied, including merchantability, fitness
-        for a particular purpose, or non-infringement. Cost numbers are
-        estimates from public vendor pricing tables; we do not warrant
-        accuracy and you should not rely on OpenBurnBar for accounting,
-        tax, billing, or compliance decisions.
+        OpenBurnBar is provided "as is" and "as available," without warranty of any kind, express or
+        implied, including merchantability, fitness for a particular purpose, or non-infringement.
+        Cost numbers are estimates from public vendor pricing tables; we do not warrant accuracy and
+        you should not rely on OpenBurnBar for accounting, tax, billing, or compliance decisions.
       </p>
 
       <h2>7. Limitation of liability</h2>
       <p>
-        To the maximum extent permitted by law, <strong>{SITE.entity}</strong> shall
-        not be liable for any indirect, incidental, consequential, special,
-        or punitive damages arising from your use of OpenBurnBar — including
-        but not limited to lost profits, business interruption, loss of data,
+        To the maximum extent permitted by law, <strong>{SITE.entity}</strong> shall not be liable for
+        any indirect, incidental, consequential, special, or punitive damages arising from your use of
+        OpenBurnBar — including but not limited to lost profits, business interruption, loss of data,
         or unexpected vendor charges.
       </p>
 
       <h2>8. Changes to these terms</h2>
       <p>
-        We may update these terms as the product evolves. Material changes
-        will be noted in the
-        <a href={`${SITE.github}/blob/main/CHANGELOG.md`} target="_blank" rel="noopener noreferrer">project changelog</a>
+        We may update these terms as the product evolves. Material changes will be noted in the
+        <a href={`${SITE.github}/blob/main/CHANGELOG.md`} target="_blank" rel="noopener noreferrer"
+          >project changelog</a
+        >
         and reflected in the "last updated" date above.
       </p>
 
@@ -122,15 +123,26 @@ const updated = "May 12, 2026";
 </BaseLayout>
 
 <style>
-  .legalpage { padding-block: var(--s-9); }
-  .legalpage h1 { margin-top: var(--s-3); margin-bottom: var(--s-2); }
+  .legalpage {
+    padding-block: var(--s-9);
+  }
+  .legalpage h1 {
+    margin-top: var(--s-3);
+    margin-bottom: var(--s-2);
+  }
   .legalpage h2 {
     margin-top: var(--s-7);
     margin-bottom: var(--s-3);
     font-size: 1.4rem;
-    font-variation-settings: "opsz" 80, "wght" 500;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
   }
-  .legalpage p, .legalpage ul { color: var(--text-base); max-width: 64ch; }
+  .legalpage p,
+  .legalpage ul {
+    color: var(--text-base);
+    max-width: 64ch;
+  }
   .legalpage ul {
     display: grid;
     gap: var(--s-2);
@@ -142,8 +154,18 @@ const updated = "May 12, 2026";
     list-style-position: outside;
     padding-left: 0.4em;
   }
-  .legalpage strong { color: var(--text-bright); }
-  .legalpage a { color: var(--ember-bright); text-decoration: underline; }
-  .lead { margin-top: var(--s-3); margin-bottom: var(--s-5); }
-  .small { font-size: var(--t-caption); }
+  .legalpage strong {
+    color: var(--text-bright);
+  }
+  .legalpage a {
+    color: var(--ember-bright);
+    text-decoration: underline;
+  }
+  .lead {
+    margin-top: var(--s-3);
+    margin-bottom: var(--s-5);
+  }
+  .small {
+    font-size: var(--t-caption);
+  }
 </style>

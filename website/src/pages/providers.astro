@@ -17,29 +17,32 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
   description="The honest provider support matrix for OpenBurnBar — Claude Code, Codex, OpenAI, Copilot, Cursor, Factory, MiniMax, Z.ai, Warp, Ollama, Kimi and more."
 >
   <section class="pagehead">
-    <div class="container pagehead__inner glass-pane">
+    <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Providers</span>
       <h1 class="pagehead__h">An honest provider matrix.</h1>
-      <p class="lead">
-        Eleven providers ship with real usage data today. Eight more are detected
-        but expose no usage API — we mark them so, rather than pretending.
-        Confidence labels live on every row.
-      </p>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          Eleven providers ship with real usage data today. Eight more are detected but expose no
+          usage API — we mark them so, rather than pretending. Confidence labels live on every row.
+        </p>
+      </div>
     </div>
   </section>
 
   <section class="legend" aria-label="Confidence legend">
     <div class="container">
       <ol class="legend__grid">
-        {confidenceKeys.map((k) => (
-          <li class={`legend__card legend__card--${k} glass-pane`}>
-            <header>
-              <span class={`tag tag--plain mono tag--${k}`}>{k}</span>
-            </header>
-            <h3>{CONFIDENCE_LABEL[k]}</h3>
-            <p>{CONFIDENCE_BLURB[k]}</p>
-          </li>
-        ))}
+        {
+          confidenceKeys.map((k) => (
+            <li class={`legend__card legend__card--${k} glass-pane`}>
+              <header>
+                <span class={`tag tag--plain mono tag--${k}`}>{k}</span>
+              </header>
+              <h3>{CONFIDENCE_LABEL[k]}</h3>
+              <p>{CONFIDENCE_BLURB[k]}</p>
+            </li>
+          ))
+        }
       </ol>
     </div>
   </section>
@@ -51,10 +54,10 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
         <span class="eyebrow eyebrow--ember">How accounts route</span>
         <h2>One row per account. Routing is per-account, not per-provider.</h2>
         <p class="lead">
-          Each row below is one account you add to BurnBar — not the vendor in
-          the abstract. Add five Z.ai keys and you get five rows, five quota
-          buckets, five spots in the router rotation. The matrix shows what
-          BurnBar knows about each account; the router decides how to use them.
+          Each row below is one account you add to BurnBar — not the vendor in the abstract. Add
+          five Z.ai keys and you get five rows, five quota buckets, five spots in the router
+          rotation. The matrix shows what BurnBar knows about each account; the router decides how
+          to use them.
         </p>
       </header>
 
@@ -65,14 +68,12 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
             <h3>Failover only picks accounts that carry your exact model.</h3>
           </header>
           <p>
-            Each row below lists which models that account carries.
-            Failover only considers other rows that <strong>list the same model
-            you asked for</strong> — MiniMax or Kimi only handle traffic for
-            the models they actually carry, never a generic OpenAI-shape
-            stand-in. The wire-format family (OpenAI-shape, Anthropic-shape)
-            is the outer boundary; the model id is the inner one. If no row
-            survives both filters, the gateway returns a structured 503 —
-            never a stealth swap into a different model.
+            Each row below lists which models that account carries. Failover only considers other
+            rows that <strong>list the same model you asked for</strong> — MiniMax or Kimi only handle
+            traffic for the models they actually carry, never a generic OpenAI-shape stand-in. The wire-format
+            family (OpenAI-shape, Anthropic-shape) is the outer boundary; the model id is the inner one.
+            If no row survives both filters, the gateway returns a structured 503 — never a stealth swap
+            into a different model.
           </p>
         </li>
         <li class="accountrouting__card accountrouting__card--account glass-pane">
@@ -81,12 +82,10 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
             <h3>Accounts have their own clocks and quotas.</h3>
           </header>
           <p>
-            Each account keeps its own quota bucket, its own cool-down clock,
-            its own LRU timestamp, and its own decision history. BurnBar will
-            not collapse your accounts into a single generic pool. You added
-            them separately because they cost differently, throttle
-            differently, and recover differently — and the router treats them
-            that way.
+            Each account keeps its own quota bucket, its own cool-down clock, its own LRU timestamp,
+            and its own decision history. BurnBar will not collapse your accounts into a single
+            generic pool. You added them separately because they cost differently, throttle
+            differently, and recover differently — and the router treats them that way.
           </p>
         </li>
       </ul>
@@ -103,9 +102,8 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
         <span class="eyebrow eyebrow--ember">Real usage data · today</span>
         <h2>Eleven providers ship with live data.</h2>
         <p class="lead">
-          Each one names exactly where data comes from, what we can know
-          about cost, and how quota is shaped. Notes capture limitations
-          we'd rather you read than discover later.
+          Each one names exactly where data comes from, what we can know about cost, and how quota
+          is shaped. Notes capture limitations we'd rather you read than discover later.
         </p>
       </header>
       <ProviderTable rows={PROVIDERS_PRIMARY} />
@@ -118,8 +116,8 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
         <span class="eyebrow eyebrow--ember">Detection-only</span>
         <h2>Vendors that don't expose data.</h2>
         <p class="lead">
-          These get a presence in OpenBurnBar — Installed / Not installed — but
-          no usage rows. The vendor has to expose data for us to surface it.
+          These get a presence in OpenBurnBar — Installed / Not installed — but no usage rows. The
+          vendor has to expose data for us to surface it.
         </p>
       </header>
       <ProviderTable rows={PROVIDERS_DETECTED} variant="compact" />
@@ -137,50 +135,46 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
         <li>
           <h4>OpenAI &amp; Anthropic admin keys</h4>
           <p>
-            Both use <em>org admin</em> keys (<code>sk-…</code> / <code>sk-ant-admin-…</code>), not regular API keys.
-            Daily-granularity usage with ~24h vendor lag. We compute cost
-            locally from a public pricing table — accurate for trends, not for tax audits.
+            Both use <em>org admin</em> keys (<code>sk-…</code> / <code>sk-ant-admin-…</code>), not
+            regular API keys. Daily-granularity usage with ~24h vendor lag. We compute cost locally
+            from a public pricing table — accurate for trends, not for tax audits.
           </p>
         </li>
         <li>
           <h4>Cursor &amp; Factory</h4>
           <p>
-            Cursor's plan-usage and Factory's billing both rely on unofficial
-            endpoints behind your authenticated session. Cursor's data is
-            captured from the editor's local state DB; Factory uses a WorkOS browser
-            session you complete via the in-app login helper. If the vendor changes
-            shape, refresh breaks. We won't pretend it's covered by an SLA.
+            Cursor's plan-usage and Factory's billing both rely on unofficial endpoints behind your
+            authenticated session. Cursor's data is captured from the editor's local state DB;
+            Factory uses a WorkOS browser session you complete via the in-app login helper. If the
+            vendor changes shape, refresh breaks. We won't pretend it's covered by an SLA.
           </p>
         </li>
         <li>
           <h4>Z.ai endpoint</h4>
           <p>
-            The BigModel <code>monitor/usage/quota/limit</code> endpoint is undocumented.
-            It works today and returns clean numbers; the vendor can change it tomorrow.
+            The BigModel <code>monitor/usage/quota/limit</code> endpoint is undocumented. It works today
+            and returns clean numbers; the vendor can change it tomorrow.
           </p>
         </li>
         <li>
           <h4>Warp</h4>
           <p>
-            Requires a spoofed <code>User-Agent</code> upstream — Warp's edge limiter
-            returns 429 otherwise.
+            Requires a spoofed <code>User-Agent</code> upstream — Warp's edge limiter returns 429 otherwise.
           </p>
         </li>
         <li>
           <h4>Gemini</h4>
           <p>
-            Google AI Studio has no programmatic quota API. Per-session disk
-            tokens exist on Gemini CLI; aggregate billing requires Vertex BigQuery
-            exports, which we don't implement today.
+            Google AI Studio has no programmatic quota API. Per-session disk tokens exist on Gemini
+            CLI; aggregate billing requires Vertex BigQuery exports, which we don't implement today.
           </p>
         </li>
         <li>
           <h4>Claude Code &amp; Codex stay self-hosted</h4>
           <p>
-            Their real data sources live in your local filesystem. A cloud
-            function has no lawful way to read them without an agent on your Mac.
-            Plus, Anthropic's policy disallows third-party hosting of Claude.ai
-            credentials — and we agree with that line.
+            Their real data sources live in your local filesystem. A cloud function has no lawful
+            way to read them without an agent on your Mac. Plus, Anthropic's policy disallows
+            third-party hosting of Claude.ai credentials — and we agree with that line.
           </p>
         </li>
       </ul>
@@ -188,16 +182,26 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
   </section>
 
   <section class="endcta endcta--inline">
-    <div class="container container--narrow endcta__inner glass-pane">
+    <div class="container container--narrow endcta__inner">
       <h2>If your vendor is missing, file an issue.</h2>
-      <p class="lead">
-        We add providers when there's a real data source and a real user.
-      </p>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">We add providers when there's a real data source and a real user.</p>
+      </div>
       <div class="endcta__ctas">
-        <a class="btn btn--ember" href="https://github.com/Imagine-That-Ai/BurnBar/issues" target="_blank" rel="noopener noreferrer">
+        <a
+          class="btn btn--ember"
+          href="https://github.com/Imagine-That-Ai/BurnBar/issues"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           Open a GitHub issue <span class="btn-arrow" aria-hidden="true">→</span>
         </a>
-        <a class="btn btn--ghost" href="https://github.com/Imagine-That-Ai/BurnBar/blob/main/docs/PROVIDERS.md" target="_blank" rel="noopener noreferrer">
+        <a
+          class="btn btn--ghost"
+          href="https://github.com/Imagine-That-Ai/BurnBar/blob/main/docs/PROVIDERS.md"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           Read PROVIDERS.md
         </a>
       </div>
@@ -206,15 +210,22 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
 </BaseLayout>
 
 <style>
-  .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead {
+    padding-block: var(--s-9) var(--s-6);
+  }
   .pagehead__inner {
     padding: var(--s-7) var(--s-6);
     border-radius: var(--r-xl);
     max-width: 960px;
     margin: 0 auto;
   }
-  .pagehead__h { margin-top: var(--s-3); }
-  .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
+  .pagehead__h {
+    margin-top: var(--s-3);
+  }
+  .pagehead .lead {
+    margin-top: var(--s-4);
+    max-width: 60ch;
+  }
   .legend {
     padding-block: var(--s-5) var(--s-7);
     border-block: 1px solid var(--ink-line);
@@ -236,18 +247,36 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
     display: grid;
     gap: var(--s-2);
   }
-  .legend__card--exact { border-color: color-mix(in oklab, var(--status-exact) 22%, rgba(255, 255, 255, 0.08)); border-top-color: color-mix(in oklab, var(--status-exact) 35%, rgba(255, 255, 255, 0.16)); }
-  .legend__card--estimated { border-color: color-mix(in oklab, var(--status-estimated) 22%, rgba(255, 255, 255, 0.08)); border-top-color: color-mix(in oklab, var(--status-estimated) 35%, rgba(255, 255, 255, 0.16)); }
+  .legend__card--exact {
+    border-color: color-mix(in oklab, var(--status-exact) 22%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--status-exact) 35%, rgba(255, 255, 255, 0.16));
+  }
+  .legend__card--estimated {
+    border-color: color-mix(in oklab, var(--status-estimated) 22%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--status-estimated) 35%, rgba(255, 255, 255, 0.16));
+  }
   .legend__card h3 {
     font-family: var(--font-display);
     color: var(--text-bright);
     font-size: 1.2rem;
-    font-variation-settings: "opsz" 36, "wght" 500;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 500;
   }
-  .legend__card p { color: var(--text-base); font-size: 0.92rem; }
+  .legend__card p {
+    color: var(--text-base);
+    font-size: 0.92rem;
+  }
 
-  .sec-head { display: grid; gap: var(--s-3); margin-bottom: var(--s-6); max-width: 64ch; }
-  .sec-head .lead { max-width: 60ch; }
+  .sec-head {
+    display: grid;
+    gap: var(--s-3);
+    margin-bottom: var(--s-6);
+    max-width: 64ch;
+  }
+  .sec-head .lead {
+    max-width: 60ch;
+  }
 
   .detected {
     padding-block: var(--s-8);
@@ -279,23 +308,38 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
     color: var(--text-bright);
     font-size: 1.05rem;
     margin-bottom: var(--s-2);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
   }
-  .caveats p { color: var(--text-base); }
+  .caveats p {
+    color: var(--text-base);
+  }
 
   @media (max-width: 880px) {
-    .legend__grid { grid-template-columns: 1fr; }
+    .legend__grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   .endcta--inline {
     padding-block: var(--s-9);
     text-align: center;
-    background:
-      radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
+    background: radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
   }
-  .endcta--inline h2 { margin-bottom: var(--s-3); }
-  .endcta--inline .lead { margin: 0 auto; }
-  .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta--inline h2 {
+    margin-bottom: var(--s-3);
+  }
+  .endcta--inline .lead {
+    margin: 0 auto;
+  }
+  .endcta__ctas {
+    display: flex;
+    justify-content: center;
+    gap: var(--s-3);
+    margin-top: var(--s-5);
+    flex-wrap: wrap;
+  }
   .endcta__inner {
     text-align: center;
     display: grid;
@@ -308,10 +352,11 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
   .accountrouting {
     padding-block: var(--s-8) var(--s-7);
     border-top: 1px solid var(--ink-line);
-    background:
-      radial-gradient(60% 50% at 10% 0%, rgba(255, 106, 26, 0.04), transparent 70%);
+    background: radial-gradient(60% 50% at 10% 0%, rgba(255, 106, 26, 0.04), transparent 70%);
   }
-  .accountrouting .sec-head { max-width: 68ch; }
+  .accountrouting .sec-head {
+    max-width: 68ch;
+  }
   .accountrouting__grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -346,7 +391,9 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
     font-family: var(--font-display);
     font-size: 1.15rem;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     letter-spacing: -0.014em;
     line-height: 1.18;
     text-wrap: balance;
@@ -385,6 +432,8 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
     color: var(--ember-bright);
   }
   @media (max-width: 880px) {
-    .accountrouting__grid { grid-template-columns: 1fr; }
+    .accountrouting__grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

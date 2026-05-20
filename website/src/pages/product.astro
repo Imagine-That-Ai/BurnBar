@@ -12,16 +12,16 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
   description="OpenBurnBar — what it actually does. Local tracking, cost and tokens, quota windows, smart insights, daemon, CLI, Hermes assistant, surfaces."
 >
   <section class="pagehead">
-    <div class="container pagehead__inner glass-pane">
+    <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Product</span>
-      <h1 class="pagehead__h">
-        Every agent, every model, every dollar — in one calm console.
-      </h1>
-      <p class="lead">
-        OpenBurnBar reads what your agents already leave behind on disk and turns it
-        into a coherent picture: today's burn, this week's pattern, this month's
-        budget, every session you ran, every quota window you're about to hit.
-      </p>
+      <h1 class="pagehead__h">Every agent, every model, every dollar — in one calm console.</h1>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          OpenBurnBar reads what your agents already leave behind on disk and turns it into a
+          coherent picture: today's burn, this week's pattern, this month's budget, every session
+          you ran, every quota window you're about to hit.
+        </p>
+      </div>
     </div>
   </section>
 
@@ -45,17 +45,18 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
         <span class="eyebrow eyebrow--ember">Tracking</span>
         <h2>Cost, tokens, quota — local and live.</h2>
         <p class="lead">
-          Numbers come from the vendor's own API or local logs. Confidence
-          is labeled on every row.
+          Numbers come from the vendor's own API or local logs. Confidence is labeled on every row.
         </p>
       </header>
       <ul class="featgroup__grid">
-        {FEATURES_BY_CATEGORY.tracking.map((f) => (
-          <li class="feat glass-pane">
-            <h3>{f.title}</h3>
-            <p>{f.blurb}</p>
-          </li>
-        ))}
+        {
+          FEATURES_BY_CATEGORY.tracking.map((f) => (
+            <li class="feat glass-pane">
+              <h3>{f.title}</h3>
+              <p>{f.blurb}</p>
+            </li>
+          ))
+        }
       </ul>
     </div>
   </section>
@@ -68,11 +69,10 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
         <h2>Same model in. Same model out. Two ways to choose it.</h2>
         <p class="lead">
           The same daemon ships two postures. <strong>Provider-Family Failover</strong>
-          protects your model identity and extends capacity across every account
-          in your library that carries it. <strong>Intelligent Model Router</strong>
-          researches candidates against Artificial Analysis, Terminal-Bench, and
-          Design Arena, then picks. Benchmarks are advisory signals — pins and
-          live quota always win.
+          protects your model identity and extends capacity across every account in your library that
+          carries it. <strong>Intelligent Model Router</strong>
+          researches candidates against Artificial Analysis, Terminal-Bench, and Design Arena, then picks.
+          Benchmarks are advisory signals — pins and live quota always win.
         </p>
       </header>
 
@@ -83,10 +83,9 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
             <h3>Provider-Family Failover</h3>
           </header>
           <p>
-            Pin an account. Add more accounts that <em>also carry that
-            model</em>. When the primary throttles, the runner-up serves the
-            next request — never a different model, never across the wire-format
-            family. If no account survives, the gateway returns a structured 503.
+            Pin an account. Add more accounts that <em>also carry that model</em>. When the primary
+            throttles, the runner-up serves the next request — never a different model, never across
+            the wire-format family. If no account survives, the gateway returns a structured 503.
           </p>
           <ul class="routing__bullets">
             <li>Model identity is preserved on every failover</li>
@@ -101,11 +100,12 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
             <h3>Intelligent Model Router</h3>
           </header>
           <p>
-            Hand the router a task. A daily board of language models researches
-            candidate models, BurnBar applies deterministic selection policy,
-            then the gateway picks the best available route, holds a runner-up,
-            and streams a <span class="mono">decision_reason</span> with every
-            pick. Daily board verdicts live at <a href="/router/daily">/router/daily</a>.
+            Hand the router a task. A daily board of language models researches candidate models,
+            BurnBar applies deterministic selection policy, then the gateway picks the best
+            available route, holds a runner-up, and streams a <span class="mono"
+              >decision_reason</span
+            > with every pick. Daily board verdicts live at <a href="/router/daily">/router/daily</a
+            >.
           </p>
           <ul class="routing__bullets">
             <li>Raw evidence score · stable selection score</li>
@@ -131,18 +131,20 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
         <span class="eyebrow eyebrow--mercury">Hermes</span>
         <h2>An assistant that knows your data.</h2>
         <p class="lead">
-          Two runtimes share one identity. Stateless per-turn against a CLI subprocess
-          for quick answers, or multi-turn against a local Hermes Gateway for
-          deeper sessions — both grounded in your own OpenBurnBar SQLite.
+          Two runtimes share one identity. Stateless per-turn against a CLI subprocess for quick
+          answers, or multi-turn against a local Hermes Gateway for deeper sessions — both grounded
+          in your own OpenBurnBar SQLite.
         </p>
       </header>
       <ul class="featgroup__grid">
-        {FEATURES_BY_CATEGORY.assistant.map((f) => (
-          <li class="feat feat--mercury glass-pane">
-            <h3>{f.title}</h3>
-            <p>{f.blurb}</p>
-          </li>
-        ))}
+        {
+          FEATURES_BY_CATEGORY.assistant.map((f) => (
+            <li class="feat feat--mercury glass-pane">
+              <h3>{f.title}</h3>
+              <p>{f.blurb}</p>
+            </li>
+          ))
+        }
       </ul>
     </div>
   </section>
@@ -154,18 +156,19 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
         <span class="eyebrow eyebrow--ember">Control plane</span>
         <h2>One daemon, every surface.</h2>
         <p class="lead">
-          The daemon owns provider routing, quota refresh, retrieval, projects,
-          missions, and a JSONL run journal you can replay. The CLI scripts it.
-          Every other surface speaks to it.
+          The daemon owns provider routing, quota refresh, retrieval, projects, missions, and a
+          JSONL run journal you can replay. The CLI scripts it. Every other surface speaks to it.
         </p>
       </header>
       <ul class="featgroup__grid">
-        {FEATURES_BY_CATEGORY.control.map((f) => (
-          <li class="feat glass-pane">
-            <h3>{f.title}</h3>
-            <p>{f.blurb}</p>
-          </li>
-        ))}
+        {
+          FEATURES_BY_CATEGORY.control.map((f) => (
+            <li class="feat glass-pane">
+              <h3>{f.title}</h3>
+              <p>{f.blurb}</p>
+            </li>
+          ))
+        }
       </ul>
     </div>
   </section>
@@ -190,30 +193,36 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
         <span class="eyebrow eyebrow--ember">The honest part</span>
         <h2>What it doesn't pretend.</h2>
         <p class="lead">
-          A clean console is built on what you choose to leave out as much as
-          what you choose to put in.
+          A clean console is built on what you choose to leave out as much as what you choose to put
+          in.
         </p>
       </header>
       <ul class="featgroup__grid">
-        {FEATURES_BY_CATEGORY.honesty.map((f) => (
-          <li class="feat glass-pane">
-            <h3>{f.title}</h3>
-            <p>{f.blurb}</p>
-          </li>
-        ))}
+        {
+          FEATURES_BY_CATEGORY.honesty.map((f) => (
+            <li class="feat glass-pane">
+              <h3>{f.title}</h3>
+              <p>{f.blurb}</p>
+            </li>
+          ))
+        }
       </ul>
     </div>
   </section>
 
   <section class="endcta endcta--inline">
-    <div class="container container--narrow endcta__inner glass-pane">
+    <div class="container container--narrow endcta__inner">
       <h2>Read it in code, not in marketing.</h2>
-      <p class="lead">
-        OpenBurnBar is MIT-licensed. The README, the architecture doc, the threat
-        model, the provider matrix, the changelog — all in the open.
-      </p>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          OpenBurnBar is MIT-licensed. The README, the architecture doc, the threat model, the
+          provider matrix, the changelog — all in the open.
+        </p>
+      </div>
       <div class="endcta__ctas">
-        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ember" href="/download"
+          >Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a
+        >
         <a class="btn btn--ghost" href="/providers">See provider matrix</a>
       </div>
     </div>
@@ -225,8 +234,6 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     padding-block: var(--s-9) var(--s-6);
   }
   .pagehead__inner {
-    padding: var(--s-7) var(--s-6);
-    border-radius: var(--r-xl);
     max-width: 960px;
     margin: 0 auto;
   }
@@ -246,8 +253,7 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     background: var(--ink-base);
   }
   .featgroup--mercury {
-    background:
-      radial-gradient(60% 60% at 100% 50%, rgba(214, 211, 223, 0.04), transparent 70%);
+    background: radial-gradient(60% 60% at 100% 50%, rgba(214, 211, 223, 0.04), transparent 70%);
   }
   .sec-head {
     display: grid;
@@ -276,10 +282,15 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     font-size: 1.1rem;
     font-family: var(--font-display);
     color: var(--text-bright);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     letter-spacing: -0.014em;
   }
-  .feat p { color: var(--text-base); font-size: 0.94rem; }
+  .feat p {
+    color: var(--text-base);
+    font-size: 0.94rem;
+  }
   .feat--mercury {
     border-color: color-mix(in oklab, var(--mercury-bright) 22%, rgba(255, 255, 255, 0.08));
     border-top-color: color-mix(in oklab, var(--mercury-bright) 35%, rgba(255, 255, 255, 0.16));
@@ -291,28 +302,45 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     gap: var(--s-4);
   }
   @media (max-width: 1080px) {
-    .featgroup__grid { grid-template-columns: repeat(2, 1fr); }
-    .surfaces__grid { grid-template-columns: repeat(2, 1fr); }
+    .featgroup__grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .surfaces__grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
   @media (max-width: 560px) {
-    .featgroup__grid { grid-template-columns: 1fr; }
-    .surfaces__grid { grid-template-columns: 1fr; }
+    .featgroup__grid {
+      grid-template-columns: 1fr;
+    }
+    .surfaces__grid {
+      grid-template-columns: 1fr;
+    }
   }
   .endcta--inline {
     padding-block: var(--s-9);
     text-align: center;
-    background:
-      radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
+    background: radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
   }
-  .endcta--inline h2 { margin-bottom: var(--s-3); }
-  .endcta--inline .lead { margin: 0 auto; }
-  .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+  .endcta--inline h2 {
+    margin-bottom: var(--s-3);
+  }
+  .endcta--inline .lead {
+    margin: 0 auto;
+  }
+  .endcta__ctas {
+    display: flex;
+    justify-content: center;
+    gap: var(--s-3);
+    margin-top: var(--s-5);
+    flex-wrap: wrap;
+  }
   .endcta__inner {
     text-align: center;
     display: grid;
     gap: var(--s-5);
     justify-items: center;
-    padding: var(--s-7) var(--s-6);
+    padding: var(--s-4) 0;
   }
 
   /* ─── routing ─── */
@@ -343,7 +371,9 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     border-color: color-mix(in oklab, var(--ember-core) 32%, rgba(255, 255, 255, 0.08));
     border-top-color: color-mix(in oklab, var(--ember-core) 45%, rgba(255, 255, 255, 0.16));
     background: rgba(20, 12, 10, 0.76);
-    box-shadow: 0 0 40px -15px rgba(255, 106, 26, 0.25), 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+    box-shadow:
+      0 0 40px -15px rgba(255, 106, 26, 0.25),
+      0 8px 32px 0 rgba(0, 0, 0, 0.45);
   }
   .routing__card--intelligent {
     border-color: color-mix(in oklab, var(--mercury-bright) 30%, rgba(255, 255, 255, 0.12));
@@ -361,7 +391,9 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     font-family: var(--font-display);
     font-size: 1.25rem;
     color: var(--text-bright);
-    font-variation-settings: "opsz" 36, "wght" 540;
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
     letter-spacing: -0.018em;
     line-height: 1.15;
   }
@@ -407,13 +439,17 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     font-family: var(--font-mono);
     font-size: 0.9em;
   }
-  .routing__card--intelligent .routing__bullets li::before { color: var(--mercury-bright); }
+  .routing__card--intelligent .routing__bullets li::before {
+    color: var(--mercury-bright);
+  }
   .routing__cta {
     margin-top: var(--s-5);
     display: flex;
     justify-content: flex-start;
   }
   @media (max-width: 960px) {
-    .routing__grid { grid-template-columns: 1fr; }
+    .routing__grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

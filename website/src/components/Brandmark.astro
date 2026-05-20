@@ -21,7 +21,10 @@ const { size = 28, withWordmark = true } = Astro.props;
   {
     withWordmark && (
       <span class="wordmark">
-        <span class="wordmark__pre">Open</span><span class="wordmark__post">BurnBar</span>
+        <>
+          <span class="wordmark__pre">Open</span>
+          <span class="wordmark__post">BurnBar</span>
+        </>
       </span>
     )
   }
@@ -36,7 +39,9 @@ const { size = 28, withWordmark = true } = Astro.props;
     letter-spacing: -0.018em;
     color: var(--text-bright);
     font-size: 1.08rem;
-    font-variation-settings: "opsz" 24, "wght" 540;
+    font-variation-settings:
+      "opsz" 24,
+      "wght" 540;
   }
   .brand:hover {
     color: var(--text-bright);
@@ -44,7 +49,9 @@ const { size = 28, withWordmark = true } = Astro.props;
   .brand__logo {
     border-radius: 22%;
     display: block;
-    transition: filter var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+    transition:
+      filter var(--dur-base) var(--ease-out),
+      transform var(--dur-base) var(--ease-out);
   }
   .brand:hover .brand__logo {
     filter: drop-shadow(0 0 12px rgba(255, 106, 26, 0.55));
@@ -56,10 +63,14 @@ const { size = 28, withWordmark = true } = Astro.props;
   }
   .wordmark__pre {
     color: var(--text-mute);
-    font-variation-settings: "opsz" 24, "wght" 420;
+    font-variation-settings:
+      "opsz" 24,
+      "wght" 420;
   }
   .wordmark__post {
     color: var(--text-bright);
-    font-variation-settings: "opsz" 24, "wght" 540;
+    font-variation-settings:
+      "opsz" 24,
+      "wght" 540;
   }
 </style>

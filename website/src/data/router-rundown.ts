@@ -16,13 +16,7 @@
 export const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
 
 /** Aligned with `ModelBenchmarkTaskCategory` in functions/src/types.ts. */
-export type TaskCategoryID =
-  | "coding"
-  | "terminal"
-  | "design"
-  | "analysis"
-  | "agent"
-  | "general";
+export type TaskCategoryID = "coding" | "terminal" | "design" | "analysis" | "agent" | "general";
 
 /** Aligned with `ModelBenchmarkSource` in functions/src/types.ts. */
 export type SourceID =
@@ -55,7 +49,7 @@ export const SOURCE_REGISTRY: Record<SourceID, SourceMeta> = {
     shortLabel: "AA",
     blurb: "Independent intelligence + coding indices, pricing, and TPS/TTFT samples.",
     logo: "/brand/sources/artificial-analysis.svg",
-    url: "https://artificialanalysis.ai/",
+    url: "https://artificialanalysis.ai/"
   },
   terminal_bench: {
     id: "terminal_bench",
@@ -63,7 +57,7 @@ export const SOURCE_REGISTRY: Record<SourceID, SourceMeta> = {
     shortLabel: "TB",
     blurb: "Public Terminal-Bench leaderboard, verified runs weighted higher.",
     logo: "/brand/sources/terminal-bench.png",
-    url: "https://www.tbench.ai/",
+    url: "https://www.tbench.ai/"
   },
   design_arena: {
     id: "design_arena",
@@ -71,7 +65,7 @@ export const SOURCE_REGISTRY: Record<SourceID, SourceMeta> = {
     shortLabel: "DA",
     blurb: "Pairwise design-task evals with Elo + win-rate, by arena and category.",
     logo: "/brand/sources/design-arena.png",
-    url: "https://www.designarena.ai/",
+    url: "https://www.designarena.ai/"
   },
   huggingface: {
     id: "huggingface",
@@ -79,7 +73,7 @@ export const SOURCE_REGISTRY: Record<SourceID, SourceMeta> = {
     shortLabel: "HF",
     blurb: "Public dataset leaderboards; used as Terminal-Bench's transport.",
     logo: "/brand/sources/huggingface.svg",
-    url: "https://huggingface.co/",
+    url: "https://huggingface.co/"
   },
   manual_fixture: {
     id: "manual_fixture",
@@ -87,7 +81,7 @@ export const SOURCE_REGISTRY: Record<SourceID, SourceMeta> = {
     shortLabel: "OBB",
     blurb: "Cached / hand-curated snapshot for sources without a live API.",
     logo: "/brand/sources/manual-fixture.svg",
-    url: "/router#sources",
+    url: "/router#sources"
   },
   cached_fixture: {
     id: "cached_fixture",
@@ -95,8 +89,8 @@ export const SOURCE_REGISTRY: Record<SourceID, SourceMeta> = {
     shortLabel: "CF",
     blurb: "Last-known-good snapshot used while live fetch is unavailable.",
     logo: "/brand/sources/manual-fixture.svg",
-    url: "/router#sources",
-  },
+    url: "/router#sources"
+  }
 };
 
 export const TASK_CATEGORIES: Array<{
@@ -107,33 +101,33 @@ export const TASK_CATEGORIES: Array<{
   {
     id: "coding",
     label: "Coding",
-    blurb: "Refactors, multi-file edits, repo-grounded code generation.",
+    blurb: "Refactors, multi-file edits, repo-grounded code generation."
   },
   {
     id: "terminal",
     label: "Terminal",
-    blurb: "Shell-loop agents that execute, observe, and self-correct.",
+    blurb: "Shell-loop agents that execute, observe, and self-correct."
   },
   {
     id: "design",
     label: "Design",
-    blurb: "Website / UI / SVG / slide generation evaluated head-to-head.",
+    blurb: "Website / UI / SVG / slide generation evaluated head-to-head."
   },
   {
     id: "analysis",
     label: "Analysis",
-    blurb: "Long-context reasoning, summarization, structured extraction.",
+    blurb: "Long-context reasoning, summarization, structured extraction."
   },
   {
     id: "agent",
     label: "Agent / Autopilot",
-    blurb: "Tool-use loops with memory, planning, and recovery.",
+    blurb: "Tool-use loops with memory, planning, and recovery."
   },
   {
     id: "general",
     label: "General",
-    blurb: "Mixed-intent chat / one-shot questions / catch-all routing.",
-  },
+    blurb: "Mixed-intent chat / one-shot questions / catch-all routing."
+  }
 ];
 
 /**

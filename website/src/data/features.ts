@@ -111,7 +111,7 @@ export const FEATURES: Feature[] = [
     id: "ios-companion",
     title: "iPhone & iPad — the rest of your screens",
     blurb:
-      "Quota Watch, Pulse, Streams, Hermes, Chart Studio. Live Activity on the lock screen. Siri shortcut: \"What's my burn today?\"",
+      'Quota Watch, Pulse, Streams, Hermes, Chart Studio. Live Activity on the lock screen. Siri shortcut: "What\'s my burn today?"',
     evidence: "OpenBurnBarMobile/; CHANGELOG.md:522-538",
     category: "surface"
   },
