@@ -255,6 +255,7 @@ final class MacFileTransferService: ObservableObject {
                      .mediaMirrorStop,
                      .mediaMirrorDisplaySelect,
                      .mediaPresenceHeartbeat,
+                     .mediaLongTermReferenceAck,
                      .mediaCallInvite,
                      .mediaCallAck,
                      .mediaStreamFrame:
@@ -337,10 +338,13 @@ final class MacFileTransferService: ObservableObject {
 }
 
 /// Sends encoded Mercury media frames over the already-live `media.control`
-/// stream that iOS opened to the Mac. This is the v1 mirror transport used by
-/// phone-initiated "Ask to Mirror": approval stays on the control stream, and
-/// accepted video frames follow as `media.stream.frame` envelopes.
+/// stream that iOS opened to the Mac. Approval stays on the control stream,
+/// and accepted video frames follow as `media.stream.frame` envelopes. When
+/// both peers negotiate v2, the base64 payload carries the v2 binary envelope;
+/// v1 remains the fallback for older viewers and non-video control surfaces.
 final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
+
     enum SinkError: Error, LocalizedError {
         case streamUnavailable
 
@@ -357,6 +361,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
     private let connectionID: String
     private let streamClass: MediaStreamClass
     private let codec = MediaPacketCodec()
+    private let frameV2Codec = MediaFrameV2Codec()
 
     init(
         stream: any IrohRelayStream,
@@ -406,6 +411,28 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
             // `MediaStreamSink.write` is intentionally fire-and-forget. The
             // session coordinator owns teardown; a failed send drops this
             // frame without crashing the host app.
+            Self.log.error("control_stream_media_frame_send_failed version=v1 connectionID=\(self.connectionID, privacy: .public) frameIndex=\(frame.frameIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func write(frameV2: MediaFrameV2) async {
+        do {
+            let encoded = try frameV2Codec.encode(frameV2, negotiatedVersion: .v2)
+            let outbound = HermesRealtimeRelayFrame(
+                type: .mediaStreamFrame,
+                uid: uid,
+                connectionId: connectionID,
+                media: HermesRealtimeRelayMediaPayload(
+                    streamClass: streamClass.rawValue,
+                    encodedFrameBase64: encoded.base64EncodedString()
+                )
+            )
+            try await stream.send(outbound)
+        } catch {
+            // `MediaStreamSink.write` is intentionally fire-and-forget. The
+            // session coordinator owns teardown; a failed send drops this
+            // frame without crashing the host app.
+            Self.log.error("control_stream_media_frame_send_failed version=v2 connectionID=\(self.connectionID, privacy: .public) frameIndex=\(frameV2.frameIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
         }
     }
 

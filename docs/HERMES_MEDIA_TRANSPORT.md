@@ -4,9 +4,36 @@ Architecture spec for the Mac ⇄ iPhone/iPad media capabilities (file transfer,
 
 The plan of record — including locked decisions, capability matrix, premium gating, privacy posture, observability, phasing, tests, and risks — lives at `plans/2026-05-15-mercury-media-master-plan.md`. **Read that first.** This document is the operator/engineer reference: it stays narrow on transport, codec, frame layout, and on-disk contract. Surfaces, copy, and SKU policy live in the plan.
 
+The Mercury Mirror streaming upgrade is evidence-gated by
+[`docs/runbooks/mercury-streaming-evidence-gates.md`](runbooks/mercury-streaming-evidence-gates.md).
+Do not ship AV1-first routing, video datagrams, RPS recovery, FEC, temporal
+layers, or ROI hints until the corresponding gate is green. MediaFrame v2 is
+allowed only when both live peers advertise v2 support and the receiver has the
+dual-stack decode path.
+
 ## Status
 
-Phase 1 (iroh-blobs file send/receive foundation) is scaffolded. Phases 2-7 are not started. Live status tracked in `docs/runbooks/media-rollout-status.md`.
+Phase 1 (iroh-blobs file send/receive foundation) is scaffolded, and the
+Phase 8 mirror control frames are live on the existing `media.control` stream.
+As of the 2026-05-20 Mercury Mirror streaming upgrade, both Apple and Android
+surfaces can advertise optional streaming capability snapshots, and the Mac
+screen-share starter routes through the evidence-gated codec policy.
+
+Live screen-share transport is dual-stack and intentionally conservative:
+
+- `MediaFrame` v1 remains the compatibility floor.
+- Mac, iOS, and Android live mirror requests/presence heartbeats advertise
+  v1+v2 frame support on paths that have a dual-stack receiver. When both peers
+  advertise v2, the Mac sender emits MediaFrame v2 envelopes on the existing
+  `media.stream.frame` control-stream payload.
+- MediaFrame v2 metadata carries the selected codec and any VideoToolbox LTR
+  acknowledgement token returned on the encoded sample. iOS and Android ACK the
+  token only after their `VideoReceivePipeline` accepts the frame for decode.
+- Video datagrams, temporal layers, FEC, and ROI hints stay behind the evidence
+  gates in
+  `docs/runbooks/mercury-streaming-evidence-gates.md`.
+
+Live status tracked in `docs/runbooks/media-rollout-status.md`.
 
 ## Stream classes
 
@@ -23,6 +50,7 @@ All media rides the same iroh QUIC mesh and the same `openburnbar/1` ALPN as Her
 | `media.mirror.request` | 1 per request | iOS → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
 | `media.mirror.ack` | 1 per request | Mac → iOS | Reliable, on existing control stream (JSON envelope) | Phase 8 |
 | `media.presence.heartbeat` | 1 per 60s | iOS → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
+| `media.ltr.ack` | 0..n per mirror session | Receiver → encoder | Reliable, on existing control stream (JSON envelope) | Gated streaming substrate |
 
 ## Phase 1 — file transfer over iroh-blobs
 
@@ -87,9 +115,26 @@ The iOS user taps "Ask to Mirror" in the Mercury Live sheet. The frame carries:
   "media": {
     "mirrorRequest": {
       "requestId": "req_abc",
-      "requestedAt": 1700000000,
+      "requestedAt": "2026-05-20T23:30:00.000Z",
       "requesterDisplayName": "Alberto's iPhone",
-      "streamClass": "media.screen.video"
+      "streamClass": "media.screen.video",
+      "streamingCapabilities": {
+        "source": "apple-videotoolbox",
+        "mediaFrameVersions": { "supportsV1": true, "supportsV2": false },
+        "videoDatagrams": { "maxPayloadBytes": null },
+        "codecCapabilities": [
+          {
+            "codec": "hevc",
+            "canEncode": true,
+            "canDecode": true,
+            "hardwareAccelerated": true,
+            "lowLatencyEncode": true,
+            "longTermReference": true,
+            "temporalLayers": false,
+            "screenContentCoding": false
+          }
+        ]
+      }
     }
   }
 }
@@ -97,6 +142,10 @@ The iOS user taps "Ask to Mirror" in the Mercury Live sheet. The frame carries:
 
 - `requestId`: iOS-generated UUID, echoed in the ack for correlation.
 - `streamClass`: which `MediaStreamClass` the requester wants (v1 always `media.screen.video`).
+- `streamingCapabilities` (optional): requester-side Phase 0/2 capability
+  snapshot. Older clients omit it. The Mac uses this request snapshot first,
+  then falls back to the last presence heartbeat, then falls back to existing
+  v1 behavior.
 - The Mac arbitrates via `MercuryRouter`, consulting cooldown and consent state before ringing the user.
 
 ### `media.mirror.ack` (Mac → iOS)
@@ -136,23 +185,91 @@ Sent every 60s once the control stream is `.live`. Fire-and-forget (no ack):
   "connectionId": "c1",
   "media": {
     "presence": {
-      "sentAt": 1700000100,
+      "sentAt": "2026-05-20T23:31:00.000Z",
       "deviceDisplayName": "Alberto's iPhone",
-      "capabilities": ["mirror.viewer", "file.send", "file.receive", "call.receive"]
+      "displayName": "Alberto's iPhone",
+      "capabilities": ["mirror.viewer", "file.send", "file.receive", "call.receive"],
+      "peerDeviceId": "iphone-1",
+      "streamingCapabilities": {
+        "source": "apple-videotoolbox",
+        "mediaFrameVersions": { "supportsV1": true, "supportsV2": false },
+        "videoDatagrams": { "maxPayloadBytes": null },
+        "codecCapabilities": []
+      }
     }
   }
 }
 ```
 
 - `capabilities`: string array of `MercuryPeer.Feature` raw values. Unknown strings are silently dropped by `MercuryPeer.Feature` decoding so future capabilities don't break old peers.
+- `deviceDisplayName` is canonical. `displayName` is still emitted and decoded
+  as an Android compatibility alias.
+- `peerDeviceId` (optional): lets the receiver associate the latest capability
+  snapshot with the active control-stream peer.
+- `streamingCapabilities` (optional): same wire shape as mirror requests. The
+  Mac stores the latest snapshot and uses it if a later mirror request omits
+  request-local capabilities.
 - The Mac `MercuryRouter.handleFrame` feeds the payload into `MercuryPeerSource.ingestHeartbeat` so the popover's "Call iPhone" / "Send File" buttons gate on online state.
+
+### `media.ltr.ack` (receiver → encoder)
+
+Receiver-side decode success for a v2 frame can acknowledge the long-term
+reference token carried in that frame's metadata:
+
+```json
+{
+  "type": "media.ltr.ack",
+  "uid": "u1",
+  "connectionId": "c1",
+  "requestId": "req_abc",
+  "media": {
+    "longTermReferenceAck": {
+      "requestId": "req_abc",
+      "tokenValue": 9001,
+      "decodedAt": "2026-05-20T23:32:00.000Z"
+    }
+  }
+}
+```
+
+- iOS emits the ACK only after `VideoReceivePipeline` successfully submits the
+  v2 frame to VideoToolbox decode.
+- Mac control-stream dispatch routes the ACK through `MercuryRouter` to the
+  active `MediaSessionCoordinator`, which forwards the raw token value to
+  `VideoEncoder`.
+- Live mirror can now carry the token metadata on negotiated v2 screen-share
+  frames. RPS policy is still evidence-gated, so peers must fall back to IDR
+  refresh when v2/LTR is unavailable or decode does not ACK a token.
 
 ### Ordering rules
 
 - Mirror request and ack are **synchronous request-response**: iOS waits for the ack before presenting the viewer.
 - Cooldown is **server-authoritative**: the Mac rejects requests during cooldown; iOS never pre-emptively enforces it.
-- Presence is **unidirectional**: only iOS sends heartbeats; the Mac is always assumed online when the control stream is live.
+- Presence is **bidirectionally parseable** but currently phone-originated for
+  the mirror viewer workflow. Mac-originated heartbeats use the same optional
+  capability fields when sent.
 - All three ride the same reliable stream as file-transfer traffic. Ordering within stream is preserved.
+
+## Mercury streaming capability handshake
+
+The streaming snapshot wire structs live in
+`OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift`
+and mirror Android DTOs in
+`android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/HermesRealtimeRelayFrame.kt`.
+Conversion helpers bridge them to platform-native `MercuryStreamingCapabilitySnapshot`
+models on Swift and Kotlin.
+
+Compatibility rules:
+
+- All snapshot fields are optional at the control-frame level.
+- Missing snapshot data means "keep v1 behavior", not "enable the new stack".
+- Dates decode from both Swift JSONEncoder numeric dates and ISO-8601 strings;
+  custom-encoded mirror/presence dates are emitted as ISO-8601 strings.
+- Android's legacy `displayName` heartbeat key remains accepted.
+- Mac, iOS, and Android advertise v1+v2 only on live paths that can send or
+  receive the v2 envelope. Older peers and unsupported paths remain v1.
+- v2 is selected only when both peers advertise support; otherwise the sender
+  writes the v1 `MediaFrame` payload.
 
 ## Cross-references
 

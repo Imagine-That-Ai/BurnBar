@@ -36,6 +36,7 @@ struct RootTabView: View {
     @State private var missionConsoleFABOffset: CGSize = .zero
     @State private var isMissionConsolePresented = false
     @State private var isHermesKeyboardVisible = false
+    @State private var isCloudStoreChromeHidden = false
     /// Shared OpenBurnBar Cloud / Hosted Quota Sync store, hoisted here so a
     /// single StoreKit observer feeds the Settings row, the Pulse upsell
     /// banner, and the dedicated `CloudStoreView`.
@@ -69,22 +70,25 @@ struct RootTabView: View {
                                   ?? authStore.currentIdentity?.email,
                     isCloudMember: subscriptionStore.isActive
                 )
-                .opacity(isHermesKeyboardVisible ? 0 : 1)
+                .opacity(isHermesKeyboardVisible || isCloudStoreChromeHidden ? 0 : 1)
                 .animation(.easeInOut(duration: 0.2), value: isHermesKeyboardVisible)
-                .allowsHitTesting(!isHermesKeyboardVisible)
+                .animation(.easeInOut(duration: 0.2), value: isCloudStoreChromeHidden)
+                .allowsHitTesting(!isHermesKeyboardVisible && !isCloudStoreChromeHidden)
             }
 
             // Floating Chart Studio button — only visible while Studio is
             // minimized. Sits above the nav tray, follows the user across
             // tabs.
-            ChartStudioFloatingButton(presenter: studioPresenter)
+            if !isCloudStoreChromeHidden {
+                ChartStudioFloatingButton(presenter: studioPresenter)
+            }
 
             // Floating Mission Console launcher — sibling to Chart Studio's
             // FAB. Anchored bottom-LEFT by default so the two FABs don't
             // collide. Hidden when Chart Studio is fullscreen.
             MobileMissionFAB(
                 host: missionConsoleHost,
-                isVisible: studioPresenter.mode != .fullscreen,
+                isVisible: studioPresenter.mode != .fullscreen && !isCloudStoreChromeHidden,
                 anchorOffset: $missionConsoleFABOffset
             ) {
                 isMissionConsolePresented = true
@@ -108,6 +112,7 @@ struct RootTabView: View {
         .environment(\.motionStore, motionStore)
         .environment(\.chartStudioPresenter, studioPresenter)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
+        .environment(\.mobileAuthStore, authStore)
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
@@ -137,6 +142,9 @@ struct RootTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
             isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
+            isCloudStoreChromeHidden = notification.object as? Bool ?? false
         }
     }
 
@@ -208,7 +216,7 @@ struct RootTabView: View {
                 switch route {
                 case .sync: CloudSyncDetailsView(syncStore: syncHealthStore)
                 case .settings: SettingsHubView(authStore: authStore)
-                case .devices:  iPadDevicesSettingsView(hermesService: hermesService)
+                case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
                 case .providers: ProviderConnectionsView(showsDoneButton: false)
                 case .computerUse: AgentWatchScreen(
                     authUID: authStore.currentIdentity?.uid,

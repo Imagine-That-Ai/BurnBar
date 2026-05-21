@@ -1,5 +1,6 @@
 package com.openburnbar.ui.square
 
+import android.content.SharedPreferences
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -62,6 +63,7 @@ import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.ui.components.AuroraBackdrop
 import com.openburnbar.ui.theme.AuroraColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -94,6 +96,7 @@ import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.CLIAgentMessage
 import com.openburnbar.data.square.CLIAgentSessionRecord
+import com.openburnbar.data.square.MercuryPairedMacTilePreference
 import com.openburnbar.data.square.PinnedAgentGridConfig
 import com.openburnbar.data.square.ThreadInboxItem
 import com.openburnbar.data.square.ThreadInboxStore
@@ -118,7 +121,7 @@ import java.util.UUID
 fun HermesSquareScreen(
     onOpenLegacyRuntime: (AssistantRuntimeID) -> Unit = {},
     onOpenBrandZone: (String) -> Unit = {},
-    onOpenPairedMac: () -> Unit = {}
+    onOpenPairedMac: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val registry = remember { AgentIdentityRegistry.shared() }
@@ -155,6 +158,25 @@ fun HermesSquareScreen(
         pinnedPrefs.edit().putString(PinnedAgentGridConfig.SHARED_PREFS_KEY, next.toJsonString()).apply()
     }
 
+    val mercuryTilePrefs = remember(context) {
+        context.applicationContext.getSharedPreferences(
+            MercuryPairedMacTilePreference.PREFS_NAME,
+            android.content.Context.MODE_PRIVATE
+        )
+    }
+    var mercuryPinnedTileEnabled by remember(context) {
+        mutableStateOf(MercuryPairedMacTilePreference.isEnabled(context))
+    }
+    DisposableEffect(mercuryTilePrefs) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == MercuryPairedMacTilePreference.ENABLED_KEY) {
+                mercuryPinnedTileEnabled = MercuryPairedMacTilePreference.isEnabled(context)
+            }
+        }
+        mercuryTilePrefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { mercuryTilePrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     val flags = remember(context) { com.openburnbar.data.square.HermesSquareFeatureFlags.shared(context) }
     var query by remember { mutableStateOf("") }
     var showDiscover by remember { mutableStateOf(false) }
@@ -186,12 +208,25 @@ fun HermesSquareScreen(
         }
     }
 
-    LaunchedEffect(hermesConnections) {
+    LaunchedEffect(hermesConnections, mercuryPinnedTileEnabled) {
+        if (!mercuryPinnedTileEnabled) {
+            if (pinned.hasPairedMacPin()) {
+                persistPinned(pinned.removingPairedMacPins())
+            }
+            return@LaunchedEffect
+        }
+
         val mac = AgentIdentity.preferredPairedMacConnection(hermesConnections)
         if (mac != null) {
             val identity = registry.upsertPairedMac(mac)
-            if (!pinned.pinnedURIs.contains(identity.id)) {
-                persistPinned(pinned.pinningPairedMac(identity.id))
+            val next = pinned.pinningPairedMac(identity.id)
+            if (next != pinned) {
+                persistPinned(next)
+            }
+        } else if (!pinned.hasPairedMacPin()) {
+            val next = pinned.pinningPairedMac(PinnedAgentGridConfig.DEFAULT_PAIRED_MAC_URI)
+            if (next != pinned) {
+                persistPinned(next)
             }
         }
     }
@@ -382,7 +417,7 @@ fun HermesSquareScreen(
                             val runtime = registry.identity(uri)?.runtimeID
                             when {
                                 uri.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX) -> {
-                                    onOpenPairedMac()
+                                    onOpenPairedMac(uri.removePrefix(AgentIdentity.PAIRED_MAC_URI_PREFIX))
                                 }
                                 runtime != null -> {
                                     onOpenLegacyRuntime(runtime)

@@ -31,13 +31,6 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         /// not pin quota UI to stale percentages.
         static let maxSnapshotAge: TimeInterval = 15 * 60
 
-        /// Maximum age for a stale statusline snapshot to be used as a
-        /// fallback on the Nest Hub / dashboard. After this threshold the data
-        /// is too old to be meaningful — the 5h window has long since rolled
-        /// over — and the adapter returns unavailable instead. Prevents the
-        /// "shows data from 5 days ago" failure mode where a one-time bridge
-        /// write pins stale percentages indefinitely.
-        static let maxStaleFallbackAge: TimeInterval = 12 * 3600
     }
 
     /// Anthropic's published 5-hour / 7-day token allowances per plan
@@ -202,26 +195,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         )) ?? JSONLTokenWindows(fiveHourTokens: 0, sevenDayTokens: 0, latestTimestamp: nil, filesScanned: 0)
 
         if jsonlWindows.fiveHourTokens > 0 || jsonlWindows.sevenDayTokens > 0 {
-            return makeJSONLSnapshot(
-                jsonlWindows: jsonlWindows,
-                credentials: workingCredentials,
-                bridgeStatus: postInstallStatus
-            )
-        }
-
-        // JSONL scanned local Claude files but found zero token activity
-        // in the rolling 5h / 7d windows. Surface a JSONL-derived
-        // snapshot anyway so the Nest Hub paints full-headroom bars
-        // ("0% used · resets in 5h") instead of going blank. This is
-        // the truthful state — we have no evidence of usage in the
-        // current windows, so headroom is full until the user runs
-        // claude again.
-        if jsonlWindows.filesScanned > 0 {
-            return makeJSONLSnapshot(
-                jsonlWindows: jsonlWindows,
-                credentials: workingCredentials,
-                bridgeStatus: postInstallStatus
-            )
+            return makeJSONLSnapshot(jsonlWindows: jsonlWindows, credentials: workingCredentials, bridgeStatus: postInstallStatus)
         }
 
         if workingCredentials == nil,
@@ -376,7 +350,6 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         guard status.state == .ready,
               let lastPayloadAt = status.lastPayloadAt,
               !Self.isFreshStatuslineSnapshot(lastPayloadAt),
-              now.timeIntervalSince(lastPayloadAt) <= StatuslinePolicy.maxStaleFallbackAge,
               let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
               let rateLimitsDict = payload["rate_limits"] as? [String: Any] else {
             return nil
@@ -421,7 +394,6 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     ) -> ProviderQuotaSnapshot {
         let now = Date()
         let calendar = Calendar.current
-        let hasRecentActivity = jsonlWindows.fiveHourTokens > 0 || jsonlWindows.sevenDayTokens > 0
         let caps = inferredCaps(from: credentials)
 
         var buckets: [ProviderQuotaBucket] = []
@@ -434,13 +406,6 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 cap: caps?.fiveHourTokens,
                 resetsAt: calendar.date(byAdding: .hour, value: 5, to: now)
             ))
-        } else {
-            buckets.append(emptyHeadroomBucket(
-                key: "claude-five-hour-jsonl",
-                label: "5-hour window",
-                windowKind: .rollingHours,
-                resetsAt: calendar.date(byAdding: .hour, value: 5, to: now)
-            ))
         }
         if jsonlWindows.sevenDayTokens > 0 {
             buckets.append(jsonlBucket(
@@ -451,13 +416,6 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 cap: caps?.sevenDayTokens,
                 resetsAt: calendar.date(byAdding: .day, value: 7, to: now)
             ))
-        } else {
-            buckets.append(emptyHeadroomBucket(
-                key: "claude-seven-day-jsonl",
-                label: "7-day window",
-                windowKind: .rollingDays,
-                resetsAt: calendar.date(byAdding: .day, value: 7, to: now)
-            ))
         }
 
         let confidence: ProviderQuotaConfidence = caps != nil ? .estimated : .exact
@@ -465,15 +423,11 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let bridgeNudge = bridgeStatus.state == .ready
             ? ""
             : " Install OpenBurnBar's status line bridge for exact percentages."
-        let message: String = if hasRecentActivity {
-            "Token counts from \(jsonlWindows.filesScanned) local Claude project file(s).\(planSuffix)\(bridgeNudge)"
-        } else {
-            "No Claude Code activity in the last 5h / 7d (\(jsonlWindows.filesScanned) project file(s) scanned). Full headroom assumed — run any Claude prompt to capture live percentages.\(bridgeNudge)"
-        }
+        let message = "Token counts from \(jsonlWindows.filesScanned) local Claude project file(s).\(planSuffix)\(bridgeNudge)"
 
         return ProviderQuotaSnapshot(
             provider: .claudeCode,
-            fetchedAt: hasRecentActivity ? (jsonlWindows.latestTimestamp ?? Date()) : Date(),
+            fetchedAt: jsonlWindows.latestTimestamp ?? Date(),
             source: .localSession,
             confidence: confidence,
             managementURL: "https://claude.ai/settings/usage",
@@ -504,31 +458,6 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             resetsAt: resetsAt,
             unit: .tokens,
             isEstimated: cap != nil
-        )
-    }
-
-    /// Synthetic 0%-used bucket for windows where no JSONL activity was
-    /// observed. Lets the Nest Hub paint a full-headroom bar ("0% used")
-    /// instead of dropping the bucket entirely — surfacing the truth
-    /// (we have no evidence of usage in this rolling window) without
-    /// leaving the card empty.
-    private func emptyHeadroomBucket(
-        key: String,
-        label: String,
-        windowKind: ProviderQuotaWindowKind,
-        resetsAt: Date?
-    ) -> ProviderQuotaBucket {
-        ProviderQuotaBucket(
-            key: key,
-            label: label,
-            windowKind: windowKind,
-            usedValue: 0,
-            limitValue: 100,
-            remainingValue: 100,
-            usedPercent: 0,
-            resetsAt: resetsAt,
-            unit: .percent,
-            isEstimated: true
         )
     }
 

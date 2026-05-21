@@ -2,7 +2,7 @@ import SwiftUI
 import OpenBurnBarCore
 
 struct iPadDevicesSettingsView: View {
-    @State private var store = DevicesStore()
+    @Bindable var store: DevicesStore
     @State private var smartHub = SmartHubStore()
     @State private var newName = ""
     @State private var showRenameSheet = false
@@ -18,7 +18,8 @@ struct iPadDevicesSettingsView: View {
     /// the rest of the screen.
     let hermesService: HermesService?
 
-    init(hermesService: HermesService? = nil) {
+    init(store: DevicesStore, hermesService: HermesService? = nil) {
+        self.store = store
         self.hermesService = hermesService
     }
 
@@ -327,7 +328,10 @@ struct iPadDevicesSettingsView: View {
 
     private var duplicatesSection: some View {
         Section {
-            ForEach(store.staleDuplicates, id: \.id) { device in
+            let duplicates = store.staleDuplicates
+            let preview = Array(duplicates.prefix(8))
+
+            ForEach(preview, id: \.id) { device in
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(device.displayName)
@@ -345,10 +349,15 @@ struct iPadDevicesSettingsView: View {
                     trustBadge(for: device.trustState)
                 }
             }
+            if duplicates.count > preview.count {
+                Text("\(duplicates.count - preview.count) more stale copies will be removed by cleanup.")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
             Button(role: .destructive) {
                 showCleanupConfirmation = true
             } label: {
-                Label("Clean up \(store.staleDuplicates.count) duplicates", systemImage: "sparkles")
+                Label("Clean up \(duplicates.count) duplicates", systemImage: "sparkles")
                     .font(MobileTheme.Typography.body)
             }
         } header: {

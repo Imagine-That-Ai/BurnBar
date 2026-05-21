@@ -145,6 +145,21 @@
             </intent-filter>
         </service>
 
+        <!-- BurnBar Live Wallpaper — data-driven swarm behind the home screen.
+             Particles colored by provider usage from BurnBarWidgetSnapshotStore. -->
+        <service
+            android:name=".wallpaper.BurnBarWallpaperService"
+            android:exported="true"
+            android:label="@string/wallpaper_label"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/burnbar_wallpaper" />
+        </service>
+
         <activity
             android:name=".menubar.QuickGlanceActivity"
             android:exported="true"

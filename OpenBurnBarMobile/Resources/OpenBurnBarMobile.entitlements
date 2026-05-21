@@ -9,6 +9,12 @@
         <string>Default</string>
     </array>
 
+    <!-- Firebase App Check release attestation. App Attest is the production
+         provider; without this entitlement, enforced Firestore can reject
+         TestFlight/App Store builds before security rules run. -->
+    <key>com.apple.developer.devicecheck.appattest-environment</key>
+    <string>production</string>
+
     <!-- Keychain access group MUST share the AppIdentifierPrefix with the
          build's actual bundle identifier. The escrow key
          in `iOSDeviceKeypair.swift` writes to Keychain via this group. -->

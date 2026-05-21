@@ -1,6 +1,6 @@
 import SwiftUI
-import AVKit
-import MediaPlayer
+@preconcurrency import AVKit
+@preconcurrency import MediaPlayer
 import OpenBurnBarMedia
 import OpenBurnBarCore
 
@@ -34,14 +34,18 @@ struct ScreenShareViewerView: View {
     let controlStatus: ScreenSharePhoneControlStatus
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
-    let sendTapIntent: (Double, Double) -> Void
+    let streamPhase: MediaControlStreamCoordinator.Phase
+    let onForceReconnect: () -> Void
+    let onRetryRequest: () -> Void
+    let sendTapIntent: (Double, Double, Int) -> Void
     let sendScrollIntent: (Double, Double, Double, Double, String?) -> Void
     let sendPointerMoveIntent: (Double, Double) -> Void
-    let sendPointerClickIntent: () -> Void
+    let sendPointerClickIntent: (Int) -> Void
     let sendTextIntent: (String) -> Void
     let sendShortcutIntent: (String, [String]) -> Void
     let onSelectDisplay: (String) -> Void
     let onClose: () -> Void
+    let usePremiumSOTAUX: Bool
     @State private var statsVisible: Bool = false
     @State private var viewport = ScreenShareViewportState()
     @State private var interactionMode: ScreenShareInteractionMode = .view
@@ -55,12 +59,18 @@ struct ScreenShareViewerView: View {
     @State private var hardwareScrollEnabled = false
     @State private var trackpadActive = false
     @State private var trackpadVisible = false
-    @State private var cursorNormalized = CGPoint(x: 0.5, y: 0.5)
-    @State private var cursorSize: CGFloat = 26
-    @State private var cursorStyle: MirrorCursorStyle = .mercury
+    @State private var panelCollapsed = false
+    @State private var controlPanTranslation: CGSize = .zero
     @State private var tapFeedbackPoint: CGPoint?
     @State private var lastControlClickPoint: CGPoint?
+    @State private var controlPressStartedAt: Date?
+    @State private var tapCluster = ScreenShareTapCluster()
+    @State private var pendingDoubleTapTask: Task<Void, Never>?
+    @State private var cursorPoint: CGPoint?
+    @State private var cursorSize: CGFloat = 24
+    @State private var cursorStyle: MirrorCursorStyle = .mercury
     @GestureState private var magnification: CGFloat = 1
+    @GestureState private var controlMagnification: CGFloat = 1
     @GestureState private var dragTranslation: CGSize = .zero
     @FocusState private var typingFocused: Bool
 
@@ -70,10 +80,14 @@ struct ScreenShareViewerView: View {
         controlStatus: ScreenSharePhoneControlStatus = .unavailable("Phone control is not connected."),
         displays: [HermesRealtimeRelayDisplayDescriptor] = [],
         selectedDisplayId: String? = nil,
-        sendTapIntent: @escaping (Double, Double) -> Void = { _, _ in },
+        streamPhase: MediaControlStreamCoordinator.Phase = .live,
+        usePremiumSOTAUX: Bool = false,
+        onForceReconnect: @escaping () -> Void = {},
+        onRetryRequest: @escaping () -> Void = {},
+        sendTapIntent: @escaping (Double, Double, Int) -> Void = { _, _, _ in },
         sendScrollIntent: @escaping (Double, Double, Double, Double, String?) -> Void = { _, _, _, _, _ in },
         sendPointerMoveIntent: @escaping (Double, Double) -> Void = { _, _ in },
-        sendPointerClickIntent: @escaping () -> Void = {},
+        sendPointerClickIntent: @escaping (Int) -> Void = { _ in },
         sendTextIntent: @escaping (String) -> Void = { _ in },
         sendShortcutIntent: @escaping (String, [String]) -> Void = { _, _ in },
         onSelectDisplay: @escaping (String) -> Void = { _ in },
@@ -84,6 +98,10 @@ struct ScreenShareViewerView: View {
         self.controlStatus = controlStatus
         self.displays = displays
         self.selectedDisplayId = selectedDisplayId
+        self.streamPhase = streamPhase
+        self.usePremiumSOTAUX = usePremiumSOTAUX
+        self.onForceReconnect = onForceReconnect
+        self.onRetryRequest = onRetryRequest
         self.sendTapIntent = sendTapIntent
         self.sendScrollIntent = sendScrollIntent
         self.sendPointerMoveIntent = sendPointerMoveIntent
@@ -98,10 +116,11 @@ struct ScreenShareViewerView: View {
         ZStack(alignment: .topTrailing) {
             GeometryReader { proxy in
                 let visibleViewport = viewport.preview(
-                    magnification: magnification,
-                    translation: dragTranslation,
+                    magnification: magnification * controlMagnification,
+                    translation: dragTranslation + controlPanTranslation,
                     in: proxy.size
                 )
+                let contentRect = renderedContentRect(in: proxy.size)
 
                 DisplayLayerHost(coordinator: coordinator)
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -114,7 +133,7 @@ struct ScreenShareViewerView: View {
                         statsVisible.toggle()
                     }
                     .onTapGesture(count: 2) {
-                        guard interactionMode == .view else { return }
+                        guard interactionMode != .trackpad else { return }
                         withAnimation(.snappy) {
                             viewport.toggleQuickZoom(in: proxy.size)
                         }
@@ -127,16 +146,30 @@ struct ScreenShareViewerView: View {
                     }
                     .animation(.snappy, value: viewport)
 
+                if coordinator.displayAspectRatio == nil || streamPhase != .live {
+                    StreamStateOverlay(
+                        phase: streamPhase,
+                        isAwaitingFrame: coordinator.displayAspectRatio == nil,
+                        usePremiumSOTAUX: usePremiumSOTAUX,
+                        onForceReconnect: onForceReconnect,
+                        onRetryRequest: onRetryRequest,
+                        onClose: onClose
+                    )
+                    .transition(.opacity)
+                }
+
                 if interactionMode == .control, controlStatus.isLive {
                     Color.clear
                         .contentShape(Rectangle())
-                        .gesture(controlSurfaceGesture(in: proxy.size, viewport: visibleViewport))
+                        .gesture(controlSurfaceGesture(in: proxy.size, contentRect: contentRect, viewport: visibleViewport))
+                        .simultaneousGesture(controlMagnifyGesture(in: proxy.size))
                         .accessibilityLabel("Mac screen control surface")
                 }
 
                 if interactionMode == .trackpad, controlStatus.isLive {
                     TrackpadGlassSurface(
                         isVisible: trackpadVisible || trackpadActive,
+                        usePremiumSOTAUX: usePremiumSOTAUX,
                         onActiveChange: { active in
                             withAnimation(.snappy) {
                                 trackpadActive = active
@@ -144,7 +177,8 @@ struct ScreenShareViewerView: View {
                             }
                         },
                         onMove: { delta in
-                            moveCursorByTrackpadDelta(delta, in: proxy.size, viewport: visibleViewport)
+                            moveLocalCursorByTrackpadDelta(delta, in: proxy.size)
+                            sendTrackpadPointerDelta(delta)
                         },
                         onClick: sendPointerClickIntent,
                         onScroll: { dy in
@@ -158,13 +192,12 @@ struct ScreenShareViewerView: View {
                         .allowsHitTesting(false)
                 }
 
-                if controlStatus.isLive, interactionMode == .trackpad {
+                if controlStatus.isLive, interactionMode != .view, let cursorPoint, cursorStyle != .hidden {
                     MirrorPointerCursor(
-                        normalizedPoint: cursorNormalized,
-                        viewport: visibleViewport,
-                        containerSize: proxy.size,
+                        point: cursorPoint,
                         size: cursorSize,
-                        style: cursorStyle
+                        style: cursorStyle,
+                        usePremiumSOTAUX: usePremiumSOTAUX
                     )
                     .allowsHitTesting(false)
                 }
@@ -180,13 +213,16 @@ struct ScreenShareViewerView: View {
 
                 MirrorControlPanel(
                     interactionMode: $interactionMode,
+                    isCollapsed: $panelCollapsed,
                     isTyping: $isTyping,
                     showingDisplayPicker: $showingDisplayPicker,
                     showingScrollTools: $showingScrollTools,
                     edgeScrollEnabled: $edgeScrollEnabled,
                     hardwareScrollEnabled: $hardwareScrollEnabled,
+                    statsVisible: $statsVisible,
                     cursorSize: $cursorSize,
                     cursorStyle: $cursorStyle,
+                    stats: coordinator.lastStats,
                     controlStatus: controlStatus,
                     displays: displays,
                     selectedDisplayId: selectedDisplayId,
@@ -204,22 +240,11 @@ struct ScreenShareViewerView: View {
                     },
                     onClose: onClose
                 )
-                .offset(panelOffset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .gesture(panelDragGesture(in: proxy.size))
-                .onAppear { clampPanel(in: proxy.size) }
-                .onChange(of: proxy.size) { _, newSize in clampPanel(in: newSize) }
+                .padding(.horizontal, 12)
+                .padding(.bottom, isTyping ? 70 : 14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
             .ignoresSafeArea()
-
-            if statsVisible {
-                StatsOverlay(stats: coordinator.lastStats)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .padding(12)
-            }
-
         }
         .safeAreaInset(edge: .bottom) {
             if interactionMode == .control, isTyping {
@@ -235,9 +260,13 @@ struct ScreenShareViewerView: View {
                 interactionMode = .view
                 isTyping = false
                 textToType = ""
-                cursorNormalized = CGPoint(x: 0.5, y: 0.5)
+                controlPanTranslation = .zero
                 tapFeedbackPoint = nil
                 lastControlClickPoint = nil
+                cursorPoint = nil
+                tapCluster.reset()
+                pendingDoubleTapTask?.cancel()
+                pendingDoubleTapTask = nil
             }
         }
         .onChange(of: controlStatus) { _, newValue in
@@ -245,6 +274,7 @@ struct ScreenShareViewerView: View {
             withAnimation(.snappy) {
                 interactionMode = .view
                 isTyping = false
+                controlPanTranslation = .zero
             }
         }
         .onChange(of: isTyping) { _, newValue in
@@ -279,49 +309,125 @@ struct ScreenShareViewerView: View {
         )
     }
 
-    private func controlSurfaceGesture(in size: CGSize, viewport: ScreenShareViewportState) -> some Gesture {
+    private func controlSurfaceGesture(in size: CGSize, contentRect: CGRect, viewport visibleViewport: ScreenShareViewportState) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                if controlPressStartedAt == nil {
+                    controlPressStartedAt = Date()
+                }
+                let distance = hypot(value.translation.width, value.translation.height)
+                guard distance > controlPanStartDistance(in: size),
+                      isEdgeScrollStart(value.startLocation, in: size) == false,
+                      resolvedClickPoint(for: value, distance: distance, in: size) == nil else {
+                    controlPanTranslation = .zero
+                    return
+                }
+                controlPanTranslation = value.translation
+            }
             .onEnded { value in
+                defer { controlPanTranslation = .zero }
+                let pressStartedAt = controlPressStartedAt
+                controlPressStartedAt = nil
+
                 let distance = hypot(value.translation.width, value.translation.height)
                 if edgeScrollEnabled,
                    distance > 14,
                    isEdgeScrollStart(value.startLocation, in: size) {
-                    let start = viewport.normalizedPoint(for: value.startLocation, in: size)
-                    let end = viewport.normalizedPoint(for: value.location, in: size)
+                    let start = visibleViewport.normalizedPoint(for: value.startLocation, in: size, contentRect: contentRect)
+                    let end = visibleViewport.normalizedPoint(for: value.location, in: size, contentRect: contentRect)
                     sendScrollIntent(start.x, start.y, end.x, end.y, selectedDisplayId)
                     return
                 }
 
-                guard let clickPoint = resolvedClickPoint(for: value, distance: distance, in: size) else {
+                if let clickPoint = resolvedClickPoint(for: value, distance: distance, in: size) {
+                    let normalized = visibleViewport.normalizedPoint(for: clickPoint, in: size, contentRect: contentRect)
+                    lastControlClickPoint = clickPoint
+                    cursorPoint = clickPoint
+                    showTapFeedback(at: clickPoint)
+                    handleControlTap(
+                        normalized: normalized,
+                        at: clickPoint,
+                        pressStartedAt: pressStartedAt
+                    )
                     return
                 }
-                let normalized = viewport.normalizedPoint(for: clickPoint, in: size)
-                lastControlClickPoint = clickPoint
-                showTapFeedback(at: clickPoint)
-                sendTapIntent(normalized.x, normalized.y)
+
+                guard distance > controlPanStartDistance(in: size) else { return }
+                viewport.applyTranslation(value.translation, in: size)
+            }
+    }
+
+    private func handleControlTap(normalized: (x: Double, y: Double), at point: CGPoint, pressStartedAt: Date?) {
+        let heldDuration = pressStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        if heldDuration >= 0.55 {
+            sendTapIntent(normalized.x, normalized.y, 1)
+            tapCluster.reset()
+            return
+        }
+
+        let count = tapCluster.record(point: point, at: Date())
+        switch count {
+        case 2:
+            pendingDoubleTapTask?.cancel()
+            pendingDoubleTapTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 180_000_000)
+                guard Task.isCancelled == false, tapCluster.count == 2 else { return }
+                sendTapIntent(normalized.x, normalized.y, 0)
+                tapCluster.reset()
+                pendingDoubleTapTask = nil
+            }
+        case 3...:
+            pendingDoubleTapTask?.cancel()
+            pendingDoubleTapTask = nil
+            sendTapIntent(normalized.x, normalized.y, 1)
+            tapCluster.reset()
+        default:
+            break
+        }
+    }
+
+    private func controlMagnifyGesture(in size: CGSize) -> some Gesture {
+        MagnifyGesture()
+            .updating($controlMagnification) { value, state, _ in
+                guard interactionMode == .control else { return }
+                state = value.magnification
+            }
+            .onEnded { value in
+                guard interactionMode == .control else { return }
+                viewport.applyMagnification(value.magnification, in: size)
             }
     }
 
     private func resolvedClickPoint(for value: DragGesture.Value, distance: CGFloat, in size: CGSize) -> CGPoint? {
-        let diagonal = max(1, hypot(size.width, size.height))
-        let preciseTapRadius = min(max(diagonal * 0.014, 12), 22)
-        let forgivingTapRadius = min(max(diagonal * 0.026, 26), 48)
-        let repeatedTapRadius = min(max(diagonal * 0.034, 32), 64)
-        if distance <= preciseTapRadius {
+        let radii = clickRadii(in: size)
+        if distance <= radii.precise {
             return value.location
         }
-        if distance <= forgivingTapRadius {
+        if distance <= radii.forgiving {
             return value.location
         }
         if let lastControlClickPoint,
-           distance <= repeatedTapRadius,
+           distance <= radii.repeated,
            min(
                 hypot(value.startLocation.x - lastControlClickPoint.x, value.startLocation.y - lastControlClickPoint.y),
                 hypot(value.location.x - lastControlClickPoint.x, value.location.y - lastControlClickPoint.y)
-           ) <= repeatedTapRadius {
+           ) <= radii.repeated {
             return value.location
         }
         return nil
+    }
+
+    private func clickRadii(in size: CGSize) -> (precise: CGFloat, forgiving: CGFloat, repeated: CGFloat) {
+        let diagonal = max(1, hypot(size.width, size.height))
+        return (
+            precise: min(max(diagonal * 0.014, 12), 22),
+            forgiving: min(max(diagonal * 0.026, 26), 48),
+            repeated: min(max(diagonal * 0.034, 32), 64)
+        )
+    }
+
+    private func controlPanStartDistance(in size: CGSize) -> CGFloat {
+        clickRadii(in: size).forgiving + 2
     }
 
     private func isEdgeScrollStart(_ point: CGPoint, in size: CGSize) -> Bool {
@@ -333,11 +439,46 @@ struct ScreenShareViewerView: View {
             || point.y >= size.height - margin
     }
 
-    private func moveCursorByTrackpadDelta(_ delta: CGSize, in size: CGSize, viewport: ScreenShareViewportState) {
-        guard size.width > 0, size.height > 0 else { return }
-        cursorNormalized.x = min(max(cursorNormalized.x + (delta.width / max(size.width * viewport.scale, 1)), 0), 1)
-        cursorNormalized.y = min(max(cursorNormalized.y + (delta.height / max(size.height * viewport.scale, 1)), 0), 1)
+    private func sendTrackpadPointerDelta(_ delta: CGSize) {
         sendPointerMoveIntent(Double(delta.width), Double(delta.height))
+    }
+
+    private func moveLocalCursorByTrackpadDelta(_ delta: CGSize, in size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        let current = cursorPoint ?? CGPoint(x: size.width / 2, y: size.height / 2)
+        cursorPoint = CGPoint(
+            x: min(max(current.x + delta.width, 0), size.width),
+            y: min(max(current.y + delta.height, 0), size.height)
+        )
+    }
+
+    private func renderedContentRect(in size: CGSize) -> CGRect {
+        guard let aspectRatio = coordinator.displayAspectRatio,
+              aspectRatio.isFinite,
+              aspectRatio > 0,
+              size.width > 0,
+              size.height > 0 else {
+            return CGRect(origin: .zero, size: size)
+        }
+
+        let containerAspect = size.width / size.height
+        if containerAspect > aspectRatio {
+            let width = size.height * aspectRatio
+            return CGRect(
+                x: (size.width - width) / 2,
+                y: 0,
+                width: width,
+                height: size.height
+            )
+        }
+
+        let height = size.width / aspectRatio
+        return CGRect(
+            x: 0,
+            y: (size.height - height) / 2,
+            width: size.width,
+            height: height
+        )
     }
 
     private func focusTypingBar() {
@@ -379,8 +520,8 @@ struct ScreenShareViewerView: View {
     }
 
     private func clampPanelOffset(_ proposed: CGSize, in size: CGSize) -> CGSize {
-        let horizontalLimit = max(0, size.width - 112)
-        let verticalLimit = max(0, size.height - 168)
+        let horizontalLimit = max(0, size.width - (panelCollapsed ? 72 : 112))
+        let verticalLimit = max(0, size.height - (panelCollapsed ? 72 : 168))
         return CGSize(
             width: min(max(proposed.width, -horizontalLimit), -8),
             height: min(max(proposed.height, 8), verticalLimit)
@@ -504,12 +645,14 @@ struct ScreenShareViewportState: Equatable {
         )
     }
 
-    func normalizedPoint(for point: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
+    func normalizedPoint(for point: CGPoint, in size: CGSize, contentRect: CGRect? = nil) -> (x: Double, y: Double) {
         guard size.width > 0, size.height > 0 else { return (0, 0) }
-        let contentX = ((point.x - (size.width / 2) - offset.width) / scale) + (size.width / 2)
-        let contentY = ((point.y - (size.height / 2) - offset.height) / scale) + (size.height / 2)
-        let x = min(max(contentX / size.width, 0), 1)
-        let y = min(max(contentY / size.height, 0), 1)
+        let baseX = ((point.x - (size.width / 2) - offset.width) / scale) + (size.width / 2)
+        let baseY = ((point.y - (size.height / 2) - offset.height) / scale) + (size.height / 2)
+        let rect = contentRect ?? CGRect(origin: .zero, size: size)
+        guard rect.width > 0, rect.height > 0 else { return (0, 0) }
+        let x = min(max((baseX - rect.minX) / rect.width, 0), 1)
+        let y = min(max((baseY - rect.minY) / rect.height, 0), 1)
         return (Double(x), Double(y))
     }
 
@@ -547,15 +690,66 @@ private enum ScreenShareInteractionMode {
     case trackpad
 }
 
+private struct ScreenShareTapCluster: Equatable {
+    private var lastPoint: CGPoint?
+    private var lastTapAt: Date?
+    private(set) var count: Int = 0
+
+    mutating func record(point: CGPoint, at date: Date) -> Int {
+        let maxInterval: TimeInterval = 0.46
+        let maxDistance: CGFloat = 48
+        if let lastPoint,
+           let lastTapAt,
+           date.timeIntervalSince(lastTapAt) <= maxInterval,
+           hypot(point.x - lastPoint.x, point.y - lastPoint.y) <= maxDistance {
+            count += 1
+        } else {
+            count = 1
+        }
+        lastPoint = point
+        lastTapAt = date
+        return count
+    }
+
+    mutating func reset() {
+        lastPoint = nil
+        lastTapAt = nil
+        count = 0
+    }
+}
+
+private enum MirrorCursorStyle: String, CaseIterable, Identifiable {
+    case mercury
+    case ember
+    case aurora
+    case white
+    case hidden
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .mercury: return "Mercury cursor"
+        case .ember: return "Ember cursor"
+        case .aurora: return "Aurora cursor"
+        case .white: return "White cursor"
+        case .hidden: return "Hide cursor"
+        }
+    }
+}
+
 private struct MirrorControlPanel: View {
     @Binding var interactionMode: ScreenShareInteractionMode
+    @Binding var isCollapsed: Bool
     @Binding var isTyping: Bool
     @Binding var showingDisplayPicker: Bool
     @Binding var showingScrollTools: Bool
     @Binding var edgeScrollEnabled: Bool
     @Binding var hardwareScrollEnabled: Bool
+    @Binding var statsVisible: Bool
     @Binding var cursorSize: CGFloat
     @Binding var cursorStyle: MirrorCursorStyle
+    let stats: ScreenShareViewerCoordinator.Stats
     let controlStatus: ScreenSharePhoneControlStatus
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
@@ -567,8 +761,11 @@ private struct MirrorControlPanel: View {
     let onClose: () -> Void
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 8) {
+        ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                if statsVisible {
+                    compactStats
+                }
                 panelButton("hand.draw", selected: interactionMode == .view, label: "View mode") {
                     withAnimation(.snappy) {
                         interactionMode = .view
@@ -577,7 +774,10 @@ private struct MirrorControlPanel: View {
                 }
                 panelButton(controlStatus.isLive ? "cursorarrow.click.2" : "lock", selected: interactionMode == .control, label: controlStatus.label, disabled: controlStatus.isLive == false) {
                     guard controlStatus.isLive else { return }
-                    withAnimation(.snappy) { interactionMode = .control }
+                    withAnimation(.snappy) {
+                        interactionMode = .control
+                        isTyping = false
+                    }
                 }
                 panelButton("rectangle.and.hand.point.up.left", selected: interactionMode == .trackpad, label: "Trackpad mode", disabled: controlStatus.isLive == false) {
                     guard controlStatus.isLive else { return }
@@ -586,22 +786,12 @@ private struct MirrorControlPanel: View {
                         isTyping = false
                     }
                 }
-                panelButton("xmark", selected: false, label: "Close mirror", action: onClose)
-            }
-
-            HStack(spacing: 8) {
-                panelButton("rectangle.connected.to.line.below", selected: showingDisplayPicker, label: "Displays") {
-                    withAnimation(.snappy) {
-                        showingDisplayPicker.toggle()
-                        showingScrollTools = false
-                    }
-                }
-                panelButton("arrow.up.and.down", selected: showingScrollTools, label: "Scroll controls") {
-                    withAnimation(.snappy) {
-                        showingScrollTools.toggle()
-                        showingDisplayPicker = false
-                    }
-                }
+                displayMenu
+                cursorMenu
+                panelButton("chevron.up", selected: false, label: "Scroll up", disabled: controlStatus.isLive == false) { sendScrollButton(-0.22) }
+                panelButton("chevron.down", selected: false, label: "Scroll down", disabled: controlStatus.isLive == false) { sendScrollButton(0.22) }
+                panelButton("arrow.up.to.line", selected: false, label: "Page up", disabled: controlStatus.isLive == false) { sendScrollButton(-0.45) }
+                panelButton("arrow.down.to.line", selected: false, label: "Page down", disabled: controlStatus.isLive == false) { sendScrollButton(0.45) }
                 panelButton("keyboard", selected: isTyping, label: "Type on Mac", disabled: controlStatus.isLive == false) {
                     guard controlStatus.isLive else { return }
                     withAnimation(.snappy) {
@@ -610,93 +800,22 @@ private struct MirrorControlPanel: View {
                     }
                     if isTyping { focusTyping() }
                 }
+                panelToggle("Edges", isOn: $edgeScrollEnabled, systemName: "arrow.left.and.right")
+                panelToggle("Volume", isOn: $hardwareScrollEnabled, systemName: "speaker.wave.2")
+                panelButton("waveform.path.ecg", selected: statsVisible, label: "Toggle performance stats") {
+                    withAnimation(.snappy) { statsVisible.toggle() }
+                }
                 if isZoomed {
                     panelButton("arrow.counterclockwise", selected: false, label: "Reset zoom", action: resetZoom)
                 }
+                panelButton("xmark", selected: false, label: "Close mirror", action: onClose)
             }
-
-            if showingDisplayPicker {
-                VStack(alignment: .trailing, spacing: 6) {
-                    ForEach(displays.isEmpty ? fallbackDisplays : displays) { display in
-                        Button {
-                            selectDisplay(display.id)
-                            withAnimation(.snappy) { showingDisplayPicker = false }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text(display.name)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .lineLimit(1)
-                                if display.id == selectedDisplayId || (selectedDisplayId == nil && display.isPrimary) {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 11, weight: .bold))
-                                }
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(Color.white.opacity(0.12), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
-            }
-
-            if showingScrollTools {
-                VStack(alignment: .trailing, spacing: 8) {
-                    HStack(spacing: 8) {
-                        panelButton("chevron.up", selected: false, label: "Scroll up") { sendScrollButton(-0.22) }
-                        panelButton("chevron.down", selected: false, label: "Scroll down") { sendScrollButton(0.22) }
-                        panelButton("arrow.up.to.line", selected: false, label: "Page up") { sendScrollButton(-0.45) }
-                        panelButton("arrow.down.to.line", selected: false, label: "Page down") { sendScrollButton(0.45) }
-                    }
-                    HStack(spacing: 8) {
-                        Toggle("Edges", isOn: $edgeScrollEnabled)
-                        Toggle("Volume", isOn: $hardwareScrollEnabled)
-                    }
-                    .toggleStyle(.button)
-                    .font(.system(size: 11, weight: .semibold))
-                    .tint(.white.opacity(0.2))
-                    .foregroundStyle(.white)
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
-            }
-
-            if interactionMode == .trackpad, controlStatus.isLive {
-                VStack(alignment: .trailing, spacing: 8) {
-                    HStack(spacing: 8) {
-                        ForEach(MirrorCursorStyle.allCases) { style in
-                            Button {
-                                cursorStyle = style
-                            } label: {
-                                MirrorCursorSwatch(style: style, selected: cursorStyle == style)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(style.label) cursor")
-                            .accessibilityAddTraits(cursorStyle == style ? .isSelected : [])
-                        }
-                    }
-                    HStack(spacing: 8) {
-                        Image(systemName: "cursorarrow")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.72))
-                        Slider(value: $cursorSize, in: 18...48)
-                            .frame(width: 132)
-                    }
-                    .tint(.white)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Cursor size")
-                    .accessibilityValue("\(Int(cursorSize)) points")
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
-            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
         }
-        .padding(8)
-        .mirrorGlassBackground(cornerRadius: 28)
-        .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 10)
+        .frame(maxWidth: .infinity)
+        .mirrorGlassBackground(cornerRadius: 24)
+        .shadow(color: .black.opacity(0.30), radius: 18, x: 0, y: 10)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Mirror controls")
     }
@@ -705,51 +824,269 @@ private struct MirrorControlPanel: View {
         [HermesRealtimeRelayDisplayDescriptor(id: selectedDisplayId ?? "main", name: "Main Display", width: 0, height: 0, isPrimary: true)]
     }
 
+    private var activeModeIcon: String {
+        switch interactionMode {
+        case .view:
+            return "hand.draw"
+        case .control:
+            return controlStatus.isLive ? "cursorarrow.click.2" : "lock"
+        case .trackpad:
+            return "rectangle.and.hand.point.up.left"
+        }
+    }
+
+    private var compactStats: some View {
+        let mbps = Double(stats.bitsPerSecond) / 1_000_000.0
+        return HStack(spacing: 8) {
+            Text(String(format: "%.2f Mbps", mbps))
+            Text("RTT \(stats.roundTripMillis) ms")
+        }
+        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+        .foregroundStyle(.white.opacity(0.86))
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .background(Color.white.opacity(0.10), in: Capsule())
+        .accessibilityLabel("Performance \(String(format: "%.2f megabits per second", mbps)), round trip \(stats.roundTripMillis) milliseconds")
+    }
+
+    private var displayMenu: some View {
+        Menu {
+            ForEach(displays.isEmpty ? fallbackDisplays : displays) { display in
+                Button {
+                    selectDisplay(display.id)
+                } label: {
+                    Label(display.name, systemImage: display.id == selectedDisplayId || (selectedDisplayId == nil && display.isPrimary) ? "checkmark.display" : "display")
+                }
+            }
+        } label: {
+            railIcon("rectangle.connected.to.line.below", selected: false, disabled: false)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Displays")
+    }
+
+    private var cursorMenu: some View {
+        Menu {
+            ForEach(MirrorCursorStyle.allCases) { style in
+                Button {
+                    cursorStyle = style
+                } label: {
+                    Label(style.label, systemImage: cursorIcon(for: style))
+                }
+            }
+            Button {
+                cursorSize = max(18, cursorSize - 4)
+            } label: {
+                Label("Smaller cursor", systemImage: "minus.magnifyingglass")
+            }
+            Button {
+                cursorSize = min(42, cursorSize + 4)
+            } label: {
+                Label("Larger cursor", systemImage: "plus.magnifyingglass")
+            }
+        } label: {
+            railIcon(cursorIcon(for: cursorStyle), selected: interactionMode != .view && cursorStyle != .hidden, disabled: false)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Cursor options")
+    }
+
+    private func cursorIcon(for style: MirrorCursorStyle) -> String {
+        switch style {
+        case .mercury, .ember, .aurora, .white: return "cursorarrow"
+        case .hidden: return "cursorarrow.slash"
+        }
+    }
+
     private func panelButton(_ systemName: String, selected: Bool, label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(selected ? .black : .white.opacity(disabled ? 0.36 : 0.88))
-                .frame(width: 44, height: 44)
-                .background(selected ? Color.white : Color.white.opacity(disabled ? 0.05 : 0.10), in: Circle())
+            railIcon(systemName, selected: selected, disabled: disabled)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
         .accessibilityLabel(label)
     }
+
+    private func panelToggle(_ label: String, isOn: Binding<Bool>, systemName: String) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            railIcon(systemName, selected: isOn.wrappedValue, disabled: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
+    }
+
+    private func railIcon(_ systemName: String, selected: Bool, disabled: Bool) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(selected ? .white : .white.opacity(disabled ? 0.35 : 0.85))
+            .frame(width: 42, height: 42)
+            .background(
+                ZStack {
+                    if selected {
+                        // High-end active glass keycap
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(.ultraThinMaterial)
+
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color(red: 0.17, green: 0.79, blue: 0.75), Color(red: 0.56, green: 0.50, blue: 0.85)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                            .shadow(color: Color(red: 0.17, green: 0.79, blue: 0.75).opacity(0.5), radius: 6)
+                    } else {
+                        // Subtle standard glass keycap
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(disabled ? 0.03 : 0.08))
+
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    }
+                }
+            )
+            .shadow(color: selected ? Color(red: 0.17, green: 0.79, blue: 0.75).opacity(0.15) : Color.black.opacity(0.1), radius: 4)
+    }
 }
 
-private enum MirrorCursorStyle: String, CaseIterable, Identifiable {
-    case mercury
-    case ember
-    case aurora
-    case white
+private struct TapFeedbackMarker: View {
+    let point: CGPoint
+    @State private var bloomAngle: Double = 0
+    @State private var animScale: CGFloat = 0.5
+    @State private var animOpacity: Double = 1.0
 
-    var id: String { rawValue }
+    var body: some View {
+        ZStack {
+            // Concentric ring 1
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [Color(red: 0.17, green: 0.79, blue: 0.75), .white],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2
+                )
+                .frame(width: 44, height: 44)
+                .scaleEffect(animScale)
+                .opacity(animOpacity)
 
-    var label: String {
-        switch self {
-        case .mercury: return "Mercury"
-        case .ember: return "Ember"
-        case .aurora: return "Aurora"
-        case .white: return "White"
+            // Concentric ring 2
+            Circle()
+                .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                .frame(width: 24, height: 24)
+                .scaleEffect(animScale * 0.7)
+                .opacity(animOpacity * 0.8)
+
+            // Center dot
+            Circle()
+                .fill(Color(red: 0.17, green: 0.79, blue: 0.75))
+                .frame(width: 8, height: 8)
+                .shadow(color: Color(red: 0.17, green: 0.79, blue: 0.75).opacity(0.6), radius: 4)
         }
+        .position(point)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.45)) {
+                animScale = 1.2
+                animOpacity = 0.0
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+struct CyberCursorArrow: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let scaleX = rect.width / 24.0
+        let scaleY = rect.height / 24.0
+        
+        path.move(to: CGPoint(x: 0 * scaleX, y: 0 * scaleY))
+        path.addLine(to: CGPoint(x: 18 * scaleX, y: 13 * scaleY))
+        path.addLine(to: CGPoint(x: 10 * scaleX, y: 14 * scaleY))
+        path.addLine(to: CGPoint(x: 15 * scaleX, y: 23 * scaleY))
+        path.addLine(to: CGPoint(x: 12 * scaleX, y: 24 * scaleY))
+        path.addLine(to: CGPoint(x: 7 * scaleX, y: 15 * scaleY))
+        path.addLine(to: CGPoint(x: 0 * scaleX, y: 19 * scaleY))
+        path.closeSubpath()
+        
+        return path
     }
 }
 
 private struct MirrorPointerCursor: View {
-    let normalizedPoint: CGPoint
-    let viewport: ScreenShareViewportState
-    let containerSize: CGSize
+    let point: CGPoint
     let size: CGFloat
     let style: MirrorCursorStyle
+    let usePremiumSOTAUX: Bool
+    @State private var haloScale: CGFloat = 1.0
 
     var body: some View {
-        cursorGlyph
-            .font(.system(size: size, weight: .black))
-            .shadow(color: .black.opacity(0.45), radius: max(4, size * 0.18), x: 0, y: 3)
-            .position(viewport.viewPoint(forNormalized: normalizedPoint, in: containerSize))
-            .accessibilityHidden(true)
+        Group {
+            if usePremiumSOTAUX {
+                ZStack(alignment: .topLeading) {
+                    Circle()
+                        .stroke(glowColor, lineWidth: 1.5)
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(haloScale)
+                        .opacity(Double(2.0 - haloScale))
+                        .offset(x: -4, y: -4)
+                    
+                    Circle()
+                        .fill(glowColor)
+                        .frame(width: 3, height: 3)
+                        .offset(x: -1.5, y: -1.5)
+                    
+                    CyberCursorArrow()
+                        .fill(
+                            LinearGradient(
+                                colors: [.white, glowColor.opacity(0.8)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: size, height: size)
+                        .overlay(
+                            CyberCursorArrow()
+                                .stroke(Color.white, lineWidth: 1.0)
+                        )
+                        .shadow(color: glowColor.opacity(0.5), radius: 6, x: 2, y: 2)
+                }
+                .frame(width: size, height: size)
+                .offset(x: size / 2, y: size / 2)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: false)) {
+                        haloScale = 2.0
+                    }
+                }
+            } else {
+                cursorGlyph
+                    .font(.system(size: size, weight: .bold))
+                    .shadow(color: glowColor.opacity(0.65), radius: 8, x: 0, y: 0)
+                    .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+            }
+        }
+        .position(point)
+        .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.78, blendDuration: 0), value: point)
+        .transition(.scale(scale: 0.85).combined(with: .opacity))
+        .accessibilityHidden(true)
+    }
+
+    private var glowColor: Color {
+        switch style {
+        case .mercury: return Color(red: 0.17, green: 0.79, blue: 0.75) // neon teal glow
+        case .ember: return Color(red: 0.91, green: 0.44, blue: 0.38)   // neon coral/ember glow
+        case .aurora: return Color(red: 0.56, green: 0.50, blue: 0.85)  // neon purple glow
+        case .white: return .white
+        case .hidden: return .clear
+        }
     }
 
     @ViewBuilder
@@ -759,7 +1096,7 @@ private struct MirrorPointerCursor: View {
             Image(systemName: "cursorarrow")
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [.white, Color(red: 0.68, green: 0.84, blue: 1.0)],
+                        colors: [.white, Color(red: 0.17, green: 0.79, blue: 0.75)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -768,7 +1105,7 @@ private struct MirrorPointerCursor: View {
             Image(systemName: "cursorarrow")
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [Color(red: 1.0, green: 0.78, blue: 0.30), Color(red: 1.0, green: 0.24, blue: 0.32)],
+                        colors: [.white, Color(red: 0.91, green: 0.44, blue: 0.38)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -777,7 +1114,7 @@ private struct MirrorPointerCursor: View {
             Image(systemName: "cursorarrow")
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [Color(red: 0.30, green: 1.0, blue: 0.72), Color(red: 0.50, green: 0.46, blue: 1.0)],
+                        colors: [.white, Color(red: 0.56, green: 0.50, blue: 0.85)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -785,162 +1122,541 @@ private struct MirrorPointerCursor: View {
         case .white:
             Image(systemName: "cursorarrow")
                 .foregroundStyle(.white)
+        case .hidden:
+            EmptyView()
         }
-    }
-}
-
-private struct TapFeedbackMarker: View {
-    let point: CGPoint
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(.white.opacity(0.88), lineWidth: 2)
-                .frame(width: 34, height: 34)
-            Circle()
-                .fill(.white.opacity(0.22))
-                .frame(width: 12, height: 12)
-        }
-        .shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 3)
-        .position(point)
-        .transition(.scale(scale: 0.55).combined(with: .opacity))
-        .accessibilityHidden(true)
-    }
-}
-
-private struct MirrorCursorSwatch: View {
-    let style: MirrorCursorStyle
-    let selected: Bool
-
-    var body: some View {
-        Circle()
-            .fill(fill)
-            .frame(width: 26, height: 26)
-            .overlay(
-                Circle()
-                    .stroke(selected ? .white : .white.opacity(0.22), lineWidth: selected ? 2 : 1)
-            )
-            .overlay {
-                if selected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(style == .white ? .black : .white)
-                }
-            }
-    }
-
-    private var fill: AnyShapeStyle {
-        switch style {
-        case .mercury:
-            return AnyShapeStyle(LinearGradient(colors: [.white, Color(red: 0.68, green: 0.84, blue: 1.0)], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .ember:
-            return AnyShapeStyle(LinearGradient(colors: [Color(red: 1.0, green: 0.78, blue: 0.30), Color(red: 1.0, green: 0.24, blue: 0.32)], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .aurora:
-            return AnyShapeStyle(LinearGradient(colors: [Color(red: 0.30, green: 1.0, blue: 0.72), Color(red: 0.50, green: 0.46, blue: 1.0)], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .white:
-            return AnyShapeStyle(Color.white)
-        }
-    }
-}
-
-private struct EdgeScrollOverlay: View {
-    let onScroll: (_ start: (x: Double, y: Double), _ end: (x: Double, y: Double)) -> Void
-
-    var body: some View {
-        GeometryReader { proxy in
-            let margin = max(28, min(proxy.size.width, proxy.size.height) * 0.07)
-            ZStack {
-                edgeBand(width: proxy.size.width, height: margin, size: proxy.size)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                edgeBand(width: proxy.size.width, height: margin, size: proxy.size)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                edgeBand(width: margin, height: proxy.size.height, size: proxy.size)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                edgeBand(width: margin, height: proxy.size.height, size: proxy.size)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .coordinateSpace(.named("mirrorEdgeScroll"))
-        }
-    }
-
-    private func edgeBand(width: CGFloat, height: CGFloat, size: CGSize) -> some View {
-        Color.clear
-            .frame(width: width, height: height)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .named("mirrorEdgeScroll"))
-                    .onEnded { value in
-                        let distance = hypot(value.translation.width, value.translation.height)
-                        guard distance > 12 else { return }
-                        let start = normalized(value.startLocation, in: size)
-                        let end = normalized(value.location, in: size)
-                        onScroll(start, end)
-                    }
-            )
-    }
-
-    private func normalized(_ point: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
-        guard size.width > 0, size.height > 0 else { return (0.5, 0.5) }
-        return (
-            Double(min(max(point.x / size.width, 0), 1)),
-            Double(min(max(point.y / size.height, 0), 1))
-        )
     }
 }
 
 private struct TrackpadGlassSurface: View {
     let isVisible: Bool
+    let usePremiumSOTAUX: Bool
     let onActiveChange: (Bool) -> Void
     let onMove: (CGSize) -> Void
-    let onClick: () -> Void
+    let onClick: (Int) -> Void
     let onScroll: (Double) -> Void
     @State private var lastTranslation: CGSize = .zero
+    @State private var pressStartedAt: Date?
+    @State private var tapCluster = ScreenShareTapCluster()
+    @State private var pendingDoubleTapTask: Task<Void, Never>?
+    @State private var touchLocation: CGPoint? = nil
+    @State private var touchHistory: [CGPoint] = []
 
     var body: some View {
         GeometryReader { proxy in
             let width = min(proxy.size.width * 0.46, 360)
             let height = min(proxy.size.height * 0.40, 260)
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(.clear)
-                .mirrorGlassBackground(cornerRadius: 26)
-                .overlay(alignment: .topLeading) {
-                    Image(systemName: "hand.point.up.left")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .padding(16)
+
+            ZStack {
+                // Fine grid crosshairs in background
+                trackpadGridPattern(width: width, height: height)
+                
+                // Trail ring representing current touch location
+                if usePremiumSOTAUX {
+                    ForEach(Array(touchHistory.enumerated()), id: \.offset) { index, point in
+                        let age = CGFloat(touchHistory.count - 1 - index)
+                        let opacity = 0.8 * (1.0 - age * 0.22)
+                        let scale = 1.0 - age * 0.15
+                        let frameSize = 24.0 * scale
+                        if frameSize > 2 {
+                            Circle()
+                                .stroke(Color(red: 0.17, green: 0.79, blue: 0.75).opacity(Double(opacity)), lineWidth: max(0.5, 1.5 - age * 0.2))
+                                .frame(width: frameSize, height: frameSize)
+                                .position(point)
+                        }
+                    }
+                } else {
+                    if let touchLocation {
+                        Circle()
+                            .stroke(Color(red: 0.17, green: 0.79, blue: 0.75).opacity(0.8), lineWidth: 1.5)
+                            .frame(width: 24, height: 24)
+                            .position(touchLocation)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
-                .opacity(isVisible ? 1 : 0.001)
-                .frame(width: width, height: height)
-                .position(x: proxy.size.width - width / 2 - 18, y: proxy.size.height - height / 2 - 34)
-                .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .gesture(
-                    DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                        .onChanged { value in
-                            onActiveChange(true)
-                            let delta = value.translation - lastTranslation
-                            lastTranslation = value.translation
-                            if abs(delta.width) > 0.5 || abs(delta.height) > 0.5 {
-                                onMove(delta)
+            }
+            .frame(width: width, height: height)
+            .mirrorGlassBackground(cornerRadius: 26)
+            .overlay(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: touchLocation != nil ? [Color(red: 0.17, green: 0.79, blue: 0.75), Color(red: 0.56, green: 0.50, blue: 0.85)] : [.white.opacity(0.15), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+                    .animation(.easeInOut(duration: 0.25), value: touchLocation != nil)
+            )
+            .overlay(alignment: .topLeading) {
+                HStack(spacing: 6) {
+                    Image(systemName: "hand.point.up.left")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("Glass Trackpad")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                }
+                .foregroundStyle(.white.opacity(0.75))
+                .padding(16)
+            }
+            .opacity(isVisible ? 1 : 0.001)
+            .position(x: proxy.size.width - width / 2 - 18, y: proxy.size.height - height / 2 - 34)
+            .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { value in
+                        if pressStartedAt == nil {
+                            pressStartedAt = Date()
+                        }
+                        touchLocation = value.location
+                        if usePremiumSOTAUX {
+                            touchHistory.append(value.location)
+                            if touchHistory.count > 4 {
+                                touchHistory.removeFirst()
                             }
                         }
-                        .onEnded { value in
-                            let distance = hypot(value.translation.width, value.translation.height)
-                            if distance < 8 {
-                                onClick()
-                            } else if abs(value.translation.height) > abs(value.translation.width) * 1.5 {
-                                onScroll(Double(value.translation.height / max(proxy.size.height, 1)))
-                            }
-                            lastTranslation = .zero
-                            onActiveChange(false)
+                        onActiveChange(true)
+                        let delta = value.translation - lastTranslation
+                        lastTranslation = value.translation
+                        if abs(delta.width) > 0.5 || abs(delta.height) > 0.5 {
+                            onMove(delta)
                         }
-                )
+                    }
+                    .onEnded { value in
+                        touchLocation = nil
+                        touchHistory.removeAll()
+                        let heldDuration = pressStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+                        pressStartedAt = nil
+                        let distance = hypot(value.translation.width, value.translation.height)
+                        if heldDuration >= 0.55 {
+                            pendingDoubleTapTask?.cancel()
+                            pendingDoubleTapTask = nil
+                            triggerLightHaptic()
+                            onClick(1)
+                            tapCluster.reset()
+                        } else if distance < 8 {
+                            let count = tapCluster.record(point: value.location, at: Date())
+                            if count == 2 {
+                                pendingDoubleTapTask?.cancel()
+                                pendingDoubleTapTask = Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 180_000_000)
+                                    guard Task.isCancelled == false, tapCluster.count == 2 else { return }
+                                    triggerMediumHaptic()
+                                    onClick(0)
+                                    tapCluster.reset()
+                                    pendingDoubleTapTask = nil
+                                }
+                            } else if count >= 3 {
+                                pendingDoubleTapTask?.cancel()
+                                pendingDoubleTapTask = nil
+                                triggerMediumHaptic()
+                                onClick(1)
+                                tapCluster.reset()
+                            }
+                        } else if abs(value.translation.height) > abs(value.translation.width) * 1.5 {
+                            onScroll(Double(value.translation.height / max(proxy.size.height, 1)))
+                        }
+                        lastTranslation = .zero
+                        onActiveChange(false)
+                    }
+            )
         }
         .ignoresSafeArea()
+    }
+
+    private func triggerLightHaptic() {
+        #if canImport(UIKit)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+        #endif
+    }
+
+    private func triggerMediumHaptic() {
+        #if canImport(UIKit)
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+        #endif
+    }
+
+    @ViewBuilder
+    private func trackpadGridPattern(width: CGFloat, height: CGFloat) -> some View {
+        ZStack {
+            // Thin horizontal lines
+            VStack(spacing: height / 6) {
+                ForEach(0..<5) { _ in
+                    Divider()
+                        .background(Color.white.opacity(0.04))
+                }
+            }
+            .frame(width: width, height: height)
+
+            // Thin vertical lines
+            HStack(spacing: width / 6) {
+                ForEach(0..<5) { _ in
+                    Divider()
+                        .background(Color.white.opacity(0.04))
+                }
+            }
+            .frame(width: width, height: height)
+        }
+    }
+}
+
+private struct StreamStateOverlay: View {
+    let phase: MediaControlStreamCoordinator.Phase
+    let isAwaitingFrame: Bool
+    let usePremiumSOTAUX: Bool
+    let onForceReconnect: () -> Void
+    let onRetryRequest: () -> Void
+    let onClose: () -> Void
+
+    @State private var spinAngle: Double = 0
+    @State private var textIndex = 0
+    @State private var pulseScale: CGFloat = 1.0
+    private let statusTexts = [
+        "Connecting to paired Mac control stream...",
+        "Negotiating VideoToolbox hardware codecs...",
+        "Synchronizing GOP keyframes...",
+        "Awaiting first video frame..."
+    ]
+
+    var body: some View {
+        ZStack {
+            // Blurred dark overlay behind
+            Color.black.opacity(0.6)
+                .background(.ultraThinMaterial)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                switch phase {
+                case .idle, .dialing:
+                    connectingContent(title: "Mercury Link", detail: statusTexts[textIndex])
+
+                case .live:
+                    if isAwaitingFrame {
+                        connectingContent(title: "Mercury Live", detail: "Awaiting first video frame...")
+                    } else {
+                        EmptyView()
+                    }
+
+                case .reconnecting(let nextAttemptIn):
+                    reconnectingContent(nextAttemptIn: nextAttemptIn)
+
+                case .failed(let reason):
+                    failedContent(reason: reason)
+
+                case .stopped:
+                    stoppedContent()
+                }
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 32)
+            .frame(maxWidth: 380)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.25), .white.opacity(0.05)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.45), radius: 24, x: 0, y: 12)
+        }
+        .onAppear {
+            startTextRotation()
+        }
+    }
+
+    // MARK: - Connecting State
+    @ViewBuilder
+    private func connectingContent(title: String, detail: String) -> some View {
+        VStack(spacing: 20) {
+            if usePremiumSOTAUX {
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.05), lineWidth: 1.5)
+                        .frame(width: 76, height: 76)
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color(red: 0.17, green: 0.79, blue: 0.75), Color(red: 0.56, green: 0.50, blue: 0.85)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [15, 8])
+                        )
+                        .frame(width: 76, height: 76)
+                        .rotationEffect(.degrees(spinAngle))
+                    
+                    Circle()
+                        .stroke(Color.white.opacity(0.05), lineWidth: 1.5)
+                        .frame(width: 52, height: 52)
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color(red: 0.56, green: 0.50, blue: 0.85), Color(red: 0.91, green: 0.44, blue: 0.38)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [10, 6])
+                        )
+                        .frame(width: 52, height: 52)
+                        .rotationEffect(.degrees(-spinAngle * 1.3))
+                    
+                    Circle()
+                        .fill(Color(red: 0.17, green: 0.79, blue: 0.75))
+                        .frame(width: 14, height: 14)
+                        .scaleEffect(pulseScale)
+                        .opacity(Double(2.0 - pulseScale))
+                        .onAppear {
+                            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                                pulseScale = 1.6
+                            }
+                        }
+                    
+                    Circle()
+                        .fill(Color(red: 0.17, green: 0.79, blue: 0.75))
+                        .frame(width: 10, height: 10)
+                }
+                .onAppear {
+                    withAnimation(.linear(duration: 3.5).repeatForever(autoreverses: false)) {
+                        spinAngle = 360
+                    }
+                }
+            } else {
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.1), lineWidth: 4)
+                        .frame(width: 64, height: 64)
+                    
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color(red: 0.17, green: 0.79, blue: 0.75), Color(red: 0.56, green: 0.50, blue: 0.85)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                        )
+                        .frame(width: 64, height: 64)
+                        .rotationEffect(.degrees(spinAngle))
+                        .onAppear {
+                            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                                spinAngle = 360
+                            }
+                        }
+                }
+            }
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text(detail)
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .id(detail)
+            }
+        }
+    }
+
+    // MARK: - Reconnecting State
+    @ViewBuilder
+    private func reconnectingContent(nextAttemptIn: TimeInterval) -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: "wifi.router.dashed")
+                .font(.system(size: 48, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.orange, .yellow],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .symbolEffect(.pulse, options: .repeating)
+                .shadow(color: .orange.opacity(0.3), radius: 8)
+
+            VStack(spacing: 8) {
+                Text("Connection Lost")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("Mercury lost contact with the Mac.\nRetrying automatically in \(String(format: "%.1f", nextAttemptIn))s...")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 12) {
+                Button(action: onForceReconnect) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Force Reconnect Now")
+                    }
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.17, green: 0.79, blue: 0.75), Color(red: 0.56, green: 0.50, blue: 0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                        }
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onClose) {
+                    Text("Close Mirror")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 10)
+        }
+    }
+
+    // MARK: - Failed State
+    @ViewBuilder
+    private func failedContent(reason: String) -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 48, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.red, .orange],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .symbolEffect(.pulse, options: .repeating)
+                .shadow(color: .red.opacity(0.3), radius: 8)
+
+            VStack(spacing: 8) {
+                Text("Connection Failed")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text(reason)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 12) {
+                Button(action: onRetryRequest) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Retry Mirror Request")
+                    }
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [.red, .orange],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                        }
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onClose) {
+                    Text("Close Mirror")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 10)
+        }
+    }
+
+    // MARK: - Stopped State
+    @ViewBuilder
+    private func stoppedContent() -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 48, weight: .bold))
+                .foregroundStyle(.white.opacity(0.6))
+
+            VStack(spacing: 8) {
+                Text("Session Terminated")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("The Mac screen sharing session has ended or is unavailable.")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .multilineTextAlignment(.center)
+            }
+
+            Button(action: onClose) {
+                Text("Close Mirror")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 10)
+        }
+    }
+
+    private func startTextRotation() {
+        Task {
+            while true {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                guard phase == .idle || phase == .dialing || (phase == .live && isAwaitingFrame) else { continue }
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    textIndex = (textIndex + 1) % statusTexts.count
+                }
+            }
+        }
     }
 }
 
 private struct VolumeButtonScrollBridge: UIViewRepresentable {
-    let onVolumeStep: (Double) -> Void
+    let onVolumeStep: @MainActor (Double) -> Void
 
     func makeUIView(context: Context) -> MPVolumeView {
         try? AVAudioSession.sharedInstance().setActive(true)
@@ -958,12 +1674,12 @@ private struct VolumeButtonScrollBridge: UIViewRepresentable {
         Coordinator()
     }
 
-    final class Coordinator: NSObject {
-        var onVolumeStep: ((Double) -> Void)?
+    final class Coordinator: NSObject, @unchecked Sendable {
+        var onVolumeStep: (@MainActor (Double) -> Void)?
         private var observation: NSKeyValueObservation?
         private var lastVolume: Float = AVAudioSession.sharedInstance().outputVolume
 
-        func start(onVolumeStep: @escaping (Double) -> Void) {
+        func start(onVolumeStep: @escaping @MainActor (Double) -> Void) {
             self.onVolumeStep = onVolumeStep
             lastVolume = AVAudioSession.sharedInstance().outputVolume
             observation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, change in
@@ -971,11 +1687,27 @@ private struct VolumeButtonScrollBridge: UIViewRepresentable {
                 let delta = newValue - self.lastVolume
                 self.lastVolume = newValue
                 guard abs(delta) > 0.001 else { return }
+                let callback = SendableVolumeStepCallback(self.onVolumeStep)
                 DispatchQueue.main.async {
-                    self.onVolumeStep?(delta > 0 ? -0.28 : 0.28)
+                    MainActor.assumeIsolated {
+                        callback.call(delta > 0 ? -0.28 : 0.28)
+                    }
                 }
             }
         }
+    }
+}
+
+private struct SendableVolumeStepCallback: @unchecked Sendable {
+    private let callback: (@MainActor (Double) -> Void)?
+
+    init(_ callback: (@MainActor (Double) -> Void)?) {
+        self.callback = callback
+    }
+
+    @MainActor
+    func call(_ value: Double) {
+        callback?(value)
     }
 }
 
@@ -1018,6 +1750,8 @@ final class ScreenShareViewerCoordinator: ObservableObject {
 
     let displayLayer: AVSampleBufferDisplayLayer
     @Published var lastStats: Stats = Stats()
+    @Published var displayAspectRatio: CGFloat?
+    var longTermReferenceTokenHandler: ((MercuryLTRToken) async -> Void)?
     private var pipeline: VideoReceivePipeline?
 
     init() {
@@ -1028,10 +1762,23 @@ final class ScreenShareViewerCoordinator: ObservableObject {
             await MainActor.run {
                 self?.enqueue(sampleBuffer: sampleBuffer)
             }
+        } onLongTermReferenceTokenDecoded: { [weak self] token in
+            await self?.longTermReferenceTokenHandler?(token)
         }
     }
 
     func enqueue(sampleBuffer: CMSampleBuffer) {
+        if let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) {
+            let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
+            let width = CGFloat(dimensions.width)
+            let height = CGFloat(dimensions.height)
+            if width > 0, height > 0 {
+                let aspectRatio = width / height
+                if displayAspectRatio.map({ abs($0 - aspectRatio) > 0.0001 }) ?? true {
+                    displayAspectRatio = aspectRatio
+                }
+            }
+        }
         if displayLayer.isReadyForMoreMediaData {
             displayLayer.enqueue(sampleBuffer)
         }
@@ -1040,6 +1787,14 @@ final class ScreenShareViewerCoordinator: ObservableObject {
     func ingest(frame: MediaFrame) async {
         do {
             try await pipeline?.ingest(frame: frame)
+        } catch {
+            displayLayer.flush()
+        }
+    }
+
+    func ingest(frameV2: MediaFrameV2) async {
+        do {
+            try await pipeline?.ingest(frameV2: frameV2)
         } catch {
             displayLayer.flush()
         }

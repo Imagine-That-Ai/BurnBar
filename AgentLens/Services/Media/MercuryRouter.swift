@@ -74,7 +74,10 @@ final class MercuryRouter: ObservableObject {
         _ peerDeviceID: String,
         _ sink: MediaStreamSink,
         _ streamClassOverride: MediaStreamClass?,
-        _ displayId: String?
+        _ displayId: String?,
+        _ localStreamingCapabilities: MercuryStreamingCapabilitySnapshot?,
+        _ remoteStreamingCapabilities: MercuryStreamingCapabilitySnapshot?,
+        _ codecPolicy: MercuryCodecPolicy
     ) async throws -> Void
     typealias ComputerUseSessionEnsurer = @MainActor () async throws -> Void
 
@@ -98,6 +101,7 @@ final class MercuryRouter: ObservableObject {
     /// cleared on accept.
     private var activeSessionSender: (@Sendable (HermesRealtimeRelayFrame) async throws -> Void)?
     private var activeSessionFrame: HermesRealtimeRelayFrame?
+    private var remoteStreamingCapabilitiesByConnectionID: [String: MercuryStreamingCapabilitySnapshot] = [:]
     private var cooldownTask: Task<Void, Never>?
 
     init(
@@ -116,12 +120,15 @@ final class MercuryRouter: ObservableObject {
         if let startScreenShare {
             self.startScreenShare = startScreenShare
         } else {
-            self.startScreenShare = { [sessionCoordinator] peerDeviceID, sink, streamClassOverride, displayId in
+            self.startScreenShare = { [sessionCoordinator] peerDeviceID, sink, streamClassOverride, displayId, localCapabilities, remoteCapabilities, codecPolicy in
                 try await sessionCoordinator.startScreenShare(
                     peerDeviceID: peerDeviceID,
                     sink: sink,
                     streamClassOverride: streamClassOverride,
-                    displayId: displayId
+                    displayId: displayId,
+                    localStreamingCapabilities: localCapabilities,
+                    remoteStreamingCapabilities: remoteCapabilities,
+                    codecPolicy: codecPolicy
                 )
             }
         }
@@ -147,6 +154,10 @@ final class MercuryRouter: ObservableObject {
         case .mediaPresenceHeartbeat:
 
             if let heartbeat = frame.media?.presence {
+                if let streamingCapabilities = heartbeat.streamingCapabilities {
+                    remoteStreamingCapabilitiesByConnectionID[frame.connectionId] =
+                        MercuryStreamingCapabilitySnapshot(wire: streamingCapabilities)
+                }
                 peerSource.ingestHeartbeat(
                     heartbeat,
                     connectionID: frame.connectionId
@@ -164,7 +175,11 @@ final class MercuryRouter: ObservableObject {
                     sentAt: Date(),
                     deviceDisplayName: Host.current().localizedName ?? "My Mac",
                     capabilities: macCapabilities,
-                    blurredWallpaperBase64: blurredWallpaper
+                    blurredWallpaperBase64: blurredWallpaper,
+                    peerDeviceId: frame.connectionId,
+                    streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
+                        mediaFrameVersions: .v1AndV2
+                    ).wireValue
                 )
                 let responseFrame = HermesRealtimeRelayFrame(
                     type: .mediaPresenceHeartbeat,
@@ -194,6 +209,13 @@ final class MercuryRouter: ObservableObject {
         case .mediaCallAck:
             // Mac is the producer of call acks, not the consumer. Ignore.
             break
+        case .mediaLongTermReferenceAck:
+            if let ack = frame.media?.longTermReferenceAck {
+                sessionCoordinator.acknowledgeLongTermReferenceToken(
+                    MercuryLTRToken(value: ack.tokenValue)
+                )
+                Self.log.info("router_ltr_ack_received token=\(ack.tokenValue, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+            }
         default:
             break
         }
@@ -300,6 +322,22 @@ final class MercuryRouter: ObservableObject {
                 replySender: replySender
             )
             return
+        }
+
+        // Recovery fast-path: if the same paired device asks again while
+        // the router still believes a previous mirror is active, treat it
+        // as a restart. This clears stale Mac-side streaming state after a
+        // phone viewer/app teardown without weakening the one-peer-at-a-time
+        // guard for other devices.
+        if case .streaming = phase,
+           activeSessionFrame?.connectionId == frame.connectionId {
+            Self.log.info("router_mirror_request_restarting_same_peer requestID=\(req.requestId, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+            Self.debugTrace("router_mirror_request_restarting_same_peer requestID=\(req.requestId) connectionID=\(frame.connectionId)")
+            await sessionCoordinator.stop(reason: .completedUserCancel)
+            pendingRequest = nil
+            activeSessionSender = nil
+            activeSessionFrame = nil
+            phase = .idle
         }
 
         // Busy short-circuit — one mirror at a time.
@@ -524,7 +562,21 @@ final class MercuryRouter: ObservableObject {
                 return
             }
             let sink = try await factory(mirrorRequest, request.frame)
-            try await startScreenShare(request.frame.connectionId, sink, .screenVideo, nil)
+            let remoteCapabilities = mirrorRequest.streamingCapabilities
+                .map(MercuryStreamingCapabilitySnapshot.init(wire:))
+                ?? remoteStreamingCapabilitiesByConnectionID[request.frame.connectionId]
+            let localCapabilities = remoteCapabilities.map { _ in
+                MercuryVideoToolboxCapabilityProbe.snapshot(mediaFrameVersions: .v1AndV2)
+            }
+            try await startScreenShare(
+                request.frame.connectionId,
+                sink,
+                .screenVideo,
+                nil,
+                localCapabilities,
+                remoteCapabilities,
+                .production
+            )
             do {
                 if let ensureComputerUseSession {
                     try await ensureComputerUseSession()

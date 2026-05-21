@@ -2,6 +2,8 @@ import AppKit
 import Carbon
 import GoogleSignIn
 import SwiftUI
+import IOKit.ps
+import OpenBurnBarCore
 
 /// Hosts the OpenBurnBar status item and popover.
 ///
@@ -19,6 +21,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItemGlobalMouseMonitor: Any?
     private var lastHandledStatusItemEventKey: OpenBurnBarStatusItemClick.EventKey?
     private var lastHandledStatusItemEventTime: TimeInterval = 0
+
+    // live wallpaper variables
+    public var dataStore: DataStore? = nil {
+        didSet {
+            setupWallpaperObservers()
+        }
+    }
+    public var daemonManager: OpenBurnBarDaemonManager? = nil {
+        didSet {
+            setupWallpaperObservers()
+        }
+    }
+
+    private var wallpaperPanels: [BurnBarWallpaperPanel] = []
+    private var sharedWallpaperViewModel = SwarmWallpaperViewModel()
+
+    // Observers
+    private var wallpaperEnabledObserver: Any?
+    private var dataStoreObservation: Any?
+    private var daemonObservation: Any?
+    private var batteryTimer: Timer?
 
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
@@ -40,6 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
         installStatusItem()
+
+        // Start wallpaper orchestration
+        observeDesktopWallpaper()
+        setupPowerMonitoring()
+        setupScreenChangeObserver()
     }
 
     @objc private func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
@@ -78,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func observeMenuBarIconStyle() {
         menuBarIconObservation = withObservationTracking {
             _ = SettingsManager.shared.appearance.colorfulMenuBarIcon
+            return nil as Any?
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, let button = self.statusItem?.button else { return }
@@ -229,6 +258,208 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         AppCommandRouter.shared.openSettings?()
     }
 
+    // MARK: - Live Wallpaper Orchestration
+
+    private func observeDesktopWallpaper() {
+        wallpaperEnabledObserver = withObservationTracking {
+            _ = SettingsManager.shared.appearance.enableDesktopWallpaper
+            return nil as Any?
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.updateWallpaperState()
+                self.observeDesktopWallpaper()
+            }
+        }
+    }
+
+    private func updateWallpaperState() {
+        let isEnabled = SettingsManager.shared.appearance.enableDesktopWallpaper
+        if isEnabled {
+            setupWallpaperPanels()
+        } else {
+            teardownWallpaperPanels()
+        }
+    }
+
+    private func setupWallpaperPanels() {
+        teardownWallpaperPanels()
+        let screens = NSScreen.screens
+        for screen in screens {
+            let panel = BurnBarWallpaperPanel(screen: screen, viewModel: sharedWallpaperViewModel)
+            panel.orderFront(self)
+            wallpaperPanels.append(panel)
+        }
+    }
+
+    private func teardownWallpaperPanels() {
+        for panel in wallpaperPanels {
+            panel.orderOut(self)
+            panel.close()
+        }
+        wallpaperPanels.removeAll()
+    }
+
+    private func setupScreenChangeObserver() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleScreenParametersChange),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleScreenParametersChange() {
+        if SettingsManager.shared.appearance.enableDesktopWallpaper {
+            setupWallpaperPanels()
+        }
+    }
+
+    private func setupPowerMonitoring() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePowerStateChange),
+            name: Notification.Name.NSProcessInfoPowerStateDidChange,
+            object: nil
+        )
+        batteryTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.syncBatteryState()
+            }
+        }
+        syncBatteryState()
+    }
+
+    @objc private func handlePowerStateChange() {
+        syncBatteryState()
+    }
+
+    private func syncBatteryState() {
+        let onBattery = isRunningOnBattery()
+        sharedWallpaperViewModel.isBatteryThrottled = onBattery
+    }
+
+    private func isRunningOnBattery() -> Bool {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
+            return false
+        }
+        guard let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
+            return false
+        }
+        for source in sources {
+            guard let desc = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] else {
+                continue
+            }
+            if let state = desc[kIOPSPowerSourceStateKey] as? String {
+                if state == kIOPSBatteryPowerValue {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private func setupWallpaperObservers() {
+        observeDataStoreChanges()
+        observeDaemonChanges()
+        syncWallpaperColorDriver()
+    }
+
+    private func observeDataStoreChanges() {
+        guard let dataStore else { return }
+        dataStoreObservation = withObservationTracking {
+            _ = dataStore.totalCostToday
+            _ = dataStore.providerSummaries
+            return nil as Any?
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncWallpaperColorDriver()
+                self.observeDataStoreChanges()
+            }
+        }
+    }
+
+    private func observeDaemonChanges() {
+        guard let daemonManager else { return }
+        daemonObservation = withObservationTracking {
+            _ = daemonManager.isBusy
+            return nil as Any?
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncWallpaperColorDriver()
+                self.observeDaemonChanges()
+            }
+        }
+    }
+
+    private func syncWallpaperColorDriver() {
+        guard let dataStore else {
+            sharedWallpaperViewModel.colorDriver = nil
+            return
+        }
+        
+        let isBusy = daemonManager?.isBusy ?? false
+        let mode: SwarmColorDriver.Mode = isBusy ? .active : .idle
+        let totalCost = dataStore.totalCostToday
+        let summaries = dataStore.providerSummaries
+        
+        var weights: [SwarmColorDriver.ProviderWeight] = []
+        
+        if !summaries.isEmpty {
+            if totalCost > 0 {
+                weights = summaries.map { summary in
+                    SwarmColorDriver.ProviderWeight(
+                        provider: summary.provider,
+                        weight: summary.totalCost / totalCost,
+                        quotaPressure: 0.0
+                    )
+                }
+            } else {
+                let totalTokens = summaries.reduce(0) { $0 + $1.totalTokens }
+                if totalTokens > 0 {
+                    weights = summaries.map { summary in
+                        SwarmColorDriver.ProviderWeight(
+                            provider: summary.provider,
+                            weight: Double(summary.totalTokens) / Double(totalTokens),
+                            quotaPressure: 0.0
+                        )
+                    }
+                } else {
+                    let equalWeight = 1.0 / Double(summaries.count)
+                    weights = summaries.map { summary in
+                        SwarmColorDriver.ProviderWeight(
+                            provider: summary.provider,
+                            weight: equalWeight,
+                            quotaPressure: 0.0
+                        )
+                    }
+                }
+            }
+        }
+        
+        weights.sort { $0.weight > $1.weight }
+        
+        let driver = SwarmColorDriver(
+            mode: mode,
+            providers: weights,
+            totalBurnRateUSD: totalCost
+        )
+        
+        sharedWallpaperViewModel.colorDriver = driver
+    }
+
+    private func teardownWallpaperObservers() {
+        wallpaperEnabledObserver = nil
+        dataStoreObservation = nil
+        daemonObservation = nil
+        batteryTimer?.invalidate()
+        batteryTimer = nil
+        NotificationCenter.default.removeObserver(self, name: Notification.Name.NSProcessInfoPowerStateDidChange, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    }
+
     // MARK: - NSPopoverDelegate
 
     func popoverDidShow(_ notification: Notification) {
@@ -243,6 +474,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         uninstallStatusItemMouseFallback()
+        teardownWallpaperPanels()
+        teardownWallpaperObservers()
     }
 }
 
@@ -369,5 +602,126 @@ private extension CGRect {
 enum OpenBurnBarPopoverClickRegion {
     static func isInsideInteractiveRegion(_ point: CGPoint, statusItemFrame: CGRect, popoverFrame: CGRect) -> Bool {
         return statusItemFrame.insetBy(dx: -5, dy: -5).contains(point) || popoverFrame.contains(point)
+    }
+}
+
+// MARK: - Dynamic Swarm Wallpaper Types
+
+/// Reactive view model for coordinating the live background state.
+@Observable
+@MainActor
+public final class SwarmWallpaperViewModel {
+    public var pointer: CGPoint? = nil
+    public var colorDriver: SwarmColorDriver? = nil
+    public var isBatteryThrottled: Bool = false
+    public var isPaused: Bool = false
+
+    public init() {}
+}
+
+/// SwiftUI wrapper for displaying the SwarmCanvasView within the wallpaper panel.
+struct SwarmWallpaperView: View {
+    let viewModel: SwarmWallpaperViewModel
+
+    var body: some View {
+        if viewModel.isPaused {
+            Color.clear
+                .ignoresSafeArea()
+        } else {
+            SwarmCanvasView(
+                accent: .purple,
+                pace: .cinematic, // Cinematic pace is perfect for ambient wallpaper
+                colorDriver: viewModel.colorDriver,
+                isBatteryThrottled: viewModel.isBatteryThrottled,
+                externalPointer: viewModel.pointer
+            )
+            .ignoresSafeArea()
+        }
+    }
+}
+
+/// A stationary, click-through transparent NSPanel floating behind desktop folders and icons
+/// that hosts the dynamic AI usage ember swarm simulation.
+public class BurnBarWallpaperPanel: NSPanel {
+    private var mouseMonitor: Any?
+    private let viewModel: SwarmWallpaperViewModel
+    private let targetScreen: NSScreen
+
+    public init(screen: NSScreen, viewModel: SwarmWallpaperViewModel) {
+        self.viewModel = viewModel
+        self.targetScreen = screen
+        
+        super.init(
+            contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        
+        self.isFloatingPanel = false
+        // Place exactly under desktop icons, but above standard background image
+        self.level = NSWindow.Level(rawValue: Int(CGWindowLevelKey.desktopWindow.rawValue) - 1)
+        
+        self.collectionBehavior = [
+            .canJoinAllSpaces,  // Live on all virtual desktops (Spaces)
+            .ignoresCycle,      // Exclude from Cmd+` cycle list
+            .stationary         // Lock in position during swipe transitions
+        ]
+        
+        self.ignoresMouseEvents = true // Make click-through so user can interact with files
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.hidesOnDeactivate = false
+        
+        let swarmView = SwarmWallpaperView(viewModel: viewModel)
+        let hostingView = NSHostingView(rootView: swarmView)
+        hostingView.frame = self.contentView?.bounds ?? .zero
+        hostingView.autoresizingMask = [.width, .height]
+        self.contentView = hostingView
+
+        // Global mouse tracking monitor to feed cursor position to the canvas without window focus
+        self.mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+            guard let self = self, !self.viewModel.isPaused else { return }
+            let globalPoint = NSEvent.mouseLocation
+            
+            // Check if mouse is on this screen
+            if self.targetScreen.frame.contains(globalPoint) {
+                let localPoint = self.convertScreenPointToLocal(globalPoint)
+                self.viewModel.pointer = localPoint
+            } else {
+                self.viewModel.pointer = nil
+            }
+        }
+
+        // Register occlusion state observer to freeze rendering (0fps) when covered or on inactive Space
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleOcclusionChange),
+            name: NSWindow.didChangeOcclusionStateNotification,
+            object: self
+        )
+        
+        // Trigger initial check
+        handleOcclusionChange()
+    }
+
+    @objc private func handleOcclusionChange() {
+        let isVisible = self.occlusionState.contains(.visible)
+        self.viewModel.isPaused = !isVisible
+    }
+
+    private func convertScreenPointToLocal(_ globalPoint: NSPoint) -> CGPoint {
+        let screenFrame = targetScreen.frame
+        // Convert bottom-left y-up (macOS) to top-left y-down (SwiftUI Canvas)
+        let localX = globalPoint.x - screenFrame.origin.x
+        let localY = screenFrame.height - (globalPoint.y - screenFrame.origin.y)
+        return CGPoint(x: localX, y: localY)
+    }
+
+    deinit {
+        if let monitor = mouseMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 }

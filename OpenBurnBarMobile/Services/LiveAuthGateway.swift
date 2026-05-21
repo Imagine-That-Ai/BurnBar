@@ -1,7 +1,7 @@
 import AuthenticationServices
 import CryptoKit
 import Foundation
-import FirebaseAuth
+@preconcurrency import FirebaseAuth
 import FirebaseCore
 import GoogleSignIn
 import OSLog
@@ -19,7 +19,7 @@ final class LiveAuthGateway: NSObject, AuthGateway {
         super.init()
         if authRepo.isFirebaseAvailable {
             authRepo.observeAuthChanges { [weak self] (user: User?) in
-                Task { @MainActor in self?.observer?(Self.identity(from: user)) }
+                self?.observer?(Self.identity(from: user))
             }
         }
     }

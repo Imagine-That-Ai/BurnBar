@@ -103,7 +103,7 @@ public struct MissionKindChooser: View {
                     if let name = recommendedDisplay {
                         HStack(spacing: 3) {
                             Image(systemName: "arrowshape.right.fill")
-                                .font(.system(size: 7, weight: .bold))
+                                .font(.system(size: 12, weight: .bold))
                             Text("Recommends \(name)")
                                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                                 .tracking(0.5)

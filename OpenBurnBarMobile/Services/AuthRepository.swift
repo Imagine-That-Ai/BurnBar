@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseAuth
+@preconcurrency import FirebaseAuth
 import FirebaseCore
 import FirebaseFunctions
 
@@ -45,11 +45,16 @@ final class AuthRepository {
 
     @discardableResult
     func addStateDidChangeListener(
-        _ callback: @escaping @Sendable (User?) -> Void
+        _ callback: @escaping @MainActor (User?) -> Void
     ) -> AuthStateDidChangeListenerHandle? {
         guard let auth else { return nil }
         return auth.addStateDidChangeListener { _, user in
-            callback(user)
+            // FirebaseAuth invokes auth-state listeners on the main queue; keep
+            // the non-Sendable `User` on the main actor instead of hopping it
+            // through a Sendable task closure.
+            MainActor.assumeIsolated {
+                callback(user)
+            }
         }
     }
 
@@ -58,7 +63,7 @@ final class AuthRepository {
     /// detach if they ever need to.
     @discardableResult
     func observeAuthChanges(
-        _ callback: @escaping @Sendable (User?) -> Void
+        _ callback: @escaping @MainActor (User?) -> Void
     ) -> AuthStateDidChangeListenerHandle? {
         addStateDidChangeListener(callback)
     }

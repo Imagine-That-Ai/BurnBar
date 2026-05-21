@@ -55,10 +55,16 @@ struct ProjectDetailView: View {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(providerColor.opacity(0.18))
                             .frame(width: 56, height: 56)
-                        Image(systemName: "folder.fill")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(providerColor)
-                            .symbolEffect(.bounce, options: .repeating)
+                        if #available(iOS 18.0, *) {
+                            Image(systemName: "folder.fill")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(providerColor)
+                                .symbolEffect(.bounce, options: .repeating)
+                        } else {
+                            Image(systemName: "folder.fill")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(providerColor)
+                        }
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text(project.projectName)

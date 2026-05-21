@@ -169,6 +169,31 @@ final class SettingsManager {
         set { appearance.colorfulMenuBarIcon = newValue }
     }
 
+    var usePremiumSOTAUX: Bool {
+        get { appearance.usePremiumSOTAUX }
+        set { appearance.usePremiumSOTAUX = newValue }
+    }
+
+    var useWebsiteBackground: Bool {
+        get { appearance.useWebsiteBackground }
+        set { appearance.useWebsiteBackground = newValue }
+    }
+
+    var enableDesktopWallpaper: Bool {
+        get { appearance.enableDesktopWallpaper }
+        set { appearance.enableDesktopWallpaper = newValue }
+    }
+
+    var amoledDarkBackground: Bool {
+        get { appearance.amoledDarkBackground }
+        set { appearance.amoledDarkBackground = newValue }
+    }
+
+    var cycleShapesScreensaver: Bool {
+        get { appearance.cycleShapesScreensaver }
+        set { appearance.cycleShapesScreensaver = newValue }
+    }
+
     var preferredSwiftUIColorScheme: ColorScheme? {
         appearance.appearanceMode.colorScheme
     }

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">BurnBar</string>
+    <string name="wallpaper_label">BurnBar Live</string>
+    <string name="wallpaper_description">Data-driven swarm wallpaper colored by your AI provider usage. Particles reflect which providers are burning tokens.</string>
 </resources>

@@ -99,9 +99,8 @@ final class MobileProviderWizardModel {
     // MARK: - Lifecycle
 
     func bootstrap() async {
-        async let c: Void = connectionStore.load()
-        async let s: Void = subscriptionStore.load()
-        _ = await (c, s)
+        await connectionStore.load()
+        await subscriptionStore.load()
     }
 
     // MARK: - Step machine

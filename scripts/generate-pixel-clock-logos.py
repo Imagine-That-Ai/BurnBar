@@ -230,25 +230,30 @@ LOGOS = [
     ),
     LogoSource("kimi", "KimiLogo", "KimiLogo"),
     LogoSource(
-        # DeepSeek — side-profile whale/dolphin in the brand's indigo
-        # blue (#6366F1). The whale faces left with a round body, small
-        # white eye, fluke at the right, and a subtle belly curve.
+        # DeepSeek — pixel whale facing right, drawn from the reference
+        # spec: forked tail on the LEFT (top + bottom prongs), rounded
+        # indigo body on the RIGHT, white eye pixel near the head, and a
+        # short white belly stripe under the head. Dark indigo outline
+        # pixels at the corners give the silhouette structural weight and
+        # keep the dominant brand indigo at ~80% (well under the 90%
+        # rainbow remap threshold).
         "deepSeek",
         "DeepSeekLogo",
         "DeepSeekLogo",
         pixel_rows=(
-            "..BBBB..",
-            ".BBBBBB.",
-            "BWBBBBBB",
-            "BBBBBBBB",
+            "D....DBB",
+            "BB...BBB",
+            ".DBBBBWB",
             ".BBBBBBB",
-            "..BBBB.B",
-            "...BB.BB",
-            "........",
+            ".BBBBBBB",
+            ".DBBBBWB",
+            "BB...BWB",
+            "D....DB.",
         ),
         pixel_colors={
             "B": "#6366F1",
             "W": "#FFFFFF",
+            "D": "#1E1B4B",
         },
     ),
     LogoSource(

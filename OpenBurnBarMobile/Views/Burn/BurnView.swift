@@ -22,7 +22,7 @@ struct BurnView: View {
 
     var body: some View {
         ZStack {
-            AuroraBackdrop()
+            AuroraBackdrop(colorDriver: dashboard.swarmColorDriver)
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.lg) {
                     if quotaStore.snapshots.isEmpty && quotaStore.isLoading {

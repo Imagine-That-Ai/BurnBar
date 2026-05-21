@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.ui.settings.rememberWebsiteBackground
 import com.openburnbar.data.models.AgentProvider
 
 /**
@@ -47,12 +49,13 @@ fun AgentInsightsRosterScreen(
     onSelectAggregate: () -> Unit,
     contentPadding: PaddingValues = PaddingValues()
 ) {
+    val useWebsiteBackground by rememberWebsiteBackground()
     val groups = remember()
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(if (useWebsiteBackground) Color.Transparent else MaterialTheme.colorScheme.background),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {

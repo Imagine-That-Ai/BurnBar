@@ -210,6 +210,9 @@ class OpenBurnBarIrohFfiBackend(
          */
         @Volatile private var cachedAvailability: Boolean? = null
         fun isAvailable(): Boolean {
+            if (isAndroidRuntime() && !OpenBurnBarIrohNativeContext.isInstalled()) {
+                return false
+            }
             cachedAvailability?.let { return it }
             val ok = try {
                 handleClass()
@@ -229,5 +232,9 @@ class OpenBurnBarIrohFfiBackend(
 
         private fun secretKeyMaterialClass(): Class<*> =
             Class.forName("uniffi.openburnbar_iroh.IrohSecretKeyMaterial")
+
+        private fun isAndroidRuntime(): Boolean =
+            System.getProperty("java.runtime.name")?.contains("Android", ignoreCase = true) == true ||
+                System.getProperty("java.vm.vendor")?.contains("Android", ignoreCase = true) == true
     }
 }

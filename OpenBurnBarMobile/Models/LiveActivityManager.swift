@@ -1,4 +1,4 @@
-import ActivityKit
+@preconcurrency import ActivityKit
 import Foundation
 import OpenBurnBarCore
 
@@ -30,9 +30,10 @@ final class LiveActivityManager {
         )
 
         do {
+            let content = ActivityContent(state: state, staleDate: nil)
             activity = try Activity.request(
                 attributes: attributes,
-                contentState: state,
+                content: content,
                 pushType: nil
             )
         } catch {
@@ -51,8 +52,9 @@ final class LiveActivityManager {
             sessionActive: sessionActive
         )
 
-        Task {
-            await activity.update(using: state)
+        Task.detached { [activity, state] in
+            let content = ActivityContent(state: state, staleDate: nil)
+            await activity.update(content)
         }
     }
 
@@ -61,7 +63,7 @@ final class LiveActivityManager {
         guard let activity else { return }
 
         Task {
-            await activity.end(dismissalPolicy: .default)
+            await activity.end(nil, dismissalPolicy: .default)
             self.activity = nil
         }
     }

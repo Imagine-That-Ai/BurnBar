@@ -23,18 +23,33 @@ typealias IrohMediaFrameDispatcher = @Sendable (
 ) async -> Void
 
 private enum IrohNetworkAuditSnapshot {
+    private final class ContinuationGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var didResume = false
+
+        func finish(
+            with path: NWPath,
+            monitor: NWPathMonitor,
+            continuation: CheckedContinuation<[String: String], Never>
+        ) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !didResume else { return }
+            didResume = true
+            let detail = auditDetail(for: path)
+            monitor.cancel()
+            continuation.resume(returning: detail)
+        }
+    }
+
     static func capture(timeout: DispatchTimeInterval = .milliseconds(250)) async -> [String: String] {
         await withCheckedContinuation { continuation in
             let monitor = NWPathMonitor()
             let queue = DispatchQueue(label: "com.openburnbar.iroh-network-audit")
-            var didResume = false
+            let gate = ContinuationGate()
 
-            func finish(with path: NWPath) {
-                guard !didResume else { return }
-                didResume = true
-                let detail = auditDetail(for: path)
-                monitor.cancel()
-                continuation.resume(returning: detail)
+            @Sendable func finish(with path: NWPath) {
+                gate.finish(with: path, monitor: monitor, continuation: continuation)
             }
 
             monitor.pathUpdateHandler = { path in
@@ -142,7 +157,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             HermesIrohRelayTransport.defaultTransport()
         },
         connectTimeout: TimeInterval = HermesIrohRelayTransport.defaultConnectTimeout,
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.directory = directory
         self.pairingPublicKeyProvider = pairingPublicKeyProvider
@@ -614,6 +629,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     .mediaMirrorStop,
                     .mediaMirrorDisplaySelect,
                     .mediaPresenceHeartbeat,
+                    .mediaLongTermReferenceAck,
                     .mediaCallInvite,
                     .mediaCallAck,
                     .mediaStreamFrame:

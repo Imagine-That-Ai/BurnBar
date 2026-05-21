@@ -80,7 +80,7 @@ final class MotionStore {
 
 // MARK: - Environment
 
-private struct MotionStoreKey: EnvironmentKey {
+private struct MotionStoreKey: @preconcurrency EnvironmentKey {
     @MainActor static let defaultValue = MotionStore()
 }
 

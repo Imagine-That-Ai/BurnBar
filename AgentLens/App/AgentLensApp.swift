@@ -1060,6 +1060,10 @@ struct OpenBurnBarApp: App {
             context.cursorConnectorManager.attach(dataStore: context.dataStore)
             context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
 
+            // Inject wallpaper dependencies
+            appDelegate.dataStore = context.dataStore
+            appDelegate.daemonManager = context.daemonManager
+
             if !hasShownInitialDashboard {
                 hasShownInitialDashboard = true
                 windowManager.openDashboard(

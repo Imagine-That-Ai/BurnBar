@@ -43,6 +43,7 @@ struct AuthGateView: View {
         }
         .animation(.snappy(duration: 0.25), value: authStore.state)
         .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
+        .environment(\.mobileAuthStore, authStore)
         #if DEBUG
         .onAppear {
             logHermesE2EAuthState("auth-gate-appeared")
@@ -59,7 +60,7 @@ struct AuthGateView: View {
         case .firebaseUnavailable:
             FirebaseUnavailableScene()
         case .signedOut, .signingIn, .firestoreUnavailable:
-            SignInScene(authStore: authStore)
+            guestRootView
         case .signedIn, .deletingAccount:
             signedInView
         }
@@ -96,6 +97,10 @@ struct AuthGateView: View {
                     set: { hasCompletedOnboarding = !$0 }
                 ))
             }
+    }
+
+    private var guestRootView: some View {
+        mainSignedInView
     }
 
     @ViewBuilder

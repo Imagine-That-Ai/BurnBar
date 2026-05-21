@@ -44,6 +44,7 @@ struct ProviderRoutingCockpit: View {
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
             headerRow
+            providerChangePopup
             lanesRow
             switchReasonRow
         }
@@ -56,6 +57,7 @@ struct ProviderRoutingCockpit: View {
             RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
                 .stroke(MobileTheme.Colors.border.opacity(0.5), lineWidth: 0.5)
         )
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: latestProviderChangeEvent?.id)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityAddTraits(.isHeader)
@@ -87,6 +89,161 @@ struct ProviderRoutingCockpit: View {
         } else {
             routingPill("Needs attention", tint: MobileTheme.Colors.warning, icon: "exclamationmark.triangle.fill")
         }
+    }
+
+    // MARK: - Provider Change Popup
+
+    @ViewBuilder
+    private var providerChangePopup: some View {
+        if let event = latestProviderChangeEvent {
+            let source = event.providerChangeSourceLabel ?? "Previous provider"
+            let destination = event.providerChangeDestinationLabel ?? "New provider"
+            let model = event.providerChangeModelLabel ?? "requested model"
+            let reason = sanitizedReason(event.failoverReason ?? event.reason)
+            let sourceTint = providerChangeTint(for: event.originalProviderID, fallback: MobileTheme.blaze)
+            let destinationTint = providerChangeTint(
+                for: event.failoverDestinationProviderID,
+                fallback: MobileTheme.Colors.primary(for: provider)
+            )
+
+            HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
+                providerLogoHandoff(event)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(event.exactModelInvariantPassed ? "Provider changed" : "Provider change blocked")
+                            .font(MobileTheme.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        routingPill(
+                            event.exactModelInvariantPassed ? "Same model" : "Check model",
+                            tint: event.exactModelInvariantPassed ? MobileTheme.Colors.success : MobileTheme.Colors.warning,
+                            icon: event.exactModelInvariantPassed ? "equal.circle.fill" : "exclamationmark.triangle.fill"
+                        )
+                    }
+
+                    HStack(spacing: 6) {
+                        Text(source)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(destinationTint)
+                        Text(destination)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+
+                    Text(
+                        event.exactModelInvariantPassed
+                            ? "\(model) stayed exact\(reason.map { " because \($0)" } ?? ".")"
+                            : "Exact model proof was missing\(reason.map { " because \($0)" } ?? ".")"
+                    )
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(MobileTheme.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                sourceTint.opacity(0.14),
+                                MobileTheme.Colors.surfaceElevated.opacity(0.82),
+                                destinationTint.opacity(0.13)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [sourceTint.opacity(0.42), destinationTint.opacity(0.42)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        lineWidth: 0.8
+                    )
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                event.exactModelInvariantPassed
+                    ? "Provider changed from \(source) to \(destination). \(model) stayed exact."
+                    : "Provider change from \(source) to \(destination) did not pass exact model proof."
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func providerLogoHandoff(_ event: ProviderRoutingDecisionEvent) -> some View {
+        let sourceTint = providerChangeTint(for: event.originalProviderID, fallback: MobileTheme.blaze)
+        let destinationTint = providerChangeTint(
+            for: event.failoverDestinationProviderID,
+            fallback: MobileTheme.Colors.primary(for: provider)
+        )
+        HStack(spacing: 0) {
+            providerLogoTile(providerID: event.originalProviderID, fallbackSymbol: "cpu", tint: sourceTint)
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [sourceTint, destinationTint],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 18, height: 18)
+            .padding(.horizontal, -3)
+            .zIndex(1)
+            providerLogoTile(providerID: event.failoverDestinationProviderID, fallbackSymbol: "terminal", tint: destinationTint)
+        }
+        .shadow(color: destinationTint.opacity(0.25), radius: 8, y: 3)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func providerLogoTile(providerID: ProviderID?, fallbackSymbol: String, tint: Color) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(MobileTheme.Colors.surfaceElevated.opacity(0.88))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(tint.opacity(0.32), lineWidth: 0.7)
+                )
+            if let providerID,
+               let provider = AgentProvider.fromProviderID(providerID) {
+                ProviderAvatar(provider: provider, mode: .plain, size: 24)
+            } else {
+                Image(systemName: fallbackSymbol)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+        }
+        .frame(width: 34, height: 34)
+    }
+
+    private func providerChangeTint(for providerID: ProviderID?, fallback: Color) -> Color {
+        guard let providerID,
+              let provider = AgentProvider.fromProviderID(providerID) else {
+            return fallback
+        }
+        return MobileTheme.Colors.primary(for: provider)
     }
 
     @ViewBuilder
@@ -357,6 +514,64 @@ struct ProviderRoutingCockpit: View {
         .background(tint.opacity(0.12))
         .clipShape(Capsule())
     }
+
+    private var latestProviderChangeEvent: ProviderRoutingDecisionEvent? {
+        state.recentEvents.last(where: { $0.isProviderChangeFailover }) ?? Self.debugForcedProviderChangeEvent
+    }
+
+    #if DEBUG
+    private static let debugForcedProviderChangeEvent = ProviderRoutingDecisionEvent(
+        id: UUID(uuidString: "7F570BF2-9A2B-4C52-9CB1-2AB1E8D7B55D")!,
+        occurredAt: Date(timeIntervalSinceReferenceDate: 800_000_000),
+        modelID: "gpt-5.4",
+        routerMode: .sameModelFailover,
+        selected: ProviderRoutingCandidate(
+            providerID: .codex,
+            accountID: "codex-debug-preview",
+            accountLabel: "Codex backup",
+            credentialHandle: "debug-preview",
+            storageScope: .deviceKeychain,
+            modelCompatibility: .compatible,
+            canonicalModelID: "gpt-5.4",
+            quotaState: .healthy,
+            cooldownUntil: nil,
+            priority: 0,
+            routingEnabled: true,
+            lastUsedAt: nil,
+            lastFailureCode: nil,
+            localCredentialAvailable: true
+        ),
+        nextFallback: nil,
+        originalProviderID: .openAI,
+        originalAccountID: "openai-debug-primary",
+        originalAccountLabel: "OpenAI primary",
+        attemptedModelID: "gpt-5.4",
+        attemptedCanonicalModelID: "gpt-5.4",
+        failoverDestination: ProviderRoutingCandidate(
+            providerID: .codex,
+            accountID: "codex-debug-preview",
+            accountLabel: "Codex backup",
+            credentialHandle: "debug-preview",
+            storageScope: .deviceKeychain,
+            modelCompatibility: .compatible,
+            canonicalModelID: "gpt-5.4",
+            quotaState: .healthy,
+            cooldownUntil: nil,
+            priority: 0,
+            routingEnabled: true,
+            lastUsedAt: nil,
+            lastFailureCode: nil,
+            localCredentialAvailable: true
+        ),
+        failoverReason: "OpenAI primary is exhausted; Codex backup serves the exact same canonical model.",
+        exactModelInvariantPassed: true,
+        reason: "OpenAI primary is exhausted; Codex backup serves the exact same canonical model.",
+        explanation: "Debug preview of exact model failover.",
+        skipped: []
+    )
+    #else
+    private static let debugForcedProviderChangeEvent: ProviderRoutingDecisionEvent? = nil
+    #endif
 
     /// Defense-in-depth: routing reasons are sanitized server-side, but the
     /// UI never renders them without a final sweep so a stray credential

@@ -120,7 +120,7 @@ enum HermesAttachmentLoader {
         _ item: PhotosPickerItem,
         threadID: String = HermesAttachmentWorkspace.defaultThreadID
     ) async throws -> HermesAttachment {
-        guard let workspace = HermesAttachmentWorkspace.attachmentsRoot(threadID: threadID) else {
+        guard HermesAttachmentWorkspace.attachmentsRoot(threadID: threadID) != nil else {
             throw LoaderError.workspaceUnavailable
         }
 

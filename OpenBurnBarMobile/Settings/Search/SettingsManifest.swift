@@ -39,6 +39,24 @@ enum SettingsManifest {
             subtitle: "Show USD or token totals",
             keywords: ["currency", "tokens", "usd", "default"]
         ),
+        SettingsItem(
+            id: "hub.appearance.usePremiumSOTAUX",
+            section: .appearance,
+            pageRoute: .hubRoot,
+            anchorID: SettingsAnchor.usePremiumSOTAUX,
+            title: "Premium SOTA UX",
+            subtitle: "Activate comets, neon loader rings, and button springs",
+            keywords: ["sota", "premium", "comet", "spring", "halo", "loader", "visual"]
+        ),
+        SettingsItem(
+            id: "hub.appearance.useWebsiteBackground",
+            section: .appearance,
+            pageRoute: .hubRoot,
+            anchorID: SettingsAnchor.useWebsiteBackground,
+            title: "Swarm Background",
+            subtitle: "Active, reconverging token-ember swarms from burnbar.ai",
+            keywords: ["swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar"]
+        ),
 
         // MARK: UI Mode
 
@@ -358,6 +376,8 @@ enum SettingsManifest {
     static let visibleAnchorIDs: Set<String> = Set([
         SettingsAnchor.theme,
         SettingsAnchor.usageDisplay,
+        SettingsAnchor.usePremiumSOTAUX,
+        SettingsAnchor.useWebsiteBackground,
         SettingsAnchor.uiMode,
         SettingsAnchor.dailyBudget,
         SettingsAnchor.costAlerts,

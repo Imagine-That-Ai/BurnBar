@@ -69,7 +69,13 @@ struct MacAgentInsightsWorkspace: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(UnifiedDesignSystem.Colors.background)
+        .background {
+            if settingsManager.useWebsiteBackground {
+                WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+            } else {
+                UnifiedDesignSystem.Colors.background
+            }
+        }
         .navigationTitle(selectedScope.provider?.displayName ?? "All agents")
         .toolbar {
             ToolbarItemGroup {

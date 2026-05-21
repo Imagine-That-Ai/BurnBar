@@ -1,5 +1,5 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import OpenBurnBarMedia
 
 /// iOS-side mic capture for Phase 4. Same Voice-Processing IO path as
@@ -40,7 +40,7 @@ final class MicrophoneCaptureService {
     func start() async throws {
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .duckOthers])
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .duckOthers])
             try session.setActive(true, options: [])
         } catch {
             throw Failure.sessionConfigurationFailed(error.localizedDescription)

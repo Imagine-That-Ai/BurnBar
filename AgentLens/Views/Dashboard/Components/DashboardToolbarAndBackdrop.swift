@@ -1,6 +1,8 @@
 import AppKit
+import OpenBurnBarCore
 import SwiftUI
 import WebKit
+
 struct UsageModeToolbarPicker: View {
     @Binding var selection: UsageDisplayMode
 
@@ -51,31 +53,54 @@ struct UsageModeToolbarPicker: View {
 
 struct DashboardBackdrop: View {
     let moodBand: MoodBand
+    @Environment(SettingsManager.self) private var settingsManager
 
     var body: some View {
         ZStack {
-            DesignSystem.Colors.background
-                .ignoresSafeArea()
+            if settingsManager.useWebsiteBackground {
+                WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+            } else {
+                DesignSystem.Colors.background
+                    .ignoresSafeArea()
 
-            DesignSystem.Colors.ember
-                .opacity(0.035)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .mask(alignment: .topLeading) {
-                    Rectangle()
-                        .frame(width: 520)
-                        .rotationEffect(.degrees(-11))
-                        .offset(x: -260, y: -80)
-                }
+                DesignSystem.Colors.ember
+                    .opacity(0.035)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .mask(alignment: .topLeading) {
+                        Rectangle()
+                            .frame(width: 520)
+                            .rotationEffect(.degrees(-11))
+                            .offset(x: -260, y: -80)
+                    }
 
-            DesignSystem.Colors.whimsy
-                .opacity(0.025)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .mask(alignment: .bottomTrailing) {
-                    Rectangle()
-                        .frame(width: 460)
-                        .rotationEffect(.degrees(15))
-                        .offset(x: 220, y: 110)
-                }
+                DesignSystem.Colors.whimsy
+                    .opacity(0.025)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .mask(alignment: .bottomTrailing) {
+                        Rectangle()
+                            .frame(width: 460)
+                            .rotationEffect(.degrees(15))
+                            .offset(x: 220, y: 110)
+                    }
+            }
         }
+    }
+}
+
+/// A breathtakingly premium replication of the official OpenBurnBar website background for macOS.
+/// Renders a deep space canvas, shifting organic cosmic mesh gradients, and a highly
+/// precise technical 3D perspective grid fading out toward a high horizon vanishing point.
+/// Active, reconverging token-ember swarm pulled directly from burnbar.ai.
+///
+/// Hundreds of particles murmurate across the screen, periodically
+/// reconverging into "$", "</>", concentric quota rings, and a router
+/// failover S-curve — then breaking apart again. Reduce Motion locks the
+/// pace and pauses the shape cycle.
+struct WebsiteBackgroundView: View {
+    let accent: Color
+
+    var body: some View {
+        SwarmCanvasView(accent: accent, pace: .energetic)
+            .ignoresSafeArea()
     }
 }

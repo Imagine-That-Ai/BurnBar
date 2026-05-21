@@ -40,7 +40,7 @@ final class ScreenCapturePipeline: NSObject {
         var displayId: String? = nil
     }
 
-    typealias FrameHandler = @Sendable (CMSampleBuffer) async -> Void
+    typealias FrameHandler = @MainActor @Sendable (CMSampleBuffer) async -> Void
 
     private let configuration: Configuration
     private let frameHandler: FrameHandler
@@ -110,12 +110,19 @@ final class ScreenCapturePipeline: NSObject {
 }
 
 #if canImport(ScreenCaptureKit)
+private struct CapturedSampleBuffer: @unchecked Sendable {
+    // ScreenCaptureKit delivers each sample buffer to this delegate callback
+    // for one-way handoff into the main-actor encoder. Keep the unchecked
+    // boundary local instead of declaring CMSampleBuffer globally Sendable.
+    let sampleBuffer: CMSampleBuffer
+}
+
 extension ScreenCapturePipeline: SCStreamOutput {
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sampleBuffer.isValid else { return }
-        let frame = sampleBuffer
-        Task.detached(priority: .userInitiated) { [weak self] in
-            await self?.frameHandler(frame)
+        let frame = CapturedSampleBuffer(sampleBuffer: sampleBuffer)
+        Task(priority: .userInitiated) { @MainActor [weak self, frame] in
+            await self?.frameHandler(frame.sampleBuffer)
         }
     }
 }

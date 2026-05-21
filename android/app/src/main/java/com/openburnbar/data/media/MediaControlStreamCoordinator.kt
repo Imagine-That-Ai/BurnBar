@@ -5,11 +5,13 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallInvite
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
+import com.openburnbar.irohrelay.HermesRealtimeRelayLongTermReferenceAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
 import com.openburnbar.irohrelay.IrohRelayStream
 import java.time.Instant
+import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -82,6 +84,14 @@ class MediaControlStreamCoordinator(
     private var activeUID: String? = null
     private var activeConnectionID: String? = null
     private var pendingLive: MutableList<CompletableDeferred<IrohRelayStream>> = mutableListOf()
+    private val mediaPacketCodec = MediaPacketCodec()
+    private val mediaFrameV2Codec = MediaFrameV2Codec()
+
+    @Volatile
+    var mirrorFrameHandler: (suspend (MediaFrame) -> Unit)? = null
+
+    @Volatile
+    var mirrorFrameV2Handler: (suspend (MediaFrameV2) -> Unit)? = null
 
     private val _phase = MutableStateFlow<Phase>(Phase.Idle)
     val phase: StateFlow<Phase> = _phase.asStateFlow()
@@ -146,6 +156,9 @@ class MediaControlStreamCoordinator(
             requestedAt = Instant.now().toString(),
             requesterDisplayName = requesterDisplayName,
             streamClass = "media.screen.video",
+            streamingCapabilities = AndroidMediaCodecCapabilityProbe.snapshot(
+                mediaFrameVersions = MercuryMediaFrameVersionSupport.V1_AND_V2,
+            ).toWire(),
         )
         send(
             HermesRealtimeRelayFrame(
@@ -157,6 +170,29 @@ class MediaControlStreamCoordinator(
             )
         )
         return requestID
+    }
+
+    suspend fun sendLongTermReferenceAcknowledgement(
+        token: MediaFrameV2LongTermReferenceToken,
+        requestID: String? = null,
+    ) {
+        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_LONG_TERM_REFERENCE_ACK,
+                uid = uid,
+                connectionId = connectionID,
+                requestId = requestID,
+                media = HermesRealtimeRelayMediaPayload(
+                    longTermReferenceAck = HermesRealtimeRelayLongTermReferenceAck(
+                        requestId = requestID,
+                        tokenValue = token.value,
+                        decodedAt = Instant.now().toString(),
+                    )
+                ),
+            )
+        )
     }
 
     suspend fun requestCall(requesterDisplayName: String): String {
@@ -275,8 +311,7 @@ class MediaControlStreamCoordinator(
                         frame.media?.callAck?.let { _lastCallAck.value = it }
                     }
                     HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME -> {
-                        // Android screen-share viewer decode is wired separately; keep the
-                        // control stream alive even before the viewer is opened.
+                        handleStreamFrame(frame)
                     }
                     HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT -> {
                         // Presence updates are consumed by the Square connection store.
@@ -314,16 +349,37 @@ class MediaControlStreamCoordinator(
                 presence = HermesRealtimeRelayPresenceHeartbeat(
                     peerDeviceId = peerDeviceIdProvider().ifBlank { "android" },
                     displayName = displayNameProvider().ifBlank { "Android" },
+                    deviceDisplayName = displayNameProvider().ifBlank { "Android" },
                     capabilities = listOf(
                         "media.control",
                         "media.mirror.request",
                         "media.call.invite",
                         "media.blob.transfer",
                     ),
+                    streamingCapabilities = AndroidMediaCodecCapabilityProbe.snapshot(
+                        mediaFrameVersions = MercuryMediaFrameVersionSupport.V1_AND_V2,
+                    ).toWire(),
                     sentAt = Instant.now().toString(),
                 )
             ),
         )
+
+    private suspend fun handleStreamFrame(frame: HermesRealtimeRelayFrame) {
+        val media = frame.media ?: return
+        if (media.streamClass != MediaStreamClass.SCREEN_VIDEO.raw) return
+        val encoded = media.encodedFrameBase64 ?: return
+        val data = runCatching { Base64.getDecoder().decode(encoded) }.getOrNull() ?: return
+
+        runCatching {
+            if (MediaFrameV2Codec.isEncodedEnvelope(data)) {
+                val handler = mirrorFrameV2Handler ?: return
+                handler(mediaFrameV2Codec.decode(data).frame)
+            } else {
+                val handler = mirrorFrameHandler ?: return
+                handler(mediaPacketCodec.decode(data).frame)
+            }
+        }
+    }
 
     private fun nextBackoff(attempt: Int): Long {
         val exp = min(

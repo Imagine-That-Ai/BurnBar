@@ -49,7 +49,7 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(metadata.contains("Guideline 2.1(a) camera crash fix"))
     }
 
-    func testCloudStoreUsesFunctionalBurnBarLegalLinksAndDoesNotDisableSubscribeForProductMetadata() throws {
+    func testCloudStoreUsesFunctionalBurnBarLegalLinksAndUidBoundPurchasePath() throws {
         let storeURL = repoRoot()
             .appendingPathComponent("OpenBurnBarMobile")
             .appendingPathComponent("Views")
@@ -60,18 +60,86 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("https://burnbar.ai/legal/privacy-policy"))
         XCTAssertTrue(source.contains("https://burnbar.ai/legal/terms"))
         XCTAssertTrue(source.contains("Terms of Use (EULA)"))
-        XCTAssertTrue(source.contains("SubscriptionStoreView(productIDs: HostedQuotaSubscriptionStore.appStoreReviewVisibleProductIDs)"))
+        XCTAssertTrue(source.contains("Task { await store.purchase() }"))
+        XCTAssertTrue(source.contains("Restore Purchases"))
+        XCTAssertTrue(source.contains("onSignInRequired: { showSignIn = true }"))
+        XCTAssertTrue(source.contains(".sheet(isPresented: $showSignIn)"))
+        XCTAssertTrue(source.contains("CloudStoreActionBar(\n                            store: store"))
+        XCTAssertFalse(source.contains(".frame(maxHeight: .infinity, alignment: .bottom)"))
+        XCTAssertFalse(source.contains(".ignoresSafeArea(edges: .bottom)"))
         XCTAssertFalse(source.contains("OpenBurnBar Computer Use Monthly - 1 month"))
         XCTAssertFalse(source.contains("OpenBurnBar Pro Max Monthly - 1 month"))
         XCTAssertTrue(source.contains("All App Store Connect subscriptions for this app are available here"))
         XCTAssertFalse(source.contains(".font(.system(size: 10"))
-        XCTAssertTrue(source.contains(".storeButton(.visible, for: .restorePurchases)"))
-        XCTAssertTrue(source.contains(".subscriptionStorePolicyDestination(url: CloudStoreLegalURLs.privacy, for: .privacyPolicy)"))
-        XCTAssertTrue(source.contains(".subscriptionStorePolicyDestination(url: CloudStoreLegalURLs.terms, for: .termsOfService)"))
-        XCTAssertTrue(source.contains(".onInAppPurchaseCompletion"))
+        XCTAssertTrue(source.contains("CloudStoreLegalLinks(alignment: .center, verboseLabels: true)"))
+        XCTAssertFalse(source.contains("SubscriptionStoreView(productIDs: HostedQuotaSubscriptionStore.appStoreReviewVisibleProductIDs)"))
+        XCTAssertFalse(source.contains(".onInAppPurchaseCompletion"))
         XCTAssertFalse(source.contains("https://openburnbar.com"))
-        XCTAssertFalse(source.contains("Task { await store.purchase() }"))
-        XCTAssertFalse(source.contains(".disabled(store.isLoading || store.product == nil)"))
+    }
+
+    func testCloudStoreHidesRootChromeWhilePurchaseScreenIsVisible() throws {
+        let storeURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Store")
+            .appendingPathComponent("CloudStoreView.swift")
+        let rootTabURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("RootTabView.swift")
+        let authGateURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("App")
+            .appendingPathComponent("AuthGateView.swift")
+
+        let store = try String(contentsOf: storeURL, encoding: .utf8)
+        let rootTab = try String(contentsOf: rootTabURL, encoding: .utf8)
+        let authGate = try String(contentsOf: authGateURL, encoding: .utf8)
+
+        XCTAssertTrue(store.contains("cloudStoreChromeVisibilityChanged"))
+        XCTAssertTrue(rootTab.contains("isCloudStoreChromeHidden"))
+        XCTAssertTrue(rootTab.contains("!isCloudStoreChromeHidden"))
+        XCTAssertTrue(rootTab.contains(".environment(\\.mobileAuthStore, authStore)"))
+        XCTAssertTrue(authGate.contains(".environment(\\.mobileAuthStore, authStore)"))
+    }
+
+    func testReleaseAppCheckUsesAppAttestEntitlementForEnforcedFirestore() throws {
+        let entitlementsURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("OpenBurnBarMobile.entitlements")
+        let appDelegateURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("App")
+            .appendingPathComponent("AppDelegate.swift")
+
+        let data = try Data(contentsOf: entitlementsURL)
+        let entitlements = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        )
+        let appDelegate = try String(contentsOf: appDelegateURL, encoding: .utf8)
+
+        XCTAssertEqual(
+            entitlements["com.apple.developer.devicecheck.appattest-environment"] as? String,
+            "production"
+        )
+        XCTAssertTrue(appDelegate.contains("AppAttestProvider(app: app)"))
+        XCTAssertTrue(appDelegate.contains("DeviceCheckProvider(app: app)"))
+    }
+
+    func testInternalTestFlightAppCheckBuildInjectsRuntimeSwitchAndDebugToken() throws {
+        let projectURL = repoRoot().appendingPathComponent("project.yml")
+        let source = try String(contentsOf: projectURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("OPENBURNBAR_USE_DEBUG_APP_CHECK: \"NO\""))
+        XCTAssertTrue(source.contains("if [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" != \"YES\" ]]; then"))
+        XCTAssertTrue(source.contains("FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES"))
+        XCTAssertTrue(source.contains("BUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\""))
+        XCTAssertTrue(source.contains("BUILT_INFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\""))
+        XCTAssertTrue(source.contains("Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}"))
+        XCTAssertTrue(source.contains("Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}"))
+        XCTAssertTrue(source.contains("Add :OpenBurnBarUseDebugAppCheck string YES"))
+        XCTAssertTrue(source.contains("$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"))
     }
 
     func testHostedQuotaStoreKeepsReviewVisibleProductsInLockstepWithAppStoreConnectCatalog() throws {
@@ -91,6 +159,9 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("Draft products stay out of this list until App"))
         XCTAssertFalse(source.contains("appStoreReviewVisibleProductIDs = [\n        productID,\n        legacyHostedQuotaProductID,\n        hostedComputerUseProductID"))
         XCTAssertTrue(source.contains("fetchProducts(Self.appStoreReviewVisibleProductIDs)"))
+        XCTAssertTrue(source.contains("let result = try await purchaseProduct(product, [.appAccountToken(token)])"))
+        XCTAssertFalse(source.contains("nativeStorePurchaseStarted"))
+        XCTAssertFalse(source.contains("handleNativeStorePurchaseCompletion"))
     }
 
     func testSharedTypographyMeetsReadableMobileFloorForAppReview() throws {
@@ -102,18 +173,20 @@ final class AppStoreReviewComplianceTests: XCTestCase {
             .appendingPathComponent("UnifiedDesignSystem.swift")
         let source = try String(contentsOf: designSystemURL, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("public static let body         = Font.system(size: 16"))
-        XCTAssertTrue(source.contains("public static let caption      = Font.system(size: 14"))
-        XCTAssertTrue(source.contains("public static let tiny         = Font.system(size: 13"))
-        XCTAssertTrue(source.contains("public static let monoTiny  = Font.system(size: 12"))
+        XCTAssertTrue(source.contains("public static let body         = Font.system(size: 17"))
+        XCTAssertTrue(source.contains("public static let caption      = Font.system(size: 15"))
+        XCTAssertTrue(source.contains("public static let tiny         = Font.system(size: 14"))
+        XCTAssertTrue(source.contains("public static let monoTiny  = Font.system(size: 13"))
     }
 
     func testMobileReviewSurfacesDoNotShipHardCodedMicroTypography() throws {
         let roots = [
+            repoRoot().appendingPathComponent("OpenBurnBarMobile").appendingPathComponent("App"),
             repoRoot().appendingPathComponent("OpenBurnBarMobile").appendingPathComponent("Views"),
+            repoRoot().appendingPathComponent("OpenBurnBarMobile").appendingPathComponent("Settings"),
             repoRoot().appendingPathComponent("OpenBurnBarCore").appendingPathComponent("Sources").appendingPathComponent("OpenBurnBarCore").appendingPathComponent("Views")
         ]
-        let microFontPattern = try NSRegularExpression(pattern: #"font\(\.system\(size:\s*(?:5|8|9|10|11)(?:\b|\s*\*)"#)
+        let microFontPattern = try NSRegularExpression(pattern: #"font\(\.system\(size:\s*(?:5|6|7|7\.5|8|9|10|11)(?:\b|\s*\*)"#)
 
         for root in roots {
             let urls = FileManager.default.enumerator(
@@ -130,6 +203,34 @@ final class AppStoreReviewComplianceTests: XCTestCase {
                 )
             }
         }
+    }
+
+    func testSignedOutUsersCanReachTheAppAndOnlyCloudAccountFeaturesAskForSignIn() throws {
+        let authGateURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("App")
+            .appendingPathComponent("AuthGateView.swift")
+        let youURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("You")
+            .appendingPathComponent("YouView.swift")
+        let settingsURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("You")
+            .appendingPathComponent("SettingsHubView.swift")
+
+        let authGate = try String(contentsOf: authGateURL, encoding: .utf8)
+        let you = try String(contentsOf: youURL, encoding: .utf8)
+        let settings = try String(contentsOf: settingsURL, encoding: .utf8)
+
+        XCTAssertTrue(authGate.contains("case .signedOut, .signingIn, .firestoreUnavailable:\n            guestRootView"))
+        XCTAssertTrue(authGate.contains("private var guestRootView: some View"))
+        XCTAssertTrue(you.contains("Sign in for Cloud"))
+        XCTAssertTrue(settings.contains("Sign in for Cloud"))
+        XCTAssertTrue(authGate.contains(".environment(\\.mobileAuthStore, authStore)"))
+        XCTAssertFalse(authGate.contains("case .signedOut, .signingIn, .firestoreUnavailable:\n            SignInScene"))
     }
 
     func testTakePhotoFlowPreflightsPermissionAndUsesFullScreenCameraPresentation() throws {

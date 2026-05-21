@@ -135,7 +135,7 @@ public enum DesignSystemColors {
         case .claudeCode: return Color(hex: "CC785C")
         case .copilot:    return Color(hex: "23EA3B")
         case .aider:      return Color(hex: "FF6B35")
-        case .cursor:     return Color(hex: "AC8C57")
+        case .cursor:     return Color(hex: "B4B8C0")
         case .openAI:     return Color(hex: "00A67E")
         case .deepSeek:   return Color(hex: "6366F1")
         case .codex:      return Color(hex: "00A67E")
@@ -166,7 +166,7 @@ public enum DesignSystemColors {
         case .claudeCode: return Color(hex: "D4A574")
         case .copilot:    return Color(hex: "0969DA")
         case .aider:      return blaze
-        case .cursor:     return Color(hex: "007AFF")
+        case .cursor:     return Color(hex: "1A1A1A")
         case .openAI:     return Color(hex: "00C48C")
         case .deepSeek:   return Color(hex: "818CF8")
         case .codex:      return Color(hex: "00C48C")
@@ -255,5 +255,56 @@ public enum DesignSystemColors {
             hash = ((hash << 5) &+ hash) &+ UInt64(byte)
         }
         return palette[Int(hash % UInt64(palette.count))]
+    }
+
+    // MARK: - Raw RGBA for Canvas Rendering
+
+    /// Returns raw RGBA components for a provider's brand color.
+    /// Used by `SwarmColorDriver` for Canvas-level color math where
+    /// SwiftUI `Color` cannot be resolved directly.
+    public static func providerRGBA(for provider: AgentProvider) -> RGBA {
+        let hex = providerHex(for: provider)
+        return hexToRGBA(hex)
+    }
+
+    private static func providerHex(for provider: AgentProvider) -> String {
+        switch provider {
+        case .factory:     return "8B5CF6"
+        case .claudeCode:  return "CC785C"
+        case .copilot:     return "23EA3B"
+        case .aider:       return "FF6B35"
+        case .cursor:      return "B4B8C0"
+        case .openAI:      return "00A67E"
+        case .deepSeek:    return "6366F1"
+        case .codex:       return "00A67E"
+        case .zai:         return "8B5CF6"
+        case .minimax:     return "F59E0B"
+        case .kimi:        return "6366F1"
+        case .cline:       return "D4A373"
+        case .kiloCode:    return "10B981"
+        case .rooCode:     return "EC4899"
+        case .forgeDev:    return "F97316"
+        case .augment:     return "3B82F6"
+        case .hermes:      return "A855F7"
+        case .piAgent:     return "7C3AED"
+        case .geminiCLI:   return "4285F4"
+        case .antigravity: return "6C63FF"
+        case .goose:       return "0D9488"
+        case .openClaw:    return "FF6B6B"
+        case .ollama:      return "6B7280"
+        case .windsurf:    return "06B6D4"
+        case .warp:        return "DDE4EA"
+        case .openCode:    return "2563EB"
+        }
+    }
+
+    private static func hexToRGBA(_ hex: String) -> RGBA {
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        return RGBA(
+            r: Double((int >> 16) & 0xFF) / 255.0,
+            g: Double((int >> 8) & 0xFF) / 255.0,
+            b: Double(int & 0xFF) / 255.0
+        )
     }
 }
