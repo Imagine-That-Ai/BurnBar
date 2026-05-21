@@ -57,6 +57,34 @@ class AndroidHermesInsightGatewayTest {
     }
 
     @Test
+    fun `analyze subtracts cached prompt tokens from OpenAI style usage`() = runBlocking {
+        val body = JSONObject().apply {
+            put(
+                "choices", JSONArray().put(
+                    JSONObject().put(
+                        "message",
+                        JSONObject().put("content", canonicalEnvelope())
+                    )
+                )
+            )
+            put(
+                "usage", JSONObject()
+                    .put("prompt_tokens", 2_006)
+                    .put("completion_tokens", 300)
+                    .put("prompt_tokens_details", JSONObject().put("cached_tokens", 1_920))
+                    .put("estimated_cost_usd", 0.0042)
+            )
+        }.toString()
+        val (gateway, _) = makeGateway(body = body)
+
+        val result = gateway.analyze(followUpRequest("Why did cost spike?"))
+
+        assertEquals(86, result.tokenUsage?.inputTokens)
+        assertEquals(300, result.tokenUsage?.outputTokens)
+        assertEquals(1_920, result.tokenUsage?.cacheReadTokens)
+    }
+
+    @Test
     fun `analyze rejects when hermes is unreachable so engine can fall back`() = runBlocking {
         val gateway = AndroidHermesInsightAnalysisGateway(
             baseURLProvider = { "http://stub.invalid" },

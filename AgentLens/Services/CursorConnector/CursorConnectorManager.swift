@@ -1000,18 +1000,34 @@ final class CursorConnectorManager {
             ]
         ) ?? 0
 
-        let cacheRead = firstIntValue(
+        let exclusiveCacheRead = firstIntValue(
             in: json,
             paths: [
                 ["cache_read_tokens"],
                 ["cache_read_input_tokens"],
-                ["cacheReadTokens"],
-                ["prompt_tokens_details", "cached_tokens"],
-                ["promptTokensDetails", "cachedTokens"],
-                ["cached_tokens"],
-                ["cachedTokens"]
+                ["cacheReadTokens"]
             ]
         ) ?? 0
+
+        let inclusiveCacheRead = firstIntValue(
+            in: json,
+            paths: [
+                ["input_cached_tokens"],
+                ["inputCachedTokens"],
+                ["prompt_tokens_details", "cached_tokens"],
+                ["promptTokensDetails", "cachedTokens"],
+                ["input_tokens_details", "cached_tokens"],
+                ["inputTokensDetails", "cachedTokens"],
+                ["cached_tokens"],
+                ["cachedTokens"],
+                ["cached_input_tokens"],
+                ["cachedInputTokens"]
+            ]
+        ) ?? 0
+        let cacheRead = exclusiveCacheRead > 0 ? exclusiveCacheRead : inclusiveCacheRead
+        if inclusiveCacheRead > 0 && exclusiveCacheRead == 0 {
+            prompt = max(prompt - inclusiveCacheRead, 0)
+        }
 
         // VAL-TOKEN-006: Extract reasoning tokens from all known paths
         let reasoningTokens = firstIntValue(

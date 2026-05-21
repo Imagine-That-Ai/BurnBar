@@ -3,6 +3,7 @@ package com.openburnbar.data.media
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayMediaFrameChunk
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.IrohRelayStream
@@ -285,6 +286,53 @@ class MediaControlStreamCoordinatorTest {
         val decoded = kotlinx.coroutines.withTimeout(1_000) { v2Received.await() }
         assertEquals(source, decoded)
         assertFalse(v1Received.isCompleted)
+    }
+
+    @Test
+    fun readLoop_reassemblesChunkedV2ScreenFramesBeforeDecoding() = runTest {
+        val stream = RecordingStream()
+        val coordinator = MediaControlStreamCoordinator(
+            dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+            scope = backgroundScope,
+        )
+        val v2Received = CompletableDeferred<MediaFrameV2>()
+        coordinator.mirrorFrameV2Handler = { frame -> v2Received.complete(frame) }
+        val source = MediaFrameV2(
+            kind = MediaFrameV2Kind.VIDEO_NAL,
+            gopID = 12u,
+            frameIndex = 34u,
+            presentationTimestampMillis = 56uL,
+            metadata = byteArrayOf(0x01, 0x02),
+            payload = ByteArray(700_000) { 0x7A.toByte() },
+        )
+        val encoded = MediaFrameV2Codec().encode(source, MercuryMediaFrameWireVersion.V2)
+        val chunkSize = 100_000
+        val chunks = encoded.asList().chunked(chunkSize).map { it.toByteArray() }
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        chunks.asReversed().forEachIndexed { reverseIndex, bytes ->
+            val chunkIndex = chunks.lastIndex - reverseIndex
+            stream.incoming.send(
+                HermesRealtimeRelayFrame(
+                    type = HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME,
+                    uid = "uid-1",
+                    connectionId = "conn-1",
+                    media = HermesRealtimeRelayMediaPayload(
+                        streamClass = MediaStreamClass.SCREEN_VIDEO.raw,
+                        encodedFrameBase64 = Base64.getEncoder().encodeToString(bytes),
+                        frameChunk = HermesRealtimeRelayMediaFrameChunk(
+                            chunkId = "frame-1",
+                            chunkIndex = chunkIndex,
+                            chunkCount = chunks.size,
+                            totalBytes = encoded.size,
+                        ),
+                    ),
+                )
+            )
+        }
+
+        val decoded = kotlinx.coroutines.withTimeout(1_000) { v2Received.await() }
+        assertEquals(source, decoded)
     }
 
     @Test

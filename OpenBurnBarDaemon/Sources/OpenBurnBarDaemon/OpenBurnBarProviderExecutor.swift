@@ -1517,23 +1517,41 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             return nil
         }
 
-        let inputTokens = intValue(usage["input_tokens"])
+        var inputTokens = intValue(usage["input_tokens"])
             ?? intValue(usage["prompt_tokens"])
             ?? 0
         let outputTokens = intValue(usage["output_tokens"])
             ?? intValue(usage["completion_tokens"])
             ?? 0
+        let cacheCreationTokens = intValue(usage["cache_creation_input_tokens"])
+            ?? intValue(usage["cache_creation_tokens"])
+            ?? 0
+        let exclusiveCacheReadTokens = intValue(usage["cache_read_input_tokens"])
+            ?? intValue(usage["cache_read_tokens"])
+            ?? 0
+        let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
+        let inputDetails = usage["input_tokens_details"] as? [String: Any]
+        let inclusiveCacheReadTokens = intValue(usage["input_cached_tokens"])
+            ?? intValue(usage["cached_input_tokens"])
+            ?? intValue(usage["cached_tokens"])
+            ?? intValue(promptDetails?["cached_tokens"])
+            ?? intValue(inputDetails?["cached_tokens"])
+            ?? 0
+        let cacheReadTokens = exclusiveCacheReadTokens > 0 ? exclusiveCacheReadTokens : inclusiveCacheReadTokens
+        if inclusiveCacheReadTokens > 0 && exclusiveCacheReadTokens == 0 {
+            inputTokens = max(inputTokens - inclusiveCacheReadTokens, 0)
+        }
         let reasoningTokens = intValue(usage["reasoning_tokens"]) ?? 0
 
-        guard inputTokens > 0 || outputTokens > 0 || reasoningTokens > 0 else {
+        guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 || reasoningTokens > 0 else {
             return nil
         }
 
         return BurnBarProviderProxyUsage(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
-            cacheCreationTokens: 0,
-            cacheReadTokens: 0,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
             reasoningTokens: reasoningTokens,
             confidence: .exact
         )
@@ -2087,8 +2105,14 @@ private struct ProviderCompletionResponse: Decodable {
         let cacheReadTokens: Int?
         let cached_tokens: Int?
         let cachedTokens: Int?
+        let input_cached_tokens: Int?
+        let inputCachedTokens: Int?
+        let cached_input_tokens: Int?
+        let cachedInputTokens: Int?
         let prompt_tokens_details: UsageDetails?
         let promptTokensDetails: UsageDetails?
+        let input_tokens_details: UsageDetails?
+        let inputTokensDetails: UsageDetails?
         let thinking_tokens: Int?
         let reasoning_tokens: Int?
         let thinkingTokens: Int?
@@ -2113,8 +2137,14 @@ private struct ProviderCompletionResponse: Decodable {
             case cacheReadTokens
             case cached_tokens
             case cachedTokens
+            case input_cached_tokens
+            case inputCachedTokens
+            case cached_input_tokens
+            case cachedInputTokens
             case prompt_tokens_details
             case promptTokensDetails
+            case input_tokens_details
+            case inputTokensDetails
             case thinking_tokens
             case reasoning_tokens
             case thinkingTokens
@@ -2151,21 +2181,39 @@ private struct ProviderCompletionResponse: Decodable {
                 ?? outputTokens
                 ?? 0
 
-            let cacheRead = firstValue(
+            let exclusiveCacheRead = firstValue(
                 cache_read_tokens,
                 cache_read_input_tokens,
-                cacheReadTokens,
+                cacheReadTokens
+            )
+            let inclusiveCacheRead = firstValue(
+                input_cached_tokens,
+                inputCachedTokens,
+                cached_input_tokens,
+                cachedInputTokens,
                 cached_tokens,
                 cachedTokens,
                 prompt_tokens_details?.cached_tokens,
                 prompt_tokens_details?.cachedTokens,
                 prompt_tokens_details?.cache_read_tokens,
                 prompt_tokens_details?.cacheReadTokens,
+                input_tokens_details?.cached_tokens,
+                input_tokens_details?.cachedTokens,
+                input_tokens_details?.cache_read_tokens,
+                input_tokens_details?.cacheReadTokens,
                 promptTokensDetails?.cached_tokens,
                 promptTokensDetails?.cachedTokens,
                 promptTokensDetails?.cache_read_tokens,
-                promptTokensDetails?.cacheReadTokens
+                promptTokensDetails?.cacheReadTokens,
+                inputTokensDetails?.cached_tokens,
+                inputTokensDetails?.cachedTokens,
+                inputTokensDetails?.cache_read_tokens,
+                inputTokensDetails?.cacheReadTokens
             )
+            let cacheRead = exclusiveCacheRead > 0 ? exclusiveCacheRead : inclusiveCacheRead
+            if inclusiveCacheRead > 0 && exclusiveCacheRead == 0 {
+                prompt = max(prompt - inclusiveCacheRead, 0)
+            }
 
             let cacheCreation = firstValue(
                 cache_creation_input_tokens,

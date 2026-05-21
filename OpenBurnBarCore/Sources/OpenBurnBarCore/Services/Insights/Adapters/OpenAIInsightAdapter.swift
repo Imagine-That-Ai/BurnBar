@@ -41,7 +41,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
                                    supportsThinking: true,
                                    supportsToolUse: true,
                                    supportsStreaming: true),
-              inputCostPerMtoken: 10, outputCostPerMtoken: 40, symbolName: "brain.fill"),
+              inputCostPerMtoken: 1.25, outputCostPerMtoken: 10, symbolName: "brain.fill"),
         .init(id: "gpt-5-mini", displayName: "GPT-5 mini", providerKey: "openai",
               egressTier: .userKey,
               capabilities: .init(supportsStrictJSONSchema: true,
@@ -49,7 +49,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
                                    supportsThinking: false,
                                    supportsToolUse: true,
                                    supportsStreaming: true),
-              inputCostPerMtoken: 0.5, outputCostPerMtoken: 2, symbolName: "bolt.fill")
+              inputCostPerMtoken: 0.25, outputCostPerMtoken: 2, symbolName: "bolt.fill")
     ]
 
     public func investigate(
@@ -93,6 +93,8 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         var toolCallCount = 0
         var accumulatedInputTokens = 0
         var accumulatedOutputTokens = 0
+        var accumulatedCacheCreationTokens = 0
+        var accumulatedCacheReadTokens = 0
 
         while true {
             var body: [String: Any] = [
@@ -138,6 +140,8 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
             if let usage = usageFrom(data: data) {
                 accumulatedInputTokens += usage.inputTokens
                 accumulatedOutputTokens += usage.outputTokens
+                accumulatedCacheCreationTokens += usage.cacheCreationTokens
+                accumulatedCacheReadTokens += usage.cacheReadTokens
             }
 
             guard let toolCalls = extractOpenAIToolCalls(from: data),
@@ -149,7 +153,15 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
                     modelID: request.selectedModel.modelID,
                     inputTokens: accumulatedInputTokens,
                     outputTokens: accumulatedOutputTokens,
-                    estimatedCostUSD: estimateCost(input: accumulatedInputTokens, output: accumulatedOutputTokens, modelID: request.selectedModel.modelID),
+                    cacheCreationTokens: accumulatedCacheCreationTokens,
+                    cacheReadTokens: accumulatedCacheReadTokens,
+                    estimatedCostUSD: estimateCost(
+                        input: accumulatedInputTokens,
+                        output: accumulatedOutputTokens,
+                        cacheCreation: accumulatedCacheCreationTokens,
+                        cacheRead: accumulatedCacheReadTokens,
+                        modelID: request.selectedModel.modelID
+                    ),
                     startedAt: startedAt,
                     completedAt: Date()
                 )
@@ -332,20 +344,47 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         }
     }
 
-    private func usageFrom(data: Data) -> (inputTokens: Int, outputTokens: Int)? {
+    private func usageFrom(data: Data) -> (inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int)? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let usage = json["usage"] as? [String: Any] else {
             return nil
         }
         let input = usage["prompt_tokens"] as? Int ?? usage["input_tokens"] as? Int ?? 0
         let output = usage["completion_tokens"] as? Int ?? usage["output_tokens"] as? Int ?? 0
-        return (input, output)
+        let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
+        let inputDetails = usage["input_tokens_details"] as? [String: Any]
+        let cacheCreation = intValue(usage["cache_creation_input_tokens"])
+            ?? intValue(usage["cache_creation_tokens"])
+            ?? 0
+        let exclusiveCacheRead = intValue(usage["cache_read_input_tokens"])
+            ?? intValue(usage["cache_read_tokens"])
+            ?? 0
+        let inclusiveCacheRead = intValue(usage["input_cached_tokens"])
+            ?? intValue(usage["cached_input_tokens"])
+            ?? intValue(usage["cached_tokens"])
+            ?? intValue(promptDetails?["cached_tokens"])
+            ?? intValue(inputDetails?["cached_tokens"])
+            ?? 0
+        let cacheRead = exclusiveCacheRead > 0 ? exclusiveCacheRead : inclusiveCacheRead
+        let uncachedInput = inclusiveCacheRead > 0 && exclusiveCacheRead == 0 ? max(input - inclusiveCacheRead, 0) : input
+        return (uncachedInput, output, cacheCreation, cacheRead)
     }
 
-    private func estimateCost(input: Int, output: Int, modelID: String) -> Double {
+    private func estimateCost(input: Int, output: Int, cacheCreation: Int = 0, cacheRead: Int = 0, modelID: String) -> Double {
+        if let pricing = BurnBarCatalogLoader.bundledCatalog.pricing(forModelName: modelID) {
+            return pricing.cost(
+                inputTokens: input,
+                outputTokens: output,
+                cacheCreationTokens: cacheCreation,
+                cacheReadTokens: cacheRead
+            )
+        }
         let price = modelCatalog.first { $0.id == modelID }
-        return (Double(input) / 1_000_000.0) * (price?.inputCostPerMtoken ?? 0)
+        let inputRate = price?.inputCostPerMtoken ?? 0
+        return (Double(input) / 1_000_000.0) * inputRate
             + (Double(output) / 1_000_000.0) * (price?.outputCostPerMtoken ?? 0)
+            + (Double(cacheCreation) / 1_000_000.0) * inputRate
+            + (Double(cacheRead) / 1_000_000.0) * (inputRate * 0.1)
     }
 
     private func tokenUsage(
@@ -360,17 +399,34 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         }
         let input = usage["prompt_tokens"] as? Int ?? usage["input_tokens"] as? Int ?? 0
         let output = usage["completion_tokens"] as? Int ?? usage["output_tokens"] as? Int ?? 0
-        let price = modelCatalog.first { $0.id == request.selectedModel.modelID }
-        let estimated = (Double(input) / 1_000_000.0) * (price?.inputCostPerMtoken ?? 0)
-            + (Double(output) / 1_000_000.0) * (price?.outputCostPerMtoken ?? 0)
+        let parsed = usageFrom(data: data)
+        let cacheCreation = parsed?.cacheCreationTokens ?? 0
+        let cacheRead = parsed?.cacheReadTokens ?? 0
+        let uncachedInput = parsed?.inputTokens ?? input
+        let estimated = estimateCost(
+            input: uncachedInput,
+            output: output,
+            cacheCreation: cacheCreation,
+            cacheRead: cacheRead,
+            modelID: request.selectedModel.modelID
+        )
         return InsightTokenUsage(
             providerKey: providerKey,
             modelID: request.selectedModel.modelID,
-            inputTokens: input,
+            inputTokens: uncachedInput,
             outputTokens: output,
+            cacheCreationTokens: cacheCreation,
+            cacheReadTokens: cacheRead,
             estimatedCostUSD: estimated,
             startedAt: startedAt,
             completedAt: completedAt
         )
+    }
+
+    private func intValue(_ value: Any?) -> Int? {
+        if let int = value as? Int { return int }
+        if let number = value as? NSNumber { return number.intValue }
+        if let string = value as? String { return Int(string) }
+        return nil
     }
 }

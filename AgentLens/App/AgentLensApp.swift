@@ -1357,6 +1357,7 @@ struct OpenBurnBarApp: App {
                 EmptyView()
             }
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
     }
 }

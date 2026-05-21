@@ -57,3 +57,45 @@ final class MercuryDropletAnimationTests: XCTestCase {
         XCTAssertTrue(DesignSystem.Spacing.md > 0)
     }
 }
+
+// MARK: - Mercury Call HUD State
+
+@MainActor
+final class MercuryCallHUDStateTests: XCTestCase {
+
+    func test_resetStartsStreamingHUDCollapsed() {
+        let state = CallHUDState()
+        state.isCollapsed = false
+        state.isMicMuted = true
+        state.isCameraMuted = true
+        state.isSharingScreen = true
+
+        state.reset(startedAt: Date(timeIntervalSince1970: 42))
+
+        XCTAssertTrue(state.isCollapsed)
+        XCTAssertFalse(state.isMicMuted)
+        XCTAssertFalse(state.isCameraMuted)
+        XCTAssertFalse(state.isSharingScreen)
+        XCTAssertEqual(state.startedAt, Date(timeIntervalSince1970: 42))
+    }
+
+    func test_collapsedHUDRendersTrafficLightPillControls() throws {
+        let state = CallHUDState()
+        state.isCollapsed = true
+
+        let view = CallHUD(
+            state: state,
+            onMuteMic: {},
+            onMuteCamera: {},
+            onShareScreen: {},
+            onEnd: {}
+        )
+
+        let sut = try view.inspect()
+        let buttons = try sut.findAll(ViewType.Button.self)
+        XCTAssertEqual(buttons.count, 3)
+
+        try buttons[1].tap()
+        XCTAssertFalse(state.isCollapsed)
+    }
+}

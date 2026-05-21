@@ -365,6 +365,25 @@ public struct HermesRealtimeRelayControlDenied: Codable, Sendable, Equatable {
     }
 }
 
+public struct HermesRealtimeRelayMediaFrameChunk: Codable, Sendable, Equatable {
+    public var chunkId: String
+    public var chunkIndex: Int
+    public var chunkCount: Int
+    public var totalBytes: Int
+
+    public init(
+        chunkId: String,
+        chunkIndex: Int,
+        chunkCount: Int,
+        totalBytes: Int
+    ) {
+        self.chunkId = chunkId
+        self.chunkIndex = chunkIndex
+        self.chunkCount = chunkCount
+        self.totalBytes = totalBytes
+    }
+}
+
 public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// Identifier of the media stream class this frame addresses
     /// (`media.blob`, `media.screen.video`, `media.video.out`, etc.). Carried
@@ -407,6 +426,10 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// opaque bytes here so `OpenBurnBarCore` does not depend on the
     /// media target while the transport envelope remains Codable.
     public var encodedFrameBase64: String?
+    /// Optional chunk descriptor for large encoded media frames. The
+    /// `encodedFrameBase64` field carries the chunk bytes; receivers
+    /// reassemble chunks by `chunkId` before decoding the media frame.
+    public var frameChunk: HermesRealtimeRelayMediaFrameChunk?
 
     public init(
         streamClass: String? = nil,
@@ -421,7 +444,8 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         callInvite: HermesRealtimeRelayCallInvite? = nil,
         callAck: HermesRealtimeRelayCallAck? = nil,
         longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck? = nil,
-        encodedFrameBase64: String? = nil
+        encodedFrameBase64: String? = nil,
+        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil
     ) {
         self.streamClass = streamClass
         self.attachment = attachment
@@ -436,6 +460,7 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         self.callAck = callAck
         self.longTermReferenceAck = longTermReferenceAck
         self.encodedFrameBase64 = encodedFrameBase64
+        self.frameChunk = frameChunk
     }
 }
 

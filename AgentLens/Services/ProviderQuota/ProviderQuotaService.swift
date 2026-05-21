@@ -429,7 +429,12 @@ final class ProviderQuotaService {
                 benchmarkStatus: decision.benchmarkStatus,
                 recentEvents: Array(
                     routingEvents
-                        .filter { $0.selectedProviderID == providerID || $0.nextFallbackProviderID == providerID }
+                        .filter {
+                            $0.selectedProviderID == providerID
+                            || $0.nextFallbackProviderID == providerID
+                            || $0.originalProviderID == providerID
+                            || $0.failoverDestinationProviderID == providerID
+                        }
                         .suffix(100)
                 )
             )

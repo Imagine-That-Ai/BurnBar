@@ -242,16 +242,20 @@ class AndroidHermesInsightAnalysisGateway(
 
     private fun parseUsage(usageJson: JSONObject?): HermesInsightTokenUsage {
         if (usageJson == null) return HermesInsightTokenUsage()
-        val input = usageJson.optInt("prompt_tokens", usageJson.optInt("input_tokens", 0))
+        var input = usageJson.optInt("prompt_tokens", usageJson.optInt("input_tokens", 0))
         val output = usageJson.optInt("completion_tokens", usageJson.optInt("output_tokens", 0))
         val reasoning = usageJson.optInt(
             "reasoning_tokens",
             usageJson.optJSONObject("completion_tokens_details")?.optInt("reasoning_tokens", 0) ?: 0
         )
-        val cacheRead = usageJson.optInt(
-            "cache_read_input_tokens",
-            usageJson.optJSONObject("prompt_tokens_details")?.optInt("cached_tokens", 0) ?: 0
-        )
+        val exclusiveCacheRead = usageJson.optInt("cache_read_input_tokens", 0)
+        val inclusiveCacheRead = usageJson.optJSONObject("prompt_tokens_details")?.optInt("cached_tokens", 0)
+            ?: usageJson.optJSONObject("input_tokens_details")?.optInt("cached_tokens", 0)
+            ?: usageJson.optInt("input_cached_tokens", usageJson.optInt("cached_input_tokens", 0))
+        val cacheRead = if (exclusiveCacheRead > 0) exclusiveCacheRead else inclusiveCacheRead
+        if (inclusiveCacheRead > 0 && exclusiveCacheRead == 0) {
+            input = (input - inclusiveCacheRead).coerceAtLeast(0)
+        }
         val cacheCreation = usageJson.optInt("cache_creation_input_tokens", 0)
         val cost = usageJson.optDouble("estimated_cost_usd", usageJson.optDouble("cost_usd", 0.0))
         return HermesInsightTokenUsage(
@@ -273,6 +277,9 @@ class AndroidHermesInsightAnalysisGateway(
         modelID = request.selectedModel.modelID,
         inputTokens = usage.inputTokens,
         outputTokens = usage.outputTokens,
+        reasoningTokens = usage.reasoningTokens,
+        cacheCreationTokens = usage.cacheCreationTokens,
+        cacheReadTokens = usage.cacheReadTokens,
         estimatedCostUSD = usage.estimatedCostUSD,
         startedAt = startedAt,
         completedAt = Instant.now().toString(),

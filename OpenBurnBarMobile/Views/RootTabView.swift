@@ -42,6 +42,16 @@ struct RootTabView: View {
     /// banner, and the dedicated `CloudStoreView`.
     @State private var subscriptionStore = HostedQuotaSubscriptionStore()
 
+    /// App-scope Agent Watch overlay singleton — holds the persistent
+    /// iroh control stream so the live mirror auto-opens the moment the
+    /// Mac begins a Computer Use session, regardless of which tab the
+    /// user is on. See `AgentWatchOverlaySingleton`.
+    @StateObject private var liveStageSingleton = AgentWatchOverlaySingleton.shared
+    /// Stage state machine (dock → split → maximize). Survives tab
+    /// swaps via `@StateObject`. Observes the singleton's session-id on
+    /// `.onAppear` and auto-opens to dock on session start.
+    @StateObject private var liveStagePresenter = AgentLiveStagePresenter()
+
     // Per-tab navigation paths
     @State private var pulsePath = NavigationPath()
     @State private var burnPath = NavigationPath()
@@ -108,6 +118,19 @@ struct RootTabView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(10)
             }
+
+            // Agent Live Stage — auto-opens the live Mac mirror when a
+            // Computer Use session starts. Lives above the rest of the
+            // chrome so split/maximize layouts can take over the screen,
+            // and floats above the nav tray as a 320×180 dock tile when
+            // the agent is just working in the background.
+            AgentLiveStage(
+                singleton: liveStageSingleton,
+                presenter: liveStagePresenter,
+                hermesService: hermesService,
+                onTapHermesTab: { selection = .hermes }
+            )
+            .zIndex(20)
         }
         .environment(\.motionStore, motionStore)
         .environment(\.chartStudioPresenter, studioPresenter)
@@ -118,6 +141,13 @@ struct RootTabView: View {
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
         .task { missionActivityCenter.start() }
         .task { missionConsoleHost.start() }
+        .task { liveStagePresenter.observe(liveStageSingleton.state) }
+        .task(id: liveStageEvaluationKey) {
+            liveStageSingleton.evaluate(
+                authUID: authStore.currentIdentity?.uid,
+                hermesService: hermesService
+            )
+        }
         .sheet(isPresented: $isMissionConsolePresented) {
             MobileMissionConsoleSheet(host: missionConsoleHost) {
                 isMissionConsolePresented = false
@@ -158,6 +188,15 @@ struct RootTabView: View {
         case .hermes:   hermesStack
         case .you:      youStack
         }
+    }
+
+    /// Composite key the Agent Live Stage `.task(id:)` listens on so the
+    /// singleton re-evaluates whenever the signed-in user OR the
+    /// currently selected Hermes connection changes.
+    private var liveStageEvaluationKey: String {
+        let uid = authStore.currentIdentity?.uid ?? ""
+        let conn = hermesService.selectedConnection.id
+        return "\(uid)|\(conn)"
     }
 
     @State private var insightsDashboardStore = DashboardStore()

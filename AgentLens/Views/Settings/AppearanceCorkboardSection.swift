@@ -83,15 +83,12 @@ struct AppearanceCorkboardSection: View {
                     icon: "desktopcomputer",
                     isOn: $settingsManager.enableDesktopWallpaper
                 )
+                .settingsAnchor(SettingsAnchor.desktopWallpaperEnabled)
 
                 Divider().background(DesignSystem.Colors.border)
 
-                SettingsToggle(
-                    title: "AMOLED Dark Mode Background",
-                    subtitle: "Use a pitch-black wallpaper background to optimize OLED screens and save battery.",
-                    icon: "moon.stars.fill",
-                    isOn: $settingsManager.amoledDarkBackground
-                )
+                desktopWallpaperBackgroundPicker
+                    .settingsAnchor(SettingsAnchor.desktopWallpaperBackground)
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -103,6 +100,104 @@ struct AppearanceCorkboardSection: View {
                 )
             }
             .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    private var desktopWallpaperBackgroundPicker: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                Image(systemName: settingsManager.desktopWallpaperBackground.iconName)
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Desktop Wallpaper Background")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(settingsManager.desktopWallpaperBackground.detailText)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer(minLength: DesignSystem.Spacing.md)
+            }
+
+            LazyVGrid(columns: desktopWallpaperBackgroundColumns, alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                ForEach(DesktopWallpaperBackground.allCases) { background in
+                    wallpaperBackgroundOption(background)
+                }
+            }
+        }
+    }
+
+    private var desktopWallpaperBackgroundColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: 132, maximum: 172), spacing: DesignSystem.Spacing.sm, alignment: .leading)
+        ]
+    }
+
+    private func wallpaperBackgroundOption(_ background: DesktopWallpaperBackground) -> some View {
+        let isSelected = settingsManager.desktopWallpaperBackground == background
+
+        return Button {
+            withAnimation(.snappy(duration: 0.18)) {
+                settingsManager.desktopWallpaperBackground = background
+            }
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                wallpaperBackgroundSwatch(background)
+
+                Text(background.displayName)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                    .opacity(isSelected ? 1 : 0)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, 7)
+            .frame(minHeight: 36)
+            .background(isSelected ? DesignSystem.Colors.ember.opacity(0.12) : DesignSystem.Colors.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isSelected ? DesignSystem.Colors.ember : DesignSystem.Colors.border, lineWidth: isSelected ? 1.25 : 1)
+            )
+            .clipShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(background.displayName)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    @ViewBuilder
+    private func wallpaperBackgroundSwatch(_ background: DesktopWallpaperBackground) -> some View {
+        if background.isTransparent {
+            ZStack {
+                Circle()
+                    .fill(DesignSystem.Colors.surface)
+                Image(systemName: "desktopcomputer")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .frame(width: 20, height: 20)
+            .overlay(
+                Circle()
+                    .stroke(DesignSystem.Colors.border, lineWidth: 1)
+            )
+        } else {
+            Circle()
+                .fill(background.swatchColor)
+                .frame(width: 20, height: 20)
+                .overlay(
+                    Circle()
+                        .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                )
         }
     }
 

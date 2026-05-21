@@ -22,6 +22,7 @@ PROJ = REPO / "OpenBurnBar.xcodeproj/project.pbxproj"
 
 MAC_SOURCES_PHASE = "EF7D3D6CF9326CBCD20C7DF5"
 IOS_SOURCES_PHASE = "989FB439884BAD69F857287F"
+IOS_TESTS_PHASE = "2D8814837B36BCC7F8EE4D64"
 
 MAC_FILES = [
     "AgentLens/Services/ComputerUse/AgentWatchActionPublisher.swift",
@@ -61,6 +62,18 @@ IOS_FILES = [
     "OpenBurnBarMobile/Views/ComputerUse/ComputerUseDeviceSheet.swift",
     "OpenBurnBarMobile/Views/ComputerUse/ComputerUseTrustModeBadge.swift",
     "OpenBurnBarMobile/Views/ComputerUse/PhoneControlOptionSheet.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/AgentWatchVideoSurface.swift",
+    "OpenBurnBarMobile/Services/ComputerUse/AgentWatchOverlaySingleton.swift",
+    "OpenBurnBarMobile/Services/ComputerUse/AgentLiveStagePresenter.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/AgentLiveStageBadges.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/AgentLiveStageDockTile.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/AgentLiveStageChatPuck.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/AgentLiveStage.swift",
+]
+
+IOS_TEST_FILES = [
+    "OpenBurnBarMobileTests/AgentLiveStagePresenterTests.swift",
+    "OpenBurnBarMobileTests/AgentLiveStageWiringTests.swift",
 ]
 
 
@@ -90,18 +103,21 @@ def main() -> int:
     build_file_lines: list[str] = []
     mac_phase_lines: list[str] = []
     ios_phase_lines: list[str] = []
+    ios_test_phase_lines: list[str] = []
 
     def register(path: str, phase: str):
         nonlocal contents
         file_name = Path(path).name
         quoted_path = pbx_quote(path)
-        # Skip if already registered (search for fileRef path).
-        if f"path = {path};" in contents or f"path = {quoted_path};" in contents:
-            print(f"already registered: {path}")
+        # Idempotency: skip if a PBXFileReference already names this file.
+        # The legacy registration used `path = AgentWatchScreen.swift;` with
+        # `sourceTree = "<group>";`, so a path-only match isn't reliable —
+        # we match by file_name reference anywhere in the project body.
+        if f" /* {file_name} */ = {{isa = PBXFileReference" in contents:
+            print(f"already registered (file ref match): {path}")
             return
-        if f" /* {file_name} */ = {{isa = PBXFileReference" in contents and \
-           (f"path = {path};" in contents or f"path = {quoted_path};" in contents):
-            print(f"already registered (name match): {path}")
+        if f"path = {path};" in contents or f"path = {quoted_path};" in contents:
+            print(f"already registered (path match): {path}")
             return
         file_ref_id = stable_id(path, "fileref")
         build_file_id = stable_id(path, "buildfile")
@@ -117,6 +133,8 @@ def main() -> int:
         line = f"\t\t\t\t{build_file_id} /* {file_name} in Sources */,"
         if phase == "mac":
             mac_phase_lines.append(line)
+        elif phase == "ios_tests":
+            ios_test_phase_lines.append(line)
         else:
             ios_phase_lines.append(line)
 
@@ -124,9 +142,12 @@ def main() -> int:
         register(path, "mac")
     for path in IOS_FILES:
         register(path, "ios")
+    for path in IOS_TEST_FILES:
+        register(path, "ios_tests")
 
-    if not (file_ref_lines or build_file_lines or mac_phase_lines or ios_phase_lines):
-        print("nothing to add — all 12 files already registered")
+    if not (file_ref_lines or build_file_lines or mac_phase_lines
+            or ios_phase_lines or ios_test_phase_lines):
+        print("nothing to add — all files already registered")
         return 0
 
     # 1. Append PBXFileReference entries to the PBXFileReference section.
@@ -160,12 +181,14 @@ def main() -> int:
 
     inject_into_phase(MAC_SOURCES_PHASE, mac_phase_lines)
     inject_into_phase(IOS_SOURCES_PHASE, ios_phase_lines)
+    inject_into_phase(IOS_TESTS_PHASE, ios_test_phase_lines)
 
     PROJ.write_text(contents)
     print(f"registered {len(file_ref_lines)} file refs, "
           f"{len(build_file_lines)} build files, "
           f"{len(mac_phase_lines)} mac-phase entries, "
-          f"{len(ios_phase_lines)} ios-phase entries")
+          f"{len(ios_phase_lines)} ios-phase entries, "
+          f"{len(ios_test_phase_lines)} ios-tests-phase entries")
     return 0
 
 

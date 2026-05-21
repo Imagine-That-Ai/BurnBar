@@ -184,6 +184,11 @@ final class SettingsManager {
         set { appearance.enableDesktopWallpaper = newValue }
     }
 
+    var desktopWallpaperBackground: DesktopWallpaperBackground {
+        get { appearance.desktopWallpaperBackground }
+        set { appearance.desktopWallpaperBackground = newValue }
+    }
+
     var amoledDarkBackground: Bool {
         get { appearance.amoledDarkBackground }
         set { appearance.amoledDarkBackground = newValue }

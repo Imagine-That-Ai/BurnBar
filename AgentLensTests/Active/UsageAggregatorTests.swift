@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 // MARK: - UsageAggregator Tests
@@ -484,9 +485,39 @@ final class TokenExtractionUtilityTests: XCTestCase {
 
         let result = TokenExtractionUtility.extractUsageTokens(usage)
 
-        XCTAssertEqual(result.input, 150)
+        XCTAssertEqual(result.input, 120)
         XCTAssertEqual(result.output, 75)
         XCTAssertEqual(result.cacheRead, 30)
+    }
+
+    func test_extractUsageTokens_subtractsOpenAIStyleInputTokenDetailsCachedTokens() throws {
+        let usage: [String: Any] = [
+            "input_tokens": 2_006,
+            "output_tokens": 300,
+            "input_tokens_details": ["cached_tokens": 1_920]
+        ]
+
+        let result = TokenExtractionUtility.extractUsageTokens(usage)
+
+        XCTAssertEqual(result.input, 86)
+        XCTAssertEqual(result.output, 300)
+        XCTAssertEqual(result.cacheRead, 1_920)
+    }
+
+    func test_extractUsageTokens_keepsAnthropicDisjointInputTokens() throws {
+        let usage: [String: Any] = [
+            "input_tokens": 50,
+            "output_tokens": 393,
+            "cache_read_input_tokens": 100_000,
+            "cache_creation_input_tokens": 0
+        ]
+
+        let result = TokenExtractionUtility.extractUsageTokens(usage)
+
+        XCTAssertEqual(result.input, 50)
+        XCTAssertEqual(result.output, 393)
+        XCTAssertEqual(result.cacheRead, 100_000)
+        XCTAssertEqual(result.cacheCreation, 0)
     }
 
     func test_extractUsageTokens_withNoExplicitBuckets_hasNoExplicitBucketsIsTrue() throws {
@@ -762,6 +793,22 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result, "claude-3-5-sonnet")
     }
 
+    func test_detectModelHint_prefersConcreteModelAfterProxyLabel() throws {
+        let content = "Model: VibeProxy: GPT-5.5 (High)"
+
+        let result = TokenExtractionUtility.detectModelHint(from: content)
+
+        XCTAssertEqual(result, "GPT-5.5")
+    }
+
+    func test_detectModelHint_ignoresDanglingProxyLabel() throws {
+        let content = "Model: VibeProxy:"
+
+        let result = TokenExtractionUtility.detectModelHint(from: content)
+
+        XCTAssertNil(result)
+    }
+
     func test_detectModelHint_withoutModelAnnotation() throws {
         let content = "This is just some content without model info"
 
@@ -798,6 +845,13 @@ final class TokenExtractionUtilityTests: XCTestCase {
 
     func test_normalizeModelName_stripsCustomPrefix() throws {
         XCTAssertEqual(TokenExtractionUtility.normalizeModelName("custom:claude-3-5-sonnet"), "claude-3-5-sonnet")
+    }
+
+    func test_normalizeModelName_stripsVibeProxyPrefixBeforePricing() throws {
+        XCTAssertEqual(
+            TokenExtractionUtility.normalizeModelName("custom:VibeProxy:-GPT-5.5-(High)-18"),
+            "GPT-5.5-(High)-18"
+        )
     }
 
     func test_normalizeModelName_keepsUnprefixedName() throws {
@@ -1012,6 +1066,33 @@ final class ModelPricingTests: XCTestCase {
 
         XCTAssertGreaterThan(pricing.inputPerMToken, 0)
         XCTAssertGreaterThan(pricing.outputPerMToken, 0)
+    }
+
+    func test_lookup_gpt55UsesCurrentCachedInputRate() throws {
+        let pricing = ModelPricing.lookup(model: "gpt-5.5")
+
+        XCTAssertEqual(pricing.inputPerMToken, 5, accuracy: 0.001)
+        XCTAssertEqual(pricing.outputPerMToken, 30, accuracy: 0.001)
+        XCTAssertEqual(pricing.cacheReadPerMToken, 0.5, accuracy: 0.001)
+    }
+
+    func test_lookup_claudeSonnetUsesPromptCacheWriteRate() throws {
+        let pricing = ModelPricing.lookup(model: "claude-sonnet-4-6")
+
+        XCTAssertEqual(pricing.inputPerMToken, 3, accuracy: 0.001)
+        XCTAssertEqual(pricing.outputPerMToken, 15, accuracy: 0.001)
+        XCTAssertEqual(pricing.cacheCreationPerMToken ?? 0, 3.75, accuracy: 0.001)
+        XCTAssertEqual(pricing.cacheReadPerMToken, 0.3, accuracy: 0.001)
+    }
+
+    func test_lookup_gpt54FactoryFamilyUsesCurrentCachedInputRate() throws {
+        let factoryModel = try XCTUnwrap(
+            BurnBarCatalogLoader.bundledCatalog.provider(id: "factory")?.models.first { $0.id == "factory-gpt-5.4-family" }
+        )
+
+        XCTAssertEqual(factoryModel.pricing.inputPerMToken, 2.5, accuracy: 0.001)
+        XCTAssertEqual(factoryModel.pricing.outputPerMToken, 15, accuracy: 0.001)
+        XCTAssertEqual(factoryModel.pricing.cacheReadPerMToken, 0.25, accuracy: 0.001)
     }
 
     func test_lookup_unknownModel_returnsFallback() throws {

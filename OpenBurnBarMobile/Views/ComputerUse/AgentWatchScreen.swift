@@ -3,11 +3,17 @@ import SwiftUI
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
+/// Read-only viewer that surfaces the persistent Agent Watch session
+/// owned by `AgentWatchOverlaySingleton`. Dialing, redialing and
+/// teardown all live in the singleton — this screen only binds to its
+/// `coordinator.state` and routes input back through the shared
+/// receiver. That way the You-tab subscreen and the floating Agent
+/// Live Stage agree on a single coordinator, single relay stream, and
+/// single Ed25519 phone authority.
 struct AgentWatchScreen: View {
     private let authUID: String?
     private let hermesService: HermesService
-    @StateObject private var coordinator: AgentWatchOverlayCoordinator
-    @State private var connectionError: String?
+    @ObservedObject private var singleton: AgentWatchOverlaySingleton
     #if DEBUG
     @State private var didRunComputerUseE2EProof = false
     #endif
@@ -15,41 +21,37 @@ struct AgentWatchScreen: View {
     init(
         authUID: String? = nil,
         hermesService: HermesService = .shared,
-        coordinator: AgentWatchOverlayCoordinator = AgentWatchOverlayCoordinator()
+        singleton: AgentWatchOverlaySingleton = .shared
     ) {
         self.authUID = authUID
         self.hermesService = hermesService
-        self._coordinator = StateObject(wrappedValue: coordinator)
+        self._singleton = ObservedObject(wrappedValue: singleton)
     }
 
     var body: some View {
         AgentWatchView(
-            state: coordinator.state,
+            state: singleton.state,
             downgradeTrustMode: { mode in
-                coordinator.state.setTrustMode(mode)
+                singleton.state.setTrustMode(mode)
             },
             approveAction: { request in
-                Task { try? await coordinator.receiver?.approve(request) }
+                Task { try? await singleton.coordinator.receiver?.approve(request) }
             },
             rejectAction: { request, halt in
-                Task { try? await coordinator.receiver?.reject(request, halt: halt) }
+                Task { try? await singleton.coordinator.receiver?.reject(request, halt: halt) }
             },
             panicHalt: {
                 Task {
-                    do {
-                        try await coordinator.receiver?.panicHalt()
-                    } catch {
-                        connectionError = "Could not send panic halt: \(error.localizedDescription)"
-                    }
-                    await coordinator.stop()
+                    try? await singleton.coordinator.receiver?.panicHalt()
+                    await singleton.stop()
                 }
             },
             sendTapIntent: { x, y in
-                Task { try? await coordinator.receiver?.tap(normalizedX: x, normalizedY: y) }
+                Task { try? await singleton.coordinator.receiver?.tap(normalizedX: x, normalizedY: y) }
             },
             sendScrollIntent: { x1, y1, x2, y2 in
                 Task {
-                    try? await coordinator.receiver?.scrollDrag(
+                    try? await singleton.coordinator.receiver?.scrollDrag(
                         startNormalizedX: x1,
                         startNormalizedY: y1,
                         endNormalizedX: x2,
@@ -58,14 +60,14 @@ struct AgentWatchScreen: View {
                 }
             },
             sendTextIntent: { text in
-                Task { try? await coordinator.receiver?.type(text) }
+                Task { try? await singleton.coordinator.receiver?.type(text) }
             },
             sendShortcutIntent: { key, modifiers in
-                Task { try? await coordinator.receiver?.shortcut(key: key, modifiers: modifiers) }
+                Task { try? await singleton.coordinator.receiver?.shortcut(key: key, modifiers: modifiers) }
             }
         )
         .overlay(alignment: .top) {
-            if let connectionError {
+            if let connectionError = singleton.connectionMessage {
                 Text(connectionError)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white)
@@ -79,13 +81,10 @@ struct AgentWatchScreen: View {
         .navigationTitle("Agent Watch")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: watchConnectionKey) {
-            await connectIfPossible()
+            singleton.evaluate(authUID: authUID, hermesService: hermesService)
         }
-        .onChange(of: coordinator.phase) { _, phase in
+        .onChange(of: singleton.phase) { _, phase in
             runComputerUseE2EProofIfNeeded(phase: phase)
-        }
-        .onDisappear {
-            Task { await coordinator.stop() }
         }
     }
 
@@ -95,36 +94,6 @@ struct AgentWatchScreen: View {
             hermesService.selectedConnection.id,
             hermesService.selectedConnection.relayPublicKey ?? "no-relay-key"
         ].joined(separator: "|")
-    }
-
-    private func connectIfPossible() async {
-        await coordinator.stop()
-        connectionError = nil
-
-        guard let uid = authUID, !uid.isEmpty else {
-            connectionError = "Sign in to watch a Mac session."
-            return
-        }
-        let connection = hermesService.selectedConnection
-        guard connection.mode == .relayLink,
-              connection.id != HermesConnectionRecord.localDefault.id else {
-            connectionError = "Select an online Mac Remote Relay in Hermes first."
-            return
-        }
-
-        do {
-            let pairingPublicKey = try await FirestoreIrohPairingPublicKeyProvider.shared.fetchPublicKey(uid: uid)
-            computerUseE2EProofLog("pairing_key_loaded connection=\(connection.id)")
-            coordinator.start(
-                uid: uid,
-                connectionID: connection.id,
-                relayPublicKey: pairingPublicKey
-            )
-            runComputerUseE2EProofIfNeeded(phase: coordinator.phase)
-        } catch {
-            computerUseE2EProofLog("connect_failed error=\(error.localizedDescription)")
-            connectionError = "Could not verify Mac pairing key: \(error.localizedDescription)"
-        }
     }
 
     private func runComputerUseE2EProofIfNeeded(phase: AgentWatchOverlayCoordinator.Phase) {

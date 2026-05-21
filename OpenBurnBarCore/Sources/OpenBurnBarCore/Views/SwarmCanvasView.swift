@@ -10,8 +10,8 @@ import UIKit
 // A faithful Swift port of the "Interactive Token Ember Swarm" canvas that
 // powers burnbar.ai. Hundreds of ember particles drift in a noise-driven
 // murmuration, then periodically *reconverge* into glyph shapes — "$",
-// "</>", concentric quota rings, and a router-failover S-curve — before
-// breaking apart again.
+// "</>", the BurnBar flame/bar-graph logo, concentric quota rings, and a
+// router-failover S-curve — before breaking apart again.
 //
 // Runs on macOS, iOS and iPadOS via SwiftUI `TimelineView` + `Canvas`.
 // Respects `accessibilityReduceMotion` (locks pace + cycling). Pointer or
@@ -25,6 +25,7 @@ public struct SwarmCanvasView: View {
     public let isBatteryThrottled: Bool
     public let externalPointer: CGPoint?
     public let isTransparent: Bool
+    public let backdropColor: Color?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -45,7 +46,8 @@ public struct SwarmCanvasView: View {
         colorDriver: SwarmColorDriver? = nil,
         isBatteryThrottled: Bool = false,
         externalPointer: CGPoint? = nil,
-        isTransparent: Bool = false
+        isTransparent: Bool = false,
+        backdropColor: Color? = nil
     ) {
         self.accent = accent
         self.pace = pace
@@ -54,6 +56,7 @@ public struct SwarmCanvasView: View {
         self.isBatteryThrottled = isBatteryThrottled
         self.externalPointer = externalPointer
         self.isTransparent = isTransparent
+        self.backdropColor = backdropColor
 
         let sim = SwarmSimulation(
             particleCount: particleCount ?? Self.adaptiveParticleCount,
@@ -101,7 +104,7 @@ public struct SwarmCanvasView: View {
             )
             #endif
         }
-        .drawingGroup(opaque: true, colorMode: .nonLinear)
+        .drawingGroup(opaque: !isTransparent, colorMode: .nonLinear)
         .accessibilityHidden(true)
         .allowsHitTesting(false)
         .onChange(of: colorDriver) {
@@ -118,9 +121,9 @@ public struct SwarmCanvasView: View {
         // themed cards layered on top (dark backdrop in dark mode, soft warm
         // off-white in light mode). The particle palette adapts to match.
         Rectangle()
-            .fill(isTransparent ? Color.clear : (colorScheme == .dark
+            .fill(isTransparent ? Color.clear : (backdropColor ?? (colorScheme == .dark
                 ? Color(red: 0.020, green: 0.020, blue: 0.031)
-                : Color(red: 0.953, green: 0.937, blue: 0.906)))
+                : Color(red: 0.953, green: 0.937, blue: 0.906))))
             .ignoresSafeArea()
     }
 
@@ -141,15 +144,30 @@ public struct SwarmCanvasView: View {
 
 // MARK: - Simulation Core
 
+enum SwarmFormationMode: Equatable {
+    case swarm
+    case shapeDollar
+    case shapeCode
+    case shapeBurnBarLogo
+    case shapeRings
+    case shapeRouterFlow
+
+    static let defaultCycle: [SwarmFormationMode] = [
+        .swarm,
+        .shapeDollar,
+        .swarm,
+        .shapeCode,
+        .swarm,
+        .shapeBurnBarLogo,
+        .swarm,
+        .shapeRings,
+        .swarm,
+        .shapeRouterFlow
+    ]
+}
+
 @MainActor
 private final class SwarmSimulation {
-    enum Mode: Equatable {
-        case swarm
-        case shapeDollar
-        case shapeCode
-        case shapeRings
-        case shapeRouterFlow
-    }
 
     struct Particle {
         var x: Double
@@ -164,7 +182,7 @@ private final class SwarmSimulation {
         var opacity: Double
         var tx: Double?                 // target x (shape mode)
         var ty: Double?                 // target y (shape mode)
-        var role: String?               // router-flow role
+        var role: String?               // target-shape role
         var flowProgress: Double        // for router-flow bezier travel
     }
 
@@ -181,12 +199,10 @@ private final class SwarmSimulation {
     private let mouseForceMultiplier: Double
 
     private let glyphs = ["$", "{}", "</>", "tok", "ctx", "429", "503", "run", "cache"]
-    private let modes: [Mode] = [
-        .swarm, .shapeDollar, .swarm, .shapeCode, .swarm, .shapeRings, .swarm, .shapeRouterFlow
-    ]
+    private let modes = SwarmFormationMode.defaultCycle
 
     private var particles: [Particle] = []
-    private var mode: Mode = .swarm
+    private var mode: SwarmFormationMode = .swarm
     private var cycleIndex: Int = 0
     private var nextCycleAt: TimeInterval = 0
     private var flowTime: Double = 0
@@ -196,6 +212,7 @@ private final class SwarmSimulation {
 
     private lazy var dollarPoints = SwarmSimulation.sampleTextPoints(text: "$", fontSize: 280)
     private lazy var codePoints = SwarmSimulation.sampleTextPoints(text: "</>", fontSize: 220)
+    private lazy var burnBarLogoPoints = SwarmLogoShape.generatePoints()
     private lazy var ringPoints = SwarmSimulation.generateRingPoints()
     private lazy var routerFlowPoints = SwarmSimulation.generateRouterFlowPoints()
 
@@ -481,7 +498,7 @@ private final class SwarmSimulation {
 
     // MARK: Mode transitions
 
-    private func assignMode(_ next: Mode) {
+    private func assignMode(_ next: SwarmFormationMode) {
         mode = next
         let shapePoints: [SIMD2<Double>]
         let shapeRoles: [String?]
@@ -502,6 +519,10 @@ private final class SwarmSimulation {
             shapePoints = codePoints.map { SIMD2(Double($0.x), Double($0.y)) }
             shapeRoles = Array(repeating: nil, count: shapePoints.count)
             progress = (0..<shapePoints.count).map { _ in Double.random(in: 0...1) }
+        case .shapeBurnBarLogo:
+            shapePoints = burnBarLogoPoints.map { SIMD2(Double($0.point.x), Double($0.point.y)) }
+            shapeRoles = burnBarLogoPoints.map { $0.role }
+            progress = burnBarLogoPoints.map { $0.progress }
         case .shapeRings:
             shapePoints = ringPoints.map { SIMD2(Double($0.point.x), Double($0.point.y)) }
             shapeRoles = Array(repeating: nil, count: shapePoints.count)
@@ -526,6 +547,10 @@ private final class SwarmSimulation {
                 centerX = width * 0.78
                 centerY = height * 0.30
                 scaleFactor = 0.38
+            case .shapeBurnBarLogo:
+                centerX = width * 0.75
+                centerY = height * 0.32
+                scaleFactor = 0.30
             case .shapeRouterFlow:
                 centerX = width * 0.5
                 centerY = height * 0.26
@@ -542,6 +567,9 @@ private final class SwarmSimulation {
             case .shapeRings:
                 centerY = height * 0.24
                 scaleFactor = 0.34
+            case .shapeBurnBarLogo:
+                centerY = height * 0.24
+                scaleFactor = 0.30
             case .shapeRouterFlow:
                 centerX = width * 0.5
                 centerY = height * 0.24
@@ -575,8 +603,8 @@ private final class SwarmSimulation {
 
     // Color key encoding: `bucket * 100 + tier`, where `tier` is 0…15 (a full
     // 16-step opacity ramp, max ~0.98) and `bucket` selects the palette color.
-    // Buckets 0–3 are the regular palette; 4–8 are router-flow roles. Using a
-    // ×100 stride keeps tiers (<16) from ever colliding with bucket IDs.
+    // Buckets 0–3 are the regular palette; 4–8 are router-flow roles; 9–15 are
+    // BurnBar logo roles. Using a ×100 stride keeps tiers (<16) from colliding.
     private func colorKey(for p: Particle) -> Int {
         let tier = min(15, max(0, Int(p.opacity * 16)))
         if mode == .shapeRouterFlow, let role = p.role {
@@ -586,6 +614,19 @@ private final class SwarmSimulation {
             case "path-2", "target-2":   return 6 * 100 + tier
             case "path-3", "target-3":   return 7 * 100 + tier
             default:                     return 8 * 100 + tier
+            }
+        }
+        if mode == .shapeBurnBarLogo, let role = p.role {
+            switch role {
+            case "logo-flame-inner": return 9 * 100 + tier
+            case "logo-flame-outer": return 10 * 100 + tier
+            case "logo-flame-spark": return 11 * 100 + tier
+            case "logo-bar-1":       return 12 * 100 + tier
+            case "logo-bar-2":       return 13 * 100 + tier
+            case "logo-bar-3":       return 14 * 100 + tier
+            case "logo-bar-4":       return 10 * 100 + tier
+            case "logo-bar-5":       return 15 * 100 + tier
+            default:                 return 10 * 100 + tier
             }
         }
         return colorBucket(p: p) * 100 + tier
@@ -613,6 +654,11 @@ private final class SwarmSimulation {
         let ember  = dark ? Color(red: 0.98, green: 0.42, blue: 0.024) : Color(red: 0.80, green: 0.30, blue: 0.0)
         let amber  = dark ? Color(red: 0.99, green: 0.768, blue: 0.172) : Color(red: 0.78, green: 0.52, blue: 0.0)
         let blaze  = dark ? Color(red: 0.93, green: 0.094, blue: 0.012) : Color(red: 0.74, green: 0.07, blue: 0.0)
+        let logoGold = dark ? Color(red: 1.00, green: 0.78, blue: 0.15) : Color(red: 0.80, green: 0.54, blue: 0.00)
+        let logoYellow = dark ? Color(red: 1.00, green: 0.64, blue: 0.11) : Color(red: 0.82, green: 0.40, blue: 0.00)
+        let logoOrange = dark ? Color(red: 0.96, green: 0.36, blue: 0.04) : Color(red: 0.76, green: 0.22, blue: 0.00)
+        let logoRed = dark ? Color(red: 0.90, green: 0.11, blue: 0.08) : Color(red: 0.68, green: 0.06, blue: 0.04)
+        let logoCrimson = dark ? Color(red: 0.69, green: 0.07, blue: 0.15) : Color(red: 0.50, green: 0.04, blue: 0.09)
 
         switch bucket {
         case 0: return whimsy.opacity(opacity)
@@ -623,6 +669,13 @@ private final class SwarmSimulation {
         case 5: return blaze.opacity(min(1.0, opacity * 1.5))    // throttled
         case 6: return amber.opacity(min(1.0, opacity * 1.5))    // active backup
         case 7: return ember.opacity(min(1.0, opacity * 1.5))    // standby
+        case 9: return logoGold.opacity(min(1.0, opacity * 1.65))
+        case 10: return logoOrange.opacity(min(1.0, opacity * 1.55))
+        case 11: return logoYellow.opacity(min(1.0, opacity * 1.35))
+        case 12: return logoGold.opacity(min(1.0, opacity * 1.45))
+        case 13: return logoYellow.opacity(min(1.0, opacity * 1.5))
+        case 14: return logoRed.opacity(min(1.0, opacity * 1.5))
+        case 15: return logoCrimson.opacity(min(1.0, opacity * 1.6))
         default: return blaze.opacity(opacity * 0.35)            // dim bg
         }
     }
@@ -841,6 +894,214 @@ private final class SwarmSimulation {
             }
         }
         return pts
+    }
+}
+
+enum SwarmLogoShape {
+    struct Point: Equatable {
+        let point: CGPoint
+        let role: String
+        let progress: Double
+    }
+
+    static func generatePoints() -> [Point] {
+        var raw: [RawPoint] = []
+
+        appendCatmullRom(
+            into: &raw,
+            controls: [
+                CGPoint(x: 168, y: 5),
+                CGPoint(x: 144, y: 30),
+                CGPoint(x: 126, y: 65),
+                CGPoint(x: 114, y: 98),
+                CGPoint(x: 108, y: 82),
+                CGPoint(x: 96, y: 78),
+                CGPoint(x: 98, y: 96),
+                CGPoint(x: 82, y: 124),
+                CGPoint(x: 77, y: 108),
+                CGPoint(x: 58, y: 130),
+                CGPoint(x: 39, y: 162),
+                CGPoint(x: 38, y: 185),
+                CGPoint(x: 47, y: 209),
+                CGPoint(x: 62, y: 230),
+                CGPoint(x: 91, y: 248),
+                CGPoint(x: 124, y: 253),
+                CGPoint(x: 158, y: 247),
+                CGPoint(x: 186, y: 231),
+                CGPoint(x: 207, y: 204),
+                CGPoint(x: 219, y: 166),
+                CGPoint(x: 214, y: 135),
+                CGPoint(x: 199, y: 107),
+                CGPoint(x: 196, y: 123),
+                CGPoint(x: 183, y: 139),
+                CGPoint(x: 191, y: 145),
+                CGPoint(x: 192, y: 150),
+                CGPoint(x: 177, y: 126),
+                CGPoint(x: 162, y: 88),
+                CGPoint(x: 158, y: 52),
+                CGPoint(x: 168, y: 5)
+            ],
+            samplesPerSegment: 4,
+            role: "logo-flame-outer"
+        )
+
+        appendCatmullRom(
+            into: &raw,
+            controls: [
+                CGPoint(x: 166, y: 6),
+                CGPoint(x: 147, y: 24),
+                CGPoint(x: 132, y: 53),
+                CGPoint(x: 124, y: 80),
+                CGPoint(x: 121, y: 105),
+                CGPoint(x: 110, y: 125),
+                CGPoint(x: 96, y: 137),
+                CGPoint(x: 82, y: 144),
+                CGPoint(x: 74, y: 142),
+                CGPoint(x: 73, y: 130),
+                CGPoint(x: 80, y: 113),
+                CGPoint(x: 64, y: 132),
+                CGPoint(x: 51, y: 157),
+                CGPoint(x: 48, y: 184),
+                CGPoint(x: 50, y: 193)
+            ],
+            samplesPerSegment: 4,
+            role: "logo-flame-inner"
+        )
+
+        appendCatmullRom(
+            into: &raw,
+            controls: [
+                CGPoint(x: 168, y: 6),
+                CGPoint(x: 155, y: 30),
+                CGPoint(x: 148, y: 56),
+                CGPoint(x: 150, y: 80),
+                CGPoint(x: 160, y: 111),
+                CGPoint(x: 150, y: 133),
+                CGPoint(x: 131, y: 153),
+                CGPoint(x: 111, y: 164),
+                CGPoint(x: 104, y: 147)
+            ],
+            samplesPerSegment: 4,
+            role: "logo-flame-inner"
+        )
+
+        appendCatmullRom(
+            into: &raw,
+            controls: [
+                CGPoint(x: 74, y: 113),
+                CGPoint(x: 62, y: 128),
+                CGPoint(x: 56, y: 145),
+                CGPoint(x: 62, y: 151),
+                CGPoint(x: 71, y: 151),
+                CGPoint(x: 50, y: 178)
+            ],
+            samplesPerSegment: 3,
+            role: "logo-flame-spark"
+        )
+
+        appendBar(into: &raw, minX: 58.6, maxX: 84.7, topY: 216.6, bottomY: 248.0, role: "logo-bar-1")
+        appendBar(into: &raw, minX: 91.3, maxX: 118.5, topY: 195.2, bottomY: 252.0, role: "logo-bar-2")
+        appendBar(into: &raw, minX: 124.9, maxX: 151.5, topY: 176.9, bottomY: 252.0, role: "logo-bar-3")
+        appendBar(into: &raw, minX: 157.8, maxX: 185.7, topY: 150.6, bottomY: 246.4, role: "logo-bar-4")
+        appendBar(into: &raw, minX: 192.2, maxX: 219.4, topY: 108.0, bottomY: 226.0, role: "logo-bar-5")
+
+        let denominator = max(1, raw.count - 1)
+        return raw.enumerated().map { index, point in
+            Point(
+                point: normalize(point.source),
+                role: point.role,
+                progress: Double(index) / Double(denominator)
+            )
+        }
+    }
+
+    private struct RawPoint {
+        let source: CGPoint
+        let role: String
+    }
+
+    private static let sourceCenter = CGPoint(x: 128, y: 128)
+    private static let sourceScale: CGFloat = 150
+    private static let barStep: CGFloat = 13
+
+    private static func normalize(_ point: CGPoint) -> CGPoint {
+        CGPoint(
+            x: (point.x - sourceCenter.x) / sourceScale,
+            y: (point.y - sourceCenter.y) / sourceScale
+        )
+    }
+
+    private static func appendBar(
+        into raw: inout [RawPoint],
+        minX: CGFloat,
+        maxX: CGFloat,
+        topY: CGFloat,
+        bottomY: CGFloat,
+        role: String
+    ) {
+        for y in strideValues(from: topY, through: bottomY, by: barStep) {
+            for x in strideValues(from: minX, through: maxX, by: barStep) {
+                raw.append(RawPoint(source: CGPoint(x: x, y: y), role: role))
+            }
+        }
+    }
+
+    private static func appendCatmullRom(
+        into raw: inout [RawPoint],
+        controls: [CGPoint],
+        samplesPerSegment: Int,
+        role: String
+    ) {
+        guard controls.count >= 2 else { return }
+        let samples = max(1, samplesPerSegment)
+        for index in 0..<(controls.count - 1) {
+            let p0 = controls[max(0, index - 1)]
+            let p1 = controls[index]
+            let p2 = controls[index + 1]
+            let p3 = controls[min(controls.count - 1, index + 2)]
+            for sample in 0..<samples {
+                let t = CGFloat(sample) / CGFloat(samples)
+                raw.append(RawPoint(source: catmullRom(p0, p1, p2, p3, t: t), role: role))
+            }
+        }
+        raw.append(RawPoint(source: controls[controls.count - 1], role: role))
+    }
+
+    private static func catmullRom(
+        _ p0: CGPoint,
+        _ p1: CGPoint,
+        _ p2: CGPoint,
+        _ p3: CGPoint,
+        t: CGFloat
+    ) -> CGPoint {
+        let t2 = t * t
+        let t3 = t2 * t
+        let x = 0.5 * (
+            (2 * p1.x)
+            + (-p0.x + p2.x) * t
+            + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2
+            + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
+        )
+        let y = 0.5 * (
+            (2 * p1.y)
+            + (-p0.y + p2.y) * t
+            + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2
+            + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
+        )
+        return CGPoint(x: x, y: y)
+    }
+
+    private static func strideValues(from start: CGFloat, through end: CGFloat, by step: CGFloat) -> [CGFloat] {
+        var values: [CGFloat] = []
+        var current = start
+        while current <= end {
+            values.append(current)
+            current += step
+        }
+        if values.last != end {
+            values.append(end)
+        }
+        return values
     }
 }
 

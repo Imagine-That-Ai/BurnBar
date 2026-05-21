@@ -7,13 +7,49 @@ import OpenBurnBarCore
 struct ModelPricing {
     let inputPerMToken: Double
     let outputPerMToken: Double
+    let cacheCreationPerMToken: Double?
     let cacheReadPerMToken: Double
 
+    init(
+        inputPerMToken: Double,
+        outputPerMToken: Double,
+        cacheReadPerMToken: Double
+    ) {
+        self.init(
+            inputPerMToken: inputPerMToken,
+            outputPerMToken: outputPerMToken,
+            cacheReadPerMToken: cacheReadPerMToken,
+            cacheCreationPerMToken: nil
+        )
+    }
+
+    init(
+        inputPerMToken: Double,
+        outputPerMToken: Double,
+        cacheReadPerMToken: Double,
+        cacheCreationPerMToken: Double?
+    ) {
+        self.inputPerMToken = inputPerMToken
+        self.outputPerMToken = outputPerMToken
+        self.cacheCreationPerMToken = cacheCreationPerMToken
+        self.cacheReadPerMToken = cacheReadPerMToken
+    }
+
     static func lookup(model: String) -> ModelPricing {
+        let normalizedModel = TokenExtractionUtility.normalizeModelName(model)
         #if canImport(OpenBurnBarCore)
-        ModelPricing(OpenBurnBarCatalogLookup.shared.pricing(forModelName: model) ?? .defaultFallback)
+        return ModelPricing(OpenBurnBarCatalogLookup.shared.pricing(forModelName: normalizedModel) ?? .defaultFallback)
         #else
-        .fallback
+        return .fallback
+        #endif
+    }
+
+    static func hasCatalogPricing(model: String) -> Bool {
+        let normalizedModel = TokenExtractionUtility.normalizeModelName(model)
+        #if canImport(OpenBurnBarCore)
+        return OpenBurnBarCatalogLookup.shared.pricing(forModelName: normalizedModel) != nil
+        #else
+        return false
         #endif
     }
 
@@ -24,9 +60,10 @@ struct ModelPricing {
         cacheReadTokens: Int = 0,
         reasoningTokens: Int = 0
     ) -> Double {
-        Double(inputTokens) / 1_000_000 * inputPerMToken
+        let cacheCreationRate = cacheCreationPerMToken ?? inputPerMToken
+        return Double(inputTokens) / 1_000_000 * inputPerMToken
             + Double(outputTokens) / 1_000_000 * outputPerMToken
-            + Double(cacheCreationTokens) / 1_000_000 * inputPerMToken
+            + Double(cacheCreationTokens) / 1_000_000 * cacheCreationRate
             + Double(cacheReadTokens) / 1_000_000 * cacheReadPerMToken
     }
 }
@@ -37,7 +74,8 @@ private extension ModelPricing {
         self.init(
             inputPerMToken: pricing.inputPerMToken,
             outputPerMToken: pricing.outputPerMToken,
-            cacheReadPerMToken: pricing.cacheReadPerMToken
+            cacheReadPerMToken: pricing.cacheReadPerMToken,
+            cacheCreationPerMToken: pricing.cacheCreationPerMToken
         )
     }
     #endif

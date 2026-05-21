@@ -43,11 +43,24 @@ final class ModelPricingStandaloneTests: XCTestCase {
         XCTAssertEqual(cost, 0.00125, accuracy: 0.00001)
     }
 
-    func test_cost_cacheCreationTokens_usesInputRate() {
-        // Cache creation is billed at input rate
+    func test_cost_cacheCreationTokens_usesInputRateByDefault() {
+        // Cache creation defaults to the input rate for providers without separate write pricing.
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 1.25)
         let cost = pricing.cost(inputTokens: 0, outputTokens: 0, cacheCreationTokens: 1_000)
         XCTAssertEqual(cost, 0.003, accuracy: 0.00001)
+    }
+
+    func test_cost_cacheCreationTokens_usesExplicitWriteRate() {
+        let pricing = ModelPricing(
+            inputPerMToken: 3.0,
+            outputPerMToken: 15.0,
+            cacheReadPerMToken: 0.3,
+            cacheCreationPerMToken: 3.75
+        )
+
+        let cost = pricing.cost(inputTokens: 0, outputTokens: 0, cacheCreationTokens: 1_000_000)
+
+        XCTAssertEqual(cost, 3.75, accuracy: 0.00001)
     }
 
     func test_cost_fullBreakdown() {

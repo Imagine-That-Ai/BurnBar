@@ -628,62 +628,13 @@ struct ProviderRoutingCockpit: View {
     }
 
     private var latestProviderChangeEvent: ProviderRoutingDecisionEvent? {
-        state.recentEvents.last(where: { $0.isProviderChangeFailover }) ?? Self.debugForcedProviderChangeEvent
+        state.recentEvents.last(where: {
+            $0.isProviderChangeFailover && (
+                $0.originalProviderID == provider.providerID
+                || $0.failoverDestinationProviderID == provider.providerID
+            )
+        })
     }
-
-    #if DEBUG
-    private static let debugForcedProviderChangeEvent = ProviderRoutingDecisionEvent(
-        id: UUID(uuidString: "7F570BF2-9A2B-4C52-9CB1-2AB1E8D7B55D")!,
-        occurredAt: Date(timeIntervalSinceReferenceDate: 800_000_000),
-        modelID: "gpt-5.4",
-        routerMode: .sameModelFailover,
-        selected: ProviderRoutingCandidate(
-            providerID: .codex,
-            accountID: "codex-debug-preview",
-            accountLabel: "Codex backup",
-            credentialHandle: "debug-preview",
-            storageScope: .deviceKeychain,
-            modelCompatibility: .compatible,
-            canonicalModelID: "gpt-5.4",
-            quotaState: .healthy,
-            cooldownUntil: nil,
-            priority: 0,
-            routingEnabled: true,
-            lastUsedAt: nil,
-            lastFailureCode: nil,
-            localCredentialAvailable: true
-        ),
-        nextFallback: nil,
-        originalProviderID: .openAI,
-        originalAccountID: "openai-debug-primary",
-        originalAccountLabel: "OpenAI primary",
-        attemptedModelID: "gpt-5.4",
-        attemptedCanonicalModelID: "gpt-5.4",
-        failoverDestination: ProviderRoutingCandidate(
-            providerID: .codex,
-            accountID: "codex-debug-preview",
-            accountLabel: "Codex backup",
-            credentialHandle: "debug-preview",
-            storageScope: .deviceKeychain,
-            modelCompatibility: .compatible,
-            canonicalModelID: "gpt-5.4",
-            quotaState: .healthy,
-            cooldownUntil: nil,
-            priority: 0,
-            routingEnabled: true,
-            lastUsedAt: nil,
-            lastFailureCode: nil,
-            localCredentialAvailable: true
-        ),
-        failoverReason: "OpenAI primary is exhausted; Codex backup serves the exact same canonical model.",
-        exactModelInvariantPassed: true,
-        reason: "OpenAI primary is exhausted; Codex backup serves the exact same canonical model.",
-        explanation: "Debug preview of exact model failover.",
-        skipped: []
-    )
-    #else
-    private static let debugForcedProviderChangeEvent: ProviderRoutingDecisionEvent? = nil
-    #endif
 
     private func routingEventRow(_ event: ProviderRoutingDecisionEvent) -> some View {
         let timestamp = event.occurredAt.formatted(.relative(presentation: .named))
