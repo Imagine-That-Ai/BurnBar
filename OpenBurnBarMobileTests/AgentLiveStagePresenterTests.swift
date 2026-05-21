@@ -236,5 +236,134 @@ final class AgentLiveStagePresenterTests: XCTestCase {
         try await Task.sleep(nanoseconds: 30_000_000)
         XCTAssertEqual(presenter.mode, .dock)
     }
+
+    // MARK: - requestCollapse cancels grace
+
+    func test_manualCollapse_during_grace_does_not_overwrite_reason() async throws {
+        let state = AgentWatchState()
+        let presenter = AgentLiveStagePresenter()
+        presenter.observe(state)
+
+        state.setSession(id: ComputerUseSessionID("manual-col-1"), startedAt: .now)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(presenter.mode, .dock)
+
+        // Session ends, grace starts counting.
+        state.clear()
+        try await Task.sleep(nanoseconds: 10_000_000)
+
+        // User manually collapses before grace fires.
+        presenter.requestCollapse(sessionActive: false)
+        XCTAssertEqual(presenter.mode, .hidden)
+
+        // Wait past grace — must NOT fire and overwrite anything.
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(presenter.mode, .hidden)
+        // collapseReason should be nil (requestCollapse doesn't set it),
+        // not .sessionEnded from a stale grace task.
+        XCTAssertNil(presenter.collapseReason)
+    }
+
+    // MARK: - No-op on nil session when already hidden
+
+    func test_session_end_when_already_hidden_is_noop() async throws {
+        let state = AgentWatchState()
+        let presenter = AgentLiveStagePresenter()
+        presenter.observe(state)
+        // Never opened — mode stays hidden.
+        state.setSession(id: ComputerUseSessionID("noop-1"), startedAt: .now)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(presenter.mode, .dock)
+
+        presenter.dismiss()
+        XCTAssertEqual(presenter.mode, .hidden)
+
+        // Another session-id change to nil (which normally schedules
+        // grace) should be a no-op since mode is already .hidden.
+        state.clear()
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(presenter.mode, .hidden)
+        // dismiss() set .dismissed; grace should not have overwritten it.
+        XCTAssertEqual(presenter.collapseReason, .dismissed)
+    }
+
+    // MARK: - Nearest corner edge cases
+
+    func test_nearestCorner_center_returns_topLeading() {
+        let size = CGSize(width: 400, height: 800)
+        // Exact center — tie goes to topLeading (x < mid, y < mid).
+        XCTAssertEqual(
+            AgentLiveStagePresenter.nearestCorner(for: CGPoint(x: 199, y: 399), in: size),
+            .topLeading
+        )
+    }
+
+    func test_nearestCorner_on_center_line_returns_correct() {
+        let size = CGSize(width: 400, height: 800)
+        // x == mid, y above mid → x is NOT < mid, so topTrailing.
+        XCTAssertEqual(
+            AgentLiveStagePresenter.nearestCorner(for: CGPoint(x: 200, y: 100), in: size),
+            .topTrailing
+        )
+        // y == mid, x below mid → y is NOT < mid, so bottomTrailing.
+        XCTAssertEqual(
+            AgentLiveStagePresenter.nearestCorner(for: CGPoint(x: 300, y: 400), in: size),
+            .bottomTrailing
+        )
+    }
+
+    func test_nearestCorner_zero_size_gracefully_handles() {
+        // Should not trap; every point is >= half of zero, so all
+        // conditions are false → bottomTrailing.
+        let corner = AgentLiveStagePresenter.nearestCorner(
+            for: CGPoint(x: 0, y: 0),
+            in: .zero
+        )
+        // With width=0, height=0, both comparisons are !(x < 0) = true,
+        // so !isLeading && !isTop → bottomTrailing.
+        XCTAssertEqual(corner, .bottomTrailing)
+    }
+
+    // MARK: - enterDock cancels grace
+
+    func test_enterDock_cancels_pending_grace() async throws {
+        let state = AgentWatchState()
+        let presenter = AgentLiveStagePresenter()
+        presenter.observe(state)
+
+        state.setSession(id: ComputerUseSessionID("enterdock-1"), startedAt: .now)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        state.clear()
+
+        // Grace started. Call enterDock manually (simulates user
+        // re-docking after session ends).
+        presenter.enterDock()
+        try await Task.sleep(nanoseconds: 80_000_000)
+        // Should still be in dock — grace was cancelled.
+        XCTAssertEqual(presenter.mode, .dock)
+    }
+
+    // MARK: - dismiss cancels grace
+
+    func test_dismiss_cancels_grace() async throws {
+        let state = AgentWatchState()
+        let presenter = AgentLiveStagePresenter()
+        presenter.observe(state)
+
+        state.setSession(id: ComputerUseSessionID("disgrace-1"), startedAt: .now)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        state.clear()
+        try await Task.sleep(nanoseconds: 10_000_000)
+
+        // Dismiss during grace.
+        presenter.dismiss()
+        XCTAssertEqual(presenter.mode, .hidden)
+        XCTAssertEqual(presenter.collapseReason, .dismissed)
+
+        // Grace should not fire.
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(presenter.mode, .hidden)
+        XCTAssertEqual(presenter.collapseReason, .dismissed)
+    }
 }
 #endif

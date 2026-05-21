@@ -32,7 +32,8 @@ final class BurnBarCatalogTests: XCTestCase {
         let factorySonnext = try XCTUnwrap(catalog.pricing(forModelName: "Sonnext-4.6-9"))
         let gpt55 = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.5"))
         let gpt55Pro = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.5-pro"))
-        let factoryGLM5 = try XCTUnwrap(catalog.pricing(forModelName: "glm-5"))
+        let factoryGLM5 = try XCTUnwrap(catalog.pricing(forModelName: "glm-5", providerID: "factory"))
+        let directGLM5 = try XCTUnwrap(catalog.pricing(forModelName: "glm-5", providerID: "zai"))
         let minimax = try XCTUnwrap(catalog.pricing(forModelName: "MiniMax-M3-pro"))
         let codex = try XCTUnwrap(catalog.pricing(forModelName: "codex-pro"))
 
@@ -51,6 +52,9 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(factoryGLM5.inputPerMToken, 0, accuracy: 0.001)
         XCTAssertEqual(factoryGLM5.outputPerMToken, 0, accuracy: 0.001)
         XCTAssertEqual(factoryGLM5.cacheReadPerMToken, 0, accuracy: 0.001)
+        XCTAssertEqual(directGLM5.inputPerMToken, 0.07, accuracy: 0.001)
+        XCTAssertEqual(directGLM5.outputPerMToken, 0.07, accuracy: 0.001)
+        XCTAssertEqual(directGLM5.cacheReadPerMToken, 0.02, accuracy: 0.001)
         XCTAssertEqual(minimax.inputPerMToken, 0.69, accuracy: 0.001)
         XCTAssertEqual(codex.outputPerMToken, 12, accuracy: 0.001)
     }

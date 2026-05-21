@@ -374,10 +374,10 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
             displayName: provider.displayName,
             baseURL: provider.baseURL,
             visibility: provider.visibility,
-            logoKey: provider.logoKey,
             capabilities: provider.capabilities,
-            formatFamily: provider.formatFamily,
-            models: models
+            logoKey: provider.logoKey,
+            models: models,
+            formatFamily: provider.formatFamily
         )
         return bestModelMatch(named: normalized, providersToSearch: [scopedProvider])?.model.pricing
     }

@@ -278,9 +278,6 @@ final class FactoryDroidParser: LogParser, Sendable {
         let startTime = conv.startTime ?? tokenData.startTime ?? fallbackActivity
         let endTime = conv.endTime ?? tokenData.endTime ?? startTime
 
-        let detectedProvider = detectProviderFromModel(tokenData.model)
-        guard detectedProvider == .factory else { return nil }
-
         guard tokenData.input > 0 || tokenData.output > 0 else { return nil }
 
         let pricing = ModelPricing.lookup(model: tokenData.model, providerID: "factory")
@@ -364,20 +361,6 @@ final class FactoryDroidParser: LogParser, Sendable {
         if let conversation = parsed.conversation {
             conversations.append(conversation)
         }
-    }
-
-    private func detectProviderFromModel(_ model: String) -> AgentProvider {
-        let lowercasedModel = model.lowercased()
-
-        if lowercasedModel.contains("minimax") {
-            return .minimax
-        }
-
-        if lowercasedModel.contains("glm") || lowercasedModel.contains("z.ai") || lowercasedModel.contains("zai") {
-            return .zai
-        }
-
-        return .factory
     }
 
     private func resolveModel(structuredModel: String, inlineModel: String?) -> String {
