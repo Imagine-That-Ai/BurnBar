@@ -70,6 +70,7 @@ final class AgentLiveStagePresenter: ObservableObject {
     private var graceTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
     private var observedState: AgentWatchState?
+    private var manualDockAfterSessionEnd = false
 
     init() {}
 
@@ -94,10 +95,13 @@ final class AgentLiveStagePresenter: ObservableObject {
     private func handleSessionIDChange(_ sessionId: ComputerUseSessionID?) {
         if sessionId != nil {
             cancelGrace()
+            manualDockAfterSessionEnd = false
             collapseReason = nil
             if mode == .hidden {
                 mode = .dock
             }
+        } else if manualDockAfterSessionEnd {
+            cancelGrace()
         } else if mode != .hidden {
             scheduleGraceCollapse(reason: .sessionEnded)
         }
@@ -107,6 +111,7 @@ final class AgentLiveStagePresenter: ObservableObject {
 
     func enterDock() {
         cancelGrace()
+        manualDockAfterSessionEnd = observedState?.sessionId == nil
         mode = .dock
         chatPuckExpanded = false
     }
@@ -152,6 +157,7 @@ final class AgentLiveStagePresenter: ObservableObject {
     /// further auto-open until a new session arrives.
     func dismiss() {
         cancelGrace()
+        manualDockAfterSessionEnd = false
         mode = .hidden
         chatPuckExpanded = false
         collapseReason = .dismissed
@@ -162,6 +168,7 @@ final class AgentLiveStagePresenter: ObservableObject {
     /// pulse the next time the stage opens.
     func panicCollapse() {
         cancelGrace()
+        manualDockAfterSessionEnd = false
         mode = .hidden
         chatPuckExpanded = false
         collapseReason = .panic
@@ -200,6 +207,7 @@ final class AgentLiveStagePresenter: ObservableObject {
         graceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(grace * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
+            self.manualDockAfterSessionEnd = false
             self.collapseReason = reason
             self.mode = .hidden
             self.chatPuckExpanded = false
