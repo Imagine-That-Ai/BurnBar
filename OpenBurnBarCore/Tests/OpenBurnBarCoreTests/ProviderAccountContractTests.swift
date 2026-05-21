@@ -444,6 +444,101 @@ final class ProviderAccountContractTests: XCTestCase {
         XCTAssertEqual(decision.event.failoverDestinationProviderID, ProviderID.codex)
     }
 
+    func test_providerChangeFailoverMetadataDistinguishesProviderChangeFromAccountFallback() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let crossProvider = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "gpt-5.4",
+                preferredProviderIDs: [.openAI, .codex],
+                routerMode: .sameModelFailover,
+                requiredCanonicalModelID: "gpt-5.4",
+                selectedProviderID: .openAI,
+                selectedAccountID: "openai_primary"
+            ),
+            candidates: [
+                routingCandidate(
+                    "openai_primary",
+                    providerID: .openAI,
+                    label: "OpenAI Primary",
+                    quotaState: .exhausted,
+                    canonicalModelID: "gpt-5.4"
+                ),
+                routingCandidate(
+                    "codex_backup",
+                    providerID: .codex,
+                    label: "Codex Backup",
+                    canonicalModelID: "gpt-5.4"
+                )
+            ],
+            now: now
+        )
+
+        XCTAssertTrue(crossProvider.event.isProviderChangeFailover)
+        XCTAssertEqual(crossProvider.event.providerChangeSourceLabel, "OpenAI")
+        XCTAssertEqual(crossProvider.event.providerChangeDestinationLabel, "Codex")
+        XCTAssertEqual(crossProvider.event.providerChangeModelLabel, "gpt-5.4")
+        XCTAssertTrue(crossProvider.event.exactModelInvariantPassed)
+
+        let sameProvider = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "gpt-5.4",
+                preferredProviderIDs: [.openAI],
+                selectedProviderID: .openAI,
+                selectedAccountID: "openai_primary"
+            ),
+            candidates: [
+                routingCandidate("openai_primary", providerID: .openAI, label: "OpenAI Primary", quotaState: .exhausted),
+                routingCandidate("openai_backup", providerID: .openAI, label: "OpenAI Backup")
+            ],
+            now: now
+        )
+
+        XCTAssertFalse(sameProvider.event.isProviderChangeFailover)
+        XCTAssertEqual(sameProvider.event.providerChangeSourceLabel, "OpenAI")
+        XCTAssertNil(sameProvider.event.providerChangeDestinationLabel)
+    }
+
+    func test_providerChangeFailover_isScopedToInvolvedProviders() {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let openaiToCodex = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "gpt-5.4",
+                preferredProviderIDs: [.openAI, .codex],
+                routerMode: .sameModelFailover,
+                requiredCanonicalModelID: "gpt-5.4"
+            ),
+            candidates: [
+                routingCandidate("openai_primary", providerID: .openAI, label: "OpenAI Primary", quotaState: .exhausted, canonicalModelID: "gpt-5.4"),
+                routingCandidate("codex_backup", providerID: .codex, label: "Codex Backup", canonicalModelID: "gpt-5.4"),
+                routingCandidate("claude_backup", providerID: .claudeCode, label: "Claude Backup", canonicalModelID: "gpt-5.4")
+            ],
+            now: now
+        )
+
+        // The event represents a failover from OpenAI to Codex.
+        XCTAssertTrue(openaiToCodex.event.isProviderChangeFailover)
+        XCTAssertEqual(openaiToCodex.event.originalProviderID, .openAI)
+        XCTAssertEqual(openaiToCodex.event.failoverDestinationProviderID, .codex)
+
+        // A provider-scoped "latestProviderChangeEvent" lookup must only
+        // surface the event when the provider was directly involved in the
+        // change (source or destination). An unrelated third-party provider
+        // like Claude must not inherit the popup.
+        let involvesOpenAI = openaiToCodex.event.isProviderChangeFailover
+            && (openaiToCodex.event.originalProviderID == ProviderID.openAI
+                || openaiToCodex.event.failoverDestinationProviderID == ProviderID.openAI)
+        let involvesCodex = openaiToCodex.event.isProviderChangeFailover
+            && (openaiToCodex.event.originalProviderID == ProviderID.codex
+                || openaiToCodex.event.failoverDestinationProviderID == ProviderID.codex)
+        let involvesClaude = openaiToCodex.event.isProviderChangeFailover
+            && (openaiToCodex.event.originalProviderID == ProviderID.claudeCode
+                || openaiToCodex.event.failoverDestinationProviderID == ProviderID.claudeCode)
+
+        XCTAssertTrue(involvesOpenAI, "OpenAI was the source of the failover")
+        XCTAssertTrue(involvesCodex, "Codex was the destination of the failover")
+        XCTAssertFalse(involvesClaude, "Claude was not involved in the failover and must not surface the event")
+    }
+
     func test_routingEventsNeverIncludeCredentialsOrSecretRefs() throws {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
         // The sanitiser must scrub these plaintext-shaped credential

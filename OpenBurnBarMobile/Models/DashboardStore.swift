@@ -23,6 +23,66 @@ final class DashboardStore {
     private(set) var rollupsByWindow: [RollupWindowKey: UsageRollupDoc] = [:]
     private(set) var isListening = false
 
+    // MARK: - Swarm Color Driver
+
+    /// A data-driven color driver for the swarm background, computed from today's
+    /// usage rollup. Provider weights are proportional to cost; the mode reflects
+    /// whether a Live Activity session is currently running.
+    var swarmColorDriver: SwarmColorDriver {
+        // Use today's rollup for provider weights, regardless of selected window.
+        let todayRollup = rollupsByWindow[.today]
+        let todaySummaries = todayRollup?.providerSummaries ?? []
+        let todayCost = todayRollup?.totals.costUsd ?? 0
+
+        let totalCost = todaySummaries.compactMap(\.totalCost).reduce(0, +)
+        let weights: [SwarmColorDriver.ProviderWeight]
+        if totalCost > 0 {
+            weights = todaySummaries
+                .prefix(5)  // Top 5 providers max for visual clarity
+                .compactMap { summary -> SwarmColorDriver.ProviderWeight? in
+                    let cost = summary.totalCost ?? 0
+                    guard cost > 0 else { return nil }
+                    let provider = AgentProvider.fromProviderID(summary.providerID)
+                    guard let provider else { return nil }
+                    return SwarmColorDriver.ProviderWeight(
+                        provider: provider,
+                        weight: cost / totalCost,
+                        quotaPressure: 0  // Quota pressure injected separately if QuotaStore available
+                    )
+                }
+        } else if !todaySummaries.isEmpty {
+            // No cost data — weight by token count instead.
+            let totalTokens = todaySummaries.reduce(0) { $0 + $1.totalTokens }
+            weights = todaySummaries
+                .prefix(5)
+                .compactMap { summary -> SwarmColorDriver.ProviderWeight? in
+                    guard summary.totalTokens > 0, totalTokens > 0 else { return nil }
+                    let provider = AgentProvider.fromProviderID(summary.providerID)
+                    guard let provider else { return nil }
+                    return SwarmColorDriver.ProviderWeight(
+                        provider: provider,
+                        weight: Double(summary.totalTokens) / Double(totalTokens)
+                    )
+                }
+        } else {
+            weights = []
+        }
+
+        // Determine mode: active if there's a Live Activity running.
+        let sessionActive: Bool
+        if #available(iOS 16.1, *) {
+            sessionActive = LiveActivityManager.shared.hasActiveActivity
+        } else {
+            sessionActive = false
+        }
+
+        return SwarmColorDriver(
+            mode: sessionActive ? .active : .idle,
+            providers: weights,
+            totalBurnRateUSD: todayCost
+        )
+    }
+
     private var listener: ListenerRegistration?
     private var lastRebuildAttempt: Date = .distantPast
 

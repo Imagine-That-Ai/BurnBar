@@ -106,7 +106,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             )
         case .pointerClick:
             await dispatchHandler(
-                .macInput(MacInputAction(kind: .click)),
+                .macInput(MacInputAction(kind: .click, mouseButton: intent.mouseButton ?? 0)),
                 sessionId,
                 intent.authority.counter
             )
@@ -135,7 +135,8 @@ public final class PhoneControlReceiver: @unchecked Sendable {
                 displayX: displayX,
                 displayY: displayY,
                 dragEndX: endpoint?.0,
-                dragEndY: endpoint?.1
+                dragEndY: endpoint?.1,
+                mouseButton: intent.mouseButton ?? 0
             )
             await dispatchHandler(.macInput(macAction), sessionId, intent.authority.counter)
         case .type:

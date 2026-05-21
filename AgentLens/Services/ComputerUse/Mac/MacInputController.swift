@@ -77,10 +77,12 @@ public final class MacInputController: @unchecked Sendable {
         let cgButton: CGMouseButton = button == 1 ? .right : .left
 
         let started = Date()
-        guard let downEvent = CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: position, mouseButton: cgButton),
+        guard let moveEvent = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: position, mouseButton: .left),
+              let downEvent = CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: position, mouseButton: cgButton),
               let upEvent = CGEvent(mouseEventSource: nil, mouseType: upType, mouseCursorPosition: position, mouseButton: cgButton) else {
             throw InputError.eventCreationFailed
         }
+        moveEvent.post(tap: .cghidEventTap)
         downEvent.post(tap: .cghidEventTap)
         upEvent.post(tap: .cghidEventTap)
         return Date().timeIntervalSince(started) * 1000.0

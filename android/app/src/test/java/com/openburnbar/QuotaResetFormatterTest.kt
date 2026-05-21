@@ -20,7 +20,7 @@ class QuotaResetFormatterTest {
     private val englishUS = Locale.US
 
     @Test
-    fun `relative half formats short future durations as "in Xh Ym"`() {
+    fun `relative half formats short future durations with hour minute precision`() {
         val target = now.plusSeconds(2 * 3600 + 14 * 60)
         val parts = QuotaResetFormatter.format(target, now = now, zone = zoneUTC, locale = englishUS)
         assertNotNull(parts)

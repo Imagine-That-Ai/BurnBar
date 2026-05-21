@@ -307,7 +307,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
         _ = try await waitForFrame(from: stream) { $0.type == .controlClassify }
 
-        try await coordinator.receiver?.tap(normalizedX: 0.25, normalizedY: 0.75)
+        try await coordinator.receiver?.tap(normalizedX: 0.25, normalizedY: 0.75, mouseButton: 1)
         let tapFrame = try await waitForFrame(from: stream) {
             $0.type == .controlInputIntent &&
             $0.control?.inputIntent?.kind == .tap
@@ -315,6 +315,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let tapIntent = try XCTUnwrap(tapFrame.control?.inputIntent)
         XCTAssertEqual(try XCTUnwrap(tapIntent.normalizedX), 0.25, accuracy: 0.0001)
         XCTAssertEqual(try XCTUnwrap(tapIntent.normalizedY), 0.75, accuracy: 0.0001)
+        XCTAssertEqual(tapIntent.mouseButton, 1)
         XCTAssertFalse(tapIntent.authority.peerNodeId.isEmpty)
         XCTAssertFalse(tapIntent.authority.signatureEd25519.isEmpty)
 
@@ -345,6 +346,16 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(typeIntent.text, "hello from iphone")
         XCTAssertEqual(typeIntent.authority.counter, scrollIntent.authority.counter + 1)
         XCTAssertFalse(typeIntent.authority.signatureEd25519.isEmpty)
+
+        try await coordinator.receiver?.pointerClick(mouseButton: 1)
+        let pointerClickFrame = try await waitForFrame(from: stream) {
+            $0.type == .controlInputIntent &&
+            $0.control?.inputIntent?.kind == .pointerClick
+        }
+        let pointerClickIntent = try XCTUnwrap(pointerClickFrame.control?.inputIntent)
+        XCTAssertEqual(pointerClickIntent.mouseButton, 1)
+        XCTAssertEqual(pointerClickIntent.authority.counter, typeIntent.authority.counter + 1)
+        XCTAssertFalse(pointerClickIntent.authority.signatureEd25519.isEmpty)
     }
 
     // MARK: - Formatting
@@ -598,7 +609,50 @@ final class ScreenShareViewportStateTests: XCTestCase {
         )
 
         XCTAssertEqual(point.x, 0.50, accuracy: 0.0001)
-        XCTAssertEqual(point.y, 0.55, accuracy: 0.0001)
+        XCTAssertEqual(point.y, 0.50, accuracy: 0.0001)
+    }
+
+    func testNormalizedTapMappingUsesLetterboxedVideoRect() {
+        let viewport = ScreenShareViewportState()
+        let container = CGSize(width: 2048, height: 944)
+        let contentWidth = container.height * 1.6
+        let contentRect = CGRect(
+            x: (container.width - contentWidth) / 2,
+            y: 0,
+            width: contentWidth,
+            height: container.height
+        )
+
+        let point = viewport.normalizedPoint(
+            for: CGPoint(x: contentRect.minX + contentRect.width * 0.25, y: contentRect.height * 0.75),
+            in: container,
+            contentRect: contentRect
+        )
+        let leftLetterboxPoint = viewport.normalizedPoint(
+            for: CGPoint(x: 20, y: container.height / 2),
+            in: container,
+            contentRect: contentRect
+        )
+
+        XCTAssertEqual(point.x, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(point.y, 0.75, accuracy: 0.0001)
+        XCTAssertEqual(leftLetterboxPoint.x, 0, accuracy: 0.0001)
+        XCTAssertEqual(leftLetterboxPoint.y, 0.5, accuracy: 0.0001)
+    }
+
+    func testNormalizedTapMappingCombinesLetterboxZoomAndPan() {
+        let viewport = ScreenShareViewportState(scale: 2, offset: CGSize(width: 50, height: -50))
+        let container = CGSize(width: 1_000, height: 500)
+        let contentRect = CGRect(x: 100, y: 0, width: 800, height: 500)
+
+        let point = viewport.normalizedPoint(
+            for: CGPoint(x: 550, y: 200),
+            in: container,
+            contentRect: contentRect
+        )
+
+        XCTAssertEqual(point.x, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(point.y, 0.5, accuracy: 0.0001)
     }
 
     func testNormalizedTapMappingClampsEdgesAfterRotation() {

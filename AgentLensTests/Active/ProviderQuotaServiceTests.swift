@@ -3891,6 +3891,130 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(reloaded.routingEvents.first?.selectedAccountID, "openai-personal")
     }
 
+    func test_refreshRoutingState_crossProviderEventAppearsForInvolvedProvidersOnly() throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+
+        // Seed persisted routing events with a cross-provider failover
+        // (OpenAI → Codex) and an unrelated provider (Claude).
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
+        let crossProviderEvent = ProviderRoutingDecisionEvent(
+            occurredAt: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            modelID: "gpt-5.4",
+            routerMode: .sameModelFailover,
+            selected: ProviderRoutingCandidate(
+                providerID: .codex,
+                accountID: "codex-backup",
+                accountLabel: "Codex Backup",
+                credentialHandle: "test",
+                storageScope: .deviceKeychain,
+                modelCompatibility: .compatible,
+                canonicalModelID: "gpt-5.4",
+                quotaState: .healthy,
+                localCredentialAvailable: true
+            ),
+            nextFallback: nil,
+            originalProviderID: .openAI,
+            originalAccountID: "openai-primary",
+            originalAccountLabel: "OpenAI Primary",
+            attemptedModelID: "gpt-5.4",
+            attemptedCanonicalModelID: "gpt-5.4",
+            failoverDestination: ProviderRoutingCandidate(
+                providerID: .codex,
+                accountID: "codex-backup",
+                accountLabel: "Codex Backup",
+                credentialHandle: "test",
+                storageScope: .deviceKeychain,
+                modelCompatibility: .compatible,
+                canonicalModelID: "gpt-5.4",
+                quotaState: .healthy,
+                localCredentialAvailable: true
+            ),
+            failoverReason: "OpenAI primary is exhausted; Codex backup serves the exact same canonical model.",
+            exactModelInvariantPassed: true,
+            reason: "OpenAI primary is exhausted; Codex backup serves the exact same canonical model.",
+            skipped: []
+        )
+        store.persistRoutingEvents([crossProviderEvent])
+
+        let now = Date(timeIntervalSinceReferenceDate: 800_200_000)
+        try dataStore.providerAccountStore.upsert(
+            ProviderAccountDoc(
+                id: "openai-primary",
+                providerID: .openAI,
+                label: "OpenAI Primary",
+                status: .connected,
+                credentialKind: .bearer,
+                storageScope: .deviceKeychain,
+                redactedLabel: "Stored in test keychain",
+                isDefault: true,
+                sortKey: 0,
+                lastValidatedAt: now,
+                lastRefreshAt: now,
+                schemaVersion: 1,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+        try dataStore.providerAccountStore.upsert(
+            ProviderAccountDoc(
+                id: "codex-backup",
+                providerID: .codex,
+                label: "Codex Backup",
+                status: .connected,
+                credentialKind: .bearer,
+                storageScope: .deviceKeychain,
+                redactedLabel: "Stored in test keychain",
+                isDefault: true,
+                sortKey: 0,
+                lastValidatedAt: now,
+                lastRefreshAt: now,
+                schemaVersion: 1,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+        try dataStore.providerAccountStore.upsert(
+            ProviderAccountDoc(
+                id: "claude-primary",
+                providerID: .claudeCode,
+                label: "Claude Primary",
+                status: .connected,
+                credentialKind: .bearer,
+                storageScope: .deviceKeychain,
+                redactedLabel: "Stored in test keychain",
+                isDefault: true,
+                sortKey: 0,
+                lastValidatedAt: now,
+                lastRefreshAt: now,
+                schemaVersion: 1,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            refreshProviders: [.openAI, .codex, .claudeCode]
+        )
+        let states = service.refreshRoutingState(
+            dataStore: dataStore,
+            request: ProviderRoutingRequest(preferredProviderIDs: [.openAI, .codex, .claudeCode])
+        )
+
+        // OpenAI and Codex should see the cross-provider event because they
+        // were the source and destination of the failover.
+        XCTAssertEqual(states[.openAI]?.recentEvents.count, 1)
+        XCTAssertEqual(states[.codex]?.recentEvents.count, 1)
+
+        // Claude must NOT inherit the event — it was not involved in the
+        // provider change and should have zero recentEvents after filtering.
+        XCTAssertEqual(states[.claudeCode]?.recentEvents.count, 0)
+    }
+
     func test_providerRoutingEventPersistencePreservesHistoryBeyondDisplayLimit() throws {
         let appSupport = try makeTemporaryDirectory()
         let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)

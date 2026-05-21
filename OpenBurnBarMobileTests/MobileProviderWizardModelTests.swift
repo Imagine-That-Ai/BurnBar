@@ -373,15 +373,15 @@ final class MobileProviderWizardModelTests: XCTestCase {
 
     // MARK: - Default sync mode
 
-    func test_defaultSyncMode_hostedProvider_returnsHosted() async {
+    func test_defaultSyncMode_hostedProvider_returnsHosted() {
         let guide = ProviderSetupGuide.registryEnrichedGuide(for: .codex)
-        let mode = await MobileProviderWizardModel.defaultSyncMode(for: guide)
+        let mode = MobileProviderWizardModel.defaultSyncMode(for: guide)
         XCTAssertEqual(mode, .hosted)
     }
 
-    func test_defaultSyncMode_noRemote_returnsCloud() async {
+    func test_defaultSyncMode_noRemote_returnsCloud() {
         let guide = ProviderSetupGuide.registryEnrichedGuide(for: .openAI)
-        let mode = await MobileProviderWizardModel.defaultSyncMode(for: guide)
+        let mode = MobileProviderWizardModel.defaultSyncMode(for: guide)
         XCTAssertEqual(mode, .cloud)
     }
 }

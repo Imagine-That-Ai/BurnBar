@@ -25,13 +25,18 @@ final class MediaSessionCoordinator: ObservableObject {
     @Published private(set) var bitrateBitsPerSecond: Int = 0
     @Published private(set) var freezeCount: Int = 0
     @Published private(set) var roundTripMillis: Int = 0
+    @Published private(set) var negotiatedCodec: MercuryVideoCodec?
+    @Published private(set) var streamingStats: MercuryRtcStatsSnapshot?
+    @Published private(set) var shadowBweDecision: MercuryBweShadowDecision?
 
     private let capabilityGate: any MediaCapabilityGate
     private var screenCapture: ScreenCapturePipeline?
     private var videoEncoder: VideoEncoder?
     private var bitrateController: BitrateController
+    private var shadowBweController: MercuryShadowBweController
     private var streamSink: MediaStreamSink?
     private var sessionMetadata: MediaSessionMetadata?
+    private var codecRoute: MercuryCodecRoutingDecision?
     private var activeStreamClass: MediaStreamClass = .screenVideo
     private var cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)?
     private var activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration()
@@ -42,6 +47,7 @@ final class MediaSessionCoordinator: ObservableObject {
     ) {
         self.capabilityGate = capabilityGate
         self.bitrateController = BitrateController(steps: defaultBitrateSteps)
+        self.shadowBweController = MercuryShadowBweController(steps: defaultBitrateSteps)
     }
 
     func startScreenShare(
@@ -49,7 +55,10 @@ final class MediaSessionCoordinator: ObservableObject {
         sink: MediaStreamSink,
         streamClassOverride: MediaStreamClass? = nil,
         displayId: String? = nil,
-        cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)? = nil
+        cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)? = nil,
+        localStreamingCapabilities: MercuryStreamingCapabilitySnapshot? = nil,
+        remoteStreamingCapabilities: MercuryStreamingCapabilitySnapshot? = nil,
+        codecPolicy: MercuryCodecPolicy = .production
     ) async throws {
         guard phase.isRestartable else {
             return
@@ -71,6 +80,36 @@ final class MediaSessionCoordinator: ObservableObject {
         let streamClass = streamClassOverride ?? .screenVideo
         activeStreamClass = streamClass
         self.cursorProvider = cursorProvider
+        var enableLongTermReference = false
+        if let localStreamingCapabilities, let remoteStreamingCapabilities {
+            let route = MercuryCodecRouter.route(
+                local: localStreamingCapabilities,
+                remote: remoteStreamingCapabilities,
+                policy: codecPolicy,
+                runtimeHealth: MercuryRuntimeHealthProbe.snapshot()
+            )
+            guard route.status == .routed else {
+                phase = .ended(reason: .error)
+                streamingStats = route.stats
+                throw MediaSessionError.encodeFailed
+            }
+            codecRoute = route
+            negotiatedCodec = route.codec
+            streamingStats = route.stats
+            if let codec = route.codec {
+                enableLongTermReference =
+                    localStreamingCapabilities.capability(for: codec)?.longTermReference == true &&
+                    remoteStreamingCapabilities.capability(for: codec)?.longTermReference == true
+            }
+        } else {
+            negotiatedCodec = .hevc
+            streamingStats = MercuryRtcStatsSnapshot(
+                timestampMillis: UInt64(Date().timeIntervalSince1970 * 1000),
+                codec: .hevc,
+                wireVersion: .v1,
+                runtimeHealth: MercuryRuntimeHealthProbe.snapshot()
+            )
+        }
         sessionMetadata = MediaSessionMetadata(
             sessionID: UUID().uuidString,
             feature: .screenShare,
@@ -84,11 +123,12 @@ final class MediaSessionCoordinator: ObservableObject {
                 height: 1080,
                 targetBitsPerSecond: bitrateController.currentBitsPerSecond,
                 keyframeIntervalSeconds: 2.0,
-                preferredCodec: .hevc,
-                frameRate: 30
+                preferredCodec: VideoEncoder.Codec(mercuryCodec: negotiatedCodec) ?? .hevc,
+                frameRate: 30,
+                enableLongTermReference: enableLongTermReference
             )
-        ) { [weak self] frame in
-            await self?.handleEncodedFrame(frame)
+        ) { [weak self] encodedFrame in
+            await self?.handleEncodedFrame(encodedFrame)
         }
         try encoder.start()
         self.videoEncoder = encoder
@@ -123,15 +163,31 @@ final class MediaSessionCoordinator: ObservableObject {
 
     func ingestBandwidthSample(_ sample: BitrateController.Sample) {
         let next = bitrateController.apply(sample: sample)
+        let shadowDecision = shadowBweController.observe(sample: MercuryBweShadowSample(
+            timestampMillis: UInt64(Date().timeIntervalSince1970 * 1000),
+            roundTripMillis: sample.roundTripMillis,
+            packetLossRate: sample.packetLossRate,
+            observedBitsPerSecond: sample.observedBitsPerSecond,
+            pacerQueueDepth: 0,
+            isProbe: sample.observedBitsPerSecond > bitrateBitsPerSecond
+        ))
+        shadowBweDecision = shadowDecision
         if next != bitrateBitsPerSecond {
             bitrateBitsPerSecond = next
             try? videoEncoder?.setTargetBitsPerSecond(next)
         }
         roundTripMillis = sample.roundTripMillis
+        refreshStreamingStats(sample: sample, shadowDecision: shadowDecision)
     }
 
     func recordFreeze() {
         freezeCount += 1
+        refreshStreamingStats()
+    }
+
+    func acknowledgeLongTermReferenceToken(_ token: MercuryLTRToken) {
+        videoEncoder?.acknowledgeLongTermReferenceToken(token.value)
+        refreshStreamingStats()
     }
 
     func stop(reason: MediaSessionMetadata.EndReason = .completedUserCancel) async {
@@ -146,6 +202,7 @@ final class MediaSessionCoordinator: ObservableObject {
         streamSink = nil
         cursorProvider = nil
         activeStreamClass = .screenVideo
+        codecRoute = nil
 
         var metadata = sessionMetadata
         metadata?.endedAt = Date()
@@ -155,14 +212,67 @@ final class MediaSessionCoordinator: ObservableObject {
         phase = .ended(reason: reason)
     }
 
-    private func handleEncodedFrame(_ frame: MediaFrame) async {
-        var outbound = frame
+    private func handleEncodedFrame(_ encodedFrame: VideoEncoder.EncodedFrame) async {
+        var outbound = encodedFrame.frame
         if activeStreamClass == .controlSurfaceFrame {
             outbound.flags.insert(.hasCursorMetadata)
             outbound.cursor = cursorProvider?() ?? Self.currentCursorMetadata()
         }
-        await streamSink?.write(frame: outbound)
+        if codecRoute?.wireVersion == .v2, activeStreamClass == .screenVideo {
+            await streamSink?.write(frameV2: Self.makeFrameV2(
+                from: outbound,
+                codec: negotiatedCodec,
+                longTermReferenceToken: encodedFrame.longTermReferenceToken
+            ))
+        } else {
+            await streamSink?.write(frame: outbound)
+        }
         sessionMetadata?.byteCountOutbound += Int64(outbound.payload.count)
+    }
+
+    nonisolated static func makeFrameV2(
+        from frame: MediaFrame,
+        codec: MercuryVideoCodec?,
+        longTermReferenceToken: MercuryLTRToken?
+    ) -> MediaFrameV2 {
+        let metadata = (try? MediaFrameV2Metadata(
+            codec: codec,
+            longTermReferenceToken: longTermReferenceToken
+        ).encode()) ?? Data()
+        return MediaFrameV2(
+            kind: .videoNAL,
+            flags: UInt16(frame.flags.rawValue),
+            gopID: frame.gopID,
+            frameIndex: frame.frameIndex,
+            presentationTimestampMillis: frame.presentationTimestampMillis,
+            metadata: metadata,
+            payload: frame.payload
+        )
+    }
+
+    private func refreshStreamingStats(
+        sample: BitrateController.Sample? = nil,
+        shadowDecision: MercuryBweShadowDecision? = nil
+    ) {
+        var stats = streamingStats ?? MercuryRtcStatsSnapshot(
+            timestampMillis: UInt64(Date().timeIntervalSince1970 * 1000),
+            codec: negotiatedCodec,
+            wireVersion: codecRoute?.wireVersion ?? .v1
+        )
+        stats.timestampMillis = UInt64(Date().timeIntervalSince1970 * 1000)
+        stats.codec = negotiatedCodec
+        stats.wireVersion = codecRoute?.wireVersion ?? stats.wireVersion
+        stats.targetBitsPerSecond = bitrateBitsPerSecond
+        if let sample {
+            stats.actualBitsPerSecond = sample.observedBitsPerSecond
+            stats.roundTripMillis = sample.roundTripMillis
+            stats.packetLossRate = sample.packetLossRate
+        }
+        stats.pacerQueueDepth = shadowDecision?.pacerQueueDepth ?? stats.pacerQueueDepth
+        stats.presentTimeErrorMillis = shadowDecision?.presentTimeErrorMillis ?? stats.presentTimeErrorMillis
+        stats.freezeCount = freezeCount
+        stats.runtimeHealth = MercuryRuntimeHealthProbe.snapshot()
+        streamingStats = stats
     }
 
     private static func currentCursorMetadata() -> MediaFrame.CursorMetadata? {
@@ -170,6 +280,19 @@ final class MediaSessionCoordinator: ObservableObject {
         let x = max(Int(Int16.min), min(Int(Int16.max), Int(location.x.rounded())))
         let y = max(Int(Int16.min), min(Int(Int16.max), Int(location.y.rounded())))
         return MediaFrame.CursorMetadata(x: Int16(x), y: Int16(y))
+    }
+}
+
+private extension VideoEncoder.Codec {
+    init?(mercuryCodec: MercuryVideoCodec?) {
+        switch mercuryCodec {
+        case .hevc:
+            self = .hevc
+        case .h264:
+            self = .h264
+        case .av1, .none:
+            return nil
+        }
     }
 }
 
@@ -190,6 +313,7 @@ private extension MediaSessionCoordinator.Phase {
 /// what was written.
 protocol MediaStreamSink: Sendable {
     func write(frame: MediaFrame) async
+    func write(frameV2: MediaFrameV2) async
     func close() async
 }
 

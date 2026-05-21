@@ -3,11 +3,31 @@ import Foundation
 public struct BurnBarModelPricing: Codable, Hashable, Sendable {
     public let inputPerMToken: Double
     public let outputPerMToken: Double
+    public let cacheCreationPerMToken: Double?
     public let cacheReadPerMToken: Double
 
-    public init(inputPerMToken: Double, outputPerMToken: Double, cacheReadPerMToken: Double) {
+    public init(
+        inputPerMToken: Double,
+        outputPerMToken: Double,
+        cacheReadPerMToken: Double
+    ) {
+        self.init(
+            inputPerMToken: inputPerMToken,
+            outputPerMToken: outputPerMToken,
+            cacheReadPerMToken: cacheReadPerMToken,
+            cacheCreationPerMToken: nil
+        )
+    }
+
+    public init(
+        inputPerMToken: Double,
+        outputPerMToken: Double,
+        cacheReadPerMToken: Double,
+        cacheCreationPerMToken: Double?
+    ) {
         self.inputPerMToken = inputPerMToken
         self.outputPerMToken = outputPerMToken
+        self.cacheCreationPerMToken = cacheCreationPerMToken
         self.cacheReadPerMToken = cacheReadPerMToken
     }
 
@@ -17,9 +37,10 @@ public struct BurnBarModelPricing: Codable, Hashable, Sendable {
         cacheCreationTokens: Int = 0,
         cacheReadTokens: Int = 0
     ) -> Double {
-        Double(inputTokens) / 1_000_000 * inputPerMToken
+        let cacheCreationRate = cacheCreationPerMToken ?? inputPerMToken
+        return Double(inputTokens) / 1_000_000 * inputPerMToken
             + Double(outputTokens) / 1_000_000 * outputPerMToken
-            + Double(cacheCreationTokens) / 1_000_000 * inputPerMToken
+            + Double(cacheCreationTokens) / 1_000_000 * cacheCreationRate
             + Double(cacheReadTokens) / 1_000_000 * cacheReadPerMToken
     }
 
@@ -337,6 +358,28 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
         guard !normalized.isEmpty else { return nil }
 
         return bestModelMatch(named: normalized)?.model.pricing
+    }
+
+    public func pricing(
+        forModelName modelName: String,
+        providerID: String,
+        includeHidden: Bool = true
+    ) -> BurnBarModelPricing? {
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty, let provider = provider(id: providerID) else { return nil }
+
+        let models = includeHidden ? provider.models : provider.models.filter { $0.visibility == .public }
+        let scopedProvider = BurnBarCatalogProvider(
+            id: provider.id,
+            displayName: provider.displayName,
+            baseURL: provider.baseURL,
+            visibility: provider.visibility,
+            capabilities: provider.capabilities,
+            logoKey: provider.logoKey,
+            models: models,
+            formatFamily: provider.formatFamily
+        )
+        return bestModelMatch(named: normalized, providersToSearch: [scopedProvider])?.model.pricing
     }
 
     /// Returns the catalog provider (vendor) that owns a given model name, if any.

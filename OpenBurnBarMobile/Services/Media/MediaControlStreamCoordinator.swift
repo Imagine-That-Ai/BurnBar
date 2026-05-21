@@ -52,11 +52,14 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
     enum ControlStreamError: LocalizedError, Equatable {
         case timedOutWaitingForLiveStream
+        case notLive
 
         var errorDescription: String? {
             switch self {
             case .timedOutWaitingForLiveStream:
                 return "Mercury is still connecting. Try again after the Mac shows as online."
+            case .notLive:
+                return "Mercury control stream is not live."
             }
         }
     }
@@ -77,6 +80,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private var activeUID: String?
     private var activeConnectionID: String?
     private let mediaPacketCodec = MediaPacketCodec()
+    private let mediaFrameV2Codec = MediaFrameV2Codec()
+    private var frameChunkAssembler = MediaFrameChunkAssembler()
 
     /// Mercury Phase 8 — iOS receives ack frames from the Mac in
     /// response to `mediaMirrorRequest` sends. The Hermes Square root
@@ -88,6 +93,11 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// on the same long-lived `media.control` stream as the approval ack and
     /// are decoded from `media.stream.frame` envelopes.
     var mirrorFrameHandler: ((MediaFrame) async -> Void)?
+
+    /// Negotiated MediaFrame v2 mirror frames. v1 remains the fallback, while
+    /// v2 lets the receiver ACK LTR tokens after both sides promote the data
+    /// path.
+    var mirrorFrameV2Handler: ((MediaFrameV2) async -> Void)?
 
     /// Mercury Phase 8 — Mac → iOS presence updates. The Hermes Square
     /// root installs `MercuryPeerSource.ingestHeartbeat(_:)` here so the
@@ -155,6 +165,30 @@ final class MediaControlStreamCoordinator: ObservableObject {
         Self.log.info("control_stream_send type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
         Self.debugTrace("control_stream_send type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
         try await stream.send(frame)
+    }
+
+    func sendLongTermReferenceAcknowledgement(
+        token: MercuryLTRToken,
+        requestId: String? = nil,
+        timeout: TimeInterval = 8
+    ) async throws {
+        guard let uid = activeUID, let connectionID = activeConnectionID else {
+            throw ControlStreamError.notLive
+        }
+        let ack = HermesRealtimeRelayLongTermReferenceAck(
+            requestId: requestId,
+            tokenValue: token.value
+        )
+        try await send(
+            frame: HermesRealtimeRelayFrame(
+                type: .mediaLongTermReferenceAck,
+                uid: uid,
+                connectionId: connectionID,
+                requestId: requestId,
+                media: HermesRealtimeRelayMediaPayload(longTermReferenceAck: ack)
+            ),
+            timeout: timeout
+        )
     }
 
     private func awaitLiveStream(timeout: TimeInterval) async throws -> any IrohRelayStream {
@@ -277,13 +311,22 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 case .mediaStreamFrame:
                     guard frame.media?.streamClass == MediaStreamClass.screenVideo.rawValue,
                           let encoded = frame.media?.encodedFrameBase64,
-                          let data = Data(base64Encoded: encoded),
-                          let handler = mirrorFrameHandler else {
+                          let chunkData = Data(base64Encoded: encoded),
+                          let data = frameChunkAssembler.accept(
+                            chunk: frame.media?.frameChunk,
+                            bytes: chunkData
+                          ) else {
                         continue
                     }
                     do {
-                        let decoded = try mediaPacketCodec.decode(data).frame
-                        await handler(decoded)
+                        if MediaFrameV2Codec.isEncodedEnvelope(data),
+                           let handler = mirrorFrameV2Handler {
+                            let decoded = try mediaFrameV2Codec.decode(data).frame
+                            await handler(decoded)
+                        } else if let handler = mirrorFrameHandler {
+                            let decoded = try mediaPacketCodec.decode(data).frame
+                            await handler(decoded)
+                        }
                     } catch {
                         continue
                     }
@@ -334,7 +377,10 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 MercuryPeer.Feature.fileSend.rawValue,
                 MercuryPeer.Feature.fileReceive.rawValue,
                 MercuryPeer.Feature.callReceive.rawValue
-            ]
+            ],
+            streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
+                mediaFrameVersions: .v1AndV2
+            ).wireValue
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaPresenceHeartbeat,
@@ -350,5 +396,69 @@ final class MediaControlStreamCoordinator: ObservableObject {
         // Decorrelated jitter: between initialBackoff and exp inclusive.
         let jitter = Double.random(in: initialBackoff ... exp)
         return min(maxBackoff, jitter)
+    }
+}
+
+private struct MediaFrameChunkAssembler {
+    private struct Assembly {
+        var chunkCount: Int
+        var totalBytes: Int
+        var chunks: [Data?]
+    }
+
+    private let maxAssemblies = 8
+    private let maxTotalBytes = MediaFrameV2Codec.defaultMaxPayloadBytes + 4096
+    private var assemblies: [String: Assembly] = [:]
+    private var insertionOrder: [String] = []
+
+    mutating func accept(
+        chunk: HermesRealtimeRelayMediaFrameChunk?,
+        bytes: Data
+    ) -> Data? {
+        guard let chunk else { return bytes }
+        guard chunk.chunkCount > 0,
+              chunk.chunkIndex >= 0,
+              chunk.chunkIndex < chunk.chunkCount,
+              chunk.totalBytes > 0,
+              chunk.totalBytes <= maxTotalBytes else {
+            assemblies.removeValue(forKey: chunk.chunkId)
+            insertionOrder.removeAll { $0 == chunk.chunkId }
+            return nil
+        }
+
+        if assemblies[chunk.chunkId] == nil {
+            trimOldestIfNeeded()
+            assemblies[chunk.chunkId] = Assembly(
+                chunkCount: chunk.chunkCount,
+                totalBytes: chunk.totalBytes,
+                chunks: Array(repeating: nil, count: chunk.chunkCount)
+            )
+            insertionOrder.append(chunk.chunkId)
+        }
+
+        guard var assembly = assemblies[chunk.chunkId],
+              assembly.chunkCount == chunk.chunkCount,
+              assembly.totalBytes == chunk.totalBytes else {
+            assemblies.removeValue(forKey: chunk.chunkId)
+            insertionOrder.removeAll { $0 == chunk.chunkId }
+            return nil
+        }
+
+        assembly.chunks[chunk.chunkIndex] = bytes
+        assemblies[chunk.chunkId] = assembly
+        guard assembly.chunks.allSatisfy({ $0 != nil }) else { return nil }
+
+        let complete = assembly.chunks.reduce(into: Data(capacity: assembly.totalBytes)) { result, part in
+            result.append(part ?? Data())
+        }
+        assemblies.removeValue(forKey: chunk.chunkId)
+        insertionOrder.removeAll { $0 == chunk.chunkId }
+        return complete.count == assembly.totalBytes ? complete : nil
+    }
+
+    private mutating func trimOldestIfNeeded() {
+        guard assemblies.count >= maxAssemblies, let oldest = insertionOrder.first else { return }
+        insertionOrder.removeFirst()
+        assemblies.removeValue(forKey: oldest)
     }
 }

@@ -42,7 +42,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
                                                         supportsThinking: true,
                                                         supportsToolUse: true,
                                                         supportsStreaming: true),
-              inputCostPerMtoken: 15, outputCostPerMtoken: 75, symbolName: "sparkles"),
+              inputCostPerMtoken: 5, outputCostPerMtoken: 25, symbolName: "sparkles"),
         .init(id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", providerKey: "anthropic",
               egressTier: .userKey, capabilities: .init(supportsStrictJSONSchema: true,
                                                         supportsJSONObject: true,
@@ -99,6 +99,8 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         var toolCallCount = 0
         var accumulatedInputTokens = 0
         var accumulatedOutputTokens = 0
+        var accumulatedCacheCreationTokens = 0
+        var accumulatedCacheReadTokens = 0
 
         while true {
             var body: [String: Any] = [
@@ -136,6 +138,8 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
             if let usage = usageFrom(data: data) {
                 accumulatedInputTokens += usage.inputTokens
                 accumulatedOutputTokens += usage.outputTokens
+                accumulatedCacheCreationTokens += usage.cacheCreationTokens
+                accumulatedCacheReadTokens += usage.cacheReadTokens
             }
 
             // Check for tool_use blocks.
@@ -149,7 +153,15 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
                     modelID: request.selectedModel.modelID,
                     inputTokens: accumulatedInputTokens,
                     outputTokens: accumulatedOutputTokens,
-                    estimatedCostUSD: estimateCost(input: accumulatedInputTokens, output: accumulatedOutputTokens, modelID: request.selectedModel.modelID),
+                    cacheCreationTokens: accumulatedCacheCreationTokens,
+                    cacheReadTokens: accumulatedCacheReadTokens,
+                    estimatedCostUSD: estimateCost(
+                        input: accumulatedInputTokens,
+                        output: accumulatedOutputTokens,
+                        cacheCreation: accumulatedCacheCreationTokens,
+                        cacheRead: accumulatedCacheReadTokens,
+                        modelID: request.selectedModel.modelID
+                    ),
                     startedAt: startedAt,
                     completedAt: Date()
                 )
@@ -415,20 +427,33 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         }
     }
 
-    private func usageFrom(data: Data) -> (inputTokens: Int, outputTokens: Int)? {
+    private func usageFrom(data: Data) -> (inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int)? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let usage = json["usage"] as? [String: Any] else {
             return nil
         }
         let input = usage["input_tokens"] as? Int ?? 0
         let output = usage["output_tokens"] as? Int ?? 0
-        return (input, output)
+        let cacheCreation = usage["cache_creation_input_tokens"] as? Int ?? 0
+        let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+        return (input, output, cacheCreation, cacheRead)
     }
 
-    private func estimateCost(input: Int, output: Int, modelID: String) -> Double {
+    private func estimateCost(input: Int, output: Int, cacheCreation: Int = 0, cacheRead: Int = 0, modelID: String) -> Double {
+        if let pricing = BurnBarCatalogLoader.bundledCatalog.pricing(forModelName: modelID) {
+            return pricing.cost(
+                inputTokens: input,
+                outputTokens: output,
+                cacheCreationTokens: cacheCreation,
+                cacheReadTokens: cacheRead
+            )
+        }
         let price = modelCatalog.first { $0.id == modelID }
-        return (Double(input) / 1_000_000.0) * (price?.inputCostPerMtoken ?? 0)
+        let inputRate = price?.inputCostPerMtoken ?? 0
+        return (Double(input) / 1_000_000.0) * inputRate
             + (Double(output) / 1_000_000.0) * (price?.outputCostPerMtoken ?? 0)
+            + (Double(cacheCreation) / 1_000_000.0) * (inputRate * 1.25)
+            + (Double(cacheRead) / 1_000_000.0) * (inputRate * 0.1)
     }
 
     private func tokenUsage(
@@ -443,14 +468,22 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         }
         let input = usage["input_tokens"] as? Int ?? 0
         let output = usage["output_tokens"] as? Int ?? 0
-        let price = modelCatalog.first { $0.id == request.selectedModel.modelID }
-        let estimated = (Double(input) / 1_000_000.0) * (price?.inputCostPerMtoken ?? 0)
-            + (Double(output) / 1_000_000.0) * (price?.outputCostPerMtoken ?? 0)
+        let cacheCreation = usage["cache_creation_input_tokens"] as? Int ?? 0
+        let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+        let estimated = estimateCost(
+            input: input,
+            output: output,
+            cacheCreation: cacheCreation,
+            cacheRead: cacheRead,
+            modelID: request.selectedModel.modelID
+        )
         return InsightTokenUsage(
             providerKey: providerKey,
             modelID: request.selectedModel.modelID,
             inputTokens: input,
             outputTokens: output,
+            cacheCreationTokens: cacheCreation,
+            cacheReadTokens: cacheRead,
             estimatedCostUSD: estimated,
             startedAt: startedAt,
             completedAt: completedAt

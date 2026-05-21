@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.media.AndroidMediaCapabilityGate
 import com.openburnbar.data.media.MediaPartnerSavePreferenceStore
+import com.openburnbar.data.square.MercuryPairedMacTilePreference
 import com.openburnbar.ui.theme.AuroraColors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -59,6 +61,9 @@ fun MediaSettingsView(
     val store = remember { MediaPartnerSavePreferenceStore(context) }
     val partners by store.storedPartnersFlow().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+    var showPairedMacTile by remember(context) {
+        mutableStateOf(MercuryPairedMacTilePreference.isEnabled(context))
+    }
 
     var killSwitchReason by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(capabilityGate) {
@@ -111,6 +116,39 @@ fun MediaSettingsView(
                         )
                     }
                 }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AuroraColors.darkSurfaceElevated.copy(alpha = 0.64f))
+                    .border(1.dp, AuroraColors.darkBorderSubtle, RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Show My Mac on Hermes Square",
+                        fontWeight = FontWeight.SemiBold,
+                        color = AuroraColors.darkTextPrimary,
+                    )
+                    Text(
+                        text = "Keep screen share, calls, and file transfer one tap away while Mercury connects.",
+                        color = AuroraColors.darkTextSecondary,
+                        fontSize = 12.sp,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(
+                    checked = showPairedMacTile,
+                    onCheckedChange = { enabled ->
+                        showPairedMacTile = enabled
+                        MercuryPairedMacTilePreference.setEnabled(context, enabled)
+                    },
+                )
             }
         }
 

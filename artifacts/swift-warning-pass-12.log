@@ -1,0 +1,16 @@
+/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBarMobile/Services/FunctionsRepository.swift:439:41: warning: sending value of non-Sendable type 'NSDictionary' risks causing data races; this is an error in the Swift 6 language mode
+        let result = try await callable.call(payloadSnapshot)
+                               ~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBarMobile/Services/FunctionsRepository.swift:439:41: note: sending main actor-isolated value of non-Sendable type 'NSDictionary' to nonisolated instance method 'call' risks causing races in between main actor-isolated and nonisolated uses
+        let result = try await callable.call(payloadSnapshot)
+                                        ^
+/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBarMobile/Services/FunctionsRepository.swift:485:32: warning: sending value of non-Sendable type 'NSDictionary' risks causing data races; this is an error in the Swift 6 language mode
+        _ = try await callable.call(payloadSnapshot)
+                      ~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBarMobile/Services/FunctionsRepository.swift:485:32: note: sending main actor-isolated value of non-Sendable type 'NSDictionary' to nonisolated instance method 'call' risks causing races in between main actor-isolated and nonisolated uses
+        _ = try await callable.call(payloadSnapshot)
+                               ^
+2026-05-20 23:36:51.194 xcodebuild[95352:16963310] [MT] IDETestOperationsObserverDebug: 10.474 elapsed -- Testing started completed.
+2026-05-20 23:36:51.194 xcodebuild[95352:16963310] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-05-20 23:36:51.194 xcodebuild[95352:16963310] [MT] IDETestOperationsObserverDebug: 10.474 sec, +10.474 sec -- end
+Testing started

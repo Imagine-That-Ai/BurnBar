@@ -9,6 +9,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,8 +58,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.ui.components.AuroraSettingsToggle
 import com.openburnbar.ui.components.ProviderLogo
+import com.openburnbar.ui.components.WebsiteBackground
 import com.openburnbar.ui.smartdisplay.SmartDisplayView
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
@@ -92,6 +99,10 @@ fun SettingsRootScreen(
                 onBack = { router.page = SettingsPageRoute.ROOT }
             )
             SettingsPageRoute.MENU_BAR_PREFS -> onMenuBarPrefs { router.page = SettingsPageRoute.ROOT }
+            SettingsPageRoute.THEME_PREFS -> ThemePrefsScreen(
+                router = router,
+                onBack = { router.page = SettingsPageRoute.ROOT }
+            )
         }
     }
 }
@@ -105,6 +116,7 @@ private fun SettingsRootContent(
     val isDark = isSystemInDarkTheme()
     var searchMode by rememberSaveable { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
+    val useWebsiteBackground by rememberWebsiteBackground()
 
     LaunchedEffect(searchMode) {
         if (searchMode) {
@@ -112,67 +124,82 @@ private fun SettingsRootContent(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground)
-            .padding(horizontal = AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
-    ) {
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
-
-        // Top bar — Back + Title + Search toggle, OR back + search field.
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (onBack != null && !searchMode) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back"
-                    )
-                }
-            }
-            if (searchMode) {
-                OutlinedTextField(
-                    value = router.query,
-                    onValueChange = { router.query = it },
-                    placeholder = { Text("Search settings") },
-                    leadingIcon = {
-                        Icon(Icons.Filled.Search, contentDescription = null)
-                    },
-                    trailingIcon = {
-                        IconButton(onClick = {
-                            if (router.query.isEmpty()) {
-                                searchMode = false
-                            } else {
-                                router.query = ""
-                            }
-                        }) {
-                            Icon(Icons.Filled.Clear, contentDescription = "Clear")
-                        }
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(searchFocusRequester)
-                )
-            } else {
-                Text(
-                    "Settings",
-                    style = AuroraType.displayLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = { searchMode = true }) {
-                    Icon(Icons.Filled.Search, contentDescription = "Search settings")
-                }
-            }
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (useWebsiteBackground) {
+            WebsiteBackground(accentColor = AuroraColors.hermesMercury)
         }
 
-        if (router.isSearching) {
-            SettingsSearchResultsScreen(router = router)
-        } else {
-            SettingsRootList(router = router, onComputerUse = onComputerUse)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    if (useWebsiteBackground) Color.Transparent
+                    else if (isDark) AuroraColors.darkBackground
+                    else AuroraColors.lightBackground
+                )
+                .padding(horizontal = AuroraSpacing.lg.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+        ) {
+            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+
+            // Top bar — Back + Title + Search toggle, OR back + search field.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null && !searchMode) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                if (searchMode) {
+                    OutlinedTextField(
+                        value = router.query,
+                        onValueChange = { router.query = it },
+                        placeholder = { Text("Search settings") },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Search, contentDescription = null)
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                if (router.query.isEmpty()) {
+                                    searchMode = false
+                                } else {
+                                    router.query = ""
+                                }
+                            }) {
+                                Icon(Icons.Filled.Clear, contentDescription = "Clear")
+                            }
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(searchFocusRequester)
+                    )
+                } else {
+                    Text(
+                        "Settings",
+                        style = AuroraType.displayLarge,
+                        color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { searchMode = true }) {
+                        Icon(
+                            Icons.Filled.Search,
+                            contentDescription = "Search settings",
+                            tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            if (router.isSearching) {
+                SettingsSearchResultsScreen(router = router)
+            } else {
+                SettingsRootList(router = router, onComputerUse = onComputerUse)
+            }
         }
     }
 }
@@ -231,6 +258,14 @@ private fun SettingsRootList(
                 subtitle = "Manage which devices can read your data",
                 pageRoute = SettingsPageRoute.ROOT,
                 onTap = {}
+            ),
+            RootRow(
+                anchor = SettingsAnchor.THEME_ROW,
+                icon = Icons.Filled.AutoAwesome,
+                title = "Theme & SOTA UX",
+                subtitle = "Customise visual appearance, spring physics, and grid backdrops",
+                pageRoute = SettingsPageRoute.THEME_PREFS,
+                onTap = { router.page = SettingsPageRoute.THEME_PREFS }
             ),
             RootRow(
                 anchor = SettingsAnchor.SMART_DISPLAYS_ROW,
@@ -478,6 +513,149 @@ private fun SettingsProviderLogoStack(
     Row(horizontalArrangement = Arrangement.spacedBy((-7).dp)) {
         providers.take(maxVisible).forEach { provider ->
             ProviderLogo(provider = provider, size = 28.dp)
+        }
+    }
+}
+
+@Composable
+fun ThemePrefsScreen(
+    router: SettingsRouter,
+    onBack: () -> Unit
+) {
+    val isDark = isSystemInDarkTheme()
+    val haptic = LocalHapticFeedback.current
+    val useWebsiteBackground by rememberWebsiteBackground()
+    val usePremiumSOTAUX by rememberPremiumSOTAUX()
+
+    // Retrieve pending anchor for halo highlight
+    val pending = router.pendingAnchor
+    LaunchedEffect(pending) {
+        if (pending != null && (pending == SettingsAnchor.USE_PREMIUM_SOTA_UX || pending == SettingsAnchor.USE_WEBSITE_BACKGROUND)) {
+            router.consumePendingAnchor(pending)
+            kotlinx.coroutines.delay(1_400)
+            router.clearHighlight(pending)
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (useWebsiteBackground) {
+            WebsiteBackground(accentColor = AuroraColors.hermesMercury)
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    if (useWebsiteBackground) Color.Transparent
+                    else if (isDark) AuroraColors.darkBackground
+                    else AuroraColors.lightBackground
+                )
+                .padding(horizontal = AuroraSpacing.lg.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+        ) {
+            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+
+            // Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Text(
+                    text = "Theme & SOTA UX",
+                    style = AuroraType.displayLarge,
+                    color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+
+            // Main Settings Content in a Glassmorphic Card container
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(AuroraRadius.lg.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = if (useWebsiteBackground) 0.35f else 0.6f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(AuroraSpacing.md.dp),
+                    verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+                ) {
+                    // 1. Premium SOTA UX Toggle
+                    val premiumHaloColor by animateColorAsState(
+                        targetValue = if (router.highlightedAnchor == SettingsAnchor.USE_PREMIUM_SOTA_UX) {
+                            Color(0xFFFFA800).copy(alpha = 0.18f)
+                        } else {
+                            Color.Transparent
+                        },
+                        animationSpec = tween(durationMillis = 350),
+                        label = "premium-halo"
+                    )
+
+                    Surface(
+                        color = premiumHaloColor,
+                        shape = RoundedCornerShape(AuroraRadius.md.dp)
+                    ) {
+                        AuroraSettingsToggle(
+                            icon = Icons.Filled.AutoAwesome,
+                            label = "Premium SOTA UX",
+                            subtitle = "Cinematic tactile spring physics and high-fidelity haptics",
+                            checked = usePremiumSOTAUX,
+                            onCheckedChange = {
+                                GlobalVisualSettings.setPremiumSOTAUX(it)
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            tint = AuroraColors.blaze
+                        )
+                    }
+
+                    // Divider
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    )
+
+                    // 2. Website Background Toggle
+                    val backgroundHaloColor by animateColorAsState(
+                        targetValue = if (router.highlightedAnchor == SettingsAnchor.USE_WEBSITE_BACKGROUND) {
+                            Color(0xFFFFA800).copy(alpha = 0.18f)
+                        } else {
+                            Color.Transparent
+                        },
+                        animationSpec = tween(durationMillis = 350),
+                        label = "background-halo"
+                    )
+
+                    Surface(
+                        color = backgroundHaloColor,
+                        shape = RoundedCornerShape(AuroraRadius.md.dp)
+                    ) {
+                        AuroraSettingsToggle(
+                            icon = Icons.Filled.AutoAwesome,
+                            label = "Swarm Background",
+                            subtitle = "Active, reconverging token-ember swarms pulled from burnbar.ai — particles drift and reform into $, </>, quota rings, and router failover paths",
+                            checked = useWebsiteBackground,
+                            onCheckedChange = {
+                                GlobalVisualSettings.setWebsiteBackground(it)
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            tint = AuroraColors.hermesMercury
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

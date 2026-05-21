@@ -22,6 +22,8 @@ struct MissionsLaneView: View {
     @State private var refreshing = false
     @State private var heroAppeared = false
 
+    @Environment(SettingsManager.self) private var settingsManager
+
     private var runtime: OpenBurnBarControllerRuntimeSnapshot {
         operatingLayer.snapshot.controllerRuntime
     }
@@ -459,7 +461,11 @@ struct MissionsLaneView: View {
 
     private var laneBackdrop: some View {
         ZStack {
-            DesignSystem.Colors.background
+            if settingsManager.useWebsiteBackground {
+                Color.clear
+            } else {
+                DesignSystem.Colors.background
+            }
 
             // Subtle diagonal runway stripes in the far background.
             GeometryReader { geo in

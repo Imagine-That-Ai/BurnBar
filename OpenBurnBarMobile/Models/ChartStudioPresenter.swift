@@ -94,13 +94,6 @@ final class ChartStudioPresenter {
 
 // MARK: - Environment
 
-private struct ChartStudioPresenterKey: EnvironmentKey {
-    @MainActor static var defaultValue: ChartStudioPresenter? { nil }
-}
-
 extension EnvironmentValues {
-    var chartStudioPresenter: ChartStudioPresenter? {
-        get { self[ChartStudioPresenterKey.self] }
-        set { self[ChartStudioPresenterKey.self] = newValue }
-    }
+    @Entry var chartStudioPresenter: ChartStudioPresenter?
 }

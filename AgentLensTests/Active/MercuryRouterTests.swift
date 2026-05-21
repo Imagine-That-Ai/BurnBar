@@ -1,5 +1,6 @@
 import XCTest
 import OpenBurnBarCore
+import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBar
 
@@ -55,20 +56,42 @@ final class MercuryRouterTests: XCTestCase {
 
     private func mirrorRequestFrame(
         requestID: String = "req_test",
-        requesterName: String = "Alberto's iPhone"
+        requesterName: String = "Alberto's iPhone",
+        connectionID: String = "c",
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil
     ) -> HermesRealtimeRelayFrame {
         let req = HermesRealtimeRelayMirrorRequest(
             requestId: requestID,
             requestedAt: Date(),
             requesterDisplayName: requesterName,
-            streamClass: MediaStreamClass.screenVideo.rawValue
+            streamClass: MediaStreamClass.screenVideo.rawValue,
+            streamingCapabilities: streamingCapabilities
         )
         return HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
             uid: "u",
-            connectionId: "c",
+            connectionId: connectionID,
             requestId: requestID,
             media: HermesRealtimeRelayMediaPayload(mirrorRequest: req)
+        )
+    }
+
+    private func presenceHeartbeatFrame(
+        connectionID: String,
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities?
+    ) -> HermesRealtimeRelayFrame {
+        let heartbeat = HermesRealtimeRelayPresenceHeartbeat(
+            sentAt: Date(),
+            deviceDisplayName: "Alberto's iPhone",
+            capabilities: [MercuryPeer.Feature.mirrorViewer.rawValue],
+            peerDeviceId: connectionID,
+            streamingCapabilities: streamingCapabilities
+        )
+        return HermesRealtimeRelayFrame(
+            type: .mediaPresenceHeartbeat,
+            uid: "u",
+            connectionId: connectionID,
+            media: HermesRealtimeRelayMediaPayload(presence: heartbeat)
         )
     }
 
@@ -79,7 +102,7 @@ final class MercuryRouterTests: XCTestCase {
             ensureComputerUseSession: {
                 events.append("computer-use")
             },
-            startScreenShare: { _, _, _, _ in
+            startScreenShare: { _, _, _, _, _, _, _ in
                 events.append("screen-share")
             }
         )
@@ -89,6 +112,151 @@ final class MercuryRouterTests: XCTestCase {
         let frames = await sink.frames
         XCTAssertEqual(frames.first?.media?.mirrorAck?.decision, .accepted)
         XCTAssertEqual(events, ["screen-share", "computer-use"])
+    }
+
+    func testAcceptMirrorForwardsRequesterStreamingCapabilitiesWithLiveV2() async throws {
+        let remote = MercuryStreamingCapabilitySnapshot(
+            codecCapabilities: [
+                MercuryVideoCodecCapability(
+                    codec: .hevc,
+                    canEncode: false,
+                    canDecode: true,
+                    hardwareAccelerated: true,
+                    longTermReference: true
+                ),
+                MercuryVideoCodecCapability(
+                    codec: .h264,
+                    canEncode: false,
+                    canDecode: true,
+                    hardwareAccelerated: true
+                )
+            ],
+            mediaFrameVersions: .v1AndV2,
+            source: "test-remote"
+        )
+        var capturedLocal: MercuryStreamingCapabilitySnapshot?
+        var capturedRemote: MercuryStreamingCapabilitySnapshot?
+        var capturedPolicy: MercuryCodecPolicy?
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, localCapabilities, remoteCapabilities, codecPolicy in
+                capturedLocal = localCapabilities
+                capturedRemote = remoteCapabilities
+                capturedPolicy = codecPolicy
+            }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(streamingCapabilities: remote.wireValue),
+            replySender: sink.sender
+        )
+
+        XCTAssertEqual(capturedRemote, remote)
+        XCTAssertEqual(capturedLocal?.mediaFrameVersions, .v1AndV2)
+        XCTAssertEqual(capturedPolicy, .production)
+        let frames = await sink.frames
+        XCTAssertEqual(frames.first?.media?.mirrorAck?.decision, .accepted)
+    }
+
+    func testHeartbeatCapabilityCacheIsScopedPerControlConnection() async throws {
+        let v2Remote = MercuryStreamingCapabilitySnapshot(
+            codecCapabilities: [
+                MercuryVideoCodecCapability(
+                    codec: .hevc,
+                    canEncode: false,
+                    canDecode: true,
+                    hardwareAccelerated: true
+                )
+            ],
+            mediaFrameVersions: .v1AndV2,
+            source: "v2-phone"
+        )
+        var capturedLocal: MercuryStreamingCapabilitySnapshot?
+        var capturedRemote: MercuryStreamingCapabilitySnapshot?
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, localCapabilities, remoteCapabilities, _ in
+                capturedLocal = localCapabilities
+                capturedRemote = remoteCapabilities
+            }
+        )
+
+        await router.handleFrame(
+            presenceHeartbeatFrame(
+                connectionID: "v2-conn",
+                streamingCapabilities: v2Remote.wireValue
+            ),
+            replySender: sink.sender
+        )
+        await router.handleFrame(
+            mirrorRequestFrame(
+                requestID: "req-legacy",
+                connectionID: "legacy-conn",
+                streamingCapabilities: nil
+            ),
+            replySender: sink.sender
+        )
+
+        XCTAssertNil(capturedLocal)
+        XCTAssertNil(capturedRemote)
+        let frames = await sink.frames
+        XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
+    }
+
+    func testMediaSessionBuildsV2FrameWithCodecAndLTRMetadata() throws {
+        let frame = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 7,
+            frameIndex: 1,
+            presentationTimestampMillis: 123,
+            payload: Data([1, 2, 3])
+        )
+
+        let frameV2 = MediaSessionCoordinator.makeFrameV2(
+            from: frame,
+            codec: .hevc,
+            longTermReferenceToken: MercuryLTRToken(value: 42)
+        )
+        let metadata = try MediaFrameV2Metadata.decode(frameV2.metadata)
+
+        XCTAssertEqual(frameV2.kind, .videoNAL)
+        XCTAssertEqual(frameV2.flags, UInt16(MediaFrame.Flags.keyframe.rawValue))
+        XCTAssertEqual(frameV2.gopID, 7)
+        XCTAssertEqual(frameV2.frameIndex, 1)
+        XCTAssertEqual(frameV2.presentationTimestampMillis, 123)
+        XCTAssertEqual(frameV2.payload, Data([1, 2, 3]))
+        XCTAssertEqual(metadata.codec, .hevc)
+        XCTAssertEqual(metadata.longTermReferenceToken?.value, 42)
+    }
+
+    func testControlStreamSinkWritesNegotiatedV2Envelope() async throws {
+        let stream = RecordingIrohStream()
+        let sink = MercuryControlStreamMediaSink(
+            stream: stream,
+            uid: "u",
+            connectionID: "c",
+            streamClass: .screenVideo
+        )
+        let frameV2 = MediaFrameV2(
+            kind: .videoNAL,
+            flags: UInt16(MediaFrame.Flags.keyframe.rawValue),
+            gopID: 3,
+            frameIndex: 2,
+            presentationTimestampMillis: 456,
+            metadata: try MediaFrameV2Metadata(codec: .h264).encode(),
+            payload: Data([9, 8, 7])
+        )
+
+        await sink.write(frameV2: frameV2)
+
+        let sentFrames = await stream.sentFrames
+        let sent = try XCTUnwrap(sentFrames.first)
+        let encoded = try XCTUnwrap(Data(base64Encoded: sent.media?.encodedFrameBase64 ?? ""))
+        let decoded = try MediaFrameV2Codec().decode(encoded).frame
+        XCTAssertEqual(sent.type, .mediaStreamFrame)
+        XCTAssertEqual(sent.media?.streamClass, MediaStreamClass.screenVideo.rawValue)
+        XCTAssertEqual(decoded, frameV2)
     }
 
     private func mirrorStopFrame(requestID: String = "req_test") -> HermesRealtimeRelayFrame {
@@ -306,7 +474,7 @@ final class MercuryRouterTests: XCTestCase {
         let (router, sink) = makeRouter(
             consent: true,
             cooldownSeconds: 30,
-            startScreenShare: { _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _ in }
         )
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
         let requestID = try extractStreaming(from: router.phase)
@@ -323,7 +491,7 @@ final class MercuryRouterTests: XCTestCase {
         var startCount = 0
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _ in
+            startScreenShare: { _, _, _, _, _, _, _ in
                 startCount += 1
             }
         )
@@ -342,13 +510,72 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(decisions, [.accepted, .denied, .accepted])
     }
 
+    func testSamePeerMirrorRequestRestartsActiveSessionForRecovery() async throws {
+        var startCount = 0
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, _, _, _ in
+                startCount += 1
+            }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(requestID: "req_one", connectionID: "android-1"),
+            replySender: sink.sender
+        )
+        XCTAssertEqual(try extractStreaming(from: router.phase), "req_one")
+
+        await sink.reset()
+        await router.handleFrame(
+            mirrorRequestFrame(requestID: "req_two", connectionID: "android-1"),
+            replySender: sink.sender
+        )
+
+        XCTAssertEqual(startCount, 2)
+        XCTAssertEqual(try extractStreaming(from: router.phase), "req_two")
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(frames[0].media?.mirrorAck?.requestId, "req_two")
+        XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .accepted)
+    }
+
+    func testDifferentPeerMirrorRequestRemainsBusyDuringActiveSession() async throws {
+        var startCount = 0
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, _, _, _ in
+                startCount += 1
+            }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(requestID: "req_one", connectionID: "android-1"),
+            replySender: sink.sender
+        )
+        XCTAssertEqual(try extractStreaming(from: router.phase), "req_one")
+
+        await sink.reset()
+        await router.handleFrame(
+            mirrorRequestFrame(requestID: "req_two", connectionID: "android-2"),
+            replySender: sink.sender
+        )
+
+        XCTAssertEqual(startCount, 1)
+        XCTAssertEqual(try extractStreaming(from: router.phase), "req_one")
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(frames[0].media?.mirrorAck?.requestId, "req_two")
+        XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .busy)
+        XCTAssertEqual(frames[0].media?.mirrorAck?.detail, "Another mirror is in progress")
+    }
+
     func testDisplaySelectionAcknowledgesSelectedDisplayAndKeepsMirrorStreaming() async throws {
         guard let display = ScreenCapturePipeline.availableDisplays().first else {
             throw XCTSkip("No displays available on this test host.")
         }
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _ in }
         )
 
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
@@ -371,7 +598,7 @@ final class MercuryRouterTests: XCTestCase {
     func testMissingDisplaySelectionReturnsRecoverableAckWithoutEndingMirror() async throws {
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _ in }
         )
 
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
@@ -389,6 +616,46 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(ack?.decision, .unsupported)
         XCTAssertNotNil(ack?.availableDisplays)
         XCTAssertEqual(try extractStreaming(from: router.phase), requestID)
+    }
+
+    func testControlStreamSinkChunksLargeMediaFramesUnderIrohFrameBudget() async throws {
+        let stream = RecordingIrohStream()
+        let sink = MercuryControlStreamMediaSink(
+            stream: stream,
+            uid: "uid-1",
+            connectionID: "conn-1",
+            streamClass: .screenVideo
+        )
+        let payload = Data(repeating: 0x7A, count: 700_000)
+        let source = MediaFrameV2(
+            kind: .videoNAL,
+            gopID: 12,
+            frameIndex: 34,
+            presentationTimestampMillis: 56,
+            metadata: Data([0x01, 0x02]),
+            payload: payload
+        )
+
+        await sink.write(frameV2: source)
+
+        let frames = await stream.sentFrames
+        XCTAssertGreaterThan(frames.count, 1)
+        var chunkParts: [(Int, Data)] = []
+        for frame in frames {
+            XCTAssertNoThrow(try IrohRelayFrameCodec().encode(frame))
+            XCTAssertEqual(frame.media?.streamClass, MediaStreamClass.screenVideo.rawValue)
+            let chunk = try XCTUnwrap(frame.media?.frameChunk)
+            XCTAssertEqual(chunk.chunkCount, frames.count)
+            XCTAssertEqual(chunk.totalBytes, try MediaFrameV2Codec().encode(source, negotiatedVersion: .v2).count)
+            let encoded = try XCTUnwrap(frame.media?.encodedFrameBase64)
+            let data = try XCTUnwrap(Data(base64Encoded: encoded))
+            chunkParts.append((chunk.chunkIndex, data))
+        }
+        let reassembled = chunkParts
+            .sorted { $0.0 < $1.0 }
+            .reduce(into: Data()) { result, part in result.append(part.1) }
+        let decoded = try MediaFrameV2Codec().decode(reassembled).frame
+        XCTAssertEqual(decoded, source)
     }
 
     private func extractStreaming(from phase: MercuryRouter.Phase) throws -> String {
@@ -434,5 +701,22 @@ private actor AckSink {
 
 private final class RecordingMediaStreamSink: MediaStreamSink, @unchecked Sendable {
     func write(frame: MediaFrame) async {}
+    func write(frameV2: MediaFrameV2) async {}
+    func close() async {}
+}
+
+private actor RecordingIrohStream: IrohRelayStream {
+    private var storedFrames: [HermesRealtimeRelayFrame] = []
+
+    var sentFrames: [HermesRealtimeRelayFrame] { storedFrames }
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {
+        storedFrames.append(frame)
+    }
+
+    func receive() async throws -> HermesRealtimeRelayFrame? {
+        nil
+    }
+
     func close() async {}
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import UIKit
 
 // MARK: - PretextRichBubble
 //
@@ -137,22 +138,41 @@ struct PretextRichBubble: View {
 
     private func buildAttributedFallback() -> AttributedString {
         let parsedRuns = Self.parseRuns(text, baseSize: baseSize)
-        var attr = AttributedString()
+        let attr = NSMutableAttributedString()
         for run in parsedRuns {
-            var piece = AttributedString(run.text)
-            switch run.kind {
-            case .body:
-                piece.foregroundColor = baseColor
-            case .mention:
-                piece.foregroundColor = mentionColor
-                piece.font = .system(size: baseSize - 1, weight: .semibold, design: .rounded)
-            case .code:
-                piece.foregroundColor = codeColor
-                piece.font = .system(size: baseSize - 1, weight: .medium, design: .monospaced)
-            }
-            attr.append(piece)
+            attr.append(NSAttributedString(
+                string: run.text,
+                attributes: nsAttributes(for: run.kind)
+            ))
         }
-        return attr
+        return AttributedString(attr)
+    }
+
+    private func nsAttributes(for kind: RunKind) -> [NSAttributedString.Key: Any] {
+        switch kind {
+        case .body:
+            return [
+                .foregroundColor: UIColor(baseColor)
+            ]
+        case .mention:
+            return [
+                .foregroundColor: UIColor(mentionColor),
+                .font: Self.roundedUIFont(size: baseSize - 1, weight: .semibold)
+            ]
+        case .code:
+            return [
+                .foregroundColor: UIColor(codeColor),
+                .font: UIFont.monospacedSystemFont(ofSize: baseSize - 1, weight: .medium)
+            ]
+        }
+    }
+
+    private static func roundedUIFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let descriptor = base.fontDescriptor.withDesign(.rounded) else {
+            return base
+        }
+        return UIFont(descriptor: descriptor, size: size)
     }
 
     // MARK: - Measurement

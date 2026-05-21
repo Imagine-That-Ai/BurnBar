@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Notifications
@@ -61,6 +61,7 @@ import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.components.AuroraSecondaryButton
 import com.openburnbar.ui.components.AuroraSettingsToggle
 import com.openburnbar.ui.settings.SettingsRootScreen
+import com.openburnbar.ui.settings.rememberWebsiteBackground
 import com.openburnbar.ui.smartdisplay.SmartDisplayView
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
@@ -121,6 +122,7 @@ private fun YouRoot(
 ) {
     val isDark = isSystemInDarkTheme()
     val context = LocalContext.current
+    val useWebsiteBackground by rememberWebsiteBackground()
     val user by userStore.user.collectAsState()
     val syncHealth by syncStore.health.collectAsState()
     val devices by devicesStore.devices.collectAsState()
@@ -146,7 +148,7 @@ private fun YouRoot(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground)
+            .background(if (useWebsiteBackground) androidx.compose.ui.graphics.Color.Transparent else (if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground))
             .verticalScroll(rememberScrollState())
             .padding(horizontal = AuroraSpacing.lg.dp),
         verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp)
@@ -198,7 +200,7 @@ private fun YouRoot(
         )
 
         SettingsRow(
-            icon = Icons.Filled.Chat,
+            icon = Icons.AutoMirrored.Filled.Chat,
             title = "Chat tiles",
             subtitle = "Which assistants appear in the Chat tab pill",
             onClick = onOpenChatTiles
@@ -234,6 +236,7 @@ private fun YouRoot(
 private fun MenuBarPrefsView(onBack: () -> Unit) {
     val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
+    val useWebsiteBackground by rememberWebsiteBackground()
     var suppressed by remember {
         mutableStateOf(SuppressionStore.suppressed(context))
     }
@@ -241,7 +244,7 @@ private fun MenuBarPrefsView(onBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground)
+            .background(if (useWebsiteBackground) androidx.compose.ui.graphics.Color.Transparent else (if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground))
             .verticalScroll(rememberScrollState())
             .padding(horizontal = AuroraSpacing.lg.dp),
         verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp)

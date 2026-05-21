@@ -46,12 +46,26 @@ data class PinnedAgentGridConfig(
         if (!uri.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)) {
             return pinning(uri)
         }
-        val reordered = listOf(uri) + pinnedURIs.filterNot { it == uri }
+        val reordered = listOf(uri) + pinnedURIs.filterNot {
+            it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)
+        }
+        if (reordered.take(MAX_SLOTS) == pinnedURIs) return this
         return copy(
             pinnedURIs = reordered.take(MAX_SLOTS),
             lastRearrangedAtEpoch = System.currentTimeMillis()
         ).sanitized()
     }
+
+    fun hasPairedMacPin(): Boolean =
+        pinnedURIs.any { it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX) }
+
+    fun removingPairedMacPins(): PinnedAgentGridConfig =
+        copy(
+            pinnedURIs = pinnedURIs.filterNot {
+                it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)
+            },
+            lastRearrangedAtEpoch = System.currentTimeMillis()
+        ).sanitized()
 
     fun unpinning(uri: String): PinnedAgentGridConfig =
         copy(
@@ -85,6 +99,10 @@ data class PinnedAgentGridConfig(
     companion object {
         const val MAX_SLOTS = 12
         const val SHARED_PREFS_KEY = "square.pinned_grid.v1"
+        const val DEFAULT_PAIRED_MAC_CONNECTION_ID = "paired-mac:default"
+
+        val DEFAULT_PAIRED_MAC_URI: String
+            get() = AgentIdentity.pairedMacURI(DEFAULT_PAIRED_MAC_CONNECTION_ID)
 
         fun defaultPinnedURIs(): List<String> =
             AssistantRuntimeID.values().map { AgentIdentity.builtInURI(it) }

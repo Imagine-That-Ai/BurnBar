@@ -107,7 +107,7 @@ final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
         let cachedInput = bucket["cached_input_tokens"] as? Int ?? 0
         let cacheCreation = bucket["cache_creation_input_tokens"] as? Int ?? 0
 
-        guard input > 0 || output > 0 || cachedInput > 0 else { return [] }
+        guard input > 0 || output > 0 || cachedInput > 0 || cacheCreation > 0 else { return [] }
 
         // Anthropic doesn't return cost directly — compute from pricing
         let pricing = ModelPricing.lookup(model: model)

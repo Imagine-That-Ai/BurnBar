@@ -43,9 +43,15 @@ final class VideoEncoder {
         var keyframeIntervalSeconds: Double
         var preferredCodec: Codec
         var frameRate: Int32
+        var enableLongTermReference: Bool = false
     }
 
-    typealias EncodedHandler = @Sendable (MediaFrame) async -> Void
+    struct EncodedFrame: Sendable, Equatable {
+        var frame: MediaFrame
+        var longTermReferenceToken: MercuryLTRToken?
+    }
+
+    typealias EncodedHandler = @Sendable (EncodedFrame) async -> Void
 
     private let configuration: Configuration
     private let codec: MediaPacketCodec
@@ -54,6 +60,7 @@ final class VideoEncoder {
     private var resolvedCodec: Codec
     private var currentGopID: UInt32 = 0
     private var currentFrameIndex: UInt32 = 0
+    private var ltrState = MercuryLTRRecoveryState()
 
     init(
         configuration: Configuration,
@@ -112,6 +119,9 @@ final class VideoEncoder {
             key: kVTCompressionPropertyKey_ExpectedFrameRate,
             value: NSNumber(value: Int(configuration.frameRate))
         )
+        if configuration.enableLongTermReference {
+            try setProperty(session, key: kVTCompressionPropertyKey_EnableLTR, value: kCFBooleanTrue!)
+        }
         VTCompressionSessionPrepareToEncodeFrames(session)
     }
 
@@ -124,6 +134,7 @@ final class VideoEncoder {
         guard let session, let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let duration = CMSampleBufferGetDuration(sampleBuffer)
+        let frameProperties = framePropertiesForNextFrame()
 
         var infoFlags: VTEncodeInfoFlags = []
         let status = VTCompressionSessionEncodeFrame(
@@ -131,7 +142,7 @@ final class VideoEncoder {
             imageBuffer: imageBuffer,
             presentationTimeStamp: pts,
             duration: duration,
-            frameProperties: nil,
+            frameProperties: frameProperties,
             infoFlagsOut: &infoFlags
         ) { [weak self] (status: OSStatus, _: VTEncodeInfoFlags, sampleBuffer: CMSampleBuffer?) in
             guard let self, status == noErr, let sampleBuffer else { return }
@@ -142,6 +153,14 @@ final class VideoEncoder {
         if status != noErr {
             throw Failure.encodeSubmit(status)
         }
+    }
+
+    func requestLongTermReferenceRefresh() {
+        ltrState.requestRefresh()
+    }
+
+    func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64) {
+        ltrState.acknowledgeDecodedToken(MercuryLTRToken(value: tokenValue))
     }
 
     func stop() {
@@ -168,6 +187,7 @@ final class VideoEncoder {
         let payload = await payloadForWire(samplePayload: samplePayload, sampleBuffer: sampleBuffer, isKeyframe: isKeyframe)
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let ptsMillis = UInt64(pts.seconds * 1000)
+        let ltrTokenValue = Self.longTermReferenceTokenValue(sampleBuffer: sampleBuffer)
 
         let frameSnapshot = await Self.nextFrameIndices(forKeyframe: isKeyframe, on: self)
         let flags: MediaFrame.Flags = isKeyframe ? [.keyframe] : []
@@ -179,7 +199,11 @@ final class VideoEncoder {
             presentationTimestampMillis: ptsMillis,
             payload: payload
         )
-        await onEncoded(frame)
+        await Self.recordLongTermReferenceToken(ltrTokenValue, on: self)
+        await onEncoded(EncodedFrame(
+            frame: frame,
+            longTermReferenceToken: ltrTokenValue.map(MercuryLTRToken.init(value:))
+        ))
     }
 
     nonisolated private func payloadForWire(
@@ -309,6 +333,19 @@ final class VideoEncoder {
         }
     }
 
+    private static func recordLongTermReferenceToken(
+        _ tokenValue: UInt64?,
+        on encoder: VideoEncoder
+    ) async {
+        await MainActor.run {
+            guard encoder.configuration.enableLongTermReference,
+                  tokenValue != nil || encoder.ltrState.refreshRequested else {
+                return
+            }
+            _ = encoder.ltrState.recordEncodedRefreshToken(tokenValue)
+        }
+    }
+
     nonisolated private func isKeyframe(sampleBuffer: CMSampleBuffer) async -> Bool {
         guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[CFString: Any]],
               let first = attachments.first else {
@@ -318,6 +355,28 @@ final class VideoEncoder {
             return !notSync
         }
         return true
+    }
+
+    nonisolated private static func longTermReferenceTokenValue(sampleBuffer: CMSampleBuffer) -> UInt64? {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[CFString: Any]],
+              let first = attachments.first,
+              let token = first[kVTSampleAttachmentKey_RequireLTRAcknowledgementToken] as? NSNumber else {
+            return nil
+        }
+        return token.uint64Value
+    }
+
+    private func framePropertiesForNextFrame() -> CFDictionary? {
+        guard configuration.enableLongTermReference else { return nil }
+        var properties: [CFString: Any] = [:]
+        if ltrState.refreshRequested {
+            properties[kVTEncodeFrameOptionKey_ForceLTRRefresh] = true
+        }
+        let acknowledgedTokens = ltrState.acknowledgedTokenValuesForEncoder.map { NSNumber(value: $0) }
+        if !acknowledgedTokens.isEmpty {
+            properties[kVTEncodeFrameOptionKey_AcknowledgedLTRTokens] = acknowledgedTokens
+        }
+        return properties.isEmpty ? nil : properties as CFDictionary
     }
 
     private func setProperty(_ session: VTCompressionSession, key: CFString, value: CFTypeRef) throws {

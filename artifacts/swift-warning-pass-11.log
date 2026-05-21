@@ -1,0 +1,16 @@
+/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBarMobile/Services/FunctionsRepository.swift:439:41: warning: sending value of non-Sendable type '[String : Any]' risks causing data races; this is an error in the Swift 6 language mode
+        let result = try await callable.call(payloadSnapshot)
+                               ~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBarMobile/Services/FunctionsRepository.swift:439:41: note: sending main actor-isolated value of non-Sendable type '[String : Any]' to nonisolated instance method 'call' risks causing races in between main actor-isolated and nonisolated uses
+        let result = try await callable.call(payloadSnapshot)
+                                        ^
+/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBarMobile/Services/FunctionsRepository.swift:485:32: warning: sending value of non-Sendable type '[String : Any]' risks causing data races; this is an error in the Swift 6 language mode
+        _ = try await callable.call(payloadSnapshot)
+                      ~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBarMobile/Services/FunctionsRepository.swift:485:32: note: sending main actor-isolated value of non-Sendable type '[String : Any]' to nonisolated instance method 'call' risks causing races in between main actor-isolated and nonisolated uses
+        _ = try await callable.call(payloadSnapshot)
+                               ^
+2026-05-20 23:36:01.417 xcodebuild[94650:16956788] [MT] IDETestOperationsObserverDebug: 8.939 elapsed -- Testing started completed.
+2026-05-20 23:36:01.417 xcodebuild[94650:16956788] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-05-20 23:36:01.417 xcodebuild[94650:16956788] [MT] IDETestOperationsObserverDebug: 8.939 sec, +8.939 sec -- end
+Testing started

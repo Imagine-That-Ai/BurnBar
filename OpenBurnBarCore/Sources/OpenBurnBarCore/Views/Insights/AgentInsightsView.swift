@@ -16,6 +16,7 @@ public struct AgentInsightsView: View {
     public var actions: Actions
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
     public init(
         viewModel: AgentInsightsViewModel,
@@ -81,7 +82,7 @@ public struct AgentInsightsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(UnifiedDesignSystem.Colors.background)
+        .background(useWebsiteBackground ? Color.clear : UnifiedDesignSystem.Colors.background)
         .task { await viewModel.load() }
     }
 

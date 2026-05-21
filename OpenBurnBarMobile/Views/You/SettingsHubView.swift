@@ -11,10 +11,12 @@ struct SettingsHubView: View {
     let authStore: AuthStore
 
     @Environment(\.cloudSubscriptionStore) private var sharedSubscriptionStore
+    @Environment(\.colorScheme) private var colorScheme
     @State private var localSubscriptionStore = HostedQuotaSubscriptionStore()
     @State private var didLoadLocalSubscription = false
     @State private var showDeleteAccountConfirmation = false
     @State private var accountDeletionError: String?
+    @State private var showSignIn = false
     @State private var router = SettingsRouter()
 
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
@@ -27,7 +29,9 @@ struct SettingsHubView: View {
     @AppStorage("tokenAlertEnabled") private var tokenAlertEnabled: Bool = false
     @AppStorage("tokenAlertThreshold") private var tokenAlertThreshold: Int = 100_000
     @AppStorage("costAlertEnabled") private var costAlertEnabled: Bool = false
-    @AppStorage("costAlertThreshold") private var costAlertThreshold: Double = 10.0
+    @AppStorage("costAlertThreshold") private var costAlertThreshold: Double = 25.0
+    @AppStorage("usePremiumSOTAUX") private var usePremiumSOTAUX: Bool = false
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
     var body: some View {
         hubContent
@@ -74,6 +78,16 @@ struct SettingsHubView: View {
         } message: {
             Text(accountDeletionError ?? "Try signing in again, then delete the account from Settings.")
         }
+        .sheet(isPresented: $showSignIn) {
+            SignInScene(authStore: authStore)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .onChange(of: authStore.state.isSignedIn) { _, isSignedIn in
+            if isSignedIn {
+                showSignIn = false
+            }
+        }
         .task {
             if sharedSubscriptionStore == nil, !didLoadLocalSubscription {
                 didLoadLocalSubscription = true
@@ -112,6 +126,10 @@ struct SettingsHubView: View {
             SettingsDeepLinkScrollContainer(route: .media) { _ in
                 MediaSettingsView()
             }
+        case .theme:
+            SettingsDeepLinkScrollContainer(route: .theme) { _ in
+                ThemeSettingsView()
+            }
         }
     }
 
@@ -119,11 +137,7 @@ struct SettingsHubView: View {
         SettingsDeepLinkScrollContainer(route: .hubRoot) { _ in
             Form {
                 Section {
-                    Picker(selection: $preferredAppearance) {
-                        Text("System").tag("system")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    } label: {
+                    NavigationLink(value: SettingsPageRoute.theme) {
                         SettingsLabel(icon: "paintpalette.fill", color: MobileTheme.amber, title: "Theme")
                     }
                     .settingsAnchor(SettingsAnchor.theme)
@@ -134,7 +148,20 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "number.square.fill", color: MobileTheme.ember, title: "Default display")
                     }
                     .settingsAnchor(SettingsAnchor.usageDisplay)
+
+                    Toggle(isOn: $usePremiumSOTAUX) {
+                        SettingsLabel(icon: "sparkles", color: MobileTheme.blaze, title: "Premium SOTA UX")
+                    }
+                    .tint(MobileTheme.ember)
+                    .settingsAnchor(SettingsAnchor.usePremiumSOTAUX)
+
+                    Toggle(isOn: $useWebsiteBackground) {
+                        SettingsLabel(icon: "sparkles", color: MobileTheme.whimsy, title: "Swarm Background")
+                    }
+                    .tint(MobileTheme.ember)
+                    .settingsAnchor(SettingsAnchor.useWebsiteBackground)
                 } header: { groupHeader("Appearance") }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     UIModePicker(selection: $uiMode)
@@ -142,6 +169,7 @@ struct SettingsHubView: View {
                         .listRowBackground(Color.clear)
                         .settingsAnchor(SettingsAnchor.uiMode)
                 } header: { groupHeader("UI Mode") }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     HStack {
@@ -177,6 +205,7 @@ struct SettingsHubView: View {
                         Stepper("Threshold: \(tokenAlertThreshold.formatted()) tokens", value: $tokenAlertThreshold, step: 10_000)
                     }
                 } header: { groupHeader("Budget") }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     Toggle(isOn: $dailyDigestEnabled) {
@@ -204,6 +233,7 @@ struct SettingsHubView: View {
                     .foregroundStyle(MobileTheme.ember)
                     .settingsAnchor(SettingsAnchor.openSystemNotifications)
                 } header: { groupHeader("Notifications") }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     NavigationLink(value: SettingsPageRoute.cloud) {
@@ -211,11 +241,23 @@ struct SettingsHubView: View {
                     }
                     .settingsAnchor(SettingsAnchor.cloudRow)
                 } header: { groupHeader("Cloud") }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     if let identity = authStore.currentIdentity {
                         LabeledContent("Signed in", value: identity.email ?? identity.displayName ?? "OpenBurnBar account")
                             .settingsAnchor(SettingsAnchor.accountRow)
+                    } else {
+                        Button {
+                            showSignIn = true
+                        } label: {
+                            SettingsLabel(
+                                icon: "person.crop.circle.badge.checkmark",
+                                color: MobileTheme.ember,
+                                title: "Sign in for Cloud"
+                            )
+                        }
+                        .settingsAnchor(SettingsAnchor.accountRow)
                     }
                     Button(role: .destructive) {
                         showDeleteAccountConfirmation = true
@@ -242,6 +284,7 @@ struct SettingsHubView: View {
                     .accessibilityHint("Permanently deletes your OpenBurnBar account and cloud data.")
                     .settingsAnchor(SettingsAnchor.deleteAccount)
                 } header: { groupHeader("Account") }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     NavigationLink(value: SettingsPageRoute.providerConnections) {
@@ -254,6 +297,7 @@ struct SettingsHubView: View {
                     }
                     .settingsAnchor(SettingsAnchor.providersRow)
                 } header: { groupHeader("Providers") }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     NavigationLink(value: SettingsPageRoute.chatTiles) {
@@ -300,6 +344,7 @@ struct SettingsHubView: View {
                     }
                     .settingsAnchor(SettingsAnchor.mediaRow)
                 } header: { groupHeader("AI Environments") }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     MissionFABResurrectToggle()
@@ -308,6 +353,7 @@ struct SettingsHubView: View {
                         .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     LabeledContent("Version", value: marketingVersion)
@@ -322,6 +368,7 @@ struct SettingsHubView: View {
                     }
                     .settingsAnchor(SettingsAnchor.aboutTerms)
                 } header: { groupHeader("About") }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
             }
             .scrollContentBackground(.hidden)
         }
@@ -402,7 +449,7 @@ struct SettingsHubView: View {
 
 // MARK: - Settings Label
 
-private struct SettingsLabel: View {
+struct SettingsLabel: View {
     let icon: String
     let color: Color
     let title: String

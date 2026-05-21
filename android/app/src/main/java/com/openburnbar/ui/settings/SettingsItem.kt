@@ -59,6 +59,7 @@ enum class SettingsSection(val displayTitle: String) {
     NOTIFICATIONS("Notifications"),
     HERMES("Hermes"),
     COMPUTER_USE("Computer Use"),
+    THEME("Theme"),
 }
 
 /**
@@ -70,6 +71,7 @@ enum class SettingsPageRoute {
     ROOT,
     SMART_DISPLAYS,
     MENU_BAR_PREFS,
+    THEME_PREFS,
 }
 
 /**
@@ -87,6 +89,7 @@ object SettingsAnchor {
     const val SMART_DISPLAYS_ROW = "root.smartDisplays"
     const val QUICK_GLANCE_ROW = "root.quickGlance"
     const val COMPUTER_USE_ROW = "root.computerUse"
+    const val THEME_ROW = "root.theme"
 
     // Smart Displays
     const val GOOGLE_SMART_DISPLAY = "smartDisplays.google"
@@ -94,6 +97,10 @@ object SettingsAnchor {
 
     // Quick-glance notification
     const val PERSISTENT_NOTIFICATION = "menuBarPrefs.persistent"
+
+    // Theme & SOTA UX
+    const val USE_PREMIUM_SOTA_UX = "themePrefs.usePremiumSOTAUX"
+    const val USE_WEBSITE_BACKGROUND = "themePrefs.useWebsiteBackground"
 
     // Hermes
     const val HERMES_CONNECTIONS = "hermes.connections"

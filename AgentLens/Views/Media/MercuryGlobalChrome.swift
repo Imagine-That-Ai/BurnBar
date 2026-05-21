@@ -74,15 +74,24 @@ struct MercuryChromeRoot: View {
                     onShareScreen: { hudState.isSharingScreen.toggle() },
                     onEnd: { Task { await router.stopMirror() } }
                 )
-                .frame(width: 260, height: 220)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(.thickMaterial)
+                .frame(
+                    width: hudState.isCollapsed ? 96 : 300,
+                    height: hudState.isCollapsed ? 42 : 240
                 )
+                .background {
+                    if !hudState.isCollapsed {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(.thickMaterial)
+                    }
+                }
             }
         }
-        .frame(minWidth: 320, minHeight: 240)
-        .padding(20)
+        .frame(
+            minWidth: hudState.isCollapsed ? 112 : 320,
+            minHeight: hudState.isCollapsed ? 58 : 240
+        )
+        .padding(hudState.isCollapsed ? 8 : 20)
+        .background(Color.clear)
     }
 }
 
@@ -108,6 +117,7 @@ final class MercuryIncomingPanelPresenter {
     private var panel: NSPanel?
     private var cancellables: Set<AnyCancellable> = []
     private var lastStreamingRequestID: String?
+    private var currentPhase: MercuryRouter.Phase = .idle
 
     init(
         router: MercuryRouter,
@@ -127,10 +137,21 @@ final class MercuryIncomingPanelPresenter {
             }
             .store(in: &cancellables)
 
+        hudState.$isCollapsed
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    self?.resizePanelForCurrentState()
+                }
+            }
+            .store(in: &cancellables)
+
         refresh(for: router.phase)
     }
 
     private func refresh(for phase: MercuryRouter.Phase) {
+        currentPhase = phase
         switch phase {
         case .idle, .cooldown:
             lastStreamingRequestID = nil
@@ -161,14 +182,17 @@ final class MercuryIncomingPanelPresenter {
 
         if let panel {
             panel.contentView = NSHostingView(rootView: root)
+            resizePanelForCurrentState()
             panel.orderFrontRegardless()
-            NSApp.activate(ignoringOtherApps: true)
+            if shouldActivateApp {
+                NSApp.activate(ignoringOtherApps: true)
+            }
             return
         }
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 360),
-            styleMask: [.titled, .fullSizeContentView],
+            contentRect: NSRect(origin: .zero, size: desiredPanelSize),
+            styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -178,15 +202,99 @@ final class MercuryIncomingPanelPresenter {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = shouldShowPanelShadow
         panel.contentView = NSHostingView(rootView: root)
-        panel.center()
+        positionPanel(panel)
         panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if shouldActivateApp {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         self.panel = panel
     }
 
     private func closePanel() {
         panel?.orderOut(nil)
         panel = nil
+    }
+
+    private var shouldActivateApp: Bool {
+        switch currentPhase {
+        case .ringing, .callRinging, .starting:
+            return true
+        case .idle, .cooldown, .streaming:
+            return false
+        }
+    }
+
+    private var shouldShowPanelShadow: Bool {
+        if case .streaming = currentPhase {
+            return !hudState.isCollapsed
+        }
+        return true
+    }
+
+    private var desiredPanelSize: NSSize {
+        switch currentPhase {
+        case .streaming:
+            return hudState.isCollapsed ? NSSize(width: 112, height: 58) : NSSize(width: 340, height: 280)
+        case .ringing, .callRinging, .starting:
+            return NSSize(width: 420, height: 360)
+        case .idle, .cooldown:
+            return NSSize(width: 0, height: 0)
+        }
+    }
+
+    private func resizePanelForCurrentState() {
+        guard let panel else { return }
+        panel.hasShadow = shouldShowPanelShadow
+        let currentTopRight = NSPoint(x: panel.frame.maxX, y: panel.frame.maxY)
+        let size = desiredPanelSize
+        var frame = NSRect(
+            x: currentTopRight.x - size.width,
+            y: currentTopRight.y - size.height,
+            width: size.width,
+            height: size.height
+        )
+
+        if case .streaming = currentPhase, hudState.isCollapsed {
+            frame = frameForCollapsedPill(size: size)
+        }
+
+        panel.setFrame(frame, display: true, animate: true)
+    }
+
+    private func positionPanel(_ panel: NSPanel) {
+        let size = desiredPanelSize
+        if case .streaming = currentPhase, hudState.isCollapsed {
+            panel.setFrame(frameForCollapsedPill(size: size), display: true)
+            return
+        }
+
+        if let screen = NSScreen.main ?? NSScreen.screens.first {
+            let visible = screen.visibleFrame
+            let frame = NSRect(
+                x: visible.midX - size.width / 2,
+                y: visible.midY - size.height / 2,
+                width: size.width,
+                height: size.height
+            )
+            panel.setFrame(frame, display: true)
+        } else {
+            panel.setContentSize(size)
+            panel.center()
+        }
+    }
+
+    private func frameForCollapsedPill(size: NSSize) -> NSRect {
+        let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let margin: CGFloat = 18
+        return NSRect(
+            x: visible.maxX - size.width - margin,
+            y: visible.maxY - size.height - margin,
+            width: size.width,
+            height: size.height
+        )
     }
 }

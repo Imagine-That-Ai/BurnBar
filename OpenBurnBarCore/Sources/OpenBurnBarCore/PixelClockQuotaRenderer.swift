@@ -589,14 +589,17 @@ public enum PixelClockQuotaRenderer {
             ]
         }
         if token.contains("deepseek") || token.contains("deep seek") || token.contains("deep-seek") {
-            // Whale eye, fin, and tail dots keep the silhouette readable
-            // when the indigo body maps to a single rainbow stripe.
+            // Eye + belly dots and tail outline accents keep the whale
+            // silhouette readable when the indigo body maps to a single
+            // rainbow stripe.
             return [
-                .pixel(x: 1, y: 2, color: sparkle),
-                .pixel(x: 7, y: 3, color: highlight),
-                .pixel(x: 2, y: 5, color: highlight),
-                .pixel(x: 6, y: 5, color: sparkle),
-                .pixel(x: 6, y: 6, color: shadow)
+                .pixel(x: 6, y: 2, color: highlight),
+                .pixel(x: 6, y: 5, color: highlight),
+                .pixel(x: 6, y: 6, color: sparkle),
+                .pixel(x: 0, y: 0, color: shadow),
+                .pixel(x: 0, y: 7, color: shadow),
+                .pixel(x: 5, y: 0, color: shadow),
+                .pixel(x: 5, y: 7, color: shadow)
             ]
         }
         if token.contains("opencode") || token.contains("open code") || token.contains("open-code") {
@@ -722,9 +725,9 @@ public enum PixelClockQuotaRenderer {
                 "#02D1D1": 0, "#1A3A3A": 3, "#0D7377": 4, "#A8B0B8": 5
             ]
         }
-        // DeepSeek — indigo whale body vs. white eye accent.
+        // DeepSeek — indigo whale body vs. white belly/eye vs. dark outline.
         if token.contains("deepseek") || token.contains("deep seek") || token.contains("deep-seek") {
-            return ["#6366F1": 0, "#FFFFFF": 3]
+            return ["#6366F1": 0, "#FFFFFF": 3, "#1E1B4B": 5]
         }
         // OpenCode — white frame vs. gray inner screen area.
         if token.contains("opencode") || token.contains("open code") || token.contains("open-code") {

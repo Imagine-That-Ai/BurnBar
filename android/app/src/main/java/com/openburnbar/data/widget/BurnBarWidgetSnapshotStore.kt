@@ -47,6 +47,11 @@ object BurnBarWidgetSnapshotStore {
         readFromDisk(context)?.also { _snapshot.value = it }
     }
 
+    /** Synchronously read the persisted snapshot. Used by the wallpaper service. */
+    fun readBlocking(context: Context): BurnBarWidgetSnapshot? = kotlinx.coroutines.runBlocking {
+        read(context)
+    }
+
     /** Persist and notify all in-process consumers. */
     fun write(context: Context, snapshot: BurnBarWidgetSnapshot) {
         scope.launch {

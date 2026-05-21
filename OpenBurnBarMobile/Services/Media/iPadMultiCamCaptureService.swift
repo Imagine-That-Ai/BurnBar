@@ -1,5 +1,6 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
+@preconcurrency import CoreMedia
 import OpenBurnBarMedia
 
 /// Phase 6: iPad Pro M-series multicam capture (front primary + back
@@ -24,9 +25,10 @@ final class iPadMultiCamCaptureService: NSObject {
         }
     }
 
-    typealias FrameHandler = @Sendable (AVCaptureDevice.Position, CMSampleBuffer) async -> Void
+    typealias FrameHandler = @MainActor (AVCaptureDevice.Position, CMSampleBuffer) async -> Void
 
     private let session: AVCaptureSession
+    private let sessionQueue = DispatchQueue(label: "ai.openburnbar.media.camera.ipad.session")
     private let frontOutput = AVCaptureVideoDataOutput()
     private let backOutput = AVCaptureVideoDataOutput()
     private let onFrame: FrameHandler
@@ -67,11 +69,18 @@ final class iPadMultiCamCaptureService: NSObject {
         }
 
         session.commitConfiguration()
-        await Task.detached { [session] in session.startRunning() }.value
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [session] in
+                session.startRunning()
+                continuation.resume()
+            }
+        }
     }
 
     func stop() {
-        session.stopRunning()
+        sessionQueue.async { [session] in
+            session.stopRunning()
+        }
     }
 
     var multiCamEnabled: Bool { isMultiCam }
@@ -122,11 +131,19 @@ private final class SampleBufferContext: NSObject, AVCaptureVideoDataOutputSampl
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        let snapshot = sampleBuffer
+        let snapshot = SendableMultiCamSampleBuffer(sampleBuffer)
         let pos = position
-        Task.detached(priority: .userInitiated) { [weak owner] in
-            await owner?.handle(position: pos, sampleBuffer: snapshot)
+        Task { @MainActor [weak owner, snapshot] in
+            await owner?.handle(position: pos, sampleBuffer: snapshot.value)
         }
+    }
+}
+
+private struct SendableMultiCamSampleBuffer: @unchecked Sendable {
+    let value: CMSampleBuffer
+
+    init(_ value: CMSampleBuffer) {
+        self.value = value
     }
 }
 
@@ -135,4 +152,3 @@ extension iPadMultiCamCaptureService {
         await onFrame(position, sampleBuffer)
     }
 }
-

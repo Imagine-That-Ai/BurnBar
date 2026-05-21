@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Cached input cost accounting
+- **Corrected inflated GPT-5.5 cached-input estimates.** Added the OpenAI
+  GPT-5.5 catalog entry and refreshed the GPT-5.5 Factory-family cache pricing
+  so cached input uses the current `$0.50 / 1M tokens` rate instead of the stale
+  `$1.25 / 1M tokens` fallback that made large Codex sessions look far too
+  expensive.
+- **Prevented OpenAI-style cached-token double counting.** Usage importers now
+  store uncached input separately from cached input when payloads report
+  inclusive `prompt_tokens` / `input_tokens` plus `cached_tokens`, while keeping
+  Anthropic's already-disjoint `input_tokens` / `cache_read_input_tokens`
+  semantics intact.
+- **Hardened provider-wide cache accounting.** Gemini CLI logs now subtract
+  `cachedContentTokenCount` from billable input and no longer double-count
+  `message_update` usage rows, Anthropic cache writes use the documented
+  5-minute write premium, and Factory-side GPT-5.4 / GPT-5.3 Codex catalog
+  pricing now matches current cached-input rates.
+
+### Added — Swarm Background theme across all platforms
+- **Active, reconverging token-ember swarms in the app.** Ported the
+  "Interactive Token Ember Swarm" canvas from burnbar.ai into every
+  OpenBurnBar surface that already honored the *Website Background* toggle —
+  macOS, iPadOS, iOS, and Android. Hundreds of particles murmurate across the
+  screen and periodically reconverge into the four signature shapes from the
+  marketing site: a `$`, `</>`, concentric quota rings, and the router
+  failover S-curve, then break back apart. Pointer / touch position pushes
+  nearby particles away, matching the web build. The toggle's old "perspective
+  grid" copy was renamed to "Swarm Background" with updated search keywords.
+- **Cross-platform shared simulation.** Added `SwarmCanvasView` in
+  `OpenBurnBarCore` driving both AgentLens (Mac) and OpenBurnBarMobile from
+  one `TimelineView` + `Canvas` implementation with two paces (energetic for
+  Mac, cinematic for iPhone/iPad) and adaptive particle budgets (1200 on Mac,
+  720 on iPad, 360 on iPhone, halved under Low Power Mode). Android gets a
+  parallel `SwarmBackground` composable using `withFrameNanos` + Compose
+  `Canvas`, scaled per device class and respecting Power Save mode. Both
+  honor Reduce Motion (pauses cycling, silences the noise field).
+- **Desktop wallpaper background presets.** The macOS desktop swarm wallpaper
+  now offers background choices instead of a single AMOLED toggle: macOS
+  Desktop, Midnight, AMOLED Black, Graphite, Warm Ember, and Deep Indigo. The
+  old AMOLED preference migrates into the new picker.
+- **Live provider colors on wallpaper beads.** The desktop swarm color driver
+  now checks running agent activity before historical usage, so concurrent
+  Codex and Claude work paints separate teal and clay bead bands instead of
+  staying all Codex teal.
+- **BurnBar logo swarm formation.** The shared swarm cycle now adds the
+  OpenBurnBar flame-shaped bar graph mark as a first-class particle formation
+  between the code glyph and quota rings.
+- **Swarm wallpaper polish.** The BurnBar logo formation now renders upright,
+  active wallpaper particles share the field across every running provider
+  detected from the process table, and the Desktop Wallpaper Background picker
+  uses distinct preview swatches instead of nearly identical dark dots. Provider
+  colors remain exact outside the BurnBar flame, whose particles now use
+  provider-family highlights and shadows so a single active provider still reads
+  dimensional instead of flat.
+
 ### Added — Iroh Services observability
 - **Official Iroh Services endpoint metrics.** Upgraded the native iroh bridge
   to the 1.0.0-rc.0 line and starts `iroh_services::Client` whenever
@@ -16,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   live auth + ping + metrics push check.
 
 ### Added — Mercury Media user-facing surfaces (Phase 8)
+- **Mercury Mirror streaming evidence gates.** Added cross-platform streaming
+  capability snapshots, optional capability fields on mirror requests and
+  presence heartbeats, MediaFrame v2 envelope codecs, HEVC/H.264-first codec
+  policy with AV1 experiment gating, shadow BWE/datagram policy scaffolding,
+  VideoToolbox LTR token hooks, receiver-to-encoder `media.ltr.ack` control
+  frames for decoded v2 LTR tokens, and a 5x3 impairment dry-run harness. Live
+  mirror remains `MediaFrame` v1-only until v2 sender/datagram/LTR recovery
+  promotion and real benchmark data are green.
 - **Mercury mirror session restart + control polish.** Ending a mirror from the
   iPhone close button now sends a real stop to the Mac, clears local iPhone
   mirror state, resets the Mac HUD timer, and allows the next mirror request
@@ -25,8 +87,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Mercury mirror audit hardening.** Display switching now treats
   display-selection acknowledgements as in-session state updates instead of
   rejected mirror requests, failed Mac display switches preserve the current
-  capture stream, point-click taps use a more forgiving intent resolver, and
-  the iPhone typing bar has explicit keyboard dismissal.
+  capture stream, point-click taps use a more forgiving intent resolver, point
+  mode supports pan/zoom without losing click intent, landscape taps map through
+  the actual letterboxed video rect, the iPhone typing bar has explicit keyboard
+  dismissal, and the trackpad no longer draws a drift-prone predicted cursor
+  over the Mac-rendered cursor.
+- **Internal TestFlight App Check build path.** Build 25 was cut with the
+  internal App Check debug-provider path enabled so enforced Firestore remains
+  on while TestFlight devices avoid DeviceCheck/App Attest configuration drift.
 - **Mercury mirror click and type control (iOS → Mac).** Full-screen iOS screen sharing now has explicit View/Control modes. Control mode maps taps through the current zoom/pan viewport into signed Phone Control click intents, adds a floating keyboard composer for Mac typing, and starts the existing Computer Use control stream when a mirror request is accepted.
 - **Redesigned Liquid Glass `MercuryLiveSheet` (iOS).** Completely redesigned the My Mac live sheet on iOS adopting standard Liquid Glass tokens. Added an elevated, glassy header card with an animated pulsing indicator, high-performance button styling (`LiquidGlassButtonStyle`) with spring scaling, custom glass capsule overlays, silver-shimmer border gradients, and a dedicated preferences card.
 - **Mac-to-iOS Wallpaper Sync (Zero-Latency).** Implemented a high-performance wallpaper sync system between the Mac client and the iOS app. Captures the Mac desktop wallpaper without screen recording TCC permissions by querying the active lockscreen caches under `/Library/Caches/Desktop Pictures/` and downscaling to a `120x80` thumbnail using `CGImageSourceCreateThumbnailAtIndex` to prevent OOM issues. Decodes the thumbnail on iOS in real-time, displaying it as a beautifully blurred (`.blur(radius: 30)`) background backdrop. Added a "Mimic Mac Wallpaper" toggle to toggle this sync dynamically.

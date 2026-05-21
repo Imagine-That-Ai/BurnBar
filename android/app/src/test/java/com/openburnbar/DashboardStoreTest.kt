@@ -4,6 +4,7 @@ import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.UsageRollups
 import com.openburnbar.data.stores.DashboardStore
 import io.mockk.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
@@ -11,6 +12,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DashboardStoreTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()

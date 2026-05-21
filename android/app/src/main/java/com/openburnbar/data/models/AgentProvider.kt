@@ -7,7 +7,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     CLAUDE_CODE("claude-code", "Claude Code", 0xFFCC785C, 0xFFD4A574),
     COPILOT("copilot", "Copilot", 0xFF23EA3B, 0xFF0969DA),
     AIDER("aider", "Aider", 0xFFFF6B35, 0xFFE86100),
-    CURSOR("cursor", "Cursor", 0xFFAC8C57, 0xFF007AFF),
+    CURSOR("cursor", "Cursor", 0xFFB4B8C0, 0xFF1A1A1A),
     OPEN_AI("openai", "OpenAI", 0xFF00A67E, 0xFF00C48C),
     CODEX("codex", "Codex", 0xFF00A67E, 0xFF00C48C),
     OPENCODE("opencode", "OpenCode", 0xFF0EA5E9, 0xFF38BDF8),

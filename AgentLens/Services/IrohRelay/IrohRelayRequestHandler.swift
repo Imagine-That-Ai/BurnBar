@@ -174,6 +174,7 @@ final class IrohRelayRequestHandler: Sendable {
                  .mediaMirrorStop,
                  .mediaMirrorDisplaySelect,
                  .mediaPresenceHeartbeat,
+                 .mediaLongTermReferenceAck,
                  .mediaCallInvite,
                  .mediaCallAck,
                  .mediaStreamFrame:

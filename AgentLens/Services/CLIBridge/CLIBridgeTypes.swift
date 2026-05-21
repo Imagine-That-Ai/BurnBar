@@ -17,7 +17,7 @@ struct CLIUsageSnapshot: Hashable {
     let reasoningTokens: Int
 
     var totalTokens: Int {
-        inputTokens + outputTokens + cacheCreationTokens + reasoningTokens
+        inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens + reasoningTokens
     }
 }
 

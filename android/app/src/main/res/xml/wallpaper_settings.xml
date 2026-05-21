@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory android:title="Swarm Behavior">
+        <ListPreference
+            android:key="wallpaper_pace"
+            android:title="Pace"
+            android:summary="Choose how fast the swarm moves"
+            android:defaultValue="energetic"
+            android:entries="@array/pace_entries"
+            android:entryValues="@array/pace_values" />
+
+        <ListPreference
+            android:key="wallpaper_shape"
+            android:title="Preferred Shape"
+            android:summary="Which shape should the swarm form?"
+            android:defaultValue="all"
+            android:entries="@array/shape_entries"
+            android:entryValues="@array/shape_values" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

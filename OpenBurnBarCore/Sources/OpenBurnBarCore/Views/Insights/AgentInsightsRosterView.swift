@@ -13,6 +13,8 @@ public struct AgentInsightsRosterView: View {
     public let onSelectProvider: (AgentProvider) -> Void
     public var onSelectAggregate: (() -> Void)?
 
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+
     public init(
         providers: [AgentProvider] = AgentProvider.allCases,
         statusProvider: @escaping (AgentProvider) -> AgentInsightsHeader.Status = { _ in .unconfigured },
@@ -41,7 +43,7 @@ public struct AgentInsightsRosterView: View {
             .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
             .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
         }
-        .background(UnifiedDesignSystem.Colors.background)
+        .background(useWebsiteBackground ? Color.clear : UnifiedDesignSystem.Colors.background)
     }
 
     private var aggregateRow: some View {

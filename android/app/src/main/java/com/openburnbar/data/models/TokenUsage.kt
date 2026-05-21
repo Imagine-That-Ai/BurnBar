@@ -314,12 +314,36 @@ val ProviderQuotaSnapshot.isExplicitlyStale: Boolean
         statusMessage?.contains("stale", ignoreCase = true) == true
 
 fun ProviderQuotaSnapshot.isStale(now: java.time.Instant = java.time.Instant.now()): Boolean {
-    if (isExplicitlyStale) return true
-    val fetched = listOf(fetchedAt, updatedAt)
-        .firstOrNull { !it.isNullOrBlank() }
-        ?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
-        ?: return true
-    return java.time.Duration.between(fetched, now) > java.time.Duration.ofHours(12)
+    if (isExplicitlyStale) {
+        android.util.Log.d(
+            "QuotaStale",
+            "provider=$provider account=${accountLabel ?: accountId} " +
+                "isExplicitlyStale=true confidence=$confidence statusMsg=$statusMessage"
+        )
+        return true
+    }
+    val fetchedAtStr = fetchedAt?.takeIf { it.isNotBlank() }
+    val updatedAtStr = updatedAt?.takeIf { it.isNotBlank() }
+    val fetched = listOfNotNull(fetchedAtStr, updatedAtStr)
+        .firstNotNullOfOrNull { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+    if (fetched == null) {
+        android.util.Log.d(
+            "QuotaStale",
+            "provider=$provider account=${accountLabel ?: accountId} " +
+                "fetchedAt=$fetchedAtStr updatedAt=$updatedAtStr -> no parseable timestamp -> stale"
+        )
+        return true
+    }
+    val age = java.time.Duration.between(fetched, now)
+    val stale = age > java.time.Duration.ofHours(12)
+    if (stale) {
+        android.util.Log.d(
+            "QuotaStale",
+            "provider=$provider account=${accountLabel ?: accountId} " +
+                "timestamp=${fetched} age=${age.toHours()}h -> stale (>12h)"
+        )
+    }
+    return stale
 }
 
 /**

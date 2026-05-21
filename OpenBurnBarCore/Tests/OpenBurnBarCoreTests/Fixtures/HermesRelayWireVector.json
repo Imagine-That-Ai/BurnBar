@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "IJap9mWXFBZOcABrARoXtS6P\/++xaqXH4c3RZ317gzq0qhJJPi9pMXYbwjrVBYg=",
+  "chunkCiphertext" : "gSX2sa+3+5cdYYNKkoU29lzEyXoXLsYuUuDxH2tt6h5H01yGetqCB8jTaMksgeA=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "E0UYKk6J4FWCGVlyS5eK0ezR9HssnqBEm9WKWi0siVIy0zf+p1ct1k5CUpy9T2VAt3ujVnz4ZBJSLW1sH\/CCJibbS4uqpGcdtJlCFp\/TZaoq5bcbYDZMTSEc\/vUVEf1wK6w0TTh3UUxuIuC9pK8qCvJUgpFMubnNcIcyUReO4trrScYrzwUp9f69COuAnuhqGwhL1l3j",
+  "payloadCiphertext" : "1FGLvsoLFn5ZZ6ez\/JtYmZGCzAZwgKNQrwbIaGsDwmGvfjhzB2dl3VjJ1aoE5xHx2QoFLvZXKz4PwmyQ2QMnYf63nomelgA+Opue+zNLHiuVf3H4qs4csMfTtHxYO1AvCCF1pTTG1acQ2Z5Q9sjdft7qmVMj790vbLeMTokm0zpmLJsN\/P19+28GALp+CPOu8pTuXqhX",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BOOY0QPZ9NIMSYerGhwaHoWC\/JazlbWMTTFj2dzXjk\/oT1DvzmhPQHMC1dP6KNnWzoyIevBMBFlA2yETSMK5DxhsgnhEtelJRVii5zXXGR7JzMLImwF0+a5YdZQYsRIEQBiKSqSpI3\/Ar3Ui1XVEmOK8fbas1Pq0R5Sz2+w="
+  "wrappedKey" : "BFyfYJEzDpntG8a9bg24ZnGJQeA9ncS9PK6ph4HooadJkU2w8HPtUUUKApy4idngRUGdwClopE6a4SQXSOslhXKXFaU+hRPUZGmCXpdpX5SjxMWiG0s4O1GX8u6xJvTGdq3fQya8Hy8zJ6oP9JTRYTt\/tDkQPNk5kcz8RXY="
 }

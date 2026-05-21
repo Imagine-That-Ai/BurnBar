@@ -17,8 +17,8 @@ import OpenBurnBarCore
 // Honors Reduce Motion (no infinite anims) and Reduce Transparency (drops blur).
 
 struct AuroraBackdrop: View {
-
     var density: AuroraDensity = .full
+    var colorDriver: SwarmColorDriver?
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -28,6 +28,8 @@ struct AuroraBackdrop: View {
     @State private var phase: CGFloat = 0
     @State private var ribbonPhase: CGFloat = 0
 
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+
     enum AuroraDensity {
         case full       // Pulse / Burn / Hermes / You hero
         case subtle     // Sheets, secondary surfaces
@@ -36,25 +38,29 @@ struct AuroraBackdrop: View {
 
     var body: some View {
         ZStack {
-            baseGradient
-                .ignoresSafeArea()
-
-            if !reduceTransparency {
-                meshLayer
+            if useWebsiteBackground {
+                WebsiteBackgroundView(accent: MobileTheme.ember, colorDriver: colorDriver)
+            } else {
+                baseGradient
                     .ignoresSafeArea()
-                    .blendMode(.plusLighter)
 
-                ribbonLayer
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 220)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .ignoresSafeArea()
-                    .blendMode(.plusLighter)
-
-                if density == .full {
-                    particleLayer
+                if !reduceTransparency {
+                    meshLayer
                         .ignoresSafeArea()
-                        .allowsHitTesting(false)
+                        .blendMode(.plusLighter)
+
+                    ribbonLayer
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 220)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .ignoresSafeArea()
+                        .blendMode(.plusLighter)
+
+                    if density == .full {
+                        particleLayer
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                    }
                 }
             }
 

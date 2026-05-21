@@ -38,6 +38,10 @@ struct ConnectedDevicesRow: View {
             }
             .contentShape(Rectangle())
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Connected devices")
+        .accessibilityValue(devicesSubtitle)
+        .accessibilityIdentifier("you.connectedDevices.row")
     }
 
     private var devicesSubtitle: String {

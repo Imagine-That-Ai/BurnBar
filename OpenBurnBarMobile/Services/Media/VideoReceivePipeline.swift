@@ -1,7 +1,7 @@
 import Foundation
-import AVFoundation
-import CoreMedia
-import VideoToolbox
+@preconcurrency import AVFoundation
+@preconcurrency import CoreMedia
+@preconcurrency import VideoToolbox
 import OpenBurnBarMedia
 
 /// iOS-side decode pipeline for inbound video frames. Phase 3 (Mac
@@ -32,22 +32,49 @@ final class VideoReceivePipeline {
         }
     }
 
-    typealias DecodedHandler = @Sendable (CMSampleBuffer) async -> Void
+    typealias DecodedHandler = @MainActor (CMSampleBuffer) async -> Void
+    typealias LongTermReferenceTokenHandler = @MainActor (MercuryLTRToken) async -> Void
 
     private let codec: Codec
     private let onDecoded: DecodedHandler
+    private let onLongTermReferenceTokenDecoded: LongTermReferenceTokenHandler?
     private var session: VTDecompressionSession?
     private var formatDescription: CMFormatDescription?
     private var activeCodec: Codec
     private var currentGopID: UInt32 = .max
 
-    init(codec: Codec = .hevc, onDecoded: @escaping DecodedHandler) {
+    init(
+        codec: Codec = .hevc,
+        onDecoded: @escaping DecodedHandler,
+        onLongTermReferenceTokenDecoded: LongTermReferenceTokenHandler? = nil
+    ) {
         self.codec = codec
         self.activeCodec = codec
         self.onDecoded = onDecoded
+        self.onLongTermReferenceTokenDecoded = onLongTermReferenceTokenDecoded
     }
 
     func ingest(frame: MediaFrame) async throws {
+        try await ingest(frame: frame, longTermReferenceToken: nil)
+    }
+
+    func ingest(frameV2: MediaFrameV2) async throws {
+        let metadata = try MediaFrameV2Metadata.decode(frameV2.metadata)
+        let frame = MediaFrame(
+            kind: frameV2.kind == .audioOpus ? .audioOpus : .videoNAL,
+            flags: MediaFrame.Flags(rawValue: UInt8(truncatingIfNeeded: frameV2.flags)),
+            gopID: frameV2.gopID,
+            frameIndex: frameV2.frameIndex,
+            presentationTimestampMillis: frameV2.presentationTimestampMillis,
+            payload: frameV2.payload
+        )
+        try await ingest(frame: frame, longTermReferenceToken: metadata.longTermReferenceToken)
+    }
+
+    private func ingest(
+        frame: MediaFrame,
+        longTermReferenceToken: MercuryLTRToken?
+    ) async throws {
         let decoderPayload = try VideoDecoderConfigurationPayload.decodeIfPresent(frame.payload)
         let samplePayload = decoderPayload?.samplePayload ?? frame.payload
         if frame.flags.contains(.keyframe) || frame.gopID != currentGopID {
@@ -131,6 +158,9 @@ final class VideoReceivePipeline {
         )
         if decodeStatus != noErr {
             throw Failure.decodeSubmit(decodeStatus)
+        }
+        if let longTermReferenceToken {
+            await onLongTermReferenceTokenDecoded?(longTermReferenceToken)
         }
     }
 

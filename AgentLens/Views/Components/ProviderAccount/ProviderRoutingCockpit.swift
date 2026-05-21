@@ -72,6 +72,7 @@ struct ProviderRoutingCockpit: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             headerRow
+            providerChangePopup
             selectedRouteRow
             lanesRow
             switchReasonRow
@@ -87,6 +88,7 @@ struct ProviderRoutingCockpit: View {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
         )
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: latestProviderChangeEvent?.id)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityAddTraits(.isHeader)
@@ -161,6 +163,164 @@ struct ProviderRoutingCockpit: View {
                 help: "No account is eligible to handle traffic right now. Review the blocked accounts below."
             )
         }
+    }
+
+    // MARK: - Provider Change Popup
+
+    @ViewBuilder
+    private var providerChangePopup: some View {
+        if let event = latestProviderChangeEvent {
+            let source = event.providerChangeSourceLabel ?? "Previous provider"
+            let destination = event.providerChangeDestinationLabel ?? "New provider"
+            let model = event.providerChangeModelLabel ?? state.selectedModelID ?? "requested model"
+            let reason = sanitizedReason(event.failoverReason ?? event.reason)
+            let sourceTint = providerChangeTint(for: event.originalProviderID, fallback: DesignSystem.Colors.blaze)
+            let destinationTint = providerChangeTint(
+                for: event.failoverDestinationProviderID,
+                fallback: DesignSystem.Colors.primary(for: provider)
+            )
+
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+                providerLogoHandoff(event)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(event.exactModelInvariantPassed ? "Provider changed" : "Provider change blocked")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        routingPill(
+                            event.exactModelInvariantPassed ? "Same model" : "Check model",
+                            tint: event.exactModelInvariantPassed ? DesignSystem.Colors.success : DesignSystem.Colors.warning,
+                            icon: event.exactModelInvariantPassed ? "equal.circle.fill" : "exclamationmark.triangle.fill",
+                            help: event.exactModelInvariantPassed
+                                ? "BurnBar changed provider while preserving the exact canonical model."
+                                : "BurnBar recorded a provider change without proof of the exact canonical model."
+                        )
+                    }
+
+                    HStack(spacing: 6) {
+                        Text(source)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(destinationTint)
+                        Text(destination)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text(
+                        event.exactModelInvariantPassed
+                            ? "\(model) stayed exact\(reason.map { " because \($0)" } ?? ".")"
+                            : "Exact model proof was missing\(reason.map { " because \($0)" } ?? ".")"
+                    )
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                sourceTint.opacity(0.14),
+                                DesignSystem.Colors.surfaceElevated.opacity(0.74),
+                                destinationTint.opacity(0.13)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [sourceTint.opacity(0.42), destinationTint.opacity(0.42)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        lineWidth: 0.8
+                    )
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                event.exactModelInvariantPassed
+                    ? "Provider changed from \(source) to \(destination). \(model) stayed exact."
+                    : "Provider change from \(source) to \(destination) did not pass exact model proof."
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func providerLogoHandoff(_ event: ProviderRoutingDecisionEvent) -> some View {
+        let sourceTint = providerChangeTint(for: event.originalProviderID, fallback: DesignSystem.Colors.blaze)
+        let destinationTint = providerChangeTint(
+            for: event.failoverDestinationProviderID,
+            fallback: DesignSystem.Colors.primary(for: provider)
+        )
+        HStack(spacing: 0) {
+            providerLogoTile(providerID: event.originalProviderID, fallbackSymbol: "cpu", tint: sourceTint)
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [sourceTint, destinationTint],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 18, height: 18)
+            .padding(.horizontal, -3)
+            .zIndex(1)
+            providerLogoTile(providerID: event.failoverDestinationProviderID, fallbackSymbol: "terminal", tint: destinationTint)
+        }
+        .shadow(color: destinationTint.opacity(0.25), radius: 8, y: 3)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func providerLogoTile(providerID: ProviderID?, fallbackSymbol: String, tint: Color) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.88))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(tint.opacity(0.32), lineWidth: 0.7)
+                )
+            if let providerID,
+               let provider = AgentProvider.fromProviderID(providerID) {
+                ProviderLogoView(provider: provider, size: 24, useFallbackColor: true)
+            } else {
+                Image(systemName: fallbackSymbol)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+        }
+        .frame(width: 34, height: 34)
+    }
+
+    private func providerChangeTint(for providerID: ProviderID?, fallback: Color) -> Color {
+        guard let providerID,
+              let provider = AgentProvider.fromProviderID(providerID) else {
+            return fallback
+        }
+        return DesignSystem.Colors.primary(for: provider)
     }
 
     // MARK: - Lanes
@@ -465,6 +625,15 @@ struct ProviderRoutingCockpit: View {
 
     private var displayedEvents: [ProviderRoutingDecisionEvent] {
         Array(state.recentEvents.suffix(8).reversed())
+    }
+
+    private var latestProviderChangeEvent: ProviderRoutingDecisionEvent? {
+        state.recentEvents.last(where: {
+            $0.isProviderChangeFailover && (
+                $0.originalProviderID == provider.providerID
+                || $0.failoverDestinationProviderID == provider.providerID
+            )
+        })
     }
 
     private func routingEventRow(_ event: ProviderRoutingDecisionEvent) -> some View {

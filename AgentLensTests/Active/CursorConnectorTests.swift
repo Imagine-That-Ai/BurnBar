@@ -119,6 +119,20 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertEqual(normalized.totalTokens, 260)
     }
 
+    func test_normalizeUsageEvent_subtractsOpenAIStyleCachedPromptTokens() {
+        let normalized = CursorConnectorManager.normalizeUsageEvent([
+            "prompt_tokens": 2_006,
+            "completion_tokens": 300,
+            "prompt_tokens_details": ["cached_tokens": 1_920],
+            "total_tokens": 2_306
+        ])
+
+        XCTAssertEqual(normalized.promptTokens, 86)
+        XCTAssertEqual(normalized.completionTokens, 300)
+        XCTAssertEqual(normalized.cacheReadTokens, 1_920)
+        XCTAssertEqual(normalized.totalTokens, 2_306)
+    }
+
     func test_normalizeUsageEvent_backfillsPromptAndCompletionAfterCacheOverhead() {
         let normalized = CursorConnectorManager.normalizeUsageEvent([
             "cacheCreationTokens": 50,

@@ -293,7 +293,7 @@ enum OpenAICompatibleUsageParser {
             return 0
         }
 
-        let inputTokens = firstInt(paths: [
+        var inputTokens = firstInt(paths: [
             ["input_tokens"],
             ["prompt_tokens"],
             ["inputTokens"],
@@ -310,15 +310,27 @@ enum OpenAICompatibleUsageParser {
             ["cache_creation_tokens"],
             ["cacheCreationTokens"]
         ])
-        let cacheReadTokens = firstInt(paths: [
+        let exclusiveCacheReadTokens = firstInt(paths: [
             ["cache_read_input_tokens"],
             ["cache_read_tokens"],
-            ["cacheReadTokens"],
+            ["cacheReadTokens"]
+        ])
+        let inclusiveCacheReadTokens = firstInt(paths: [
+            ["input_cached_tokens"],
+            ["inputCachedTokens"],
             ["cached_tokens"],
             ["cachedTokens"],
             ["prompt_tokens_details", "cached_tokens"],
-            ["promptTokensDetails", "cachedTokens"]
+            ["promptTokensDetails", "cachedTokens"],
+            ["input_tokens_details", "cached_tokens"],
+            ["inputTokensDetails", "cachedTokens"],
+            ["cached_input_tokens"],
+            ["cachedInputTokens"]
         ])
+        let cacheReadTokens = exclusiveCacheReadTokens > 0 ? exclusiveCacheReadTokens : inclusiveCacheReadTokens
+        if inclusiveCacheReadTokens > 0 && exclusiveCacheReadTokens == 0 {
+            inputTokens = max(inputTokens - inclusiveCacheReadTokens, 0)
+        }
         let reasoningTokens = firstInt(paths: [
             ["thinking_tokens"],
             ["reasoning_tokens"],

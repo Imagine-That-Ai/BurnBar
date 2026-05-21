@@ -70,6 +70,27 @@ final class AgentIdentityRegistryMacURITests: XCTestCase {
 
 @MainActor
 final class MediaControlStreamPresenceTests: XCTestCase {
+    func testHeartbeatAdvertisesLiveV2ReceiverSupport() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        let sentFrames = await stream.sentFrames
+        let heartbeat = try XCTUnwrap(sentFrames.first { $0.type == .mediaPresenceHeartbeat })
+        let versions = try XCTUnwrap(heartbeat.media?.presence?.streamingCapabilities?.mediaFrameVersions)
+        XCTAssertTrue(versions.supportsV1)
+        XCTAssertTrue(versions.supportsV2)
+        await coordinator.stop()
+    }
+
     func testReadLoopForwardsMacPresenceHeartbeatToInstalledHandler() async throws {
         let stream = MediaControlFakeStream()
         let receiver = makeReceiver()
@@ -113,6 +134,82 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testReadLoopRoutesV2ScreenFramesToV2Handler() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        let expected = MediaFrameV2(
+            kind: .videoNAL,
+            flags: 0x0001,
+            gopID: 41,
+            frameIndex: 7,
+            presentationTimestampMillis: 1_777,
+            metadata: try MediaFrameV2Metadata(
+                codec: .hevc,
+                longTermReferenceToken: MercuryLTRToken(value: 12)
+            ).encode(),
+            payload: Data([0x01, 0x02, 0x03])
+        )
+        let encoded = try MediaFrameV2Codec().encode(expected, negotiatedVersion: .v2)
+
+        let received = expectation(description: "v2 stream frame routed")
+        coordinator.mirrorFrameV2Handler = { frame in
+            XCTAssertEqual(frame, expected)
+            received.fulfill()
+        }
+        coordinator.mirrorFrameHandler = { _ in
+            XCTFail("v2 envelope must not be decoded by the v1 media packet path")
+        }
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+        await stream.pushInbound(screenVideoFrame(uid: "user-1", connectionID: "conn-1", encoded: encoded))
+
+        await fulfillment(of: [received], timeout: 1.0)
+        await coordinator.stop()
+    }
+
+    func testReadLoopKeepsRoutingLegacyScreenFramesToV1Handler() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        let expected = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 42,
+            frameIndex: 8,
+            presentationTimestampMillis: 1_778,
+            payload: Data([0x04, 0x05, 0x06])
+        )
+        let encoded = try MediaPacketCodec().encode(expected)
+
+        let received = expectation(description: "v1 stream frame routed")
+        coordinator.mirrorFrameV2Handler = { _ in
+            XCTFail("v1 envelope must not be routed to the MediaFrame v2 path")
+        }
+        coordinator.mirrorFrameHandler = { frame in
+            XCTAssertEqual(frame, expected)
+            received.fulfill()
+        }
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+        await stream.pushInbound(screenVideoFrame(uid: "user-1", connectionID: "conn-1", encoded: encoded))
+
+        await fulfillment(of: [received], timeout: 1.0)
+        await coordinator.stop()
+    }
+
     private func waitUntilLive(_ coordinator: MediaControlStreamCoordinator) async throws {
         let deadline = Date().addingTimeInterval(1.0)
         while coordinator.phase != .live {
@@ -122,6 +219,18 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
+    }
+
+    private func screenVideoFrame(uid: String, connectionID: String, encoded: Data) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .mediaStreamFrame,
+            uid: uid,
+            connectionId: connectionID,
+            media: HermesRealtimeRelayMediaPayload(
+                streamClass: MediaStreamClass.screenVideo.rawValue,
+                encodedFrameBase64: encoded.base64EncodedString()
+            )
+        )
     }
 
     private func makeReceiver() -> iOSFileTransferService {
@@ -141,10 +250,15 @@ final class MediaControlStreamPresenceTests: XCTestCase {
 
 private actor MediaControlFakeStream: IrohRelayStream {
     private var inboundFrames: [HermesRealtimeRelayFrame] = []
+    private var outboundFrames: [HermesRealtimeRelayFrame] = []
     private var receiveWaiter: CheckedContinuation<HermesRealtimeRelayFrame?, Error>?
     private var isClosed = false
 
-    func send(_ frame: HermesRealtimeRelayFrame) async throws {}
+    var sentFrames: [HermesRealtimeRelayFrame] { outboundFrames }
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {
+        outboundFrames.append(frame)
+    }
 
     func receive() async throws -> HermesRealtimeRelayFrame? {
         if !inboundFrames.isEmpty { return inboundFrames.removeFirst() }

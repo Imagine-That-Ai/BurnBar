@@ -121,7 +121,7 @@ final class HostedQuotaSubscriptionStore {
     /// trust decision.
     private(set) var latestTransactionID: UInt64?
 
-    nonisolated(unsafe) private var transactionUpdatesTask: Task<Void, Never>?
+    @ObservationIgnored private nonisolated(unsafe) var transactionUpdatesTask: Task<Void, Never>?
 
     /// Serializes inbound `verifyOnServer` calls. StoreKit can race a
     /// `purchase()`-emitted `verifyOnServer` against a near-simultaneous
@@ -178,6 +178,10 @@ final class HostedQuotaSubscriptionStore {
     /// trusting any client-supplied identifier.
     func purchase() async {
         guard !isPurchasing else { return }
+        guard isSignedIn() else {
+            error = Self.signedOutPurchaseMessage
+            return
+        }
         isPurchasing = true
         error = nil
         defer { isPurchasing = false }
@@ -188,81 +192,21 @@ final class HostedQuotaSubscriptionStore {
             guard let product else {
                 throw HostedQuotaSubscriptionError.productUnavailable
             }
-            let signedInAtPurchaseStart = isSignedIn()
-            let purchaseOptions: Set<Product.PurchaseOption>
-            if signedInAtPurchaseStart {
-                let token = try await mintAppAccountToken()
-                purchaseOptions = [.appAccountToken(token)]
-            } else {
-                purchaseOptions = []
-            }
-            let result = try await purchaseProduct(product, purchaseOptions)
+            let token = try await mintAppAccountToken()
+            let result = try await purchaseProduct(product, [.appAccountToken(token)])
             switch result {
             case .success(let signedTransactionJWS, let finish):
-                if signedInAtPurchaseStart {
-                    do {
-                        try await verifyOnServer(jws: signedTransactionJWS)
-                        await finish()
-                    } catch {
-                        if await recoverEntitlementAfterVerificationFailure(jws: signedTransactionJWS) {
-                            await finish()
-                        } else {
-                            throw error
-                        }
-                    }
-                } else {
-                    await finish()
-                    self.error = Self.signedOutPurchaseMessage
-                }
-            case .pending, .userCancelled:
-                break
-            }
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    /// StoreKit SwiftUI views own the actual purchase button and disclosure
-    /// chrome. We still reconcile the completed transaction through the same
-    /// server verifier used by the custom purchase path.
-    func nativeStorePurchaseStarted(productID: String) {
-        guard Self.entitlementProductIDs.contains(productID) else { return }
-        isPurchasing = true
-        error = nil
-    }
-
-    func handleNativeStorePurchaseCompletion(
-        product: Product,
-        result: Result<Product.PurchaseResult, any Error>
-    ) async {
-        guard Self.entitlementProductIDs.contains(product.id) else {
-            isPurchasing = false
-            return
-        }
-        defer { isPurchasing = false }
-        do {
-            switch try result.get() {
-            case .success(let verification):
-                let transaction = try Self.checked(verification)
                 do {
-                    try await verifyOnServer(
-                        jws: verification.jwsRepresentation,
-                        productID: transaction.productID
-                    )
-                    await transaction.finish()
+                    try await verifyOnServer(jws: signedTransactionJWS)
+                    await finish()
                 } catch {
-                    if await recoverEntitlementAfterVerificationFailure(
-                        jws: verification.jwsRepresentation,
-                        productID: transaction.productID
-                    ) {
-                        await transaction.finish()
+                    if await recoverEntitlementAfterVerificationFailure(jws: signedTransactionJWS) {
+                        await finish()
                     } else {
                         throw error
                     }
                 }
             case .pending, .userCancelled:
-                break
-            @unknown default:
                 break
             }
         } catch {
@@ -562,7 +506,7 @@ final class HostedQuotaSubscriptionStore {
     }
 
     private static let signedOutPurchaseMessage =
-        "Purchase completed. Sign in to OpenBurnBar, then tap Restore Purchases to activate OpenBurnBar Cloud on this account."
+        "Sign in to OpenBurnBar before subscribing so Apple can link OpenBurnBar Cloud to your account."
 
     private static let signedOutRestoreMessage =
         "Sign in to OpenBurnBar before restoring purchases so Apple can link OpenBurnBar Cloud to your account."

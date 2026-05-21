@@ -119,7 +119,11 @@ struct QuotaWorkspaceView: View {
         .scrollContentBackground(.hidden)
         .background {
             ZStack {
-                DesignSystem.Colors.background
+                if settingsManager.useWebsiteBackground {
+                    Color.clear
+                } else {
+                    DesignSystem.Colors.background
+                }
                 LinearGradient(
                     colors: [
                         DesignSystem.Colors.ember.opacity(0.03),

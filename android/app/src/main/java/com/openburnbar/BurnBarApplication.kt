@@ -21,21 +21,24 @@ import com.openburnbar.data.media.AndroidFileTransferService
 import com.openburnbar.data.media.IrohBlobKeyStore
 import com.openburnbar.data.media.MediaFileTransferService
 import com.openburnbar.data.media.MediaControlStreamCoordinator
+import com.openburnbar.data.media.RetainedIrohControlTransportPool
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
 import com.openburnbar.irohrelay.IrohDialTarget
 import com.openburnbar.irohrelay.IrohPairingPublisher
 import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
+import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.IrohRelayTransport
-import com.openburnbar.irohrelay.LoopbackIrohRelayRendezvous
-import com.openburnbar.irohrelay.LoopbackIrohRelayTransport
+import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 internal object IrohPairingSelection {
@@ -79,6 +82,7 @@ class BurnBarApplication : Application() {
         private const val IROH_PAIRING_COLLECTION = "iroh_pairing"
         private const val DEVICE_ID_PREF_NAME = "burnbar.device"
         private const val DEVICE_ID_PREF_KEY = "stable_device_id"
+        private const val MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS = 15_000L
 
         @Volatile internal var mediaControlCoordinator: MediaControlStreamCoordinator? = null
             private set
@@ -89,13 +93,32 @@ class BurnBarApplication : Application() {
 
     private var pairingListener: ListenerRegistration? = null
     private var authListener: FirebaseAuth.AuthStateListener? = null
+    private val controlTransportPool by lazy {
+        RetainedIrohControlTransportPool { relayURL ->
+            val keyStore = HermesRelayKeyStore(applicationContext)
+            runCatching {
+                if (!OpenBurnBarIrohFfiBackend.isAvailable()) {
+                    throw IllegalStateException("Android iroh native backend is unavailable in this build.")
+                }
+                com.openburnbar.data.hermes.relay.HermesIrohRelayTransport.defaultTransport(
+                    keyStore = keyStore,
+                    relayURL = relayURL,
+                )
+            }.getOrElse { error ->
+                Log.e("BurnBar", "Mercury iroh transport unavailable: ${error.message}", error)
+                throw error
+            }
+        }
+    }
     @Volatile private var activeCoordinatorConnection: String? = null
     @Volatile private var activeCoordinatorPublishedAtMillis: Long? = null
     @Volatile private var activeCoordinatorTarget: IrohDialTarget? = null
+    private val mediaCoordinatorLock = Mutex()
 
     override fun onCreate() {
         super.onCreate()
         appContext = applicationContext
+        OpenBurnBarIrohNativeContext.install(applicationContext)
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
@@ -191,39 +214,84 @@ class BurnBarApplication : Application() {
         pairingListener = null
     }
 
-    private suspend fun ensureMediaControlCoordinator(uid: String, selection: IrohPairingSelection.Candidate) {
-        val connectionId = selection.connectionId
-        val existing = mediaControlCoordinator
-        if (
-            existing != null &&
-            activeCoordinatorConnection == connectionId &&
-            activeCoordinatorPublishedAtMillis == selection.publishedAtMillis
-        ) {
-            return
+    private suspend fun ensureMediaControlCoordinator(
+        uid: String,
+        selection: IrohPairingSelection.Candidate,
+        forceRestart: Boolean = false,
+    ) {
+        mediaCoordinatorLock.withLock {
+            val connectionId = selection.connectionId
+            val existing = mediaControlCoordinator
+            val existingPhase = existing?.phase?.value
+            if (
+                MediaControlCoordinatorReusePolicy.shouldReuse(
+                    activeConnectionID = activeCoordinatorConnection,
+                    phase = existingPhase,
+                    selection = selection,
+                    forceRestart = forceRestart,
+                )
+            ) {
+                if (activeCoordinatorPublishedAtMillis != selection.publishedAtMillis) {
+                    activeCoordinatorPublishedAtMillis = selection.publishedAtMillis
+                    runCatching {
+                        activeCoordinatorTarget = fetchVerifiedPairingTarget(
+                            uid = uid,
+                            connectionId = connectionId,
+                        )
+                    }.onFailure {
+                        Log.w("BurnBar", "Mercury pairing refresh target update failed: ${it.message}")
+                    }
+                }
+                Log.i("BurnBar", "Mercury coordinator reuse connectionID=$connectionId phase=${existingPhase?.label()}")
+                return
+            }
+
+            Log.i(
+                "BurnBar",
+                "Mercury coordinator rebuild connectionID=$connectionId forceRestart=$forceRestart previousPhase=${existingPhase?.label() ?: "none"}",
+            )
+            val target = fetchVerifiedPairingTarget(uid = uid, connectionId = connectionId)
+            existing?.stop()
+            controlTransportPool.shutdown()
+            val dialer = MediaControlStreamCoordinator.StreamDialer { dialedUid, dialedConnection ->
+                val dialTarget = activeCoordinatorTarget
+                    ?: fetchVerifiedPairingTarget(uid = dialedUid, connectionId = dialedConnection)
+                dialControlStream(dialTarget)
+            }
+            val coordinator = MediaControlStreamCoordinator(
+                dialer = dialer,
+                receiver = fileTransferService,
+            )
+            mediaControlCoordinator = coordinator
+            activeCoordinatorConnection = connectionId
+            activeCoordinatorPublishedAtMillis = selection.publishedAtMillis
+            activeCoordinatorTarget = target
+            fileTransferService?.let { receiver ->
+                runCatching {
+                    coordinator.attachReceiver(receiver)
+                    receiver.attachControlStream(coordinator)
+                }.onFailure { Log.w("BurnBar", "attachControlStream failed: ${it.message}") }
+            }
+            runCatching { coordinator.start(uid = uid, connectionID = connectionId) }
+                .onFailure { Log.w("BurnBar", "MediaControlStreamCoordinator.start failed: ${it.message}") }
         }
-        val target = fetchVerifiedPairingTarget(uid = uid, connectionId = connectionId)
-        existing?.stop()
-        val dialer = MediaControlStreamCoordinator.StreamDialer { dialedUid, dialedConnection ->
-            val dialTarget = activeCoordinatorTarget
-                ?: fetchVerifiedPairingTarget(uid = dialedUid, connectionId = dialedConnection)
-            dialControlStream(dialTarget)
-        }
-        val coordinator = MediaControlStreamCoordinator(
-            dialer = dialer,
-            receiver = fileTransferService,
+    }
+
+    suspend fun ensureMediaControlStream(connectionID: String, forceRestart: Boolean = false) {
+        val normalizedConnectionID = connectionID.trim().takeIf { it.isNotBlank() }
+            ?: throw IllegalArgumentException("Mercury requires a paired Mac connection id.")
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+            ?: throw IllegalStateException("Mercury requires a signed-in Firebase user.")
+        ensureMediaControlCoordinator(
+            uid = uid,
+            selection = IrohPairingSelection.Candidate(
+                connectionId = normalizedConnectionID,
+                publishedAtMillis = if (activeCoordinatorConnection == normalizedConnectionID)
+                    activeCoordinatorPublishedAtMillis ?: 0L
+                else 0L,
+            ),
+            forceRestart = forceRestart,
         )
-        mediaControlCoordinator = coordinator
-        activeCoordinatorConnection = connectionId
-        activeCoordinatorPublishedAtMillis = selection.publishedAtMillis
-        activeCoordinatorTarget = target
-        fileTransferService?.let { receiver ->
-            runCatching {
-                coordinator.attachReceiver(receiver)
-                receiver.attachControlStream(coordinator)
-            }.onFailure { Log.w("BurnBar", "attachControlStream failed: ${it.message}") }
-        }
-        runCatching { coordinator.start(uid = uid, connectionID = connectionId) }
-            .onFailure { Log.w("BurnBar", "MediaControlStreamCoordinator.start failed: ${it.message}") }
     }
 
     /**
@@ -253,7 +321,10 @@ class BurnBarApplication : Application() {
 
     private fun stopMediaControlCoordinator() {
         val coordinator = mediaControlCoordinator ?: return
-        applicationScope.launch { runCatching { coordinator.stop() } }
+        applicationScope.launch {
+            runCatching { coordinator.stop() }
+            runCatching { controlTransportPool.shutdown() }
+        }
         mediaControlCoordinator = null
         activeCoordinatorConnection = null
         activeCoordinatorPublishedAtMillis = null
@@ -277,17 +348,11 @@ class BurnBarApplication : Application() {
      * for tests and CI screenshots.
      */
     private suspend fun dialControlStream(target: IrohDialTarget): IrohRelayStream {
-        val keyStore = HermesRelayKeyStore(applicationContext)
-        val transport: IrohRelayTransport = runCatching {
-            com.openburnbar.data.hermes.relay.HermesIrohRelayTransport.defaultTransport(
-                keyStore = keyStore,
-                relayURL = target.relayURL,
-            )
-        }.getOrElse { LoopbackIrohRelayTransport(rendezvous = LoopbackIrohRelayRendezvous()) }
-        // Best-effort dial — the dialer surfaces TimedOut / EndpointNotReady
-        // to the coordinator's reconnect loop.
-        transport.start()
-        return transport.connect(target, timeoutMillis = 5_000L)
+        Log.i(
+            "BurnBar",
+            "Mercury control dial target node=${target.nodeId.take(12)} relay=${target.relayURL != null} directAddresses=${target.directAddresses.size}",
+        )
+        return controlTransportPool.dial(target, timeoutMillis = MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS)
     }
 
     private fun registerFcmToken() {
@@ -414,6 +479,38 @@ class BurnBarApplication : Application() {
         val existing = prefs.getString("com.google.firebase.appcheck.debug.DEBUG_SECRET", null)
         if (existing != token) {
             prefs.edit().putString("com.google.firebase.appcheck.debug.DEBUG_SECRET", token).apply()
+        }
+    }
+}
+
+private fun MediaControlStreamCoordinator.Phase.isActiveOrConnecting(): Boolean =
+    this is MediaControlStreamCoordinator.Phase.Dialing ||
+        this is MediaControlStreamCoordinator.Phase.Live ||
+        this is MediaControlStreamCoordinator.Phase.Reconnecting
+
+private fun MediaControlStreamCoordinator.Phase.label(): String = when (this) {
+    MediaControlStreamCoordinator.Phase.Idle -> "idle"
+    MediaControlStreamCoordinator.Phase.Dialing -> "dialing"
+    MediaControlStreamCoordinator.Phase.Live -> "live"
+    is MediaControlStreamCoordinator.Phase.Reconnecting -> "reconnecting"
+    MediaControlStreamCoordinator.Phase.Stopped -> "stopped"
+    is MediaControlStreamCoordinator.Phase.Failed -> "failed"
+}
+
+internal object MediaControlCoordinatorReusePolicy {
+    fun shouldReuse(
+        activeConnectionID: String?,
+        phase: MediaControlStreamCoordinator.Phase?,
+        selection: IrohPairingSelection.Candidate,
+        forceRestart: Boolean,
+    ): Boolean {
+        if (phase == null) return false
+        if (activeConnectionID != selection.connectionId) return false
+        return if (forceRestart) {
+            phase is MediaControlStreamCoordinator.Phase.Live ||
+                phase is MediaControlStreamCoordinator.Phase.Dialing
+        } else {
+            phase.isActiveOrConnecting()
         }
     }
 }

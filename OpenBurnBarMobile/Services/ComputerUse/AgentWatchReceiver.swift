@@ -78,12 +78,13 @@ public final class AgentWatchReceiver: ObservableObject {
         state.setTrustMode(mode)
     }
 
-    public func tap(normalizedX: Double, normalizedY: Double, displayId: String? = nil) async throws {
+    public func tap(normalizedX: Double, normalizedY: Double, displayId: String? = nil, mouseButton: Int = 0) async throws {
         try await sendInputIntent(
             kind: .tap,
             displayId: displayId,
             normalizedX: normalizedX,
-            normalizedY: normalizedY
+            normalizedY: normalizedY,
+            mouseButton: mouseButton
         )
     }
 
@@ -117,8 +118,8 @@ public final class AgentWatchReceiver: ObservableObject {
         try await sendInputIntent(kind: .pointerMove, normalizedX2: deltaX, normalizedY2: deltaY)
     }
 
-    public func pointerClick() async throws {
-        try await sendInputIntent(kind: .pointerClick)
+    public func pointerClick(mouseButton: Int = 0) async throws {
+        try await sendInputIntent(kind: .pointerClick, mouseButton: mouseButton)
     }
 
     public func panicHalt() async throws {
@@ -135,7 +136,8 @@ public final class AgentWatchReceiver: ObservableObject {
         normalizedY2: Double? = nil,
         text: String? = nil,
         key: String? = nil,
-        modifiers: [String]? = nil
+        modifiers: [String]? = nil,
+        mouseButton: Int? = nil
     ) async throws {
         guard let phoneControlSender else { throw PhoneControlSender.SendError.streamClosed }
         let emptyAuthority = HermesRealtimeRelayAuthorityEnvelope(
@@ -155,6 +157,7 @@ public final class AgentWatchReceiver: ObservableObject {
             text: text,
             key: key,
             modifiers: modifiers,
+            mouseButton: mouseButton,
             authority: emptyAuthority
         )
         _ = try await phoneControlSender.send(intent: intent)

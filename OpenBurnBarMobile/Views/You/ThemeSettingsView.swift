@@ -1,0 +1,96 @@
+import SwiftUI
+import OpenBurnBarCore
+
+struct ThemeSettingsView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
+    @AppStorage("usePremiumSOTAUX") private var usePremiumSOTAUX: Bool = false
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+
+    @State private var dashboard = DashboardStore()
+    @State private var showWallpaperGenerator = false
+
+    var body: some View {
+        ZStack {
+            AuroraBackdrop(density: .subtle)
+            
+            Form {
+                Section {
+                    Picker(selection: $preferredAppearance) {
+                        Text("System").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    } label: {
+                        SettingsLabel(icon: "paintpalette.fill", color: MobileTheme.amber, title: "Appearance Mode")
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+                } header: {
+                    Text("Theme Mode")
+                }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
+                
+                Section {
+                    Toggle(isOn: $usePremiumSOTAUX) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            SettingsLabel(icon: "sparkles", color: MobileTheme.blaze, title: "Premium SOTA UX")
+                            Text("Cinematic tactile spring physics and high-fidelity haptics")
+                                .font(MobileTheme.Typography.tiny)
+                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        }
+                    }
+                    .tint(MobileTheme.ember)
+                    .settingsAnchor(SettingsAnchor.usePremiumSOTAUX)
+                } header: {
+                    Text("Interaction")
+                }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
+                
+                Section {
+                    Toggle(isOn: $useWebsiteBackground) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            SettingsLabel(icon: "grid.rectangles.three.row", color: MobileTheme.whimsy, title: "Website Background")
+                            Text("Technical convergent perspective 3D grid and ambient mesh glow backdrops")
+                                .font(MobileTheme.Typography.tiny)
+                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        }
+                    }
+                    .tint(MobileTheme.ember)
+                    .settingsAnchor(SettingsAnchor.useWebsiteBackground)
+                } header: {
+                    Text("Backdrop style")
+                }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
+
+                Section {
+                    Button {
+                        showWallpaperGenerator = true
+                    } label: {
+                        HStack {
+                            SettingsLabel(icon: "photo.artframe", color: MobileTheme.ember, title: "Generate Wallpaper")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        }
+                    }
+                    .tint(colorScheme == .dark ? .white : .primary)
+
+                    Text("Create a swarm wallpaper colored by your AI provider usage. Save to Photos, then set as your wallpaper.")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                } header: {
+                    Text("Wallpaper")
+                }
+                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle("Theme Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showWallpaperGenerator) {
+            WallpaperGeneratorView(colorDriver: dashboard.swarmColorDriver)
+        }
+        .task { await dashboard.load() }
+    }
+}

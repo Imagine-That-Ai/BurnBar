@@ -144,18 +144,64 @@ public struct OpenAICompatibleInsightAdapter: InsightModelGateway {
         }
         let input = usage["prompt_tokens"] as? Int ?? usage["input_tokens"] as? Int ?? 0
         let output = usage["completion_tokens"] as? Int ?? usage["output_tokens"] as? Int ?? 0
-        let price = modelCatalog.first { $0.id == request.selectedModel.modelID }
-        let estimated = (Double(input) / 1_000_000.0) * (price?.inputCostPerMtoken ?? 0)
-            + (Double(output) / 1_000_000.0) * (price?.outputCostPerMtoken ?? 0)
+        let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
+        let inputDetails = usage["input_tokens_details"] as? [String: Any]
+        let cacheCreation = intValue(usage["cache_creation_input_tokens"])
+            ?? intValue(usage["cache_creation_tokens"])
+            ?? 0
+        let exclusiveCacheRead = intValue(usage["cache_read_input_tokens"])
+            ?? intValue(usage["cache_read_tokens"])
+            ?? 0
+        let inclusiveCacheRead = intValue(usage["input_cached_tokens"])
+            ?? intValue(usage["cached_input_tokens"])
+            ?? intValue(usage["cached_tokens"])
+            ?? intValue(promptDetails?["cached_tokens"])
+            ?? intValue(inputDetails?["cached_tokens"])
+            ?? 0
+        let cacheRead = exclusiveCacheRead > 0 ? exclusiveCacheRead : inclusiveCacheRead
+        let uncachedInput = inclusiveCacheRead > 0 && exclusiveCacheRead == 0 ? max(input - inclusiveCacheRead, 0) : input
+        let estimated = estimateCost(
+            input: uncachedInput,
+            output: output,
+            cacheCreation: cacheCreation,
+            cacheRead: cacheRead,
+            modelID: request.selectedModel.modelID
+        )
         return InsightTokenUsage(
             providerKey: providerKey,
             modelID: request.selectedModel.modelID,
-            inputTokens: input,
+            inputTokens: uncachedInput,
             outputTokens: output,
+            cacheCreationTokens: cacheCreation,
+            cacheReadTokens: cacheRead,
             estimatedCostUSD: estimated,
             startedAt: startedAt,
             completedAt: completedAt
         )
+    }
+
+    private func estimateCost(input: Int, output: Int, cacheCreation: Int = 0, cacheRead: Int = 0, modelID: String) -> Double {
+        if let pricing = BurnBarCatalogLoader.bundledCatalog.pricing(forModelName: modelID) {
+            return pricing.cost(
+                inputTokens: input,
+                outputTokens: output,
+                cacheCreationTokens: cacheCreation,
+                cacheReadTokens: cacheRead
+            )
+        }
+        let price = modelCatalog.first { $0.id == modelID }
+        let inputRate = price?.inputCostPerMtoken ?? 0
+        return (Double(input) / 1_000_000.0) * inputRate
+            + (Double(output) / 1_000_000.0) * (price?.outputCostPerMtoken ?? 0)
+            + (Double(cacheCreation) / 1_000_000.0) * inputRate
+            + (Double(cacheRead) / 1_000_000.0) * (inputRate * 0.1)
+    }
+
+    private func intValue(_ value: Any?) -> Int? {
+        if let int = value as? Int { return int }
+        if let number = value as? NSNumber { return number.intValue }
+        if let string = value as? String { return Int(string) }
+        return nil
     }
 
     private func endpointURL() -> URL {

@@ -1,0 +1,700 @@
+{
+  "documents": [
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/EAA67B1E-69D3-48EB-A17F-7BE241B48A5B",
+      "fields": {
+        "id": {
+          "stringValue": "EAA67B1E-69D3-48EB-A17F-7BE241B48A5B"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "error": {
+                "stringValue": "The operation couldn’t be completed. The server responded with an error: \n - URL: https://firebaseappcheck.googleapis.com/v1/projects/burnbar/apps/1:246956661961:ios:fe113f3ef2e1268d480118:exchangeDebugToken \n - HTTP status code: 403 \n - Response body: {\n "
+              },
+              "hop": {
+                "stringValue": "wss-to-firestore"
+              }
+            }
+          }
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T06:01:52.298606Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T06:01:52.299Z"
+        },
+        "transport": {
+          "stringValue": "firestore"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_fallback_to_wss"
+        }
+      },
+      "createTime": "2026-05-21T06:01:52.866460Z",
+      "updateTime": "2026-05-21T06:01:52.866460Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/E54B7763-1BDF-47AD-9D42-05FD88A10A27",
+      "fields": {
+        "id": {
+          "stringValue": "E54B7763-1BDF-47AD-9D42-05FD88A10A27"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "error": {
+                "stringValue": "The operation couldn’t be completed. The server responded with an error: \n - URL: https://firebaseappcheck.googleapis.com/v1/projects/burnbar/apps/1:246956661961:ios:fe113f3ef2e1268d480118:exchangeDebugToken \n - HTTP status code: 403 \n - Response body: {\n "
+              },
+              "hop": {
+                "stringValue": "wss-to-firestore"
+              }
+            }
+          }
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T06:01:52.299Z"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T06:01:52.298564Z"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "firestore"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_fallback_to_wss"
+        }
+      },
+      "createTime": "2026-05-21T06:01:52.735939Z",
+      "updateTime": "2026-05-21T06:01:52.735939Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/C1879181-AA00-44C1-9C50-F5319398EF12",
+      "fields": {
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "firestore"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_fallback_to_wss"
+        },
+        "id": {
+          "stringValue": "C1879181-AA00-44C1-9C50-F5319398EF12"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "error": {
+                "stringValue": "The operation couldn’t be completed. The server responded with an error: \n - URL: https://firebaseappcheck.googleapis.com/v1/projects/burnbar/apps/1:246956661961:ios:fe113f3ef2e1268d480118:exchangeDebugToken \n - HTTP status code: 403 \n - Response body: {\n "
+              },
+              "hop": {
+                "stringValue": "wss-to-firestore"
+              }
+            }
+          }
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T06:01:52.299Z"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T06:01:52.298584Z"
+        }
+      },
+      "createTime": "2026-05-21T06:01:52.793018Z",
+      "updateTime": "2026-05-21T06:01:52.793018Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/607DD14F-F368-4716-82C7-C9D52D274B94",
+      "fields": {
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_fallback_to_wss"
+        },
+        "transport": {
+          "stringValue": "firestore"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T06:01:52.298645Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T06:01:52.299Z"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "error": {
+                "stringValue": "The operation couldn’t be completed. The server responded with an error: \n - URL: https://firebaseappcheck.googleapis.com/v1/projects/burnbar/apps/1:246956661961:ios:fe113f3ef2e1268d480118:exchangeDebugToken \n - HTTP status code: 403 \n - Response body: {\n "
+              },
+              "hop": {
+                "stringValue": "wss-to-firestore"
+              }
+            }
+          }
+        },
+        "id": {
+          "stringValue": "607DD14F-F368-4716-82C7-C9D52D274B94"
+        }
+      },
+      "createTime": "2026-05-21T06:01:52.658492Z",
+      "updateTime": "2026-05-21T06:01:52.658492Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/0DF83872-7767-4B80-9DDC-ECE7DF512933",
+      "fields": {
+        "id": {
+          "stringValue": "0DF83872-7767-4B80-9DDC-ECE7DF512933"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "error": {
+                "stringValue": "The operation couldn’t be completed. The server responded with an error: \n - URL: https://firebaseappcheck.googleapis.com/v1/projects/burnbar/apps/1:246956661961:ios:fe113f3ef2e1268d480118:exchangeDebugToken \n - HTTP status code: 403 \n - Response body: {\n "
+              },
+              "hop": {
+                "stringValue": "wss-to-firestore"
+              }
+            }
+          }
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T06:01:52.298678Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T06:01:52.299Z"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "firestore"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_fallback_to_wss"
+        }
+      },
+      "createTime": "2026-05-21T06:01:52.682168Z",
+      "updateTime": "2026-05-21T06:01:52.682168Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/7A1617E1-F1AC-4AD1-9F11-FBE6105B11DA",
+      "fields": {
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:57:51.908753Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:57:51.909Z"
+        },
+        "id": {
+          "stringValue": "7A1617E1-F1AC-4AD1-9F11-FBE6105B11DA"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "rttMillis": {
+          "integerValue": "601663"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_closed"
+        }
+      },
+      "createTime": "2026-05-21T05:57:52.105070Z",
+      "updateTime": "2026-05-21T05:57:52.105070Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/D2D48C5D-0823-4D99-98CB-A7B42F6E120F",
+      "fields": {
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:57:51.549397Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:57:51.549Z"
+        },
+        "id": {
+          "stringValue": "D2D48C5D-0823-4D99-98CB-A7B42F6E120F"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_closed"
+        },
+        "rttMillis": {
+          "integerValue": "601319"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        }
+      },
+      "createTime": "2026-05-21T05:57:51.756550Z",
+      "updateTime": "2026-05-21T05:57:51.756550Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/D218FC4C-84A6-4772-8BBF-CC47848BA10E",
+      "fields": {
+        "id": {
+          "stringValue": "D218FC4C-84A6-4772-8BBF-CC47848BA10E"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "frameType": {
+                "stringValue": "media.classify"
+              },
+              "stage": {
+                "stringValue": "host_frame_received"
+              }
+            }
+          }
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:49.159Z"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:49.158542Z"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        }
+      },
+      "createTime": "2026-05-21T05:56:49.343019Z",
+      "updateTime": "2026-05-21T05:56:49.343019Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/8546CBB8-A2F9-48F9-89DD-C38032B0D301",
+      "fields": {
+        "id": {
+          "stringValue": "8546CBB8-A2F9-48F9-89DD-C38032B0D301"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:48.914Z"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:48.914433Z"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        }
+      },
+      "createTime": "2026-05-21T05:56:49.193506Z",
+      "updateTime": "2026-05-21T05:56:49.193506Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/AFAC9A93-6503-499C-A095-4669D437C867",
+      "fields": {
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        },
+        "id": {
+          "stringValue": "AFAC9A93-6503-499C-A095-4669D437C867"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "frameType": {
+                "stringValue": "media.classify"
+              },
+              "stage": {
+                "stringValue": "host_frame_received"
+              }
+            }
+          }
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:47.737442Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:47.737Z"
+        }
+      },
+      "createTime": "2026-05-21T05:56:47.935342Z",
+      "updateTime": "2026-05-21T05:56:47.935342Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/0E1EC316-6BD5-47DD-9433-4DB6F8D0630B",
+      "fields": {
+        "id": {
+          "stringValue": "0E1EC316-6BD5-47DD-9433-4DB6F8D0630B"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:47.596266Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:47.596Z"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        }
+      },
+      "createTime": "2026-05-21T05:56:47.795110Z",
+      "updateTime": "2026-05-21T05:56:47.795110Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/69261932-F472-4120-A7F0-0EFC0FAE3365",
+      "fields": {
+        "id": {
+          "stringValue": "69261932-F472-4120-A7F0-0EFC0FAE3365"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "frameType": {
+                "stringValue": "media.classify"
+              },
+              "stage": {
+                "stringValue": "host_frame_received"
+              }
+            }
+          }
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:46.333652Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:46.334Z"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        }
+      },
+      "createTime": "2026-05-21T05:56:46.521004Z",
+      "updateTime": "2026-05-21T05:56:46.521004Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/538F134E-5FBC-4FD1-81F3-28960797C9E3",
+      "fields": {
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        },
+        "id": {
+          "stringValue": "538F134E-5FBC-4FD1-81F3-28960797C9E3"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:46.209Z"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:46.209075Z"
+        }
+      },
+      "createTime": "2026-05-21T05:56:46.390141Z",
+      "updateTime": "2026-05-21T05:56:46.390141Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/591B1EF7-EFFB-4125-BCD1-AF70F35F2A5D",
+      "fields": {
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "frameType": {
+                "stringValue": "media.classify"
+              },
+              "stage": {
+                "stringValue": "host_frame_received"
+              }
+            }
+          }
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:45.027Z"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:45.027154Z"
+        },
+        "id": {
+          "stringValue": "591B1EF7-EFFB-4125-BCD1-AF70F35F2A5D"
+        }
+      },
+      "createTime": "2026-05-21T05:56:45.219741Z",
+      "updateTime": "2026-05-21T05:56:45.219741Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/CE97DEF3-C374-4E0A-901B-12C60497E9B9",
+      "fields": {
+        "id": {
+          "stringValue": "CE97DEF3-C374-4E0A-901B-12C60497E9B9"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:44.961120Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:44.961Z"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "frameType": {
+                "stringValue": "media.classify"
+              },
+              "stage": {
+                "stringValue": "host_frame_received"
+              }
+            }
+          }
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        }
+      },
+      "createTime": "2026-05-21T05:56:45.170924Z",
+      "updateTime": "2026-05-21T05:56:45.170924Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/A7380C65-9623-4A65-B660-A75D39DEE383",
+      "fields": {
+        "id": {
+          "stringValue": "A7380C65-9623-4A65-B660-A75D39DEE383"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:44.798288Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:44.798Z"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        }
+      },
+      "createTime": "2026-05-21T05:56:45.082963Z",
+      "updateTime": "2026-05-21T05:56:45.082963Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/35B8D050-E503-4A03-9923-2F0B253A8768",
+      "fields": {
+        "eventType": {
+          "stringValue": "iroh_stream_opened"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:44.783071Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:44.783Z"
+        },
+        "id": {
+          "stringValue": "35B8D050-E503-4A03-9923-2F0B253A8768"
+        }
+      },
+      "createTime": "2026-05-21T05:56:45.018641Z",
+      "updateTime": "2026-05-21T05:56:45.018641Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/DCEF339A-EA6F-45A7-90F5-6CE404D25D01",
+      "fields": {
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:40.689898Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:40.690Z"
+        },
+        "id": {
+          "stringValue": "DCEF339A-EA6F-45A7-90F5-6CE404D25D01"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "rttMillis": {
+          "integerValue": "7915"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_closed"
+        }
+      },
+      "createTime": "2026-05-21T05:56:41.038466Z",
+      "updateTime": "2026-05-21T05:56:41.038466Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/D3A1E930-E73F-480A-A1FA-2BBF2036B977",
+      "fields": {
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_closed"
+        },
+        "rttMillis": {
+          "integerValue": "3479"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "id": {
+          "stringValue": "D3A1E930-E73F-480A-A1FA-2BBF2036B977"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:40.690Z"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:40.689908Z"
+        }
+      },
+      "createTime": "2026-05-21T05:56:41.091563Z",
+      "updateTime": "2026-05-21T05:56:41.091563Z"
+    },
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/BFA07C5D-5DCC-4628-AC84-F666B07D1454",
+      "fields": {
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "transport": {
+          "stringValue": "iroh-direct"
+        },
+        "eventType": {
+          "stringValue": "iroh_stream_closed"
+        },
+        "rttMillis": {
+          "integerValue": "2145"
+        },
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "id": {
+          "stringValue": "BFA07C5D-5DCC-4628-AC84-F666B07D1454"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-20T05:56:40.689869Z"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-21T05:56:40.690Z"
+        }
+      },
+      "createTime": "2026-05-21T05:56:41.064743Z",
+      "updateTime": "2026-05-21T05:56:41.064743Z"
+    }
+  ],
+  "nextPageToken": "AFTOeJxUJaNrhIqmKOvqnSlGnMEPN87OH_inau7fPLRD4p0FNiBzHv4je66cTsurF00PIgvSompWkEClCCrNjmFx6xRryI0j5qTt77rYuyvVTXppXo2k975tHfk5trc8vGBq5QrZCNUwk79HjpJlmVDfQr4h3PwiLfk4KkDuhUJASOC4WkKGB_45jBvBbOGy4xSbtsM0nQSjzeHibtc4_nL59P1XzR2d0Ht2OKLBy6hsX1qRvcVIE1d-Q8eX3A6OkaCI23lEmF0jkw"
+}

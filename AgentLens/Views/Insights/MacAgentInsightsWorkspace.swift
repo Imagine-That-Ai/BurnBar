@@ -60,7 +60,13 @@ struct MacAgentInsightsWorkspace: View {
         HStack(spacing: 0) {
             sidebar
                 .frame(width: 320)
-                .background(UnifiedDesignSystem.Colors.surface)
+                .background {
+                    if settingsManager.useWebsiteBackground {
+                        Color.clear.background(.ultraThinMaterial)
+                    } else {
+                        UnifiedDesignSystem.Colors.surface
+                    }
+                }
             Divider().opacity(0.4)
             if isComparing {
                 compareView
@@ -69,7 +75,13 @@ struct MacAgentInsightsWorkspace: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(UnifiedDesignSystem.Colors.background)
+        .background {
+            if settingsManager.useWebsiteBackground {
+                WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+            } else {
+                UnifiedDesignSystem.Colors.background
+            }
+        }
         .navigationTitle(selectedScope.provider?.displayName ?? "All agents")
         .toolbar {
             ToolbarItemGroup {

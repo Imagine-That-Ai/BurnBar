@@ -19,6 +19,7 @@ private enum CloudSubscriptionDisclosure {
         "OpenBurnBar Cloud Monthly - 1 month - hosted quota refresh, session sync, conversation backup, and remote relay.",
         "Hosted Quota Sync Monthly - 1 month - legacy hosted quota sync entitlement for existing App Store review catalog continuity."
     ]
+    static let reviewVisiblePlanSummary = "All App Store Connect subscriptions for this app are available here: \(reviewVisiblePlans.joined(separator: " "))"
 }
 
 // MARK: - Cloud Store View — Pro Poster
@@ -44,10 +45,12 @@ struct CloudStoreView: View {
     var onClose: (() -> Void)? = nil
 
     @Environment(\.cloudSubscriptionStore) private var sharedStore
+    @Environment(\.mobileAuthStore) private var authStore
     @Environment(\.dismiss) private var dismiss
     @State private var localStore = HostedQuotaSubscriptionStore()
     @State private var didLoadLocal = false
     @State private var presentedCapability: CloudCapability?
+    @State private var showSignIn = false
     @StateObject private var remoteMCPClients = RemoteMCPClientStore()
 
     private var store: HostedQuotaSubscriptionStore {
@@ -75,6 +78,15 @@ struct CloudStoreView: View {
                             .padding(.horizontal, MobileTheme.Spacing.lg)
                             .settingsAnchor(SettingsAnchor.cloudPlan)
                             .staggeredEntrance(delay: 0.05)
+
+                        CloudStoreActionBar(
+                            store: store,
+                            isSignedIn: authStore?.state.isSignedIn ?? true,
+                            onSignInRequired: { showSignIn = true }
+                        )
+                        .padding(.horizontal, MobileTheme.Spacing.lg)
+                        .settingsAnchor(SettingsAnchor.cloudRestore)
+                        .staggeredEntrance(delay: 0.08)
                     }
 
                     CloudStoreCapabilityLineup(isActive: store.isActive) { cap in
@@ -111,15 +123,9 @@ struct CloudStoreView: View {
                     }
                 }
                 .padding(.top, MobileTheme.Spacing.md)
-                .padding(.bottom, store.isActive ? MobileTheme.Spacing.xl : 160)
+                .padding(.bottom, store.isActive ? MobileTheme.Spacing.xl : 140)
             }
             .settingsAnchor(SettingsAnchor.cloudRow)
-
-            if !store.isActive {
-                CloudStoreActionBar(store: store)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .settingsAnchor(SettingsAnchor.cloudRestore)
-            }
         }
         .navigationTitle("OpenBurnBar Cloud")
         .navigationBarTitleDisplayMode(.inline)
@@ -147,6 +153,30 @@ struct CloudStoreView: View {
                 await localStore.load()
             }
         }
+        .sheet(isPresented: $showSignIn) {
+            if let authStore {
+                SignInScene(authStore: authStore)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+        }
+        .onAppear {
+            NotificationCenter.default.post(
+                name: .cloudStoreChromeVisibilityChanged,
+                object: true
+            )
+        }
+        .onDisappear {
+            NotificationCenter.default.post(
+                name: .cloudStoreChromeVisibilityChanged,
+                object: false
+            )
+        }
+        .onChange(of: authStore?.state.isSignedIn ?? false) { _, isSignedIn in
+            if isSignedIn {
+                showSignIn = false
+            }
+        }
         .sheet(item: $presentedCapability) { cap in
             NavigationStack {
                 CapabilityDetailSheet(
@@ -164,6 +194,10 @@ struct CloudStoreView: View {
         .animation(MobileTheme.Animation.gentle, value: store.isActive)
         .animation(MobileTheme.Animation.gentle, value: store.error)
     }
+}
+
+extension Notification.Name {
+    static let cloudStoreChromeVisibilityChanged = Notification.Name("CloudStoreChromeVisibilityChanged")
 }
 
 // MARK: - Hero
@@ -475,8 +509,8 @@ private final class RemoteMCPClientStore: ObservableObject {
     @Published private(set) var error: String?
     @Published private(set) var revokingClientID: String?
 
-    private var listener: ListenerRegistration?
-    private var authHandle: AuthStateDidChangeListenerHandle?
+    private nonisolated(unsafe) var listener: ListenerRegistration?
+    private nonisolated(unsafe) var authHandle: AuthStateDidChangeListenerHandle?
 
     deinit {
         listener?.remove()
@@ -997,6 +1031,7 @@ private struct CloudStoreSubscriptionDetails: View {
             ("Length", CloudSubscriptionDisclosure.period),
             ("Price", "\(priceText) per month"),
             ("Includes", CloudSubscriptionDisclosure.included),
+            ("Available subscriptions", CloudSubscriptionDisclosure.reviewVisiblePlanSummary),
             ("Billing", CloudSubscriptionDisclosure.billing)
         ]
     }
@@ -1042,56 +1077,77 @@ private struct CloudStoreSubscriptionDetails: View {
 
 private struct CloudStoreActionBar: View {
     @Bindable var store: HostedQuotaSubscriptionStore
+    let isSignedIn: Bool
+    let onSignInRequired: () -> Void
 
     var body: some View {
-        VStack(spacing: MobileTheme.Spacing.sm) {
-            CloudStoreNativeSubscriptionStore(store: store)
-        }
-        .padding(.horizontal, MobileTheme.Spacing.lg)
-        .padding(.top, MobileTheme.Spacing.sm)
-        .padding(.bottom, MobileTheme.Spacing.lg)
-        .background(
-            LinearGradient(
-                colors: [
-                    MobileTheme.Colors.background.opacity(0.0),
-                    MobileTheme.Colors.background.opacity(0.85),
-                    MobileTheme.Colors.background.opacity(0.95)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea(edges: .bottom)
-            .allowsHitTesting(false)
-        )
-    }
-}
-
-private struct CloudStoreNativeSubscriptionStore: View {
-    @Bindable var store: HostedQuotaSubscriptionStore
-
-    var body: some View {
-        SubscriptionStoreView(productIDs: HostedQuotaSubscriptionStore.appStoreReviewVisibleProductIDs) {
-            EmptyView()
-        }
-        .subscriptionStoreControlStyle(.buttons)
-        .storeButton(.visible, for: .restorePurchases)
-        .storeButton(.hidden, for: .cancellation)
-        .subscriptionStorePolicyDestination(url: CloudStoreLegalURLs.privacy, for: .privacyPolicy)
-        .subscriptionStorePolicyDestination(url: CloudStoreLegalURLs.terms, for: .termsOfService)
-        .subscriptionStorePolicyForegroundStyle(MobileTheme.ember)
-        .onInAppPurchaseStart { product in
-            Haptics.medium()
-            await MainActor.run {
-                store.nativeStorePurchaseStarted(productID: product.id)
+        VStack(spacing: MobileTheme.Spacing.md) {
+            Button {
+                Haptics.medium()
+                guard isSignedIn else {
+                    onSignInRequired()
+                    return
+                }
+                Task { await store.purchase() }
+            } label: {
+                HStack(spacing: MobileTheme.Spacing.sm) {
+                    if store.isPurchasing {
+                        MiningPickLoader(.inline, tint: MobileTheme.Colors.textPrimary)
+                    } else {
+                        Image(systemName: "creditcard.fill")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    Text(primaryButtonTitle)
+                        .font(MobileTheme.Typography.body)
+                        .fontWeight(.bold)
+                }
+                .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.aurora(.primary, fullWidth: true))
+            .disabled(store.isPurchasing || store.product == nil)
+            .accessibilityIdentifier("cloudStore.subscribe")
+            .accessibilityLabel(primaryButtonTitle)
+
+            Button {
+                guard isSignedIn else {
+                    onSignInRequired()
+                    return
+                }
+                Task { await store.restorePurchases() }
+            } label: {
+                HStack(spacing: MobileTheme.Spacing.sm) {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Restore Purchases")
+                }
+                .font(MobileTheme.Typography.caption)
+                .fontWeight(.semibold)
+            }
+            .buttonStyle(.aurora(.secondary, fullWidth: true))
+            .disabled(store.isLoading || store.isPurchasing)
+            .accessibilityIdentifier("cloudStore.restore")
+
+            CloudStoreLegalLinks(alignment: .center, verboseLabels: true)
         }
-        .onInAppPurchaseCompletion { product, result in
-            await store.handleNativeStorePurchaseCompletion(product: product, result: result)
+        .padding(MobileTheme.Spacing.lg)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.88))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(MobileTheme.ember.opacity(0.18), lineWidth: 1)
+        )
+        .shadow(color: MobileTheme.ember.opacity(0.10), radius: 18, y: 10)
+    }
+
+    private var primaryButtonTitle: String {
+        if store.isPurchasing {
+            return "Purchasing..."
         }
-        .tint(MobileTheme.ember)
-        .frame(maxWidth: .infinity)
-        .frame(minHeight: 164)
-        .accessibilityIdentifier("cloudStore.subscriptionStoreView")
+        guard let product = store.product else {
+            return "Loading App Store price..."
+        }
+        return "Subscribe for \(product.displayPrice) / month"
     }
 }
 

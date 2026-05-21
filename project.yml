@@ -14,7 +14,7 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
     MARKETING_VERSION: "0.1.3-beta.1"
-    CURRENT_PROJECT_VERSION: 1
+    CURRENT_PROJECT_VERSION: 29
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
@@ -286,7 +286,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: 22
+        CURRENT_PROJECT_VERSION: 29
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         # Apple sign-in + iOS Keychain access group; see
@@ -331,18 +331,26 @@ targets:
             exit 1
           fi
 
-          BUILT_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
-          if [[ ! -f "${BUILT_PLIST}" ]]; then
-            echo "error: Built GoogleService-Info.plist not found at ${BUILT_PLIST}."
+          BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+          BUILT_INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+          if [[ ! -f "${BUILT_GOOGLE_PLIST}" ]]; then
+            echo "error: Built GoogleService-Info.plist not found at ${BUILT_GOOGLE_PLIST}."
+            exit 1
+          fi
+          if [[ ! -f "${BUILT_INFO_PLIST}" ]]; then
+            echo "error: Built Info.plist not found at ${BUILT_INFO_PLIST}."
             exit 1
           fi
 
-          /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "${BUILT_PLIST}" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_PLIST}"
-          /usr/libexec/PlistBuddy -c "Delete :FIRAAppCheckDebugToken" "${BUILT_PLIST}" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_PLIST}"
+          /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "${BUILT_GOOGLE_PLIST}" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_GOOGLE_PLIST}"
+          /usr/libexec/PlistBuddy -c "Delete :FIRAAppCheckDebugToken" "${BUILT_GOOGLE_PLIST}" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_GOOGLE_PLIST}"
+          /usr/libexec/PlistBuddy -c "Delete :OpenBurnBarUseDebugAppCheck" "${BUILT_INFO_PLIST}" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :OpenBurnBarUseDebugAppCheck string YES" "${BUILT_INFO_PLIST}"
         inputFiles:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
         outputFiles:
           - $(DERIVED_FILE_DIR)/InjectInternalAppCheckDebugToken.stamp
       - name: Block App Check Debug Token In Release
@@ -481,7 +489,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: 22
+        CURRENT_PROJECT_VERSION: 29
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements

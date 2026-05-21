@@ -31,7 +31,7 @@ struct AccountView: View {
         .confirmationDialog("Sign Out?", isPresented: $showSignOutConfirmation, titleVisibility: .visible) {
             Button("Sign Out", role: .destructive) {
                 Haptics.error()
-                Task { await store.signOut() }
+                store.signOut()
             }
             Button("Cancel", role: .cancel) { }
         } message: {

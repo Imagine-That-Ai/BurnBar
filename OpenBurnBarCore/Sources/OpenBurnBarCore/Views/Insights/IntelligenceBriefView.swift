@@ -42,6 +42,7 @@ public struct IntelligenceBriefView: View {
     public var snapshotMode: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
     /// Cascade-in progress. Sentinel `-1` means the view has not yet
     /// received `onAppear`, so render everything fully visible (this also
     /// covers `ImageRenderer`, snapshot tests, and accessibility traversal).
@@ -84,7 +85,7 @@ public struct IntelligenceBriefView: View {
             // `ImageRenderer`, PDF print, and parent ScrollViews can
             // measure the full editorial column.
             briefStack
-                .background(UnifiedDesignSystem.Colors.background)
+                .background(useWebsiteBackground ? Color.clear : UnifiedDesignSystem.Colors.background)
                 .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                 .onAppear { runEntranceMotion() }
                 .onDisappear { cancelEntranceMotion() }
@@ -93,7 +94,16 @@ public struct IntelligenceBriefView: View {
                 ScrollView {
                     briefStack
                 }
-                .background(UnifiedDesignSystem.Colors.background.ignoresSafeArea())
+                .background(
+                    Group {
+                        if useWebsiteBackground {
+                            Color.clear
+                        } else {
+                            UnifiedDesignSystem.Colors.background
+                        }
+                    }
+                    .ignoresSafeArea()
+                )
                 .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                 .onAppear { runEntranceMotion() }
                 .onDisappear { cancelEntranceMotion() }
