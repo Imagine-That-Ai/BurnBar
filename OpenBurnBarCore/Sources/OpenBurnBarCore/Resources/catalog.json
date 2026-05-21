@@ -876,7 +876,8 @@
           "visibility": "public",
           "aliases": ["claude-sonnet-4-6"],
           "matchers": [
-            { "all": ["claude", "sonnet", "4.6"], "any": [], "none": [] }
+            { "all": ["claude", "sonnet", "4.6"], "any": [], "none": [] },
+            { "all": ["sonnext", "4.6"], "any": [], "none": [] }
           ],
           "pricing": {
             "inputPerMToken": 3,
@@ -1015,6 +1016,22 @@
           },
           "capabilityClassID": "google:gemini-3-flash",
           "capabilityClassRank": 30
+        },
+        {
+          "id": "factory-glm-5-family",
+          "displayName": "Droid Core GLM-5",
+          "visibility": "public",
+          "aliases": ["glm-5"],
+          "matchers": [
+            { "all": ["glm", "5"], "any": [], "none": ["5.1", "turbo", "code"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "factory-droid-core:glm-5",
+          "capabilityClassRank": 20
         },
         {
           "id": "factory-glm-5.1-family",

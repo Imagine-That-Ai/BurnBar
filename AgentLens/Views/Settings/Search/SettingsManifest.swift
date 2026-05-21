@@ -79,8 +79,8 @@ enum SettingsManifest {
             pageRoute: .appearance,
             anchorID: SettingsAnchor.useWebsiteBackground,
             title: "Swarm Background",
-            subtitle: "Active, reconverging token-ember swarms from burnbar.ai",
-            keywords: ["swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar"]
+            subtitle: "Active, reconverging token-ember swarms from burnbar.ai with logo formation",
+            keywords: ["swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar", "logo"]
         ),
         SettingsItem(
             id: "general.appearance.desktopWallpaperEnabled",
