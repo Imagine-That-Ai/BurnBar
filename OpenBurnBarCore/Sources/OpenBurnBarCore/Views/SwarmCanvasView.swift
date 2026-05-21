@@ -687,7 +687,7 @@ private final class SwarmSimulation {
     private func resolvedColor(for p: Particle, at index: Int, isBatteryThrottled: Bool = false) -> Color {
         // Data-driven color path
         if let driver = colorDriver {
-            if let rgba = driver.resolveColor(for: p.colorIndex) {
+            if let rgba = resolvedDriverRGBA(driver, for: p, at: index) {
                 var intensity = driver.intensityMultiplier
                 if isBatteryThrottled {
                     intensity *= 0.5 // scale down intensity on battery
@@ -716,14 +716,50 @@ private final class SwarmSimulation {
         return baseColor
     }
 
+    private func resolvedDriverRGBA(_ driver: SwarmColorDriver, for p: Particle, at index: Int) -> RGBA? {
+        if mode == .shapeBurnBarLogo,
+           let role = p.role,
+           Self.isLogoFlameRole(role) {
+            return driver.resolveFlameTone(
+                for: p.colorIndex,
+                toneSeed: Self.flameToneSeed(for: p, at: index),
+                role: role
+            )
+        }
+
+        return driver.resolveColor(for: p.colorIndex)
+    }
+
+    private static func isLogoFlameRole(_ role: String) -> Bool {
+        role.hasPrefix("logo-flame-")
+    }
+
+    private static func flameToneSeed(for p: Particle, at index: Int) -> Double {
+        let roleShift: Double
+        switch p.role {
+        case "logo-flame-inner":
+            roleShift = 0.31
+        case "logo-flame-spark":
+            roleShift = 0.67
+        default:
+            roleShift = 0.13
+        }
+
+        let mixed = p.flowProgress * 1.618_033_988_75
+            + p.colorIndex * 0.271_828_182_84
+            + Double(index % 97) * 0.010_309_278
+            + roleShift
+        return mixed - floor(mixed)
+    }
+
     // MARK: Color Driver Updates
 
     /// Updates the color driver and triggers a smooth transition.
     func setColorDriver(_ driver: SwarmColorDriver?) {
         // Snapshot current resolved colors for transition.
-        previousColors = particles.map { p in
+        previousColors = particles.enumerated().map { index, p in
             if let d = colorDriver {
-                return d.resolveColor(for: p.colorIndex)
+                return resolvedDriverRGBA(d, for: p, at: index)
             }
             return nil
         }

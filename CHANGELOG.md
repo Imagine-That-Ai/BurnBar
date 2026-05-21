@@ -56,7 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Swarm wallpaper polish.** The BurnBar logo formation now renders upright,
   active wallpaper particles share the field across every running provider
   detected from the process table, and the Desktop Wallpaper Background picker
-  uses distinct preview swatches instead of nearly identical dark dots.
+  uses distinct preview swatches instead of nearly identical dark dots. Provider
+  colors remain exact outside the BurnBar flame, whose particles now use
+  provider-family highlights and shadows so a single active provider still reads
+  dimensional instead of flat.
 
 ### Added — Iroh Services observability
 - **Official Iroh Services endpoint metrics.** Upgraded the native iroh bridge
