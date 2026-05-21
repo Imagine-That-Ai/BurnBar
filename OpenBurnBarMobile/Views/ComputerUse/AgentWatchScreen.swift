@@ -155,9 +155,9 @@ struct AgentWatchScreen: View {
         guard let encoded = text.data(using: .utf8) else { return }
         if FileManager.default.fileExists(atPath: url.path),
            let handle = try? FileHandle(forWritingTo: url) {
-            try? handle.seekToEnd()
-            try? handle.write(contentsOf: encoded)
-            try? handle.close()
+            _ = try? handle.seekToEnd()
+            _ = try? handle.write(contentsOf: encoded)
+            _ = try? handle.close()
         } else {
             try? encoded.write(to: url, options: [.atomic])
         }

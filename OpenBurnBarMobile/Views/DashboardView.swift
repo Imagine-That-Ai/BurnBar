@@ -9,6 +9,7 @@ struct DashboardView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
     private var isPadRegular: Bool {
         horizontalSizeClass == .regular
@@ -60,9 +61,13 @@ struct DashboardView: View {
 
     private var emberBackground: some View {
         ZStack {
-            EmberSurfaceBackground()
-            if !reduceMotion {
-                flameFlicker
+            if useWebsiteBackground {
+                AuroraBackdrop(colorDriver: store.swarmColorDriver)
+            } else {
+                EmberSurfaceBackground()
+                if !reduceMotion {
+                    flameFlicker
+                }
             }
         }
     }

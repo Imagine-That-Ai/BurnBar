@@ -21,6 +21,7 @@ import com.openburnbar.data.media.AndroidFileTransferService
 import com.openburnbar.data.media.IrohBlobKeyStore
 import com.openburnbar.data.media.MediaFileTransferService
 import com.openburnbar.data.media.MediaControlStreamCoordinator
+import com.openburnbar.data.media.RetainedIrohControlTransportPool
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
 import com.openburnbar.irohrelay.IrohDialTarget
@@ -30,6 +31,7 @@ import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.IrohRelayTransport
 import com.openburnbar.irohrelay.LoopbackIrohRelayRendezvous
 import com.openburnbar.irohrelay.LoopbackIrohRelayTransport
+import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
@@ -89,6 +91,17 @@ class BurnBarApplication : Application() {
 
     private var pairingListener: ListenerRegistration? = null
     private var authListener: FirebaseAuth.AuthStateListener? = null
+    private val controlTransportPool by lazy {
+        RetainedIrohControlTransportPool { relayURL ->
+            val keyStore = HermesRelayKeyStore(applicationContext)
+            runCatching {
+                com.openburnbar.data.hermes.relay.HermesIrohRelayTransport.defaultTransport(
+                    keyStore = keyStore,
+                    relayURL = relayURL,
+                )
+            }.getOrElse { LoopbackIrohRelayTransport(rendezvous = LoopbackIrohRelayRendezvous()) }
+        }
+    }
     @Volatile private var activeCoordinatorConnection: String? = null
     @Volatile private var activeCoordinatorPublishedAtMillis: Long? = null
     @Volatile private var activeCoordinatorTarget: IrohDialTarget? = null
@@ -96,6 +109,7 @@ class BurnBarApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         appContext = applicationContext
+        OpenBurnBarIrohNativeContext.install(applicationContext)
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
@@ -197,12 +211,14 @@ class BurnBarApplication : Application() {
         if (
             existing != null &&
             activeCoordinatorConnection == connectionId &&
-            activeCoordinatorPublishedAtMillis == selection.publishedAtMillis
+            activeCoordinatorPublishedAtMillis == selection.publishedAtMillis &&
+            existing.phase.value.isActiveOrConnecting()
         ) {
             return
         }
         val target = fetchVerifiedPairingTarget(uid = uid, connectionId = connectionId)
         existing?.stop()
+        controlTransportPool.shutdown()
         val dialer = MediaControlStreamCoordinator.StreamDialer { dialedUid, dialedConnection ->
             val dialTarget = activeCoordinatorTarget
                 ?: fetchVerifiedPairingTarget(uid = dialedUid, connectionId = dialedConnection)
@@ -224,6 +240,22 @@ class BurnBarApplication : Application() {
         }
         runCatching { coordinator.start(uid = uid, connectionID = connectionId) }
             .onFailure { Log.w("BurnBar", "MediaControlStreamCoordinator.start failed: ${it.message}") }
+    }
+
+    suspend fun ensureMediaControlStream(connectionID: String) {
+        val normalizedConnectionID = connectionID.trim().takeIf { it.isNotBlank() }
+            ?: throw IllegalArgumentException("Mercury requires a paired Mac connection id.")
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+            ?: throw IllegalStateException("Mercury requires a signed-in Firebase user.")
+        ensureMediaControlCoordinator(
+            uid = uid,
+            selection = IrohPairingSelection.Candidate(
+                connectionId = normalizedConnectionID,
+                publishedAtMillis = if (activeCoordinatorConnection == normalizedConnectionID)
+                    activeCoordinatorPublishedAtMillis ?: 0L
+                else 0L,
+            ),
+        )
     }
 
     /**
@@ -253,7 +285,10 @@ class BurnBarApplication : Application() {
 
     private fun stopMediaControlCoordinator() {
         val coordinator = mediaControlCoordinator ?: return
-        applicationScope.launch { runCatching { coordinator.stop() } }
+        applicationScope.launch {
+            runCatching { coordinator.stop() }
+            runCatching { controlTransportPool.shutdown() }
+        }
         mediaControlCoordinator = null
         activeCoordinatorConnection = null
         activeCoordinatorPublishedAtMillis = null
@@ -277,17 +312,7 @@ class BurnBarApplication : Application() {
      * for tests and CI screenshots.
      */
     private suspend fun dialControlStream(target: IrohDialTarget): IrohRelayStream {
-        val keyStore = HermesRelayKeyStore(applicationContext)
-        val transport: IrohRelayTransport = runCatching {
-            com.openburnbar.data.hermes.relay.HermesIrohRelayTransport.defaultTransport(
-                keyStore = keyStore,
-                relayURL = target.relayURL,
-            )
-        }.getOrElse { LoopbackIrohRelayTransport(rendezvous = LoopbackIrohRelayRendezvous()) }
-        // Best-effort dial — the dialer surfaces TimedOut / EndpointNotReady
-        // to the coordinator's reconnect loop.
-        transport.start()
-        return transport.connect(target, timeoutMillis = 5_000L)
+        return controlTransportPool.dial(target, timeoutMillis = 5_000L)
     }
 
     private fun registerFcmToken() {
@@ -417,3 +442,8 @@ class BurnBarApplication : Application() {
         }
     }
 }
+
+private fun MediaControlStreamCoordinator.Phase.isActiveOrConnecting(): Boolean =
+    this is MediaControlStreamCoordinator.Phase.Dialing ||
+        this is MediaControlStreamCoordinator.Phase.Live ||
+        this is MediaControlStreamCoordinator.Phase.Reconnecting

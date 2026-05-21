@@ -21,6 +21,26 @@ final class AppearanceSettings {
         didSet { persistence.set(colorfulMenuBarIcon, forKey: "colorfulMenuBarIcon") }
     }
 
+    var usePremiumSOTAUX: Bool = false {
+        didSet { persistence.set(usePremiumSOTAUX, forKey: "usePremiumSOTAUX") }
+    }
+
+    var useWebsiteBackground: Bool = false {
+        didSet { persistence.set(useWebsiteBackground, forKey: "useWebsiteBackground") }
+    }
+
+    var enableDesktopWallpaper: Bool = false {
+        didSet { persistence.set(enableDesktopWallpaper, forKey: "enableDesktopWallpaper") }
+    }
+
+    var amoledDarkBackground: Bool = false {
+        didSet { persistence.set(amoledDarkBackground, forKey: "amoledDarkBackground") }
+    }
+
+    var cycleShapesScreensaver: Bool = true {
+        didSet { persistence.set(cycleShapesScreensaver, forKey: "cycleShapesScreensaver") }
+    }
+
     var preferredSwiftUIColorScheme: ColorScheme? {
         appearanceMode.colorScheme
     }
@@ -38,5 +58,10 @@ final class AppearanceSettings {
         let hasLaunched = persistence.bool(forKey: "hasLaunchedBefore")
         self.showInMenuBar = hasLaunched ? persistence.bool(forKey: "showInMenuBar") : true
         self.colorfulMenuBarIcon = persistence.bool(forKey: "colorfulMenuBarIcon")
+        self.usePremiumSOTAUX = persistence.bool(forKey: "usePremiumSOTAUX")
+        self.useWebsiteBackground = persistence.bool(forKey: "useWebsiteBackground")
+        self.enableDesktopWallpaper = persistence.bool(forKey: "enableDesktopWallpaper", defaultValue: false)
+        self.amoledDarkBackground = persistence.bool(forKey: "amoledDarkBackground", defaultValue: false)
+        self.cycleShapesScreensaver = persistence.bool(forKey: "cycleShapesScreensaver", defaultValue: true)
     }
 }

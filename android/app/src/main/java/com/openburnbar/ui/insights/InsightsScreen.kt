@@ -82,6 +82,7 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
+import com.openburnbar.ui.settings.rememberWebsiteBackground
 
 /**
  * Top-level Insights screen. Visual parity target: iOS
@@ -104,6 +105,7 @@ fun InsightsScreen(
     modifier: Modifier = Modifier,
     viewModel: InsightsViewModel = viewModel()
 ) {
+    val useWebsiteBackground by rememberWebsiteBackground()
     val canvas by viewModel.canvas.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
@@ -129,7 +131,7 @@ fun InsightsScreen(
     ) {
         Scaffold(
             modifier = Modifier.then(modifier).fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = if (useWebsiteBackground) Color.Transparent else MaterialTheme.colorScheme.background,
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {

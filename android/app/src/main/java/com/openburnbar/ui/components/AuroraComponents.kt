@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.theme.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.graphicsLayer
+import com.openburnbar.ui.settings.rememberWebsiteBackground
+
 
 // ── Glass Card ──
 // 3-layer glass per the parity plan: tier-appropriate blur, brand sheen,
@@ -66,14 +68,36 @@ fun AuroraGlassCard(
         }
     } else Modifier
 
-    Box(
+    Card(
+        shape = RoundedCornerShape(cornerRadius.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.07f)
+        ),
         modifier = modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .shadow(
+                elevation = shadow.elevation,
+                shape = RoundedCornerShape(cornerRadius.dp),
+                clip = false,
+                ambientColor = Color.Black.copy(alpha = shadow.spotAlpha),
+                spotColor = Color.Black.copy(alpha = shadow.spotAlpha)
+            )
             .then(clickModifier)
-            .auroraGlass(cornerRadius = cornerRadius.dp, shadow = shadow)
-            .padding(contentPadding)
+            .border(
+                width = 0.75.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.16f),
+                        Color.White.copy(alpha = 0.04f)
+                    )
+                ),
+                shape = RoundedCornerShape(cornerRadius.dp)
+            )
     ) {
-        Column(content = content)
+        Column(
+            modifier = Modifier.padding(contentPadding),
+            content = content
+        )
     }
 }
 
@@ -98,6 +122,7 @@ fun AuroraBackdrop(
     modifier: Modifier = Modifier
 ) {
     val reduceMotion = LocalAuroraReduceMotion.current
+    val useWebsiteBackground by rememberWebsiteBackground()
 
     val infiniteTransition = rememberInfiniteTransition(label = "aurora")
     val phase by infiniteTransition.animateFloat(
@@ -120,52 +145,56 @@ fun AuroraBackdrop(
     )
 
     Box(modifier = modifier.fillMaxSize()) {
-        // 1. Base gradient
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = if (isDark) {
-                            listOf(
-                                AuroraColors.darkBackground,
-                                AuroraColors.darkBackground,
-                                AuroraColors.darkSurface
-                            )
-                        } else {
-                            listOf(
-                                Color(0xFFF4EFE7),
-                                Color(0xFFEFE7DC),
-                                Color(0xFFECE3D6)
-                            )
-                        }
-                    )
-                )
-        )
-
-        if (density != AuroraDensity.MINIMAL) {
-            // 2. Orb layer
-            OrbLayer(
-                isDark = isDark,
-                phase = if (reduceMotion) 0f else phase,
-                opacity = if (density == AuroraDensity.SUBTLE) 0.55f else 1f,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            // 3. Aurora ribbon
-            RibbonLayer(
-                isDark = isDark,
-                ribbonPhase = if (reduceMotion) 0f else ribbonPhase,
-                opacity = if (density == AuroraDensity.SUBTLE) 0.35f else 0.55f,
+        if (useWebsiteBackground) {
+            WebsiteBackground(accentColor = AuroraColors.ember)
+        } else {
+            // 1. Base gradient
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
-                    .align(Alignment.TopCenter)
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = if (isDark) {
+                                listOf(
+                                    AuroraColors.darkBackground,
+                                    AuroraColors.darkBackground,
+                                    AuroraColors.darkSurface
+                                )
+                            } else {
+                                listOf(
+                                    Color(0xFFF4EFE7),
+                                    Color(0xFFEFE7DC),
+                                    Color(0xFFECE3D6)
+                                )
+                            }
+                        )
+                    )
             )
 
-            // 4. Ember particles (full only)
-            if (density == AuroraDensity.FULL && !reduceMotion) {
-                ParticleLayer(modifier = Modifier.fillMaxSize())
+            if (density != AuroraDensity.MINIMAL) {
+                // 2. Orb layer
+                OrbLayer(
+                    isDark = isDark,
+                    phase = if (reduceMotion) 0f else phase,
+                    opacity = if (density == AuroraDensity.SUBTLE) 0.55f else 1f,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // 3. Aurora ribbon
+                RibbonLayer(
+                    isDark = isDark,
+                    ribbonPhase = if (reduceMotion) 0f else ribbonPhase,
+                    opacity = if (density == AuroraDensity.SUBTLE) 0.35f else 0.55f,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .align(Alignment.TopCenter)
+                )
+
+                // 4. Ember particles (full only)
+                if (density == AuroraDensity.FULL && !reduceMotion) {
+                    ParticleLayer(modifier = Modifier.fillMaxSize())
+                }
             }
         }
 
@@ -186,6 +215,23 @@ fun AuroraBackdrop(
                 )
         )
     }
+}
+
+/**
+ * The active, reconverging token-ember swarm from burnbar.ai.
+ * Hundreds of particles murmurate, periodically reconverging into "$",
+ * "</>", concentric quota rings, and a router failover S-curve.
+ */
+@Composable
+fun WebsiteBackground(
+    accentColor: Color = AuroraColors.ember,
+    modifier: Modifier = Modifier
+) {
+    SwarmBackground(
+        accentColor = accentColor,
+        modifier = modifier,
+        pace = SwarmPace.ENERGETIC
+    )
 }
 
 @Composable

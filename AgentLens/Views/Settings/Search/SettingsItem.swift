@@ -150,6 +150,8 @@ enum SettingsAnchor {
     static let appearanceTheme = "general.appearance.theme"
     static let appearanceMenuBar = "general.appearance.menuBar"
     static let appearanceLaunchAtLogin = "general.appearance.launchAtLogin"
+    static let usePremiumSOTAUX = "general.appearance.usePremiumSOTAUX"
+    static let useWebsiteBackground = "general.appearance.useWebsiteBackground"
 
     // General → Defaults
     static let defaultsTimeRange = "general.defaults.timeRange"

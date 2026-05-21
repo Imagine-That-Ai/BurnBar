@@ -10,6 +10,7 @@ struct ProviderDashboardView: View {
     @State private var store: ProviderDashboardStore?
     @State private var quotaStore = QuotaStore()
     @State private var showError = false
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
     private var theme: UnifiedProviderTheme { UnifiedProviderTheme.theme(for: provider) }
 
@@ -38,7 +39,16 @@ struct ProviderDashboardView: View {
             }
             .padding(.vertical, UnifiedDesignSystem.Spacing.xl)
         }
-        .background(UnifiedDesignSystem.Colors.background.ignoresSafeArea())
+        .background(
+            ZStack {
+                if useWebsiteBackground {
+                    AuroraBackdrop(density: .subtle)
+                } else {
+                    UnifiedDesignSystem.Colors.background
+                }
+            }
+            .ignoresSafeArea()
+        )
         .navigationTitle(provider.displayName)
         .refreshable {
             await store?.refresh()

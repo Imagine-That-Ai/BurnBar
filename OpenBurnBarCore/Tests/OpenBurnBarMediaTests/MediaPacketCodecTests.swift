@@ -184,6 +184,30 @@ final class MediaPacketCodecTests: XCTestCase {
         }
     }
 
+    func testV1DecoderTreatsUnknownMetadataBitAsPayloadWithoutNegotiation() throws {
+        let codec = MediaPacketCodec()
+        var raw = Data()
+        let metadataBytes = Data([0x00, 0x00, 0x00, 0x02, 0xA1, 0x00])
+        let samplePayload = Data([0xDE, 0xAD])
+        let total = MediaFrame.headerByteCount + metadataBytes.count + samplePayload.count
+        var lengthBE = UInt32(total).bigEndian
+        withUnsafeBytes(of: &lengthBE) { raw.append(contentsOf: $0) }
+        raw.append(MediaFrame.Kind.videoNAL.rawValue)
+        raw.append(0x80) // Proposed v2 metadata flag, unknown to the v1 codec.
+        raw.append(contentsOf: [0, 0, 0, 0]) // gopID
+        raw.append(contentsOf: [0, 0, 0, 0]) // frameIndex
+        raw.append(contentsOf: [0, 0, 0, 0, 0, 0, 0, 0]) // pts
+        raw.append(metadataBytes)
+        raw.append(samplePayload)
+
+        var expectedPayload = metadataBytes
+        expectedPayload.append(samplePayload)
+        let decoded = try codec.decode(raw).frame
+
+        XCTAssertEqual(decoded.payload, expectedPayload,
+            "v1 peers do not have a generic extension-length lane; metadata v2 must be negotiated before sending.")
+    }
+
     func testGopBoundaryMetadataSurvivesRoundTrip() throws {
         let codec = MediaPacketCodec()
         let firstFrame = MediaFrame(

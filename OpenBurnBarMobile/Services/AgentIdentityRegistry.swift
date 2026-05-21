@@ -199,10 +199,6 @@ final class AgentIdentityRegistry {
         // mission tile would otherwise have surfaced the failure).
         let answers = recentForRuntime.filter { $0.kind == .finalAnswer }.count
         let errors = recentForRuntime.filter { $0.kind == .error || $0.isError }.count
-        let denom = max(answers + errors, 1)
-        let successRate = Double(answers + (errors == 0 ? denom : 0)) / Double(denom * 2)
-        // The expression above smooths to ~1.0 with zero errors and
-        // ~answers/(answers+errors) once errors appear; clamp defensively.
         let clampedSuccess = max(0.0, min(1.0, errors == 0 ? 1.0 : Double(answers) / Double(answers + errors)))
 
         return AgentRecentStats(

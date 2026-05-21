@@ -3056,7 +3056,7 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
     /// When false (the v1 default) the cascade skips iroh entirely and goes
     /// straight to WSS so users on older builds never see the iroh dial
     /// timeout latency.
-    static let irohEnabledDefaultsKey = "hermes_iroh_transport_enabled"
+    nonisolated static let irohEnabledDefaultsKey = "hermes_iroh_transport_enabled"
 
     static let shared = HermesCompositeRelayTransport(
         primary: HermesIrohRelayTransport.shared,
@@ -3315,6 +3315,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                  .mediaMirrorStop,
                  .mediaMirrorDisplaySelect,
                  .mediaPresenceHeartbeat,
+                 .mediaLongTermReferenceAck,
                  .mediaCallInvite,
                  .mediaCallAck,
                  .mediaStreamFrame:

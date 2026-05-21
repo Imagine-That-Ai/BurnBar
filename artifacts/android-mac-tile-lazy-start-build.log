@@ -1,0 +1,89 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.9/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :openburnbar-iroh-relay:preBuild UP-TO-DATE
+> Task :openburnbar-iroh-relay:preDebugBuild UP-TO-DATE
+> Task :openburnbar-iroh-relay:writeDebugAarMetadata UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:injectCrashlyticsMappingFileIdDebug UP-TO-DATE
+> Task :app:processDebugGoogleServices UP-TO-DATE
+> Task :openburnbar-iroh-relay:generateDebugResValues UP-TO-DATE
+> Task :openburnbar-iroh-relay:generateDebugResources UP-TO-DATE
+> Task :openburnbar-iroh-relay:packageDebugResources UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :openburnbar-iroh-relay:extractDeepLinksDebug UP-TO-DATE
+> Task :openburnbar-iroh-relay:processDebugManifest UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :openburnbar-iroh-relay:compileDebugLibraryResources UP-TO-DATE
+> Task :openburnbar-iroh-relay:parseDebugLocalResources UP-TO-DATE
+> Task :openburnbar-iroh-relay:generateDebugRFile UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :openburnbar-iroh-relay:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :openburnbar-iroh-relay:compileDebugKotlin UP-TO-DATE
+> Task :openburnbar-iroh-relay:javaPreCompileDebug UP-TO-DATE
+> Task :openburnbar-iroh-relay:compileDebugJavaWithJavac NO-SOURCE
+> Task :openburnbar-iroh-relay:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :openburnbar-iroh-relay:mergeDebugShaders UP-TO-DATE
+> Task :openburnbar-iroh-relay:compileDebugShaders NO-SOURCE
+> Task :openburnbar-iroh-relay:generateDebugAssets UP-TO-DATE
+> Task :openburnbar-iroh-relay:packageDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :openburnbar-iroh-relay:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :openburnbar-iroh-relay:processDebugJavaRes UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :openburnbar-iroh-relay:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :openburnbar-iroh-relay:mergeDebugJniLibFolders UP-TO-DATE
+> Task :openburnbar-iroh-relay:mergeDebugNativeLibs NO-SOURCE
+> Task :openburnbar-iroh-relay:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :openburnbar-iroh-relay:stripDebugDebugSymbols NO-SOURCE
+> Task :openburnbar-iroh-relay:copyDebugJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :openburnbar-iroh-relay:extractDebugAnnotations UP-TO-DATE
+> Task :openburnbar-iroh-relay:extractDeepLinksForAarDebug UP-TO-DATE
+> Task :openburnbar-iroh-relay:mergeDebugGeneratedProguardFiles UP-TO-DATE
+> Task :openburnbar-iroh-relay:mergeDebugConsumerProguardFiles UP-TO-DATE
+> Task :openburnbar-iroh-relay:prepareDebugArtProfile UP-TO-DATE
+> Task :openburnbar-iroh-relay:prepareLintJarForPublish UP-TO-DATE
+> Task :openburnbar-iroh-relay:mergeDebugJavaResource UP-TO-DATE
+> Task :openburnbar-iroh-relay:syncDebugLibJars UP-TO-DATE
+> Task :openburnbar-iroh-relay:bundleDebugAar UP-TO-DATE
+> Task :openburnbar-iroh-relay:assembleDebug UP-TO-DATE
+> Task :app:mergeProjectDexDebug
+> Task :app:mergeDebugJavaResource
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDebug
+
+BUILD SUCCESSFUL in 12s
+68 actionable tasks: 4 executed, 64 up-to-date

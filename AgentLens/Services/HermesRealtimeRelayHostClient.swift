@@ -144,6 +144,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                     break
                 case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck,
                      .mediaMirrorRequest, .mediaMirrorAck, .mediaMirrorStop, .mediaMirrorDisplaySelect, .mediaPresenceHeartbeat,
+                     .mediaLongTermReferenceAck,
                      .mediaCallInvite, .mediaCallAck,
                      .mediaStreamFrame,
                      .controlClassify, .controlActionLogEntry, .controlInputIntent,

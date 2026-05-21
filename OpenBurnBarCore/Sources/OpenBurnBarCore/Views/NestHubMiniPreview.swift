@@ -209,7 +209,7 @@ public struct NestHubMiniPreview: View {
 
             // Refresh pill
             Text("Refresh")
-                .font(.system(size: 7 * scale, weight: .semibold))
+                .font(.system(size: 12 * scale, weight: .semibold))
                 .foregroundStyle(themeText.opacity(0.85))
                 .padding(.horizontal, 8 * scale)
                 .padding(.vertical, 2.5 * scale)
@@ -222,7 +222,7 @@ public struct NestHubMiniPreview: View {
 
             VStack(alignment: .trailing, spacing: 0) {
                 Text(snapshot.dateText)
-                    .font(.system(size: 7 * scale, weight: .medium))
+                    .font(.system(size: 12 * scale, weight: .medium))
                     .foregroundStyle(themeText.opacity(0.6))
                 Text(snapshot.clockText)
                     .font(.system(size: 12 * scale, weight: .semibold, design: .rounded))
@@ -275,7 +275,7 @@ public struct NestHubMiniPreview: View {
                         .minimumScaleFactor(0.6)
                     if !provider.freshnessLabel.isEmpty {
                         Text(provider.freshnessLabel)
-                            .font(.system(size: 6 * scale, weight: .medium))
+                            .font(.system(size: 12 * scale, weight: .medium))
                             .foregroundStyle(themeText.opacity(0.55))
                             .lineLimit(1)
                     }
@@ -290,7 +290,7 @@ public struct NestHubMiniPreview: View {
             // Status pill (e.g. "reset passed")
             if !provider.statusPill.isEmpty {
                 Text(provider.statusPill)
-                    .font(.system(size: 6 * scale, weight: .semibold))
+                    .font(.system(size: 12 * scale, weight: .semibold))
                     .foregroundStyle(toneColor(provider.statusTone))
                     .padding(.horizontal, 5 * scale)
                     .padding(.vertical, 1.5 * scale)
@@ -329,11 +329,11 @@ public struct NestHubMiniPreview: View {
             if !provider.runsLabel.isEmpty || !provider.costLabel.isEmpty {
                 HStack(alignment: .lastTextBaseline, spacing: 0) {
                     Text(provider.runsLabel)
-                        .font(.system(size: 6 * scale, weight: .medium))
+                        .font(.system(size: 12 * scale, weight: .medium))
                         .foregroundStyle(themeText.opacity(0.6))
                     Spacer(minLength: 2 * scale)
                     Text(provider.costLabel)
-                        .font(.system(size: 7 * scale, weight: .bold, design: .rounded))
+                        .font(.system(size: 12 * scale, weight: .bold, design: .rounded))
                         .foregroundStyle(themeText)
                         .monospacedDigit()
                 }
@@ -380,7 +380,7 @@ public struct NestHubMiniPreview: View {
             RoundedRectangle(cornerRadius: 3 * scale, style: .continuous)
                 .fill(accent.opacity(0.30))
             Text(provider.logoMonogram)
-                .font(.system(size: 7 * scale, weight: .black, design: .rounded))
+                .font(.system(size: 12 * scale, weight: .black, design: .rounded))
                 .foregroundStyle(themeText)
         }
         .frame(width: 12 * scale, height: 12 * scale)
@@ -394,12 +394,12 @@ public struct NestHubMiniPreview: View {
         VStack(alignment: .leading, spacing: 1 * scale) {
             HStack(spacing: 2 * scale) {
                 Text(bucket.name)
-                    .font(.system(size: 6 * scale, weight: .medium))
+                    .font(.system(size: 12 * scale, weight: .medium))
                     .foregroundStyle(themeText.opacity(0.65))
                     .lineLimit(1)
                 Spacer(minLength: 2 * scale)
                 Text(bucket.headlineValue)
-                    .font(.system(size: 7 * scale, weight: .bold))
+                    .font(.system(size: 12 * scale, weight: .bold))
                     .foregroundStyle(themeText)
                     .monospacedDigit()
                     .lineLimit(1)

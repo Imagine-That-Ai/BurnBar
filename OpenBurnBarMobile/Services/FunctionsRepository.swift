@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFunctions
+@preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
 
 struct StreamSearchHit: Identifiable, Decodable, Hashable, Sendable {
@@ -30,6 +30,26 @@ struct CloudConversationSearchHit: Identifiable, Decodable, Hashable, Sendable {
     let tokenHashVersion: Int?
     let semanticHashVersion: Int?
     let indexVersion: Int?
+}
+
+private struct FirebaseCallablePayload: @unchecked Sendable {
+    let rawValue: NSDictionary
+
+    init(_ payload: [String: Any]) {
+        self.rawValue = NSDictionary(dictionary: payload)
+    }
+}
+
+private final class FirebaseCallableExecutor: @unchecked Sendable {
+    private let callable: HTTPSCallable
+
+    init(_ callable: HTTPSCallable) {
+        self.callable = callable
+    }
+
+    func call(_ payload: FirebaseCallablePayload) async throws -> HTTPSCallableResult {
+        try await callable.call(payload.rawValue)
+    }
 }
 
 // MARK: - Functions Repository
@@ -83,7 +103,7 @@ final class FunctionsRepository {
         if let deviceDisplayName, deviceDisplayName.isEmpty == false {
             payload["deviceDisplayName"] = deviceDisplayName
         }
-        let result = try await callable.call(payload)
+        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
         guard let data = result.data as? [String: Any],
               let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
@@ -434,7 +454,7 @@ final class FunctionsRepository {
         if let realtimeRelayStatus, !realtimeRelayStatus.isEmpty { payload["realtimeRelayStatus"] = realtimeRelayStatus }
         if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
 
-        let result = try await callable.call(payload)
+        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
         return try decodeHermesValue(PiConnectionRecord.self, from: result.data)
     }
 
@@ -454,7 +474,7 @@ final class FunctionsRepository {
         let callable = functions.httpsCallable("revokePiAgentConnection")
         var payload: [String: Any] = ["connectionId": connectionId]
         if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
-        _ = try await callable.call(payload)
+        _ = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
     }
 
     func updatePiAgentConnectionStatus(
@@ -478,7 +498,7 @@ final class FunctionsRepository {
         if let instances { payload["instances"] = try encodedFunctionValue(instances) }
         if let models { payload["models"] = try encodedFunctionValue(models) }
         if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
-        _ = try await callable.call(payload)
+        _ = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
     }
 
     private func decodeHermesValue<T: Decodable>(_ type: T.Type, from raw: Any) throws -> T {

@@ -130,6 +130,39 @@ final class MediaFrameProtocolTests: XCTestCase {
                        MediaStreamClass.screenVideo.rawValue)
     }
 
+    func testMirrorRequestDecodesAndroidISODateAndStreamingCapabilities() throws {
+        let json = """
+        {
+          "requestId": "mirror_android",
+          "requestedAt": "2026-05-18T09:30:00Z",
+          "requesterDisplayName": "Alberto's Android",
+          "streamClass": "media.screen.video",
+          "streamingCapabilities": {
+            "codecCapabilities": [
+              {
+                "codec": "h264",
+                "canEncode": true,
+                "canDecode": true,
+                "hardwareAccelerated": true
+              }
+            ],
+            "mediaFrameVersions": {
+              "supportsV1": true,
+              "supportsV2": false
+            },
+            "videoDatagrams": {},
+            "source": "MediaCodec"
+          }
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayMirrorRequest.self, from: json)
+
+        XCTAssertEqual(decoded.requestId, "mirror_android")
+        XCTAssertEqual(decoded.requesterDisplayName, "Alberto's Android")
+        XCTAssertEqual(decoded.streamingCapabilities?.source, "MediaCodec")
+    }
+
     func testMirrorAckOmitsNilCooldownFromJSON() throws {
         let acceptedAck = HermesRealtimeRelayMirrorAck(
             requestId: "req_abc",
@@ -179,7 +212,19 @@ final class MediaFrameProtocolTests: XCTestCase {
         let heartbeat = HermesRealtimeRelayPresenceHeartbeat(
             sentAt: Date(timeIntervalSince1970: 1_700_000_100),
             deviceDisplayName: "Alberto's iPhone",
-            capabilities: ["mirror.viewer", "file.send", "call.receive"]
+            capabilities: ["mirror.viewer", "file.send", "call.receive"],
+            streamingCapabilities: HermesRealtimeRelayStreamingCapabilities(
+                codecCapabilities: [
+                    HermesRealtimeRelayVideoCodecCapability(
+                        codec: .hevc,
+                        canEncode: false,
+                        canDecode: true,
+                        hardwareAccelerated: true
+                    )
+                ],
+                mediaFrameVersions: .init(supportsV1: true, supportsV2: false),
+                source: "test"
+            )
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaPresenceHeartbeat,
@@ -193,6 +238,42 @@ final class MediaFrameProtocolTests: XCTestCase {
         XCTAssertEqual(decoded, frame)
         XCTAssertEqual(decoded.media?.presence?.capabilities,
                        ["mirror.viewer", "file.send", "call.receive"])
+        XCTAssertEqual(decoded.media?.presence?.streamingCapabilities?.source, "test")
+    }
+
+    func testPresenceHeartbeatDecodesAndroidDisplayNameAlias() throws {
+        let json = """
+        {
+          "sentAt": "2026-05-18T09:30:00Z",
+          "displayName": "Alberto's Android",
+          "peerDeviceId": "android-device-1",
+          "capabilities": ["media.mirror.request"],
+          "streamingCapabilities": {
+            "codecCapabilities": [
+              {
+                "codec": "h264",
+                "canEncode": true,
+                "canDecode": true,
+                "hardwareAccelerated": true
+              }
+            ],
+            "mediaFrameVersions": {
+              "supportsV1": true,
+              "supportsV2": false
+            },
+            "videoDatagrams": {
+              "maxPayloadBytes": null
+            },
+            "source": "MediaCodec"
+          }
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayPresenceHeartbeat.self, from: json)
+
+        XCTAssertEqual(decoded.deviceDisplayName, "Alberto's Android")
+        XCTAssertEqual(decoded.peerDeviceId, "android-device-1")
+        XCTAssertEqual(decoded.streamingCapabilities?.codecCapabilities.first?.codec, .h264)
     }
 
     func testCallInviteAndAckRoundTrip() throws {
@@ -269,6 +350,30 @@ final class MediaFrameProtocolTests: XCTestCase {
         let decodedPacket = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(decoded.media?.encodedFrameBase64)))
         let decodedMediaFrame = try codec.decode(decodedPacket).frame
         XCTAssertEqual(decodedMediaFrame, mediaFrame)
+    }
+
+    func testLongTermReferenceAckRoundTripsThroughControlFrame() throws {
+        let decodedAt = Date(timeIntervalSince1970: 1_777_777)
+        let ack = HermesRealtimeRelayLongTermReferenceAck(
+            requestId: "mirror-1",
+            tokenValue: 42_4242,
+            decodedAt: decodedAt
+        )
+        let relayFrame = HermesRealtimeRelayFrame(
+            type: .mediaLongTermReferenceAck,
+            uid: "u1",
+            connectionId: "c1",
+            requestId: "mirror-1",
+            media: HermesRealtimeRelayMediaPayload(longTermReferenceAck: ack)
+        )
+
+        let encoded = try JSONEncoder().encode(relayFrame)
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayFrame.self, from: encoded)
+
+        XCTAssertEqual(decoded.type, .mediaLongTermReferenceAck)
+        XCTAssertEqual(decoded.media?.longTermReferenceAck?.requestId, "mirror-1")
+        XCTAssertEqual(decoded.media?.longTermReferenceAck?.tokenValue, 42_4242)
+        XCTAssertEqual(decoded.media?.longTermReferenceAck?.decodedAt.timeIntervalSince1970 ?? 0, decodedAt.timeIntervalSince1970, accuracy: 0.001)
     }
 
     func testOlderDecoderIgnoresUnknownMirrorFields() throws {

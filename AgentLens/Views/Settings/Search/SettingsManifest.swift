@@ -64,6 +64,24 @@ enum SettingsManifest {
             subtitle: "Start OpenBurnBar automatically when you sign in",
             keywords: ["autostart", "boot", "startup", "login items"]
         ),
+        SettingsItem(
+            id: "general.appearance.usePremiumSOTAUX",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.usePremiumSOTAUX,
+            title: "Premium SOTA UX",
+            subtitle: "Enable cinematic spring physics and specular button shimmers",
+            keywords: ["sota", "premium", "ux", "haptic", "spring", "shimmer"]
+        ),
+        SettingsItem(
+            id: "general.appearance.useWebsiteBackground",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.useWebsiteBackground,
+            title: "Swarm Background",
+            subtitle: "Active, reconverging token-ember swarms from burnbar.ai",
+            keywords: ["swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar"]
+        ),
 
         // MARK: General → Dashboard defaults
 
@@ -569,6 +587,8 @@ enum SettingsManifest {
         SettingsAnchor.appearanceTheme,
         SettingsAnchor.appearanceMenuBar,
         SettingsAnchor.appearanceLaunchAtLogin,
+        SettingsAnchor.usePremiumSOTAUX,
+        SettingsAnchor.useWebsiteBackground,
         SettingsAnchor.defaultsTimeRange,
         SettingsAnchor.defaultsUsageMode,
         SettingsAnchor.refreshInterval,

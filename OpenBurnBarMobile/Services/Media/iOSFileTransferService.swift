@@ -63,6 +63,28 @@ final class iOSFileTransferService: ObservableObject {
         let stats: BlobTransferStats
     }
 
+    /// Lightweight notification emitted from `sendFile` and
+    /// `handleAdvertise` success paths so callers (today: the Mercury
+    /// transfer-history store) can record a row without reaching into
+    /// the service's `@Published` state. Stays out of `OpenBurnBarCore`
+    /// — this is a UI concern.
+    struct TransferCompletion: Sendable, Equatable {
+        enum Direction: String, Sendable, Equatable {
+            case sent
+            case received
+        }
+        let id: String
+        let connectionID: String
+        let direction: Direction
+        let filename: String
+        let mime: String
+        let sizeBytes: Int64
+        let completedAt: Date
+        let bytesPerSecond: Double?
+        let didResume: Bool
+        let localURL: URL?
+    }
+
     private let service: MediaFileTransferService
     private let settingsProvider: @MainActor () -> Bool
     /// Long-lived media control stream owner. Set via
@@ -75,6 +97,10 @@ final class iOSFileTransferService: ObservableObject {
     @Published private(set) var inFlightCount: Int = 0
     @Published private(set) var lastReceivedAttachment: ReceivedAttachment?
     @Published private(set) var lastSentManifestID: String?
+
+    /// Fires on every successful send + receive. Set by `AppDelegate`
+    /// after the Mercury transfer-history store is wired up.
+    var onTransferCompleted: ((TransferCompletion) -> Void)?
 
     init(
         service: MediaFileTransferService,
@@ -130,6 +156,21 @@ final class iOSFileTransferService: ObservableObject {
                 destinationURL: destination,
                 stats: stats
             )
+            let bps: Double? = stats.durationMillis > 0
+                ? Double(stats.bytesTotal) * 1000.0 / Double(stats.durationMillis)
+                : nil
+            onTransferCompleted?(TransferCompletion(
+                id: manifest.manifestId,
+                connectionID: frame.connectionId,
+                direction: .received,
+                filename: manifest.filename,
+                mime: manifest.mime,
+                sizeBytes: manifest.size,
+                completedAt: Date(),
+                bytesPerSecond: bps,
+                didResume: stats.didResume,
+                localURL: destination
+            ))
         } catch let serviceError as MediaFileTransferService.ServiceError {
             status = .rejected
             reason = String(describing: serviceError)
@@ -179,6 +220,7 @@ final class iOSFileTransferService: ObservableObject {
         inFlightCount += 1
         defer { inFlightCount -= 1 }
 
+        let publishStart = Date()
         let publish: MediaFileTransferService.PublishResult
         do {
             publish = try await service.publish(localFile: fileURL, peerDeviceID: peerDeviceID)
@@ -218,6 +260,22 @@ final class iOSFileTransferService: ObservableObject {
         }
 
         lastSentManifestID = publish.manifest.manifestId
+
+        let elapsed = Date().timeIntervalSince(publishStart)
+        let bps: Double? = elapsed > 0 ? Double(publish.manifest.size) / elapsed : nil
+        onTransferCompleted?(TransferCompletion(
+            id: publish.manifest.manifestId,
+            connectionID: connectionID,
+            direction: .sent,
+            filename: publish.manifest.filename,
+            mime: publish.manifest.mime,
+            sizeBytes: publish.manifest.size,
+            completedAt: Date(),
+            bytesPerSecond: bps,
+            didResume: false,
+            localURL: fileURL
+        ))
+
         return publish.manifest
     }
 }

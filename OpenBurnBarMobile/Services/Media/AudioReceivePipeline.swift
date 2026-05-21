@@ -1,5 +1,5 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import OpenBurnBarMedia
 
 /// iOS Opus → PCM decode + playback path. Adaptive jitter buffer
@@ -98,23 +98,40 @@ final class AudioReceivePipeline {
                 memcpy(compressed.data, baseAddress, frame.payload.count)
             }
         }
-        compressed.packetDescriptions?.assign(from: &packetDesc, count: 1)
+        compressed.packetDescriptions?.update(from: &packetDesc, count: 1)
 
         let pcm = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: 960)!
         var error: NSError?
-        var supplied = false
-        let status = converter.convert(to: pcm, error: &error) { _, outStatus in
-            if supplied {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            supplied = true
-            outStatus.pointee = .haveData
-            return compressed
+        let packetSource = AudioConverterPacketSource(buffer: compressed)
+        let inputBlock: AVAudioConverterInputBlock = { [packetSource] packetCount, outStatus in
+            packetSource.nextPacket(packetCount, outStatus)
         }
+        let status = converter.convert(to: pcm, error: &error, withInputFrom: inputBlock)
         if status == .error || error != nil {
             throw Failure.decodeFailed(error?.localizedDescription ?? "status=error")
         }
         player.scheduleBuffer(pcm, completionHandler: nil)
+    }
+}
+
+private final class AudioConverterPacketSource: @unchecked Sendable {
+    private let buffer: AVAudioCompressedBuffer
+    private var supplied = false
+
+    init(buffer: AVAudioCompressedBuffer) {
+        self.buffer = buffer
+    }
+
+    func nextPacket(
+        _ packetCount: AVAudioPacketCount,
+        _ outStatus: UnsafeMutablePointer<AVAudioConverterInputStatus>
+    ) -> AVAudioBuffer? {
+        if supplied {
+            outStatus.pointee = .noDataNow
+            return nil
+        }
+        supplied = true
+        outStatus.pointee = .haveData
+        return buffer
     }
 }

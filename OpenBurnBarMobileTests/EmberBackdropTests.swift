@@ -5,11 +5,13 @@ import OpenBurnBarCore
 
 final class EmberBackdropTests: XCTestCase {
 
+    @MainActor
     func testEmberSurfaceBackgroundExists() {
         let view = EmberSurfaceBackground()
         XCTAssertNotNil(view)
     }
 
+    @MainActor
     func testReduceTransparencyDisablesEffects() {
         // The view should compile and its body should not crash
         let view = EmberSurfaceBackground(respectsReduceTransparency: true)

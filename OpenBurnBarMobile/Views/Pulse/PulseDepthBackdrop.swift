@@ -21,80 +21,88 @@ struct PulseDepthBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+
     var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            ZStack {
-                // Warm "hero" halo — sits behind the top hero card.
-                halo(
-                    color: MobileTheme.ember,
-                    size: max(w * 0.78, 480),
-                    blur: 90,
-                    intensity: colorScheme == .dark ? 0.40 : 0.24,
-                    offset: CGSize(
-                        width: -w * 0.18 + drift(amount: 18, freq: 1.0),
-                        height: -h * 0.20 + drift(amount: 12, freq: 0.7)
-                    )
-                )
+        Group {
+            if useWebsiteBackground {
+                EmptyView()
+            } else {
+                GeometryReader { geo in
+                    let w = geo.size.width
+                    let h = geo.size.height
+                    ZStack {
+                        // Warm "hero" halo — sits behind the top hero card.
+                        halo(
+                            color: MobileTheme.ember,
+                            size: max(w * 0.78, 480),
+                            blur: 90,
+                            intensity: colorScheme == .dark ? 0.40 : 0.24,
+                            offset: CGSize(
+                                width: -w * 0.18 + drift(amount: 18, freq: 1.0),
+                                height: -h * 0.20 + drift(amount: 12, freq: 0.7)
+                            )
+                        )
 
-                // Amber forecast halo — anchors the velocity / forecast band.
-                halo(
-                    color: MobileTheme.amber,
-                    size: max(w * 0.70, 420),
-                    blur: 100,
-                    intensity: colorScheme == .dark ? 0.30 : 0.18,
-                    offset: CGSize(
-                        width: w * 0.32 + drift(amount: -22, freq: 0.6),
-                        height: -h * 0.04 + drift(amount: 14, freq: 1.3)
-                    )
-                )
+                        // Amber forecast halo — anchors the velocity / forecast band.
+                        halo(
+                            color: MobileTheme.amber,
+                            size: max(w * 0.70, 420),
+                            blur: 100,
+                            intensity: colorScheme == .dark ? 0.30 : 0.18,
+                            offset: CGSize(
+                                width: w * 0.32 + drift(amount: -22, freq: 0.6),
+                                height: -h * 0.04 + drift(amount: 14, freq: 1.3)
+                            )
+                        )
 
-                // Whimsy mid halo — anchors the Trend Atlas / Quota area.
-                halo(
-                    color: MobileTheme.whimsy,
-                    size: max(w * 0.66, 380),
-                    blur: 110,
-                    intensity: colorScheme == .dark ? 0.22 : 0.12,
-                    offset: CGSize(
-                        width: -w * 0.22 + drift(amount: 24, freq: 0.9),
-                        height: h * 0.18 + drift(amount: -18, freq: 0.5)
-                    )
-                )
+                        // Whimsy mid halo — anchors the Trend Atlas / Quota area.
+                        halo(
+                            color: MobileTheme.whimsy,
+                            size: max(w * 0.66, 380),
+                            blur: 110,
+                            intensity: colorScheme == .dark ? 0.22 : 0.12,
+                            offset: CGSize(
+                                width: -w * 0.22 + drift(amount: 24, freq: 0.9),
+                                height: h * 0.18 + drift(amount: -18, freq: 0.5)
+                            )
+                        )
 
-                // Hermes mercury halo — anchors the Hermes / Recents tail.
-                halo(
-                    color: MobileTheme.hermesMercury,
-                    size: max(w * 0.62, 360),
-                    blur: 100,
-                    intensity: colorScheme == .dark ? 0.20 : 0.10,
-                    offset: CGSize(
-                        width: w * 0.30 + drift(amount: -16, freq: 0.8),
-                        height: h * 0.36 + drift(amount: 20, freq: 0.4)
-                    )
-                )
+                        // Hermes mercury halo — anchors the Hermes / Recents tail.
+                        halo(
+                            color: MobileTheme.hermesMercury,
+                            size: max(w * 0.62, 360),
+                            blur: 100,
+                            intensity: colorScheme == .dark ? 0.20 : 0.10,
+                            offset: CGSize(
+                                width: w * 0.30 + drift(amount: -16, freq: 0.8),
+                                height: h * 0.36 + drift(amount: 20, freq: 0.4)
+                            )
+                        )
 
-                // Blaze foot halo — anchors the bottom of the scroll.
-                halo(
-                    color: MobileTheme.blaze,
-                    size: max(w * 0.74, 420),
-                    blur: 120,
-                    intensity: colorScheme == .dark ? 0.18 : 0.08,
-                    offset: CGSize(
-                        width: -w * 0.04 + drift(amount: 14, freq: 1.1),
-                        height: h * 0.46 + drift(amount: -12, freq: 0.7)
-                    )
-                )
+                        // Blaze foot halo — anchors the bottom of the scroll.
+                        halo(
+                            color: MobileTheme.blaze,
+                            size: max(w * 0.74, 420),
+                            blur: 120,
+                            intensity: colorScheme == .dark ? 0.18 : 0.08,
+                            offset: CGSize(
+                                width: -w * 0.04 + drift(amount: 14, freq: 1.1),
+                                height: h * 0.46 + drift(amount: -12, freq: 0.7)
+                            )
+                        )
+                    }
+                    .frame(width: w, height: h, alignment: .topLeading)
+                    .blendMode(.plusLighter)
+                    .opacity(reduceTransparency ? 0.55 : 1.0)
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .onAppear { startAnimating() }
+                .onChange(of: reduceMotion) { _, _ in startAnimating() }
             }
-            .frame(width: w, height: h, alignment: .topLeading)
-            .blendMode(.plusLighter)
-            .opacity(reduceTransparency ? 0.55 : 1.0)
         }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-        .onAppear { startAnimating() }
-        .onChange(of: reduceMotion) { _, _ in startAnimating() }
     }
 
     // MARK: - Halo

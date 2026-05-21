@@ -5,7 +5,7 @@ import OpenBurnBarCore
 final class DevicesStore {
     private let reader: CloudReader
     private let trustGateway: DeviceTrustGateway
-    private(set) var devices: [DeviceRecord] = []
+    private var rawDevices: [DeviceRecord] = []
     private(set) var isLoading = false
     private(set) var lastError: CloudErrorClassification?
     private(set) var actionInFlightFor: String?
@@ -14,7 +14,15 @@ final class DevicesStore {
         self.reader = reader; self.trustGateway = trustGateway
     }
 
-    var currentDevice: DeviceRecord? { devices.first { $0.isCurrentDevice } }
+    /// Display-ready devices. Raw Firestore device docs can include stale
+    /// reinstall/re-pairing copies; keep those only for the cleanup action.
+    var devices: [DeviceRecord] {
+        Self.deduplicated(rawDevices)
+    }
+
+    var currentDevice: DeviceRecord? {
+        devices.first(where: \.isCurrentDevice)
+    }
 
     /// Distinct other devices, deduped by display-name + platform. When
     /// multiple Firestore docs map to the same physical device (e.g. the
@@ -22,21 +30,23 @@ final class DevicesStore {
     /// `identifierForVendor`), we keep the most-recently-seen as the
     /// "primary" entry.
     var otherDevices: [DeviceRecord] {
-        let raw = devices.filter { !$0.isCurrentDevice }
-        return Self.deduplicated(raw)
+        devices.filter { !$0.isCurrentDevice }
     }
 
     /// Stale duplicates that we hid from the main list. Surfaced in a
     /// "Cleanup" card so the user can revoke them in bulk.
     var staleDuplicates: [DeviceRecord] {
-        let raw = devices.filter { !$0.isCurrentDevice }
-        let primaries = Set(Self.deduplicated(raw).map(\.id))
-        return raw.filter { !primaries.contains($0.id) }
+        let primaries = Set(devices.map(\.id))
+        return rawDevices
+            .filter { !primaries.contains($0.id) }
+            .sorted { lhs, rhs in
+                (lhs.lastSeen ?? .distantPast) > (rhs.lastSeen ?? .distantPast)
+            }
     }
 
     var thisDeviceTrustState: DeviceTrustState { currentDevice?.trustState ?? .pending }
     var bootstrapEligible: Bool {
-        let hasTrusted = devices.contains { $0.trustState == .trusted && !$0.isCurrentDevice }
+        let hasTrusted = rawDevices.contains { $0.trustState == .trusted && !$0.isCurrentDevice }
         return !hasTrusted && thisDeviceTrustState != .trusted
     }
 
@@ -60,16 +70,21 @@ final class DevicesStore {
     /// Returns `true` when `lhs` is staler than `rhs` (so `max(by:)`
     /// picks the freshest record).
     private static func staleness(_ lhs: DeviceRecord, _ rhs: DeviceRecord) -> Bool {
-        // Trusted beats pending/revoked when timestamps tie.
         if lhs.trustState != rhs.trustState {
-            if lhs.trustState == .revoked && rhs.trustState != .revoked { return true }
-            if rhs.trustState == .revoked && lhs.trustState != .revoked { return false }
-            if lhs.trustState != .trusted && rhs.trustState == .trusted { return true }
-            if lhs.trustState == .trusted && rhs.trustState != .trusted { return false }
+            return trustRank(lhs.trustState) < trustRank(rhs.trustState)
         }
         let lhsSeen = lhs.lastSeen ?? .distantPast
         let rhsSeen = rhs.lastSeen ?? .distantPast
         return lhsSeen < rhsSeen
+    }
+
+    private static func trustRank(_ state: DeviceTrustState) -> Int {
+        switch state {
+        case .current: return 3
+        case .trusted: return 2
+        case .pending: return 1
+        case .revoked: return 0
+        }
     }
 
     /// Revoke every record in `staleDuplicates`. Used by the "Clean up
@@ -88,7 +103,7 @@ final class DevicesStore {
 
     func load() async {
         isLoading = true; defer { isLoading = false }
-        do { devices = try await reader.loadDevices(); lastError = nil }
+        do { rawDevices = try await reader.loadDevices(); lastError = nil }
         catch let CloudGatewayError.classified(c) { lastError = c }
         catch { lastError = .other(message: error.localizedDescription) }
     }

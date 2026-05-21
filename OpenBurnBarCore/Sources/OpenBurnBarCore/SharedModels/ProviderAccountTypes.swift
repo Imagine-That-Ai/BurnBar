@@ -683,6 +683,37 @@ public struct ProviderRoutingDecisionEvent: Codable, Identifiable, Hashable, Sen
     }
 }
 
+public extension ProviderRoutingDecisionEvent {
+    /// True only when the route actually moved from one provider identity to
+    /// another. Account-only fallback stays out of the provider-change popup.
+    var isProviderChangeFailover: Bool {
+        guard let originalProviderID,
+              let failoverDestinationProviderID else {
+            return false
+        }
+        return originalProviderID != failoverDestinationProviderID
+    }
+
+    var providerChangeSourceLabel: String? {
+        guard let originalProviderID else { return nil }
+        return Self.displayName(for: originalProviderID)
+    }
+
+    var providerChangeDestinationLabel: String? {
+        guard isProviderChangeFailover,
+              let failoverDestinationProviderID else { return nil }
+        return Self.displayName(for: failoverDestinationProviderID)
+    }
+
+    var providerChangeModelLabel: String? {
+        attemptedCanonicalModelID ?? attemptedModelID ?? modelID
+    }
+
+    private static func displayName(for providerID: ProviderID) -> String {
+        AgentProvider.fromProviderID(providerID)?.displayName ?? providerID.rawValue
+    }
+}
+
 public struct ProviderRoutingDecision: Codable, Hashable, Sendable {
     public let selected: ProviderRoutingCandidate?
     public let nextFallback: ProviderRoutingCandidate?

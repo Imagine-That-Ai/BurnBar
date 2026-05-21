@@ -25,6 +25,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
+#[cfg(target_os = "android")]
+mod android_context;
 mod blobs;
 mod datagrams;
 

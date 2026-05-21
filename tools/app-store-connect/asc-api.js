@@ -450,6 +450,33 @@ async function attachBuildToVersion() {
   await printStatus();
 }
 
+async function cancelCurrentAppStoreVersionSubmission() {
+  const version = await getLatestIosVersion();
+  const state = version.attributes?.appStoreState;
+  if (state !== "WAITING_FOR_REVIEW" && state !== "IN_REVIEW") {
+    console.log(
+      `iOS version ${version.attributes?.versionString} is not actively submitted: ${state}`
+    );
+    return;
+  }
+
+  const response = await api(
+    "GET",
+    `/appStoreVersions/${version.id}/appStoreVersionSubmission`
+  );
+  const submissionId = response?.data?.id;
+  if (!submissionId) {
+    console.log(`iOS version ${version.id} has no appStoreVersionSubmission`);
+    return;
+  }
+
+  await api("DELETE", `/appStoreVersionSubmissions/${submissionId}`);
+  console.log(
+    `Canceled App Store version submission ${submissionId} for iOS ${version.attributes?.versionString}`
+  );
+  await printStatus();
+}
+
 async function getBetaGroups() {
   const response = await api(
     "GET",
@@ -1693,6 +1720,7 @@ async function main() {
   if (command === "status") return printStatus();
   if (command === "prepare-ios") return prepareIos();
   if (command === "attach-build") return attachBuildToVersion();
+  if (command === "cancel-version-submission") return cancelCurrentAppStoreVersionSubmission();
   if (command === "attach-internal-testflight") return attachBuildToInternalTestFlightGroups();
   if (command === "beta-groups") return printBetaGroups();
   if (command === "set-build-compliance") return setLinkedBuildCompliance();

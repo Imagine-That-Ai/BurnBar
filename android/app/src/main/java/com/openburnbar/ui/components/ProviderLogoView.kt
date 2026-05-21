@@ -117,6 +117,9 @@ object ProviderLogo {
     /// the `runtimeID` (set for every built-in) to URI-string roundtripping.
     @DrawableRes
     fun drawableForIdentity(identity: AgentIdentity): Int {
+        if (identity.id.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)) {
+            return R.drawable.paired_mac_logo
+        }
         // 1. Built-in runtime — single source of truth.
         identity.runtimeID?.let { return drawableFor(it) }
         // 2. ID may be a provider URI / key.
@@ -135,6 +138,9 @@ object ProviderLogo {
     @DrawableRes
     fun drawableForAnyIdentifier(identifier: String?): Int {
         if (identifier.isNullOrBlank()) return R.drawable.hermes_logo
+        if (identifier.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)) {
+            return R.drawable.paired_mac_logo
+        }
 
         // 1. Built-in agent URI: peel off the `agent://burnbar/` prefix and
         //    look up the runtime directly. This is what `AgentIdentity.id`

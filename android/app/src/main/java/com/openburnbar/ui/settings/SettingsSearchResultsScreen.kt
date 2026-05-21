@@ -171,6 +171,7 @@ private fun breadcrumb(item: SettingsItem): String {
         SettingsPageRoute.ROOT -> ""
         SettingsPageRoute.SMART_DISPLAYS -> "Smart Displays"
         SettingsPageRoute.MENU_BAR_PREFS -> "Quick-Glance"
+        SettingsPageRoute.THEME_PREFS -> "Theme & SOTA UX"
     }
     return if (pageLabel.isEmpty()) sectionTitle else "$sectionTitle › $pageLabel"
 }

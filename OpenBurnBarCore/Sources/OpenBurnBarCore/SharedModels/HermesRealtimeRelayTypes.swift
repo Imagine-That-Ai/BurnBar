@@ -36,6 +36,10 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case mediaPresenceHeartbeat = "media.presence.heartbeat"
     case mediaCallInvite = "media.call.invite"
     case mediaCallAck = "media.call.ack"
+    /// Receiver -> encoder acknowledgement for a VideoToolbox LTR token
+    /// carried on a decoded MediaFrame v2 video frame. This is inert for
+    /// v1 peers and only participates after both peers negotiate v2.
+    case mediaLongTermReferenceAck = "media.ltr.ack"
     /// Encoded `OpenBurnBarMedia.MediaFrame` bytes carried over the existing
     /// long-lived `media.control` stream after a mirror request is accepted.
     /// The media payload's `streamClass` identifies the logical receiver
@@ -200,6 +204,7 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
     public var text: String?
     public var key: String?
     public var modifiers: [String]?
+    public var mouseButton: Int?
     public var clientIntentId: String?
     public var authority: HermesRealtimeRelayAuthorityEnvelope
 
@@ -213,6 +218,7 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
         text: String? = nil,
         key: String? = nil,
         modifiers: [String]? = nil,
+        mouseButton: Int? = nil,
         clientIntentId: String? = nil,
         authority: HermesRealtimeRelayAuthorityEnvelope
     ) {
@@ -225,6 +231,7 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
         self.text = text
         self.key = key
         self.modifiers = modifiers
+        self.mouseButton = mouseButton
         self.clientIntentId = clientIntentId
         self.authority = authority
     }
@@ -393,6 +400,9 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// Mac → phone response to a call invite. Set on `media.call.ack`
     /// frames; nil elsewhere.
     public var callAck: HermesRealtimeRelayCallAck?
+    /// Receiver -> encoder LTR acknowledgement. Set on `media.ltr.ack`
+    /// frames; nil elsewhere.
+    public var longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck?
     /// Base64 text of `MediaPacketCodec.encode(MediaFrame)`. Kept as
     /// opaque bytes here so `OpenBurnBarCore` does not depend on the
     /// media target while the transport envelope remains Codable.
@@ -410,6 +420,7 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         presence: HermesRealtimeRelayPresenceHeartbeat? = nil,
         callInvite: HermesRealtimeRelayCallInvite? = nil,
         callAck: HermesRealtimeRelayCallAck? = nil,
+        longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck? = nil,
         encodedFrameBase64: String? = nil
     ) {
         self.streamClass = streamClass
@@ -423,6 +434,7 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         self.presence = presence
         self.callInvite = callInvite
         self.callAck = callAck
+        self.longTermReferenceAck = longTermReferenceAck
         self.encodedFrameBase64 = encodedFrameBase64
     }
 }
@@ -490,17 +502,52 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
     /// `media.screen.video`). Carried as a string for forward-compat
     /// with future mirrorable surfaces.
     public var streamClass: String
+    /// Optional Phase 0/2 streaming probe snapshot from the requester.
+    /// Older peers omit this field; the Mac falls back to the last
+    /// heartbeat or the existing v1 behavior when it is absent.
+    public var streamingCapabilities: HermesRealtimeRelayStreamingCapabilities?
 
     public init(
         requestId: String,
         requestedAt: Date,
         requesterDisplayName: String,
-        streamClass: String
+        streamClass: String,
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil
     ) {
         self.requestId = requestId
         self.requestedAt = requestedAt
         self.requesterDisplayName = requesterDisplayName
         self.streamClass = streamClass
+        self.streamingCapabilities = streamingCapabilities
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case requestedAt
+        case requesterDisplayName
+        case streamClass
+        case streamingCapabilities
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.requestedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .requestedAt)
+        self.requesterDisplayName = try container.decode(String.self, forKey: .requesterDisplayName)
+        self.streamClass = try container.decode(String.self, forKey: .streamClass)
+        self.streamingCapabilities = try container.decodeIfPresent(
+            HermesRealtimeRelayStreamingCapabilities.self,
+            forKey: .streamingCapabilities
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(requestedAt), forKey: .requestedAt)
+        try container.encode(requesterDisplayName, forKey: .requesterDisplayName)
+        try container.encode(streamClass, forKey: .streamClass)
+        try container.encodeIfPresent(streamingCapabilities, forKey: .streamingCapabilities)
     }
 }
 
@@ -610,6 +657,29 @@ public struct HermesRealtimeRelayCallInvite: Codable, Sendable, Equatable {
         self.requesterDisplayName = requesterDisplayName
         self.callKind = callKind
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case requestedAt
+        case requesterDisplayName
+        case callKind
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.requestedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .requestedAt)
+        self.requesterDisplayName = try container.decode(String.self, forKey: .requesterDisplayName)
+        self.callKind = try container.decodeIfPresent(String.self, forKey: .callKind) ?? "video"
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(requestedAt), forKey: .requestedAt)
+        try container.encode(requesterDisplayName, forKey: .requesterDisplayName)
+        try container.encode(callKind, forKey: .callKind)
+    }
 }
 
 /// Mac-side response to `HermesRealtimeRelayCallInvite`.
@@ -636,6 +706,42 @@ public struct HermesRealtimeRelayCallAck: Codable, Sendable, Equatable {
     }
 }
 
+public struct HermesRealtimeRelayLongTermReferenceAck: Codable, Sendable, Equatable {
+    public var requestId: String?
+    public var tokenValue: UInt64
+    public var decodedAt: Date
+
+    public init(
+        requestId: String? = nil,
+        tokenValue: UInt64,
+        decodedAt: Date = Date()
+    ) {
+        self.requestId = requestId
+        self.tokenValue = tokenValue
+        self.decodedAt = decodedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case tokenValue
+        case decodedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decodeIfPresent(String.self, forKey: .requestId)
+        self.tokenValue = try container.decode(UInt64.self, forKey: .tokenValue)
+        self.decodedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .decodedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(requestId, forKey: .requestId)
+        try container.encode(tokenValue, forKey: .tokenValue)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(decodedAt), forKey: .decodedAt)
+    }
+}
+
 /// Mercury Phase 8 — periodic iOS → Mac beacon so the Mac knows it has
 /// a live mirrorable client (used for outbound triggers like "Call
 /// iPhone" from the Mac popover). Sent every 60s once the iOS control
@@ -646,17 +752,225 @@ public struct HermesRealtimeRelayPresenceHeartbeat: Codable, Sendable, Equatable
     public var deviceDisplayName: String
     public var capabilities: [String]
     public var blurredWallpaperBase64: String?
+    public var peerDeviceId: String?
+    public var streamingCapabilities: HermesRealtimeRelayStreamingCapabilities?
 
     public init(
         sentAt: Date,
         deviceDisplayName: String,
         capabilities: [String],
-        blurredWallpaperBase64: String? = nil
+        blurredWallpaperBase64: String? = nil,
+        peerDeviceId: String? = nil,
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil
     ) {
         self.sentAt = sentAt
         self.deviceDisplayName = deviceDisplayName
         self.capabilities = capabilities
         self.blurredWallpaperBase64 = blurredWallpaperBase64
+        self.peerDeviceId = peerDeviceId
+        self.streamingCapabilities = streamingCapabilities
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sentAt
+        case deviceDisplayName
+        case displayName
+        case capabilities
+        case blurredWallpaperBase64
+        case peerDeviceId
+        case streamingCapabilities
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.sentAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .sentAt)
+        let canonicalName = try container.decodeIfPresent(String.self, forKey: .deviceDisplayName)
+        let androidAliasName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        self.deviceDisplayName = canonicalName ?? androidAliasName ?? "Unknown Device"
+        self.capabilities = try container.decodeIfPresent([String].self, forKey: .capabilities) ?? []
+        self.blurredWallpaperBase64 = try container.decodeIfPresent(String.self, forKey: .blurredWallpaperBase64)
+        self.peerDeviceId = try container.decodeIfPresent(String.self, forKey: .peerDeviceId)
+        self.streamingCapabilities = try container.decodeIfPresent(
+            HermesRealtimeRelayStreamingCapabilities.self,
+            forKey: .streamingCapabilities
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(sentAt), forKey: .sentAt)
+        try container.encode(deviceDisplayName, forKey: .deviceDisplayName)
+        // Android builds before the Phase 0/2 streaming handshake used
+        // `displayName`; keep the alias on the wire so they do not tear
+        // down the control stream on Mac heartbeats.
+        try container.encode(deviceDisplayName, forKey: .displayName)
+        try container.encode(capabilities, forKey: .capabilities)
+        try container.encodeIfPresent(blurredWallpaperBase64, forKey: .blurredWallpaperBase64)
+        try container.encodeIfPresent(peerDeviceId, forKey: .peerDeviceId)
+        try container.encodeIfPresent(streamingCapabilities, forKey: .streamingCapabilities)
+    }
+}
+
+public enum HermesRealtimeRelayVideoCodec: String, Codable, Sendable, Equatable {
+    case av1
+    case hevc
+    case h264
+}
+
+public struct HermesRealtimeRelayVideoCodecCapability: Codable, Sendable, Equatable {
+    public var codec: HermesRealtimeRelayVideoCodec
+    public var canEncode: Bool
+    public var canDecode: Bool
+    public var hardwareAccelerated: Bool
+    public var lowLatencyEncode: Bool
+    public var temporalLayering: Bool
+    public var longTermReference: Bool
+    public var screenContentCoding: Bool
+
+    public init(
+        codec: HermesRealtimeRelayVideoCodec,
+        canEncode: Bool,
+        canDecode: Bool,
+        hardwareAccelerated: Bool,
+        lowLatencyEncode: Bool = false,
+        temporalLayering: Bool = false,
+        longTermReference: Bool = false,
+        screenContentCoding: Bool = false
+    ) {
+        self.codec = codec
+        self.canEncode = canEncode
+        self.canDecode = canDecode
+        self.hardwareAccelerated = hardwareAccelerated
+        self.lowLatencyEncode = lowLatencyEncode
+        self.temporalLayering = temporalLayering
+        self.longTermReference = longTermReference
+        self.screenContentCoding = screenContentCoding
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case codec
+        case canEncode
+        case canDecode
+        case hardwareAccelerated
+        case lowLatencyEncode
+        case temporalLayering
+        case longTermReference
+        case screenContentCoding
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.codec = try container.decode(HermesRealtimeRelayVideoCodec.self, forKey: .codec)
+        self.canEncode = try container.decodeIfPresent(Bool.self, forKey: .canEncode) ?? false
+        self.canDecode = try container.decodeIfPresent(Bool.self, forKey: .canDecode) ?? false
+        self.hardwareAccelerated = try container.decodeIfPresent(Bool.self, forKey: .hardwareAccelerated) ?? false
+        self.lowLatencyEncode = try container.decodeIfPresent(Bool.self, forKey: .lowLatencyEncode) ?? false
+        self.temporalLayering = try container.decodeIfPresent(Bool.self, forKey: .temporalLayering) ?? false
+        self.longTermReference = try container.decodeIfPresent(Bool.self, forKey: .longTermReference) ?? false
+        self.screenContentCoding = try container.decodeIfPresent(Bool.self, forKey: .screenContentCoding) ?? false
+    }
+}
+
+public struct HermesRealtimeRelayMediaFrameVersionSupport: Codable, Sendable, Equatable {
+    public var supportsV1: Bool
+    public var supportsV2: Bool
+
+    public init(supportsV1: Bool = true, supportsV2: Bool = false) {
+        self.supportsV1 = supportsV1
+        self.supportsV2 = supportsV2
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case supportsV1
+        case supportsV2
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.supportsV1 = try container.decodeIfPresent(Bool.self, forKey: .supportsV1) ?? true
+        self.supportsV2 = try container.decodeIfPresent(Bool.self, forKey: .supportsV2) ?? false
+    }
+}
+
+public struct HermesRealtimeRelayDatagramCapability: Codable, Sendable, Equatable {
+    public var maxPayloadBytes: Int?
+
+    public init(maxPayloadBytes: Int?) {
+        self.maxPayloadBytes = maxPayloadBytes
+    }
+}
+
+public struct HermesRealtimeRelayStreamingCapabilities: Codable, Sendable, Equatable {
+    public var codecCapabilities: [HermesRealtimeRelayVideoCodecCapability]
+    public var mediaFrameVersions: HermesRealtimeRelayMediaFrameVersionSupport
+    public var videoDatagrams: HermesRealtimeRelayDatagramCapability
+    public var source: String
+
+    public init(
+        codecCapabilities: [HermesRealtimeRelayVideoCodecCapability],
+        mediaFrameVersions: HermesRealtimeRelayMediaFrameVersionSupport = .init(),
+        videoDatagrams: HermesRealtimeRelayDatagramCapability = .init(maxPayloadBytes: nil),
+        source: String
+    ) {
+        self.codecCapabilities = codecCapabilities
+        self.mediaFrameVersions = mediaFrameVersions
+        self.videoDatagrams = videoDatagrams
+        self.source = source
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case codecCapabilities
+        case mediaFrameVersions
+        case videoDatagrams
+        case source
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.codecCapabilities = try container.decodeIfPresent(
+            [HermesRealtimeRelayVideoCodecCapability].self,
+            forKey: .codecCapabilities
+        ) ?? []
+        self.mediaFrameVersions = try container.decodeIfPresent(
+            HermesRealtimeRelayMediaFrameVersionSupport.self,
+            forKey: .mediaFrameVersions
+        ) ?? .init()
+        self.videoDatagrams = try container.decodeIfPresent(
+            HermesRealtimeRelayDatagramCapability.self,
+            forKey: .videoDatagrams
+        ) ?? .init(maxPayloadBytes: nil)
+        self.source = try container.decodeIfPresent(String.self, forKey: .source) ?? "unknown"
+    }
+}
+
+private enum HermesRealtimeRelayDateCodec {
+    static func decode<Key: CodingKey>(
+        _ container: KeyedDecodingContainer<Key>,
+        forKey key: Key
+    ) throws -> Date {
+        if let date = try? container.decode(Date.self, forKey: key) {
+            return date
+        }
+        if let raw = try? container.decode(String.self, forKey: key) {
+            let iso8601 = ISO8601DateFormatter()
+            iso8601.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let iso8601Basic = ISO8601DateFormatter()
+            iso8601Basic.formatOptions = [.withInternetDateTime]
+            if let date = iso8601.date(from: raw) ?? iso8601Basic.date(from: raw) {
+                return date
+            }
+        }
+        throw DecodingError.dataCorruptedError(
+            forKey: key,
+            in: container,
+            debugDescription: "Expected Swift JSONEncoder Date number or ISO-8601 date string."
+        )
+    }
+
+    static func encode(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
     }
 }
 

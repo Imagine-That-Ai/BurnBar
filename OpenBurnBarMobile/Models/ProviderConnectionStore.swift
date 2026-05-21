@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 
 @Observable
@@ -23,7 +23,7 @@ final class ProviderConnectionStore {
     // from `deinit` (a nonisolated context). Marking the property
     // `nonisolated(unsafe)` lets the actor-isolated store hold it while still
     // allowing `deinit` to call `remove()`.
-    private nonisolated(unsafe) var deviceLinksListener: ListenerRegistration?
+    @ObservationIgnored private nonisolated(unsafe) var deviceLinksListener: ListenerRegistration?
 
     init(
         functions: FunctionsRepository = FunctionsRepository(),

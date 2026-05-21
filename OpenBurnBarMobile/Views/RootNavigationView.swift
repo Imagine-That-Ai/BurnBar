@@ -37,6 +37,7 @@ struct RootNavigationView: View {
     @State private var showHermesSheet = false
     @State private var subscriptionStore = HostedQuotaSubscriptionStore()
     @State private var detailPath = NavigationPath()
+    @State private var isCloudStoreChromeHidden = false
 
     enum SidebarDestination: Hashable, Identifiable {
         case pulse, burn, insights, streams, hermes, you, settings, devices, providers
@@ -103,6 +104,7 @@ struct RootNavigationView: View {
         }
         .environment(\.motionStore, motionStore)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
+        .environment(\.mobileAuthStore, authStore)
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
@@ -119,6 +121,9 @@ struct RootNavigationView: View {
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
+            isCloudStoreChromeHidden = notification.object as? Bool ?? false
         }
     }
 
@@ -313,7 +318,7 @@ struct RootNavigationView: View {
                     case .hermes:   EmptyView()
                     case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
                     case .settings: SettingsHubView(authStore: authStore)
-                    case .devices:  iPadDevicesSettingsView()
+                    case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
                     case .providers: ProviderConnectionsView(showsDoneButton: false)
                     }
                 }
@@ -321,7 +326,7 @@ struct RootNavigationView: View {
                     switch route {
                     case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
                     case .settings: SettingsHubView(authStore: authStore)
-                    case .devices:  iPadDevicesSettingsView()
+                    case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
                     case .providers: ProviderConnectionsView(showsDoneButton: false)
                     case .computerUse: AgentWatchScreen(
                         authUID: authStore.currentIdentity?.uid,

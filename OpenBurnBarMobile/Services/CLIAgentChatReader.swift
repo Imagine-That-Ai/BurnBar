@@ -1,8 +1,8 @@
-import Foundation
+@preconcurrency import Foundation
 import FirebaseAppCheck
-import FirebaseAuth
+@preconcurrency import FirebaseAuth
 import FirebaseCore
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 import OSLog
 
@@ -36,8 +36,8 @@ final class CLIAgentChatReader {
 
     private let remote: CLIAgentChatRemoteSource
     private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "CLIAgentChatReader")
-    private var authListenerHandle: AuthStateDidChangeListenerHandle?
-    private var sessionsListener: ListenerRegistration?
+    @ObservationIgnored private nonisolated(unsafe) var authListenerHandle: AuthStateDidChangeListenerHandle?
+    @ObservationIgnored private nonisolated(unsafe) var sessionsListener: ListenerRegistration?
 
     init(
         remote: CLIAgentChatRemoteSource = CLIAgentChatFirestoreSource(),
@@ -50,20 +50,10 @@ final class CLIAgentChatReader {
     }
 
     deinit {
-        // `authListenerHandle` is `@MainActor`-isolated by the enclosing
-        // type, but Firebase removes listeners thread-safely. Hop to the
-        // main actor synchronously to read the handle, then call into
-        // Firebase from the same nonisolated context.
-        let handleSnapshot: AuthStateDidChangeListenerHandle? = MainActor.assumeIsolated {
-            authListenerHandle
-        }
-        if let handle = handleSnapshot {
+        if let handle = authListenerHandle {
             Auth.auth().removeStateDidChangeListener(handle)
         }
-        let listenerSnapshot: ListenerRegistration? = MainActor.assumeIsolated {
-            sessionsListener
-        }
-        listenerSnapshot?.remove()
+        sessionsListener?.remove()
     }
 
     /// Filtered list per CLI runtime, sorted newest-first.

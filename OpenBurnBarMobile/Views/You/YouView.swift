@@ -13,6 +13,7 @@ struct YouView: View {
     @State private var account = AccountStore()
     @State private var showSignOutConfirm = false
     @State private var showCloudStore = false
+    @State private var showSignIn = false
 
     @Environment(\.cloudSubscriptionStore) private var cloudStore
 
@@ -51,7 +52,7 @@ struct YouView: View {
                     settingsRow
                         .staggeredEntrance(delay: 0.20)
 
-                    signOutButton
+                    accountActionButton
                         .padding(.top, MobileTheme.Spacing.md)
                         .staggeredEntrance(delay: 0.25)
                 }
@@ -91,6 +92,16 @@ struct YouView: View {
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showSignIn) {
+            SignInScene(authStore: authStore)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .onChange(of: authStore.state.isSignedIn) { _, isSignedIn in
+            if isSignedIn {
+                showSignIn = false
+            }
         }
     }
 
@@ -317,11 +328,23 @@ struct YouView: View {
 
     // MARK: - Sign Out
 
-    private var signOutButton: some View {
-        Button("Sign out") {
-            showSignOutConfirm = true
+    private var accountActionButton: some View {
+        Group {
+            if authStore.state.isSignedIn {
+                Button("Sign out") {
+                    showSignOutConfirm = true
+                }
+                .buttonStyle(.aurora(.destructive, fullWidth: true))
+            } else {
+                Button {
+                    showSignIn = true
+                } label: {
+                    Label("Sign in for Cloud", systemImage: "person.crop.circle.badge.checkmark")
+                }
+                .buttonStyle(.aurora(.primary, fullWidth: true))
+                .accessibilityIdentifier("you.signIn")
+            }
         }
-        .buttonStyle(.aurora(.destructive, fullWidth: true))
     }
 }
 

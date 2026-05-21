@@ -74,6 +74,34 @@ class PairedMacIdentityTest {
     }
 
     @Test
+    fun pairedMacPinReplacesFallbackWhenRelayHydrates() {
+        val grid = PinnedAgentGridConfig.DEFAULT
+            .pinningPairedMac(PinnedAgentGridConfig.DEFAULT_PAIRED_MAC_URI)
+
+        val hydrated = grid.pinningPairedMac("device://paired-mac/relay-live")
+
+        assertEquals("device://paired-mac/relay-live", hydrated.pinnedURIs.first())
+        assertTrue(PinnedAgentGridConfig.DEFAULT_PAIRED_MAC_URI !in hydrated.pinnedURIs)
+    }
+
+    @Test
+    fun removingPairedMacPinsClearsFallbackAndRelayPins() {
+        val grid = PinnedAgentGridConfig(
+            pinnedURIs = listOf(
+                "agent://burnbar/hermes",
+                PinnedAgentGridConfig.DEFAULT_PAIRED_MAC_URI,
+                "device://paired-mac/relay-live",
+                "agent://burnbar/pi"
+            )
+        )
+
+        val cleaned = grid.removingPairedMacPins()
+
+        assertEquals(listOf("agent://burnbar/hermes", "agent://burnbar/pi"), cleaned.pinnedURIs)
+        assertTrue(!cleaned.hasPairedMacPin())
+    }
+
+    @Test
     fun preferredPairedMacIncludesOfflinePairedRelayButSkipsRevoked() {
         val offline = HermesConnectionRecord(
             id = "relay-offline",

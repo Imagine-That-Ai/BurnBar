@@ -54,6 +54,53 @@ struct AppearanceCorkboardSection: View {
                     isOn: $settingsManager.launchAtLogin
                 )
                 .settingsAnchor(SettingsAnchor.appearanceLaunchAtLogin)
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
+                    title: "Premium SOTA UX",
+                    subtitle: "Enable cinematic spring physics and specular shimmers globally.",
+                    icon: "sparkles",
+                    isOn: $settingsManager.usePremiumSOTAUX
+                )
+                .settingsAnchor(SettingsAnchor.usePremiumSOTAUX)
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
+                    title: "Swarm Background",
+                    subtitle: "Active, reconverging token-ember swarms pulled from burnbar.ai. Particles drift and reform into $, </>, quota rings, and router failover paths.",
+                    icon: "sparkles",
+                    isOn: $settingsManager.useWebsiteBackground
+                )
+                .settingsAnchor(SettingsAnchor.useWebsiteBackground)
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
+                    title: "Enable Desktop Swarm Wallpaper",
+                    subtitle: "Render the dynamic token ember swarm simulation directly as your macOS desktop wallpaper.",
+                    icon: "desktopcomputer",
+                    isOn: $settingsManager.enableDesktopWallpaper
+                )
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
+                    title: "AMOLED Dark Mode Background",
+                    subtitle: "Use a pitch-black wallpaper background to optimize OLED screens and save battery.",
+                    icon: "moon.stars.fill",
+                    isOn: $settingsManager.amoledDarkBackground
+                )
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
+                    title: "Cycle Shapes (Screensaver)",
+                    subtitle: "Periodically reform the screensaver swarms into $, </>, quota rings, and failover curves.",
+                    icon: "arrow.triangle.2.circlepath",
+                    isOn: $settingsManager.cycleShapesScreensaver
+                )
             }
             .padding(DesignSystem.Spacing.lg)
         }

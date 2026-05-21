@@ -52,11 +52,14 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
     enum ControlStreamError: LocalizedError, Equatable {
         case timedOutWaitingForLiveStream
+        case notLive
 
         var errorDescription: String? {
             switch self {
             case .timedOutWaitingForLiveStream:
                 return "Mercury is still connecting. Try again after the Mac shows as online."
+            case .notLive:
+                return "Mercury control stream is not live."
             }
         }
     }
@@ -77,6 +80,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private var activeUID: String?
     private var activeConnectionID: String?
     private let mediaPacketCodec = MediaPacketCodec()
+    private let mediaFrameV2Codec = MediaFrameV2Codec()
 
     /// Mercury Phase 8 — iOS receives ack frames from the Mac in
     /// response to `mediaMirrorRequest` sends. The Hermes Square root
@@ -88,6 +92,11 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// on the same long-lived `media.control` stream as the approval ack and
     /// are decoded from `media.stream.frame` envelopes.
     var mirrorFrameHandler: ((MediaFrame) async -> Void)?
+
+    /// Negotiated MediaFrame v2 mirror frames. v1 remains the fallback, while
+    /// v2 lets the receiver ACK LTR tokens after both sides promote the data
+    /// path.
+    var mirrorFrameV2Handler: ((MediaFrameV2) async -> Void)?
 
     /// Mercury Phase 8 — Mac → iOS presence updates. The Hermes Square
     /// root installs `MercuryPeerSource.ingestHeartbeat(_:)` here so the
@@ -155,6 +164,30 @@ final class MediaControlStreamCoordinator: ObservableObject {
         Self.log.info("control_stream_send type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
         Self.debugTrace("control_stream_send type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
         try await stream.send(frame)
+    }
+
+    func sendLongTermReferenceAcknowledgement(
+        token: MercuryLTRToken,
+        requestId: String? = nil,
+        timeout: TimeInterval = 8
+    ) async throws {
+        guard let uid = activeUID, let connectionID = activeConnectionID else {
+            throw ControlStreamError.notLive
+        }
+        let ack = HermesRealtimeRelayLongTermReferenceAck(
+            requestId: requestId,
+            tokenValue: token.value
+        )
+        try await send(
+            frame: HermesRealtimeRelayFrame(
+                type: .mediaLongTermReferenceAck,
+                uid: uid,
+                connectionId: connectionID,
+                requestId: requestId,
+                media: HermesRealtimeRelayMediaPayload(longTermReferenceAck: ack)
+            ),
+            timeout: timeout
+        )
     }
 
     private func awaitLiveStream(timeout: TimeInterval) async throws -> any IrohRelayStream {
@@ -277,13 +310,18 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 case .mediaStreamFrame:
                     guard frame.media?.streamClass == MediaStreamClass.screenVideo.rawValue,
                           let encoded = frame.media?.encodedFrameBase64,
-                          let data = Data(base64Encoded: encoded),
-                          let handler = mirrorFrameHandler else {
+                          let data = Data(base64Encoded: encoded) else {
                         continue
                     }
                     do {
-                        let decoded = try mediaPacketCodec.decode(data).frame
-                        await handler(decoded)
+                        if MediaFrameV2Codec.isEncodedEnvelope(data),
+                           let handler = mirrorFrameV2Handler {
+                            let decoded = try mediaFrameV2Codec.decode(data).frame
+                            await handler(decoded)
+                        } else if let handler = mirrorFrameHandler {
+                            let decoded = try mediaPacketCodec.decode(data).frame
+                            await handler(decoded)
+                        }
                     } catch {
                         continue
                     }
@@ -334,7 +372,10 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 MercuryPeer.Feature.fileSend.rawValue,
                 MercuryPeer.Feature.fileReceive.rawValue,
                 MercuryPeer.Feature.callReceive.rawValue
-            ]
+            ],
+            streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
+                mediaFrameVersions: .v1AndV2
+            ).wireValue
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaPresenceHeartbeat,

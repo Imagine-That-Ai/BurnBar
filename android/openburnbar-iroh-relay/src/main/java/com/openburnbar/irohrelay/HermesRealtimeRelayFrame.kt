@@ -55,6 +55,7 @@ enum class HermesRealtimeRelayFrameType {
     @SerialName("media.presence.heartbeat") MEDIA_PRESENCE_HEARTBEAT,
     @SerialName("media.call.invite") MEDIA_CALL_INVITE,
     @SerialName("media.call.ack") MEDIA_CALL_ACK,
+    @SerialName("media.ltr.ack") MEDIA_LONG_TERM_REFERENCE_ACK,
     @SerialName("media.stream.frame") MEDIA_STREAM_FRAME,
 
     // Computer Use control plane. Mirrors the Swift enum so Android can
@@ -113,6 +114,7 @@ data class HermesRealtimeRelayMediaPayload(
     val presence: HermesRealtimeRelayPresenceHeartbeat? = null,
     val callInvite: HermesRealtimeRelayCallInvite? = null,
     val callAck: HermesRealtimeRelayCallAck? = null,
+    val longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck? = null,
     val encodedFrameBase64: String? = null,
 )
 
@@ -148,6 +150,7 @@ data class HermesRealtimeRelayMirrorRequest(
     val requestedAt: String,
     val requesterDisplayName: String,
     val streamClass: String,
+    val streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = null,
 )
 
 @Serializable
@@ -194,12 +197,61 @@ data class HermesRealtimeRelayCallAck(
 }
 
 @Serializable
+data class HermesRealtimeRelayLongTermReferenceAck(
+    val requestId: String? = null,
+    val tokenValue: Long,
+    /** ISO-8601 string. Matches the Swift custom date encoder. */
+    val decodedAt: String,
+)
+
+@Serializable
 data class HermesRealtimeRelayPresenceHeartbeat(
-    val peerDeviceId: String,
-    val displayName: String,
+    val peerDeviceId: String? = null,
+    val displayName: String? = null,
+    val deviceDisplayName: String? = null,
     val capabilities: List<String> = emptyList(),
+    val blurredWallpaperBase64: String? = null,
+    val streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = null,
     /** ISO-8601 string. Matches the Swift `Date` encoding via JSONEncoder default. */
     val sentAt: String,
+)
+
+@Serializable
+enum class HermesRealtimeRelayVideoCodec {
+    @SerialName("av1") AV1,
+    @SerialName("hevc") HEVC,
+    @SerialName("h264") H264,
+}
+
+@Serializable
+data class HermesRealtimeRelayVideoCodecCapability(
+    val codec: HermesRealtimeRelayVideoCodec,
+    val canEncode: Boolean,
+    val canDecode: Boolean,
+    val hardwareAccelerated: Boolean,
+    val lowLatencyEncode: Boolean = false,
+    val temporalLayering: Boolean = false,
+    val longTermReference: Boolean = false,
+    val screenContentCoding: Boolean = false,
+)
+
+@Serializable
+data class HermesRealtimeRelayMediaFrameVersionSupport(
+    val supportsV1: Boolean = true,
+    val supportsV2: Boolean = false,
+)
+
+@Serializable
+data class HermesRealtimeRelayDatagramCapability(
+    val maxPayloadBytes: Int? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayStreamingCapabilities(
+    val codecCapabilities: List<HermesRealtimeRelayVideoCodecCapability>,
+    val mediaFrameVersions: HermesRealtimeRelayMediaFrameVersionSupport = HermesRealtimeRelayMediaFrameVersionSupport(),
+    val videoDatagrams: HermesRealtimeRelayDatagramCapability = HermesRealtimeRelayDatagramCapability(),
+    val source: String,
 )
 
 @Serializable

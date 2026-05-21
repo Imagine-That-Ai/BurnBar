@@ -40,7 +40,7 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 fun HermesSquareSplitLayout(
     onOpenLegacyRuntime: (AssistantRuntimeID) -> Unit = {},
     onOpenBrandZone: (String) -> Unit = {},
-    onOpenPairedMac: () -> Unit = {},
+    onOpenPairedMac: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
@@ -64,9 +64,9 @@ fun HermesSquareSplitLayout(
                     detail = DetailRoute.BrandZone(uri)
                     onOpenBrandZone(uri)
                 },
-                onOpenPairedMac = {
+                onOpenPairedMac = { connectionID ->
                     detail = DetailRoute.PairedMac
-                    onOpenPairedMac()
+                    onOpenPairedMac(connectionID)
                 }
             )
         }
