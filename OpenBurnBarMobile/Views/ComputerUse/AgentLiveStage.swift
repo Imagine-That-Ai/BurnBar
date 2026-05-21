@@ -79,6 +79,13 @@ struct AgentLiveStage: View {
                    ? .easeInOut(duration: 0.18)
                    : .spring(response: 0.46, dampingFraction: 0.84),
                    value: presenter.mode)
+        .onChange(of: stateRef.currentFrame) { _, frame in
+            // Keep the stage's coordinator warm even while the dock tile
+            // (which has its own AVSampleBufferDisplayLayer) is visible,
+            // so transitions from dock to split never paint a black frame.
+            guard let frame else { return }
+            Task { await video.ingest(frame: frame) }
+        }
         .onChange(of: presenter.mode) { _, mode in
             if mode == .maximize || mode == .split {
                 NotificationCenter.default.post(
@@ -193,10 +200,6 @@ struct AgentLiveStage: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: isMaximized ? 0 : 18, style: .continuous))
         .compositingGroup()
-        .onChange(of: stateRef.currentFrame) { _, frame in
-            guard let frame else { return }
-            Task { await video.ingest(frame: frame) }
-        }
     }
 
     @ViewBuilder
