@@ -360,6 +360,28 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
         return bestModelMatch(named: normalized)?.model.pricing
     }
 
+    public func pricing(
+        forModelName modelName: String,
+        providerID: String,
+        includeHidden: Bool = true
+    ) -> BurnBarModelPricing? {
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty, let provider = provider(id: providerID) else { return nil }
+
+        let models = includeHidden ? provider.models : provider.models.filter { $0.visibility == .public }
+        let scopedProvider = BurnBarCatalogProvider(
+            id: provider.id,
+            displayName: provider.displayName,
+            baseURL: provider.baseURL,
+            visibility: provider.visibility,
+            logoKey: provider.logoKey,
+            capabilities: provider.capabilities,
+            formatFamily: provider.formatFamily,
+            models: models
+        )
+        return bestModelMatch(named: normalized, providersToSearch: [scopedProvider])?.model.pricing
+    }
+
     /// Returns the catalog provider (vendor) that owns a given model name, if any.
     public func vendorForModel(named modelName: String) -> BurnBarCatalogProvider? {
         let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

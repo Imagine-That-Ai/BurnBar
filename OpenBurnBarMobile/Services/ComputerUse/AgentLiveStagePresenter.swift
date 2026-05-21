@@ -140,6 +140,7 @@ final class AgentLiveStagePresenter: ObservableObject {
                 // `dismiss()` to force hide.
                 break
             } else {
+                cancelGrace()
                 mode = .hidden
             }
         case .hidden:

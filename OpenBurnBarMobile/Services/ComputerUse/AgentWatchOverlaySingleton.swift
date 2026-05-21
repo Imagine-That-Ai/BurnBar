@@ -74,7 +74,10 @@ final class AgentWatchOverlaySingleton: ObservableObject {
         }
 
         if currentUID == uid, currentConnectionID == connection.id {
-            // Already dialing or live on the right inputs.
+            // Already dialing or live on the right inputs. Still clear
+            // any stale error so a transient failure that resolves on
+            // its own doesn't leave a permanent error banner.
+            connectionMessage = nil
             return
         }
 
