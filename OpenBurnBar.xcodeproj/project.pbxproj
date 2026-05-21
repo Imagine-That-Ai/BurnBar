@@ -1279,7 +1279,16 @@
 		FF1D30F01FE7203306CBF757 /* OpenAICompatibleChatGatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE6FFBC700D218430E47C7C2 /* OpenAICompatibleChatGatewayClient.swift */; };
 		FF2193EC287F315EF5B4959B /* DataStoreCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C1332856DEA3C1BE127FCBC /* DataStoreCoordinator.swift */; };
 		FFA7903A67AE17FD933C644C /* CursorLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A6AD6AE1CB3C1474E6099D /* CursorLoginHelper.swift */; };
-/* End PBXBuildFile section */
+		4C936AD5DB5C911C5501CE24 /* AgentWatchVideoSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = C904A30AE940F97D1190E512 /* AgentWatchVideoSurface.swift */; };
+		A878634B8D57C65B41FF7B43 /* AgentWatchOverlaySingleton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2789E9C1DFF085E244A8F935 /* AgentWatchOverlaySingleton.swift */; };
+		5F29580FBE4218B6C066F09A /* AgentLiveStagePresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60757308E694B0FD2F685AC9 /* AgentLiveStagePresenter.swift */; };
+		FA0208AFC3D04E596B84E42A /* AgentLiveStageBadges.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC53925005EC372CDF02F360 /* AgentLiveStageBadges.swift */; };
+		FC2094A56DE1C51B60D41142 /* AgentLiveStageDockTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 425D43ADC6F6D1A07E0FD503 /* AgentLiveStageDockTile.swift */; };
+		D8437742ECF37017ED5A1E08 /* AgentLiveStageChatPuck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2329E453220AF300A6948D86 /* AgentLiveStageChatPuck.swift */; };
+		28A1BB240E490408326D4962 /* AgentLiveStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB8286DB36F4772B06E2F7F /* AgentLiveStage.swift */; };
+		F79D4709EE9D4726D53FEE82 /* AgentLiveStagePresenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6D271B5D9413146D021AE90 /* AgentLiveStagePresenterTests.swift */; };
+		05366D111D513E0459AC402F /* AgentLiveStageWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D148B86103F3FA3043F52B /* AgentLiveStageWiringTests.swift */; };
+		/* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		01C257AE01A330905A3CAAFA /* PBXContainerItemProxy */ = {
@@ -2610,7 +2619,16 @@
 		FF32767ACBECDC438098C51A /* AssistantModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantModelPickerSheet.swift; sourceTree = "<group>"; };
 		FFB4C714340AB5C7EF8AB2BE /* MobileInsightAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileInsightAggregator.swift; sourceTree = "<group>"; };
 		FFFDD98A3EE525028068947D /* HermesLiveGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesLiveGlyph.swift; sourceTree = "<group>"; };
-/* End PBXFileReference section */
+		C904A30AE940F97D1190E512 /* AgentWatchVideoSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentWatchVideoSurface.swift; path = OpenBurnBarMobile/Views/ComputerUse/AgentWatchVideoSurface.swift; sourceTree = SOURCE_ROOT; };
+		2789E9C1DFF085E244A8F935 /* AgentWatchOverlaySingleton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentWatchOverlaySingleton.swift; path = OpenBurnBarMobile/Services/ComputerUse/AgentWatchOverlaySingleton.swift; sourceTree = SOURCE_ROOT; };
+		60757308E694B0FD2F685AC9 /* AgentLiveStagePresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentLiveStagePresenter.swift; path = OpenBurnBarMobile/Services/ComputerUse/AgentLiveStagePresenter.swift; sourceTree = SOURCE_ROOT; };
+		DC53925005EC372CDF02F360 /* AgentLiveStageBadges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentLiveStageBadges.swift; path = OpenBurnBarMobile/Views/ComputerUse/AgentLiveStageBadges.swift; sourceTree = SOURCE_ROOT; };
+		425D43ADC6F6D1A07E0FD503 /* AgentLiveStageDockTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentLiveStageDockTile.swift; path = OpenBurnBarMobile/Views/ComputerUse/AgentLiveStageDockTile.swift; sourceTree = SOURCE_ROOT; };
+		2329E453220AF300A6948D86 /* AgentLiveStageChatPuck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentLiveStageChatPuck.swift; path = OpenBurnBarMobile/Views/ComputerUse/AgentLiveStageChatPuck.swift; sourceTree = SOURCE_ROOT; };
+		CDB8286DB36F4772B06E2F7F /* AgentLiveStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentLiveStage.swift; path = OpenBurnBarMobile/Views/ComputerUse/AgentLiveStage.swift; sourceTree = SOURCE_ROOT; };
+		A6D271B5D9413146D021AE90 /* AgentLiveStagePresenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentLiveStagePresenterTests.swift; path = OpenBurnBarMobileTests/AgentLiveStagePresenterTests.swift; sourceTree = SOURCE_ROOT; };
+		86D148B86103F3FA3043F52B /* AgentLiveStageWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentLiveStageWiringTests.swift; path = OpenBurnBarMobileTests/AgentLiveStageWiringTests.swift; sourceTree = SOURCE_ROOT; };
+		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		0062A1DE262C635F10AD7130 /* Frameworks */ = {
@@ -5714,6 +5732,8 @@
 				C47BCCECD2F74554B9C8205F /* TrendInsightEngineTests.swift in Sources */,
 				36DA9A8F89C8DD0CC96CB259 /* UIModeTests.swift in Sources */,
 				0EA5E6F7B706DBA8F1F10E9E /* iPadNavigationUITests.swift in Sources */,
+				F79D4709EE9D4726D53FEE82 /* AgentLiveStagePresenterTests.swift in Sources */,
+				05366D111D513E0459AC402F /* AgentLiveStageWiringTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -6076,6 +6096,13 @@
 				657A371DF4E58B586A6D720F /* iPadAccountSettingsView.swift in Sources */,
 				246D2AEBA4BACDE7BEDCDDF0 /* iPadDevicesSettingsView.swift in Sources */,
 				F245D4DC520716319AFB1F4B /* iPadMultiCamCaptureService.swift in Sources */,
+				4C936AD5DB5C911C5501CE24 /* AgentWatchVideoSurface.swift in Sources */,
+				A878634B8D57C65B41FF7B43 /* AgentWatchOverlaySingleton.swift in Sources */,
+				5F29580FBE4218B6C066F09A /* AgentLiveStagePresenter.swift in Sources */,
+				FA0208AFC3D04E596B84E42A /* AgentLiveStageBadges.swift in Sources */,
+				FC2094A56DE1C51B60D41142 /* AgentLiveStageDockTile.swift in Sources */,
+				D8437742ECF37017ED5A1E08 /* AgentLiveStageChatPuck.swift in Sources */,
+				28A1BB240E490408326D4962 /* AgentLiveStage.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

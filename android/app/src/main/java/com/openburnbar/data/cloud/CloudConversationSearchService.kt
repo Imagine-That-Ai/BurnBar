@@ -1,10 +1,7 @@
 package com.openburnbar.data.cloud
 
-import android.os.Build
-import android.util.Base64
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.data.firebase.FunctionsRepository
@@ -76,36 +73,7 @@ class CloudConversationSearchService(
     }
 
     private suspend fun registerDevice(uid: String, keypair: AndroidCloudVaultDeviceKeypair) {
-        val userRef = firestore.collection("users").document(uid)
-        val deviceName = listOfNotNull(Build.MANUFACTURER, Build.MODEL)
-            .joinToString(" ")
-            .ifBlank { "Android" }
-        val deviceRef = userRef.collection("escrow_devices").document(keypair.deviceId)
-        val existingTrustState = runCatching { deviceRef.get().await().getString("trustState") }.getOrNull()
-        val trustState = if (existingTrustState == "trusted") "trusted" else "pending"
-        deviceRef.set(
-            mapOf(
-                "deviceId" to keypair.deviceId,
-                "deviceName" to deviceName,
-                "platform" to "Android",
-                "trustState" to trustState,
-                "publicKeyFingerprint" to keypair.publicKeyFingerprint,
-                "keyVersion" to keypair.keyVersion,
-                "updatedAt" to FieldValue.serverTimestamp()
-            ),
-            com.google.firebase.firestore.SetOptions.merge()
-        ).await()
-        userRef.collection("escrow_public_keys").document("${keypair.deviceId}_${keypair.keyVersion}").set(
-            mapOf(
-                "deviceId" to keypair.deviceId,
-                "publicKeyData" to Base64.encodeToString(keypair.publicKeyData, Base64.NO_WRAP),
-                "publicKeyFingerprint" to keypair.publicKeyFingerprint,
-                "keyVersion" to keypair.keyVersion,
-                "algorithm" to "ECIES-P256-AESGCM",
-                "createdAt" to FieldValue.serverTimestamp()
-            ),
-            com.google.firebase.firestore.SetOptions.merge()
-        ).await()
+        AndroidEscrowDeviceRegistry(firestore).registerSelf(uid = uid, keypair = keypair)
     }
 
     private suspend fun unlockVaultKey(uid: String, keypair: AndroidCloudVaultDeviceKeypair): ByteArray? {

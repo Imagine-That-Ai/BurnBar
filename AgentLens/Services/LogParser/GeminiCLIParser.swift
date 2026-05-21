@@ -6,10 +6,15 @@ import Foundation
 /// Gemini CLI stores sessions with message_update records containing input_tokens, output_tokens, cached_tokens.
 final class GeminiCLIParser: LogParser, Sendable {
     let provider: AgentProvider = .geminiCLI
+    private let logDirectoryOverride: String?
+
+    init(logDirectoryOverride: String? = nil) {
+        self.logDirectoryOverride = logDirectoryOverride
+    }
 
     func parse() async throws -> ParseResult {
         let fm = FileManager.default
-        let basePath = ("~/.gemini/tmp" as NSString).expandingTildeInPath
+        let basePath = logDirectoryOverride ?? ("~/.gemini/tmp" as NSString).expandingTildeInPath
 
         guard fm.fileExists(atPath: basePath) else {
             return ParseResult(usages: [], conversations: [])
@@ -110,8 +115,6 @@ final class GeminiCLIParser: LogParser, Sendable {
     // MARK: - Shared Ingestion
 
     private func ingestLine(_ json: [String: Any], into acc: inout GeminiSessionAccumulator) {
-        let eventType = json["type"] as? String ?? ""
-
         // Timestamp
         if let ts = json["timestamp"] as? String {
             let date = ISO8601DateFormatter().date(from: ts)
@@ -143,13 +146,6 @@ final class GeminiCLIParser: LogParser, Sendable {
            let usage = message["usage"] as? [String: Any] {
             accumulateUsage(usage, into: &acc)
         }
-        // message_update events from Gemini CLI JSONL
-        if eventType == "message_update" || eventType == "response" {
-            if let usage = json["usage"] as? [String: Any] {
-                accumulateUsage(usage, into: &acc)
-            }
-        }
-
         // Content for conversation record
         let role = (json["role"] as? String ?? (json["message"] as? [String: Any])?["role"] as? String ?? "").lowercased()
         let content = extractContent(from: json)
@@ -187,14 +183,19 @@ final class GeminiCLIParser: LogParser, Sendable {
             ["output_tokens"], ["completion_tokens"], ["candidatesTokenCount"],
             ["outputTokens"], ["completionTokens"]
         ]) ?? 0
-        let cached = TokenExtractionUtility.firstIntValue(in: usage, paths: [
-            ["cached_tokens"], ["cachedContentTokenCount"], ["cache_read_input_tokens"]
+        let exclusiveCached = TokenExtractionUtility.firstIntValue(in: usage, paths: [
+            ["cache_read_input_tokens"]
         ]) ?? 0
+        let inclusiveCached = TokenExtractionUtility.firstIntValue(in: usage, paths: [
+            ["cached_tokens"], ["cachedContentTokenCount"]
+        ]) ?? 0
+        let cacheRead = exclusiveCached > 0 ? exclusiveCached : inclusiveCached
+        let ledgerInput = inclusiveCached > 0 && exclusiveCached == 0 ? max(input - inclusiveCached, 0) : input
 
-        if input > 0 || output > 0 {
-            acc.inputTokens += input
+        if ledgerInput > 0 || output > 0 || cacheRead > 0 {
+            acc.inputTokens += ledgerInput
             acc.outputTokens += output
-            acc.cacheReadTokens += cached
+            acc.cacheReadTokens += cacheRead
         }
     }
 

@@ -58,3 +58,61 @@ final class KimiParserStandaloneTests: XCTestCase {
         XCTAssertEqual(usage.model, "kimi-for-coding")
     }
 }
+
+final class GeminiCLIParserTests: XCTestCase {
+    func test_parseCachedContentTokenCountStoresUncachedInputOnly() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-gemini-parser-\(UUID().uuidString)", isDirectory: true)
+        let chatsDir = tempDir
+            .appendingPathComponent("project", isDirectory: true)
+            .appendingPathComponent("chats", isDirectory: true)
+        try FileManager.default.createDirectory(at: chatsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let session = """
+        {"type":"message_update","timestamp":"2026-05-21T10:00:00Z","model":"gemini-3.1-pro-preview","role":"user","content":"Summarize cached context.","usageMetadata":{"promptTokenCount":2000,"candidatesTokenCount":86,"cachedContentTokenCount":1500}}
+        """
+        try session.write(
+            to: chatsDir.appendingPathComponent("session-cache.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let result = try await GeminiCLIParser(logDirectoryOverride: tempDir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.inputTokens, 500)
+        XCTAssertEqual(usage.outputTokens, 86)
+        XCTAssertEqual(usage.cacheReadTokens, 1500)
+        XCTAssertEqual(usage.totalTokens, 2086)
+    }
+
+    func test_parseTopLevelUsageDoesNotDoubleCountMessageUpdate() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-gemini-parser-\(UUID().uuidString)", isDirectory: true)
+        let chatsDir = tempDir
+            .appendingPathComponent("project", isDirectory: true)
+            .appendingPathComponent("chats", isDirectory: true)
+        try FileManager.default.createDirectory(at: chatsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let session = """
+        {"type":"message_update","timestamp":"2026-05-21T10:00:00Z","model":"gemini-3-flash-preview","role":"assistant","content":"Done.","usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":30}}
+        """
+        try session.write(
+            to: chatsDir.appendingPathComponent("session-usage.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let result = try await GeminiCLIParser(logDirectoryOverride: tempDir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.inputTokens, 100)
+        XCTAssertEqual(usage.outputTokens, 20)
+        XCTAssertEqual(usage.cacheReadTokens, 30)
+        XCTAssertEqual(usage.totalTokens, 150)
+    }
+}

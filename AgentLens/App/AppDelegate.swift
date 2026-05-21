@@ -42,6 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var dataStoreObservation: Any?
     private var daemonObservation: Any?
     private var batteryTimer: Timer?
+    private var wallpaperActivityTimer: Timer?
+    private var wallpaperAgentStatusObserver: NSObjectProtocol?
+    private var wallpaperColorDriverTask: Task<Void, Never>?
 
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
@@ -273,6 +276,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func handleWallpaperEnabledChange() {
         Task { @MainActor in
             self.updateWallpaperState()
+            self.configureWallpaperActivityPolling()
+            self.syncWallpaperColorDriver()
         }
     }
 
@@ -365,6 +370,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func setupWallpaperObservers() {
         observeDataStoreChanges()
         observeDaemonChanges()
+        observeWallpaperAgentStatuses()
+        configureWallpaperActivityPolling()
         syncWallpaperColorDriver()
     }
 
@@ -397,66 +404,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
+    private func observeWallpaperAgentStatuses() {
+        guard wallpaperAgentStatusObserver == nil else { return }
+        wallpaperAgentStatusObserver = NotificationCenter.default.addObserver(
+            forName: PixelClockAgentStatusStore.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.syncWallpaperColorDriver()
+            }
+        }
+    }
+
+    private func configureWallpaperActivityPolling() {
+        wallpaperActivityTimer?.invalidate()
+        wallpaperActivityTimer = nil
+
+        guard SettingsManager.shared.appearance.enableDesktopWallpaper else { return }
+        wallpaperActivityTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.syncWallpaperColorDriver()
+            }
+        }
+    }
+
     private func syncWallpaperColorDriver() {
+        wallpaperColorDriverTask?.cancel()
         guard let dataStore else {
             sharedWallpaperViewModel.colorDriver = nil
             return
         }
-        
-        let isBusy = daemonManager?.isBusy ?? false
-        let mode: SwarmColorDriver.Mode = isBusy ? .active : .idle
+
         let totalCost = dataStore.totalCostToday
         let summaries = dataStore.providerSummaries
-        
-        var weights: [SwarmColorDriver.ProviderWeight] = []
-        
-        if !summaries.isEmpty {
-            if totalCost > 0 {
-                weights = summaries.map { summary in
-                    SwarmColorDriver.ProviderWeight(
-                        provider: summary.provider,
-                        weight: summary.totalCost / totalCost,
-                        quotaPressure: 0.0
-                    )
-                }
-            } else {
-                let totalTokens = summaries.reduce(0) { $0 + $1.totalTokens }
-                if totalTokens > 0 {
-                    weights = summaries.map { summary in
-                        SwarmColorDriver.ProviderWeight(
-                            provider: summary.provider,
-                            weight: Double(summary.totalTokens) / Double(totalTokens),
-                            quotaPressure: 0.0
-                        )
-                    }
-                } else {
-                    let equalWeight = 1.0 / Double(summaries.count)
-                    weights = summaries.map { summary in
-                        SwarmColorDriver.ProviderWeight(
-                            provider: summary.provider,
-                            weight: equalWeight,
-                            quotaPressure: 0.0
-                        )
-                    }
-                }
-            }
+        let daemonIsBusy = daemonManager?.isBusy ?? false
+
+        wallpaperColorDriverTask = Task { @MainActor [weak self] in
+            let statuses = await PixelClockAgentStatusStore.shared.snapshotIncludingExternalProcesses()
+            guard !Task.isCancelled else { return }
+            self?.sharedWallpaperViewModel.colorDriver = SwarmWallpaperColorDriverBuilder.driver(
+                totalCostToday: totalCost,
+                providerSummaries: summaries,
+                agentStatuses: statuses,
+                daemonIsBusy: daemonIsBusy
+            )
         }
-        
-        weights.sort { $0.weight > $1.weight }
-        
-        let driver = SwarmColorDriver(
-            mode: mode,
-            providers: weights,
-            totalBurnRateUSD: totalCost
-        )
-        
-        sharedWallpaperViewModel.colorDriver = driver
     }
 
     private func teardownWallpaperObservers() {
         NotificationCenter.default.removeObserver(self, name: .enableDesktopWallpaperDidChange, object: nil)
+        if let wallpaperAgentStatusObserver {
+            NotificationCenter.default.removeObserver(wallpaperAgentStatusObserver)
+            self.wallpaperAgentStatusObserver = nil
+        }
         dataStoreObservation = nil
         daemonObservation = nil
+        wallpaperActivityTimer?.invalidate()
+        wallpaperActivityTimer = nil
+        wallpaperColorDriverTask?.cancel()
+        wallpaperColorDriverTask = nil
         batteryTimer?.invalidate()
         batteryTimer = nil
         NotificationCenter.default.removeObserver(self, name: Notification.Name.NSProcessInfoPowerStateDidChange, object: nil)
@@ -610,6 +617,126 @@ enum OpenBurnBarPopoverClickRegion {
 
 // MARK: - Dynamic Swarm Wallpaper Types
 
+enum SwarmWallpaperColorDriverBuilder {
+    static func driver(
+        totalCostToday: Double,
+        providerSummaries: [ProviderSummary],
+        agentStatuses: [String: PixelClockAgentStatus],
+        daemonIsBusy: Bool
+    ) -> SwarmColorDriver {
+        let runningProviders = runningProviders(from: agentStatuses)
+        let mode: SwarmColorDriver.Mode = daemonIsBusy || !runningProviders.isEmpty ? .active : .idle
+        let weights = runningProviders.isEmpty
+            ? historicalWeights(from: providerSummaries, totalCostToday: totalCostToday)
+            : activeWeights(from: runningProviders)
+
+        return SwarmColorDriver(
+            mode: mode,
+            providers: weights,
+            totalBurnRateUSD: totalCostToday
+        )
+    }
+
+    static func runningProviders(from statuses: [String: PixelClockAgentStatus]) -> [AgentProvider] {
+        let providers = statuses.compactMap { entry -> AgentProvider? in
+            let (key, status) = entry
+            guard status == .running else { return nil }
+            return provider(forStatusToken: key)
+        }
+
+        var seen: Set<AgentProvider> = []
+        return providers
+            .filter { seen.insert($0).inserted }
+            .sorted { $0.rawValue < $1.rawValue }
+    }
+
+    static func provider(forStatusToken token: String) -> AgentProvider? {
+        let normalized = normalizedProviderToken(token)
+        let aliases: [String: AgentProvider] = [
+            "anthropic": .claudeCode,
+            "claude": .claudeCode,
+            "claudecode": .claudeCode,
+            "claudecli": .claudeCode,
+            "codex": .codex,
+            "openai": .openAI,
+            "openaicodex": .codex,
+            "opencode": .openCode,
+            "openclaw": .openClaw,
+            "factory": .factory,
+            "droid": .factory,
+            "cursor": .cursor
+        ]
+        if let alias = aliases[normalized] {
+            return alias
+        }
+
+        return AgentProvider.allCases.first { provider in
+            normalized == normalizedProviderToken(provider.rawValue)
+                || normalized == normalizedProviderToken(provider.persistedToken)
+                || normalized == normalizedProviderToken(provider.providerID.rawValue)
+        }
+    }
+
+    private static func activeWeights(from providers: [AgentProvider]) -> [SwarmColorDriver.ProviderWeight] {
+        guard !providers.isEmpty else { return [] }
+        let weight = 1.0 / Double(providers.count)
+        return providers.map { provider in
+            SwarmColorDriver.ProviderWeight(provider: provider, weight: weight, quotaPressure: 0)
+        }
+    }
+
+    private static func historicalWeights(
+        from providerSummaries: [ProviderSummary],
+        totalCostToday: Double
+    ) -> [SwarmColorDriver.ProviderWeight] {
+        guard !providerSummaries.isEmpty else { return [] }
+
+        let weights: [SwarmColorDriver.ProviderWeight]
+        if totalCostToday > 0 {
+            weights = providerSummaries.map { summary in
+                SwarmColorDriver.ProviderWeight(
+                    provider: summary.provider,
+                    weight: summary.totalCost / totalCostToday,
+                    quotaPressure: 0
+                )
+            }
+        } else {
+            let totalTokens = providerSummaries.reduce(0) { $0 + $1.totalTokens }
+            if totalTokens > 0 {
+                weights = providerSummaries.map { summary in
+                    SwarmColorDriver.ProviderWeight(
+                        provider: summary.provider,
+                        weight: Double(summary.totalTokens) / Double(totalTokens),
+                        quotaPressure: 0
+                    )
+                }
+            } else {
+                let equalWeight = 1.0 / Double(providerSummaries.count)
+                weights = providerSummaries.map { summary in
+                    SwarmColorDriver.ProviderWeight(
+                        provider: summary.provider,
+                        weight: equalWeight,
+                        quotaPressure: 0
+                    )
+                }
+            }
+        }
+
+        return weights.sorted { lhs, rhs in
+            if lhs.weight == rhs.weight {
+                return lhs.provider.rawValue < rhs.provider.rawValue
+            }
+            return lhs.weight > rhs.weight
+        }
+    }
+
+    private static func normalizedProviderToken(_ token: String) -> String {
+        token
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
+    }
+}
+
 /// Reactive view model for coordinating the live background state.
 @Observable
 @MainActor
@@ -632,13 +759,15 @@ struct SwarmWallpaperView: View {
             Color.clear
                 .ignoresSafeArea()
         } else {
+            let background = settings.appearance.desktopWallpaperBackground
             SwarmCanvasView(
                 accent: .purple,
                 pace: .cinematic, // Cinematic pace is perfect for ambient wallpaper
                 colorDriver: viewModel.colorDriver,
                 isBatteryThrottled: viewModel.isBatteryThrottled,
                 externalPointer: viewModel.pointer,
-                isTransparent: !settings.appearance.amoledDarkBackground
+                isTransparent: background.isTransparent,
+                backdropColor: background.isTransparent ? nil : background.swatchColor
             )
             .ignoresSafeArea()
         }

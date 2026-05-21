@@ -1289,6 +1289,65 @@ final class OpenBurnBarDatabase: Sendable {
             )
         }
 
+        migrator.registerMigration("v40_reprice_gpt55_cached_input") { db in
+            try db.execute(sql: """
+                UPDATE token_usage
+                SET cost = (
+                        MAX(inputTokens, 0) * 5.0
+                        + MAX(outputTokens, 0) * 30.0
+                        + MAX(cacheCreationTokens, 0) * 5.0
+                        + MAX(cacheReadTokens, 0) * 0.5
+                    ) / 1000000.0,
+                    syncedAt = NULL
+                WHERE LOWER(model) IN ('gpt-5.5', 'gpt-5.5-fast')
+                """)
+        }
+
+        migrator.registerMigration("v41_reprice_openai_family_cached_input") { db in
+            try db.execute(sql: """
+                UPDATE token_usage
+                SET cost = (
+                        MAX(inputTokens, 0) * CASE LOWER(model)
+                            WHEN 'gpt-5.5-pro' THEN 30.0
+                            WHEN 'gpt-5.4' THEN 2.5
+                            WHEN 'gpt-5.4-pro' THEN 30.0
+                            WHEN 'gpt-5.3-codex' THEN 1.75
+                            ELSE 5.0
+                        END
+                        + MAX(outputTokens, 0) * CASE LOWER(model)
+                            WHEN 'gpt-5.5-pro' THEN 180.0
+                            WHEN 'gpt-5.4' THEN 15.0
+                            WHEN 'gpt-5.4-pro' THEN 180.0
+                            WHEN 'gpt-5.3-codex' THEN 14.0
+                            ELSE 30.0
+                        END
+                        + MAX(cacheCreationTokens, 0) * CASE LOWER(model)
+                            WHEN 'gpt-5.5-pro' THEN 30.0
+                            WHEN 'gpt-5.4' THEN 2.5
+                            WHEN 'gpt-5.4-pro' THEN 30.0
+                            WHEN 'gpt-5.3-codex' THEN 1.75
+                            ELSE 5.0
+                        END
+                        + MAX(cacheReadTokens, 0) * CASE LOWER(model)
+                            WHEN 'gpt-5.5-pro' THEN 30.0
+                            WHEN 'gpt-5.4' THEN 0.25
+                            WHEN 'gpt-5.4-pro' THEN 30.0
+                            WHEN 'gpt-5.3-codex' THEN 0.175
+                            ELSE 0.5
+                        END
+                    ) / 1000000.0,
+                    syncedAt = NULL
+                WHERE LOWER(model) IN (
+                    'gpt-5.5',
+                    'gpt-5.5-fast',
+                    'gpt-5.5-pro',
+                    'gpt-5.4',
+                    'gpt-5.4-pro',
+                    'gpt-5.3-codex'
+                )
+                """)
+        }
+
         return migrator
     }
 

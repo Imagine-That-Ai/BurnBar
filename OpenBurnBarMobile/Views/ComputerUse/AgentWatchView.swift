@@ -50,7 +50,7 @@ public struct AgentWatchView: View {
     public var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            AgentWatchSurfaceView(coordinator: video)
+            AgentWatchVideoSurface(coordinator: video)
                 .ignoresSafeArea()
                 .opacity(state.currentFrame == nil ? 0 : 1)
             if state.currentFrame == nil {
@@ -310,66 +310,6 @@ private struct ThreeFingerLongPressCapture: UIViewRepresentable {
             guard recognizer.state == .began else { return }
             onRecognized()
         }
-    }
-}
-
-@MainActor
-private final class AgentWatchVideoCoordinator: ObservableObject {
-    let displayLayer: AVSampleBufferDisplayLayer
-    private var pipeline: VideoReceivePipeline?
-
-    init() {
-        let layer = AVSampleBufferDisplayLayer()
-        layer.videoGravity = .resizeAspect
-        self.displayLayer = layer
-        self.pipeline = VideoReceivePipeline { [weak self] sampleBuffer in
-            await MainActor.run {
-                self?.enqueue(sampleBuffer: sampleBuffer)
-            }
-        }
-    }
-
-    func ingest(frame: MediaFrame) async {
-        do {
-            try await pipeline?.ingest(frame: frame)
-        } catch {
-            displayLayer.flush()
-        }
-    }
-
-    private func enqueue(sampleBuffer: CMSampleBuffer) {
-        if displayLayer.isReadyForMoreMediaData {
-            displayLayer.enqueue(sampleBuffer)
-        }
-    }
-}
-
-private struct AgentWatchSurfaceView: UIViewRepresentable {
-    @ObservedObject var coordinator: AgentWatchVideoCoordinator
-
-    func makeUIView(context: Context) -> AgentWatchDisplayLayerView {
-        let view = AgentWatchDisplayLayerView()
-        view.attach(layer: coordinator.displayLayer)
-        return view
-    }
-
-    func updateUIView(_ uiView: AgentWatchDisplayLayerView, context: Context) {}
-}
-
-private final class AgentWatchDisplayLayerView: UIView {
-    private weak var hostedLayer: AVSampleBufferDisplayLayer?
-
-    func attach(layer: AVSampleBufferDisplayLayer) {
-        hostedLayer?.removeFromSuperlayer()
-        layer.frame = bounds
-        layer.videoGravity = .resizeAspect
-        self.layer.addSublayer(layer)
-        hostedLayer = layer
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        hostedLayer?.frame = bounds
     }
 }
 #endif

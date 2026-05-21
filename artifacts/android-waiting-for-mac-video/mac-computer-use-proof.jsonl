@@ -1,0 +1,3 @@
+{"event":"mac_entitlement_active","timestamp":"2026-05-21T12:19:16Z","timestampMillis":"1779365956795"}
+{"event":"mac_accessibility_trusted","timestamp":"2026-05-21T12:19:16Z","timestampMillis":"1779365956800"}
+{"auditHead":"2151ebfb8fc17ba9dc347da18bcdfa1f06db64ad5fda77819f29650474d1ec80","event":"mac_session_started","sessionId":"F0EA9B07-655D-4048-914B-611B12542620","timestamp":"2026-05-21T12:19:16Z","timestampMillis":"1779365956802"}

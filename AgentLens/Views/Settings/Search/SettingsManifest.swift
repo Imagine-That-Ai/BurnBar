@@ -82,6 +82,24 @@ enum SettingsManifest {
             subtitle: "Active, reconverging token-ember swarms from burnbar.ai",
             keywords: ["swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar"]
         ),
+        SettingsItem(
+            id: "general.appearance.desktopWallpaperEnabled",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.desktopWallpaperEnabled,
+            title: "Desktop Swarm Wallpaper",
+            subtitle: "Render the live swarm as your macOS desktop wallpaper",
+            keywords: ["desktop", "wallpaper", "swarm", "macos", "background", "particles"]
+        ),
+        SettingsItem(
+            id: "general.appearance.desktopWallpaperBackground",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.desktopWallpaperBackground,
+            title: "Desktop Wallpaper Background",
+            subtitle: "Choose macOS Desktop, Midnight, AMOLED Black, Graphite, Warm Ember, or Deep Indigo",
+            keywords: ["desktop", "wallpaper", "background", "macos", "amoled", "black", "graphite", "indigo", "swarm", "color"]
+        ),
 
         // MARK: General → Dashboard defaults
 
@@ -589,6 +607,8 @@ enum SettingsManifest {
         SettingsAnchor.appearanceLaunchAtLogin,
         SettingsAnchor.usePremiumSOTAUX,
         SettingsAnchor.useWebsiteBackground,
+        SettingsAnchor.desktopWallpaperEnabled,
+        SettingsAnchor.desktopWallpaperBackground,
         SettingsAnchor.defaultsTimeRange,
         SettingsAnchor.defaultsUsageMode,
         SettingsAnchor.refreshInterval,

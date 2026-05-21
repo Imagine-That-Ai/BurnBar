@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Cached input cost accounting
+- **Corrected inflated GPT-5.5 cached-input estimates.** Added the OpenAI
+  GPT-5.5 catalog entry and refreshed the GPT-5.5 Factory-family cache pricing
+  so cached input uses the current `$0.50 / 1M tokens` rate instead of the stale
+  `$1.25 / 1M tokens` fallback that made large Codex sessions look far too
+  expensive.
+- **Prevented OpenAI-style cached-token double counting.** Usage importers now
+  store uncached input separately from cached input when payloads report
+  inclusive `prompt_tokens` / `input_tokens` plus `cached_tokens`, while keeping
+  Anthropic's already-disjoint `input_tokens` / `cache_read_input_tokens`
+  semantics intact.
+- **Hardened provider-wide cache accounting.** Gemini CLI logs now subtract
+  `cachedContentTokenCount` from billable input and no longer double-count
+  `message_update` usage rows, Anthropic cache writes use the documented
+  5-minute write premium, and Factory-side GPT-5.4 / GPT-5.3 Codex catalog
+  pricing now matches current cached-input rates.
+
 ### Added — Swarm Background theme across all platforms
 - **Active, reconverging token-ember swarms in the app.** Ported the
   "Interactive Token Ember Swarm" canvas from burnbar.ai into every
@@ -25,6 +42,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parallel `SwarmBackground` composable using `withFrameNanos` + Compose
   `Canvas`, scaled per device class and respecting Power Save mode. Both
   honor Reduce Motion (pauses cycling, silences the noise field).
+- **Desktop wallpaper background presets.** The macOS desktop swarm wallpaper
+  now offers background choices instead of a single AMOLED toggle: macOS
+  Desktop, Midnight, AMOLED Black, Graphite, Warm Ember, and Deep Indigo. The
+  old AMOLED preference migrates into the new picker.
+- **Live provider colors on wallpaper beads.** The desktop swarm color driver
+  now checks running agent activity before historical usage, so concurrent
+  Codex and Claude work paints separate teal and clay bead bands instead of
+  staying all Codex teal.
+- **BurnBar logo swarm formation.** The shared swarm cycle now adds the
+  OpenBurnBar flame-shaped bar graph mark as a first-class particle formation
+  between the code glyph and quota rings.
 
 ### Added — Iroh Services observability
 - **Official Iroh Services endpoint metrics.** Upgraded the native iroh bridge

@@ -618,6 +618,46 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(try extractStreaming(from: router.phase), requestID)
     }
 
+    func testControlStreamSinkChunksLargeMediaFramesUnderIrohFrameBudget() async throws {
+        let stream = RecordingIrohStream()
+        let sink = MercuryControlStreamMediaSink(
+            stream: stream,
+            uid: "uid-1",
+            connectionID: "conn-1",
+            streamClass: .screenVideo
+        )
+        let payload = Data(repeating: 0x7A, count: 700_000)
+        let source = MediaFrameV2(
+            kind: .videoNAL,
+            gopID: 12,
+            frameIndex: 34,
+            presentationTimestampMillis: 56,
+            metadata: Data([0x01, 0x02]),
+            payload: payload
+        )
+
+        await sink.write(frameV2: source)
+
+        let frames = await stream.sentFrames
+        XCTAssertGreaterThan(frames.count, 1)
+        var chunkParts: [(Int, Data)] = []
+        for frame in frames {
+            XCTAssertNoThrow(try IrohRelayFrameCodec().encode(frame))
+            XCTAssertEqual(frame.media?.streamClass, MediaStreamClass.screenVideo.rawValue)
+            let chunk = try XCTUnwrap(frame.media?.frameChunk)
+            XCTAssertEqual(chunk.chunkCount, frames.count)
+            XCTAssertEqual(chunk.totalBytes, try MediaFrameV2Codec().encode(source, negotiatedVersion: .v2).count)
+            let encoded = try XCTUnwrap(frame.media?.encodedFrameBase64)
+            let data = try XCTUnwrap(Data(base64Encoded: encoded))
+            chunkParts.append((chunk.chunkIndex, data))
+        }
+        let reassembled = chunkParts
+            .sorted { $0.0 < $1.0 }
+            .reduce(into: Data()) { result, part in result.append(part.1) }
+        let decoded = try MediaFrameV2Codec().decode(reassembled).frame
+        XCTAssertEqual(decoded, source)
+    }
+
     private func extractStreaming(from phase: MercuryRouter.Phase) throws -> String {
         if case let .streaming(id, _) = phase { return id }
         if case let .starting(id) = phase { return id }

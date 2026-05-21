@@ -118,18 +118,34 @@ enum TokenExtractionUtility {
             ]
         ) ?? 0
 
-        let cacheRead = firstIntValue(
+        let exclusiveCacheRead = firstIntValue(
             in: usage,
             paths: [
                 ["cache_read_input_tokens"],
                 ["cache_read_tokens"],
-                ["cacheReadTokens"],
-                ["prompt_tokens_details", "cached_tokens"],
-                ["promptTokensDetails", "cachedTokens"],
-                ["cached_tokens"],
-                ["cachedTokens"]
+                ["cacheReadTokens"]
             ]
         ) ?? 0
+
+        let inclusiveCacheRead = firstIntValue(
+            in: usage,
+            paths: [
+                ["input_cached_tokens"],
+                ["inputCachedTokens"],
+                ["prompt_tokens_details", "cached_tokens"],
+                ["promptTokensDetails", "cachedTokens"],
+                ["input_tokens_details", "cached_tokens"],
+                ["inputTokensDetails", "cachedTokens"],
+                ["cached_tokens"],
+                ["cachedTokens"],
+                ["cached_input_tokens"],
+                ["cachedInputTokens"]
+            ]
+        ) ?? 0
+        let cacheRead = exclusiveCacheRead > 0 ? exclusiveCacheRead : inclusiveCacheRead
+        if inclusiveCacheRead > 0 && exclusiveCacheRead == 0 {
+            input = max(input - inclusiveCacheRead, 0)
+        }
 
         let reasoningTokens = firstIntValue(
             in: usage,
@@ -409,9 +425,20 @@ enum TokenExtractionUtility {
             // free-text tails like "model: gpt-5 for inference" should yield
             // just `"gpt-5"`, not the whole trailing phrase.
             let trimmedHead = afterModel.drop(while: { $0.isWhitespace })
-            let tokenEnd = trimmedHead.firstIndex(where: { $0.isWhitespace || $0 == "\n" }) ?? trimmedHead.endIndex
-            let model = String(trimmedHead[..<tokenEnd])
-            return model.isEmpty ? nil : model
+            let lineEnd = trimmedHead.firstIndex(where: { $0.isNewline }) ?? trimmedHead.endIndex
+            let modelLine = trimmedHead[..<lineEnd]
+            let tokenEnd = modelLine.firstIndex(where: { $0.isWhitespace }) ?? modelLine.endIndex
+            let firstToken = String(modelLine[..<tokenEnd])
+
+            if firstToken.hasSuffix(":") {
+                let rest = modelLine[tokenEnd...].drop(while: { $0.isWhitespace })
+                let secondTokenEnd = rest.firstIndex(where: { $0.isWhitespace }) ?? rest.endIndex
+                if let sanitized = sanitizeDetectedModelToken(String(rest[..<secondTokenEnd])) {
+                    return sanitized
+                }
+            }
+
+            return sanitizeDetectedModelToken(firstToken)
         case let array as [Any]:
             for item in array {
                 if let found = detectModelHint(from: item) {
@@ -431,15 +458,29 @@ enum TokenExtractionUtility {
         }
     }
 
+    private static func sanitizeDetectedModelToken(_ raw: String) -> String? {
+        let wrapperCharacters = CharacterSet(charactersIn: "\"'`[](),;")
+        let token = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: wrapperCharacters)
+        guard !token.isEmpty, !token.hasSuffix(":") else { return nil }
+        return token
+    }
+
     /// Strip `custom:` prefix from model names.
     static func normalizeModelName(_ model: String) -> String {
+        var normalized = model.trimmingCharacters(in: .whitespacesAndNewlines)
         // Case-insensitive prefix strip so "Custom:" and "custom:" both reduce
         // to the bare model name. The "custom:" prefix is a Cursor convention
         // marking a user-supplied model registered under their account.
-        if model.lowercased().hasPrefix("custom:") {
-            return String(model.dropFirst(7))
+        if normalized.lowercased().hasPrefix("custom:") {
+            normalized = String(normalized.dropFirst(7))
         }
-        return model
+        if normalized.lowercased().hasPrefix("vibeproxy:") {
+            normalized = String(normalized.dropFirst("vibeproxy:".count))
+                .trimmingCharacters(in: CharacterSet(charactersIn: " -_:\t\n\r"))
+        }
+        return normalized
     }
 
     /// Stable lowercase key for grouping usages by model.

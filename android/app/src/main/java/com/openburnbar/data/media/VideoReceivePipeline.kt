@@ -70,6 +70,7 @@ class VideoReceivePipeline(
         val bitsPerSecond: Int = 0,
         val roundTripMillis: Int = 0,
         val queuedFrameCount: Long = 0,
+        val lastFrameAtMillis: Long = 0,
     )
 
     suspend fun start(outputSurface: Surface, widthPx: Int = 1920, heightPx: Int = 1080) {
@@ -90,6 +91,7 @@ class VideoReceivePipeline(
                     heightPx = heightPx,
                     codecName = target.name,
                     queuedFrameCount = 0,
+                    lastFrameAtMillis = 0,
                 )
                 renderJob = scope.launch { drainOutput(newDecoder) }
             } catch (t: Throwable) {
@@ -112,6 +114,7 @@ class VideoReceivePipeline(
                         heightPx = heightPx,
                         codecName = Codec.H264.name,
                         queuedFrameCount = 0,
+                        lastFrameAtMillis = 0,
                     )
                     renderJob = scope.launch { drainOutput(fallback) }
                 } else {
@@ -163,7 +166,10 @@ class VideoReceivePipeline(
         }.isSuccess
         if (!queued) return false
         if (isKeyframe) currentGopID = frame.gopID
-        _stats.value = _stats.value.copy(queuedFrameCount = _stats.value.queuedFrameCount + 1)
+        _stats.value = _stats.value.copy(
+            queuedFrameCount = _stats.value.queuedFrameCount + 1,
+            lastFrameAtMillis = System.currentTimeMillis(),
+        )
         return true
     }
 

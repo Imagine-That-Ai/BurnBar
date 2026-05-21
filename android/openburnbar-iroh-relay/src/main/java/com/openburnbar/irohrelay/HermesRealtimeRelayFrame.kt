@@ -116,6 +116,15 @@ data class HermesRealtimeRelayMediaPayload(
     val callAck: HermesRealtimeRelayCallAck? = null,
     val longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck? = null,
     val encodedFrameBase64: String? = null,
+    val frameChunk: HermesRealtimeRelayMediaFrameChunk? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayMediaFrameChunk(
+    val chunkId: String,
+    val chunkIndex: Int,
+    val chunkCount: Int,
+    val totalBytes: Int,
 )
 
 @Serializable

@@ -926,6 +926,7 @@ final class HermesRelayHostService {
                         },
                         controlStreamRegistry: controlRegistry
                     )
+                    macFileTransfer.setComputerUseControlDispatcher(computerUseControlDispatcher)
                     // Per-request dispatch (chat-piggyback path) — used
                     // when an advertise rides an active chat response
                     // stream rather than the long-lived control stream.
@@ -961,6 +962,7 @@ final class HermesRelayHostService {
 
     func setComputerUseControlDispatcher(_ dispatcher: ControlFrameDispatcher?) {
         computerUseControlDispatcher = dispatcher
+        mercuryFileTransfer?.setComputerUseControlDispatcher(dispatcher)
         if let irohClient = realtimeRelayClient as? HermesIrohRelayHostClient {
             irohClient.setControlDispatcher(dispatcher)
         } else if let fanout = realtimeRelayClient as? HermesRelayHostFanout {
