@@ -35,19 +35,26 @@ struct ModelPricing {
         self.cacheReadPerMToken = cacheReadPerMToken
     }
 
-    static func lookup(model: String) -> ModelPricing {
+    static func lookup(model: String, providerID: String? = nil) -> ModelPricing {
         let normalizedModel = TokenExtractionUtility.normalizeModelName(model)
         #if canImport(OpenBurnBarCore)
-        return ModelPricing(OpenBurnBarCatalogLookup.shared.pricing(forModelName: normalizedModel) ?? .defaultFallback)
+        let pricing = OpenBurnBarCatalogLookup.shared.pricing(
+            forModelName: normalizedModel,
+            providerID: providerID
+        )
+        return ModelPricing(pricing ?? .defaultFallback)
         #else
         return .fallback
         #endif
     }
 
-    static func hasCatalogPricing(model: String) -> Bool {
+    static func hasCatalogPricing(model: String, providerID: String? = nil) -> Bool {
         let normalizedModel = TokenExtractionUtility.normalizeModelName(model)
         #if canImport(OpenBurnBarCore)
-        return OpenBurnBarCatalogLookup.shared.pricing(forModelName: normalizedModel) != nil
+        return OpenBurnBarCatalogLookup.shared.pricing(
+            forModelName: normalizedModel,
+            providerID: providerID
+        ) != nil
         #else
         return false
         #endif
@@ -101,8 +108,12 @@ private struct OpenBurnBarCatalogLookup {
     }
 
     #if canImport(OpenBurnBarCore)
-    func pricing(forModelName modelName: String) -> BurnBarModelPricing? {
-        catalog?.pricing(forModelName: modelName)
+    func pricing(forModelName modelName: String, providerID: String? = nil) -> BurnBarModelPricing? {
+        guard let catalog else { return nil }
+        if let providerID, let providerPricing = catalog.pricing(forModelName: modelName, providerID: providerID) {
+            return providerPricing
+        }
+        return catalog.pricing(forModelName: modelName)
     }
     #endif
 }
