@@ -24,26 +24,33 @@ struct iPadDevicesSettingsView: View {
     }
 
     var body: some View {
-        Form {
-            if let error = store.lastError {
-                Section {
-                    Label(error.label, systemImage: "exclamationmark.triangle.fill")
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.error)
+        ScrollView {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
+                if let error = store.lastError {
+                    settingsCard {
+                        Label(error.label, systemImage: "exclamationmark.triangle.fill")
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.error)
+                    }
+                }
+
+                if hermesService != nil {
+                    hermesRelaySection
+                }
+                smartHubSection
+                thisDeviceSection
+                otherDevicesSection
+
+                if !store.staleDuplicates.isEmpty {
+                    duplicatesSection
                 }
             }
-            if hermesService != nil {
-                hermesRelaySection
-            }
-            smartHubSection
-            thisDeviceSection
-            otherDevicesSection
-            if !store.staleDuplicates.isEmpty {
-                duplicatesSection
-            }
+            .padding(.horizontal, MobileTheme.Spacing.lg)
+            .padding(.vertical, MobileTheme.Spacing.lg)
         }
-        .formStyle(.grouped)
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Devices & Sync")
+        .accessibilityIdentifier("devicesSync.screen")
         .refreshable { await refreshAll() }
         .task { await refreshAll() }
         .sheet(isPresented: $showRenameSheet) {
@@ -69,6 +76,41 @@ struct iPadDevicesSettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private func settingsSection<Content: View>(
+        _ title: String,
+        footer: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            Text(title)
+                .font(MobileTheme.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .textCase(.uppercase)
+
+            settingsCard(content: content)
+
+            if let footer {
+                Text(footer)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, MobileTheme.Spacing.sm)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(MobileTheme.Spacing.md)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     // MARK: - Refresh
 
     private func refreshAll() async {
@@ -89,7 +131,7 @@ struct iPadDevicesSettingsView: View {
     // MARK: - This Device
 
     private var thisDeviceSection: some View {
-        Section("This Device") {
+        settingsSection("This Device") {
             if let current = store.currentDevice {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -124,7 +166,7 @@ struct iPadDevicesSettingsView: View {
     // MARK: - Other Devices
 
     private var otherDevicesSection: some View {
-        Section("Other Devices") {
+        settingsSection("Other Devices") {
             if store.otherDevices.isEmpty {
                 Text("No other devices connected.")
                     .foregroundStyle(MobileTheme.Colors.textMuted)
@@ -207,7 +249,7 @@ struct iPadDevicesSettingsView: View {
 
     @ViewBuilder
     private var hermesRelaySection: some View {
-        Section {
+        settingsSection("Hermes Relay", footer: hermesRelayFooter) {
             if let relay = bestRelayConnection {
                 relayCard(for: relay)
             } else {
@@ -228,18 +270,19 @@ struct iPadDevicesSettingsView: View {
                 .foregroundStyle(MobileTheme.hermesAureate)
             }
             .disabled(isReprobingHermes)
-        } header: {
-            Text("Hermes Relay")
-        } footer: {
-            // When the relay is offline, give the user the actionable
-            // restart path. We don't ship a remote restart switch yet —
-            // the Mac is the only safe place to bounce the relay.
-            if let relay = bestRelayConnection, relay.status == .offline {
-                Text("The relay last reported offline. Open OpenBurnBar on your Mac and toggle Settings → Hermes → Remote Relay off and on to restart it.")
-            } else if bestRelayConnection == nil {
-                Text("No remote relay is published. On your Mac, open Settings → Hermes and turn on Remote Relay.")
-            }
         }
+    }
+
+    private var hermesRelayFooter: String? {
+        // When the relay is offline, give the user the actionable restart
+        // path. The Mac is the only safe place to bounce the relay today.
+        if let relay = bestRelayConnection, relay.status == .offline {
+            return "The relay last reported offline. Open OpenBurnBar on your Mac and toggle Settings -> Hermes -> Remote Relay off and on to restart it."
+        }
+        if bestRelayConnection == nil {
+            return "No remote relay is published. On your Mac, open Settings -> Hermes and turn on Remote Relay."
+        }
+        return nil
     }
 
     private var bestRelayConnection: HermesConnectionRecord? {
@@ -327,7 +370,10 @@ struct iPadDevicesSettingsView: View {
     // MARK: - Duplicate Cleanup
 
     private var duplicatesSection: some View {
-        Section {
+        settingsSection(
+            "Stale duplicates",
+            footer: "Old Firestore copies of this iPhone left over from previous installs. Removing them is safe - the active device stays connected."
+        ) {
             let duplicates = store.staleDuplicates
             let preview = Array(duplicates.prefix(8))
 
@@ -360,10 +406,6 @@ struct iPadDevicesSettingsView: View {
                 Label("Clean up \(duplicates.count) duplicates", systemImage: "sparkles")
                     .font(MobileTheme.Typography.body)
             }
-        } header: {
-            Text("Stale duplicates")
-        } footer: {
-            Text("Old Firestore copies of this iPhone left over from previous installs. Removing them is safe — the active device stays connected.")
         }
     }
 
@@ -371,7 +413,7 @@ struct iPadDevicesSettingsView: View {
 
     @ViewBuilder
     private var smartHubSection: some View {
-        Section {
+        settingsSection("Smart Displays") {
             SmartDisplayReorderableSection(smartHubStore: smartHub) { kind, _ in
                 switch kind {
                 case .nestHub:
@@ -381,8 +423,6 @@ struct iPadDevicesSettingsView: View {
                 }
             }
             setupShortcutBlock
-        } header: {
-            Text("Smart Displays")
         }
         .sheet(isPresented: $showSmartHubWizard) {
             SmartHubSetupWizardView(store: smartHub)

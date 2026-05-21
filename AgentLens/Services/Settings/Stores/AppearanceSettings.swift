@@ -30,11 +30,17 @@ final class AppearanceSettings {
     }
 
     var enableDesktopWallpaper: Bool = false {
-        didSet { persistence.set(enableDesktopWallpaper, forKey: "enableDesktopWallpaper") }
+        didSet {
+            persistence.set(enableDesktopWallpaper, forKey: "enableDesktopWallpaper")
+            NotificationCenter.default.post(name: .enableDesktopWallpaperDidChange, object: nil)
+        }
     }
 
     var amoledDarkBackground: Bool = false {
-        didSet { persistence.set(amoledDarkBackground, forKey: "amoledDarkBackground") }
+        didSet {
+            persistence.set(amoledDarkBackground, forKey: "amoledDarkBackground")
+            NotificationCenter.default.post(name: .amoledDarkBackgroundDidChange, object: nil)
+        }
     }
 
     var cycleShapesScreensaver: Bool = true {
@@ -64,4 +70,9 @@ final class AppearanceSettings {
         self.amoledDarkBackground = persistence.bool(forKey: "amoledDarkBackground", defaultValue: false)
         self.cycleShapesScreensaver = persistence.bool(forKey: "cycleShapesScreensaver", defaultValue: true)
     }
+}
+
+extension Notification.Name {
+    static let enableDesktopWallpaperDidChange = Notification.Name("com.openburnbar.appearance.enableDesktopWallpaperDidChange")
+    static let amoledDarkBackgroundDidChange = Notification.Name("com.openburnbar.appearance.amoledDarkBackgroundDidChange")
 }

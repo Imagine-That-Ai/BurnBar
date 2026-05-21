@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarIrohRelay
 @testable import OpenBurnBar
 
 final class IrohRelayRequestHandlerTests: XCTestCase {
@@ -212,4 +213,140 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
             "Hermes upstream model 'gpt-5.5' returned HTTP 429: insufficient quota"
         )
     }
+}
+
+@MainActor
+final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
+    func testAcceptLoopClosedRuntimeRebuildsAndPublishesFreshIdentity() async throws {
+        let suiteName = "hermes.iroh.host.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(defaults: defaults, flushDelayNanoseconds: 0)
+        settings.hermesIrohTransportEnabled = true
+
+        let directory = InMemoryIrohPairingDirectory()
+        let keyPublisher = RecordingIrohPairingPublicKeyPublisher()
+        let auditLogger = RecordingIrohTransportAuditLogger()
+        let first = TestIrohRelayTransport(
+            nodeId: "node-first",
+            acceptBehavior: .fail(.streamRejected("iroh accept failed: endpoint closed"))
+        )
+        let second = TestIrohRelayTransport(nodeId: "node-second", acceptBehavior: .park)
+        var transports = [first, second]
+
+        let client = HermesIrohRelayHostClient(
+            settingsManager: settings,
+            pairingKeyStore: IrohPairingKeyStore(
+                service: "ai.openburnbar.tests.iroh-pairing.\(UUID().uuidString)",
+                account: "host"
+            ),
+            directory: directory,
+            publicKeyPublisher: keyPublisher,
+            auditLogger: auditLogger,
+            pairingPublishInterval: 3_600,
+            transportFactory: { _ in
+                transports.removeFirst()
+            }
+        )
+
+        let started = await client.start(uid: "uid-1", connectionID: "connection-1")
+        XCTAssertTrue(started)
+        try await waitUntil(timeout: 3) {
+            let record = try await directory.fetch(uid: "uid-1", connectionId: "connection-1")
+            return record?.nodeId == "node-second"
+        }
+
+        let record = try await directory.fetch(uid: "uid-1", connectionId: "connection-1")
+        XCTAssertEqual(record?.nodeId, "node-second")
+        XCTAssertTrue(client.isReady)
+        XCTAssertEqual(first.shutdownCount, 1)
+        XCTAssertEqual(second.startCount, 1)
+
+        client.stop()
+    }
+}
+
+private actor RecordingIrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing {
+    private(set) var publishCount = 0
+
+    func publish(uid: String, publicKeyBase64: String) async throws {
+        publishCount += 1
+    }
+}
+
+private actor RecordingIrohTransportAuditLogger: IrohTransportAuditLogging {
+    private(set) var events: [IrohTransportAuditEvent] = []
+
+    func record(
+        event: IrohTransportAuditEvent,
+        uid: String,
+        connectionId: String,
+        transport: IrohTransportSelection?,
+        rttMillis: Int?,
+        detail: [String: String]
+    ) async {
+        events.append(event)
+    }
+}
+
+private final class TestIrohRelayTransport: IrohRelayTransport, @unchecked Sendable {
+    enum AcceptBehavior: Sendable {
+        case fail(IrohRelayTransportError)
+        case park
+    }
+
+    private let identity: IrohEndpointIdentity
+    private let acceptBehavior: AcceptBehavior
+    private(set) var startCount = 0
+    private(set) var shutdownCount = 0
+
+    init(nodeId: String, acceptBehavior: AcceptBehavior) {
+        self.identity = IrohEndpointIdentity(
+            nodeId: nodeId,
+            rawPublicKey: Data(repeating: 0xAB, count: 32),
+            relayURL: "https://relay.example/",
+            directAddresses: ["127.0.0.1:1234"]
+        )
+        self.acceptBehavior = acceptBehavior
+    }
+
+    func start() async throws -> IrohEndpointIdentity {
+        startCount += 1
+        return identity
+    }
+
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.endpointNotReady
+    }
+
+    func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        switch acceptBehavior {
+        case .fail(let error):
+            throw error
+        case .park:
+            while !Task.isCancelled {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+            throw IrohRelayTransportError.shutdown
+        }
+    }
+
+    func shutdown() async {
+        shutdownCount += 1
+    }
+}
+
+private func waitUntil(
+    timeout: TimeInterval,
+    pollInterval: UInt64 = 50_000_000,
+    condition: () async throws -> Bool
+) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if try await condition() {
+            return
+        }
+        try await Task.sleep(nanoseconds: pollInterval)
+    }
+    XCTFail("Timed out waiting for condition")
 }

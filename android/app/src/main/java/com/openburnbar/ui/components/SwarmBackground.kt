@@ -106,13 +106,13 @@ fun SwarmBackground(
 
             simulation.particles.forEach { p ->
                 if (p.isGlyph) return@forEach
-                val color = simulation.colorFor(p, accentColor)
+                val color = simulation.colorFor(p, accentColor, isDark)
                 // Particles forming the active shape render larger so the glyph
                 // reads through any glass cards layered on top.
                 val inShape = simulation.inShapeMode && p.tx != null
                 drawCircle(
                     color = color,
-                    radius = (p.size * if (inShape) 1.7 else 1.0).toFloat(),
+                    radius = (p.size * if (inShape) 1.2 else 0.85).toFloat(),
                     center = Offset(p.x.toFloat(), p.y.toFloat())
                 )
             }
@@ -122,7 +122,7 @@ fun SwarmBackground(
             val paint = simulation.glyphPaint
             simulation.particles.forEach { p ->
                 if (!p.isGlyph) return@forEach
-                val color = simulation.colorFor(p, accentColor)
+                val color = simulation.colorFor(p, accentColor, isDark)
                 paint.color = color.toArgb()
                 nativeCanvas.drawText(p.glyph, p.x.toFloat(), p.y.toFloat(), paint)
             }
@@ -167,20 +167,20 @@ internal class SwarmSimulation(
     )
 
     // Pace constants — mirror the website.
-    private val timeStep: Double
-    private val swarmNoise: Double
-    private val swarmDrag: Double
-    private val maxSpeedGlyph: Double
-    private val maxSpeedPixel: Double
-    private val morphAttract: Double
-    private val morphNoise: Double
-    private val morphDrag: Double
-    private val cycleIntervalNanos: Long
-    private val mouseForceMultiplier: Double
-    private val isEnergetic: Boolean
+    private var timeStep: Double = 0.0
+    private var swarmNoise: Double = 0.0
+    private var swarmDrag: Double = 0.0
+    private var maxSpeedGlyph: Double = 0.0
+    private var maxSpeedPixel: Double = 0.0
+    private var morphAttract: Double = 0.0
+    private var morphNoise: Double = 0.0
+    private var morphDrag: Double = 0.0
+    private var cycleIntervalNanos: Long = 0L
+    private var mouseForceMultiplier: Double = 0.0
+    private var isEnergetic: Boolean = false
 
     private val glyphs = listOf("$", "{}", "</>", "tok", "ctx", "429", "503", "run", "cache")
-    private val modes = listOf(
+    private var activeModes = listOf(
         Mode.SWARM, Mode.SHAPE_DOLLAR, Mode.SWARM, Mode.SHAPE_CODE,
         Mode.SWARM, Mode.SHAPE_RINGS, Mode.SWARM, Mode.SHAPE_ROUTER_FLOW
     )
@@ -199,8 +199,8 @@ internal class SwarmSimulation(
 
     val glyphPaint: Paint = Paint().apply {
         isAntiAlias = true
-        typeface = Typeface.MONOSPACE
-        textSize = 9f
+        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        textSize = 20f
         textAlign = Paint.Align.CENTER
     }
 
@@ -210,7 +210,14 @@ internal class SwarmSimulation(
     private val routerFlowPoints by lazy { generateRouterFlowPoints() }
 
     init {
-        when (pace) {
+        setPace(pace)
+        for (i in 0 until particleCount) {
+            particles.add(makeParticle())
+        }
+    }
+
+    fun setPace(newPace: SwarmPace) {
+        when (newPace) {
             SwarmPace.ENERGETIC -> {
                 timeStep = 0.000018
                 swarmNoise = 0.12
@@ -238,8 +245,27 @@ internal class SwarmSimulation(
                 isEnergetic = false
             }
         }
-        for (i in 0 until particleCount) {
-            particles.add(makeParticle())
+    }
+
+    fun setShapeMode(shapePref: String) {
+        when (shapePref) {
+            "swarm" -> activeModes = listOf(Mode.SWARM)
+            "dollar" -> activeModes = listOf(Mode.SHAPE_DOLLAR)
+            "code" -> activeModes = listOf(Mode.SHAPE_CODE)
+            "rings" -> activeModes = listOf(Mode.SHAPE_RINGS)
+            "router" -> activeModes = listOf(Mode.SHAPE_ROUTER_FLOW)
+            "all" -> activeModes = listOf(
+                Mode.SWARM, Mode.SHAPE_DOLLAR, Mode.SWARM, Mode.SHAPE_CODE,
+                Mode.SWARM, Mode.SHAPE_RINGS, Mode.SWARM, Mode.SHAPE_ROUTER_FLOW
+            )
+            else -> activeModes = listOf(
+                Mode.SWARM, Mode.SHAPE_DOLLAR, Mode.SWARM, Mode.SHAPE_CODE,
+                Mode.SWARM, Mode.SHAPE_RINGS, Mode.SWARM, Mode.SHAPE_ROUTER_FLOW
+            )
+        }
+        if (mode !in activeModes) {
+            cycleIndex = 0
+            assignMode(activeModes[0])
         }
     }
 
@@ -271,9 +297,11 @@ internal class SwarmSimulation(
             nextCycleAtNanos = nowNanos + cycleIntervalNanos
             return
         }
-        if (nowNanos >= nextCycleAtNanos) {
-            cycleIndex = (cycleIndex + 1) % modes.size
-            assignMode(modes[cycleIndex])
+        if (nowNanos >= nextCycleAtNanos && activeModes.size > 1) {
+            cycleIndex = (cycleIndex + 1) % activeModes.size
+            assignMode(activeModes[cycleIndex])
+            nextCycleAtNanos = nowNanos + cycleIntervalNanos
+        } else if (nowNanos >= nextCycleAtNanos) {
             nextCycleAtNanos = nowNanos + cycleIntervalNanos
         }
         flowTime += timeStep * 1000.0
@@ -405,7 +433,7 @@ internal class SwarmSimulation(
         }
         // Particles that are part of an active shape get a brightness boost so
         // the reformed glyph / rings / router-flow read through glass cards.
-        val shapeBoost = if (mode != Mode.SWARM && p.tx != null) 2.2 else 1.0
+        val shapeBoost = if (mode != Mode.SWARM && p.tx != null) 1.7 else 1.0
         p.opacity = (p.baseOpacity * shapeBoost).coerceAtMost(1.0)
     }
 
@@ -433,16 +461,18 @@ internal class SwarmSimulation(
         var centerY = height * 0.45
         var scaleFactor = 0.35
         if (width > 960) {
+            // Wide layouts: shapes off to the side and high, clear of content.
             when (next) {
-                Mode.SHAPE_RINGS -> { centerX = width * 0.72; centerY = height * 0.45; scaleFactor = 0.42 }
-                Mode.SHAPE_ROUTER_FLOW -> { centerX = width * 0.5; centerY = height * 0.48; scaleFactor = 0.7 }
-                else -> { centerX = width * 0.53; centerY = height * 0.45; scaleFactor = 0.36 }
+                Mode.SHAPE_RINGS -> { centerX = width * 0.78; centerY = height * 0.30; scaleFactor = 0.50 }
+                Mode.SHAPE_ROUTER_FLOW -> { centerX = width * 0.5; centerY = height * 0.26; scaleFactor = 0.85 }
+                else -> { centerX = width * 0.74; centerY = height * 0.28; scaleFactor = 0.45 }
             }
         } else {
+            // Phones: present shapes in the emptier upper band under the nav.
             when (next) {
-                Mode.SHAPE_RINGS -> { centerY = height * 0.75 }
-                Mode.SHAPE_ROUTER_FLOW -> { centerX = width * 0.5; centerY = height * 0.5; scaleFactor = 0.8 }
-                else -> { centerY = height * 0.4 }
+                Mode.SHAPE_RINGS -> { centerY = height * 0.24; scaleFactor = 0.48 }
+                Mode.SHAPE_ROUTER_FLOW -> { centerX = width * 0.5; centerY = height * 0.24; scaleFactor = 0.85 }
+                else -> { centerY = height * 0.22; scaleFactor = 0.45 }
             }
         }
         val scale = min(width, height) * scaleFactor
@@ -464,22 +494,32 @@ internal class SwarmSimulation(
         }
     }
 
-    fun colorFor(p: Particle, accent: Color): Color {
-        val opacity = p.opacity.toFloat().coerceIn(0f, 1f)
+    fun colorFor(p: Particle, accent: Color, isDark: Boolean = true): Color {
+        val raw = p.opacity.toFloat().coerceIn(0f, 1f)
+        // Lift the floor slightly in light mode so the deeper palette reads.
+        val opacity = if (isDark) raw else (raw + 0.08f).coerceAtMost(1f)
+
+        // Dark mode: bright warm embers on near-black. Light mode: deeper,
+        // saturated versions that hold up against the off-white wash.
+        val whimsy = if (isDark) Color(0xFF8080FF) else Color(0xFF514DDB)
+        val ember  = if (isDark) Color(0xFFFA6B06) else Color(0xFFCC4D00)
+        val amber  = if (isDark) Color(0xFFFDC42C) else Color(0xFFC78500)
+        val blaze  = if (isDark) Color(0xFFEE1803) else Color(0xFFBD1200)
+
         if (mode == Mode.SHAPE_ROUTER_FLOW && p.role != null) {
             return when (p.role) {
-                "gateway" -> Color(0xFF8080FF).copy(alpha = (opacity * 1.6f).coerceAtMost(1f))
-                "path-1", "target-1" -> Color(0xFFEE1803).copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
-                "path-2", "target-2" -> Color(0xFFFDC42C).copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
-                "path-3", "target-3" -> Color(0xFFFA6B06).copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
-                else -> Color(0xFFEE1803).copy(alpha = (opacity * 0.35f).coerceAtMost(1f))
+                "gateway" -> whimsy.copy(alpha = (opacity * 1.6f).coerceAtMost(1f))
+                "path-1", "target-1" -> blaze.copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
+                "path-2", "target-2" -> amber.copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
+                "path-3", "target-3" -> ember.copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
+                else -> blaze.copy(alpha = (opacity * 0.35f).coerceAtMost(1f))
             }
         }
         return when {
-            p.colorIndex < 0.08 -> Color(0xFF8080FF).copy(alpha = opacity)
-            p.colorIndex < 0.35 -> Color(0xFFFA6B06).copy(alpha = opacity)
-            p.colorIndex < 0.62 -> Color(0xFFFDC42C).copy(alpha = opacity)
-            else -> Color(0xFFEE1803).copy(alpha = opacity)
+            p.colorIndex < 0.08 -> whimsy.copy(alpha = opacity)
+            p.colorIndex < 0.35 -> ember.copy(alpha = opacity)
+            p.colorIndex < 0.62 -> amber.copy(alpha = opacity)
+            else -> blaze.copy(alpha = opacity)
         }
     }
 
@@ -489,11 +529,11 @@ internal class SwarmSimulation(
             x = 0.0, y = 0.0,
             vx = (Random.nextDouble() - 0.5) * 1.5,
             vy = (Random.nextDouble() - 0.5) * 1.5,
-            size = 1 + Random.nextDouble() * 2,
+            size = 1.2 + Random.nextDouble() * 1.8,
             isGlyph = isGlyph,
             glyph = glyphs[Random.nextInt(glyphs.size)],
             colorIndex = Random.nextDouble(),
-            baseOpacity = 0.30 + Random.nextDouble() * 0.25,
+            baseOpacity = 0.16 + Random.nextDouble() * 0.20,
             opacity = 0.16
         )
     }
@@ -506,7 +546,7 @@ internal class SwarmSimulation(
         val canvas = android.graphics.Canvas(bmp)
         val paint = Paint().apply {
             isAntiAlias = true
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
             textSize = fontSize
             textAlign = Paint.Align.CENTER
             color = 0xFFFFFFFF.toInt()
@@ -520,7 +560,7 @@ internal class SwarmSimulation(
         argbBmp.getPixels(pixels, 0, side, 0, 0, side, side)
 
         val pts = ArrayList<Pair<Double, Double>>()
-        val gap = 6
+        val gap = 5
         var y = 0
         while (y < side) {
             var x = 0

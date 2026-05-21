@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "KpuISImUNhIedBtjd9HJqkDB1nLcXNNN+m2i1iuVfR+L6CSoRZv5ro8WHVT3m0Y=",
+  "chunkCiphertext" : "gSX2sa+3+5cdYYNKkoU29lzEyXoXLsYuUuDxH2tt6h5H01yGetqCB8jTaMksgeA=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19IiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "g8r6IPF4EfSVFnq9mewGa4S5\/hSgNzXLbp4SKMTqWOa6IPyt3urKpVSQjQCJclIWrbzxZxf9LNpq4WP526vhk7pBk+aghQzrIKXqnbE1LDpNbHD6b8ahOVKLq\/HpLJeg6eK80guWtS1Lrabjvur0h5\/Ct0MH75OKBduG6abnjFYkSVbMhaKdO0ZVVW3ojmzEtIm54BbE",
+  "payloadCiphertext" : "1FGLvsoLFn5ZZ6ez\/JtYmZGCzAZwgKNQrwbIaGsDwmGvfjhzB2dl3VjJ1aoE5xHx2QoFLvZXKz4PwmyQ2QMnYf63nomelgA+Opue+zNLHiuVf3H4qs4csMfTtHxYO1AvCCF1pTTG1acQ2Z5Q9sjdft7qmVMj790vbLeMTokm0zpmLJsN\/P19+28GALp+CPOu8pTuXqhX",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BKUCGIdu27wO7dhxqge3KiZExVjy81t9cE4yB8nuDt+gV01C+19XyxzpIYPWcDPOlTRENeyOak3lUTG5TiFRvL1apmirqYTavHCmkQDQrXLn8mmo+PVKhnZcxOvTAtlyWkgnQORNmpxCDUICwu6JyUGgwvB0o\/oV\/sx3xTw="
+  "wrappedKey" : "BFyfYJEzDpntG8a9bg24ZnGJQeA9ncS9PK6ph4HooadJkU2w8HPtUUUKApy4idngRUGdwClopE6a4SQXSOslhXKXFaU+hRPUZGmCXpdpX5SjxMWiG0s4O1GX8u6xJvTGdq3fQya8Hy8zJ6oP9JTRYTt\/tDkQPNk5kcz8RXY="
 }

@@ -138,7 +138,7 @@ struct DashboardView: View {
         return NavigationSplitView {
             sidebarView
                 .navigationSplitViewColumnWidth(min: 260, ideal: 280, max: 320)
-                .background(DesignSystem.Colors.background)
+                .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
         } detail: {
             detailView
         }
@@ -639,7 +639,7 @@ struct DashboardView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DesignSystem.Colors.background)
+        .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
         .onAppear { overviewEmptyStateAppeared = true }
     }
 

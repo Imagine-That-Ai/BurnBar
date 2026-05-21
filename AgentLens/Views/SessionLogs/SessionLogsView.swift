@@ -301,16 +301,20 @@ struct SessionLogsView: View {
             }
         }
         .background {
-            ZStack {
-                DesignSystem.Colors.surface.opacity(0.92)
-                LinearGradient(
-                    colors: [
-                        DesignSystem.Colors.textPrimary.opacity(0.015),
-                        Color.clear
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+            if settingsManager.useWebsiteBackground {
+                Color.clear.background(.ultraThinMaterial)
+            } else {
+                ZStack {
+                    DesignSystem.Colors.surface.opacity(0.92)
+                    LinearGradient(
+                        colors: [
+                            DesignSystem.Colors.textPrimary.opacity(0.015),
+                            Color.clear
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
             }
         }
         .onAppear { appeared = true }

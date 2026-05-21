@@ -61,6 +61,57 @@ final class DevicesStoreTests: XCTestCase {
         XCTAssertEqual(store.staleDuplicates.map(\.id), ["macbook-new", "iphone-old"])
     }
 
+    func testHundredsOfStaleCopiesStillRenderAsRealDeviceCount() async {
+        let now = Date(timeIntervalSinceReferenceDate: 15_000)
+        let stalePhones = (0..<300).map { index in
+            DeviceRecord(
+                id: "iphone-stale-\(index)",
+                displayName: "Alberto iPhone",
+                platform: "iOS",
+                lastSeen: now.addingTimeInterval(TimeInterval(-index - 1)),
+                trustState: .trusted
+            )
+        }
+        let reader = FakeDevicesCloudReader(devices: [
+            DeviceRecord(
+                id: "iphone-current",
+                displayName: "Alberto iPhone",
+                platform: "iOS",
+                lastSeen: now,
+                trustState: .current,
+                isCurrentDevice: true
+            ),
+            DeviceRecord(
+                id: "macbook",
+                displayName: "Alberto MacBook",
+                platform: "macOS",
+                lastSeen: now.addingTimeInterval(-60),
+                trustState: .trusted
+            ),
+            DeviceRecord(
+                id: "mac-mini",
+                displayName: "Alberto Mac mini",
+                platform: "macOS",
+                lastSeen: now.addingTimeInterval(-120),
+                trustState: .trusted
+            ),
+            DeviceRecord(
+                id: "samsung",
+                displayName: "Samsung",
+                platform: "Android",
+                lastSeen: now.addingTimeInterval(-180),
+                trustState: .trusted
+            )
+        ] + stalePhones)
+        let store = DevicesStore(reader: reader, trustGateway: FakeDeviceTrustGateway())
+
+        await store.load()
+
+        XCTAssertEqual(store.devices.map(\.id), ["iphone-current", "macbook", "mac-mini", "samsung"])
+        XCTAssertEqual(store.devices.count, 4)
+        XCTAssertEqual(store.staleDuplicates.count, 300)
+    }
+
     func testTrustedDeviceWinsOverNewerPendingDuplicate() async {
         let now = Date(timeIntervalSinceReferenceDate: 20_000)
         let reader = FakeDevicesCloudReader(devices: [
