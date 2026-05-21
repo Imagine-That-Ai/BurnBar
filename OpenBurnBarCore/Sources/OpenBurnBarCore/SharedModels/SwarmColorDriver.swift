@@ -71,22 +71,22 @@ public struct SwarmColorDriver: Equatable, Sendable {
     /// - Parameter colorIndex: The particle's stable random value in `[0, 1)`.
     /// - Returns: An RGBA tuple, or `nil` for fallback.
     public func resolveColor(for colorIndex: Double) -> RGBA? {
-        guard !providers.isEmpty else { return nil }
+        guard let selection = providerSelection(for: colorIndex) else { return nil }
+        let base = DesignSystemColors.providerRGBA(for: selection.provider)
+        return pressureModulate(base: base, pressure: selection.quotaPressure)
+    }
 
-        var accumulated = 0.0
-        for pw in providers {
-            accumulated += pw.weight
-            if colorIndex < accumulated {
-                let base = DesignSystemColors.providerRGBA(for: pw.provider)
-                return pressureModulate(base: base, pressure: pw.quotaPressure)
-            }
-        }
-        // Rounding residual — assign to last provider.
-        if let last = providers.last {
-            let base = DesignSystemColors.providerRGBA(for: last.provider)
-            return pressureModulate(base: base, pressure: last.quotaPressure)
-        }
-        return nil
+    /// Resolves a provider-family tonal shade for BurnBar logo flame particles.
+    ///
+    /// The normal `resolveColor(for:)` API intentionally stays exact-brand-color
+    /// so non-flame particles remain clean provider indicators.
+    public func resolveFlameTone(for colorIndex: Double, toneSeed: Double, role: String) -> RGBA? {
+        guard let selection = providerSelection(for: colorIndex) else { return nil }
+        let base = pressureModulate(
+            base: DesignSystemColors.providerRGBA(for: selection.provider),
+            pressure: selection.quotaPressure
+        )
+        return flameTone(base: base, provider: selection.provider, toneSeed: toneSeed, role: role)
     }
 
     /// Overall intensity multiplier derived from burn rate.
@@ -97,6 +97,20 @@ public struct SwarmColorDriver: Equatable, Sendable {
     }
 
     // MARK: - Private
+
+    private func providerSelection(for colorIndex: Double) -> ProviderWeight? {
+        guard !providers.isEmpty else { return nil }
+
+        let index = min(max(colorIndex, 0), 0.999_999)
+        var accumulated = 0.0
+        for provider in providers {
+            accumulated += provider.weight
+            if index < accumulated {
+                return provider
+            }
+        }
+        return providers.last
+    }
 
     /// Modulates a provider's base color toward desaturated red based on quota pressure.
     private func pressureModulate(base: RGBA, pressure: Double) -> RGBA {
@@ -111,6 +125,59 @@ public struct SwarmColorDriver: Equatable, Sendable {
             b: base.b * (1 - t) + warningB * t,
             a: base.a
         )
+    }
+
+    private func flameTone(base: RGBA, provider: AgentProvider, toneSeed: Double, role: String) -> RGBA {
+        let seed = toneSeed - floor(toneSeed)
+        let accent = flameAccent(for: provider, base: base)
+        let hot = accent.lightened(by: 0.24)
+        let shadow = base.darkened(by: role == "logo-flame-outer" ? 0.34 : 0.18)
+        let lift = base.lightened(by: 0.20)
+        let palette = [shadow, base, accent, hot, lift]
+        let scaled = seed * Double(palette.count)
+        let index = min(palette.count - 1, Int(scaled))
+        let local = scaled - floor(scaled)
+        let shade = palette[index].mix(with: palette[(index + 1) % palette.count], amount: local * 0.65)
+
+        let amount: Double
+        switch role {
+        case "logo-flame-inner":
+            amount = 0.62
+        case "logo-flame-spark":
+            amount = 0.76
+        default:
+            amount = 0.48
+        }
+        return base.mix(with: shade, amount: amount)
+    }
+
+    private func flameAccent(for provider: AgentProvider, base: RGBA) -> RGBA {
+        switch provider {
+        case .claudeCode:
+            return RGBA(r: 1.00, g: 0.58, b: 0.40, a: base.a)
+        case .codex, .openAI:
+            return RGBA(r: 0.20, g: 1.00, b: 0.82, a: base.a)
+        case .factory, .zai, .hermes, .piAgent:
+            return RGBA(r: 0.72, g: 0.52, b: 1.00, a: base.a)
+        case .cursor, .warp:
+            return RGBA(r: 0.86, g: 0.90, b: 0.96, a: base.a)
+        case .openCode, .geminiCLI, .antigravity, .windsurf, .deepSeek, .kimi:
+            return RGBA(r: 0.36, g: 0.66, b: 1.00, a: base.a)
+        case .minimax:
+            return RGBA(r: 1.00, g: 0.78, b: 0.22, a: base.a)
+        case .openClaw, .rooCode:
+            return RGBA(r: 1.00, g: 0.42, b: 0.52, a: base.a)
+        case .forgeDev, .aider:
+            return RGBA(r: 1.00, g: 0.50, b: 0.24, a: base.a)
+        case .copilot, .kiloCode, .goose:
+            return RGBA(r: 0.34, g: 1.00, b: 0.54, a: base.a)
+        case .cline:
+            return RGBA(r: 0.92, g: 0.68, b: 0.44, a: base.a)
+        case .augment:
+            return RGBA(r: 0.38, g: 0.60, b: 1.00, a: base.a)
+        case .ollama:
+            return RGBA(r: 0.64, g: 0.68, b: 0.72, a: base.a)
+        }
     }
 }
 
@@ -137,6 +204,26 @@ public struct RGBA: Equatable, Sendable {
 }
 
 // MARK: - Clamped helper
+
+private extension RGBA {
+    func mix(with other: RGBA, amount: Double) -> RGBA {
+        let t = amount.clamped(to: 0...1)
+        return RGBA(
+            r: (r * (1 - t) + other.r * t).clamped(to: 0...1),
+            g: (g * (1 - t) + other.g * t).clamped(to: 0...1),
+            b: (b * (1 - t) + other.b * t).clamped(to: 0...1),
+            a: (a * (1 - t) + other.a * t).clamped(to: 0...1)
+        )
+    }
+
+    func lightened(by amount: Double) -> RGBA {
+        mix(with: RGBA(r: 1, g: 1, b: 1, a: a), amount: amount)
+    }
+
+    func darkened(by amount: Double) -> RGBA {
+        mix(with: RGBA(r: 0, g: 0, b: 0, a: a), amount: amount)
+    }
+}
 
 private extension Double {
     func clamped(to range: ClosedRange<Double>) -> Double {

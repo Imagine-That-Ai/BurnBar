@@ -59,6 +59,15 @@ final class SwarmLogoShapeTests: XCTestCase {
         XCTAssertLessThan(flameBounds.midY, barBounds.midY)
     }
 
+    func testBurnBarLogoCanvasTargetsKeepFlameAboveBars() throws {
+        let points = SwarmLogoShape.generatePoints()
+        let flameBounds = try canvasBounds(for: points, role: "logo-flame-outer")
+        let barBounds = try canvasBounds(for: points.filter { $0.role.hasPrefix("logo-bar-") })
+
+        XCTAssertLessThan(flameBounds.minY, barBounds.minY)
+        XCTAssertLessThan(flameBounds.midY, barBounds.midY)
+    }
+
     func testBurnBarLogoBarsRiseLeftToRight() throws {
         let points = SwarmLogoShape.generatePoints()
         let barBounds = try (1...5).map { index in
@@ -91,6 +100,28 @@ final class SwarmLogoShapeTests: XCTestCase {
         let maxX = try XCTUnwrap(filtered.map(\.point.x).max())
         let minY = try XCTUnwrap(filtered.map(\.point.y).min())
         let maxY = try XCTUnwrap(filtered.map(\.point.y).max())
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private func canvasBounds(for points: [SwarmLogoShape.Point], role: String? = nil) throws -> CGRect {
+        let filtered = role.map { selectedRole in
+            points.filter { $0.role == selectedRole }
+        } ?? points
+        XCTAssertFalse(filtered.isEmpty)
+
+        let center = CGPoint(x: 400, y: 300)
+        let scale: CGFloat = 120
+        let canvasPoints = filtered.map {
+            CGPoint(
+                x: center.x + $0.point.x * scale,
+                y: center.y + $0.point.y * scale
+            )
+        }
+
+        let minX = try XCTUnwrap(canvasPoints.map(\.x).min())
+        let maxX = try XCTUnwrap(canvasPoints.map(\.x).max())
+        let minY = try XCTUnwrap(canvasPoints.map(\.y).min())
+        let maxY = try XCTUnwrap(canvasPoints.map(\.y).max())
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 }
