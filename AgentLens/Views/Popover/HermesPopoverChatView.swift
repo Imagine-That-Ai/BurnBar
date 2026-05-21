@@ -22,30 +22,26 @@ struct AssistantsPopoverChatView: View {
     /// on confirm so the surrounding menu bar surfaces can route the
     /// activation (open dashboard, switch tab, surface settings, …).
     @State private var atomRouter = HermesAtomRouter()
+    @State private var showCLIAssistantConsent = false
 
     var body: some View {
         VStack(spacing: 0) {
             runtimeHeroCard
-            VStack(spacing: 4) {
-                HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
-                    ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
-                    Spacer(minLength: 0)
-                    ChatEngineModelMenu(controller: controller)
-                }
-                HermesModelStrip(controller: controller, settingsManager: settingsManager)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.vertical, DesignSystem.Spacing.xs)
-            .background(DesignSystem.Colors.surface.opacity(0.35))
+            runtimeControlStrip
             chatThread
             Divider().background(runtimeDividerTint.opacity(0.3))
             inputRow
             bottomBar
         }
         .frame(maxWidth: .infinity)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(DesignSystem.Colors.background)
         .environment(\.hermesAtomNavigator, atomRouter)
+        .sheet(isPresented: $showCLIAssistantConsent) {
+            CLIAssistantConsentSheet(settingsManager: settingsManager) {
+                showCLIAssistantConsent = false
+            }
+        }
         .popover(item: Binding(
             get: { atomRouter.pending },
             set: { atomRouter.pending = $0 }
@@ -71,6 +67,28 @@ struct AssistantsPopoverChatView: View {
                 await operatingLayer.refreshControllerRuntime()
             }
         }
+    }
+
+    // MARK: - Runtime Controls
+
+    private var runtimeControlStrip: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.xs) {
+                ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
+                    .layoutPriority(1)
+
+                Spacer(minLength: 4)
+
+                ChatEngineModelMenu(controller: controller)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+
+            HermesModelStrip(controller: controller, settingsManager: settingsManager)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.xs)
+        .background(DesignSystem.Colors.surface.opacity(0.35))
     }
 
     // MARK: - Hero Card
@@ -278,6 +296,10 @@ struct AssistantsPopoverChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    if shouldShowCLIPermissionCard {
+                        cliPermissionCard
+                    }
+
                     if controller.messages.isEmpty {
                         emptyState
                     } else {
@@ -295,7 +317,8 @@ struct AssistantsPopoverChatView: View {
                 .padding(.horizontal, DesignSystem.Spacing.md)
                 .padding(.vertical, DesignSystem.Spacing.sm)
             }
-            .frame(minHeight: 140, maxHeight: 320)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 0, maxHeight: .infinity)
             .onChange(of: controller.messages.count) { _, _ in
                 if let last = controller.messages.last {
                     Task { @MainActor in
@@ -304,6 +327,69 @@ struct AssistantsPopoverChatView: View {
                 }
             }
         }
+    }
+
+    private var shouldShowCLIPermissionCard: Bool {
+        (controller.chatBackend == .codex || controller.chatBackend == .claude)
+            && !settingsManager.cliAssistantAllowed
+    }
+
+    private var cliPermissionCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(heroCardIconTint)
+                    .frame(width: 24, height: 24)
+                    .background {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(heroCardIconTint.opacity(0.12))
+                    }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(controller.chatBackend.displayName) needs local CLI permission")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("OpenBurnBar will run your installed \(controller.chatBackend.displayName) CLI on this Mac; prompts go only through the CLI you approve.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button {
+                    showCLIAssistantConsent = true
+                } label: {
+                    Label("Review", systemImage: "lock.shield")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.borderless)
+
+                Button {
+                    settingsManager.cliAssistantAllowed = true
+                    settingsManager.cliAssistantConsentShown = true
+                } label: {
+                    Label("Allow", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.borderless)
+                .tint(heroCardIconTint)
+            }
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.72))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(heroCardIconTint.opacity(0.35), lineWidth: 0.75)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var emptyState: some View {
@@ -326,7 +412,7 @@ struct AssistantsPopoverChatView: View {
                 .foregroundStyle(DesignSystem.Colors.textMuted)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, DesignSystem.Spacing.xxl)
+        .padding(.vertical, shouldShowCLIPermissionCard ? DesignSystem.Spacing.lg : DesignSystem.Spacing.xxl)
     }
 
     // MARK: - Input Row
@@ -489,6 +575,12 @@ struct AssistantsPopoverChatView: View {
     // MARK: - Actions
 
     private func sendMessage() async {
+        if shouldShowCLIPermissionCard {
+            await MainActor.run {
+                showCLIAssistantConsent = true
+            }
+            return
+        }
         await controller.send()
     }
 }

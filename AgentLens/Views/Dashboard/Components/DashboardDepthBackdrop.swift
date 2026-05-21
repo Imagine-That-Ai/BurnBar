@@ -17,6 +17,7 @@ struct DashboardDepthBackdrop: View {
     var density: Density = .full
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(SettingsManager.self) private var settingsManager
 
     enum Density { case full, subtle }
 
@@ -25,7 +26,11 @@ struct DashboardDepthBackdrop: View {
             let w = geo.size.width
             let h = geo.size.height
             ZStack {
-                DesignSystem.Colors.background
+                if settingsManager.useWebsiteBackground {
+                    Color.clear
+                } else {
+                    DesignSystem.Colors.background
+                }
 
                 Rectangle()
                     .fill(DesignSystem.Colors.ember.opacity(density == .full ? 0.055 : 0.035))

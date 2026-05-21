@@ -27,7 +27,7 @@ struct PulseView: View {
 
     var body: some View {
         ZStack {
-            AuroraBackdrop()
+            AuroraBackdrop(colorDriver: dashboard.swarmColorDriver)
             PulseDepthBackdrop()
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.lg) {

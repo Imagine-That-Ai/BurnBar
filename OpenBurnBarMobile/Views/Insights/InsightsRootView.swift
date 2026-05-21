@@ -143,6 +143,7 @@ private struct AdaptiveInsightsLayout: View {
     @State private var showTemplateGallery: Bool = false
     @State private var showMissionDetail: Bool = false
     private static let iPhoneNavigationTrayClearance: CGFloat = 96
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
     var body: some View {
         if sizeClass == .regular {
@@ -165,7 +166,15 @@ private struct AdaptiveInsightsLayout: View {
                 missionStatusBanner
                 composerBar
             }
-            .background(UnifiedDesignSystem.Colors.background)
+            .background(
+                Group {
+                    if useWebsiteBackground {
+                        AuroraBackdrop()
+                    } else {
+                        UnifiedDesignSystem.Colors.background
+                    }
+                }
+            )
             .navigationTitle(store.currentCanvas?.title ?? "Insights")
             .toolbar { toolbar }
         }
@@ -192,7 +201,15 @@ private struct AdaptiveInsightsLayout: View {
                 composerBar
                     .padding(.bottom, Self.iPhoneNavigationTrayClearance)
             }
-            .background(UnifiedDesignSystem.Colors.background)
+            .background(
+                Group {
+                    if useWebsiteBackground {
+                        AuroraBackdrop()
+                    } else {
+                        UnifiedDesignSystem.Colors.background
+                    }
+                }
+            )
             .navigationTitle(store.currentCanvas?.title ?? "Insights")
             .toolbar { toolbar }
         }
@@ -1031,7 +1048,7 @@ struct MobileMissionActivityOverlay: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(state.accent)
                         Text(label)
-                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .foregroundStyle(state.accent.opacity(0.92))
                             .lineLimit(1)
                     }

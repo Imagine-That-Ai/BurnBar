@@ -103,53 +103,7 @@ private enum PixelClockExternalAgentActivityScanner {
         let lines = await Task.detached(priority: .utility) {
             processLines()
         }.value
-        guard !lines.isEmpty else { return [:] }
-
-        var statuses: [String: PixelClockAgentStatus] = [:]
-        func mark(_ provider: AgentProvider) {
-            statuses[provider.persistedToken] = .running
-        }
-
-        for rawLine in lines {
-            let line = rawLine.lowercased()
-            guard isLikelyAgentWorkProcess(line) else { continue }
-            if line.contains("codex") {
-                mark(.codex)
-            }
-            if line.contains("claude") {
-                mark(.claudeCode)
-            }
-            if line.contains("opencode") || line.contains("open-code") {
-                mark(.openClaw)
-            }
-            if line.contains("factory") || line.contains("droid") {
-                mark(.factory)
-            }
-            if line.contains("cursor") {
-                mark(.cursor)
-            }
-        }
-        return statuses
-    }
-
-    private static func isLikelyAgentWorkProcess(_ line: String) -> Bool {
-        guard !line.contains("openburnbar") else { return false }
-        guard !line.contains("xcodebuild") else { return false }
-        guard !line.contains("cursoruiviewservice") else { return false }
-        guard !line.contains("chrome-native-host") else { return false }
-        guard !line.contains("cmux-agent-mcp") else { return false }
-        guard !line.contains("droid.real daemon") else { return false }
-        guard !line.contains(" droid daemon") else { return false }
-        guard !line.contains("/usr/bin/grep") else { return false }
-        guard !line.contains(" rg ") else { return false }
-        guard !line.contains("pixelclockexternalagentactivityscanner") else { return false }
-        return line.contains("codex")
-            || line.contains("claude")
-            || line.contains("opencode")
-            || line.contains("open-code")
-            || line.contains("factory")
-            || line.contains("droid")
-            || line.contains("cursor")
+        return PixelClockAgentProcessDetector.statuses(fromProcessLines: lines)
     }
 
     private static func processLines() -> [String] {
@@ -232,17 +186,22 @@ enum PixelClockAgentProcessDetector {
     }
 
     static func statuses(fromPSOutput output: String) -> [String: PixelClockAgentStatus] {
-        var statuses: [String: PixelClockAgentStatus] = [:]
-        for line in output.split(separator: "\n").dropFirst() {
-            guard let provider = provider(forProcessLine: String(line)) else { continue }
+        statuses(fromProcessLines: output.split(separator: "\n").dropFirst().map(String.init))
+    }
+
+    static func statuses(fromProcessLines lines: [String]) -> [String: PixelClockAgentStatus] {
+        lines.reduce(into: [:]) { statuses, line in
+            guard let provider = provider(forProcessLine: line) else { return }
             statuses[provider.persistedToken] = .running
         }
-        return statuses
     }
 
     private static func provider(forProcessLine line: String) -> AgentProvider? {
         let lower = line.lowercased()
         if lower.contains("openburnbar") || lower.contains("/bin/ps") {
+            return nil
+        }
+        if lower.contains("pixelclockexternalagentactivityscanner") {
             return nil
         }
 
@@ -277,6 +236,9 @@ enum PixelClockAgentProcessDetector {
         if has(["codex"]) { return .codex }
         if has(["claude", "claude-code", "claudecode"]) { return .claudeCode }
         if has(["droid", "factory", "factory-cli"]) { return .factory }
+        if has(["opencode", "open-code"]) { return .openCode }
+        if has(["openclaw", "open-claw"]) { return .openClaw }
+        if has(["cursor"]) { return .cursor }
         if has(["minimax", "mini-max"]) { return .minimax }
         if has(["zai", "z.ai", "z-ai"]) { return .zai }
         if has(["kimi", "moonshot"]) { return .kimi }

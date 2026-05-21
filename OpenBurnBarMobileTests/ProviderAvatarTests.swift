@@ -14,6 +14,7 @@ final class ProviderAvatarTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testProviderAvatarModesRender() {
         for provider in AgentProvider.allCases {
             let plain = ProviderAvatar(provider: provider, mode: .plain, size: 24)

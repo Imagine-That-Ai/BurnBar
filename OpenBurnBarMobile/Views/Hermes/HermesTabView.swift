@@ -2818,6 +2818,12 @@ struct HermesMessageBubble: View {
                 cardsStrip
             }
 
+            if !sourceLinks.isEmpty {
+                sourceLinksFooter
+                    .padding(.leading, 6)
+                    .padding(.top, 4)
+            }
+
             tpsFooter
         }
     }
@@ -3012,6 +3018,70 @@ struct HermesMessageBubble: View {
             && message.generationDurationSource == .bufferedWallClock
     }
 
+    private var sourceLinks: [HermesSourceLink] {
+        guard !isUser, !message.text.isEmpty else { return [] }
+        return HermesSourceLinkExtractor.extract(from: message.text)
+    }
+
+    private var sourceLinksFooter: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "link")
+                    .font(.system(size: 10, weight: .bold))
+                Text("Sources")
+                    .font(MobileTheme.Typography.tiny.weight(.semibold))
+            }
+            .foregroundStyle(MobileTheme.Colors.textMuted)
+
+            ForEach(sourceLinks) { source in
+                Link(destination: source.url) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "safari")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(MobileTheme.hermesAureate)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(source.title)
+                                .font(MobileTheme.Typography.caption.weight(.semibold))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Text(source.displayHost)
+                                .font(MobileTheme.Typography.tiny)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                        }
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Spacer(minLength: 8)
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(MobileTheme.Colors.surfaceElevated.opacity(0.7))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(MobileTheme.Colors.border.opacity(0.28), lineWidth: 0.7)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open source: \(source.title)")
+            }
+        }
+        .padding(9)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.68))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(MobileTheme.Colors.border.opacity(0.24), lineWidth: 0.7)
+        )
+    }
+
     private func tpsAccessibilityLabel(_ display: String) -> String {
         let prefix: String
         switch message.generationDurationSource {
@@ -3031,24 +3101,20 @@ struct HermesMessageBubble: View {
     @ViewBuilder
     private var assistantTextBody: some View {
         if usePretextRendering, !message.isError, !message.isStreaming {
-            // Completed assistant turn — atom-aware rich rendering, with
-            // streaming-stable height + shrink-wrap width applied by the
-            // wrapper.
-            StreamingBubble(
-                text: message.text,
-                isStreaming: false,
-                isError: false,
-                baseSize: 15,
+            // Completed rich turns should be sized by the same atom/link
+            // renderer that draws them. The generic streaming wrapper
+            // measures plain text, which overestimates rich lines and leaves
+            // the dead space shown in the chat bubble.
+            HermesRichBubble(
+                text: HermesSourceLinkExtractor.collapseExternalLinksForDisplay(in: message.text),
+                baseColor: MobileTheme.Colors.textPrimary,
+                mentionColor: MobileTheme.hermesAureate,
+                codeColor: MobileTheme.Colors.textPrimary,
+                codeBackground: MobileTheme.Colors.surfaceElevated,
                 lineHeight: 21
-            ) {
-                HermesRichBubble(
-                    text: message.text,
-                    baseColor: MobileTheme.Colors.textPrimary,
-                    mentionColor: MobileTheme.hermesAureate,
-                    codeColor: MobileTheme.Colors.textPrimary,
-                    codeBackground: MobileTheme.Colors.surfaceElevated
-                )
-            }
+            )
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else if usePretextRendering, !message.isError, message.isStreaming {
             // In-flight — plain Text inside StreamingBubble so the bubble's
             // outer frame animates smoothly even while text mutates.

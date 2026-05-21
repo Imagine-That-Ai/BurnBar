@@ -629,8 +629,8 @@ private struct StudioChartChrome: ViewModifier {
 
 // MARK: - Accessibility
 
-extension NativeChartView: AXChartDescriptorRepresentable {
-    @MainActor func makeChartDescriptor() -> AXChartDescriptor {
+extension NativeChartView: @preconcurrency AXChartDescriptorRepresentable {
+    func makeChartDescriptor() -> AXChartDescriptor {
         let allPoints = spec.series.flatMap { series -> [(String, Double, String)] in
             series.points.map { (series.name, $0.y, $0.x.asString ?? "—") }
         }

@@ -85,6 +85,12 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        unitTests.all {
+            it.jvmArgs("-Xshare:off")
+        }
+    }
 }
 
 dependencies {

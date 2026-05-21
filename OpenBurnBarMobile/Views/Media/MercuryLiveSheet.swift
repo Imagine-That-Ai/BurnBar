@@ -42,64 +42,155 @@ struct MercuryLiveSheet: View {
     @State private var awaitingRequestID: String?
     @State private var activeMirrorRequestID: String?
     @State private var lastError: String?
+    @State private var errorProgress: CGFloat = 1.0
+    @State private var ackProgress: CGFloat = 1.0
     @State private var isShowingFileImporter = false
     @State private var sendingFile = false
     @State private var pulseTrigger = false
     @State private var isShowingMirrorViewer = false
     @State private var mirrorTimeoutTask: Task<Void, Never>?
     @State private var cooldownTickerTask: Task<Void, Never>?
+    @State private var errorDismissTask: Task<Void, Never>?
+    @State private var ackDismissTask: Task<Void, Never>?
+    @State private var errorDragOffset: CGFloat = 0
+    @State private var ackDragOffset: CGFloat = 0
+    @State private var ackAnimateTrigger = false
+    @State private var isShowingCustomizeSheet = false
     @StateObject private var screenShareViewer = ScreenShareViewerCoordinator()
     @StateObject private var phoneControlCoordinator = AgentWatchOverlayCoordinator()
     @State private var phoneControlError: String?
     @State private var selectedMirrorDisplayId: String?
-    @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
-    @AppStorage("mercuryMimicLoginBackground") private var mimicLoginBackground: Bool = true
     @State private var backgroundImage: UIImage? = nil
+    @ObservedObject private var personalizationStore = MercuryPersonalizationStore.shared
+    @ObservedObject private var transferHistoryStore = MercuryTransferHistoryStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dismiss) private var dismiss
 
-    private static let mercurySilver = Color(red: 0.78, green: 0.74, blue: 0.69)
-    private static let mercuryGray = Color(red: 0.63, green: 0.67, blue: 0.73)
+    private var personalization: MercuryDevicePersonalization {
+        personalizationStore.snapshot(for: connectionID)
+    }
+
+    private var personalizationBinding: Binding<MercuryDevicePersonalization> {
+        personalizationStore.binding(for: connectionID)
+    }
+
+    private var accent: Color {
+        personalizationStore.resolvedAccent(
+            for: connectionID,
+            wallpaperBase64: peer.blurredWallpaperBase64
+        )
+    }
+
+    private var sampledAuto: Color {
+        WallpaperAccentSampler.dominantAccent(fromBase64: peer.blurredWallpaperBase64)
+            ?? MercuryAccent.blue.staticColor
+    }
+
+    private var effectiveNickname: String {
+        personalizationStore.effectiveNickname(for: connectionID, fallback: peer.displayName)
+    }
 
     var body: some View {
         ZStack {
-            // Full-bleed premium background
             backgroundView
                 .ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 24) {
-                    header
-
-                    actionStack
-
-                    if let ack = lastAck {
-                        ackBanner(for: ack)
-                    }
-
-                    if let lastError {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
-                            Text(lastError)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color.red.opacity(0.15))
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                    MercuryHeaderCard(
+                        peer: peer,
+                        nickname: effectiveNickname,
+                        badges: personalization.normalizedBadges(),
+                        accent: accent,
+                        pulse: pulseTrigger,
+                        avatarStyle: personalization.avatar,
+                        reduceMotion: reduceMotion
+                    ) {
+                        MercuryLiveStatusStrip(
+                            peer: peer,
+                            phase: controlStreamCoordinator.phase,
+                            accent: accent,
+                            sampledAuto: sampledAuto,
+                            recentTransfersCount: transferHistoryStore.totalCount(for: connectionID),
+                            inFlightCount: fileTransferService?.inFlightCount ?? 0,
+                            moodName: MercuryMoodPreset.matching(personalization)?.name,
+                            canRequestMirror: canRequestMirror,
+                            onReconnect: {
+                                Task {
+                                    await controlStreamCoordinator.stop()
+                                    if let uid = uidProvider() {
+                                        controlStreamCoordinator.start(uid: uid, connectionID: connectionID)
+                                    }
+                                }
+                            },
+                            onMirror: { Task { await requestMirror() } },
+                            onCall: { Task { await placeCall() } },
+                            onSendFile: { isShowingFileImporter = true },
+                            onShowActivity: {
+                                // The Recent Transfers card is already
+                                // visible — opening the customize sheet
+                                // would surprise the user. For now this
+                                // is a no-op tap target that just
+                                // confirms with a haptic via the chip's
+                                // selectionChanged feedback.
+                            },
+                            onOpenCustomize: { isShowingCustomizeSheet = true }
                         )
-                        .multilineTextAlignment(.center)
                     }
 
-                    preferencesCard
+                    MercuryActionStack(
+                        order: personalization.normalizedActionOrder(),
+                        peer: peer,
+                        accent: accent,
+                        canRequestMirror: canRequestMirror,
+                        canPlaceCall: peer.canPlaceCall,
+                        canSendFile: peer.canSendFile && fileTransferService != nil,
+                        awaitingRequestID: awaitingRequestID,
+                        sendingFile: sendingFile,
+                        mercuryStatusMessage: mercuryStatusMessage,
+                        onRequestMirror: { Task { await requestMirror() } },
+                        onPlaceCall: { Task { await placeCall() } },
+                        onSendFile: { isShowingFileImporter = true },
+                        usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false
+                    )
+
+                    MercuryRecentTransfersCard(
+                        entries: transferHistoryStore.recent(for: connectionID, limit: 5),
+                        totalCount: transferHistoryStore.totalCount(for: connectionID),
+                        accent: accent,
+                        onRemove: { transferHistoryStore.remove(id: $0.id) },
+                        onSendAnother: { isShowingFileImporter = true }
+                    )
+
+                    MercuryMoodCarousel(
+                        personalization: personalizationBinding,
+                        sampledAuto: sampledAuto,
+                        onOpenCustomize: { isShowingCustomizeSheet = true }
+                    )
                 }
                 .padding(24)
             }
+
+            // Top-floating HUD Overlay Container
+            VStack {
+                if let lastError {
+                    floatingErrorHUD(message: lastError)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .padding(.top, 8)
+                }
+
+                if let ack = lastAck {
+                    floatingAckHUD(for: ack)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .padding(.top, 8)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .animation(.spring(response: 0.38, dampingFraction: 0.78, blendDuration: 0), value: lastError)
+            .animation(.spring(response: 0.38, dampingFraction: 0.78, blendDuration: 0), value: lastAck)
         }
         .onAppear {
             Self.debugTrace("mirror_sheet_appear connectionID=\(connectionID) peerOnline=\(peer.isOnline) phase=\(String(describing: controlStreamCoordinator.phase))")
@@ -118,8 +209,14 @@ struct MercuryLiveSheet: View {
             mirrorTimeoutTask = nil
             cooldownTickerTask?.cancel()
             cooldownTickerTask = nil
+            errorDismissTask?.cancel()
+            errorDismissTask = nil
+            ackDismissTask?.cancel()
+            ackDismissTask = nil
             awaitingRequestID = nil
             controlStreamCoordinator.mirrorFrameHandler = nil
+            controlStreamCoordinator.mirrorFrameV2Handler = nil
+            screenShareViewer.longTermReferenceTokenHandler = nil
             Task { await phoneControlCoordinator.stop() }
         }
         .fullScreenCover(isPresented: $isShowingMirrorViewer) {
@@ -127,11 +224,13 @@ struct MercuryLiveSheet: View {
                 coordinator: screenShareViewer,
                 resetToken: activeMirrorRequestID,
                 controlStatus: mirrorControlStatus,
+                streamPhase: controlStreamCoordinator.phase,
                 displays: lastAck?.availableDisplays ?? [],
                 selectedDisplayId: selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
-                sendTapIntent: { x, y in
+                usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false,
+                sendTapIntent: { x, y, mouseButton in
                     let displayId = selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
-                    Task { try? await phoneControlCoordinator.receiver?.tap(normalizedX: x, normalizedY: y, displayId: displayId) }
+                    Task { try? await phoneControlCoordinator.receiver?.tap(normalizedX: x, normalizedY: y, displayId: displayId, mouseButton: mouseButton) }
                 },
                 sendScrollIntent: { x1, y1, x2, y2, displayId in
                     Task {
@@ -147,8 +246,8 @@ struct MercuryLiveSheet: View {
                 sendPointerMoveIntent: { dx, dy in
                     Task { try? await phoneControlCoordinator.receiver?.pointerMove(deltaX: dx, deltaY: dy) }
                 },
-                sendPointerClickIntent: {
-                    Task { try? await phoneControlCoordinator.receiver?.pointerClick() }
+                sendPointerClickIntent: { mouseButton in
+                    Task { try? await phoneControlCoordinator.receiver?.pointerClick(mouseButton: mouseButton) }
                 },
                 sendTextIntent: { text in
                     Task { try? await phoneControlCoordinator.receiver?.type(text) }
@@ -157,6 +256,19 @@ struct MercuryLiveSheet: View {
                     Task { try? await phoneControlCoordinator.receiver?.shortcut(key: key, modifiers: modifiers) }
                 },
                 onSelectDisplay: selectMirrorDisplay,
+                onForceReconnect: {
+                    Task {
+                        await controlStreamCoordinator.stop()
+                        if let uid = uidProvider() {
+                            controlStreamCoordinator.start(uid: uid, connectionID: connectionID)
+                        }
+                    }
+                },
+                onRetryRequest: {
+                    Task {
+                        await requestMirror()
+                    }
+                },
                 onClose: {
                     isShowingMirrorViewer = false
                     Task { await stopActiveMirror(reason: "viewer_closed") }
@@ -170,308 +282,118 @@ struct MercuryLiveSheet: View {
         ) { result in
             Task { await handleFilePick(result) }
         }
+        .sheet(isPresented: $isShowingCustomizeSheet) {
+            MercuryCustomizeSheet(
+                peer: peer,
+                personalization: personalizationBinding,
+                sampledAuto: sampledAuto,
+                nicknameSuggestions: personalizationStore.nicknameSuggestions(for: peer.displayName)
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Mercury Live for \(peer.displayName)")
+        .accessibilityLabel("Mercury Live for \(effectiveNickname)")
+        .onChange(of: lastError) { _, newValue in
+            errorDismissTask?.cancel()
+            errorProgress = 1.0
+            if newValue != nil {
+                withAnimation(.linear(duration: 6.0)) {
+                    errorProgress = 0.0
+                }
+                errorDismissTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 6_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        lastError = nil
+                    }
+                }
+            }
+        }
+        .onChange(of: lastAck) { _, newValue in
+            ackDismissTask?.cancel()
+            ackProgress = 1.0
+            if let newValue {
+                if newValue.decision != .accepted && newValue.decision != .coolingDown {
+                    withAnimation(.linear(duration: 6.0)) {
+                        ackProgress = 0.0
+                    }
+                    ackDismissTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 6_000_000_000)
+                        guard !Task.isCancelled else { return }
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            lastAck = nil
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    // MARK: - Subviews
+    // MARK: - Background
 
+    @ViewBuilder
     private var backgroundView: some View {
-        ZStack {
-            if mimicLoginBackground, let backgroundImage = backgroundImage {
+        switch personalization.background {
+        case .wallpaper:
+            if let backgroundImage = backgroundImage, personalization.mimicLoginBackground {
                 Image(uiImage: backgroundImage)
                     .resizable()
                     .scaledToFill()
                     .blur(radius: 30, opaque: true)
-                    .overlay(Color.black.opacity(0.3)) // Subtle dimming for premium legibility
+                    .overlay(Color.black.opacity(0.3))
             } else {
-                // High-contrast, sophisticated dark charcoal-to-black back plate with ambient glows
+                auroraBackground
+            }
+        case .aurora:
+            auroraBackground
+        case .solid:
+            ZStack {
                 LinearGradient(
                     colors: [
-                        Color(red: 0.12, green: 0.12, blue: 0.14),
-                        Color(red: 0.05, green: 0.05, blue: 0.06)
+                        Color(red: 0.07, green: 0.07, blue: 0.09),
+                        Color(red: 0.03, green: 0.03, blue: 0.04)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .overlay(
-                    ZStack {
-                        // Top-left purple/blue ambient glow
-                        RadialGradient(
-                            colors: [Color.blue.opacity(0.15), Color.clear],
-                            center: .topLeading,
-                            startRadius: 0,
-                            endRadius: 300
-                        )
-
-                        // Bottom-right purple glow
-                        RadialGradient(
-                            colors: [Color.purple.opacity(0.12), Color.clear],
-                            center: .bottomTrailing,
-                            startRadius: 0,
-                            endRadius: 400
-                        )
-                    }
+                RadialGradient(
+                    colors: [accent.opacity(0.18), Color.clear],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: 500
                 )
             }
+        case .website:
+            WebsiteBackgroundView(accent: accent)
         }
     }
 
-    private var header: some View {
-        VStack(spacing: 16) {
-            avatar
-
-            VStack(spacing: 4) {
-                Text(peer.displayName)
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .accessibilityAddTraits(.isHeader)
-
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(peer.isOnline ? Color.green : Color.gray)
-                        .frame(width: 8, height: 8)
-                        .scaleEffect(pulseTrigger && peer.isOnline && !reduceMotion ? 1.2 : 1.0)
-                        .animation(
-                            reduceMotion
-                                ? .none
-                                : .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
-                            value: pulseTrigger
-                        )
-
-                    Text(peer.isOnline ? "Active Session" : "Offline")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(peer.isOnline ? .green : .secondary)
-                }
-            }
-
-            // Spec/telemetry pill view
-            HStack(spacing: 12) {
-                telemetryTag(text: "Apple Silicon", icon: "cpu")
-                telemetryTag(text: "macOS Sequoia", icon: "macwindow")
-            }
-            .padding(.top, 4)
-        }
-        .padding(.vertical, 24)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.2), Color.white.opacity(0.05)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
+    @ViewBuilder
+    private var auroraBackground: some View {
+        LinearGradient(
+            colors: [
+                Color(red: 0.12, green: 0.12, blue: 0.14),
+                Color(red: 0.05, green: 0.05, blue: 0.06)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
         )
-        .shadow(color: Color.black.opacity(0.15), radius: 15, x: 0, y: 10)
-    }
-
-    private func telemetryTag(text: String, icon: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 11))
-            Text(text)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-        }
-        .foregroundStyle(Color.white.opacity(0.75))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(
-            Capsule()
-                .fill(Color.white.opacity(0.08))
-                .overlay(
-                    Capsule()
-                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+        .overlay(
+            ZStack {
+                RadialGradient(
+                    colors: [accent.opacity(0.18), Color.clear],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 300
                 )
-        )
-    }
-
-    private var avatar: some View {
-        ZStack {
-            // Ambient outer glow
-            Circle()
-                .fill(
-                    RadialGradient(
-                        gradient: Gradient(colors: [Color.blue.opacity(0.2), Color.clear]),
-                        center: .center,
-                        startRadius: 10,
-                        endRadius: 60
-                    )
+                RadialGradient(
+                    colors: [Color.purple.opacity(0.12), Color.clear],
+                    center: .bottomTrailing,
+                    startRadius: 0,
+                    endRadius: 400
                 )
-                .frame(width: 120, height: 120)
-                .scaleEffect(pulseTrigger && !reduceMotion ? 1.15 : 0.95)
-                .animation(
-                    reduceMotion
-                        ? .none
-                        : .easeInOut(duration: 2.0).repeatForever(autoreverses: true),
-                    value: pulseTrigger
-                )
-
-            Circle()
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.5),
-                            Color.white.opacity(0.1),
-                            Color.blue.opacity(0.3)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.5
-                )
-                .frame(width: 88, height: 88)
-                .scaleEffect(pulseTrigger && !reduceMotion ? 1.04 : 1.0)
-                .opacity(peer.isOnline ? 1.0 : 0.45)
-                .animation(
-                    reduceMotion
-                        ? .none
-                        : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
-                    value: pulseTrigger
-                )
-
-            // Outer blurred glow ring
-            Circle()
-                .stroke(Color.blue.opacity(0.3), lineWidth: 3)
-                .blur(radius: 4)
-                .frame(width: 88, height: 88)
-                .opacity(peer.isOnline ? 0.7 : 0)
-
-            Image(systemName: "macbook")
-                .font(.system(size: 32, weight: .medium))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [.white, Color.white.opacity(0.8)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .shadow(color: Color.blue.opacity(0.3), radius: 8, x: 0, y: 4)
-        }
-        .accessibilityHidden(true)
-    }
-
-    private var actionStack: some View {
-        VStack(spacing: 14) {
-            Button {
-                Task { await requestMirror() }
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: awaitingRequestID == nil ? "rectangle.on.rectangle.angled" : "hourglass")
-                        .font(.system(size: 16, weight: .bold))
-                    Text(awaitingRequestID == nil ? "Ask to Mirror" : "Waiting for Mac...")
-                }
-                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(LiquidGlassButtonStyle(isEnabled: canRequestMirror))
-            .disabled(!canRequestMirror)
-            .accessibilityLabel("Ask to mirror Mac screen")
-
-            if awaitingRequestID != nil {
-                statusText("Request sent. Check your Mac.")
-            } else if let status = mercuryStatusMessage {
-                statusText(status)
-            } else if !peer.isOnline {
-                statusText("Mercury is still connecting. Ask will wait for the Mac and show the real error if it cannot connect.")
-            }
-
-            Button {
-                Task { await placeCall() }
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "phone.fill")
-                        .font(.system(size: 14))
-                    Text("Call Mac")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(LiquidGlassButtonStyle(isEnabled: peer.canPlaceCall))
-            .disabled(!peer.canPlaceCall)
-            .accessibilityLabel("Call paired Mac")
-
-            Button {
-                isShowingFileImporter = true
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 14))
-                    Text(sendingFile ? "Sending…" : "Send File…")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(LiquidGlassButtonStyle(isEnabled: peer.canSendFile && !sendingFile && fileTransferService != nil))
-            .disabled(peer.canSendFile == false || sendingFile || fileTransferService == nil)
-            .accessibilityLabel("Send file to paired Mac")
-        }
-    }
-
-    private func statusText(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 13, weight: .medium, design: .rounded))
-            .foregroundStyle(Color.white.opacity(0.6))
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(10)
-    }
-
-    private var preferencesCard: some View {
-        VStack(spacing: 16) {
-            Toggle(isOn: $mercuryPinnedTileEnabled) {
-                HStack(spacing: 12) {
-                    Image(systemName: "square.grid.2x2.fill")
-                        .foregroundStyle(Color.blue)
-                        .font(.system(size: 16))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Hermes Square Integration")
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text("Show My Mac tile in the main grid")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .toggleStyle(SwitchToggleStyle(tint: .blue))
-            .accessibilityLabel("Show My Mac tile on Hermes Square pinned grid")
-
-            Divider()
-                .background(Color.white.opacity(0.12))
-
-            Toggle(isOn: $mimicLoginBackground) {
-                HStack(spacing: 12) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(Color.purple)
-                        .font(.system(size: 16))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Mimic Mac Wallpaper")
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text("Sync blurred desktop backdrop")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .toggleStyle(SwitchToggleStyle(tint: .blue))
-            .accessibilityLabel("Mimic Mac login/desktop wallpaper as sheet background")
-        }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
         )
     }
 
@@ -486,42 +408,252 @@ struct MercuryLiveSheet: View {
     }
 
     @ViewBuilder
-    private func ackBanner(for ack: HermesRealtimeRelayMirrorAck) -> some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: ackIcon(for: ack))
-                    .foregroundStyle(ackColor(for: ack))
-                    .font(.system(size: 15, weight: .bold))
+    private func floatingErrorHUD(message: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.red, .orange],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .font(.system(size: 20, weight: .bold))
+                .symbolEffect(.pulse, options: .repeating)
+                .shadow(color: .red.opacity(0.3), radius: 4)
 
-                Text(bannerTitle(for: ack))
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Error Alert")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
+                Text(message)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .multilineTextAlignment(.leading)
             }
-
-            if let detail = ack.detail {
-                Text(detail)
-                    .font(.system(size: 13, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(0.7))
-                    .multilineTextAlignment(.center)
+            
+            Spacer()
+            
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    lastError = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.white.opacity(0.4))
             }
-
-            if let cooldown = cooldownSecondsRemaining(for: ack), cooldown > 0 {
-                Text("Cooling down · \(cooldown)s")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.5))
-            }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.red.opacity(0.04))
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.0, green: 0.23, blue: 0.19).opacity(0.65),
+                            Color(red: 1.0, green: 0.62, blue: 0.04).opacity(0.20),
+                            Color.white.opacity(0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
                 )
         )
-        .accessibilityElement(children: .combine)
+        .overlay(alignment: .bottom) {
+            GeometryReader { geo in
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.red, .orange],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: geo.size.width * errorProgress)
+            }
+            .frame(height: 3)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: Color.red.opacity(0.18), radius: 22, x: 0, y: 12)
+        .shadow(color: .black.opacity(0.35), radius: 15, x: 0, y: 8)
+        .offset(y: errorDragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { gesture in
+                    if gesture.translation.height < 0 {
+                        errorDragOffset = gesture.translation.height
+                    } else {
+                        errorDragOffset = pow(gesture.translation.height, 0.7)
+                    }
+                }
+                .onEnded { gesture in
+                    if gesture.translation.height < -15 {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            lastError = nil
+                            errorDragOffset = 0
+                        }
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            errorDragOffset = 0
+                        }
+                    }
+                }
+        )
+    }
+
+    @ViewBuilder
+    private func floatingAckHUD(for ack: HermesRealtimeRelayMirrorAck) -> some View {
+        let progress: CGFloat = {
+            if ack.decision == .coolingDown,
+               let original = ack.cooldownSecondsRemaining,
+               let remaining = cooldownSecondsRemaining(for: ack),
+               original > 0 {
+                return CGFloat(remaining) / CGFloat(original)
+            }
+            return ackProgress
+        }()
+
+        HStack(spacing: 12) {
+            Image(systemName: ackIcon(for: ack))
+                .foregroundStyle(ackColor(for: ack))
+                .font(.system(size: 20, weight: .bold))
+                .symbolEffect(.bounce, value: ackAnimateTrigger)
+                .shadow(color: ackColor(for: ack).opacity(0.3), radius: 4)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bannerTitle(for: ack))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                if let detail = ack.detail {
+                    Text(detail)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .multilineTextAlignment(.leading)
+                }
+
+                if let cooldown = cooldownSecondsRemaining(for: ack), cooldown > 0 {
+                    Text("Cooling down · \(cooldown)s")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+            }
+
+            Spacer()
+
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    lastAck = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(ackColor(for: ack).opacity(0.04))
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(ackGradient(for: ack), lineWidth: 1.5)
+        )
+        .overlay(alignment: .bottom) {
+            GeometryReader { geo in
+                Rectangle()
+                    .fill(ackProgressGradient(for: ack))
+                    .frame(width: geo.size.width * progress)
+            }
+            .frame(height: 3)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: ackColor(for: ack).opacity(0.18), radius: 22, x: 0, y: 12)
+        .shadow(color: .black.opacity(0.35), radius: 15, x: 0, y: 8)
+        .offset(y: ackDragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { gesture in
+                    if gesture.translation.height < 0 {
+                        ackDragOffset = gesture.translation.height
+                    } else {
+                        ackDragOffset = pow(gesture.translation.height, 0.7)
+                    }
+                }
+                .onEnded { gesture in
+                    if gesture.translation.height < -15 {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            lastAck = nil
+                            ackDragOffset = 0
+                        }
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            ackDragOffset = 0
+                        }
+                    }
+                }
+        )
+        .onAppear {
+            ackAnimateTrigger.toggle()
+        }
+    }
+
+    private func ackGradient(for ack: HermesRealtimeRelayMirrorAck) -> LinearGradient {
+        let colors: [Color]
+        switch ack.decision {
+        case .accepted:
+            colors = [Color.green.opacity(0.65), Color.green.opacity(0.20), Color.white.opacity(0.08)]
+        case .denied:
+            colors = [Color.red.opacity(0.65), Color.orange.opacity(0.20), Color.white.opacity(0.08)]
+        case .coolingDown, .busy:
+            colors = [Color.orange.opacity(0.65), Color.yellow.opacity(0.20), Color.white.opacity(0.08)]
+        case .unsupported:
+            colors = [Color.gray.opacity(0.65), Color.white.opacity(0.12), Color.white.opacity(0.08)]
+        }
+        return LinearGradient(
+            colors: colors,
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private func ackProgressGradient(for ack: HermesRealtimeRelayMirrorAck) -> LinearGradient {
+        let colors: [Color]
+        switch ack.decision {
+        case .accepted:
+            colors = [.green, .mint]
+        case .denied:
+            colors = [.red, .orange]
+        case .coolingDown, .busy:
+            colors = [.orange, .yellow]
+        case .unsupported:
+            colors = [.gray, .white.opacity(0.5)]
+        }
+        return LinearGradient(
+            colors: colors,
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 
     private func ackIcon(for ack: HermesRealtimeRelayMirrorAck) -> String {
@@ -624,6 +756,15 @@ struct MercuryLiveSheet: View {
         controlStreamCoordinator.mirrorFrameHandler = { frame in
             await screenShareViewer.ingest(frame: frame)
         }
+        controlStreamCoordinator.mirrorFrameV2Handler = { frame in
+            await screenShareViewer.ingest(frameV2: frame)
+        }
+        screenShareViewer.longTermReferenceTokenHandler = { token in
+            try? await controlStreamCoordinator.sendLongTermReferenceAcknowledgement(
+                token: token,
+                requestId: activeMirrorRequestID
+            )
+        }
     }
 
     private func requestMirror() async {
@@ -635,6 +776,7 @@ struct MercuryLiveSheet: View {
             lastError = mercuryStatusMessage ?? "Mercury is not ready yet."
             return
         }
+        personalization.haptics.play()
         let requestID = UUID().uuidString
         awaitingRequestID = requestID
         activeMirrorRequestID = nil
@@ -650,7 +792,10 @@ struct MercuryLiveSheet: View {
             requestId: requestID,
             requestedAt: Date(),
             requesterDisplayName: deviceDisplayName(),
-            streamClass: MediaStreamClass.screenVideo.rawValue
+            streamClass: MediaStreamClass.screenVideo.rawValue,
+            streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
+                mediaFrameVersions: .v1Only
+            ).wireValue
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -818,6 +963,7 @@ struct MercuryLiveSheet: View {
                     peerDeviceID: connectionID
                 )
                 lastError = nil
+                personalization.haptics.play()
             } catch {
                 lastError = error.localizedDescription
             }
@@ -865,29 +1011,25 @@ struct MercuryLiveSheet: View {
             phoneControlError = error.localizedDescription
         }
     }
-
-    private var borderGradient: LinearGradient {
-        LinearGradient(
-            colors: [Self.mercurySilver, Self.mercuryGray],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
 }
 
 private struct MercuryMirrorViewerFullScreen: View {
     @ObservedObject var coordinator: ScreenShareViewerCoordinator
     let resetToken: String?
     let controlStatus: ScreenSharePhoneControlStatus
+    let streamPhase: MediaControlStreamCoordinator.Phase
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
-    let sendTapIntent: (Double, Double) -> Void
+    let usePremiumSOTAUX: Bool
+    let sendTapIntent: (Double, Double, Int) -> Void
     let sendScrollIntent: (Double, Double, Double, Double, String?) -> Void
     let sendPointerMoveIntent: (Double, Double) -> Void
-    let sendPointerClickIntent: () -> Void
+    let sendPointerClickIntent: (Int) -> Void
     let sendTextIntent: (String) -> Void
     let sendShortcutIntent: (String, [String]) -> Void
     let onSelectDisplay: (String) -> Void
+    let onForceReconnect: () -> Void
+    let onRetryRequest: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -897,6 +1039,10 @@ private struct MercuryMirrorViewerFullScreen: View {
             controlStatus: controlStatus,
             displays: displays,
             selectedDisplayId: selectedDisplayId,
+            streamPhase: streamPhase,
+            usePremiumSOTAUX: usePremiumSOTAUX,
+            onForceReconnect: onForceReconnect,
+            onRetryRequest: onRetryRequest,
             sendTapIntent: sendTapIntent,
             sendScrollIntent: sendScrollIntent,
             sendPointerMoveIntent: sendPointerMoveIntent,
@@ -910,49 +1056,3 @@ private struct MercuryMirrorViewerFullScreen: View {
     }
 }
 
-struct LiquidGlassButtonStyle: ButtonStyle {
-    var isEnabled: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 16, weight: .bold, design: .rounded))
-            .foregroundStyle(isEnabled ? .white : Color.white.opacity(0.35))
-            .padding(.vertical, 14)
-            .padding(.horizontal, 20)
-            .background(
-                ZStack {
-                    if isEnabled {
-                        // Ambient card blur
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                            .opacity(configuration.isPressed ? 0.7 : 0.9)
-
-                        // Shimmer highlight border
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.25),
-                                        Color.white.opacity(0.05),
-                                        Color.clear,
-                                        Color.white.opacity(0.1)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                    } else {
-                        // Dark disabled background
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.white.opacity(0.04))
-
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                    }
-                }
-            )
-            .scaleEffect(configuration.isPressed && isEnabled ? 0.96 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.65, blendDuration: 0), value: configuration.isPressed)
-    }
-}

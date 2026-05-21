@@ -190,14 +190,21 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
 
     private static func usage(from raw: [String: Any]?) -> HermesInsightTokenUsage? {
         guard let raw else { return nil }
-        let input = (raw["prompt_tokens"] as? Int) ?? (raw["input_tokens"] as? Int) ?? 0
+        var input = (raw["prompt_tokens"] as? Int) ?? (raw["input_tokens"] as? Int) ?? 0
         let output = (raw["completion_tokens"] as? Int) ?? (raw["output_tokens"] as? Int) ?? 0
         let reasoning = (raw["reasoning_tokens"] as? Int)
             ?? ((raw["completion_tokens_details"] as? [String: Any])?["reasoning_tokens"] as? Int)
             ?? 0
-        let cacheRead = (raw["cache_read_input_tokens"] as? Int)
-            ?? ((raw["prompt_tokens_details"] as? [String: Any])?["cached_tokens"] as? Int)
+        let exclusiveCacheRead = (raw["cache_read_input_tokens"] as? Int) ?? 0
+        let inclusiveCacheRead = ((raw["prompt_tokens_details"] as? [String: Any])?["cached_tokens"] as? Int)
+            ?? ((raw["input_tokens_details"] as? [String: Any])?["cached_tokens"] as? Int)
+            ?? (raw["input_cached_tokens"] as? Int)
+            ?? (raw["cached_input_tokens"] as? Int)
             ?? 0
+        let cacheRead = exclusiveCacheRead > 0 ? exclusiveCacheRead : inclusiveCacheRead
+        if inclusiveCacheRead > 0 && exclusiveCacheRead == 0 {
+            input = max(input - inclusiveCacheRead, 0)
+        }
         let cacheCreation = (raw["cache_creation_input_tokens"] as? Int) ?? 0
         let cost = (raw["estimated_cost_usd"] as? Double)
             ?? (raw["cost_usd"] as? Double)

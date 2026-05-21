@@ -372,8 +372,12 @@ private fun BurnBarContent(
                     // affordances from `AgentBrandZoneScreen`.
                     navController.navigate("assistants/${runtime.token}")
                 },
-                onOpenPairedMac = {
-                    navController.navigate("paired_mac") {
+                onOpenPairedMac = { connectionID ->
+                    val encoded = android.util.Base64.encodeToString(
+                        connectionID.toByteArray(Charsets.UTF_8),
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING,
+                    )
+                    navController.navigate("paired_mac_token/$encoded") {
                         launchSingleTop = true
                     }
                 }
@@ -455,6 +459,38 @@ private fun BurnBarContent(
             deepLinks = listOf(navDeepLink { uriPattern = "burnbar://paired-mac" })
         ) {
             PairedMacControlsScreen(modifier = Modifier.fillMaxSize())
+        }
+        composable(
+            "paired_mac/{connectionId}",
+            arguments = listOf(navArgument("connectionId") { type = NavType.StringType }),
+            deepLinks = listOf(navDeepLink { uriPattern = "burnbar://paired-mac/{connectionId}" })
+        ) { entry ->
+            val raw = entry.arguments?.getString("connectionId").orEmpty()
+            val decoded = runCatching { java.net.URLDecoder.decode(raw, Charsets.UTF_8.name()) }
+                .getOrDefault(raw)
+            PairedMacControlsScreen(
+                connectionID = decoded.takeIf { it.isNotBlank() },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        composable(
+            "paired_mac_token/{connectionToken}",
+            arguments = listOf(navArgument("connectionToken") { type = NavType.StringType })
+        ) { entry ->
+            val token = entry.arguments?.getString("connectionToken").orEmpty()
+            val decoded = runCatching {
+                String(
+                    android.util.Base64.decode(
+                        token,
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING,
+                    ),
+                    Charsets.UTF_8,
+                )
+            }.getOrDefault(token)
+            PairedMacControlsScreen(
+                connectionID = decoded.takeIf { it.isNotBlank() },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
         // Open Dashboard deep link → land on Pulse (closest analog to iOS dashboard).
         composable(

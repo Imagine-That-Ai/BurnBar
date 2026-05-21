@@ -123,6 +123,8 @@ enum SettingsPageRoute: Hashable, Codable {
     /// `MediaSettingsView` — Mercury per-partner save preferences,
     /// iPad multi-cam toggle, session stats overlay toggle.
     case media
+    /// `ThemeSettingsView` — Custom visual/appearance configurations sub-page
+    case theme
 }
 
 // MARK: - Anchor IDs
@@ -133,6 +135,8 @@ enum SettingsAnchor {
     // Hub / root
     static let theme = "hub.appearance.theme"
     static let usageDisplay = "hub.appearance.usageDisplay"
+    static let usePremiumSOTAUX = "hub.appearance.usePremiumSOTAUX"
+    static let useWebsiteBackground = "hub.appearance.useWebsiteBackground"
     static let uiMode = "hub.uiMode"
     static let dailyBudget = "hub.budget.dailyBudget"
     static let costAlerts = "hub.budget.costAlerts"

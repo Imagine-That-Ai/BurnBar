@@ -227,7 +227,7 @@ struct ProjectsView: View {
             }
         }
         .animation(DesignSystem.Animation.standard, value: openProject?.slug)
-        .background(DesignSystem.Colors.background)
+        .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
         .task { await refreshControllerProjectsIfNeeded() }
         .sheet(item: $draft) { draft in
             ControllerProjectEditorSheet(

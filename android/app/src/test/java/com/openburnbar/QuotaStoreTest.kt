@@ -5,12 +5,14 @@ import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.stores.QuotaStore
 import io.mockk.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class QuotaStoreTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()

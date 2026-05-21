@@ -140,6 +140,8 @@ qa-results/
 # Local language/tool caches and ad-hoc backups
 android/.kotlin/
 *.bak
+android/compile_error.txt
+artifacts/**/android-cache/
 
 # Local commercial-launch proof bundle. These files can contain Firebase UIDs,
 # App Store transaction IDs, notification readbacks, and live infrastructure

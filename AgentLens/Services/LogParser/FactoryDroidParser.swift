@@ -10,26 +10,30 @@ final class FactoryDroidParser: LogParser, Sendable {
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
     private let cacheStore: ParserDiskCacheStore<FactoryDroidCacheEntry>
+    private let sessionsDirectoryOverride: URL?
 
     init(
         fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
+        appPaths: OpenBurnBarAppPaths = .live(),
+        sessionsDirectoryOverride: URL? = nil
     ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
+        self.sessionsDirectoryOverride = sessionsDirectoryOverride
         self.cacheURL = appPaths.factoryDroidParserCacheURL
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 2,
+            schemaVersion: 3,
             logLabel: "FactoryDroidParser"
         )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
     }
 
     func parse() async throws -> ParseResult {
-        let sessionsPath = NSString(string: provider.logDirectory).expandingTildeInPath
-        let sessionsURL = URL(fileURLWithPath: sessionsPath)
+        let sessionsURL = sessionsDirectoryOverride
+            ?? URL(fileURLWithPath: NSString(string: provider.logDirectory).expandingTildeInPath)
+        let sessionsPath = sessionsURL.path
 
         guard fileManager.fileExists(atPath: sessionsPath) else {
             return ParseResult(usages: [], conversations: [])
@@ -266,8 +270,7 @@ final class FactoryDroidParser: LogParser, Sendable {
             tokenData.output = estimated.output
         }
 
-        let resolvedModel = inlineModel ?? tokenData.model
-        tokenData.model = TokenExtractionUtility.normalizeModelName(resolvedModel)
+        tokenData.model = resolveModel(structuredModel: tokenData.model, inlineModel: inlineModel)
 
         // When JSONL has no parseable timestamps (common for token-only / metadata lines),
         // use the log file's modification time — not Date(), or every re-scan lands in "Today".
@@ -275,12 +278,9 @@ final class FactoryDroidParser: LogParser, Sendable {
         let startTime = conv.startTime ?? tokenData.startTime ?? fallbackActivity
         let endTime = conv.endTime ?? tokenData.endTime ?? startTime
 
-        let detectedProvider = detectProviderFromModel(tokenData.model)
-        guard detectedProvider == .factory else { return nil }
-
         guard tokenData.input > 0 || tokenData.output > 0 else { return nil }
 
-        let pricing = ModelPricing.lookup(model: tokenData.model)
+        let pricing = ModelPricing.lookup(model: tokenData.model, providerID: "factory")
         let cost = pricing.cost(
             inputTokens: tokenData.input,
             outputTokens: tokenData.output,
@@ -363,19 +363,32 @@ final class FactoryDroidParser: LogParser, Sendable {
         }
     }
 
-    private func detectProviderFromModel(_ model: String) -> AgentProvider {
-        let lowercasedModel = model.lowercased()
-
-        if lowercasedModel.contains("minimax") {
-            return .minimax
+    private func resolveModel(structuredModel: String, inlineModel: String?) -> String {
+        let structured = TokenExtractionUtility.normalizeModelName(structuredModel)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedInline = inlineModel.map {
+            TokenExtractionUtility.normalizeModelName($0).trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        if lowercasedModel.contains("glm") || lowercasedModel.contains("z.ai") || lowercasedModel.contains("zai") {
-            return .zai
+        guard let inline = normalizedInline, !inline.isEmpty else {
+            return structured.isEmpty ? "unknown" : structured
         }
 
-        return .factory
+        if structured.isEmpty || structured == "unknown" {
+            return inline
+        }
+
+        if ModelPricing.hasCatalogPricing(model: structured, providerID: "factory") {
+            return structured
+        }
+
+        if ModelPricing.hasCatalogPricing(model: inline, providerID: "factory") {
+            return inline
+        }
+
+        return structured
     }
+
     private func compositeSignature(
         jsonlFile: URL,
         settingsFile: URL,

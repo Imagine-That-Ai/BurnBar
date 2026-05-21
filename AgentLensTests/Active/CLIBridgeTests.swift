@@ -270,7 +270,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(usage?.outputTokens, 80)
         XCTAssertEqual(usage?.cacheCreationTokens, 40)
         XCTAssertEqual(usage?.cacheReadTokens, 20)
-        XCTAssertEqual(usage?.totalTokens, 240)
+        XCTAssertEqual(usage?.totalTokens, 260)
     }
 
     func test_cliBridge_openAICompatibleUsage_parsesFlatPayload() {
@@ -280,9 +280,10 @@ final class CLIBridgeTests: XCTestCase {
             "cached_tokens": 9
         ])
 
-        XCTAssertEqual(usage?.inputTokens, 33)
+        XCTAssertEqual(usage?.inputTokens, 24)
         XCTAssertEqual(usage?.outputTokens, 11)
         XCTAssertEqual(usage?.cacheReadTokens, 9)
+        XCTAssertEqual(usage?.totalTokens, 44)
     }
 
     func test_cliBridge_codexEventError_mapsQuotaEventsToQuotaExhausted() {

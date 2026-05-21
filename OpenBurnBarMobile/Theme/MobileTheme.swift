@@ -10,10 +10,23 @@ enum MobileTheme {
     static let whimsy  = UnifiedDesignSystem.Colors.whimsy
 
     static let background      = UnifiedDesignSystem.Colors.background
-    static let surface         = UnifiedDesignSystem.Colors.surface
-    static let surfaceElevated = UnifiedDesignSystem.Colors.surfaceElevated
+
+    /// Card fills. When the Swarm Background is enabled we drop their opacity
+    /// so the reconverging swarm shows through the cards instead of being
+    /// hidden behind solid surfaces.
+    static var surface: Color {
+        UnifiedDesignSystem.Colors.surface.opacity(swarmEnabled ? 0.62 : 1.0)
+    }
+    static var surfaceElevated: Color {
+        UnifiedDesignSystem.Colors.surfaceElevated.opacity(swarmEnabled ? 0.68 : 1.0)
+    }
     static let border          = UnifiedDesignSystem.Colors.border
     static let borderSubtle    = UnifiedDesignSystem.Colors.borderSubtle
+
+    /// Whether the user has enabled the Swarm Background theme.
+    private static var swarmEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "useWebsiteBackground")
+    }
 
     static let textPrimary   = UnifiedDesignSystem.Colors.textPrimary
     static let textSecondary = UnifiedDesignSystem.Colors.textSecondary

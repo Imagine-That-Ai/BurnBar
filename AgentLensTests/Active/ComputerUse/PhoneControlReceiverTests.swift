@@ -671,6 +671,7 @@ final class PhoneControlReceiverTests: XCTestCase {
             kind: .tap,
             normalizedX: 0.25,
             normalizedY: 0.40,
+            mouseButton: 1,
             authority: placeholder
         )
         let signed = try signer.sign(
@@ -713,6 +714,7 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertEqual(action.kind, .click)
         XCTAssertEqual(action.displayX, 250)
         XCTAssertEqual(action.displayY, 200)
+        XCTAssertEqual(action.mouseButton, 1)
 
         let deniedFrames = await capture.deniedFrames()
         XCTAssertEqual(deniedFrames.count, 1_000)

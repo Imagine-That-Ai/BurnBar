@@ -1,9 +1,9 @@
 import Foundation
 #if canImport(PushKit)
-import PushKit
+@preconcurrency import PushKit
 #endif
 #if canImport(CallKit)
-import CallKit
+@preconcurrency import CallKit
 #endif
 #if canImport(UIKit)
 import UIKit
@@ -85,7 +85,7 @@ extension VoIPCallService: @preconcurrency PKPushRegistryDelegate {
         voipDeviceTokenHex = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
     }
 
-    func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
+    func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping @Sendable () -> Void) {
         guard type == .voIP else { completion(); return }
         let dictionary = payload.dictionaryPayload
         let callID = (dictionary["callId"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID()
@@ -99,15 +99,18 @@ extension VoIPCallService: @preconcurrency PKPushRegistryDelegate {
         update.localizedCallerName = displayName
         update.hasVideo = isVideo
         update.remoteHandle = CXHandle(type: .generic, value: pairedDeviceID)
+        let incoming = IncomingCall(
+            callID: callID,
+            connectionID: connectionID,
+            pairedDeviceID: pairedDeviceID,
+            displayName: displayName,
+            isVideo: isVideo
+        )
         provider.reportNewIncomingCall(with: callID, update: update) { [weak self] error in
             if error == nil {
-                self?.inFlightIncoming = IncomingCall(
-                    callID: callID,
-                    connectionID: connectionID,
-                    pairedDeviceID: pairedDeviceID,
-                    displayName: displayName,
-                    isVideo: isVideo
-                )
+                Task { @MainActor [weak self] in
+                    self?.inFlightIncoming = incoming
+                }
             }
             completion()
         }

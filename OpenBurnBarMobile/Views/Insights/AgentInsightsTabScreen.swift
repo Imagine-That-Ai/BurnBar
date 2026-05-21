@@ -14,6 +14,7 @@ struct AgentInsightsTabScreen: View {
     let hermesService: HermesService
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
     @State private var insightsStore: InsightsStore?
     @State private var producer: MobileAgentInsightsProducer?
@@ -28,14 +29,18 @@ struct AgentInsightsTabScreen: View {
     @Environment(\.cloudSubscriptionStore) private var cloudStore
 
     var body: some View {
-        Group {
-            if let cloudStore, !cloudStore.isActive {
-                lockedInsightsTeaser
-            } else {
-                adaptiveLayout
+        ZStack {
+            AuroraBackdrop()
+            
+            Group {
+                if let cloudStore, !cloudStore.isActive {
+                    lockedInsightsTeaser
+                } else {
+                    adaptiveLayout
+                }
             }
         }
-            .sheet(isPresented: $showWorkspace) {
+        .sheet(isPresented: $showWorkspace) {
                 InsightsWorkspaceSheet(
                     dashboardStore: dashboardStore,
                     hermesService: hermesService,
@@ -138,7 +143,7 @@ struct AgentInsightsTabScreen: View {
                 .frame(maxWidth: 380)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(UnifiedDesignSystem.Colors.background)
+        .background(useWebsiteBackground ? Color.clear : UnifiedDesignSystem.Colors.background)
     }
 
     private var rosterContent: some View {
@@ -228,16 +233,20 @@ private struct AgentInsightsScopedDetail: View {
     @State private var viewModel: AgentInsightsViewModel?
 
     var body: some View {
-        Group {
-            if let viewModel {
-                AgentInsightsView(
-                    viewModel: viewModel,
-                    presentation: .automatic,
-                    actions: actions(for: viewModel)
-                )
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack {
+            AuroraBackdrop()
+            
+            Group {
+                if let viewModel {
+                    AgentInsightsView(
+                        viewModel: viewModel,
+                        presentation: .automatic,
+                        actions: actions(for: viewModel)
+                    )
+                } else {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
         .navigationTitle(scope.provider?.displayName ?? "All agents")

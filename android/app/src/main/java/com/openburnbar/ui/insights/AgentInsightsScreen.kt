@@ -42,6 +42,7 @@ import com.openburnbar.data.insights.InsightAnalysisResult
 import com.openburnbar.data.insights.InsightCanvas
 import com.openburnbar.data.insights.InsightDigest
 import com.openburnbar.data.insights.InsightMissionCandidate
+import com.openburnbar.ui.settings.rememberWebsiteBackground
 import com.openburnbar.data.models.AgentProvider
 
 /**
@@ -68,6 +69,7 @@ fun AgentInsightsScreen(
     onOpenWorkspace: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues()
 ) {
+    val useWebsiteBackground by rememberWebsiteBackground()
     val bundle = remember(scope, digest, analysis, canvases) {
         AgentInsightsBundleAssembler.assemble(
             scope = scope,
@@ -80,7 +82,7 @@ fun AgentInsightsScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(if (useWebsiteBackground) Color.Transparent else MaterialTheme.colorScheme.background),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {

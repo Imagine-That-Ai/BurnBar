@@ -1,5 +1,6 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
+@preconcurrency import CoreMedia
 import OpenBurnBarMedia
 
 /// iOS front-camera capture for Phase 5 video calls. iPhone single-cam.
@@ -24,9 +25,10 @@ final class CameraCaptureService: NSObject {
         }
     }
 
-    typealias FrameHandler = @Sendable (CMSampleBuffer) async -> Void
+    typealias FrameHandler = @MainActor (CMSampleBuffer) async -> Void
 
     private let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "ai.openburnbar.media.camera.session")
     private let output = AVCaptureVideoDataOutput()
     private let onFrame: FrameHandler
 
@@ -59,11 +61,18 @@ final class CameraCaptureService: NSObject {
         if session.canAddOutput(output) { session.addOutput(output) }
         session.commitConfiguration()
 
-        await Task.detached { [session] in session.startRunning() }.value
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [session] in
+                session.startRunning()
+                continuation.resume()
+            }
+        }
     }
 
     func stop() {
-        session.stopRunning()
+        sessionQueue.async { [session] in
+            session.stopRunning()
+        }
     }
 
     static func requestCameraAccess() async -> Bool {
@@ -85,9 +94,17 @@ extension CameraCaptureService: AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        let snapshot = sampleBuffer
-        Task.detached(priority: .userInitiated) { [weak self] in
-            await self?.onFrame(snapshot)
+        let snapshot = SendableSampleBuffer(sampleBuffer)
+        Task { @MainActor [weak self, snapshot] in
+            await self?.onFrame(snapshot.value)
         }
+    }
+}
+
+private struct SendableSampleBuffer: @unchecked Sendable {
+    let value: CMSampleBuffer
+
+    init(_ value: CMSampleBuffer) {
+        self.value = value
     }
 }

@@ -84,6 +84,7 @@ final class MacFileTransferService: ObservableObject {
     private let advertiseTimeout: TimeInterval
     private var advertiseSenderOverride: AdvertiseSender?
     private var mercuryDispatcher: MercuryControlFrameDispatcher?
+    private var computerUseControlDispatcher: ControlFrameDispatcher?
 
     @Published private(set) var lastError: Failure?
     @Published private(set) var inFlightCount: Int = 0
@@ -121,6 +122,14 @@ final class MacFileTransferService: ObservableObject {
     /// (mirror/presence traffic) based on `frame.type`.
     func setMercuryDispatcher(_ dispatcher: @escaping MercuryControlFrameDispatcher) {
         self.mercuryDispatcher = dispatcher
+    }
+
+    /// Android's screen-share viewer shares the long-lived Mercury
+    /// control stream for signed phone-control input. Forward those
+    /// `control.*` frames into the same Computer Use dispatcher used by
+    /// dedicated control streams so Android stays at iOS parity.
+    func setComputerUseControlDispatcher(_ dispatcher: ControlFrameDispatcher?) {
+        self.computerUseControlDispatcher = dispatcher
     }
 
     func bootstrapBlobEndpoint() async throws -> IrohEndpointIdentity {
@@ -255,6 +264,7 @@ final class MacFileTransferService: ObservableObject {
                      .mediaMirrorStop,
                      .mediaMirrorDisplaySelect,
                      .mediaPresenceHeartbeat,
+                     .mediaLongTermReferenceAck,
                      .mediaCallInvite,
                      .mediaCallAck,
                      .mediaStreamFrame:
@@ -269,6 +279,20 @@ final class MacFileTransferService: ObservableObject {
                     } else {
                         Self.log.error("mac_control_stream_missing_mercury_dispatcher type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")
                         Self.debugTrace("mac_control_stream_missing_mercury_dispatcher type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "")")
+                    }
+                case .controlClassify,
+                     .controlActionLogEntry,
+                     .controlInputIntent,
+                     .controlApprovalRequest,
+                     .controlApprovalResponse,
+                     .controlDenied:
+                    if let computerUseControlDispatcher {
+                        Self.log.info("mac_control_stream_dispatch_computer_use type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")
+                        Self.debugTrace("mac_control_stream_dispatch_computer_use type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "")")
+                        await computerUseControlDispatcher(frame, ackSender)
+                    } else {
+                        Self.log.error("mac_control_stream_missing_computer_use_dispatcher type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")
+                        Self.debugTrace("mac_control_stream_missing_computer_use_dispatcher type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "")")
                     }
                 default:
                     continue
@@ -337,10 +361,15 @@ final class MacFileTransferService: ObservableObject {
 }
 
 /// Sends encoded Mercury media frames over the already-live `media.control`
-/// stream that iOS opened to the Mac. This is the v1 mirror transport used by
-/// phone-initiated "Ask to Mirror": approval stays on the control stream, and
-/// accepted video frames follow as `media.stream.frame` envelopes.
+/// stream that iOS opened to the Mac. Approval stays on the control stream,
+/// and accepted video frames follow as `media.stream.frame` envelopes. When
+/// both peers negotiate v2, the base64 payload carries the v2 binary envelope;
+/// v1 remains the fallback for older viewers and non-video control surfaces.
 final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
+    private static let maxInlineEncodedFrameBytes = 320 * 1024
+    private static let maxEncodedFrameChunkBytes = 256 * 1024
+
     enum SinkError: Error, LocalizedError {
         case streamUnavailable
 
@@ -357,6 +386,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
     private let connectionID: String
     private let streamClass: MediaStreamClass
     private let codec = MediaPacketCodec()
+    private let frameV2Codec = MediaFrameV2Codec()
 
     init(
         stream: any IrohRelayStream,
@@ -392,22 +422,68 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
     func write(frame: MediaFrame) async {
         do {
             let encoded = try codec.encode(frame)
-            let outbound = HermesRealtimeRelayFrame(
-                type: .mediaStreamFrame,
-                uid: uid,
-                connectionId: connectionID,
-                media: HermesRealtimeRelayMediaPayload(
-                    streamClass: streamClass.rawValue,
-                    encodedFrameBase64: encoded.base64EncodedString()
-                )
-            )
-            try await stream.send(outbound)
+            try await sendEncodedFrame(encoded, frameIndex: frame.frameIndex)
         } catch {
             // `MediaStreamSink.write` is intentionally fire-and-forget. The
             // session coordinator owns teardown; a failed send drops this
             // frame without crashing the host app.
+            Self.log.error("control_stream_media_frame_send_failed version=v1 connectionID=\(self.connectionID, privacy: .public) frameIndex=\(frame.frameIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func write(frameV2: MediaFrameV2) async {
+        do {
+            let encoded = try frameV2Codec.encode(frameV2, negotiatedVersion: .v2)
+            try await sendEncodedFrame(encoded, frameIndex: frameV2.frameIndex)
+        } catch {
+            // `MediaStreamSink.write` is intentionally fire-and-forget. The
+            // session coordinator owns teardown; a failed send drops this
+            // frame without crashing the host app.
+            Self.log.error("control_stream_media_frame_send_failed version=v2 connectionID=\(self.connectionID, privacy: .public) frameIndex=\(frameV2.frameIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
         }
     }
 
     func close() async {}
+
+    private func sendEncodedFrame(_ encoded: Data, frameIndex: UInt32) async throws {
+        if encoded.count <= Self.maxInlineEncodedFrameBytes {
+            try await stream.send(makeRelayFrame(encodedFrameBase64: encoded.base64EncodedString()))
+            return
+        }
+
+        let chunkId = UUID().uuidString
+        let chunkCount = Int(ceil(Double(encoded.count) / Double(Self.maxEncodedFrameChunkBytes)))
+        for chunkIndex in 0..<chunkCount {
+            let start = chunkIndex * Self.maxEncodedFrameChunkBytes
+            let end = min(encoded.count, start + Self.maxEncodedFrameChunkBytes)
+            let chunk = encoded.subdata(in: start..<end)
+            let metadata = HermesRealtimeRelayMediaFrameChunk(
+                chunkId: chunkId,
+                chunkIndex: chunkIndex,
+                chunkCount: chunkCount,
+                totalBytes: encoded.count
+            )
+            try await stream.send(makeRelayFrame(
+                encodedFrameBase64: chunk.base64EncodedString(),
+                frameChunk: metadata
+            ))
+        }
+        Self.log.info("control_stream_media_frame_chunked connectionID=\(self.connectionID, privacy: .public) frameIndex=\(frameIndex, privacy: .public) bytes=\(encoded.count, privacy: .public) chunks=\(chunkCount, privacy: .public)")
+    }
+
+    private func makeRelayFrame(
+        encodedFrameBase64: String,
+        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil
+    ) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .mediaStreamFrame,
+            uid: uid,
+            connectionId: connectionID,
+            media: HermesRealtimeRelayMediaPayload(
+                streamClass: streamClass.rawValue,
+                encodedFrameBase64: encodedFrameBase64,
+                frameChunk: frameChunk
+            )
+        )
+    }
 }

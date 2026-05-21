@@ -1,7 +1,10 @@
 package com.openburnbar
 
+import com.openburnbar.data.media.MediaControlStreamCoordinator
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class IrohPairingSelectionTest {
@@ -35,5 +38,61 @@ class IrohPairingSelectionTest {
     fun newestCandidatesReturnsNullWhenNoUsablePairingRecordExists() {
         assertNull(IrohPairingSelection.newestCandidates(emptyList()))
         assertNull(IrohPairingSelection.newestCandidates(listOf(IrohPairingSelection.Candidate("", 1))))
+    }
+
+    @Test
+    fun coordinatorReusePolicyRebuildsReconnectingCoordinatorForExplicitRecovery() {
+        val selected = IrohPairingSelection.Candidate("relay-mac", 1_800_000_000_000)
+
+        val shouldReuse = MediaControlCoordinatorReusePolicy.shouldReuse(
+            activeConnectionID = "relay-mac",
+            phase = MediaControlStreamCoordinator.Phase.Reconnecting(nextAttemptInMillis = 5_000),
+            selection = selected,
+            forceRestart = true,
+        )
+
+        assertFalse(shouldReuse)
+    }
+
+    @Test
+    fun coordinatorReusePolicyKeepsPassiveReconnectSupervisorAlive() {
+        val selected = IrohPairingSelection.Candidate("relay-mac", 1_800_000_000_000)
+
+        val shouldReuse = MediaControlCoordinatorReusePolicy.shouldReuse(
+            activeConnectionID = "relay-mac",
+            phase = MediaControlStreamCoordinator.Phase.Reconnecting(nextAttemptInMillis = 5_000),
+            selection = selected,
+            forceRestart = false,
+        )
+
+        assertTrue(shouldReuse)
+    }
+
+    @Test
+    fun coordinatorReusePolicyKeepsLiveCoordinatorAcrossPairingTimestampRefresh() {
+        val refreshedSelection = IrohPairingSelection.Candidate("relay-mac", 1_800_000_060_000)
+
+        val shouldReuse = MediaControlCoordinatorReusePolicy.shouldReuse(
+            activeConnectionID = "relay-mac",
+            phase = MediaControlStreamCoordinator.Phase.Live,
+            selection = refreshedSelection,
+            forceRestart = false,
+        )
+
+        assertTrue(shouldReuse)
+    }
+
+    @Test
+    fun coordinatorReusePolicyRebuildsWhenConnectionIdChanges() {
+        val selected = IrohPairingSelection.Candidate("relay-new-mac", 1_800_000_060_000)
+
+        val shouldReuse = MediaControlCoordinatorReusePolicy.shouldReuse(
+            activeConnectionID = "relay-old-mac",
+            phase = MediaControlStreamCoordinator.Phase.Live,
+            selection = selected,
+            forceRestart = false,
+        )
+
+        assertFalse(shouldReuse)
     }
 }

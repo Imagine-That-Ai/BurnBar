@@ -611,25 +611,39 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertEqual(warp.colorHex(row: 6, column: 2), "#A8B0B8")
         XCTAssertNil(warp.colorHex(row: 0, column: 0))
 
-        // DeepSeek — side-profile whale in indigo blue with white eye.
+        // DeepSeek — pixel whale facing right. Forked tail prongs on the
+        // LEFT (rows 0-1 and 6-7, columns 0-1), rounded indigo body on the
+        // RIGHT, white eye pixel near the head (row 2, col 6), white
+        // belly stripe at rows 5-6 col 6, and dark indigo outline accents
+        // at the tail corners.
         let deepSeek = logo(for: .deepSeek)
         XCTAssertEqual(deepSeek.sourceName, "DeepSeekLogo")
         XCTAssertEqual(deepSeek.rows, [
-            "..####..",
-            ".######.",
-            "########",
-            "########",
+            "#....###",
+            "##...###",
             ".#######",
-            "..####.#",
-            "...##.##",
-            "........"
+            ".#######",
+            ".#######",
+            ".#######",
+            "##...###",
+            "#....##."
         ])
+        // Dark indigo (#1E1B4B) — outline accents at tail corners
+        XCTAssertEqual(deepSeek.colorHex(row: 0, column: 0), "#1E1B4B")
+        XCTAssertEqual(deepSeek.colorHex(row: 0, column: 5), "#1E1B4B")
+        XCTAssertEqual(deepSeek.colorHex(row: 7, column: 0), "#1E1B4B")
+        XCTAssertEqual(deepSeek.colorHex(row: 7, column: 5), "#1E1B4B")
         // Indigo (#6366F1) — whale body
-        XCTAssertEqual(deepSeek.colorHex(row: 0, column: 2), "#6366F1")
-        XCTAssertEqual(deepSeek.colorHex(row: 3, column: 0), "#6366F1")
-        // White (#FFFFFF) — whale eye
-        XCTAssertEqual(deepSeek.colorHex(row: 2, column: 1), "#FFFFFF")
-        XCTAssertNil(deepSeek.colorHex(row: 7, column: 0))
+        XCTAssertEqual(deepSeek.colorHex(row: 0, column: 6), "#6366F1")
+        XCTAssertEqual(deepSeek.colorHex(row: 3, column: 4), "#6366F1")
+        XCTAssertEqual(deepSeek.colorHex(row: 1, column: 0), "#6366F1") // top tail prong
+        XCTAssertEqual(deepSeek.colorHex(row: 6, column: 0), "#6366F1") // bottom tail prong
+        // White (#FFFFFF) — eye + belly accents on the head
+        XCTAssertEqual(deepSeek.colorHex(row: 2, column: 6), "#FFFFFF")
+        XCTAssertEqual(deepSeek.colorHex(row: 5, column: 6), "#FFFFFF")
+        XCTAssertEqual(deepSeek.colorHex(row: 6, column: 6), "#FFFFFF")
+        XCTAssertNil(deepSeek.colorHex(row: 0, column: 1))
+        XCTAssertNil(deepSeek.colorHex(row: 7, column: 7))
 
         // OpenCode — hollow white rectangle frame with gray inner area.
         let openCode = logo(for: .openCode)

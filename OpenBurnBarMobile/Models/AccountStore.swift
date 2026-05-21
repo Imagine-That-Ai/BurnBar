@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarCore
-import FirebaseAuth
+@preconcurrency import FirebaseAuth
 
 @Observable
 @MainActor
@@ -48,14 +48,14 @@ final class AccountStore {
         self.user = authRepo.currentUser
 
         authRepo.observeAuthChanges { [weak self] user in
-            Task { @MainActor in
-                self?.user = user
-                self?.isSignedIn = user != nil
-                if user != nil {
+            self?.user = user
+            self?.isSignedIn = user != nil
+            if user != nil {
+                Task { @MainActor [weak self] in
                     await self?.loadConnections()
-                } else {
-                    self?.resetSessionState()
                 }
+            } else {
+                self?.resetSessionState()
             }
         }
     }

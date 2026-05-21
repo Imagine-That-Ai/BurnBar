@@ -4,6 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
+import android.os.Build
 import android.view.Surface
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ import java.nio.ByteBuffer
 class VideoReceivePipeline(
     private val codec: Codec = Codec.HEVC,
     private val onKeyframeRequest: () -> Unit = {},
+    private val onLongTermReferenceTokenDecoded: suspend (MediaFrameV2LongTermReferenceToken) -> Unit = {},
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     enum class Codec(val mime: String) {
@@ -67,16 +69,15 @@ class VideoReceivePipeline(
         val codecName: String = "",
         val bitsPerSecond: Int = 0,
         val roundTripMillis: Int = 0,
+        val queuedFrameCount: Long = 0,
+        val lastFrameAtMillis: Long = 0,
     )
 
     suspend fun start(outputSurface: Surface, widthPx: Int = 1920, heightPx: Int = 1080) {
         mutex.withLock {
             stopLocked()
             val target = pickCodec(widthPx = widthPx, heightPx = heightPx)
-            val format = MediaFormat.createVideoFormat(target.mime, widthPx, heightPx).apply {
-                setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                setInteger(MediaFormat.KEY_FRAME_RATE, 30)
-            }
+            val format = videoFormat(codec = target, widthPx = widthPx, heightPx = heightPx)
             try {
                 val newDecoder = MediaCodec.createDecoderByType(target.mime).apply {
                     configure(format, outputSurface, null, 0)
@@ -89,6 +90,8 @@ class VideoReceivePipeline(
                     widthPx = widthPx,
                     heightPx = heightPx,
                     codecName = target.name,
+                    queuedFrameCount = 0,
+                    lastFrameAtMillis = 0,
                 )
                 renderJob = scope.launch { drainOutput(newDecoder) }
             } catch (t: Throwable) {
@@ -96,13 +99,7 @@ class VideoReceivePipeline(
                     // Fallback to H.264.
                     val fallback = MediaCodec.createDecoderByType(Codec.H264.mime).apply {
                         configure(
-                            MediaFormat.createVideoFormat(Codec.H264.mime, widthPx, heightPx).apply {
-                                setInteger(
-                                    MediaFormat.KEY_COLOR_FORMAT,
-                                    MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface,
-                                )
-                                setInteger(MediaFormat.KEY_FRAME_RATE, 30)
-                            },
+                            videoFormat(codec = Codec.H264, widthPx = widthPx, heightPx = heightPx),
                             outputSurface,
                             null,
                             0,
@@ -112,7 +109,13 @@ class VideoReceivePipeline(
                     decoder = fallback
                     resolvedCodec = Codec.H264
                     _phase.value = Phase.Running(Codec.H264)
-                    _stats.value = _stats.value.copy(codecName = Codec.H264.name)
+                    _stats.value = _stats.value.copy(
+                        widthPx = widthPx,
+                        heightPx = heightPx,
+                        codecName = Codec.H264.name,
+                        queuedFrameCount = 0,
+                        lastFrameAtMillis = 0,
+                    )
                     renderJob = scope.launch { drainOutput(fallback) }
                 } else {
                     _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
@@ -122,35 +125,76 @@ class VideoReceivePipeline(
         }
     }
 
-    suspend fun ingest(frame: MediaFrame) {
-        if (frame.kind != MediaFrame.Kind.VIDEO_NAL) return
-        val codec = mutex.withLock { decoder } ?: return
+    suspend fun ingest(frame: MediaFrame): Boolean {
+        if (frame.kind != MediaFrame.Kind.VIDEO_NAL) return false
+        val codec = mutex.withLock { decoder } ?: return false
 
         val isKeyframe = MediaFrame.Flags.KEYFRAME in frame.flags
         if (!isKeyframe && frame.gopID != currentGopID) {
             // Stale frame for a GOP we don't have — request a fresh key.
             onKeyframeRequest()
-            return
+            return false
         }
-        if (isKeyframe) currentGopID = frame.gopID
 
         val inputIndex = try {
             codec.dequeueInputBuffer(20_000)
         } catch (_: IllegalStateException) {
-            return
+            return false
         }
-        if (inputIndex < 0) return
-        val buffer: ByteBuffer = codec.getInputBuffer(inputIndex) ?: return
+        if (inputIndex < 0) return false
+        val buffer: ByteBuffer = codec.getInputBuffer(inputIndex) ?: run {
+            returnDequeuedInputBuffer(codec, inputIndex, frame.presentationTimestampMillis)
+            return false
+        }
+        val normalizedPayload = runCatching {
+            VideoPayloadNormalizer.normalizeForMediaCodec(frame.payload)
+        }.getOrDefault(frame.payload)
         buffer.clear()
-        if (frame.payload.size > buffer.capacity()) return
-        buffer.put(frame.payload)
-        codec.queueInputBuffer(
-            inputIndex,
-            0,
-            frame.payload.size,
-            (frame.presentationTimestampMillis * 1_000uL).toLong(),
-            if (isKeyframe) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0,
+        if (normalizedPayload.size > buffer.capacity()) {
+            returnDequeuedInputBuffer(codec, inputIndex, frame.presentationTimestampMillis)
+            return false
+        }
+        buffer.put(normalizedPayload)
+        val queued = runCatching {
+            codec.queueInputBuffer(
+                inputIndex,
+                0,
+                normalizedPayload.size,
+                (frame.presentationTimestampMillis * 1_000uL).toLong(),
+                if (isKeyframe) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0,
+            )
+        }.isSuccess
+        if (!queued) return false
+        if (isKeyframe) currentGopID = frame.gopID
+        _stats.value = _stats.value.copy(
+            queuedFrameCount = _stats.value.queuedFrameCount + 1,
+            lastFrameAtMillis = System.currentTimeMillis(),
         )
+        return true
+    }
+
+    suspend fun ingest(frame: MediaFrameV2): Boolean {
+        val kind = when (frame.kind) {
+            MediaFrameV2Kind.VIDEO_NAL, MediaFrameV2Kind.VIDEO_DATAGRAM -> MediaFrame.Kind.VIDEO_NAL
+            MediaFrameV2Kind.AUDIO_OPUS -> MediaFrame.Kind.AUDIO_OPUS
+            else -> return false
+        }
+        val metadata = runCatching { MediaFrameV2Metadata.decode(frame.metadata) }
+            .getOrDefault(MediaFrameV2Metadata())
+        val accepted = ingest(
+            MediaFrame(
+                kind = kind,
+                flags = MediaFrame.Flags(frame.flags.toInt().toByte()),
+                gopID = frame.gopID,
+                frameIndex = frame.frameIndex,
+                presentationTimestampMillis = frame.presentationTimestampMillis,
+                payload = frame.payload,
+            )
+        )
+        if (accepted) {
+            metadata.longTermReferenceToken?.let { onLongTermReferenceTokenDecoded(it) }
+        }
+        return accepted
     }
 
     suspend fun stop() {
@@ -197,6 +241,22 @@ class VideoReceivePipeline(
         )
     }
 
+    private fun returnDequeuedInputBuffer(
+        codec: MediaCodec,
+        inputIndex: Int,
+        presentationTimestampMillis: ULong,
+    ) {
+        runCatching {
+            codec.queueInputBuffer(
+                inputIndex,
+                0,
+                0,
+                (presentationTimestampMillis * 1_000uL).toLong(),
+                0,
+            )
+        }
+    }
+
     private fun pickCodec(widthPx: Int, heightPx: Int): Codec {
         if (codec == Codec.H264) return Codec.H264
         return runCatching {
@@ -204,5 +264,27 @@ class VideoReceivePipeline(
             val format = MediaFormat.createVideoFormat(Codec.HEVC.mime, widthPx, heightPx)
             if (list.findDecoderForFormat(format) != null) Codec.HEVC else Codec.H264
         }.getOrDefault(Codec.HEVC)
+    }
+
+    private fun videoFormat(codec: Codec, widthPx: Int, heightPx: Int): MediaFormat =
+        MediaFormat.createVideoFormat(codec.mime, widthPx, heightPx).apply {
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(MediaFormat.KEY_FRAME_RATE, 30)
+            if (decoderSupportsLowLatency(codec)) {
+                setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+            }
+        }
+
+    private fun decoderSupportsLowLatency(codec: Codec): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        return runCatching {
+            MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+                .filter { !it.isEncoder }
+                .filter { info -> info.supportedTypes.any { it.equals(codec.mime, ignoreCase = true) } }
+                .any { info ->
+                    info.getCapabilitiesForType(codec.mime)
+                        .isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)
+                }
+        }.getOrDefault(false)
     }
 }

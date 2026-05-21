@@ -375,7 +375,11 @@ fun PulseHeroBurnCard(
             contentPadding = AuroraSpacing.lg.dp
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = if (topProvider != null) 64.dp else 0.dp)
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -544,7 +548,7 @@ private fun ProviderHaloAvatar(
     accent: Color,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.size(120.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.size(80.dp), contentAlignment = Alignment.Center) {
         // Soft radial halo so the avatar reads as a warm spotlight rather
         // than a circle floating in beige.
         Canvas(modifier = Modifier.fillMaxSize()) {

@@ -116,12 +116,13 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
         let output = result["output_tokens"] as? Int ?? 0
         let cached = result["input_cached_tokens"] as? Int ?? 0
         let requests = result["num_model_requests"] as? Int ?? 1
+        let uncachedInput = max(input - cached, 0)
 
         guard input > 0 || output > 0 else { return nil }
 
         let pricing = ModelPricing.lookup(model: model)
         let cost = pricing.cost(
-            inputTokens: input,
+            inputTokens: uncachedInput,
             outputTokens: output,
             cacheReadTokens: cached
         )
@@ -130,7 +131,7 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
             providerName: "OpenAI",
             model: model,
             date: date,
-            inputTokens: input,
+            inputTokens: uncachedInput,
             outputTokens: output,
             cacheReadTokens: cached,
             cacheCreationTokens: 0,

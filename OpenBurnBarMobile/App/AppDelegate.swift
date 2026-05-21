@@ -38,6 +38,33 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         )
         self.iOSFileTransfer = receiver
         iOSFileTransferService.current = receiver
+
+        // Mercury Phase 8.1 — every successful send/receive appends to the
+        // Mercury transfer-history store so the Live screen can show a
+        // recent-transfers timeline.
+        receiver.onTransferCompleted = { completion in
+            Task { @MainActor in
+                MercuryTransferHistoryStore.shared.append(
+                    MercuryTransferHistoryEntry(
+                        id: completion.id,
+                        connectionID: completion.connectionID,
+                        direction: completion.direction == .sent ? .sent : .received,
+                        filename: completion.filename,
+                        mime: completion.mime,
+                        sizeBytes: completion.sizeBytes,
+                        completedAt: completion.completedAt,
+                        bytesPerSecond: completion.bytesPerSecond,
+                        didResume: completion.didResume,
+                        localURL: completion.localURL
+                    )
+                )
+            }
+        }
+
+        // Warm the personalization store so the first navigation to
+        // MercuryLiveSheet doesn't pay the JSON-decode cost.
+        _ = MercuryPersonalizationStore.shared
+
         HermesIrohRelayTransport.shared.installMediaControlStream(into: receiver)
         HermesIrohRelayTransport.shared.mediaDispatcher = { @Sendable frame, ackSender in
             await receiver.handleAdvertise(frame: frame, ackSender: ackSender)
@@ -211,6 +238,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 /// App Check provider factory for release builds.
 final class OpenBurnBarAppCheckProviderFactory: NSObject, AppCheckProviderFactory {
     func createProvider(with app: FirebaseApp) -> AppCheckProvider? {
+        if #available(iOS 14.0, *) {
+            return AppAttestProvider(app: app)
+        }
         return DeviceCheckProvider(app: app)
     }
 }

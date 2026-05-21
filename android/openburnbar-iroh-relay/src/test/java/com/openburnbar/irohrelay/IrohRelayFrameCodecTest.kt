@@ -122,6 +122,47 @@ class IrohRelayFrameCodecTest {
     }
 
     @Test
+    fun presence_heartbeat_accepts_swift_device_display_name_and_streaming_capabilities() {
+        val json = """{"type":"media.presence.heartbeat","uid":"user-1","connectionId":"conn-1","protocolVersion":1,"media":{"presence":{"sentAt":"2026-05-18T09:30:00Z","deviceDisplayName":"Alberto's Mac","capabilities":["mirror.host"],"streamingCapabilities":{"codecCapabilities":[{"codec":"hevc","canEncode":true,"canDecode":true,"hardwareAccelerated":true}],"mediaFrameVersions":{"supportsV1":true,"supportsV2":false},"videoDatagrams":{},"source":"VideoToolbox"}}}}"""
+        val payload = json.toByteArray(Charsets.UTF_8)
+        val envelope = ByteArray(payload.size + 4)
+        envelope[0] = ((payload.size ushr 24) and 0xff).toByte()
+        envelope[1] = ((payload.size ushr 16) and 0xff).toByte()
+        envelope[2] = ((payload.size ushr 8) and 0xff).toByte()
+        envelope[3] = (payload.size and 0xff).toByte()
+        payload.copyInto(envelope, destinationOffset = 4)
+
+        val decoded = codec.decode(envelope).frame
+
+        assertEquals("Alberto's Mac", decoded.media?.presence?.deviceDisplayName)
+        assertEquals("VideoToolbox", decoded.media?.presence?.streamingCapabilities?.source)
+        assertEquals(HermesRealtimeRelayVideoCodec.HEVC, decoded.media?.presence?.streamingCapabilities?.codecCapabilities?.first()?.codec)
+    }
+
+    @Test
+    fun long_term_reference_ack_round_trips() {
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.MEDIA_LONG_TERM_REFERENCE_ACK,
+            uid = "user-1",
+            connectionId = "conn-1",
+            requestId = "mirror-1",
+            media = HermesRealtimeRelayMediaPayload(
+                longTermReferenceAck = HermesRealtimeRelayLongTermReferenceAck(
+                    requestId = "mirror-1",
+                    tokenValue = 424242L,
+                    decodedAt = "2026-05-20T23:59:00.000Z",
+                )
+            ),
+        )
+
+        val decoded = codec.decode(codec.encode(frame)).frame
+
+        assertEquals(HermesRealtimeRelayFrameType.MEDIA_LONG_TERM_REFERENCE_ACK, decoded.type)
+        assertEquals("mirror-1", decoded.media?.longTermReferenceAck?.requestId)
+        assertEquals(424242L, decoded.media?.longTermReferenceAck?.tokenValue)
+    }
+
+    @Test
     fun call_invite_wire_json_uses_swift_codable_keys() {
         val frame = HermesRealtimeRelayFrame(
             type = HermesRealtimeRelayFrameType.MEDIA_CALL_INVITE,

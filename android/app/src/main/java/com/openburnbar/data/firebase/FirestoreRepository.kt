@@ -438,15 +438,23 @@ private fun DocumentSnapshot.toQuotaSnapshot(): ProviderQuotaSnapshot? {
         accountId = data["accountID"] as? String,
         accountLabel = data["accountLabel"] as? String,
         accountStorageScope = data["accountStorageScope"] as? String,
-        fetchedAt = data["fetchedAt"] as? String,
+        fetchedAt = parseTimestampOrString(data["fetchedAt"]),
         source = data["source"] as? String,
         confidence = data["confidence"] as? String ?: "low",
         managementUrl = data["managementURL"] as? String,
         statusMessage = data["statusMessage"] as? String,
         buckets = buckets,
         schemaVersion = (data["schemaVersion"] as? Number)?.toInt() ?: 0,
-        updatedAt = data["updatedAt"] as? String
+        updatedAt = parseTimestampOrString(data["updatedAt"])
     )
+}
+
+private fun parseTimestampOrString(raw: Any?): String? {
+    return when (raw) {
+        is Timestamp -> raw.toDate().toInstant().toString()
+        is String -> raw.takeIf { it.isNotBlank() }
+        else -> null
+    }
 }
 
 private fun DocumentSnapshot.toProviderAccount(): ProviderAccount? {

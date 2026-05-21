@@ -2,6 +2,8 @@ import AppKit
 import Carbon
 import GoogleSignIn
 import SwiftUI
+import IOKit.ps
+import OpenBurnBarCore
 
 /// Hosts the OpenBurnBar status item and popover.
 ///
@@ -19,6 +21,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItemGlobalMouseMonitor: Any?
     private var lastHandledStatusItemEventKey: OpenBurnBarStatusItemClick.EventKey?
     private var lastHandledStatusItemEventTime: TimeInterval = 0
+
+    // live wallpaper variables
+    public var dataStore: DataStore? = nil {
+        didSet {
+            setupWallpaperObservers()
+        }
+    }
+    public var daemonManager: OpenBurnBarDaemonManager? = nil {
+        didSet {
+            setupWallpaperObservers()
+        }
+    }
+
+    private var wallpaperPanels: [BurnBarWallpaperPanel] = []
+    private var sharedWallpaperViewModel = SwarmWallpaperViewModel()
+
+    // Observers
+    private var wallpaperEnabledObserver: Any?
+    private var dataStoreObservation: Any?
+    private var daemonObservation: Any?
+    private var batteryTimer: Timer?
+    private var wallpaperActivityTimer: Timer?
+    private var wallpaperAgentStatusObserver: NSObjectProtocol?
+    private var wallpaperColorDriverTask: Task<Void, Never>?
 
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
@@ -40,6 +66,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
         installStatusItem()
+
+        // Start wallpaper orchestration
+        observeDesktopWallpaper()
+        updateWallpaperState()
+        setupPowerMonitoring()
+        setupScreenChangeObserver()
     }
 
     @objc private func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
@@ -78,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func observeMenuBarIconStyle() {
         menuBarIconObservation = withObservationTracking {
             _ = SettingsManager.shared.appearance.colorfulMenuBarIcon
+            return nil as Any?
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, let button = self.statusItem?.button else { return }
@@ -229,6 +262,214 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         AppCommandRouter.shared.openSettings?()
     }
 
+    // MARK: - Live Wallpaper Orchestration
+
+    private func observeDesktopWallpaper() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWallpaperEnabledChange),
+            name: .enableDesktopWallpaperDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func handleWallpaperEnabledChange() {
+        Task { @MainActor in
+            self.updateWallpaperState()
+            self.configureWallpaperActivityPolling()
+            self.syncWallpaperColorDriver()
+        }
+    }
+
+    private func updateWallpaperState() {
+        let isEnabled = SettingsManager.shared.appearance.enableDesktopWallpaper
+        if isEnabled {
+            setupWallpaperPanels()
+        } else {
+            teardownWallpaperPanels()
+        }
+    }
+
+    private func setupWallpaperPanels() {
+        teardownWallpaperPanels()
+        let screens = NSScreen.screens
+        for screen in screens {
+            let panel = BurnBarWallpaperPanel(screen: screen, viewModel: sharedWallpaperViewModel)
+            panel.orderBack(nil)
+            wallpaperPanels.append(panel)
+        }
+    }
+
+    private func teardownWallpaperPanels() {
+        for panel in wallpaperPanels {
+            panel.orderOut(self)
+            panel.close()
+        }
+        wallpaperPanels.removeAll()
+    }
+
+    private func setupScreenChangeObserver() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleScreenParametersChange),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleScreenParametersChange() {
+        if SettingsManager.shared.appearance.enableDesktopWallpaper {
+            setupWallpaperPanels()
+        }
+    }
+
+    private func setupPowerMonitoring() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePowerStateChange),
+            name: Notification.Name.NSProcessInfoPowerStateDidChange,
+            object: nil
+        )
+        batteryTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.syncBatteryState()
+            }
+        }
+        syncBatteryState()
+    }
+
+    @objc private func handlePowerStateChange() {
+        syncBatteryState()
+    }
+
+    private func syncBatteryState() {
+        let onBattery = isRunningOnBattery()
+        sharedWallpaperViewModel.isBatteryThrottled = onBattery
+    }
+
+    private func isRunningOnBattery() -> Bool {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
+            return false
+        }
+        guard let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
+            return false
+        }
+        for source in sources {
+            guard let desc = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] else {
+                continue
+            }
+            if let state = desc[kIOPSPowerSourceStateKey] as? String {
+                if state == kIOPSBatteryPowerValue {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private func setupWallpaperObservers() {
+        observeDataStoreChanges()
+        observeDaemonChanges()
+        observeWallpaperAgentStatuses()
+        configureWallpaperActivityPolling()
+        syncWallpaperColorDriver()
+    }
+
+    private func observeDataStoreChanges() {
+        guard let dataStore else { return }
+        dataStoreObservation = withObservationTracking {
+            _ = dataStore.totalCostToday
+            _ = dataStore.providerSummaries
+            return nil as Any?
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncWallpaperColorDriver()
+                self.observeDataStoreChanges()
+            }
+        }
+    }
+
+    private func observeDaemonChanges() {
+        guard let daemonManager else { return }
+        daemonObservation = withObservationTracking {
+            _ = daemonManager.isBusy
+            return nil as Any?
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncWallpaperColorDriver()
+                self.observeDaemonChanges()
+            }
+        }
+    }
+
+    private func observeWallpaperAgentStatuses() {
+        guard wallpaperAgentStatusObserver == nil else { return }
+        wallpaperAgentStatusObserver = NotificationCenter.default.addObserver(
+            forName: PixelClockAgentStatusStore.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.syncWallpaperColorDriver()
+            }
+        }
+    }
+
+    private func configureWallpaperActivityPolling() {
+        wallpaperActivityTimer?.invalidate()
+        wallpaperActivityTimer = nil
+
+        guard SettingsManager.shared.appearance.enableDesktopWallpaper else { return }
+        wallpaperActivityTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.syncWallpaperColorDriver()
+            }
+        }
+    }
+
+    private func syncWallpaperColorDriver() {
+        wallpaperColorDriverTask?.cancel()
+        guard let dataStore else {
+            sharedWallpaperViewModel.colorDriver = nil
+            return
+        }
+
+        let totalCost = dataStore.totalCostToday
+        let summaries = dataStore.providerSummaries
+        let daemonIsBusy = daemonManager?.isBusy ?? false
+
+        wallpaperColorDriverTask = Task { @MainActor [weak self] in
+            let statuses = await PixelClockAgentStatusStore.shared.snapshotIncludingExternalProcesses()
+            guard !Task.isCancelled else { return }
+            self?.sharedWallpaperViewModel.colorDriver = SwarmWallpaperColorDriverBuilder.driver(
+                totalCostToday: totalCost,
+                providerSummaries: summaries,
+                agentStatuses: statuses,
+                daemonIsBusy: daemonIsBusy
+            )
+        }
+    }
+
+    private func teardownWallpaperObservers() {
+        NotificationCenter.default.removeObserver(self, name: .enableDesktopWallpaperDidChange, object: nil)
+        if let wallpaperAgentStatusObserver {
+            NotificationCenter.default.removeObserver(wallpaperAgentStatusObserver)
+            self.wallpaperAgentStatusObserver = nil
+        }
+        dataStoreObservation = nil
+        daemonObservation = nil
+        wallpaperActivityTimer?.invalidate()
+        wallpaperActivityTimer = nil
+        wallpaperColorDriverTask?.cancel()
+        wallpaperColorDriverTask = nil
+        batteryTimer?.invalidate()
+        batteryTimer = nil
+        NotificationCenter.default.removeObserver(self, name: Notification.Name.NSProcessInfoPowerStateDidChange, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    }
+
     // MARK: - NSPopoverDelegate
 
     func popoverDidShow(_ notification: Notification) {
@@ -243,6 +484,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         uninstallStatusItemMouseFallback()
+        teardownWallpaperPanels()
+        teardownWallpaperObservers()
     }
 }
 
@@ -369,5 +612,259 @@ private extension CGRect {
 enum OpenBurnBarPopoverClickRegion {
     static func isInsideInteractiveRegion(_ point: CGPoint, statusItemFrame: CGRect, popoverFrame: CGRect) -> Bool {
         return statusItemFrame.insetBy(dx: -5, dy: -5).contains(point) || popoverFrame.contains(point)
+    }
+}
+
+// MARK: - Dynamic Swarm Wallpaper Types
+
+enum SwarmWallpaperColorDriverBuilder {
+    static func driver(
+        totalCostToday: Double,
+        providerSummaries: [ProviderSummary],
+        agentStatuses: [String: PixelClockAgentStatus],
+        daemonIsBusy: Bool
+    ) -> SwarmColorDriver {
+        let runningProviders = runningProviders(from: agentStatuses)
+        let mode: SwarmColorDriver.Mode = daemonIsBusy || !runningProviders.isEmpty ? .active : .idle
+        let weights = runningProviders.isEmpty
+            ? historicalWeights(from: providerSummaries, totalCostToday: totalCostToday)
+            : activeWeights(from: runningProviders)
+
+        return SwarmColorDriver(
+            mode: mode,
+            providers: weights,
+            totalBurnRateUSD: totalCostToday
+        )
+    }
+
+    static func runningProviders(from statuses: [String: PixelClockAgentStatus]) -> [AgentProvider] {
+        let providers = statuses.compactMap { entry -> AgentProvider? in
+            let (key, status) = entry
+            guard status == .running else { return nil }
+            return provider(forStatusToken: key)
+        }
+
+        var seen: Set<AgentProvider> = []
+        return providers
+            .filter { seen.insert($0).inserted }
+            .sorted { $0.rawValue < $1.rawValue }
+    }
+
+    static func provider(forStatusToken token: String) -> AgentProvider? {
+        let normalized = normalizedProviderToken(token)
+        let aliases: [String: AgentProvider] = [
+            "anthropic": .claudeCode,
+            "claude": .claudeCode,
+            "claudecode": .claudeCode,
+            "claudecli": .claudeCode,
+            "codex": .codex,
+            "openai": .openAI,
+            "openaicodex": .codex,
+            "opencode": .openCode,
+            "openclaw": .openClaw,
+            "factory": .factory,
+            "droid": .factory,
+            "cursor": .cursor
+        ]
+        if let alias = aliases[normalized] {
+            return alias
+        }
+
+        return AgentProvider.allCases.first { provider in
+            normalized == normalizedProviderToken(provider.rawValue)
+                || normalized == normalizedProviderToken(provider.persistedToken)
+                || normalized == normalizedProviderToken(provider.providerID.rawValue)
+        }
+    }
+
+    private static func activeWeights(from providers: [AgentProvider]) -> [SwarmColorDriver.ProviderWeight] {
+        guard !providers.isEmpty else { return [] }
+        let weight = 1.0 / Double(providers.count)
+        return providers.map { provider in
+            SwarmColorDriver.ProviderWeight(provider: provider, weight: weight, quotaPressure: 0)
+        }
+    }
+
+    private static func historicalWeights(
+        from providerSummaries: [ProviderSummary],
+        totalCostToday: Double
+    ) -> [SwarmColorDriver.ProviderWeight] {
+        guard !providerSummaries.isEmpty else { return [] }
+
+        let weights: [SwarmColorDriver.ProviderWeight]
+        if totalCostToday > 0 {
+            weights = providerSummaries.map { summary in
+                SwarmColorDriver.ProviderWeight(
+                    provider: summary.provider,
+                    weight: summary.totalCost / totalCostToday,
+                    quotaPressure: 0
+                )
+            }
+        } else {
+            let totalTokens = providerSummaries.reduce(0) { $0 + $1.totalTokens }
+            if totalTokens > 0 {
+                weights = providerSummaries.map { summary in
+                    SwarmColorDriver.ProviderWeight(
+                        provider: summary.provider,
+                        weight: Double(summary.totalTokens) / Double(totalTokens),
+                        quotaPressure: 0
+                    )
+                }
+            } else {
+                let equalWeight = 1.0 / Double(providerSummaries.count)
+                weights = providerSummaries.map { summary in
+                    SwarmColorDriver.ProviderWeight(
+                        provider: summary.provider,
+                        weight: equalWeight,
+                        quotaPressure: 0
+                    )
+                }
+            }
+        }
+
+        return weights.sorted { lhs, rhs in
+            if lhs.weight == rhs.weight {
+                return lhs.provider.rawValue < rhs.provider.rawValue
+            }
+            return lhs.weight > rhs.weight
+        }
+    }
+
+    private static func normalizedProviderToken(_ token: String) -> String {
+        token
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
+    }
+}
+
+/// Reactive view model for coordinating the live background state.
+@Observable
+@MainActor
+public final class SwarmWallpaperViewModel {
+    public var pointer: CGPoint? = nil
+    public var colorDriver: SwarmColorDriver? = nil
+    public var isBatteryThrottled: Bool = false
+    public var isPaused: Bool = false
+
+    public init() {}
+}
+
+/// SwiftUI wrapper for displaying the SwarmCanvasView within the wallpaper panel.
+struct SwarmWallpaperView: View {
+    let viewModel: SwarmWallpaperViewModel
+    @State private var settings = SettingsManager.shared
+
+    var body: some View {
+        if viewModel.isPaused {
+            Color.clear
+                .ignoresSafeArea()
+        } else {
+            let background = settings.appearance.desktopWallpaperBackground
+            SwarmCanvasView(
+                accent: .purple,
+                pace: .cinematic, // Cinematic pace is perfect for ambient wallpaper
+                colorDriver: viewModel.colorDriver,
+                isBatteryThrottled: viewModel.isBatteryThrottled,
+                externalPointer: viewModel.pointer,
+                isTransparent: background.isTransparent,
+                backdropColor: background.isTransparent ? nil : background.swatchColor
+            )
+            .ignoresSafeArea()
+        }
+    }
+}
+
+/// A stationary, click-through transparent NSPanel floating behind desktop folders and icons
+/// that hosts the dynamic AI usage ember swarm simulation.
+public class BurnBarWallpaperPanel: NSPanel {
+    private var mouseMonitor: Any?
+    private let viewModel: SwarmWallpaperViewModel
+    private let targetScreen: NSScreen
+
+    public init(screen: NSScreen, viewModel: SwarmWallpaperViewModel) {
+        self.viewModel = viewModel
+        self.targetScreen = screen
+        
+        super.init(
+            contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        
+        self.isFloatingPanel = false
+        // Place exactly under desktop icons, but above standard background image
+        self.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) - 1)
+        
+        self.collectionBehavior = [
+            .canJoinAllSpaces,   // Live on all virtual desktops (Spaces)
+            .ignoresCycle,       // Exclude from Cmd+` cycle list
+            .stationary,         // Lock in position during swipe transitions
+            .fullScreenAuxiliary // Render cleanly alongside fullscreen windows
+        ]
+        
+        self.ignoresMouseEvents = true // Make click-through so user can interact with files
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.hidesOnDeactivate = false
+        
+        let swarmView = SwarmWallpaperView(viewModel: viewModel)
+        let hostingView = NSHostingView(rootView: swarmView)
+        hostingView.frame = self.contentView?.bounds ?? .zero
+        hostingView.autoresizingMask = [.width, .height]
+        self.contentView = hostingView
+
+        // Global mouse tracking monitor to feed cursor position to the canvas without window focus
+        self.mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+            guard let self = self, !self.viewModel.isPaused else { return }
+            let globalPoint = NSEvent.mouseLocation
+            
+            // Check if mouse is on this screen
+            if self.targetScreen.frame.contains(globalPoint) {
+                let localPoint = self.convertScreenPointToLocal(globalPoint)
+                self.viewModel.pointer = localPoint
+            } else {
+                self.viewModel.pointer = nil
+            }
+        }
+
+        // Register occlusion state observer to freeze rendering (0fps) when covered or on inactive Space
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleOcclusionChange),
+            name: NSWindow.didChangeOcclusionStateNotification,
+            object: self
+        )
+        
+        // Trigger initial check
+        handleOcclusionChange()
+    }
+
+    @objc private func handleOcclusionChange() {
+        let isVisible = self.occlusionState.contains(.visible)
+        self.viewModel.isPaused = !isVisible
+    }
+
+    private func convertScreenPointToLocal(_ globalPoint: NSPoint) -> CGPoint {
+        let screenFrame = targetScreen.frame
+        // Convert bottom-left y-up (macOS) to top-left y-down (SwiftUI Canvas)
+        let localX = globalPoint.x - screenFrame.origin.x
+        let localY = screenFrame.height - (globalPoint.y - screenFrame.origin.y)
+        return CGPoint(x: localX, y: localY)
+    }
+
+    override public var canBecomeKey: Bool {
+        return false
+    }
+
+    override public var canBecomeMain: Bool {
+        return false
+    }
+
+    deinit {
+        if let monitor = mouseMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 }

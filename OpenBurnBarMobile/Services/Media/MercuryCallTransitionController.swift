@@ -1,4 +1,4 @@
-import Foundation
+@preconcurrency import Foundation
 import Combine
 #if canImport(UIKit)
 import UIKit
@@ -45,9 +45,10 @@ final class MercuryCallTransitionController: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] note in
-            Task { @MainActor [weak self] in
+            let incomingCall = note.object as? VoIPCallService.IncomingCall
+            MainActor.assumeIsolated {
                 guard let self,
-                      let call = note.object as? VoIPCallService.IncomingCall else { return }
+                      let call = incomingCall else { return }
                 let state = self.appStateProvider()
                 if state == .active {
                     self.surface = .mercurySheet(call)
@@ -61,7 +62,7 @@ final class MercuryCallTransitionController: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.surface = .none
             }
         }

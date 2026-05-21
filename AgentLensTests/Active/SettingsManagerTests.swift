@@ -170,6 +170,100 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.appearanceMode, .light)
     }
 
+    func test_desktopWallpaperBackground_defaultValue_isMacOSDesktop() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertEqual(settings.desktopWallpaperBackground, .macOSDesktop)
+        XCTAssertFalse(settings.amoledDarkBackground)
+    }
+
+    func test_desktopWallpaperBackground_migratesLegacyAMOLEDToggle() {
+        let defaults = makeIsolatedDefaults()
+        defaults.set(true, forKey: "amoledDarkBackground")
+
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertEqual(settings.desktopWallpaperBackground, .amoledBlack)
+        XCTAssertTrue(settings.amoledDarkBackground)
+        XCTAssertEqual(defaults.string(forKey: "desktopWallpaperBackground"), DesktopWallpaperBackground.amoledBlack.rawValue)
+    }
+
+    func test_desktopWallpaperBackground_syncsLegacyAMOLEDAlias() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.desktopWallpaperBackground = .amoledBlack
+        XCTAssertTrue(settings.amoledDarkBackground)
+        XCTAssertEqual(defaults.string(forKey: "desktopWallpaperBackground"), DesktopWallpaperBackground.amoledBlack.rawValue)
+        XCTAssertTrue(defaults.bool(forKey: "amoledDarkBackground"))
+
+        settings.desktopWallpaperBackground = .graphite
+        XCTAssertFalse(settings.amoledDarkBackground)
+        XCTAssertEqual(defaults.string(forKey: "desktopWallpaperBackground"), DesktopWallpaperBackground.graphite.rawValue)
+        XCTAssertFalse(defaults.bool(forKey: "amoledDarkBackground"))
+    }
+
+    func test_swarmWallpaperColorDriver_prioritizesRunningProvidersOverHistoricalUsage() {
+        let summaries = [
+            makeProviderSummary(provider: .codex, cost: 10, tokens: 10_000),
+            makeProviderSummary(provider: .claudeCode, cost: 1, tokens: 1_000)
+        ]
+
+        let driver = SwarmWallpaperColorDriverBuilder.driver(
+            totalCostToday: 11,
+            providerSummaries: summaries,
+            agentStatuses: [
+                "codex": .running,
+                "claude": .running
+            ],
+            daemonIsBusy: false
+        )
+
+        XCTAssertEqual(driver.mode, .active)
+        XCTAssertEqual(driver.providers.map(\.provider), [.claudeCode, .codex])
+        XCTAssertEqual(driver.providers.map(\.weight), [0.5, 0.5])
+    }
+
+    func test_agentProcessDetectorKeepsConcurrentRunningProviders() {
+        let statuses = PixelClockAgentProcessDetector.statuses(fromPSOutput: """
+        COMM ARGS
+        node node /Users/alberto/.nvm/versions/node/bin/codex
+        codex /Users/alberto/.codex/vendor/codex
+        claude claude --dangerously-skip-permissions
+        droid /Users/alberto/.local/lib/factory/droid exec --input-format stream-jsonrpc
+        node node /opt/homebrew/bin/opencode
+        node node /Users/alberto/.claude/cmux-agent-mcp/build/cli.js
+        chrome-native-host /Applications/Claude.app/Contents/Helpers/chrome-native-host
+        droid /Users/alberto/.local/lib/factory/droid daemon --remote-access
+        """)
+
+        XCTAssertEqual(statuses[AgentProvider.codex.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.claudeCode.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.factory.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.openCode.persistedToken], .running)
+        XCTAssertNil(statuses[AgentProvider.openClaw.persistedToken])
+    }
+
+    func test_swarmWallpaperColorDriver_fallsBackToHistoricalUsageWhenNoProviderIsRunning() {
+        let summaries = [
+            makeProviderSummary(provider: .codex, cost: 9, tokens: 900),
+            makeProviderSummary(provider: .claudeCode, cost: 1, tokens: 100)
+        ]
+
+        let driver = SwarmWallpaperColorDriverBuilder.driver(
+            totalCostToday: 10,
+            providerSummaries: summaries,
+            agentStatuses: [:],
+            daemonIsBusy: false
+        )
+
+        XCTAssertEqual(driver.mode, .idle)
+        XCTAssertEqual(driver.providers.map(\.provider), [.codex, .claudeCode])
+        XCTAssertEqual(driver.providers[0].weight, 0.9, accuracy: 0.000_001)
+        XCTAssertEqual(driver.providers[1].weight, 0.1, accuracy: 0.000_001)
+    }
+
     func test_appearanceMode_colorSchemeResolution() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
@@ -1411,6 +1505,26 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertNil(AppearanceMode.system.colorScheme)
         XCTAssertEqual(AppearanceMode.light.colorScheme, .light)
         XCTAssertEqual(AppearanceMode.dark.colorScheme, .dark)
+    }
+
+    private func makeProviderSummary(
+        provider: AgentProvider,
+        cost: Double,
+        tokens: Int
+    ) -> ProviderSummary {
+        ProviderSummary(
+            provider: provider,
+            totalCost: cost,
+            totalTokens: tokens,
+            totalInputTokens: tokens / 2,
+            totalOutputTokens: tokens - (tokens / 2),
+            sessionCount: 1,
+            modelBreakdown: [],
+            provenanceConfidence: .exact,
+            provenanceMethod: .providerLog,
+            hasEstimatedContributions: false,
+            cacheEfficiency: .zero
+        )
     }
 
     // MARK: - TimeRange Tests

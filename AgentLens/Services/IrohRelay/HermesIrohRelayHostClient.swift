@@ -1,5 +1,6 @@
 import FirebaseAppCheck
 @preconcurrency import FirebaseAuth
+import FirebaseCore
 import FirebaseRemoteConfig
 import Foundation
 import OpenBurnBarCore
@@ -37,6 +38,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var transport: (any IrohRelayTransport)?
     private var acceptTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
+    private var recoveryTask: Task<Void, Never>?
+    private var acceptLoopHealthy = false
+    private var heartbeatHealthy = false
     /// Mercury media dispatcher (Phase 1b). Set by the host owner so the
     /// per-stream `IrohRelayRequestHandler` can hand inbound `media.blob.*`
     /// frames to `MacFileTransferService` without this class importing
@@ -92,7 +96,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     }
 
     var isReady: Bool {
-        transport != nil && readyConnectionID != nil
+        relayRuntimeHealthy
     }
 
     /// We never advertise the iroh transport as a publishable WSS URL. iOS
@@ -106,6 +110,13 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     @discardableResult
     func start(uid: String, connectionID: String) async -> Bool {
         if transport != nil, readyUID == uid, readyConnectionID == connectionID {
+            guard relayRuntimeHealthy else {
+                AppLogger.network.info(
+                    "hermes_iroh_relay_rebuild_stale_runtime connectionID=\(connectionID)"
+                )
+                stop()
+                return await start(uid: uid, connectionID: connectionID)
+            }
             await refreshPairingRecord(uid: uid, connectionID: connectionID)
             return true
         }
@@ -164,6 +175,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
 
             readyUID = uid
             readyConnectionID = connectionID
+            acceptLoopHealthy = true
+            heartbeatHealthy = true
 
             acceptTask = Task { [weak self] in
                 await self?.acceptLoop(transport: newTransport, uid: uid, connectionID: connectionID)
@@ -188,6 +201,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         acceptTask = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        acceptLoopHealthy = false
+        heartbeatHealthy = false
         for task in serveTasks.values {
             task.cancel()
         }
@@ -226,9 +243,11 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         uid: String,
         connectionID: String
     ) async {
+        var consecutiveAcceptFailures = 0
         while !Task.isCancelled {
             do {
                 let stream = try await transport.accept(timeout: 30)
+                consecutiveAcceptFailures = 0
                 let handler = IrohRelayRequestHandler(
                     relayKeyStore: relayKeyStore,
                     urlSession: urlSession,
@@ -276,18 +295,46 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         )
                     }
                     await stream.close()
-                    await self?.releaseServeTask(serveID)
+                    self?.releaseServeTask(serveID)
                 }
                 serveTasks[serveID] = task
             } catch IrohRelayTransportError.timedOut {
+                consecutiveAcceptFailures = 0
                 continue
             } catch IrohRelayTransportError.shutdown {
+                await handleAcceptLoopTerminated(
+                    transport: transport,
+                    uid: uid,
+                    connectionID: connectionID,
+                    reason: "shutdown",
+                    shouldRestart: !Task.isCancelled
+                )
                 return
             } catch {
+                consecutiveAcceptFailures += 1
                 AppLogger.network.silentFailure("hermes_iroh_relay_accept_failed", error: error)
+                let shouldRebuild = Self.shouldRebuildAfterAcceptError(error)
+                    || consecutiveAcceptFailures >= 3
+                if shouldRebuild {
+                    await handleAcceptLoopTerminated(
+                        transport: transport,
+                        uid: uid,
+                        connectionID: connectionID,
+                        reason: String(error.localizedDescription.prefix(256)),
+                        shouldRestart: true
+                    )
+                    return
+                }
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
         }
+        await handleAcceptLoopTerminated(
+            transport: transport,
+            uid: uid,
+            connectionID: connectionID,
+            reason: "cancelled",
+            shouldRestart: false
+        )
     }
 
     private func releaseServeTask(_ id: UUID) {
@@ -295,7 +342,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     }
 
     private func refreshPairingRecord(uid: String, connectionID: String) async {
-        guard let identity = publishedIdentity else { return }
+        guard relayRuntimeHealthy, let identity = publishedIdentity else { return }
         do {
             let pairingKeypair = try pairingKeyStore.keypair()
             try await publicKeyPublisher.publish(
@@ -313,6 +360,87 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             )
         } catch {
             AppLogger.network.silentFailure("hermes_iroh_relay_pairing_refresh_failed", error: error)
+        }
+    }
+
+    private var relayRuntimeHealthy: Bool {
+        transport != nil
+            && readyConnectionID != nil
+            && acceptTask != nil
+            && heartbeatTask != nil
+            && acceptLoopHealthy
+            && heartbeatHealthy
+    }
+
+    private func isCurrentTransport(_ candidate: any IrohRelayTransport) -> Bool {
+        guard let transport else { return false }
+        return transport === candidate
+    }
+
+    private func handleAcceptLoopTerminated(
+        transport failedTransport: any IrohRelayTransport,
+        uid: String,
+        connectionID: String,
+        reason: String,
+        shouldRestart: Bool
+    ) async {
+        guard isCurrentTransport(failedTransport) else { return }
+
+        let transportToStop = transport
+        let revokedNodeId = publishedIdentity?.nodeId
+
+        acceptLoopHealthy = false
+        heartbeatHealthy = false
+        acceptTask = nil
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+        for task in serveTasks.values {
+            task.cancel()
+        }
+        serveTasks.removeAll()
+        self.transport = nil
+        readyUID = nil
+        readyConnectionID = nil
+        publishedIdentity = nil
+
+        if let transportToStop {
+            await transportToStop.shutdown()
+        }
+        try? await directory.revoke(uid: uid, connectionId: connectionID)
+        await auditLogger.record(
+            event: .streamFailed,
+            uid: uid,
+            connectionId: connectionID,
+            transport: .irohDirect,
+            rttMillis: nil,
+            detail: [
+                "reason": reason,
+                "nodeId": revokedNodeId ?? ""
+            ]
+        )
+
+        guard shouldRestart else { return }
+        recoveryTask?.cancel()
+        recoveryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 750_000_000)
+            guard !Task.isCancelled else { return }
+            _ = await self?.start(uid: uid, connectionID: connectionID)
+        }
+    }
+
+    private static func shouldRebuildAfterAcceptError(_ error: Error) -> Bool {
+        guard let transportError = error as? IrohRelayTransportError else { return false }
+        switch transportError {
+        case .endpointNotReady, .shutdown:
+            return true
+        case .streamRejected(let message), .decodeFailed(let message):
+            let lowered = message.lowercased()
+            return lowered.contains("closed")
+                || lowered.contains("shut down")
+                || lowered.contains("not initialized")
+                || lowered.contains("runtime")
+        case .nodeIdUnreachable, .protocolMismatch, .timedOut:
+            return false
         }
     }
 
@@ -353,6 +481,7 @@ private enum HermesIrohHostedRelayConfig {
 
     static func refreshRemoteConfigIfAvailable() async {
         guard !hasLocalOverride else { return }
+        guard FirebaseApp.app() != nil else { return }
         let remoteConfig = RemoteConfig.remoteConfig()
         remoteConfig.setDefaults([remoteConfigKey: "" as NSObject])
         await withCheckedContinuation { continuation in
@@ -369,7 +498,12 @@ private enum HermesIrohHostedRelayConfig {
     static func currentURL() -> String? {
         normalized(ProcessInfo.processInfo.environment[environmentKey])
             ?? normalized(UserDefaults.standard.string(forKey: userDefaultsKey))
-            ?? normalized(RemoteConfig.remoteConfig().configValue(forKey: remoteConfigKey).stringValue)
+            ?? currentRemoteConfigURL()
+    }
+
+    private static func currentRemoteConfigURL() -> String? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return normalized(RemoteConfig.remoteConfig().configValue(forKey: remoteConfigKey).stringValue)
     }
 
     private static func normalized(_ value: String?) -> String? {

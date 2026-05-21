@@ -2866,7 +2866,9 @@ version = "0.1.0"
 dependencies = [
  "iroh",
  "iroh-blobs",
+ "iroh-dns",
  "iroh-services",
+ "jni",
  "serde",
  "thiserror 1.0.69",
  "tokio",

@@ -89,6 +89,29 @@ class MediaPacketCodecTest {
     }
 
     @Test
+    fun v1_decoder_treats_unknown_metadata_bit_as_payload_without_negotiation() {
+        val codec = MediaPacketCodec()
+        val metadataBytes = byteArrayOf(0x00, 0x00, 0x00, 0x02, 0x21, 0x00)
+        val samplePayload = byteArrayOf(0x7A, 0x7B)
+        val totalPayloadCount = MediaFrame.HEADER_BYTE_COUNT + metadataBytes.size + samplePayload.size
+        val envelope = java.nio.ByteBuffer.allocate(4 + totalPayloadCount)
+            .order(java.nio.ByteOrder.BIG_ENDIAN)
+            .putInt(totalPayloadCount)
+            .put(MediaFrame.Kind.VIDEO_NAL.rawValue)
+            .put(0x80.toByte()) // Proposed v2 metadata flag, unknown to v1.
+            .putInt(0)
+            .putInt(0)
+            .putLong(0)
+            .put(metadataBytes)
+            .put(samplePayload)
+            .array()
+
+        val decoded = codec.decode(envelope).frame
+
+        assertArrayEquals(metadataBytes + samplePayload, decoded.payload)
+    }
+
+    @Test
     fun decode_rejects_oversize_declared_length() {
         val codec = MediaPacketCodec(maxPayloadBytes = 64)
         val envelope = ByteArray(4 + 128)

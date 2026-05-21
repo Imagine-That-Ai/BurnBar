@@ -1575,6 +1575,54 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].outputTokens, 4)
     }
 
+    func testGatewayResponsesRecordsCachedInputAsDisjointBucket() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["glm-5-turbo"], times: 2)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "resp_cached_input",
+              "object": "response",
+              "model": "glm-5-turbo",
+              "output_text": "responses answered",
+              "usage": {
+                "input_tokens": 2006,
+                "output_tokens": 300,
+                "input_tokens_details": {
+                  "cached_tokens": 1920
+                }
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/responses",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"glm-5-turbo","input":"hello"}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let usage = try await harness.usageRecorder.recentUsage(limit: 5)
+        XCTAssertEqual(usage.count, 1)
+        XCTAssertEqual(usage[0].inputTokens, 86)
+        XCTAssertEqual(usage[0].outputTokens, 300)
+        XCTAssertEqual(usage[0].cacheReadTokens, 1920)
+    }
+
     func testGatewayResponsesFallsBackToChatCompletionsWhenProviderDoesNotExposeResponses() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]

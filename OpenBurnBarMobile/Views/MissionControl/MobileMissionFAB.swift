@@ -313,7 +313,7 @@ struct MobileMissionFAB: View {
                     .foregroundStyle(state.accent)
 
                 Text(label)
-                    .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(state.accent.opacity(0.92))
                     .lineLimit(1)
             }

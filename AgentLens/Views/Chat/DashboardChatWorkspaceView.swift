@@ -65,7 +65,7 @@ struct DashboardChatWorkspaceView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(DesignSystem.Colors.background)
+        .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
         .environment(\.hermesAtomNavigator, atomRouter)
         .popover(item: Binding(
             get: { atomRouter.pending },

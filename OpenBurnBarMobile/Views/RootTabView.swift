@@ -36,10 +36,21 @@ struct RootTabView: View {
     @State private var missionConsoleFABOffset: CGSize = .zero
     @State private var isMissionConsolePresented = false
     @State private var isHermesKeyboardVisible = false
+    @State private var isCloudStoreChromeHidden = false
     /// Shared OpenBurnBar Cloud / Hosted Quota Sync store, hoisted here so a
     /// single StoreKit observer feeds the Settings row, the Pulse upsell
     /// banner, and the dedicated `CloudStoreView`.
     @State private var subscriptionStore = HostedQuotaSubscriptionStore()
+
+    /// App-scope Agent Watch overlay singleton — holds the persistent
+    /// iroh control stream so the live mirror auto-opens the moment the
+    /// Mac begins a Computer Use session, regardless of which tab the
+    /// user is on. See `AgentWatchOverlaySingleton`.
+    @ObservedObject private var liveStageSingleton = AgentWatchOverlaySingleton.shared
+    /// Stage state machine (dock → split → maximize). Survives tab
+    /// swaps via `@StateObject`. Observes the singleton's session-id on
+    /// `.onAppear` and auto-opens to dock on session start.
+    @StateObject private var liveStagePresenter = AgentLiveStagePresenter()
 
     // Per-tab navigation paths
     @State private var pulsePath = NavigationPath()
@@ -69,22 +80,25 @@ struct RootTabView: View {
                                   ?? authStore.currentIdentity?.email,
                     isCloudMember: subscriptionStore.isActive
                 )
-                .opacity(isHermesKeyboardVisible ? 0 : 1)
+                .opacity(isHermesKeyboardVisible || isCloudStoreChromeHidden ? 0 : 1)
                 .animation(.easeInOut(duration: 0.2), value: isHermesKeyboardVisible)
-                .allowsHitTesting(!isHermesKeyboardVisible)
+                .animation(.easeInOut(duration: 0.2), value: isCloudStoreChromeHidden)
+                .allowsHitTesting(!isHermesKeyboardVisible && !isCloudStoreChromeHidden)
             }
 
             // Floating Chart Studio button — only visible while Studio is
             // minimized. Sits above the nav tray, follows the user across
             // tabs.
-            ChartStudioFloatingButton(presenter: studioPresenter)
+            if !isCloudStoreChromeHidden {
+                ChartStudioFloatingButton(presenter: studioPresenter)
+            }
 
             // Floating Mission Console launcher — sibling to Chart Studio's
             // FAB. Anchored bottom-LEFT by default so the two FABs don't
             // collide. Hidden when Chart Studio is fullscreen.
             MobileMissionFAB(
                 host: missionConsoleHost,
-                isVisible: studioPresenter.mode != .fullscreen,
+                isVisible: studioPresenter.mode != .fullscreen && !isCloudStoreChromeHidden,
                 anchorOffset: $missionConsoleFABOffset
             ) {
                 isMissionConsolePresented = true
@@ -104,15 +118,36 @@ struct RootTabView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(10)
             }
+
+            // Agent Live Stage — auto-opens the live Mac mirror when a
+            // Computer Use session starts. Lives above the rest of the
+            // chrome so split/maximize layouts can take over the screen,
+            // and floats above the nav tray as a 320×180 dock tile when
+            // the agent is just working in the background.
+            AgentLiveStage(
+                singleton: liveStageSingleton,
+                presenter: liveStagePresenter,
+                hermesService: hermesService,
+                onTapHermesTab: { selection = .hermes }
+            )
+            .zIndex(20)
         }
         .environment(\.motionStore, motionStore)
         .environment(\.chartStudioPresenter, studioPresenter)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
+        .environment(\.mobileAuthStore, authStore)
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
         .task { missionActivityCenter.start() }
         .task { missionConsoleHost.start() }
+        .task { liveStagePresenter.observe(liveStageSingleton.state) }
+        .task(id: liveStageEvaluationKey) {
+            liveStageSingleton.evaluate(
+                authUID: authStore.currentIdentity?.uid,
+                hermesService: hermesService
+            )
+        }
         .sheet(isPresented: $isMissionConsolePresented) {
             MobileMissionConsoleSheet(host: missionConsoleHost) {
                 isMissionConsolePresented = false
@@ -138,6 +173,9 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
             isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
         }
+        .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
+            isCloudStoreChromeHidden = notification.object as? Bool ?? false
+        }
     }
 
     @ViewBuilder
@@ -150,6 +188,15 @@ struct RootTabView: View {
         case .hermes:   hermesStack
         case .you:      youStack
         }
+    }
+
+    /// Composite key the Agent Live Stage `.task(id:)` listens on so the
+    /// singleton re-evaluates whenever the signed-in user OR the
+    /// currently selected Hermes connection changes.
+    private var liveStageEvaluationKey: String {
+        let uid = authStore.currentIdentity?.uid ?? ""
+        let conn = hermesService.selectedConnection.id
+        return "\(uid)|\(conn)"
     }
 
     @State private var insightsDashboardStore = DashboardStore()
@@ -208,7 +255,7 @@ struct RootTabView: View {
                 switch route {
                 case .sync: CloudSyncDetailsView(syncStore: syncHealthStore)
                 case .settings: SettingsHubView(authStore: authStore)
-                case .devices:  iPadDevicesSettingsView(hermesService: hermesService)
+                case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
                 case .providers: ProviderConnectionsView(showsDoneButton: false)
                 case .computerUse: AgentWatchScreen(
                     authUID: authStore.currentIdentity?.uid,
