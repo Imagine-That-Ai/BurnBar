@@ -24,6 +24,7 @@ public struct SwarmCanvasView: View {
     public let colorDriver: SwarmColorDriver?
     public let isBatteryThrottled: Bool
     public let externalPointer: CGPoint?
+    public let isTransparent: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -43,7 +44,8 @@ public struct SwarmCanvasView: View {
         particleCount: Int? = nil,
         colorDriver: SwarmColorDriver? = nil,
         isBatteryThrottled: Bool = false,
-        externalPointer: CGPoint? = nil
+        externalPointer: CGPoint? = nil,
+        isTransparent: Bool = false
     ) {
         self.accent = accent
         self.pace = pace
@@ -51,12 +53,14 @@ public struct SwarmCanvasView: View {
         self.colorDriver = colorDriver
         self.isBatteryThrottled = isBatteryThrottled
         self.externalPointer = externalPointer
-        _simulation = State(
-            initialValue: SwarmSimulation(
-                particleCount: particleCount ?? Self.adaptiveParticleCount,
-                pace: pace
-            )
+        self.isTransparent = isTransparent
+
+        let sim = SwarmSimulation(
+            particleCount: particleCount ?? Self.adaptiveParticleCount,
+            pace: pace
         )
+        sim.setColorDriver(colorDriver)
+        _simulation = State(initialValue: sim)
     }
 
     public var body: some View {
@@ -114,9 +118,9 @@ public struct SwarmCanvasView: View {
         // themed cards layered on top (dark backdrop in dark mode, soft warm
         // off-white in light mode). The particle palette adapts to match.
         Rectangle()
-            .fill(colorScheme == .dark
+            .fill(isTransparent ? Color.clear : (colorScheme == .dark
                 ? Color(red: 0.020, green: 0.020, blue: 0.031)
-                : Color(red: 0.953, green: 0.937, blue: 0.906))
+                : Color(red: 0.953, green: 0.937, blue: 0.906)))
             .ignoresSafeArea()
     }
 

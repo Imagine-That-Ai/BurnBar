@@ -1,6 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">BurnBar</string>
-    <string name="wallpaper_label">BurnBar Live</string>
-    <string name="wallpaper_description">Data-driven swarm wallpaper colored by your AI provider usage. Particles reflect which providers are burning tokens.</string>
+    <string name="burnbar_wallpaper_label">BurnBar Live</string>
+    <string name="burnbar_wallpaper_description">A data-driven ambient swarm background indicating provider activity.</string>
+
+    <string-array name="pace_entries">
+        <item>Energetic (Fast)</item>
+        <item>Cinematic (Slow, Battery Friendly)</item>
+    </string-array>
+
+    <string-array name="pace_values">
+        <item>energetic</item>
+        <item>cinematic</item>
+    </string-array>
+
+    <string-array name="shape_entries">
+        <item>Cycle All Shapes</item>
+        <item>Just Swarm (No Shapes)</item>
+        <item>Dollar Sign ($)</item>
+        <item>Code Tags (&lt;/&gt;)</item>
+        <item>Rings</item>
+        <item>Router Flow</item>
+    </string-array>
+
+    <string-array name="shape_values">
+        <item>all</item>
+        <item>swarm</item>
+        <item>dollar</item>
+        <item>code</item>
+        <item>rings</item>
+        <item>router</item>
+    </string-array>
 </resources>

@@ -36,6 +36,37 @@ final class RemoteMCPConnectedClientsUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
     }
 
+    func testOpeningConnectedDevicesDoesNotCrash() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let youButton = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "You")
+        ).firstMatch
+        XCTAssertTrue(
+            youButton.waitForExistence(timeout: 30),
+            "The You navigation item did not appear. The device may not be past auth/onboarding. \(app.debugDescription)"
+        )
+
+        youButton.tap()
+
+        let devicesRow = app.buttons.matching(
+            NSPredicate(format: "identifier CONTAINS %@", "you.connectedDevices.row")
+        ).firstMatch
+        XCTAssertTrue(
+            devicesRow.waitForExistence(timeout: 30),
+            "The Connected Devices row did not appear. \(app.debugDescription)"
+        )
+        devicesRow.tap()
+
+        let devicesTitle = app.staticTexts["Devices & Sync"].firstMatch
+        XCTAssertTrue(
+            devicesTitle.waitForExistence(timeout: 30),
+            "Opening Connected Devices did not render the Devices & Sync screen. \(app.debugDescription)"
+        )
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
     func testSignedInCloudMemberCanSeeAndRevokeRemoteMCPClient() throws {
         let environment = ProcessInfo.processInfo.environment
         let configuration = try liveConfiguration(environment: environment)

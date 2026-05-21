@@ -60,7 +60,13 @@ struct MacAgentInsightsWorkspace: View {
         HStack(spacing: 0) {
             sidebar
                 .frame(width: 320)
-                .background(UnifiedDesignSystem.Colors.surface)
+                .background {
+                    if settingsManager.useWebsiteBackground {
+                        Color.clear.background(.ultraThinMaterial)
+                    } else {
+                        UnifiedDesignSystem.Colors.surface
+                    }
+                }
             Divider().opacity(0.4)
             if isComparing {
                 compareView

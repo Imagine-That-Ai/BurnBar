@@ -446,7 +446,10 @@ fun PairedMacControlsScreen(
                                                 ?: throw IllegalStateException("BurnBar is not ready to start Mercury yet.")
                                             statusMessage = "Starting Mercury..."
                                             Log.i("BurnBar", "Ask to Mirror recovering Mercury for connectionID=$connection")
-                                            application.ensureMediaControlStream(connectionID = connection)
+                                            application.ensureMediaControlStream(
+                                                connectionID = connection,
+                                                forceRestart = true,
+                                            )
                                             BurnBarApplication.mediaControlCoordinator
                                                 ?: throw IllegalStateException("Mercury did not create a control coordinator.")
                                         }
@@ -524,7 +527,27 @@ fun PairedMacControlsScreen(
                                 }
                                 statusMessage = when {
                                     coordinator == null -> "Mercury is not started yet. Open BurnBar on the Mac and wait for the paired Mac tile to show online."
-                                    phase !is MediaControlStreamCoordinator.Phase.Live -> phase.userMessage()
+                                    phase !is MediaControlStreamCoordinator.Phase.Live -> {
+                                        val connection = requestedConnectionID()
+                                        val application = app
+                                        if (connection != null && application != null) {
+                                            scope.launch {
+                                                statusMessage = "Restarting Mercury..."
+                                                runCatching {
+                                                    application.ensureMediaControlStream(
+                                                        connectionID = connection,
+                                                        forceRestart = true,
+                                                    )
+                                                }.onSuccess {
+                                                    coordinator = BurnBarApplication.mediaControlCoordinator
+                                                    statusMessage = "Mercury retry started."
+                                                }.onFailure { error ->
+                                                    statusMessage = "Mercury unavailable: ${error.localizedMessage ?: error.javaClass.simpleName}"
+                                                }
+                                            }
+                                        }
+                                        phase.userMessage()
+                                    }
                                     else -> "Mercury is live. Ask to Mirror is ready."
                                 }
                             }

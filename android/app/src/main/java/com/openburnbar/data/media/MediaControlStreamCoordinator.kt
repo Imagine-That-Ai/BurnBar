@@ -1,5 +1,6 @@
 package com.openburnbar.data.media
 
+import android.util.Log
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallInvite
@@ -119,6 +120,7 @@ class MediaControlStreamCoordinator(
             activeConnectionID = connectionID
             _activePair.value = ActivePair(uid = uid, connectionID = connectionID)
             _phase.value = Phase.Dialing
+            logInfo("Mercury control supervisor starting connectionID=$connectionID")
             supervisorJob = scope.launch { runSupervisor(uid = uid, connectionID = connectionID) }
         }
     }
@@ -169,6 +171,7 @@ class MediaControlStreamCoordinator(
                 media = HermesRealtimeRelayMediaPayload(mirrorRequest = request),
             )
         )
+        logInfo("Mercury mirror request sent requestID=$requestID connectionID=$connectionID")
         return requestID
     }
 
@@ -242,6 +245,7 @@ class MediaControlStreamCoordinator(
         while (scope.isActive && supervisorJob?.isActive == true) {
             try {
                 _phase.value = Phase.Dialing
+                logInfo("Mercury control dial attempt=${attempt + 1} connectionID=$connectionID")
                 val stream = dialer.dial(uid, connectionID)
                 val classifyFrame = HermesRealtimeRelayFrame(
                     type = HermesRealtimeRelayFrameType.MEDIA_CLASSIFY,
@@ -254,6 +258,7 @@ class MediaControlStreamCoordinator(
                 _consecutiveDialFailures.value = 0
                 attempt = 0
                 _phase.value = Phase.Live
+                logInfo("Mercury control live connectionID=$connectionID")
                 analytics?.controlStreamConnected()
                 resolvePending(stream)
 
@@ -267,6 +272,7 @@ class MediaControlStreamCoordinator(
                 }
 
                 mutex.withLock { currentStream = null }
+                logInfo("Mercury control read loop ended connectionID=$connectionID")
                 if (supervisorJob?.isActive != true) break
                 attempt = (attempt - 1).coerceAtLeast(0)
             } catch (_: CancellationException) {
@@ -274,14 +280,17 @@ class MediaControlStreamCoordinator(
             } catch (t: Throwable) {
                 _consecutiveDialFailures.value = _consecutiveDialFailures.value + 1
                 _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
+                logWarning("Mercury control dial failed connectionID=$connectionID error=${t.message}", t)
                 analytics?.controlStreamLost(t.message ?: t.javaClass.simpleName)
             }
 
             val backoff = nextBackoff(attempt)
             attempt += 1
             _phase.value = Phase.Reconnecting(nextAttemptInMillis = backoff)
+            logInfo("Mercury control reconnect scheduled connectionID=$connectionID backoffMs=$backoff")
             try { delay(backoff) } catch (_: CancellationException) { break }
         }
+        logInfo("Mercury control supervisor stopped connectionID=$connectionID")
         _phase.value = Phase.Stopped
         activeUID = null
         activeConnectionID = null
@@ -326,6 +335,7 @@ class MediaControlStreamCoordinator(
             }
         } catch (t: Throwable) {
             _phase.value = Phase.Reconnecting(nextAttemptInMillis = initialBackoffMillis)
+            logWarning("Mercury control read failed connectionID=$connectionID error=${t.message}", t)
         }
     }
 
@@ -388,5 +398,17 @@ class MediaControlStreamCoordinator(
         )
         val jitter = Random.nextDouble(initialBackoffMillis.toDouble(), exp + 1)
         return min(maxBackoffMillis, jitter.toLong())
+    }
+
+    private fun logInfo(message: String) {
+        runCatching { Log.i(TAG, message) }
+    }
+
+    private fun logWarning(message: String, error: Throwable) {
+        runCatching { Log.w(TAG, message, error) }
+    }
+
+    private companion object {
+        private const val TAG = "BurnBar"
     }
 }

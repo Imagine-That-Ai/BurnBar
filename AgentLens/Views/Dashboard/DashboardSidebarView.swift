@@ -162,17 +162,21 @@ extension DashboardView {
             .padding(DesignSystem.Spacing.lg)
         }
         .background {
-            ZStack {
-                DesignSystem.Colors.surface.opacity(0.92)
+            if settingsManager.useWebsiteBackground {
+                Color.clear.background(.ultraThinMaterial)
+            } else {
+                ZStack {
+                    DesignSystem.Colors.surface.opacity(0.92)
 
-                LinearGradient(
-                    colors: [
-                        DesignSystem.Colors.textPrimary.opacity(0.02),
-                        Color.clear
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                    LinearGradient(
+                        colors: [
+                            DesignSystem.Colors.textPrimary.opacity(0.02),
+                            Color.clear
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
             }
         }
         .scrollContentBackground(.hidden)

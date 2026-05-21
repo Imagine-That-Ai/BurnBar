@@ -143,17 +143,20 @@ class VideoReceivePipeline(
             returnDequeuedInputBuffer(codec, inputIndex, frame.presentationTimestampMillis)
             return false
         }
+        val normalizedPayload = runCatching {
+            VideoPayloadNormalizer.normalizeForMediaCodec(frame.payload)
+        }.getOrDefault(frame.payload)
         buffer.clear()
-        if (frame.payload.size > buffer.capacity()) {
+        if (normalizedPayload.size > buffer.capacity()) {
             returnDequeuedInputBuffer(codec, inputIndex, frame.presentationTimestampMillis)
             return false
         }
-        buffer.put(frame.payload)
+        buffer.put(normalizedPayload)
         val queued = runCatching {
             codec.queueInputBuffer(
                 inputIndex,
                 0,
-                frame.payload.size,
+                normalizedPayload.size,
                 (frame.presentationTimestampMillis * 1_000uL).toLong(),
                 if (isKeyframe) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0,
             )

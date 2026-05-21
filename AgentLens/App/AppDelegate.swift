@@ -66,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         // Start wallpaper orchestration
         observeDesktopWallpaper()
+        updateWallpaperState()
         setupPowerMonitoring()
         setupScreenChangeObserver()
     }
@@ -261,15 +262,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // MARK: - Live Wallpaper Orchestration
 
     private func observeDesktopWallpaper() {
-        wallpaperEnabledObserver = withObservationTracking {
-            _ = SettingsManager.shared.appearance.enableDesktopWallpaper
-            return nil as Any?
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.updateWallpaperState()
-                self.observeDesktopWallpaper()
-            }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWallpaperEnabledChange),
+            name: .enableDesktopWallpaperDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func handleWallpaperEnabledChange() {
+        Task { @MainActor in
+            self.updateWallpaperState()
         }
     }
 
@@ -287,7 +290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let screens = NSScreen.screens
         for screen in screens {
             let panel = BurnBarWallpaperPanel(screen: screen, viewModel: sharedWallpaperViewModel)
-            panel.orderFront(self)
+            panel.orderBack(nil)
             wallpaperPanels.append(panel)
         }
     }
@@ -451,7 +454,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func teardownWallpaperObservers() {
-        wallpaperEnabledObserver = nil
+        NotificationCenter.default.removeObserver(self, name: .enableDesktopWallpaperDidChange, object: nil)
         dataStoreObservation = nil
         daemonObservation = nil
         batteryTimer?.invalidate()
@@ -622,6 +625,7 @@ public final class SwarmWallpaperViewModel {
 /// SwiftUI wrapper for displaying the SwarmCanvasView within the wallpaper panel.
 struct SwarmWallpaperView: View {
     let viewModel: SwarmWallpaperViewModel
+    @State private var settings = SettingsManager.shared
 
     var body: some View {
         if viewModel.isPaused {
@@ -633,7 +637,8 @@ struct SwarmWallpaperView: View {
                 pace: .cinematic, // Cinematic pace is perfect for ambient wallpaper
                 colorDriver: viewModel.colorDriver,
                 isBatteryThrottled: viewModel.isBatteryThrottled,
-                externalPointer: viewModel.pointer
+                externalPointer: viewModel.pointer,
+                isTransparent: !settings.appearance.amoledDarkBackground
             )
             .ignoresSafeArea()
         }
@@ -660,12 +665,13 @@ public class BurnBarWallpaperPanel: NSPanel {
         
         self.isFloatingPanel = false
         // Place exactly under desktop icons, but above standard background image
-        self.level = NSWindow.Level(rawValue: Int(CGWindowLevelKey.desktopWindow.rawValue) - 1)
+        self.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) - 1)
         
         self.collectionBehavior = [
-            .canJoinAllSpaces,  // Live on all virtual desktops (Spaces)
-            .ignoresCycle,      // Exclude from Cmd+` cycle list
-            .stationary         // Lock in position during swipe transitions
+            .canJoinAllSpaces,   // Live on all virtual desktops (Spaces)
+            .ignoresCycle,       // Exclude from Cmd+` cycle list
+            .stationary,         // Lock in position during swipe transitions
+            .fullScreenAuxiliary // Render cleanly alongside fullscreen windows
         ]
         
         self.ignoresMouseEvents = true // Make click-through so user can interact with files
@@ -717,6 +723,14 @@ public class BurnBarWallpaperPanel: NSPanel {
         let localX = globalPoint.x - screenFrame.origin.x
         let localY = screenFrame.height - (globalPoint.y - screenFrame.origin.y)
         return CGPoint(x: localX, y: localY)
+    }
+
+    override public var canBecomeKey: Bool {
+        return false
+    }
+
+    override public var canBecomeMain: Bool {
+        return false
     }
 
     deinit {

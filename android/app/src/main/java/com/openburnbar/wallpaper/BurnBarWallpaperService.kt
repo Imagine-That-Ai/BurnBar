@@ -65,8 +65,8 @@ class BurnBarWallpaperService : WallpaperService() {
             style = Paint.Style.FILL
         }
         private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = 9f
-            typeface = Typeface.MONOSPACE
+            textSize = 20f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
             style = Paint.Style.FILL
         }
@@ -93,16 +93,31 @@ class BurnBarWallpaperService : WallpaperService() {
             super.onCreate(surfaceHolder)
             simulation = SwarmSimulation(
                 particleCount = WALLPAPER_PARTICLE_COUNT,
-                pace = SwarmPace.CINEMATIC
+                pace = SwarmPace.CINEMATIC // Default, updated via settings
             )
             // Bind snapshot store so the StateFlow hydrates from disk.
             BurnBarWidgetSnapshotStore.bind(applicationContext)
+            updateSettings()
             refreshProviderColors()
+        }
+
+        private fun updateSettings() {
+            val prefs = getSharedPreferences("wallpaper_settings", android.content.Context.MODE_PRIVATE)
+            val pacePref = prefs.getString("pace", "cinematic") ?: "cinematic"
+            val shapePref = prefs.getString("shape", "all") ?: "all"
+
+            simulation.setPace(if (pacePref == "energetic") SwarmPace.ENERGETIC else SwarmPace.CINEMATIC)
+
+            // Adjust framerate based on pace to save battery if cinematic
+            frameIntervalMs = if (pacePref == "energetic") 16L else 33L
+
+            simulation.setShapeMode(shapePref)
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
             this.visible = visible
             if (visible) {
+                updateSettings()
                 refreshProviderColors()
                 handler.removeCallbacks(drawRunnable)
                 handler.post(drawRunnable)

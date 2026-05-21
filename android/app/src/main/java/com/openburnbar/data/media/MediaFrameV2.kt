@@ -168,7 +168,7 @@ class MediaFrameV2Codec(
         val MAGIC = byteArrayOf(0x4F, 0x42, 0x4D, 0x46, 0x56, 0x32) // OBMFV2
         const val VERSION: Byte = 2
         const val FIXED_HEADER_BYTE_COUNT: Int = 34
-        const val DEFAULT_MAX_PAYLOAD_BYTES: Int = 256 * 1024
+        const val DEFAULT_MAX_PAYLOAD_BYTES: Int = 2 * 1024 * 1024
 
         fun isEncodedEnvelope(envelope: ByteArray): Boolean {
             val headerStart = 4

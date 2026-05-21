@@ -85,7 +85,7 @@ public struct MediaFrameV2Codec: Sendable {
     public static let magic = Data([0x4F, 0x42, 0x4D, 0x46, 0x56, 0x32]) // OBMFV2
     public static let version: UInt8 = 2
     public static let fixedHeaderByteCount = 34
-    public static let defaultMaxPayloadBytes: Int = 256 * 1024
+    public static let defaultMaxPayloadBytes: Int = 2 * 1024 * 1024
 
     public let maxPayloadBytes: Int
 
