@@ -29,20 +29,28 @@ final class BurnBarCatalogTests: XCTestCase {
         let catalog = BurnBarCatalogLoader.bundledCatalog
 
         let sonnet = try XCTUnwrap(catalog.pricing(forModelName: "claude-3-5-sonnet-20241022"))
+        let factorySonnext = try XCTUnwrap(catalog.pricing(forModelName: "Sonnext-4.6-9"))
         let gpt55 = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.5"))
         let gpt55Pro = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.5-pro"))
+        let factoryGLM5 = try XCTUnwrap(catalog.pricing(forModelName: "glm-5"))
         let minimax = try XCTUnwrap(catalog.pricing(forModelName: "MiniMax-M3-pro"))
         let codex = try XCTUnwrap(catalog.pricing(forModelName: "codex-pro"))
 
         XCTAssertEqual(sonnet.inputPerMToken, 3, accuracy: 0.001)
         XCTAssertEqual(sonnet.outputPerMToken, 15, accuracy: 0.001)
         XCTAssertEqual(sonnet.cacheCreationPerMToken ?? 0, 3.75, accuracy: 0.001)
+        XCTAssertEqual(factorySonnext.inputPerMToken, 3, accuracy: 0.001)
+        XCTAssertEqual(factorySonnext.outputPerMToken, 15, accuracy: 0.001)
+        XCTAssertEqual(factorySonnext.cacheReadPerMToken, 0.3, accuracy: 0.001)
         XCTAssertEqual(gpt55.inputPerMToken, 5, accuracy: 0.001)
         XCTAssertEqual(gpt55.outputPerMToken, 30, accuracy: 0.001)
         XCTAssertEqual(gpt55.cacheReadPerMToken, 0.5, accuracy: 0.001)
         XCTAssertEqual(gpt55Pro.inputPerMToken, 30, accuracy: 0.001)
         XCTAssertEqual(gpt55Pro.outputPerMToken, 180, accuracy: 0.001)
         XCTAssertEqual(gpt55Pro.cacheReadPerMToken, 30, accuracy: 0.001)
+        XCTAssertEqual(factoryGLM5.inputPerMToken, 0, accuracy: 0.001)
+        XCTAssertEqual(factoryGLM5.outputPerMToken, 0, accuracy: 0.001)
+        XCTAssertEqual(factoryGLM5.cacheReadPerMToken, 0, accuracy: 0.001)
         XCTAssertEqual(minimax.inputPerMToken, 0.69, accuracy: 0.001)
         XCTAssertEqual(codex.outputPerMToken, 12, accuracy: 0.001)
     }

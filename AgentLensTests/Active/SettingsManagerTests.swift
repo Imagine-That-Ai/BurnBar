@@ -225,6 +225,26 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(driver.providers.map(\.weight), [0.5, 0.5])
     }
 
+    func test_agentProcessDetectorKeepsConcurrentRunningProviders() {
+        let statuses = PixelClockAgentProcessDetector.statuses(fromPSOutput: """
+        COMM ARGS
+        node node /Users/alberto/.nvm/versions/node/bin/codex
+        codex /Users/alberto/.codex/vendor/codex
+        claude claude --dangerously-skip-permissions
+        droid /Users/alberto/.local/lib/factory/droid exec --input-format stream-jsonrpc
+        node node /opt/homebrew/bin/opencode
+        node node /Users/alberto/.claude/cmux-agent-mcp/build/cli.js
+        chrome-native-host /Applications/Claude.app/Contents/Helpers/chrome-native-host
+        droid /Users/alberto/.local/lib/factory/droid daemon --remote-access
+        """)
+
+        XCTAssertEqual(statuses[AgentProvider.codex.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.claudeCode.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.factory.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.openCode.persistedToken], .running)
+        XCTAssertNil(statuses[AgentProvider.openClaw.persistedToken])
+    }
+
     func test_swarmWallpaperColorDriver_fallsBackToHistoricalUsageWhenNoProviderIsRunning() {
         let summaries = [
             makeProviderSummary(provider: .codex, cost: 9, tokens: 900),

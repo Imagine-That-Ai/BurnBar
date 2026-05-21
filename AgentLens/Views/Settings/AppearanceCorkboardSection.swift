@@ -69,7 +69,7 @@ struct AppearanceCorkboardSection: View {
 
                 SettingsToggle(
                     title: "Swarm Background",
-                    subtitle: "Active, reconverging token-ember swarms pulled from burnbar.ai. Particles drift and reform into $, </>, quota rings, and router failover paths.",
+                    subtitle: "Active, reconverging token-ember swarms pulled from burnbar.ai. Particles drift and reform into $, </>, the BurnBar logo, quota rings, and router failover paths.",
                     icon: "sparkles",
                     isOn: $settingsManager.useWebsiteBackground
                 )
@@ -94,7 +94,7 @@ struct AppearanceCorkboardSection: View {
 
                 SettingsToggle(
                     title: "Cycle Shapes (Screensaver)",
-                    subtitle: "Periodically reform the screensaver swarms into $, </>, quota rings, and failover curves.",
+                    subtitle: "Periodically reform the screensaver swarms into $, </>, the BurnBar logo, quota rings, and failover curves.",
                     icon: "arrow.triangle.2.circlepath",
                     isOn: $settingsManager.cycleShapesScreensaver
                 )
@@ -179,24 +179,42 @@ struct AppearanceCorkboardSection: View {
     private func wallpaperBackgroundSwatch(_ background: DesktopWallpaperBackground) -> some View {
         if background.isTransparent {
             ZStack {
-                Circle()
-                    .fill(DesignSystem.Colors.surface)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: background.swatchPreviewColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                 Image(systemName: "desktopcomputer")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.35), radius: 1, x: 0, y: 1)
             }
-            .frame(width: 20, height: 20)
+            .frame(width: 28, height: 22)
             .overlay(
-                Circle()
-                    .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(background.swatchPreviewStrokeColor.opacity(0.95), lineWidth: 1.5)
             )
         } else {
-            Circle()
-                .fill(background.swatchColor)
-                .frame(width: 20, height: 20)
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: background.swatchPreviewColors,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 28, height: 22)
                 .overlay(
-                    Circle()
-                        .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(background.swatchPreviewStrokeColor.opacity(0.95), lineWidth: 1.5)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                        .padding(2)
                 )
         }
     }

@@ -53,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BurnBar logo swarm formation.** The shared swarm cycle now adds the
   OpenBurnBar flame-shaped bar graph mark as a first-class particle formation
   between the code glyph and quota rings.
+- **Swarm wallpaper polish.** The BurnBar logo formation now renders upright,
+  active wallpaper particles share the field across every running provider
+  detected from the process table, and the Desktop Wallpaper Background picker
+  uses distinct preview swatches instead of nearly identical dark dots.
 
 ### Added — Iroh Services observability
 - **Official Iroh Services endpoint metrics.** Upgraded the native iroh bridge

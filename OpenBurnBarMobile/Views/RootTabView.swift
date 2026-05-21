@@ -46,7 +46,7 @@ struct RootTabView: View {
     /// iroh control stream so the live mirror auto-opens the moment the
     /// Mac begins a Computer Use session, regardless of which tab the
     /// user is on. See `AgentWatchOverlaySingleton`.
-    @StateObject private var liveStageSingleton = AgentWatchOverlaySingleton.shared
+    @ObservedObject private var liveStageSingleton = AgentWatchOverlaySingleton.shared
     /// Stage state machine (dock → split → maximize). Survives tab
     /// swaps via `@StateObject`. Observes the singleton's session-id on
     /// `.onAppear` and auto-opens to dock on session start.
