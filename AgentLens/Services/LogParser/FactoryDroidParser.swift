@@ -283,7 +283,7 @@ final class FactoryDroidParser: LogParser, Sendable {
 
         guard tokenData.input > 0 || tokenData.output > 0 else { return nil }
 
-        let pricing = ModelPricing.lookup(model: tokenData.model)
+        let pricing = ModelPricing.lookup(model: tokenData.model, providerID: "factory")
         let cost = pricing.cost(
             inputTokens: tokenData.input,
             outputTokens: tokenData.output,
@@ -395,11 +395,11 @@ final class FactoryDroidParser: LogParser, Sendable {
             return inline
         }
 
-        if ModelPricing.hasCatalogPricing(model: structured) {
+        if ModelPricing.hasCatalogPricing(model: structured, providerID: "factory") {
             return structured
         }
 
-        if ModelPricing.hasCatalogPricing(model: inline) {
+        if ModelPricing.hasCatalogPricing(model: inline, providerID: "factory") {
             return inline
         }
 
