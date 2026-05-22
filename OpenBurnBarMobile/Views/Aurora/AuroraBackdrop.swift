@@ -68,6 +68,7 @@ struct AuroraBackdrop: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
         }
+        .ignoresSafeArea()
         .accessibilityHidden(true)
         .allowsHitTesting(false)
         .onAppear { startAnimating() }

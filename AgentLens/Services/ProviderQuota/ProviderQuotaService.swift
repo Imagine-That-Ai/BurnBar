@@ -85,6 +85,7 @@ final class ProviderQuotaService {
     private let homeDirectoryURL: URL
     private let miniMaxModeProvider: () -> MiniMaxQuotaMode
     private let factoryPlanProvider: () -> FactoryQuotaPlanTier
+    private let xaiPlanProvider: () -> XAIQuotaPlanTier
     private let claudeCredentialsReader: any ClaudeCredentialsReading
     private let refreshProviders: [AgentProvider]
 
@@ -125,6 +126,7 @@ final class ProviderQuotaService {
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         miniMaxModeProvider: (() -> MiniMaxQuotaMode)? = nil,
         factoryPlanProvider: (() -> FactoryQuotaPlanTier)? = nil,
+        xaiPlanProvider: (() -> XAIQuotaPlanTier)? = nil,
         claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         refreshProviders: [AgentProvider] = ProviderQuotaService.supportedProviders
     ) {
@@ -137,6 +139,7 @@ final class ProviderQuotaService {
         self.homeDirectoryURL = homeDirectoryURL
         self.miniMaxModeProvider = miniMaxModeProvider ?? { settingsManager.miniMaxQuotaMode }
         self.factoryPlanProvider = factoryPlanProvider ?? { settingsManager.factoryQuotaPlanTier }
+        self.xaiPlanProvider = xaiPlanProvider ?? { settingsManager.xaiQuotaPlanTier }
         self.claudeCredentialsReader = claudeCredentialsReader
         self.refreshProviders = refreshProviders.filter(\.isQuotaSignalProvider)
 
@@ -160,6 +163,7 @@ final class ProviderQuotaService {
             homeDirectoryURL: homeDirectoryURL,
             miniMaxModeProvider: self.miniMaxModeProvider,
             factoryPlanProvider: self.factoryPlanProvider,
+            xaiPlanProvider: self.xaiPlanProvider,
             claudeCredentialsReader: claudeCredentialsReader,
             refreshProviders: self.refreshProviders
         )
@@ -696,6 +700,18 @@ final class ProviderQuotaService {
             routingEventsDirty = false
             persistRoutingEvents()
         }
+        // Emit a SuperGrok pacing event whenever the router selects xAI
+        // under a consumer-plan tier — the adapter's pacing branch relies
+        // on this log for "remaining %" estimates.
+        if event.selectedProviderID == .xAI {
+            XAISuperGrokUsageLog.recordPromptDispatched(
+                plan: xaiPlanProvider(),
+                model: event.modelID,
+                source: "routing-decision",
+                homeDirectoryURL: homeDirectoryURL,
+                fileManager: fileManager
+            )
+        }
     }
 
     private func connectedQuotaProviderIDs(dataStore: DataStore) -> Set<ProviderID> {
@@ -880,6 +896,7 @@ final class ProviderQuotaService {
             bridgeManager: bridgeManager,
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
+            xaiPlanProvider: xaiPlanProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: { [weak self] cache, didChange in
@@ -1360,11 +1377,16 @@ extension ProviderQuotaService {
         cumulative: Bool,
         now: Date = Date()
     ) -> [ProviderQuotaSnapshot] {
-        guard cumulative else { return snapshots(for: provider) }
-        if let combined = cumulativeSnapshot(for: provider, now: now) {
+        let perAccountSnapshots = displaySnapshotsIncludingCurrentCLI(for: provider)
+        guard cumulative else { return perAccountSnapshots }
+        if let combined = Self.cumulativeSnapshot(
+            provider: provider,
+            from: perAccountSnapshots,
+            now: now
+        ) {
             return [combined]
         }
-        return snapshots(for: provider)
+        return perAccountSnapshots
     }
 
     /// Single-snapshot variant for surfaces that show one summary per
@@ -1384,6 +1406,55 @@ extension ProviderQuotaService {
     }
 
     // MARK: - Helpers
+
+    private func displaySnapshotsIncludingCurrentCLI(for provider: AgentProvider) -> [ProviderQuotaSnapshot] {
+        let accountSnapshots = snapshots(for: provider)
+        guard let currentCLIType = Self.currentCLIType(for: provider),
+              accountSnapshots.contains(where: \.hasDisplayableQuotaSignal),
+              let providerSnapshot = snapshot(for: provider),
+              providerSnapshot.hasDisplayableQuotaSignal else {
+            return accountSnapshots
+        }
+
+        let currentAccountID = "current-\(currentCLIType.rawValue)"
+        let currentSourceID = "switcher-cli-current:\(currentCLIType.rawValue)"
+        let alreadyIncluded = accountSnapshots.contains { snapshot in
+            snapshot.accountID == currentAccountID || snapshot.sourceId == currentSourceID
+        }
+        guard !alreadyIncluded else { return accountSnapshots }
+
+        let currentLabel = Self.currentCLIDisplayLabel(for: currentCLIType)
+        let currentSnapshot = providerSnapshot.withAccountMetadata(
+            providerID: provider.providerID,
+            accountID: currentAccountID,
+            accountLabel: currentLabel,
+            accountStorageScope: .localOnly,
+            sourceId: currentSourceID
+        )
+
+        return [currentSnapshot] + accountSnapshots
+    }
+
+    private static func currentCLIDisplayLabel(for cliType: SwitcherCLIProfileType) -> String {
+        switch cliType {
+        case .codex:
+            return CLIAuthDiscovery.discoverAuthState(for: cliType).accountDescription
+                ?? "Current \(cliType.displayName) login"
+        case .claude, .opencode:
+            return "Current \(cliType.displayName) login"
+        }
+    }
+
+    private static func currentCLIType(for provider: AgentProvider) -> SwitcherCLIProfileType? {
+        switch provider {
+        case .codex:
+            return .codex
+        case .claudeCode:
+            return .claude
+        default:
+            return nil
+        }
+    }
 
     /// Group inputs' displayable buckets by `(key, windowKind)` and sum
     /// them into one bucket per group. Buckets without a unit match are

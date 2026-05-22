@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Swarm glyph inspection timing
+- **Let provider and symbol glyphs settle before cycling.** Standard swarm mode
+  now waits for static glyph formations to finish converging, then keeps them
+  visible for a short admire hold before transforming into the next swarm shape
+  across macOS/iOS/iPadOS and Android wallpaper surfaces.
+
+### Added — Click-to-Open and Long-press-to-Cancel Active Missions
+- **Click-to-Open progress dashboard**: Active mission tiles in the Agents tab (iOS single-column and multi-column split layout sidebars) are now clickable, opening the live progress tracking sheet (`MissionLiveDetailView`) to observe real-time logs, outputs, and milestones.
+- **Tap-and-Hold visual interactive cancellation**: Added a premium spring-animated visual transition that reveals a circular red `"X"` overlay button on active mission tiles during long-press, complete with custom threshold haptics (`HapticBus.threshold()`).
+- **Destructive cancellation confirmation**: Pressing the close `"X"` button triggers an elegant Swift confirmation dialog before destructively cancelling the mission via the client's `cancelMission(requestID:)` Firestore writer.
+- **Daemon-level shell process and streaming generation termination**: Defined a thread-safe `MissionCancellationTracker` inside the Mac daemon listener. The daemon intercepts the cancellation snapshot, immediately terminates running CLI sub-processes (via `process.terminate()`), and cleanly cancels active interactive chat stream generation (via `chatController.cancelGeneration()`).
+
+### Added — xAI / Grok as a full-service quota provider
+- **Promoted Grok (xAI) to a first-class quota provider.** xAI now appears as a
+  subscription card with a real remaining-percentage, participates in failover
+  routing alongside Claude / Codex / Factory / MiniMax, and renders on the Pixel
+  Clock and Nest Hub smart-display surfaces with a dedicated 8×8 Grok glyph.
+- **Three SuperGrok consumer tiers plus the GrokBuild developer tier.** A plan
+  picker (SuperGrok Lite / SuperGrok / SuperGrok Heavy / GrokBuild) is available
+  in the quota popover, command center, and the macOS plan wizard. SuperGrok
+  tiers estimate a rolling 2-hour prompt window from local routing activity;
+  GrokBuild reads exact prepaid credit balance and 24h/7d/30d spend from the xAI
+  Management API.
+- **Management-key auth.** A new optional `xai-mgmt-…` Management Key (stored in
+  the device keychain, separate from the inference key) unlocks exact GrokBuild
+  credit reporting. Mobile provider connections and the Firebase quota-refresh
+  backend recognize xAI end-to-end.
+
+### Fixed — Quota account visibility controls
+- **Allowed multiple OpenAI/Codex OAuth profiles with the same account label.**
+  The add-account flow now dedupes only the exact local auth directory, keeps
+  same-email isolated profiles distinguishable, and shows the current local CLI
+  login beside saved reserve profiles on the quota dashboard.
+- **Added per-account quota bar visibility.** Expanded quota cards now let users
+  show or hide individual bucket bars, with Show all / Hide all controls and
+  persisted selections per account.
+
+### Fixed — Mercury mirror iOS controls
+- **Persisted mirror consent after the first Mac approval.** Accepting a phone
+  mirror request now enables the existing Mac auto-accept fast path, advertises
+  the trusted state through Mercury presence, and changes mobile pending copy to
+  “opening mirror” instead of telling an already-approved user to check the Mac.
+- **Stopped false “Mac video stalled” recovery prompts.** The Mac mirror sink
+  now emits lightweight health heartbeats while a mirror is active, Android
+  treats fresh Mac heartbeats as live stream health even when the desktop is
+  visually idle, and stale receiver state starts automatic mirror recovery
+  instead of telling the user to tap Retry.
+- **Restored direct Mac input from the iOS mirror.** Single taps now send
+  primary click intents immediately, long-press still maps to secondary click,
+  trackpad mode appears as soon as it is selected, the mirror cursor is visible
+  before the first pointer event, and the Mac typing bar retries focus so the
+  iOS keyboard reliably opens.
+- **Restored Android mirror control parity.** Android now sends the same
+  `pointer_move`, `pointer_click`, and `mouseButton` control payloads as iOS,
+  exposes explicit View/Touch/Trackpad/Scroll modes, shows a live mirror cursor,
+  opens a focused Mac typing row, and sends complete scroll endpoints instead of
+  malformed partial scroll intents.
+- **Cleared Mac-side mirror sessions when phones hang up.** iPhone/iPad now sends
+  `media.mirror.stop` even when the full-screen viewer is dismissed outside the
+  close button, Android emits the same stop frame on close/back/activity teardown,
+  and the Mac immediately frees the active mirror slot so reconnects and another
+  paired device can connect without waiting for a stale session to time out.
+
 ### Fixed — Cached input cost accounting
 - **Corrected inflated GPT-5.5 cached-input estimates.** Added the OpenAI
   GPT-5.5 catalog entry and refreshed the GPT-5.5 Factory-family cache pricing
@@ -37,8 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cross-platform shared simulation.** Added `SwarmCanvasView` in
   `OpenBurnBarCore` driving both AgentLens (Mac) and OpenBurnBarMobile from
   one `TimelineView` + `Canvas` implementation with two paces (energetic for
-  Mac, cinematic for iPhone/iPad) and adaptive particle budgets (1200 on Mac,
-  720 on iPad, 360 on iPhone, halved under Low Power Mode). Android gets a
+  Mac, cinematic for iPhone/iPad) and adaptive particle budgets (1800 on Mac,
+  1080 on iPad, 520 on iPhone, halved under Low Power Mode). Android gets a
   parallel `SwarmBackground` composable using `withFrameNanos` + Compose
   `Canvas`, scaled per device class and respecting Power Save mode. Both
   honor Reduce Motion (pauses cycling, silences the noise field).
@@ -53,13 +116,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BurnBar logo swarm formation.** The shared swarm cycle now adds the
   OpenBurnBar flame-shaped bar graph mark as a first-class particle formation
   between the code glyph and quota rings.
-- **Swarm wallpaper polish.** The BurnBar logo formation now renders upright,
-  active wallpaper particles share the field across every running provider
-  detected from the process table, and the Desktop Wallpaper Background picker
-  uses distinct preview swatches instead of nearly identical dark dots. Provider
-  colors remain exact outside the BurnBar flame, whose particles now use
-  provider-family highlights and shadows so a single active provider still reads
-  dimensional instead of flat.
+- **Provider-logo and Grok/xAI swarm formations.** Provider logos can now form
+  concurrently instead of one-at-a-time, default mode preserves each provider's
+  brand colors, selected swarm palettes tint logo highlights intentionally, and
+  macOS can cycle through symbols, individual provider marks, Grok, xAI, and
+  multi-provider formations by clicking empty desktop space.
+- **Asset-derived logo dot masks and wallpaper speed dial.** Provider-logo
+  formations now sample bundled logo assets into pure dot masks instead of
+  letting text glyph particles pollute the marks, so Gemini/Antigravity keeps
+  its rainbow source colors, Cursor/Grok/OpenAI/Codex match the app assets, and
+  macOS gets a live speed dial for desktop swarm drift and cycle pacing.
+- **Complete provider-logo swarm coverage.** The desktop click-cycle and
+  cross-platform swarm cycle now include every `AgentProvider` case — Factory,
+  Claude Code, Codex, OpenCode, Gemini CLI, Antigravity, OpenAI, DeepSeek,
+  MiniMax, Z.ai, xAI, Cursor, Copilot, Kimi, Aider, Cline, Kilo Code, Roo Code,
+  Forge, Augment, Hermes, Pi Agent, Goose, OpenClaw, Ollama, Windsurf, and
+  Warp — with grouped formations sized for legible logo detail instead of one
+  overcrowded tile.
+- **Pristine logo sampling.** Swift and Android logo samplers now detect and
+  remove solid asset backgrounds before generating dot targets, preventing
+  white rounded-square PNG backgrounds from turning into giant dotted boxes
+  around provider marks.
+- **Provider glyph customization.** macOS desktop wallpaper settings and the
+  iPhone/iPad wallpaper exporter now include a collapsible provider-glyph
+  customizer, while Android live wallpaper settings expose the same provider
+  filter. Selection changes feed the live swarm cycle so disabled providers no
+  longer appear in click-cycle, default-cycle, or grouped logo formations.
+- **Swarm wallpaper polish.** The BurnBar logo formation now uses the real
+  bundled flame/bar-graph silhouette so the flame stays above the bars instead
+  of wrapping under them, active wallpaper particles share the field across
+  every running provider detected from the process table, and the Desktop
+  Wallpaper Background picker uses distinct preview swatches instead of nearly
+  identical dark dots. Provider colors remain exact outside the BurnBar flame,
+  whose particles now use provider-family highlights and shadows so a single
+  active provider still reads dimensional instead of flat.
 
 ### Added — Iroh Services observability
 - **Official Iroh Services endpoint metrics.** Upgraded the native iroh bridge

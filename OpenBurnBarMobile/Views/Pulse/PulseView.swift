@@ -71,7 +71,8 @@ struct PulseView: View {
                     VelocityForecastCard(
                         todayTotals: dashboard.windowTotals[.today],
                         trailingTotals: dashboard.windowTotals[.sevenDays],
-                        displayMode: displayMode
+                        displayMode: displayMode,
+                        liveUsages: liveUsagesForPulse
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.10)

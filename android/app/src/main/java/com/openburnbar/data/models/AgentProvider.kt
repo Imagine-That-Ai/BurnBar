@@ -9,7 +9,8 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     AIDER("aider", "Aider", 0xFFFF6B35, 0xFFE86100),
     CURSOR("cursor", "Cursor", 0xFFB4B8C0, 0xFF1A1A1A),
     OPEN_AI("openai", "OpenAI", 0xFF00A67E, 0xFF00C48C),
-    CODEX("codex", "Codex", 0xFF00A67E, 0xFF00C48C),
+    DEEP_SEEK("deepseek", "DeepSeek", 0xFF6366F1, 0xFF818CF8),
+    CODEX("codex", "Codex", 0xFF2563EB, 0xFF60A5FA),
     OPENCODE("opencode", "OpenCode", 0xFF0EA5E9, 0xFF38BDF8),
     ZAI("zai", "Zai", 0xFF8B5CF6, 0xFFA78BFA),
     MINIMAX("minimax", "MiniMax", 0xFFF59E0B, 0xFFFCD34D),
@@ -20,15 +21,47 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     FORGE_DEV("forge-dev", "Forge Dev", 0xFFF97316, 0xFFFB923C),
     AUGMENT("augment", "Augment", 0xFF3B82F6, 0xFF60A5FA),
     HERMES("hermes", "Hermes", 0xFFA855F7, 0xFFC084FC),
+    PI_AGENT("pi-agent", "Pi Agent", 0xFFA855F7, 0xFF7C3AED),
     GEMINI_CLI("gemini-cli", "Gemini CLI", 0xFF4285F4, 0xFF8AB4F8),
     GOOSE("goose", "Goose", 0xFF0D9488, 0xFF2DD4BF),
     OPEN_CLAW("openclaw", "OpenClaw", 0xFFFF6B6B, 0xFFF472B6),
     OLLAMA("ollama", "Ollama", 0xFF6B7280, 0xFF9CA3AF),
     WINDSURF("windsurf", "Windsurf", 0xFF06B6D4, 0xFF22D3EE),
     WARP("warp", "Warp", 0xFFDDE4EA, 0xFF111111),
+    XAI("xai", "xAI", 0xFF1A1A1A, 0xFF4A4A4A),
     ANTIGRAVITY("antigravity", "Antigravity", 0xFF6C63FF, 0xFF8F8AFF);
 
     companion object {
+        val swarmGlyphProviders: List<AgentProvider> = listOf(
+            FACTORY,
+            CLAUDE_CODE,
+            CODEX,
+            OPENCODE,
+            OPEN_CLAW,
+            HERMES,
+            GEMINI_CLI,
+            ANTIGRAVITY,
+            OPEN_AI,
+            DEEP_SEEK,
+            MINIMAX,
+            ZAI,
+            XAI,
+            CURSOR,
+            COPILOT,
+            KIMI,
+            AIDER,
+            CLINE,
+            KILO_CODE,
+            ROO_CODE,
+            FORGE_DEV,
+            AUGMENT,
+            PI_AGENT,
+            GOOSE,
+            OLLAMA,
+            WINDSURF,
+            WARP
+        )
+
         /**
          * Looks up an [AgentProvider] from any incoming identifier — the Firestore
          * data layer is inconsistent and emits keys like "claudecode", "Claude Code",
@@ -59,6 +92,9 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
             "chatgpt"       to OPEN_AI,
             "openaiapi"     to OPEN_AI,
             "gpt"           to OPEN_AI,
+            "deepseek"      to DEEP_SEEK,
+            "deepseekapi"   to DEEP_SEEK,
+            "deepseekcoder" to DEEP_SEEK,
             "opencodego"    to OPENCODE,
             "open-code"     to OPENCODE,
             // Anthropic family
@@ -82,6 +118,12 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
             "moonshot"      to KIMI,
             "kimik2"        to KIMI,
             "msft"          to COPILOT,
+            "pi"            to PI_AGENT,
+            "piagent"       to PI_AGENT,
+            "x-ai"          to XAI,
+            "xai"           to XAI,
+            "grok"          to XAI,
+            "supergrok"     to XAI,
         )
 
         fun chartPalette(provider: AgentProvider): List<Color> {

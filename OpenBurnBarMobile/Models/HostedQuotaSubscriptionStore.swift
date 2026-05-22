@@ -178,10 +178,7 @@ final class HostedQuotaSubscriptionStore {
     /// trusting any client-supplied identifier.
     func purchase() async {
         guard !isPurchasing else { return }
-        guard isSignedIn() else {
-            error = Self.signedOutPurchaseMessage
-            return
-        }
+        let canBindEntitlement = isSignedIn()
         isPurchasing = true
         error = nil
         defer { isPurchasing = false }
@@ -192,10 +189,25 @@ final class HostedQuotaSubscriptionStore {
             guard let product else {
                 throw HostedQuotaSubscriptionError.productUnavailable
             }
-            let token = try await mintAppAccountToken()
-            let result = try await purchaseProduct(product, [.appAccountToken(token)])
+            let purchaseOptions: Set<Product.PurchaseOption>
+            if canBindEntitlement {
+                let token = try await mintAppAccountToken()
+                purchaseOptions = [.appAccountToken(token)]
+            } else {
+                purchaseOptions = []
+            }
+            let result = try await purchaseProduct(product, purchaseOptions)
             switch result {
             case .success(let signedTransactionJWS, let finish):
+                guard canBindEntitlement else {
+                    await finish()
+                    isActive = false
+                    expirationDate = nil
+                    purchaseDate = nil
+                    latestTransactionID = nil
+                    error = Self.signedOutPurchaseMessage
+                    return
+                }
                 do {
                     try await verifyOnServer(jws: signedTransactionJWS)
                     await finish()
@@ -506,7 +518,7 @@ final class HostedQuotaSubscriptionStore {
     }
 
     private static let signedOutPurchaseMessage =
-        "Sign in to OpenBurnBar before subscribing so Apple can link OpenBurnBar Cloud to your account."
+        "Apple purchase completed. Sign in to OpenBurnBar and tap Restore Purchases so OpenBurnBar Cloud can link the subscription to your account."
 
     private static let signedOutRestoreMessage =
         "Sign in to OpenBurnBar before restoring purchases so Apple can link OpenBurnBar Cloud to your account."

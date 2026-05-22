@@ -38,6 +38,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             bridgeManager: ClaudeQuotaBridgeManager(appPaths: appPaths, homeDirectoryURL: tempDirectoryURL, fileManager: fileManager, snapshotStore: store),
             miniMaxModeProvider: { .tokenPlan },
             factoryPlanProvider: { .unknown },
+            xaiPlanProvider: { .unknown },
             claudeBridgeStatus: ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil),
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },

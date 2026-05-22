@@ -56,4 +56,36 @@ class QuotaSnapshotDeduperTest {
 
         assertEquals(2, snapshots.deduplicatedByProviderAccount().size)
     }
+
+    @Test
+    fun `provider level stale aggregate does not shadow account snapshots`() {
+        val snapshots = listOf(
+            ProviderQuotaSnapshot(
+                id = "claude_provider_rollup",
+                provider = "claude_code",
+                providerId = "claude_code",
+                updatedAt = "2026-05-11T10:02:00Z",
+                buckets = listOf(
+                    QuotaBucket(name = "five-hour", used = 100.0, limit = 100.0, remaining = 0.0, window = "rollingHours")
+                )
+            ),
+            ProviderQuotaSnapshot(
+                id = "claude_account_fresh",
+                provider = "claude_code",
+                providerId = "claude_code",
+                accountId = "acct_1",
+                accountLabel = "Claude Work",
+                updatedAt = "2026-05-11T10:00:00Z",
+                buckets = listOf(
+                    QuotaBucket(name = "five-hour", used = 62.0, limit = 100.0, remaining = 38.0, window = "rollingHours")
+                )
+            )
+        )
+
+        val deduped = snapshots.deduplicatedByProviderAccount()
+
+        assertEquals(1, deduped.size)
+        assertEquals("claude_account_fresh", deduped.single().id)
+        assertEquals("acct_1", deduped.single().accountId)
+    }
 }

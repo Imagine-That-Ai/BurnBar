@@ -3,6 +3,7 @@ import XCTest
 @testable import OpenBurnBarMobile
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+import OpenBurnBarMedia
 
 /// Integration coverage for the wires `AgentLiveStage` relies on:
 ///   • `AgentWatchOverlaySingleton.evaluate(...)` gates correctly on
@@ -134,6 +135,28 @@ final class AgentLiveStageWiringTests: XCTestCase {
         try await Task.sleep(nanoseconds: 30_000_000)
         XCTAssertEqual(presenter.mode, .hidden)
         XCTAssertEqual(presenter.collapseReason, .panic)
+    }
+
+    func test_singleton_attaches_pip_to_shared_video_layer_on_first_frame() async throws {
+        let videoCoordinator = AgentWatchVideoCoordinator()
+        let pipController = ScreenSharePiPController(isPictureInPictureSupported: { true })
+        let singleton = AgentWatchOverlaySingleton(
+            coordinator: AgentWatchOverlayCoordinator(),
+            pairingKeyProvider: StubPairingKeyProvider(),
+            videoCoordinator: videoCoordinator,
+            pipController: pipController
+        )
+
+        XCTAssertTrue(singleton.videoCoordinator === videoCoordinator)
+        XCTAssertFalse(pipController.didRequestAutomaticInlinePiP)
+
+        singleton.configurePictureInPicture(onDidStart: {}, onDidStop: {})
+        singleton.state.ingestSurfaceFrame(
+            MediaFrame(kind: .videoNAL, flags: [.keyframe], payload: Data([0x00, 0x00, 0x01]))
+        )
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        XCTAssertTrue(pipController.didRequestAutomaticInlinePiP)
     }
 }
 

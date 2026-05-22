@@ -21,8 +21,10 @@ struct ProviderQuotaPopoverStrip: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: DesignSystem.Spacing.sm) {
-                    ForEach(ProviderQuotaService.supportedProviders, id: \.self) { provider in
-                        popoverQuotaChip(provider: provider)
+                    ForEach(SettingsManager.shared.quotas.providerOrder, id: \.self) { provider in
+                        if SettingsManager.shared.quotas.visibleProviders.contains(provider) {
+                            popoverQuotaChip(provider: provider)
+                        }
                     }
                 }
                 .padding(.horizontal, DesignSystem.Spacing.sm)
@@ -84,12 +86,16 @@ struct QuotaCommandCenter: View {
     @State private var localMiniMaxKey = ""
     @State private var localMiniMaxMode: MiniMaxQuotaMode = .tokenPlan
     @State private var localFactoryTier: FactoryQuotaPlanTier = .unknown
+    @State private var localXaiTier: XAIQuotaPlanTier = .unknown
+    @State private var localXaiManagementKey = ""
     @State private var localZaiKey = ""
     @State private var localCursorCookie = ""
     @State private var isWorking = false
 
     private var providers: [AgentProvider] {
-        ProviderQuotaService.supportedProviders
+        settingsManager.quotas.providerOrder.filter {
+            settingsManager.quotas.visibleProviders.contains($0)
+        }
     }
 
     var body: some View {
@@ -136,6 +142,8 @@ struct QuotaCommandCenter: View {
                             localMiniMaxKey: $localMiniMaxKey,
                             localMiniMaxMode: $localMiniMaxMode,
                             localFactoryTier: $localFactoryTier,
+                            localXaiTier: $localXaiTier,
+                            localXaiManagementKey: $localXaiManagementKey,
                             localZaiKey: $localZaiKey,
                             localCursorCookie: $localCursorCookie,
                             isWorking: isWorking,
@@ -194,6 +202,9 @@ struct QuotaCommandCenter: View {
             localCursorCookie = ks.apiKey(for: "cursor_cookie") ?? ""
         case .factory:
             localFactoryTier = settingsManager.factoryQuotaPlanTier
+        case .xAI:
+            localXaiTier = settingsManager.xaiQuotaPlanTier
+            localXaiManagementKey = ks.apiKey(for: "xai_management_key") ?? ""
         default:
             break
         }
@@ -241,6 +252,18 @@ struct QuotaCommandCenter: View {
             }
         case .factory:
             settingsManager.factoryQuotaPlanTier = localFactoryTier
+        case .xAI:
+            do {
+                let trimmed = localXaiManagementKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    try ks.removeAPIKey(for: "xai_management_key")
+                } else {
+                    try ks.setAPIKey(trimmed, for: "xai_management_key")
+                }
+                settingsManager.xaiQuotaPlanTier = localXaiTier
+            } catch {
+                // silently fail
+            }
         default:
             break
         }
@@ -289,6 +312,8 @@ struct QuotaCommandRow: View {
     @Binding var localMiniMaxKey: String
     @Binding var localMiniMaxMode: MiniMaxQuotaMode
     @Binding var localFactoryTier: FactoryQuotaPlanTier
+    @Binding var localXaiTier: XAIQuotaPlanTier
+    @Binding var localXaiManagementKey: String
     @Binding var localZaiKey: String
     @Binding var localCursorCookie: String
     let isWorking: Bool
@@ -423,6 +448,8 @@ struct QuotaCommandRow: View {
                 zaiSetup
             case .factory:
                 factorySetup
+            case .xAI:
+                xaiSetup
             case .cursor:
                 cursorSetup
             case .claudeCode:
@@ -595,6 +622,53 @@ struct QuotaCommandRow: View {
     }
 
     @ViewBuilder
+    private var xaiSetup: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Plan tier")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            Picker("", selection: $localXaiTier) {
+                ForEach(XAIQuotaPlanTier.allCases) { tier in
+                    Text(tier.displayName).tag(tier)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Text("Management Key (optional — for GrokBuild credit balance)")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            SecureField("xai-mgmt-…", text: $localXaiManagementKey)
+                .font(DesignSystem.Typography.monoSmall)
+                .textFieldStyle(.plain)
+                .padding(DesignSystem.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                )
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button("Save") {
+                    onSave()
+                }
+                .buttonStyle(GlassButtonStyle(prominent: true))
+                .disabled(isWorking)
+
+                Button("Cancel") {
+                    onToggle()
+                }
+                .buttonStyle(GlassButtonStyle(prominent: false))
+            }
+            .font(DesignSystem.Typography.caption)
+        }
+    }
+
+    @ViewBuilder
     private var claudeSetup: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             let bridgeStatus = quotaService.claudeBridgeStatus
@@ -668,6 +742,7 @@ struct QuotaCommandRow: View {
         switch provider {
         case .factory: return "Factory / Droid"
         case .zai: return "Z.ai"
+        case .xAI: return "Grok (xAI)"
         default: return provider.displayName
         }
     }

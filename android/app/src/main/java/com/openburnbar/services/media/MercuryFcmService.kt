@@ -21,8 +21,12 @@ import kotlinx.coroutines.tasks.await
 /**
  * High-priority FCM listener for Mercury incoming calls. iOS uses APNs +
  * PushKit; Android equivalent is a high-priority FCM data message routed
- * through `FirebaseMessagingService` with a `Notification.CallStyle`
- * full-screen-intent pinned to `IncomingCallActivity`.
+ * through `FirebaseMessagingService` with a `Notification.CallStyle`.
+ *
+ * We intentionally avoid `USE_FULL_SCREEN_INTENT`: Play treats it as a
+ * declared special access, while Mercury can still expose accept/decline
+ * actions and a return-to-call path through the high-priority call
+ * notification.
  *
  * Cloud Function `triggerVoIPCall` ships a data message with this
  * envelope:
@@ -112,7 +116,6 @@ class MercuryFcmService : FirebaseMessagingService() {
             (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         val acceptPending = PendingIntent.getActivity(this, 1, acceptIntent, pendingFlags)
         val declinePending = PendingIntent.getActivity(this, 2, declineIntent, pendingFlags)
-        val fullScreenPending = PendingIntent.getActivity(this, 3, acceptIntent, pendingFlags)
 
         val builder = NotificationCompat.Builder(this, MediaSessionForegroundService.CHANNEL_ID)
             .setSmallIcon(com.openburnbar.R.drawable.ic_mercury_call)
@@ -120,7 +123,7 @@ class MercuryFcmService : FirebaseMessagingService() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setFullScreenIntent(fullScreenPending, true)
+            .setContentIntent(acceptPending)
             .setContentTitle("Incoming call")
             .setContentText("$callerName is calling")
 

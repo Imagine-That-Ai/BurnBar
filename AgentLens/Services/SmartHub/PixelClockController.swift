@@ -242,6 +242,7 @@ enum PixelClockAgentProcessDetector {
         if has(["minimax", "mini-max"]) { return .minimax }
         if has(["zai", "z.ai", "z-ai"]) { return .zai }
         if has(["kimi", "moonshot"]) { return .kimi }
+        if has(["xai", "x.ai", "x-ai", "grok", "supergrok"]) { return .xAI }
 
         return nil
     }

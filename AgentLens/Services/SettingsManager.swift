@@ -199,6 +199,21 @@ final class SettingsManager {
         set { appearance.cycleShapesScreensaver = newValue }
     }
 
+    var clickDesktopToCycleSwarm: Bool {
+        get { appearance.clickDesktopToCycleSwarm }
+        set { appearance.clickDesktopToCycleSwarm = newValue }
+    }
+
+    var desktopWallpaperSpeed: Double {
+        get { appearance.desktopWallpaperSpeed }
+        set { appearance.desktopWallpaperSpeed = newValue }
+    }
+
+    var desktopWallpaperProviderGlyphs: [AgentProvider] {
+        get { appearance.desktopWallpaperProviderGlyphs }
+        set { appearance.desktopWallpaperProviderGlyphs = newValue }
+    }
+
     var preferredSwiftUIColorScheme: ColorScheme? {
         appearance.appearanceMode.colorScheme
     }
@@ -794,6 +809,11 @@ final class SettingsManager {
     var factoryQuotaPlanTier: FactoryQuotaPlanTier {
         get { quotas.factoryQuotaPlanTier }
         set { quotas.factoryQuotaPlanTier = newValue }
+    }
+
+    var xaiQuotaPlanTier: XAIQuotaPlanTier {
+        get { quotas.xaiQuotaPlanTier }
+        set { quotas.xaiQuotaPlanTier = newValue }
     }
 
     var tokenizerAssistedFallbackEnabled: Bool {

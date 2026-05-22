@@ -36,9 +36,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private var wallpaperPanels: [BurnBarWallpaperPanel] = []
     private var sharedWallpaperViewModel = SwarmWallpaperViewModel()
+    private var originalDesktopImageURLByScreenID: [CGDirectDisplayID: URL] = [:]
+    private var installedDesktopFallbackByScreenID: [CGDirectDisplayID: DesktopWallpaperBackground] = [:]
 
     // Observers
     private var wallpaperEnabledObserver: Any?
+    private var wallpaperBackgroundObserver: Any?
+    private var wallpaperSpeedObserver: Any?
+    private var wallpaperProviderGlyphsObserver: Any?
+    private var wallpaperPollTimer: Timer?
     private var dataStoreObservation: Any?
     private var daemonObservation: Any?
     private var batteryTimer: Timer?
@@ -265,19 +271,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // MARK: - Live Wallpaper Orchestration
 
     private func observeDesktopWallpaper() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleWallpaperEnabledChange),
-            name: .enableDesktopWallpaperDidChange,
-            object: nil
-        )
+        wallpaperEnabledObserver = NotificationCenter.default.addObserver(
+            forName: .enableDesktopWallpaperDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleWallpaperEnabledChange()
+            }
+        }
+
+        wallpaperBackgroundObserver = NotificationCenter.default.addObserver(
+            forName: .desktopWallpaperBackgroundDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleWallpaperBackgroundChange()
+            }
+        }
+
+        wallpaperSpeedObserver = NotificationCenter.default.addObserver(
+            forName: .desktopWallpaperSpeedDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.sharedWallpaperViewModel.speed = SettingsManager.shared.appearance.desktopWallpaperSpeed
+            }
+        }
+
+        wallpaperProviderGlyphsObserver = NotificationCenter.default.addObserver(
+            forName: .desktopWallpaperProviderGlyphsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.sharedWallpaperViewModel.providerGlyphs = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
+            }
+        }
     }
 
     @objc private func handleWallpaperEnabledChange() {
-        Task { @MainActor in
-            self.updateWallpaperState()
-            self.configureWallpaperActivityPolling()
-            self.syncWallpaperColorDriver()
+        self.updateWallpaperState()
+        self.configureWallpaperActivityPolling()
+        self.syncWallpaperColorDriver()
+    }
+
+    private func handleWallpaperBackgroundChange() {
+        sharedWallpaperViewModel.background = SettingsManager.shared.appearance.desktopWallpaperBackground
+        syncSystemDesktopFallback()
+        refreshWallpaperPanels()
+    }
+
+    private func checkForSystemWallpaperChanges() {
+        guard SettingsManager.shared.appearance.enableDesktopWallpaper else { return }
+
+        var didCaptureNewOriginal = false
+
+        for screen in NSScreen.screens {
+            guard let displayID = displayID(for: screen),
+                  let currentURL = NSWorkspace.shared.desktopImageURL(for: screen) else {
+                continue
+            }
+
+            // If the user changed the system desktop wallpaper to a non-fallback image,
+            // and it is different from the currently cached original wallpaper,
+            // capture it as the new original wallpaper that we will restore later,
+            // and trigger a re-apply of the themed fallback image.
+            if !isOpenBurnBarFallbackURL(currentURL) && currentURL != originalDesktopImageURL(for: displayID) {
+                originalDesktopImageURLByScreenID[displayID] = currentURL
+                storeOriginalDesktopImageURL(currentURL, for: displayID)
+                didCaptureNewOriginal = true
+            }
+        }
+
+        if didCaptureNewOriginal {
+            // Re-apply the selected wallpaper theme to overlay on top of the newly chosen system wallpaper.
+            syncSystemDesktopFallback()
         }
     }
 
@@ -286,26 +357,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if isEnabled {
             setupWallpaperPanels()
         } else {
-            teardownWallpaperPanels()
+            teardownWallpaperPanels(restoreSystemWallpaper: true)
         }
     }
 
     private func setupWallpaperPanels() {
-        teardownWallpaperPanels()
+        teardownWallpaperPanels(restoreSystemWallpaper: false)
+        sharedWallpaperViewModel.background = SettingsManager.shared.appearance.desktopWallpaperBackground
+        sharedWallpaperViewModel.speed = SettingsManager.shared.appearance.desktopWallpaperSpeed
+        sharedWallpaperViewModel.providerGlyphs = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
+        syncSystemDesktopFallback()
         let screens = NSScreen.screens
         for screen in screens {
             let panel = BurnBarWallpaperPanel(screen: screen, viewModel: sharedWallpaperViewModel)
-            panel.orderBack(nil)
+            panel.orderFrontRegardless()
             wallpaperPanels.append(panel)
         }
     }
 
-    private func teardownWallpaperPanels() {
+    private func refreshWallpaperPanels() {
+        for panel in wallpaperPanels {
+            panel.orderFrontRegardless()
+        }
+    }
+
+    private func teardownWallpaperPanels(restoreSystemWallpaper: Bool = true) {
         for panel in wallpaperPanels {
             panel.orderOut(self)
             panel.close()
         }
         wallpaperPanels.removeAll()
+        if restoreSystemWallpaper {
+            restoreOriginalDesktopImages()
+        }
     }
 
     private func setupScreenChangeObserver() {
@@ -321,6 +405,239 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if SettingsManager.shared.appearance.enableDesktopWallpaper {
             setupWallpaperPanels()
         }
+    }
+
+    private func syncSystemDesktopFallback() {
+        guard SettingsManager.shared.appearance.enableDesktopWallpaper else {
+            restoreOriginalDesktopImages()
+            return
+        }
+
+        let background = SettingsManager.shared.appearance.desktopWallpaperBackground
+        for screen in NSScreen.screens {
+            guard let displayID = displayID(for: screen) else { continue }
+            captureOriginalDesktopImageIfNeeded(for: screen, displayID: displayID)
+
+            do {
+                let fallbackURL = try renderDesktopFallbackImage(for: background, screen: screen, displayID: displayID)
+                try NSWorkspace.shared.setDesktopImageURL(
+                    fallbackURL,
+                    for: screen,
+                    options: [
+                        .imageScaling: NSImageScaling.scaleAxesIndependently.rawValue,
+                        .allowClipping: false
+                    ]
+                )
+                installedDesktopFallbackByScreenID[displayID] = background
+            } catch {
+                NSLog("OpenBurnBar desktop fallback failed for display \(displayID): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func restoreOriginalDesktopImages() {
+        for screen in NSScreen.screens {
+            guard let displayID = displayID(for: screen),
+                  let originalURL = originalDesktopImageURL(for: displayID),
+                  currentDesktopImageIsOpenBurnBarFallback(for: screen) else {
+                continue
+            }
+
+            do {
+                try NSWorkspace.shared.setDesktopImageURL(originalURL, for: screen, options: [:])
+                clearStoredOriginalDesktopImageURL(for: displayID)
+            } catch {
+                NSLog("OpenBurnBar desktop restore failed for display \(displayID): \(error.localizedDescription)")
+            }
+        }
+        installedDesktopFallbackByScreenID.removeAll()
+    }
+
+    private func captureOriginalDesktopImageIfNeeded(for screen: NSScreen, displayID: CGDirectDisplayID) {
+        if originalDesktopImageURLByScreenID[displayID] == nil,
+           let storedURL = storedOriginalDesktopImageURL(for: displayID) {
+            originalDesktopImageURLByScreenID[displayID] = storedURL
+        }
+
+        guard originalDesktopImageURLByScreenID[displayID] == nil,
+              let currentURL = NSWorkspace.shared.desktopImageURL(for: screen),
+              !isOpenBurnBarFallbackURL(currentURL) else {
+            return
+        }
+        originalDesktopImageURLByScreenID[displayID] = currentURL
+        storeOriginalDesktopImageURL(currentURL, for: displayID)
+    }
+
+    private func originalDesktopImageURL(for displayID: CGDirectDisplayID) -> URL? {
+        if let url = originalDesktopImageURLByScreenID[displayID] {
+            return url
+        }
+        if let storedURL = storedOriginalDesktopImageURL(for: displayID) {
+            originalDesktopImageURLByScreenID[displayID] = storedURL
+            return storedURL
+        }
+        return nil
+    }
+
+    private func storeOriginalDesktopImageURL(_ url: URL, for displayID: CGDirectDisplayID) {
+        UserDefaults.standard.set(url.absoluteString, forKey: originalDesktopImageURLKey(for: displayID))
+    }
+
+    private func storedOriginalDesktopImageURL(for displayID: CGDirectDisplayID) -> URL? {
+        guard let raw = UserDefaults.standard.string(forKey: originalDesktopImageURLKey(for: displayID)) else {
+            return nil
+        }
+        return URL(string: raw)
+    }
+
+    private func clearStoredOriginalDesktopImageURL(for displayID: CGDirectDisplayID) {
+        originalDesktopImageURLByScreenID.removeValue(forKey: displayID)
+        UserDefaults.standard.removeObject(forKey: originalDesktopImageURLKey(for: displayID))
+    }
+
+    private func originalDesktopImageURLKey(for displayID: CGDirectDisplayID) -> String {
+        "desktopWallpaper.originalDesktopImageURL.\(displayID)"
+    }
+
+    private func currentDesktopImageIsOpenBurnBarFallback(for screen: NSScreen) -> Bool {
+        guard let currentURL = NSWorkspace.shared.desktopImageURL(for: screen) else { return false }
+        return isOpenBurnBarFallbackURL(currentURL)
+    }
+
+    private func isOpenBurnBarFallbackURL(_ url: URL) -> Bool {
+        let directory = desktopFallbackDirectory()
+        return url.standardizedFileURL.path.hasPrefix(directory.standardizedFileURL.path)
+    }
+
+    private func desktopFallbackDirectory() -> URL {
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
+        return root.appendingPathComponent("OpenBurnBar/DesktopWallpaperFallbacks", isDirectory: true)
+    }
+
+    private func renderDesktopFallbackImage(
+        for background: DesktopWallpaperBackground,
+        screen: NSScreen,
+        displayID: CGDirectDisplayID
+    ) throws -> URL {
+        let directory = desktopFallbackDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let scale = max(screen.backingScaleFactor, 1)
+        let pixelWidth = max(1, Int((screen.frame.width * scale).rounded(.up)))
+        let pixelHeight = max(1, Int((screen.frame.height * scale).rounded(.up)))
+        let fileURL = directory.appendingPathComponent(
+            "\(background.rawValue)-\(displayID)-\(pixelWidth)x\(pixelHeight).png",
+            isDirectory: false
+        )
+
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelWidth,
+            pixelsHigh: pixelHeight,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            throw NSError(domain: "OpenBurnBarWallpaper", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Could not create wallpaper bitmap"
+            ])
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        let context = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current = context
+        let rect = NSRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight)
+        NSGradient(colors: desktopFallbackColors(for: background))?.draw(in: rect, angle: -32)
+        NSColor.black.withAlphaComponent(0.18).setFill()
+        rect.fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let data = rep.representation(using: .png, properties: [:]) else {
+            throw NSError(domain: "OpenBurnBarWallpaper", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Could not encode wallpaper PNG"
+            ])
+        }
+        try data.write(to: fileURL, options: .atomic)
+        return fileURL
+    }
+
+    private func desktopFallbackColors(for background: DesktopWallpaperBackground) -> [NSColor] {
+        switch background {
+        case .macOSDesktop:
+            return [
+                NSColor(red: 0.180, green: 0.455, blue: 0.930, alpha: 1),
+                NSColor(red: 0.960, green: 0.385, blue: 0.455, alpha: 1),
+                NSColor(red: 0.980, green: 0.720, blue: 0.255, alpha: 1)
+            ]
+        case .midnight:
+            return [
+                NSColor(red: 0.018, green: 0.026, blue: 0.070, alpha: 1),
+                NSColor(red: 0.055, green: 0.145, blue: 0.320, alpha: 1),
+                NSColor(red: 0.115, green: 0.260, blue: 0.520, alpha: 1)
+            ]
+        case .amoledBlack:
+            return [.black, NSColor(red: 0.010, green: 0.010, blue: 0.012, alpha: 1), NSColor(red: 0.055, green: 0.055, blue: 0.060, alpha: 1)]
+        case .graphite:
+            return [
+                NSColor(red: 0.105, green: 0.112, blue: 0.128, alpha: 1),
+                NSColor(red: 0.270, green: 0.295, blue: 0.330, alpha: 1),
+                NSColor(red: 0.475, green: 0.505, blue: 0.545, alpha: 1)
+            ]
+        case .warmEmber:
+            return [
+                NSColor(red: 0.115, green: 0.052, blue: 0.030, alpha: 1),
+                NSColor(red: 0.470, green: 0.145, blue: 0.020, alpha: 1),
+                NSColor(red: 0.920, green: 0.355, blue: 0.055, alpha: 1)
+            ]
+        case .deepIndigo:
+            return [
+                NSColor(red: 0.045, green: 0.035, blue: 0.120, alpha: 1),
+                NSColor(red: 0.180, green: 0.115, blue: 0.390, alpha: 1),
+                NSColor(red: 0.410, green: 0.300, blue: 0.880, alpha: 1)
+            ]
+        case .auroraTeal:
+            return [
+                NSColor(red: 0.015, green: 0.045, blue: 0.050, alpha: 1),
+                NSColor(red: 0.050, green: 0.180, blue: 0.200, alpha: 1),
+                NSColor(red: 0.120, green: 0.380, blue: 0.400, alpha: 1)
+            ]
+        case .sunsetCrimson:
+            return [
+                NSColor(red: 0.045, green: 0.018, blue: 0.020, alpha: 1),
+                NSColor(red: 0.180, green: 0.055, blue: 0.070, alpha: 1),
+                NSColor(red: 0.420, green: 0.115, blue: 0.145, alpha: 1)
+            ]
+        case .cyberpunkViolet:
+            return [
+                NSColor(red: 0.030, green: 0.015, blue: 0.045, alpha: 1),
+                NSColor(red: 0.150, green: 0.055, blue: 0.220, alpha: 1),
+                NSColor(red: 0.380, green: 0.120, blue: 0.520, alpha: 1)
+            ]
+        case .forestMoss:
+            return [
+                NSColor(red: 0.015, green: 0.035, blue: 0.020, alpha: 1),
+                NSColor(red: 0.055, green: 0.140, blue: 0.080, alpha: 1),
+                NSColor(red: 0.150, green: 0.320, blue: 0.180, alpha: 1)
+            ]
+        case .solarFlare:
+            return [
+                NSColor(red: 0.050, green: 0.035, blue: 0.015, alpha: 1),
+                NSColor(red: 0.200, green: 0.140, blue: 0.055, alpha: 1),
+                NSColor(red: 0.480, green: 0.340, blue: 0.120, alpha: 1)
+            ]
+        }
+    }
+
+    private func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            return nil
+        }
+        return CGDirectDisplayID(number.uint32Value)
     }
 
     private func setupPowerMonitoring() {
@@ -420,11 +737,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func configureWallpaperActivityPolling() {
         wallpaperActivityTimer?.invalidate()
         wallpaperActivityTimer = nil
+        wallpaperPollTimer?.invalidate()
+        wallpaperPollTimer = nil
 
         guard SettingsManager.shared.appearance.enableDesktopWallpaper else { return }
         wallpaperActivityTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.syncWallpaperColorDriver()
+            }
+        }
+        wallpaperPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.checkForSystemWallpaperChanges()
             }
         }
     }
@@ -453,7 +777,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func teardownWallpaperObservers() {
-        NotificationCenter.default.removeObserver(self, name: .enableDesktopWallpaperDidChange, object: nil)
+        if let wallpaperEnabledObserver {
+            NotificationCenter.default.removeObserver(wallpaperEnabledObserver)
+            self.wallpaperEnabledObserver = nil
+        }
+        if let wallpaperBackgroundObserver {
+            NotificationCenter.default.removeObserver(wallpaperBackgroundObserver)
+            self.wallpaperBackgroundObserver = nil
+        }
+        if let wallpaperSpeedObserver {
+            NotificationCenter.default.removeObserver(wallpaperSpeedObserver)
+            self.wallpaperSpeedObserver = nil
+        }
+        wallpaperPollTimer?.invalidate()
+        wallpaperPollTimer = nil
         if let wallpaperAgentStatusObserver {
             NotificationCenter.default.removeObserver(wallpaperAgentStatusObserver)
             self.wallpaperAgentStatusObserver = nil
@@ -664,7 +1001,10 @@ enum SwarmWallpaperColorDriverBuilder {
             "openclaw": .openClaw,
             "factory": .factory,
             "droid": .factory,
-            "cursor": .cursor
+            "cursor": .cursor,
+            "xai": .xAI,
+            "grok": .xAI,
+            "supergrok": .xAI
         ]
         if let alias = aliases[normalized] {
             return alias
@@ -745,6 +1085,9 @@ public final class SwarmWallpaperViewModel {
     public var colorDriver: SwarmColorDriver? = nil
     public var isBatteryThrottled: Bool = false
     public var isPaused: Bool = false
+    var background: DesktopWallpaperBackground = SettingsManager.shared.appearance.desktopWallpaperBackground
+    var speed: Double = SettingsManager.shared.appearance.desktopWallpaperSpeed
+    var providerGlyphs: [AgentProvider] = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
 
     public init() {}
 }
@@ -752,24 +1095,37 @@ public final class SwarmWallpaperViewModel {
 /// SwiftUI wrapper for displaying the SwarmCanvasView within the wallpaper panel.
 struct SwarmWallpaperView: View {
     let viewModel: SwarmWallpaperViewModel
-    @State private var settings = SettingsManager.shared
 
     var body: some View {
-        if viewModel.isPaused {
-            Color.clear
-                .ignoresSafeArea()
-        } else {
-            let background = settings.appearance.desktopWallpaperBackground
-            SwarmCanvasView(
-                accent: .purple,
-                pace: .cinematic, // Cinematic pace is perfect for ambient wallpaper
-                colorDriver: viewModel.colorDriver,
-                isBatteryThrottled: viewModel.isBatteryThrottled,
-                externalPointer: viewModel.pointer,
-                isTransparent: background.isTransparent,
-                backdropColor: background.isTransparent ? nil : background.swatchColor
-            )
-            .ignoresSafeArea()
+        let background = viewModel.background
+        let speed = viewModel.speed
+        let providerGlyphs = viewModel.providerGlyphs
+
+        SwarmCanvasView(
+            accent: .purple,
+            pace: .cinematic, // Cinematic pace is perfect for ambient wallpaper
+            colorDriver: viewModel.colorDriver,
+            isBatteryThrottled: viewModel.isBatteryThrottled,
+            externalPointer: viewModel.pointer,
+            isTransparent: false,
+            backdropColor: background.isTransparent ? nil : background.swatchColor,
+            backdropColors: background.swatchPreviewColors,
+            colorPalette: background.swarmPalette,
+            motionSpeedMultiplier: speed,
+            enabledProviderGlyphs: providerGlyphs
+        )
+        .ignoresSafeArea()
+        .animation(.easeInOut(duration: 0.18), value: background)
+        .animation(.easeInOut(duration: 0.18), value: speed)
+        .animation(.easeInOut(duration: 0.18), value: providerGlyphs)
+        .onReceive(NotificationCenter.default.publisher(for: .desktopWallpaperBackgroundDidChange)) { _ in
+            viewModel.background = SettingsManager.shared.appearance.desktopWallpaperBackground
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .desktopWallpaperSpeedDidChange)) { _ in
+            viewModel.speed = SettingsManager.shared.appearance.desktopWallpaperSpeed
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .desktopWallpaperProviderGlyphsDidChange)) { _ in
+            viewModel.providerGlyphs = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
         }
     }
 }
@@ -778,37 +1134,41 @@ struct SwarmWallpaperView: View {
 /// that hosts the dynamic AI usage ember swarm simulation.
 public class BurnBarWallpaperPanel: NSPanel {
     private var mouseMonitor: Any?
+    private var clickMonitor: Any?
     private let viewModel: SwarmWallpaperViewModel
     private let targetScreen: NSScreen
 
     public init(screen: NSScreen, viewModel: SwarmWallpaperViewModel) {
         self.viewModel = viewModel
         self.targetScreen = screen
-        
+
         super.init(
             contentRect: screen.frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        
+
         self.isFloatingPanel = false
         // Place exactly under desktop icons, but above standard background image
         self.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) - 1)
-        
+
         self.collectionBehavior = [
             .canJoinAllSpaces,   // Live on all virtual desktops (Spaces)
             .ignoresCycle,       // Exclude from Cmd+` cycle list
-            .stationary,         // Lock in position during swipe transitions
-            .fullScreenAuxiliary // Render cleanly alongside fullscreen windows
+            .stationary,         // Stay visually pinned during Space transitions
+            .fullScreenAuxiliary // Keep the panel available while fullscreen Spaces are active
         ]
-        
+
         self.ignoresMouseEvents = true // Make click-through so user can interact with files
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = false
         self.hidesOnDeactivate = false
-        
+        self.canHide = false
+        self.animationBehavior = .none
+        self.isReleasedWhenClosed = false
+
         let swarmView = SwarmWallpaperView(viewModel: viewModel)
         let hostingView = NSHostingView(rootView: swarmView)
         hostingView.frame = self.contentView?.bounds ?? .zero
@@ -819,7 +1179,7 @@ public class BurnBarWallpaperPanel: NSPanel {
         self.mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
             guard let self = self, !self.viewModel.isPaused else { return }
             let globalPoint = NSEvent.mouseLocation
-            
+
             // Check if mouse is on this screen
             if self.targetScreen.frame.contains(globalPoint) {
                 let localPoint = self.convertScreenPointToLocal(globalPoint)
@@ -829,21 +1189,26 @@ public class BurnBarWallpaperPanel: NSPanel {
             }
         }
 
-        // Register occlusion state observer to freeze rendering (0fps) when covered or on inactive Space
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleOcclusionChange),
-            name: NSWindow.didChangeOcclusionStateNotification,
-            object: self
-        )
-        
-        // Trigger initial check
-        handleOcclusionChange()
+        // Global mouse click tracking to cycle swarm when clicking on the desktop background.
+        // Finder becomes frontmost after the click is dispatched, so validation is deferred.
+        self.clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            self?.scheduleDesktopClickCycleIfNeeded()
+        }
     }
 
-    @objc private func handleOcclusionChange() {
-        let isVisible = self.occlusionState.contains(.visible)
-        self.viewModel.isPaused = !isVisible
+    private func scheduleDesktopClickCycleIfNeeded() {
+        guard SettingsManager.shared.appearance.clickDesktopToCycleSwarm else { return }
+        let globalPoint = NSEvent.mouseLocation
+        guard targetScreen.frame.contains(globalPoint) else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self,
+                  SettingsManager.shared.appearance.clickDesktopToCycleSwarm,
+                  self.targetScreen.frame.contains(globalPoint) else {
+                return
+            }
+            NotificationCenter.default.post(name: .cycleSwarmShapeRequested, object: nil)
+        }
     }
 
     private func convertScreenPointToLocal(_ globalPoint: NSPoint) -> CGPoint {
@@ -863,8 +1228,11 @@ public class BurnBarWallpaperPanel: NSPanel {
     }
 
     deinit {
-        if let monitor = mouseMonitor {
-            NSEvent.removeMonitor(monitor)
+        if let mouseMonitor {
+            NSEvent.removeMonitor(mouseMonitor)
+        }
+        if let clickMonitor {
+            NSEvent.removeMonitor(clickMonitor)
         }
     }
 }

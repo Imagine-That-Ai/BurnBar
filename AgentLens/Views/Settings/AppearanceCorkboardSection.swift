@@ -1,7 +1,9 @@
 import SwiftUI
+import OpenBurnBarCore
 
 struct AppearanceCorkboardSection: View {
     @Bindable var settingsManager: SettingsManager
+    @State private var isProviderGlyphCustomizerExpanded = false
 
     var body: some View {
         GlassCard {
@@ -92,14 +94,75 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
+                desktopWallpaperSpeedDial
+                    .settingsAnchor(SettingsAnchor.desktopWallpaperSpeed)
+
+                Divider().background(DesignSystem.Colors.border)
+
+                desktopWallpaperProviderGlyphCustomizer
+                    .settingsAnchor(SettingsAnchor.desktopWallpaperProviderGlyphs)
+
+                Divider().background(DesignSystem.Colors.border)
+
                 SettingsToggle(
                     title: "Cycle Shapes (Screensaver)",
                     subtitle: "Periodically reform the screensaver swarms into $, </>, the BurnBar logo, quota rings, and failover curves.",
                     icon: "arrow.triangle.2.circlepath",
                     isOn: $settingsManager.cycleShapesScreensaver
                 )
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
+                    title: "Click Desktop to Cycle Shapes",
+                    subtitle: "Click anywhere on your empty desktop background to manually cycle through all available swarm shapes and provider logos.",
+                    icon: "hand.tap",
+                    isOn: $settingsManager.clickDesktopToCycleSwarm
+                )
+                .settingsAnchor(SettingsAnchor.desktopWallpaperClickCycle)
             }
             .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    private var desktopWallpaperSpeedDial: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                Image(systemName: "speedometer")
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Desktop Wallpaper Speed")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Controls how quickly the desktop swarm drifts, reforms, and cycles between logo formations.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer(minLength: DesignSystem.Spacing.md)
+
+                Text("\(settingsManager.desktopWallpaperSpeed, specifier: "%.2f")x")
+                    .font(DesignSystem.Typography.caption.weight(.semibold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .monospacedDigit()
+                    .frame(width: 52, alignment: .trailing)
+            }
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "tortoise.fill")
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .frame(width: 18)
+
+                Slider(value: $settingsManager.desktopWallpaperSpeed, in: 0.35...2.5, step: 0.05)
+                    .tint(DesignSystem.Colors.ember)
+
+                Image(systemName: "hare.fill")
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .frame(width: 18)
+            }
+            .padding(.leading, 32)
         }
     }
 
@@ -173,6 +236,114 @@ struct AppearanceCorkboardSection: View {
         .buttonStyle(.plain)
         .accessibilityLabel(background.displayName)
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    private var desktopWallpaperProviderGlyphCustomizer: some View {
+        DisclosureGroup(isExpanded: $isProviderGlyphCustomizerExpanded) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button("All") {
+                        withAnimation(.snappy(duration: 0.18)) {
+                            settingsManager.desktopWallpaperProviderGlyphs = SwarmProviderGlyphSelection.allProviders
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(settingsManager.desktopWallpaperProviderGlyphs == SwarmProviderGlyphSelection.allProviders)
+
+                    Button("None") {
+                        withAnimation(.snappy(duration: 0.18)) {
+                            settingsManager.desktopWallpaperProviderGlyphs = []
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(settingsManager.desktopWallpaperProviderGlyphs.isEmpty)
+
+                    Spacer()
+                }
+                .padding(.leading, 32)
+
+                LazyVGrid(columns: desktopWallpaperProviderGlyphColumns, alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    ForEach(SwarmProviderGlyphSelection.allProviders) { provider in
+                        providerGlyphToggle(provider)
+                    }
+                }
+                .padding(.leading, 32)
+            }
+            .padding(.top, DesignSystem.Spacing.sm)
+        } label: {
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Customize Provider Glyphs")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(providerGlyphSummaryText)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer(minLength: DesignSystem.Spacing.md)
+            }
+        }
+        .animation(.snappy(duration: 0.18), value: isProviderGlyphCustomizerExpanded)
+        .animation(.snappy(duration: 0.18), value: settingsManager.desktopWallpaperProviderGlyphs)
+    }
+
+    private var desktopWallpaperProviderGlyphColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: 142, maximum: 188), spacing: DesignSystem.Spacing.sm, alignment: .leading)
+        ]
+    }
+
+    private var providerGlyphSummaryText: String {
+        let count = settingsManager.desktopWallpaperProviderGlyphs.count
+        let total = SwarmProviderGlyphSelection.allProviders.count
+        if count == total {
+            return "All \(total) provider logos render in the swarm cycle."
+        }
+        if count == 0 {
+            return "Provider logo formations are hidden; symbols and BurnBar shapes still cycle."
+        }
+        return "\(count) of \(total) provider logos render in the swarm cycle."
+    }
+
+    private func providerGlyphToggle(_ provider: AgentProvider) -> some View {
+        Toggle(isOn: providerGlyphBinding(for: provider)) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Circle()
+                    .fill(DesignSystemColors.primary(for: provider))
+                    .frame(width: 8, height: 8)
+                    .overlay(Circle().stroke(.white.opacity(0.24), lineWidth: 0.5))
+
+                Text(provider.displayName)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+        }
+        .toggleStyle(.checkbox)
+        .padding(.vertical, 2)
+        .accessibilityLabel(provider.displayName)
+    }
+
+    private func providerGlyphBinding(for provider: AgentProvider) -> Binding<Bool> {
+        Binding {
+            settingsManager.desktopWallpaperProviderGlyphs.contains(provider)
+        } set: { isEnabled in
+            var selected = Set(settingsManager.desktopWallpaperProviderGlyphs)
+            if isEnabled {
+                selected.insert(provider)
+            } else {
+                selected.remove(provider)
+            }
+            settingsManager.desktopWallpaperProviderGlyphs = SwarmProviderGlyphSelection.allProviders.filter {
+                selected.contains($0)
+            }
+        }
     }
 
     @ViewBuilder

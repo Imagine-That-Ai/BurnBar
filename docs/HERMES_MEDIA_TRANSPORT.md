@@ -1,6 +1,6 @@
 # Hermes Media Transport
 
-Architecture spec for the Mac ⇄ iPhone/iPad media capabilities (file transfer, screen share, 1:1 video calling) layered on the existing iroh QUIC mesh.
+Architecture spec for the Mac ⇄ iPhone/iPad/Android media capabilities (file transfer, screen share, 1:1 video calling) layered on the existing iroh QUIC mesh.
 
 The plan of record — including locked decisions, capability matrix, premium gating, privacy posture, observability, phasing, tests, and risks — lives at `plans/2026-05-15-mercury-media-master-plan.md`. **Read that first.** This document is the operator/engineer reference: it stays narrow on transport, codec, frame layout, and on-disk contract. Surfaces, copy, and SKU policy live in the plan.
 
@@ -47,9 +47,11 @@ All media rides the same iroh QUIC mesh and the same `openburnbar/1` ALPN as Her
 | `media.video.{out,in}` | 1 per direction per GOP | Bidirectional | Reliable, ordered, stream-per-GOP | 5 |
 | `media.audio.{out,in}` | none — datagrams | Bidirectional | QUIC datagrams (RTP-style) | 4 |
 | `media.control` | 1 per session | Bidirectional | Reliable — RTCP-style sender reports, BWE, mute, terminate, mirror request/ack, presence heartbeat | 3 |
-| `media.mirror.request` | 1 per request | iOS → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
+| `media.mirror.request` | 1 per request | iOS/Android → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
 | `media.mirror.ack` | 1 per request | Mac → iOS | Reliable, on existing control stream (JSON envelope) | Phase 8 |
-| `media.presence.heartbeat` | 1 per 60s | iOS → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
+| `media.mirror.stop` | 1 per ended mirror | iOS/Android → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
+| `media.mirror.display.select` | 0..n per mirror session | iOS/Android → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
+| `media.presence.heartbeat` | 1 per 2.5s during active mirrors; 1 per 60s otherwise | Bidirectional | Reliable, on existing control stream (JSON envelope) | Phase 8 |
 | `media.ltr.ack` | 0..n per mirror session | Receiver → encoder | Reliable, on existing control stream (JSON envelope) | Gated streaming substrate |
 
 ## Phase 1 — file transfer over iroh-blobs
@@ -100,11 +102,11 @@ Stubs to be filled in as each phase ships. Each phase append:
 
 ## Mirror request / ack / presence (Phase 8)
 
-These three frame types ride the existing `media.control` stream — no new ALPN. The Mac's `MacFileTransferService` read-loop routes them to `MercuryRouter`; the iOS `MediaControlStreamCoordinator` read-loop handles acknowledgements and sends periodic heartbeats.
+These frame types ride the existing `media.control` stream — no new ALPN. The Mac's `MacFileTransferService` read-loop routes them to `MercuryRouter`; the phone-side `MediaControlStreamCoordinator` read-loop handles acknowledgements and sends periodic heartbeats.
 
-### `media.mirror.request` (iOS → Mac)
+### `media.mirror.request` (iOS/Android → Mac)
 
-The iOS user taps "Ask to Mirror" in the Mercury Live sheet. The frame carries:
+The phone user taps "Ask to Mirror" in the Mercury Live sheet. The frame carries:
 
 ```json
 {
@@ -174,9 +176,43 @@ Decision enum: `accepted`, `denied`, `cooling_down`, `unsupported`, `busy`.
 
 On `.accepted`, the iOS `mirrorAckHandler` pushes to `ScreenShareViewerView`. Other decisions surface a toast in `MercuryLiveSheet`.
 
-### `media.presence.heartbeat` (iOS → Mac)
+### `media.mirror.stop` (iOS/Android → Mac)
 
-Sent every 60s once the control stream is `.live`. Fire-and-forget (no ack):
+The phone sends this when the accepted mirror viewer closes, including explicit
+close, system/back dismissal, and activity/sheet teardown. The Mac treats the
+frame as a session teardown signal, stops `MediaSessionCoordinator`, clears the
+active mirror slot, and returns to `.idle` without applying the decline
+cooldown. That keeps close → reconnect and another paired device → connect
+available immediately after a normal hangup.
+
+```json
+{
+  "type": "media.mirror.stop",
+  "uid": "u1",
+  "connectionId": "c1",
+  "requestId": "req_abc",
+  "media": {
+    "mirrorStop": {
+      "requestId": "req_abc",
+      "stoppedAt": 801000002.0,
+      "reason": "viewer_closed"
+    }
+  }
+}
+```
+
+- `requestId`: must match the active accepted mirror request. Mismatches are
+  ignored so stale teardown from an old viewer cannot kill a new mirror.
+- `stoppedAt`: Swift `JSONEncoder` Date seconds since 2001-01-01 UTC. Swift
+  decoders also tolerate ISO-8601 where custom date decoding is installed.
+- `reason`: best-effort diagnostic string such as `viewer_closed`,
+  `viewer_disappeared`, `sheet_disappeared`, or `activity_destroyed`.
+
+### `media.presence.heartbeat` (bidirectional)
+
+Phones send this every 60s once the control stream is `.live`; the Mac replies
+on the same control stream, and active mirror sinks continue sending Mac
+heartbeats every 2.5s while video is live. Fire-and-forget (no ack):
 
 ```json
 {
@@ -201,7 +237,7 @@ Sent every 60s once the control stream is `.live`. Fire-and-forget (no ack):
 }
 ```
 
-- `capabilities`: string array of `MercuryPeer.Feature` raw values. Unknown strings are silently dropped by `MercuryPeer.Feature` decoding so future capabilities don't break old peers.
+- `capabilities`: string array of `MercuryPeer.Feature` raw values. Unknown strings are silently dropped by `MercuryPeer.Feature` decoding so future capabilities don't break old peers. Macs include `mirror.auto_accept` after the user has accepted mirror consent, letting phones open the mirror directly instead of presenting a "check your Mac" pending state.
 - `deviceDisplayName` is canonical. `displayName` is still emitted and decoded
   as an Android compatibility alias.
 - `peerDeviceId` (optional): lets the receiver associate the latest capability
@@ -243,11 +279,14 @@ reference token carried in that frame's metadata:
 
 ### Ordering rules
 
-- Mirror request and ack are **synchronous request-response**: iOS waits for the ack before presenting the viewer.
+- Mirror request and ack are **synchronous request-response**: the phone waits for the ack before presenting the viewer.
+- Mirror stop is **terminal and non-cooldown**: a normal viewer hangup clears
+  the Mac's active session immediately and does not block the next request.
 - Cooldown is **server-authoritative**: the Mac rejects requests during cooldown; iOS never pre-emptively enforces it.
-- Presence is **bidirectionally parseable** but currently phone-originated for
-  the mirror viewer workflow. Mac-originated heartbeats use the same optional
-  capability fields when sent.
+- Presence is **bidirectional**: phone heartbeats advertise viewer capability,
+  and Mac-originated mirror health heartbeats continue during visually idle
+  desktops so receivers do not mistake "no changed pixels" for a stalled video
+  stream.
 - All three ride the same reliable stream as file-transfer traffic. Ordering within stream is preserved.
 
 ## Mercury streaming capability handshake

@@ -103,6 +103,10 @@ fun SettingsRootScreen(
                 router = router,
                 onBack = { router.page = SettingsPageRoute.ROOT }
             )
+            SettingsPageRoute.QUOTA_PREFS -> QuotaCustomizationScreen(
+                router = router,
+                onBack = { router.page = SettingsPageRoute.ROOT }
+            )
         }
     }
 }
@@ -266,6 +270,14 @@ private fun SettingsRootList(
                 subtitle = "Customise visual appearance, spring physics, and grid backdrops",
                 pageRoute = SettingsPageRoute.THEME_PREFS,
                 onTap = { router.page = SettingsPageRoute.THEME_PREFS }
+            ),
+            RootRow(
+                anchor = SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
+                icon = Icons.Filled.GridOn,
+                title = "Quota Customisation",
+                subtitle = "Rearrange providers, toggle visible buckets, and format percentage displays",
+                pageRoute = SettingsPageRoute.QUOTA_PREFS,
+                onTap = { router.page = SettingsPageRoute.QUOTA_PREFS }
             ),
             RootRow(
                 anchor = SettingsAnchor.SMART_DISPLAYS_ROW,

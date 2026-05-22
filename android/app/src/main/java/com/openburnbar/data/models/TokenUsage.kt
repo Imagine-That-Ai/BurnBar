@@ -2,6 +2,7 @@ package com.openburnbar.data.models
 
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
+import kotlin.math.roundToInt
 
 /**
  * Mirrors the Firestore `UsageEventDoc` from Cloud Functions types.ts.
@@ -247,10 +248,10 @@ data class ProviderQuotaSnapshot(
     /** Computed percentage remaining from buckets. */
     val percentageRemaining: Double
         get() {
-            val limit = quotaLimit
-            if (limit <= 0) return 0.0
-            val remaining = quotaRemaining
-            return (remaining / limit * 100).coerceIn(0.0, 100.0)
+            return buckets
+                .mapNotNull { it.displayRemainingPercent }
+                .minOrNull()
+                ?: 0.0
         }
 
     /** @deprecated Use accountId + accountLabel instead. */
@@ -291,6 +292,282 @@ data class QuotaBucket(
     @PropertyName("meta")
     val meta: Map<String, Any?>? = null
 )
+
+/**
+ * Display-safe remaining fraction for quota UI. Several providers expose
+ * percentage quota via metadata, percentage buckets with a zero limit, or
+ * unknown/unlimited caps with `limit == -1`; raw `remaining / limit` renders
+ * those as false `0%` values.
+ */
+val QuotaBucket.displayRemainingFraction: Double?
+    get() {
+        metaNumber(
+            "usedPercent",
+            "used_percent",
+            "used_percentage",
+            "usagePercent",
+            "usage_percent",
+            "percentage"
+        )?.let { usedPercent ->
+            return ((100.0 - usedPercent) / 100.0).coerceIn(0.0, 1.0)
+        }
+
+        metaNumber(
+            "remainingPercent",
+            "remaining_percent",
+            "remainingPercentage",
+            "remaining_percentage",
+            "percentRemaining",
+            "percent_remaining"
+        )?.let { remainingPercent ->
+            return (remainingPercent / 100.0).coerceIn(0.0, 1.0)
+        }
+
+        val unit = metaString("unit")?.lowercase()
+        val limitKind = metaString("limitKind")?.lowercase()
+        if (unit == "unlimited" || limitKind == "unlimited") return 1.0
+
+        if (!used.isFinite() || !limit.isFinite() || !remaining.isFinite()) return null
+
+        if (limit > 0.0) {
+            return (maxOf(0.0, remaining) / limit).coerceIn(0.0, 1.0)
+        }
+
+        if (unit == "percent" || unit == "%") {
+            if (remaining >= 0.0) return (remaining / 100.0).coerceIn(0.0, 1.0)
+            if (used >= 0.0) return ((100.0 - used) / 100.0).coerceIn(0.0, 1.0)
+        }
+
+        if (limit < 0.0 && remaining > 0.0) {
+            // Balance-only or remaining-only signals have no known cap; they
+            // should not be marked as exhausted.
+            val syntheticLimit = remaining + maxOf(0.0, used)
+            return if (syntheticLimit > 0.0) {
+                (remaining / syntheticLimit).coerceIn(0.0, 1.0)
+            } else {
+                1.0
+            }
+        }
+
+        return null
+    }
+
+val QuotaBucket.displayRemainingPercent: Double?
+    get() = displayRemainingFraction?.times(100.0)
+
+val QuotaBucket.key: String
+    get() {
+        val nameKey = name.trim().lowercase()
+        val windowKey = window?.trim()?.lowercase().orEmpty()
+        return if (windowKey.isEmpty()) nameKey else "$nameKey::$windowKey"
+    }
+
+val QuotaBucket.label: String
+    get() = (meta?.get("label") as? String) ?: name
+
+fun QuotaBucket.isDisplayableQuotaSignal(): Boolean {
+    if (!used.isFinite() || !limit.isFinite() || !remaining.isFinite()) {
+        return false
+    }
+
+    val marker = "${name} ${(meta?.get("label") as? String) ?: ""}".lowercase()
+    if (listOf("cache", "hit rate", "local model", "cloud model", "installed", "task", "conversation", "line", "file").any { marker.contains(it) }) {
+        return false
+    }
+
+    val unit = (meta?.get("unit") as? String)?.lowercase()
+    if (unit != null) {
+        if (listOf("sessions", "session", "lines", "files", "models").contains(unit)) {
+            return false
+        }
+        if (unit == "count" && !(marker.contains("credit") || marker.contains("budget"))) {
+            return false
+        }
+    }
+
+    return displayRemainingFraction != null
+}
+
+fun ProviderQuotaSnapshot.customizedBuckets(
+    hiddenBuckets: Set<String>,
+    bucketOrders: Map<String, List<String>>
+): List<QuotaBucket> {
+    val displayable = buckets.filter { it.isDisplayableQuotaSignal() }
+    val token = provider.lowercase()
+
+    val filtered = displayable.filter { bucket ->
+        val compositeKey = "$token:${bucket.key}"
+        !hiddenBuckets.contains(compositeKey)
+    }
+
+    val customOrder = bucketOrders[token]
+    if (customOrder != null) {
+        return filtered.sortedWith { lhs, rhs ->
+            val lhsIdx = customOrder.indexOf(lhs.key).takeIf { it >= 0 } ?: Int.MAX_VALUE
+            val rhsIdx = customOrder.indexOf(rhs.key).takeIf { it >= 0 } ?: Int.MAX_VALUE
+            if (lhsIdx != rhsIdx) {
+                lhsIdx.compareTo(rhsIdx)
+            } else {
+                lhs.label.compareTo(rhs.label, ignoreCase = true)
+            }
+        }
+    }
+
+    return filtered
+}
+
+enum class ProviderQuotaUnit(val shortLabel: String) {
+    PERCENT("%"),
+    REQUESTS("req"),
+    TOKENS("tok"),
+    SESSIONS("sessions"),
+    LINES("lines"),
+    FILES("files"),
+    COUNT(""),
+    CURRENCY("$");
+}
+
+val QuotaBucket.bucketUnit: ProviderQuotaUnit
+    get() {
+        val unitStr = (meta?.get("unit") as? String)?.lowercase() ?: ""
+        return when {
+            unitStr.contains("percent") || unitStr.contains("%") -> ProviderQuotaUnit.PERCENT
+            unitStr.contains("request") || unitStr.contains("rpm") -> ProviderQuotaUnit.REQUESTS
+            unitStr.contains("token") -> ProviderQuotaUnit.TOKENS
+            unitStr.contains("session") -> ProviderQuotaUnit.SESSIONS
+            unitStr.contains("line") -> ProviderQuotaUnit.LINES
+            unitStr.contains("file") -> ProviderQuotaUnit.FILES
+            unitStr.contains("currency") || unitStr.contains("usd") || unitStr.contains("$") -> ProviderQuotaUnit.CURRENCY
+            else -> {
+                val nameLower = name.lowercase()
+                when {
+                    nameLower.contains("percent") || nameLower.contains("%") -> ProviderQuotaUnit.PERCENT
+                    nameLower.contains("request") -> ProviderQuotaUnit.REQUESTS
+                    nameLower.contains("token") -> ProviderQuotaUnit.TOKENS
+                    nameLower.contains("session") -> ProviderQuotaUnit.SESSIONS
+                    nameLower.contains("line") -> ProviderQuotaUnit.LINES
+                    nameLower.contains("file") -> ProviderQuotaUnit.FILES
+                    nameLower.contains("credit") || nameLower.contains("budget") || nameLower.contains("balance") -> ProviderQuotaUnit.CURRENCY
+                    else -> ProviderQuotaUnit.COUNT
+                }
+            }
+        }
+    }
+
+val QuotaBucket.progressFraction: Double
+    get() {
+        val usedP = metaNumber("usedPercent", "used_percent", "used_percentage", "usagePercent", "usage_percent", "percentage")
+        if (usedP != null) {
+            return (usedP / 100.0).coerceIn(0.0, 1.0)
+        }
+        if (limit > 0.0) {
+            return (used / limit).coerceIn(0.0, 1.0)
+        }
+        val remainingP = displayRemainingPercent
+        if (remainingP != null) {
+            return ((100.0 - remainingP) / 100.0).coerceIn(0.0, 1.0)
+        }
+        return 0.0
+    }
+
+fun QuotaBucket.formatValue(value: Double): String {
+    val u = this.bucketUnit
+    return when (u) {
+        ProviderQuotaUnit.PERCENT -> {
+            val clamped = value.coerceIn(0.0, 100.0)
+            "${clamped.roundToInt()}%"
+        }
+        ProviderQuotaUnit.TOKENS -> {
+            when {
+                value >= 1_000_000_000 -> "%.2fB".format(value / 1_000_000_000.0)
+                value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0)
+                value >= 1_000 -> "%.1fK".format(value / 1_000.0)
+                else -> "${value.roundToInt()}"
+            }
+        }
+        ProviderQuotaUnit.REQUESTS, ProviderQuotaUnit.SESSIONS, ProviderQuotaUnit.LINES, ProviderQuotaUnit.FILES, ProviderQuotaUnit.COUNT -> {
+            when {
+                value >= 1_000 -> "%.1fK".format(value / 1_000.0)
+                value.roundToInt().toDouble() == value -> "${value.roundToInt()}"
+                else -> "%.1f".format(value)
+            }
+        }
+        ProviderQuotaUnit.CURRENCY -> {
+            "$%.2f".format(value)
+        }
+    }
+}
+
+fun QuotaBucket.getRemainingText(displayMode: String): String {
+    val remainingPercent = displayRemainingPercent
+    return when (displayMode) {
+        "remainingPercent" -> {
+            if (remainingPercent != null) {
+                val clamped = remainingPercent.coerceIn(0.0, 100.0)
+                "${clamped.roundToInt()}% left"
+            } else {
+                "${formatValue(remaining)} left"
+            }
+        }
+        "usedPercent" -> {
+            val usedP = if (remainingPercent != null) {
+                (100.0 - remainingPercent).coerceIn(0.0, 100.0)
+            } else {
+                progressFraction * 100.0
+            }
+            "${usedP.roundToInt()}% used"
+        }
+        "fractional" -> {
+            val frac = if (remainingPercent != null) {
+                remainingPercent / 100.0
+            } else if (limit > 0.0) {
+                remaining / limit
+            } else {
+                1.0 - progressFraction
+            }
+            "%.2f left".format(frac.coerceIn(0.0, 1.0))
+        }
+        "absoluteValues" -> {
+            if (limit > 0.0) {
+                "${formatValue(remaining)} / ${formatValue(limit)} left"
+            } else {
+                "${formatValue(remaining)} left"
+            }
+        }
+        else -> {
+            if (remainingPercent != null) {
+                val clamped = remainingPercent.coerceIn(0.0, 100.0)
+                "${clamped.roundToInt()}% left"
+            } else {
+                "${formatValue(remaining)} left"
+            }
+        }
+    }
+}
+
+private fun QuotaBucket.metaNumber(vararg keys: String): Double? {
+    val meta = meta ?: return null
+    for (key in keys) {
+        meta[key].asDoubleOrNull()?.let { return it }
+    }
+    return null
+}
+
+private fun QuotaBucket.metaString(key: String): String? {
+    return meta?.get(key)?.asStringOrNull()
+}
+
+private fun Any?.asDoubleOrNull(): Double? = when (this) {
+    is Number -> toDouble()
+    is String -> trim().removeSuffix("%").toDoubleOrNull()
+    else -> null
+}
+
+private fun Any?.asStringOrNull(): String? = when (this) {
+    is String -> takeIf { it.isNotBlank() }
+    is Number, is Boolean -> toString()
+    else -> null
+}
 
 /**
  * Resolves a bucket's reset moment from either the new top-level

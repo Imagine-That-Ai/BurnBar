@@ -130,6 +130,10 @@ struct SettingsHubView: View {
             SettingsDeepLinkScrollContainer(route: .theme) { _ in
                 ThemeSettingsView()
             }
+        case .quotaCustomization:
+            SettingsDeepLinkScrollContainer(route: .quotaCustomization) { _ in
+                QuotaCustomizationSettingsView()
+            }
         }
     }
 
@@ -141,6 +145,11 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "paintpalette.fill", color: MobileTheme.amber, title: "Theme")
                     }
                     .settingsAnchor(SettingsAnchor.theme)
+
+                    NavigationLink(value: SettingsPageRoute.quotaCustomization) {
+                        SettingsLabel(icon: "gauge.with.dots.needle.67percent", color: MobileTheme.ember, title: "Quota Customization")
+                    }
+                    .settingsAnchor(SettingsAnchor.quotaCustomization)
                     Picker(selection: $usageDisplayMode) {
                         Text("Currency").tag("currency")
                         Text("Tokens").tag("tokens")

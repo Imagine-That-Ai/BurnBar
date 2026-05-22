@@ -24,6 +24,7 @@ struct HermesSettingsView: View {
 
     @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
     @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
+    @AppStorage(HermesMobileChatPreferences.agentsLiveBackgroundEnabledKey) private var agentsLiveBackgroundEnabled = false
     @State private var showPretextPlayground = false
 
     @Environment(\.dismiss) private var dismiss
@@ -401,6 +402,21 @@ struct HermesSettingsView: View {
                 }
                 .tint(MobileTheme.hermesAureate)
                 .settingsAnchor(SettingsAnchor.hermesPretext)
+
+                Divider().background(MobileTheme.Colors.border.opacity(0.4))
+
+                Toggle(isOn: $agentsLiveBackgroundEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Live background in Agents")
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text("Enables a real-time, interactive token-ember swarm background in the Agents tab.")
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(MobileTheme.hermesAureate)
 
                 Button {
                     showPretextPlayground = true

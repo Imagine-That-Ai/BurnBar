@@ -521,6 +521,55 @@ final class OpenBurnBarMobileTests: XCTestCase {
     }
 }
 
+final class ScreenShareControlInputPolicyTests: XCTestCase {
+    func testSingleControlTapUsesPrimaryClick() {
+        XCTAssertEqual(ScreenShareControlInputPolicy.controlClickMouseButton(heldDuration: 0.08), 0)
+    }
+
+    func testLongControlPressUsesSecondaryClick() {
+        XCTAssertEqual(
+            ScreenShareControlInputPolicy.controlClickMouseButton(
+                heldDuration: ScreenShareControlInputPolicy.rightClickHoldDuration
+            ),
+            1
+        )
+    }
+
+    func testTrackpadTapClicksImmediatelyButDragDoesNot() {
+        XCTAssertEqual(
+            ScreenShareControlInputPolicy.trackpadClickMouseButton(
+                heldDuration: 0.06,
+                travelDistance: ScreenShareControlInputPolicy.trackpadTapTravelLimit - 0.1
+            ),
+            0
+        )
+        XCTAssertNil(
+            ScreenShareControlInputPolicy.trackpadClickMouseButton(
+                heldDuration: 0.06,
+                travelDistance: ScreenShareControlInputPolicy.trackpadTapTravelLimit
+            )
+        )
+    }
+
+    func testCursorStartsCenteredAndClampsInsideVideoBounds() {
+        let bounds = CGRect(x: 100, y: 50, width: 300, height: 200)
+
+        XCTAssertEqual(
+            ScreenShareControlInputPolicy.initialCursorPoint(in: bounds),
+            CGPoint(x: 250, y: 150)
+        )
+
+        XCTAssertEqual(
+            ScreenShareControlInputPolicy.movedCursorPoint(
+                current: nil,
+                delta: CGSize(width: -1_000, height: 1_000),
+                bounds: bounds
+            ),
+            CGPoint(x: 100, y: 250)
+        )
+    }
+}
+
 final class ScreenShareViewportStateTests: XCTestCase {
     func testMagnificationClampsScaleToSupportedRange() {
         var viewport = ScreenShareViewportState()

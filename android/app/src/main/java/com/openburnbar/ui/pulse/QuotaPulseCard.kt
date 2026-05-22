@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderQuotaSnapshot
-import com.openburnbar.data.models.QuotaBucket
+import com.openburnbar.data.models.displayRemainingFraction
 import com.openburnbar.ui.burn.ProviderAuroraAvatar
 import com.openburnbar.ui.burn.buildQuotaRingItems
 import com.openburnbar.ui.components.AuroraGlassCard
@@ -44,7 +44,7 @@ fun QuotaPulseCard(
 ) {
     val items = buildQuotaRingItems(snapshots)
     val hasUrgent = snapshots.flatMap { it.buckets }.any { bucket ->
-        bucket.limit > 0 && maxOf(0.0, bucket.remaining) / bucket.limit < 0.25
+        (bucket.displayRemainingFraction ?: 1.0) < 0.25
     }
     val fleetHealth = if (items.isNotEmpty()) {
         items.map { it.pressureRemaining }.average()

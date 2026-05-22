@@ -176,7 +176,7 @@ final class HermesServiceToolUseLoopTests: XCTestCase {
             status: .online,
             relayPublicKey: "AAAA",
             relayKeyVersion: 1,
-            relayEncryption: "xchacha20-poly1305",
+            relayEncryption: HermesRelayCrypto.algorithm,
             capabilities: ["chat_completions"]
         )
     }

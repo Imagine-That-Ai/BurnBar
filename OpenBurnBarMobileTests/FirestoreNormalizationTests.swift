@@ -323,6 +323,24 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertEqual(usage?.totalTokens, 150)
     }
 
+    func test_decodeWithDocID_normalizesCostAndCostUsd() throws {
+        var legacyPayload = Self.desktopUsageEvent
+        legacyPayload.removeValue(forKey: "costUsd")
+        legacyPayload["cost"] = 0.0123
+        let decodedLegacy = repo.decodeWithDocID(TokenUsage.self, from: legacyPayload, docID: "doc-legacy")
+        XCTAssertNotNil(decodedLegacy)
+        XCTAssertEqual(decodedLegacy?.cost, 0.0123)
+        XCTAssertEqual(decodedLegacy?.costUSD, 0.0123)
+
+        var canonicalPayload = Self.desktopUsageEvent
+        canonicalPayload.removeValue(forKey: "cost")
+        canonicalPayload["costUsd"] = 0.0456
+        let decodedCanonical = repo.decodeWithDocID(TokenUsage.self, from: canonicalPayload, docID: "doc-canonical")
+        XCTAssertNotNil(decodedCanonical)
+        XCTAssertEqual(decodedCanonical?.cost, 0.0456)
+        XCTAssertEqual(decodedCanonical?.costUSD, 0.0456)
+    }
+
     func test_decodeWithDocID_injectsIDWhenMissing() throws {
         let data = Self.cloudFunctionQuotaDoc
         // Cloud Function does not write an `id` field
@@ -676,6 +694,108 @@ final class FirestoreNormalizationTests: XCTestCase {
         ))
     }
 
+    func testQuotaStoreMergesCacheUpdateWithCurrentServerSnapshots() {
+        let older = Date(timeIntervalSince1970: 1_779_000_000)
+        let newer = older.addingTimeInterval(60)
+        let current = quotaSnapshot(
+            id: "claude-server",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "Claude Five Hour",
+            used: 62,
+            remaining: 38,
+            fetchedAt: newer,
+            updatedAt: newer
+        )
+        let cache = quotaSnapshot(
+            id: "claude-cache",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "Claude Five Hour",
+            used: 100,
+            remaining: 0,
+            fetchedAt: older,
+            updatedAt: older
+        )
+
+        let merged = QuotaStore.displayReadyQuotaSnapshots(
+            QuotaStore.snapshotsForApplyingUpdate(
+                current: [current],
+                incoming: [cache],
+                isFromCache: true
+            )
+        )
+
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.buckets.first?.displayRemainingPercent ?? -1, 38, accuracy: 0.0001)
+    }
+
+    func testQuotaStoreDisplaySnapshotsKeepFreshAccountBucketOverStaleDuplicate() {
+        let older = Date(timeIntervalSince1970: 1_779_000_000)
+        let newer = older.addingTimeInterval(60)
+        let staleZero = quotaSnapshot(
+            id: "claude-old-five-hour",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "Claude Five Hour",
+            used: 100,
+            remaining: 0,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let fresh = quotaSnapshot(
+            id: "claude-new-five-hour",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "Claude Five Hour",
+            used: 62,
+            remaining: 38,
+            fetchedAt: newer,
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([staleZero, fresh])
+
+        XCTAssertEqual(display.count, 1)
+        XCTAssertEqual(display.first?.id, "claude-new-five-hour+claude-old-five-hour")
+        XCTAssertEqual(display.first?.buckets.first?.displayRemainingPercent ?? -1, 38, accuracy: 0.0001)
+    }
+
+    func testQuotaStoreDisplaySnapshotsDropsProviderLevelSnapshotWhenAccountSnapshotsExist() {
+        let now = Date(timeIntervalSince1970: 1_779_000_000)
+        let providerLevel = quotaSnapshot(
+            id: "claude-provider-rollup",
+            providerID: .claudeCode,
+            accountID: nil,
+            accountLabel: nil,
+            bucketName: "Claude Five Hour",
+            used: 100,
+            remaining: 0,
+            fetchedAt: now.addingTimeInterval(120),
+            updatedAt: now.addingTimeInterval(120)
+        )
+        let accountLevel = quotaSnapshot(
+            id: "claude-account",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "Claude Five Hour",
+            used: 62,
+            remaining: 38,
+            fetchedAt: now,
+            updatedAt: now
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([providerLevel, accountLevel])
+
+        XCTAssertEqual(display.map(\.id), ["claude-account"])
+        XCTAssertEqual(display.first?.buckets.first?.displayRemainingPercent ?? -1, 38, accuracy: 0.0001)
+    }
+
     func testRedactedUserIDOnlyExposesSuffix() {
         XCTAssertEqual(FirestoreRepository.redactedUserID("6YTomKTKdQdpvIJgmz6VTIrrQ4w1"), "…rQ4w1")
         XCTAssertNil(FirestoreRepository.redactedUserID(nil))
@@ -898,6 +1018,43 @@ final class FirestoreNormalizationTests: XCTestCase {
             sortKey: sortKey,
             createdAt: now,
             updatedAt: now
+        )
+    }
+
+    private func quotaSnapshot(
+        id: String,
+        providerID: ProviderID,
+        accountID: String?,
+        accountLabel: String?,
+        bucketName: String,
+        used: Double,
+        remaining: Double,
+        fetchedAt: Date,
+        updatedAt: Date
+    ) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            id: id,
+            provider: providerID.rawValue,
+            providerID: providerID,
+            accountID: accountID,
+            accountLabel: accountLabel,
+            accountStorageScope: .serverPrivate,
+            sourceKind: .provider,
+            sourceId: id,
+            fetchedAt: fetchedAt,
+            source: "test",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(
+                    name: bucketName,
+                    used: used,
+                    limit: 100,
+                    remaining: remaining,
+                    window: "rollingHours",
+                    meta: ["unit": "percent"]
+                )
+            ],
+            updatedAt: updatedAt
         )
     }
 }

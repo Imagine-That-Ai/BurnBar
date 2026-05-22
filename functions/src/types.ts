@@ -25,6 +25,7 @@ export const SUPPORTED_PROVIDERS = [
   "codex",
   "opencode",
   "antigravity",
+  "xai",
 ] as const;
 
 export type Provider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -37,6 +38,7 @@ export const BACKEND_REFRESH_PROVIDERS: readonly Provider[] = [
   "kimi",
   "factory",
   "cursor",
+  "xai",
 ];
 
 /** Providers that are treated as local-only (no backend refresh). */

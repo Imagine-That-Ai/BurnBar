@@ -72,8 +72,11 @@ class PhoneControlSender(
                 PhoneControlIntentKind.TYPE -> HermesRealtimeRelayInputIntentKind.TYPE
                 PhoneControlIntentKind.SHORTCUT -> HermesRealtimeRelayInputIntentKind.SHORTCUT
                 PhoneControlIntentKind.SCROLL -> HermesRealtimeRelayInputIntentKind.SCROLL
+                PhoneControlIntentKind.POINTER_MOVE -> HermesRealtimeRelayInputIntentKind.POINTER_MOVE
+                PhoneControlIntentKind.POINTER_CLICK -> HermesRealtimeRelayInputIntentKind.POINTER_CLICK
                 PhoneControlIntentKind.PANIC -> HermesRealtimeRelayInputIntentKind.PANIC
             },
+            displayId = displayId,
             normalizedX = normalizedX,
             normalizedY = normalizedY,
             normalizedX2 = normalizedX2,
@@ -81,6 +84,7 @@ class PhoneControlSender(
             text = text,
             key = key,
             modifiers = modifiers,
+            mouseButton = mouseButton,
             clientIntentId = clientIntentId,
             authority = authority,
         )

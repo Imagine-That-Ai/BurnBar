@@ -66,6 +66,37 @@ final class AgentIdentityRegistryMacURITests: XCTestCase {
         XCTAssertNotNil(builtIn)
         XCTAssertEqual(builtIn?.runtimeID, .hermes)
     }
+
+    func testIPadSplitPinnedRouteOpensMercuryLiveForPairedMacURI() {
+        let registry = AgentIdentityRegistry(seed: [])
+        registry.pairedMacPeer = MercuryPeer(
+            connectionID: "mac-1",
+            displayName: "Studio Mac",
+            isOnline: true,
+            lastSeenAt: referenceDate,
+            capabilities: MercuryPeer.macFallbackCapabilities
+        )
+
+        let route = HermesSquarePinnedRoute.route(
+            for: "device://paired-mac/mac-1",
+            registry: registry,
+            visibleTiles: [.hermes]
+        )
+
+        XCTAssertEqual(route, .mercuryLive("mac-1"))
+    }
+
+    func testIPadSplitPinnedRouteKeepsVisibleRuntimeNative() {
+        let registry = AgentIdentityRegistry()
+
+        let route = HermesSquarePinnedRoute.route(
+            for: AgentIdentity.builtInURI(.hermes),
+            registry: registry,
+            visibleTiles: [.hermes, .pi]
+        )
+
+        XCTAssertEqual(route, .runtimeNative(.hermes))
+    }
 }
 
 @MainActor
@@ -210,6 +241,35 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testSendMirrorStopEmitsCorrelatedMacTeardownFrame() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        try await coordinator.sendMirrorStop(
+            requestId: "req-stop-1",
+            reason: "viewer_closed",
+            timeout: 1
+        )
+
+        let sentFrames = await stream.sentFrames
+        let stop = try XCTUnwrap(sentFrames.first { $0.type == .mediaMirrorStop })
+        XCTAssertEqual(stop.uid, "user-1")
+        XCTAssertEqual(stop.connectionId, "conn-1")
+        XCTAssertEqual(stop.requestId, "req-stop-1")
+        XCTAssertEqual(stop.media?.mirrorStop?.requestId, "req-stop-1")
+        XCTAssertEqual(stop.media?.mirrorStop?.reason, "viewer_closed")
+        await coordinator.stop()
+    }
+
     private func waitUntilLive(_ coordinator: MediaControlStreamCoordinator) async throws {
         let deadline = Date().addingTimeInterval(1.0)
         while coordinator.phase != .live {
@@ -219,6 +279,83 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
+    }
+
+    func testLiveTransitionCapturesLastLiveAtAndClearsFailureReason() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        XCTAssertNotNil(coordinator.lastLiveAt, "lastLiveAt should be set on .live transition")
+        XCTAssertNil(coordinator.lastFailureReason, "lastFailureReason should be nil on first .live")
+        XCTAssertNil(coordinator.reconnectAttemptStartedAt, "reconnectAttemptStartedAt should be nil on .live")
+        await coordinator.stop()
+    }
+
+    func testFailedDialPopulatesLastFailureReasonAndReconnectAnchor() async throws {
+        struct DialFailure: LocalizedError {
+            var errorDescription: String? { "Pairing key fetch timed out." }
+        }
+
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in throw DialFailure() },
+            receiver: receiver,
+            initialBackoff: 0.05,
+            maxBackoff: 0.05
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        // Wait for the first failure to land and the supervisor to
+        // enter `.reconnecting`.
+        let deadline = Date().addingTimeInterval(1.0)
+        while coordinator.lastFailureReason == nil {
+            if Date() > deadline {
+                XCTFail("dial failure reason was never surfaced")
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(coordinator.lastFailureReason, "Pairing key fetch timed out.")
+        XCTAssertNotNil(coordinator.reconnectAttemptStartedAt,
+                        "reconnectAttemptStartedAt anchors the ticking countdown — must be set on .reconnecting")
+        await coordinator.stop()
+    }
+
+    func testStopClearsTransientReconnectMetadata() async throws {
+        struct DialFailure: LocalizedError {
+            var errorDescription: String? { "Boom." }
+        }
+
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in throw DialFailure() },
+            receiver: receiver,
+            initialBackoff: 0.05,
+            maxBackoff: 0.05
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        let deadline = Date().addingTimeInterval(1.0)
+        while coordinator.reconnectAttemptStartedAt == nil {
+            if Date() > deadline { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        await coordinator.stop()
+        XCTAssertNil(coordinator.reconnectAttemptStartedAt,
+                     "stop() must clear the reconnect anchor so the UI does not animate a stale countdown")
+        XCTAssertNil(coordinator.lastFailureReason,
+                     "stop() must clear the last failure reason so the next start doesn't leak it")
     }
 
     private func screenVideoFrame(uid: String, connectionID: String, encoded: Data) -> HermesRealtimeRelayFrame {

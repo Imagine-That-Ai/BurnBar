@@ -31,6 +31,7 @@ enum DesignSystem {
         static let surfaceElevated = Color.adaptive(light: "FDF8F5", dark: "1F2630")
         static let border          = Color.adaptive(light: "E8BFB5", dark: "30363D")
         static let borderSubtle    = Color.adaptive(light: "F2E0DA", dark: "21262D")
+        static let surfaceMuted    = Color.adaptive(light: "F2E0DA", dark: "1B202A")
 
         // Text — light: warm brown with coral undertone / dark: cool slate off-white
         static let textPrimary   = Color.adaptive(light: "2A1816", dark: "E6EDF3")
@@ -102,7 +103,7 @@ enum DesignSystem {
             case .cursor:     return Color(hex: "AC8C57")
             case .openAI:     return Color(hex: "00A67E")
             case .deepSeek:   return Color(hex: "6366F1")
-            case .codex:      return Color(hex: "00A67E")
+            case .codex:      return Color(hex: "2563EB")
             case .openCode:   return Color(hex: "2563EB")
             case .zai:        return Color(hex: "8B5CF6")
             case .minimax:    return Color(hex: "F59E0B")
@@ -121,6 +122,7 @@ enum DesignSystem {
             case .ollama:     return Color(hex: "6B7280")
             case .windsurf:   return Color(hex: "06B6D4")
             case .warp:       return Color(hex: "DDE4EA")
+            case .xAI:        return Color(hex: "1A1A1A")
             }
         }
 
@@ -133,7 +135,7 @@ enum DesignSystem {
             case .cursor:     return Color(hex: "007AFF")
             case .openAI:     return Color(hex: "00C48C")
             case .deepSeek:   return Color(hex: "818CF8")
-            case .codex:      return Color(hex: "00C48C")
+            case .codex:      return Color(hex: "60A5FA")
             case .openCode:   return Color(hex: "93C5FD")
             case .zai:        return Color(hex: "A78BFA")
             case .minimax:    return Color(hex: "FCD34D")
@@ -152,6 +154,7 @@ enum DesignSystem {
             case .ollama:     return Color(hex: "9CA3AF")
             case .windsurf:   return Color(hex: "22D3EE")
             case .warp:       return Color(hex: "111111")
+            case .xAI:        return Color(hex: "4A4A4A")
             }
         }
 

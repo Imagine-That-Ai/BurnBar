@@ -1018,19 +1018,12 @@ struct ProviderPlanWizardView: View {
     }
 
     private func storedProfileDuplicatesCurrentAuth(cliType: SwitcherCLIProfileType, authInfo: CLIAuthInfo) -> Bool {
-        let authAccount = normalizedString(authInfo.accountDescription)
         let authDirectory = normalizedString(authInfo.configDirectory)
 
         return switcherProfiles.contains { profile in
             guard profile.targetKind == .cli,
                   profile.cliType == cliType else {
                 return false
-            }
-
-            if let authAccount,
-               let profileAccount = normalizedString(profile.cliMetadata?.accountDescription),
-               profileAccount.caseInsensitiveCompare(authAccount) == .orderedSame {
-                return true
             }
 
             if let authDirectory,
@@ -1044,8 +1037,16 @@ struct ProviderPlanWizardView: View {
     }
 
     private func externalAccountLabel(for profile: SwitcherProfileRecord, cliType: SwitcherCLIProfileType) -> String {
-        normalizedString(profile.cliMetadata?.accountDescription)
-            ?? normalizedString(profile.cliMetadata?.displayLabel)
+        let accountDescription = normalizedString(profile.cliMetadata?.accountDescription)
+        let displayLabel = normalizedString(profile.cliMetadata?.displayLabel)
+        if let accountDescription,
+           let displayLabel,
+           displayLabel != accountDescription,
+           displayLabel.localizedCaseInsensitiveContains(accountDescription) {
+            return displayLabel
+        }
+        return accountDescription
+            ?? displayLabel
             ?? normalizedString(profile.displayName)
             ?? "\(cliType.displayName) OAuth profile"
     }
@@ -3177,14 +3178,9 @@ struct ProviderPlanWizardView: View {
         providerID: String,
         cliType: SwitcherCLIProfileType
     ) throws -> SwitcherProfileRecord {
-        let accountDescription = normalizedString(updatedProfile.cliMetadata?.accountDescription)
-        if let accountDescription,
-           let duplicate = duplicateExternalOAuthProfile(cliType: cliType, accountDescription: accountDescription, excludingID: updatedProfile.id) {
-            throw ProviderPlanWizardError.message("Already added: \(externalAccountLabel(for: duplicate, cliType: cliType)) is connected to \(accountDescription). Sign into a different \(cliType.displayName) account to add another OAuth profile.")
-        }
-
-        if currentDefaultAuthDuplicates(cliType: cliType, accountDescription: accountDescription) {
-            throw ProviderPlanWizardError.message("\(accountDescription ?? cliType.displayName) is already visible as the current local \(cliType.displayName) login. Sign into a different account to add another OAuth profile.")
+        if let configDirectory = normalizedString(updatedProfile.cliMetadata?.configDirectory),
+           let duplicate = duplicateExternalOAuthProfile(cliType: cliType, configDirectory: configDirectory, excludingID: updatedProfile.id) {
+            throw ProviderPlanWizardError.message("Already added: \(externalAccountLabel(for: duplicate, cliType: cliType)) uses this local auth directory. Reconnect that OAuth profile instead of saving the same directory twice.")
         }
 
         let profile = normalizedExternalOAuthProfile(
@@ -3204,9 +3200,22 @@ struct ProviderPlanWizardView: View {
     ) -> SwitcherProfileRecord {
         let metadata = profile.cliMetadata ?? SwitcherCLIProfileMetadata()
         let accountDescription = normalizedString(metadata.accountDescription)
-        let displayLabel = accountDescription
-            ?? normalizedString(metadata.displayLabel)
+        let fallbackSlotLabel = normalizedString(metadata.displayLabel)
             ?? nextExternalSlotLabel(providerID: providerID, cliType: cliType)
+        let duplicateIdentityCount = accountDescription.map {
+            matchingExternalOAuthIdentityCount(
+                cliType: cliType,
+                accountDescription: $0,
+                excludingID: preserveIDForUpdate ? profile.id : nil
+            )
+        } ?? 0
+        let displayLabel: String = {
+            guard let accountDescription else { return fallbackSlotLabel }
+            if duplicateIdentityCount > 0 {
+                return "\(accountDescription) · \(fallbackSlotLabel)"
+            }
+            return accountDescription
+        }()
 
         return SwitcherProfileRecord(
             id: profile.id,
@@ -3238,10 +3247,26 @@ struct ProviderPlanWizardView: View {
 
     private func duplicateExternalOAuthProfile(
         cliType: SwitcherCLIProfileType,
-        accountDescription: String,
+        configDirectory: String,
         excludingID: String?
     ) -> SwitcherProfileRecord? {
         switcherProfiles.first { profile in
+            guard profile.id != excludingID,
+                  profile.targetKind == .cli,
+                  profile.cliType == cliType,
+                  let existing = normalizedString(profile.cliMetadata?.configDirectory) else {
+                return false
+            }
+            return existing == configDirectory
+        }
+    }
+
+    private func matchingExternalOAuthIdentityCount(
+        cliType: SwitcherCLIProfileType,
+        accountDescription: String,
+        excludingID: String?
+    ) -> Int {
+        var count = switcherProfiles.filter { profile in
             guard profile.id != excludingID,
                   profile.targetKind == .cli,
                   profile.cliType == cliType,
@@ -3249,17 +3274,16 @@ struct ProviderPlanWizardView: View {
                 return false
             }
             return existing.caseInsensitiveCompare(accountDescription) == .orderedSame
-        }
-    }
+        }.count
 
-    private func currentDefaultAuthDuplicates(cliType: SwitcherCLIProfileType, accountDescription: String?) -> Bool {
-        guard let accountDescription,
-              let current = dashboardExternalAuthStates[cliType.rawValue],
-              current.isWizardConnected,
-              let currentAccount = normalizedString(current.accountDescription) else {
-            return false
+        if let current = dashboardExternalAuthStates[cliType.rawValue],
+           current.isWizardConnected,
+           let currentAccount = normalizedString(current.accountDescription),
+           currentAccount.caseInsensitiveCompare(accountDescription) == .orderedSame {
+            count += 1
         }
-        return currentAccount.caseInsensitiveCompare(accountDescription) == .orderedSame
+
+        return count
     }
 
     private func nextExternalSlotLabel(providerID: String, cliType: SwitcherCLIProfileType) -> String {

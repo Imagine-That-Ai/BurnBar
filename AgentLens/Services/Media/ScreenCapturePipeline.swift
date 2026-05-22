@@ -38,6 +38,23 @@ final class ScreenCapturePipeline: NSObject {
         var frameRate: Int = 30
         var captureFocusedWindowOnly: Bool = false
         var displayId: String? = nil
+        var windowID: CGWindowID? = nil
+    }
+
+    struct WindowDescriptor: Sendable, Equatable {
+        var windowID: CGWindowID
+        var title: String?
+        var appName: String
+        var bundleIdentifier: String
+
+        var focusContext: HermesRealtimeRelayFocusContext {
+            HermesRealtimeRelayFocusContext(
+                appName: appName,
+                bundleId: bundleIdentifier,
+                windowTitle: title,
+                windowId: UInt32(windowID)
+            )
+        }
     }
 
     typealias FrameHandler = @MainActor @Sendable (CMSampleBuffer) async -> Void
@@ -67,6 +84,30 @@ final class ScreenCapturePipeline: NSObject {
         }
     }
 
+    static func availableWindows() async -> [WindowDescriptor] {
+        #if canImport(ScreenCaptureKit)
+        do {
+            let content = try await SCShareableContent.current
+            return content.windows.compactMap { window in
+                guard let application = window.owningApplication,
+                      application.applicationName.isEmpty == false,
+                      application.bundleIdentifier.isEmpty == false
+                else { return nil }
+                return WindowDescriptor(
+                    windowID: window.windowID,
+                    title: window.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmptyForCapture,
+                    appName: application.applicationName,
+                    bundleIdentifier: application.bundleIdentifier
+                )
+            }
+        } catch {
+            return []
+        }
+        #else
+        return []
+        #endif
+    }
+
     func start() async throws {
         #if canImport(ScreenCaptureKit)
         let content: SCShareableContent
@@ -75,13 +116,19 @@ final class ScreenCapturePipeline: NSObject {
         } catch {
             throw Failure.screenRecordingPermissionDenied
         }
-        let display = configuration.displayId.flatMap { wanted in
-            content.displays.first { String($0.displayID) == wanted }
-        } ?? content.displays.first
-        guard let display else {
-            throw Failure.noShareableContent
+        let filter: SCContentFilter
+        if let windowID = configuration.windowID,
+           let window = content.windows.first(where: { $0.windowID == windowID }) {
+            filter = SCContentFilter(desktopIndependentWindow: window)
+        } else {
+            let display = configuration.displayId.flatMap { wanted in
+                content.displays.first { String($0.displayID) == wanted }
+            } ?? content.displays.first
+            guard let display else {
+                throw Failure.noShareableContent
+            }
+            filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
         }
-        let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
         let cfg = SCStreamConfiguration()
         cfg.width = configuration.width
         cfg.height = configuration.height
@@ -124,6 +171,12 @@ extension ScreenCapturePipeline: SCStreamOutput {
         Task(priority: .userInitiated) { @MainActor [weak self, frame] in
             await self?.frameHandler(frame.sampleBuffer)
         }
+    }
+}
+
+private extension String {
+    var nilIfEmptyForCapture: String? {
+        isEmpty ? nil : self
     }
 }
 #endif

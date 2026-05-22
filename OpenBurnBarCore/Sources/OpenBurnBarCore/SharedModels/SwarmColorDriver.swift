@@ -48,6 +48,12 @@ public struct SwarmColorDriver: Equatable, Sendable {
     /// Today's total cost in USD — drives overall intensity/brightness of the swarm.
     public let totalBurnRateUSD: Double
 
+    /// All active providers who currently have non-zero usage weight.
+    public var activeProviders: [AgentProvider] {
+        guard mode == .active else { return [] }
+        return providers.filter { $0.weight > 0 }.map { $0.provider }
+    }
+
     // MARK: - Init
 
     public init(
@@ -159,7 +165,7 @@ public struct SwarmColorDriver: Equatable, Sendable {
             return RGBA(r: 0.20, g: 1.00, b: 0.82, a: base.a)
         case .factory, .zai, .hermes, .piAgent:
             return RGBA(r: 0.72, g: 0.52, b: 1.00, a: base.a)
-        case .cursor, .warp:
+        case .cursor, .warp, .xAI:
             return RGBA(r: 0.86, g: 0.90, b: 0.96, a: base.a)
         case .openCode, .geminiCLI, .antigravity, .windsurf, .deepSeek, .kimi:
             return RGBA(r: 0.36, g: 0.66, b: 1.00, a: base.a)
@@ -205,7 +211,7 @@ public struct RGBA: Equatable, Sendable {
 
 // MARK: - Clamped helper
 
-private extension RGBA {
+extension RGBA {
     func mix(with other: RGBA, amount: Double) -> RGBA {
         let t = amount.clamped(to: 0...1)
         return RGBA(
@@ -225,7 +231,7 @@ private extension RGBA {
     }
 }
 
-private extension Double {
+extension Double {
     func clamped(to range: ClosedRange<Double>) -> Double {
         min(max(self, range.lowerBound), range.upperBound)
     }

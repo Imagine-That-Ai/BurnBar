@@ -384,6 +384,31 @@ public struct HermesRealtimeRelayMediaFrameChunk: Codable, Sendable, Equatable {
     }
 }
 
+public enum AgentFocusFollowMode: String, Codable, CaseIterable, Sendable, Equatable {
+    case smart
+    case debounced
+    case immediate
+}
+
+public struct HermesRealtimeRelayFocusContext: Codable, Sendable, Equatable {
+    public var appName: String
+    public var bundleId: String
+    public var windowTitle: String?
+    public var windowId: UInt32?
+
+    public init(
+        appName: String,
+        bundleId: String,
+        windowTitle: String? = nil,
+        windowId: UInt32? = nil
+    ) {
+        self.appName = appName
+        self.bundleId = bundleId
+        self.windowTitle = windowTitle
+        self.windowId = windowId
+    }
+}
+
 public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// Identifier of the media stream class this frame addresses
     /// (`media.blob`, `media.screen.video`, `media.video.out`, etc.). Carried
@@ -430,6 +455,9 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// `encodedFrameBase64` field carries the chunk bytes; receivers
     /// reassemble chunks by `chunkId` before decoding the media frame.
     public var frameChunk: HermesRealtimeRelayMediaFrameChunk?
+    /// Optional Mac focus-follow context. Additive only: old peers ignore it,
+    /// and media frames remain routable solely by `streamClass`.
+    public var focusContext: HermesRealtimeRelayFocusContext?
 
     public init(
         streamClass: String? = nil,
@@ -445,7 +473,8 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         callAck: HermesRealtimeRelayCallAck? = nil,
         longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck? = nil,
         encodedFrameBase64: String? = nil,
-        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil
+        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil,
+        focusContext: HermesRealtimeRelayFocusContext? = nil
     ) {
         self.streamClass = streamClass
         self.attachment = attachment
@@ -461,6 +490,7 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         self.longTermReferenceAck = longTermReferenceAck
         self.encodedFrameBase64 = encodedFrameBase64
         self.frameChunk = frameChunk
+        self.focusContext = focusContext
     }
 }
 
@@ -531,19 +561,24 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
     /// Older peers omit this field; the Mac falls back to the last
     /// heartbeat or the existing v1 behavior when it is absent.
     public var streamingCapabilities: HermesRealtimeRelayStreamingCapabilities?
+    /// Optional Phase 5 focus-follow preference from the phone. Mac peers
+    /// that do not know it keep their existing full-display mirror behavior.
+    public var focusFollowMode: String?
 
     public init(
         requestId: String,
         requestedAt: Date,
         requesterDisplayName: String,
         streamClass: String,
-        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil,
+        focusFollowMode: String? = nil
     ) {
         self.requestId = requestId
         self.requestedAt = requestedAt
         self.requesterDisplayName = requesterDisplayName
         self.streamClass = streamClass
         self.streamingCapabilities = streamingCapabilities
+        self.focusFollowMode = focusFollowMode
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -552,6 +587,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         case requesterDisplayName
         case streamClass
         case streamingCapabilities
+        case focusFollowMode
     }
 
     public init(from decoder: Decoder) throws {
@@ -564,6 +600,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
             HermesRealtimeRelayStreamingCapabilities.self,
             forKey: .streamingCapabilities
         )
+        self.focusFollowMode = try container.decodeIfPresent(String.self, forKey: .focusFollowMode)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -573,6 +610,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         try container.encode(requesterDisplayName, forKey: .requesterDisplayName)
         try container.encode(streamClass, forKey: .streamClass)
         try container.encodeIfPresent(streamingCapabilities, forKey: .streamingCapabilities)
+        try container.encodeIfPresent(focusFollowMode, forKey: .focusFollowMode)
     }
 }
 
@@ -640,6 +678,26 @@ public struct HermesRealtimeRelayMirrorDisplaySelection: Codable, Sendable, Equa
         self.displayId = displayId
         self.selectedAt = selectedAt
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case displayId
+        case selectedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.displayId = try container.decode(String.self, forKey: .displayId)
+        self.selectedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .selectedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(displayId, forKey: .displayId)
+        try container.encode(selectedAt, forKey: .selectedAt)
+    }
 }
 
 /// Mercury Phase 8 — requester-side end signal for an accepted mirror session.
@@ -656,6 +714,26 @@ public struct HermesRealtimeRelayMirrorStop: Codable, Sendable, Equatable {
         self.requestId = requestId
         self.stoppedAt = stoppedAt
         self.reason = reason
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case stoppedAt
+        case reason
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.stoppedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .stoppedAt)
+        self.reason = try container.decodeIfPresent(String.self, forKey: .reason)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(stoppedAt, forKey: .stoppedAt)
+        try container.encodeIfPresent(reason, forKey: .reason)
     }
 }
 

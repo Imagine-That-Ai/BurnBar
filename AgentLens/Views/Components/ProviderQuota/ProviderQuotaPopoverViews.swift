@@ -21,6 +21,8 @@ struct QuotaPopoverBar: View {
     @State private var localMiniMaxKey = ""
     @State private var localMiniMaxMode: MiniMaxQuotaMode = .tokenPlan
     @State private var localFactoryTier: FactoryQuotaPlanTier = .unknown
+    @State private var localXaiTier: XAIQuotaPlanTier = .unknown
+    @State private var localXaiManagementKey = ""
     @State private var localZaiKey = ""
     @State private var localCursorCookie = ""
 
@@ -389,6 +391,7 @@ struct QuotaPopoverBar: View {
             case .minimax: minimaxSetupPanel
             case .zai: zaiSetupPanel
             case .factory: factorySetupPanel
+            case .xAI: xaiSetupPanel
             case .cursor: cursorSetupPanel
             case .codex: codexSetupPanel
             default:
@@ -555,6 +558,43 @@ struct QuotaPopoverBar: View {
     }
 
     @ViewBuilder
+    private var xaiSetupPanel: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Plan tier")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            Picker("", selection: $localXaiTier) {
+                ForEach(XAIQuotaPlanTier.allCases) { tier in
+                    Text(tier.shortName).tag(tier)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Text("Management Key (optional — required for GrokBuild credit balance)")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            SecureField("xai-mgmt-…", text: $localXaiManagementKey)
+                .font(DesignSystem.Typography.monoSmall)
+                .textFieldStyle(.plain)
+                .padding(DesignSystem.Spacing.xs)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceMuted)
+                )
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button("Save") { Task { await saveAndRefresh(for: .xAI) } }
+                    .buttonStyle(GlassButtonStyle(prominent: true))
+                    .disabled(isWorking)
+                Button("Cancel") { expandedProvider = nil }
+            }
+            .font(DesignSystem.Typography.caption)
+        }
+    }
+
+    @ViewBuilder
     private var cursorSetupPanel: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             Text("Session Cookie")
@@ -608,6 +648,9 @@ struct QuotaPopoverBar: View {
             localCursorCookie = ks.apiKey(for: "cursor_cookie") ?? ""
         case .factory:
             localFactoryTier = settingsManager.factoryQuotaPlanTier
+        case .xAI:
+            localXaiTier = settingsManager.xaiQuotaPlanTier
+            localXaiManagementKey = ks.apiKey(for: "xai_management_key") ?? ""
         default:
             break
         }
@@ -646,6 +689,18 @@ struct QuotaPopoverBar: View {
             }
         case .factory:
             settingsManager.factoryQuotaPlanTier = localFactoryTier
+        case .xAI:
+            do {
+                let trimmed = localXaiManagementKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    try ks.removeAPIKey(for: "xai_management_key")
+                } else {
+                    try ks.setAPIKey(trimmed, for: "xai_management_key")
+                }
+                settingsManager.xaiQuotaPlanTier = localXaiTier
+            } catch {
+                AppLogger.dataStore.silentFailure("saveAPIKey(xai_management_key)", error: error)
+            }
         default:
             break
         }

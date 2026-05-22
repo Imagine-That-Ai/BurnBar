@@ -12,6 +12,7 @@ struct MercuryActionStack: View {
     let canRequestMirror: Bool
     let canPlaceCall: Bool
     let canSendFile: Bool
+    let mirrorAutoAccept: Bool
     let awaitingRequestID: String?
     let sendingFile: Bool
     let mercuryStatusMessage: String?
@@ -39,7 +40,7 @@ struct MercuryActionStack: View {
                 HStack(spacing: 12) {
                     Image(systemName: awaitingRequestID == nil ? action.icon : "hourglass")
                         .font(.system(size: 16, weight: .bold))
-                    Text(awaitingRequestID == nil ? action.displayName : "Waiting for Mac…")
+                    Text(mirrorButtonTitle(for: action))
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -79,7 +80,7 @@ struct MercuryActionStack: View {
     private var statusRow: some View {
         if order.contains(.mirror) {
             if awaitingRequestID != nil {
-                statusText("Request sent. Check your Mac.")
+                statusText(mirrorAutoAccept ? "Opening mirror on your Mac..." : "Request sent. Check your Mac.")
             } else if let status = mercuryStatusMessage {
                 statusText(status)
             } else if !peer.isOnline {
@@ -98,5 +99,12 @@ struct MercuryActionStack: View {
             .frame(maxWidth: .infinity)
             .background(Color.white.opacity(0.04))
             .cornerRadius(10)
+    }
+
+    private func mirrorButtonTitle(for action: MercuryQuickAction) -> String {
+        if awaitingRequestID != nil {
+            return mirrorAutoAccept ? "Opening mirror..." : "Waiting for Mac..."
+        }
+        return mirrorAutoAccept ? "Mirror Mac" : action.displayName
     }
 }

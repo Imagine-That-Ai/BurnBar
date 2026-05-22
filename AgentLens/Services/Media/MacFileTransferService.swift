@@ -77,6 +77,10 @@ final class MacFileTransferService: ObservableObject {
         _ frame: HermesRealtimeRelayFrame,
         _ replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async -> Void
+    typealias MercuryControlStreamCloseHandler = @Sendable (
+        _ uid: String,
+        _ connectionID: String
+    ) async -> Void
 
     private let service: MediaFileTransferService
     private let settingsProvider: @MainActor () -> Bool
@@ -84,6 +88,7 @@ final class MacFileTransferService: ObservableObject {
     private let advertiseTimeout: TimeInterval
     private var advertiseSenderOverride: AdvertiseSender?
     private var mercuryDispatcher: MercuryControlFrameDispatcher?
+    private var mercuryControlStreamCloseHandler: MercuryControlStreamCloseHandler?
     private var computerUseControlDispatcher: ControlFrameDispatcher?
 
     @Published private(set) var lastError: Failure?
@@ -122,6 +127,15 @@ final class MacFileTransferService: ObservableObject {
     /// (mirror/presence traffic) based on `frame.type`.
     func setMercuryDispatcher(_ dispatcher: @escaping MercuryControlFrameDispatcher) {
         self.mercuryDispatcher = dispatcher
+    }
+
+    /// Notifies the Mercury router that a peer's long-lived control stream
+    /// really closed. Registry invalidation alone is not enough because the
+    /// router also owns active mirror/ringing state.
+    func setMercuryControlStreamCloseHandler(
+        _ handler: @escaping MercuryControlStreamCloseHandler
+    ) {
+        self.mercuryControlStreamCloseHandler = handler
     }
 
     /// Android's screen-share viewer shares the long-lived Mercury
@@ -304,6 +318,9 @@ final class MacFileTransferService: ObservableObject {
             lastError = .publishFailed("control stream read: \(error.localizedDescription)")
         }
         await registry.invalidate(uid: uid, connectionID: connectionID)
+        if let mercuryControlStreamCloseHandler {
+            await mercuryControlStreamCloseHandler(uid, connectionID)
+        }
         Self.log.info("mac_control_stream_closed connectionID=\(connectionID, privacy: .public)")
         Self.debugTrace("mac_control_stream_closed connectionID=\(connectionID)")
         await stream.close()
@@ -381,30 +398,39 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
         }
     }
 
-    private let stream: any IrohRelayStream
+    private let sendGate: MercuryControlStreamSendGate
     private let uid: String
     private let connectionID: String
     private let streamClass: MediaStreamClass
+    private let heartbeatInterval: TimeInterval
+    private let extraHeartbeatCapabilities: [String]
     private let codec = MediaPacketCodec()
     private let frameV2Codec = MediaFrameV2Codec()
+    private var heartbeatTask: Task<Void, Never>?
 
     init(
         stream: any IrohRelayStream,
         uid: String,
         connectionID: String,
-        streamClass: MediaStreamClass
+        streamClass: MediaStreamClass,
+        heartbeatInterval: TimeInterval = 2.5,
+        extraHeartbeatCapabilities: [String] = []
     ) {
-        self.stream = stream
+        self.sendGate = MercuryControlStreamSendGate(stream: stream)
         self.uid = uid
         self.connectionID = connectionID
         self.streamClass = streamClass
+        self.heartbeatInterval = heartbeatInterval
+        self.extraHeartbeatCapabilities = extraHeartbeatCapabilities
+        startHeartbeatLoop()
     }
 
     static func make(
         registry: MediaControlStreamRegistry,
         uid: String,
         connectionID: String,
-        streamClass: MediaStreamClass
+        streamClass: MediaStreamClass,
+        extraHeartbeatCapabilities: [String] = []
     ) async throws -> MercuryControlStreamMediaSink {
         let exactStream = await registry.stream(uid: uid, connectionID: connectionID)
         let latestStream = await registry.latestStream(uid: uid)?.stream
@@ -415,7 +441,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
             stream: stream,
             uid: uid,
             connectionID: connectionID,
-            streamClass: streamClass
+            streamClass: streamClass,
+            extraHeartbeatCapabilities: extraHeartbeatCapabilities
         )
     }
 
@@ -443,11 +470,14 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
         }
     }
 
-    func close() async {}
+    func close() async {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+    }
 
     private func sendEncodedFrame(_ encoded: Data, frameIndex: UInt32) async throws {
         if encoded.count <= Self.maxInlineEncodedFrameBytes {
-            try await stream.send(makeRelayFrame(encodedFrameBase64: encoded.base64EncodedString()))
+            try await sendGate.send(makeRelayFrame(encodedFrameBase64: encoded.base64EncodedString()))
             return
         }
 
@@ -463,7 +493,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
                 chunkCount: chunkCount,
                 totalBytes: encoded.count
             )
-            try await stream.send(makeRelayFrame(
+            try await sendGate.send(makeRelayFrame(
                 encodedFrameBase64: chunk.base64EncodedString(),
                 frameChunk: metadata
             ))
@@ -485,5 +515,74 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
                 frameChunk: frameChunk
             )
         )
+    }
+
+    private func startHeartbeatLoop() {
+        guard heartbeatInterval > 0 else { return }
+        heartbeatTask = Task { [sendGate, uid, connectionID, streamClass, heartbeatInterval, extraHeartbeatCapabilities] in
+            await Self.sendMirrorHealthHeartbeat(
+                sendGate: sendGate,
+                uid: uid,
+                connectionID: connectionID,
+                streamClass: streamClass,
+                extraCapabilities: extraHeartbeatCapabilities
+            )
+
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(heartbeatInterval * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                await Self.sendMirrorHealthHeartbeat(
+                    sendGate: sendGate,
+                    uid: uid,
+                    connectionID: connectionID,
+                    streamClass: streamClass,
+                    extraCapabilities: extraHeartbeatCapabilities
+                )
+            }
+        }
+    }
+
+    private static func sendMirrorHealthHeartbeat(
+        sendGate: MercuryControlStreamSendGate,
+        uid: String,
+        connectionID: String,
+        streamClass: MediaStreamClass,
+        extraCapabilities: [String]
+    ) async {
+        let capabilities = Array(Set([
+            MercuryPeer.Feature.mirrorHost.rawValue,
+            streamClass.rawValue
+        ] + extraCapabilities)).sorted()
+        do {
+            try await sendGate.send(HermesRealtimeRelayFrame(
+                type: .mediaPresenceHeartbeat,
+                uid: uid,
+                connectionId: connectionID,
+                media: HermesRealtimeRelayMediaPayload(
+                    presence: HermesRealtimeRelayPresenceHeartbeat(
+                        sentAt: Date(),
+                        deviceDisplayName: Host.current().localizedName ?? "Mac",
+                        capabilities: capabilities,
+                        streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
+                            mediaFrameVersions: .v1AndV2
+                        ).wireValue
+                    )
+                )
+            ))
+        } catch {
+            Self.log.error("control_stream_media_heartbeat_failed connectionID=\(connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+        }
+    }
+}
+
+private actor MercuryControlStreamSendGate {
+    private let stream: any IrohRelayStream
+
+    init(stream: any IrohRelayStream) {
+        self.stream = stream
+    }
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {
+        try await stream.send(frame)
     }
 }

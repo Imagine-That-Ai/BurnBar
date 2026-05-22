@@ -38,10 +38,10 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         case .burn:     return "Burn"
         case .insights: return "Insights"
         case .streams:  return "Streams"
-        // Plan 2: tab label flips to "Assistants" but the enum case stays
+        // Plan 2: tab label flips to "Agents" but the enum case stays
         // `.hermes` so existing route strings, deep links, and persisted
         // selection values keep working.
-        case .hermes:   return "Assistants"
+        case .hermes:   return "Agents"
         case .you:      return "You"
         }
     }

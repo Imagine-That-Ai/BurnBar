@@ -306,6 +306,16 @@ const PROVIDER_LOGOS = Object.freeze({
     [null, "#7C7C7C", null, null, null, "#6F6F6F", "#343434", null],
     [null, null, null, null, null, null, null, null],
   ],
+  xAI: [
+    ["#0F0F0F", null, null, null, null, null, null, "#0F0F0F"],
+    ["#0F0F0F", "#0F0F0F", null, null, null, null, "#0F0F0F", "#0F0F0F"],
+    [null, "#0F0F0F", "#0F0F0F", null, null, "#0F0F0F", "#0F0F0F", null],
+    [null, null, "#0F0F0F", "#0F0F0F", "#0F0F0F", "#0F0F0F", null, null],
+    [null, null, "#4A4A4A", "#0F0F0F", "#0F0F0F", "#4A4A4A", null, null],
+    [null, "#4A4A4A", "#4A4A4A", null, null, "#4A4A4A", "#4A4A4A", null],
+    ["#4A4A4A", "#4A4A4A", null, null, null, null, "#4A4A4A", "#4A4A4A"],
+    ["#4A4A4A", null, null, null, null, null, null, "#4A4A4A"],
+  ],
 });
 
 /**
@@ -326,6 +336,7 @@ function logoFor(item) {
   if (token.includes("ollama")) return PROVIDER_LOGOS.ollama;
   if (token.includes("minimax")) return PROVIDER_LOGOS.miniMax;
   if (token.includes("z.ai") || token.includes("zai")) return PROVIDER_LOGOS.zai;
+  if (token.includes("grok") || token.includes("xai") || token.includes("x.ai")) return PROVIDER_LOGOS.xAI;
   return monogramLogoFor(item);
 }
 
@@ -341,6 +352,7 @@ function shortProviderCode(item) {
   if (token.includes("ollama")) return "OLL";
   if (token.includes("kimi")) return "KIM";
   if (token.includes("z.ai") || token.includes("zai")) return "ZAI";
+  if (token.includes("grok") || token.includes("xai") || token.includes("x.ai")) return "GRK";
   const normalized = String(item?.providerName ?? "")
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");

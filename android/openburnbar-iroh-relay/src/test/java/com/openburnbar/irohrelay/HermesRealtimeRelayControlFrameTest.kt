@@ -14,11 +14,9 @@ class HermesRealtimeRelayControlFrameTest {
             control = HermesRealtimeRelayControlPayload(
                 streamClass = "control.input",
                 inputIntent = HermesRealtimeRelayInputIntent(
-                    kind = HermesRealtimeRelayInputIntentKind.SCROLL,
-                    normalizedX = 0.4,
-                    normalizedY = 0.5,
-                    normalizedX2 = 0.4,
-                    normalizedY2 = 0.2,
+                    kind = HermesRealtimeRelayInputIntentKind.POINTER_CLICK,
+                    displayId = "display-1",
+                    mouseButton = 1,
                     clientIntentId = "intent-1",
                     authority = HermesRealtimeRelayAuthorityEnvelope(
                         peerNodeId = "android-phone-1",
@@ -37,8 +35,9 @@ class HermesRealtimeRelayControlFrameTest {
         assertEquals(HermesRealtimeRelayFrameType.CONTROL_INPUT_INTENT, decoded.type)
         assertEquals("control.input", decoded.control?.streamClass)
         assertNotNull(decoded.control?.inputIntent)
-        assertEquals(HermesRealtimeRelayInputIntentKind.SCROLL, decoded.control?.inputIntent?.kind)
-        assertEquals(0.2, decoded.control?.inputIntent?.normalizedY2 ?: -1.0, 0.0)
+        assertEquals(HermesRealtimeRelayInputIntentKind.POINTER_CLICK, decoded.control?.inputIntent?.kind)
+        assertEquals("display-1", decoded.control?.inputIntent?.displayId)
+        assertEquals(1, decoded.control?.inputIntent?.mouseButton)
         assertEquals("intent-1", decoded.control?.inputIntent?.clientIntentId)
         assertEquals(42L, decoded.control?.inputIntent?.authority?.counter)
         assertEquals("f".repeat(64), decoded.control?.inputIntent?.authority?.intentHashBlake3)
@@ -93,5 +92,31 @@ class HermesRealtimeRelayControlFrameTest {
         assertEquals("approval-1", decodedResponse.control?.approvalResponse?.approvalId)
         assertEquals(HermesRealtimeRelayApprovalResponse.Decision.APPROVE, decodedResponse.control?.approvalResponse?.decision)
         assertEquals("phone", decodedResponse.control?.approvalResponse?.respondedBy)
+    }
+
+    @Test
+    fun codecRoundTripsMirrorStopFrame() {
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_STOP,
+            uid = "uid-1",
+            connectionId = "conn-1",
+            requestId = "req-stop-1",
+            media = HermesRealtimeRelayMediaPayload(
+                mirrorStop = HermesRealtimeRelayMirrorStop(
+                    requestId = "req-stop-1",
+                    stoppedAt = 801_000_002.0,
+                    reason = "viewer_closed",
+                ),
+            ),
+        )
+
+        val codec = IrohRelayFrameCodec()
+        val decoded = codec.decode(codec.encode(frame)).frame
+
+        assertEquals(HermesRealtimeRelayFrameType.MEDIA_MIRROR_STOP, decoded.type)
+        assertEquals("req-stop-1", decoded.requestId)
+        assertEquals("req-stop-1", decoded.media?.mirrorStop?.requestId)
+        assertEquals(801_000_002.0, decoded.media?.mirrorStop?.stoppedAt)
+        assertEquals("viewer_closed", decoded.media?.mirrorStop?.reason)
     }
 }

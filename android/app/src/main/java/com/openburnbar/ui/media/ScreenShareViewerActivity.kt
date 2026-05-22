@@ -8,7 +8,10 @@ import android.util.Log
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import com.openburnbar.data.computeruse.InMemoryPhoneControlCounterStore
 import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
 import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
@@ -44,6 +47,7 @@ class ScreenShareViewerActivity : ComponentActivity() {
     private val counterStore = InMemoryPhoneControlCounterStore()
     private var phoneControlSender: PhoneControlSender? = null
     private var phoneControlConnectionID: String? = null
+    private var mirrorStopSent = false
     private val controlStatus = mutableStateOf<String?>(null)
 
     private val pipeline: VideoReceivePipeline = VideoReceivePipeline(
@@ -62,43 +66,55 @@ class ScreenShareViewerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         bindCoordinatorHandlers()
         setContent {
+            val heartbeatFlow = BurnBarApplication.mediaControlCoordinator?.lastPeerHeartbeatAtMillis
+            val lastPeerHeartbeatAtMillis by (
+                heartbeatFlow?.collectAsState()
+                    ?: remember { mutableStateOf(0L) }
+                )
             ScreenShareViewerScreen(
                 pipeline = pipeline,
-                onClose = { finish() },
+                lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
+                onClose = { closeMirrorAndFinish() },
                 onEnterPictureInPicture = { enterMirrorPictureInPicture() },
                 onReconnect = { reconnectMirror() },
-                onTapNormalized = { x, y ->
+                onTapNormalized = { x, y, mouseButton ->
                     sendPhoneControlIntent(PhoneControlIntent(
                         kind = PhoneControlIntentKind.TAP,
                         normalizedX = x,
                         normalizedY = y,
+                        mouseButton = mouseButton,
                     ))
                 },
-                onDragStartNormalized = { x, y ->
+                onScrollDragNormalized = { x1, y1, x2, y2 ->
                     sendPhoneControlIntent(PhoneControlIntent(
-                        kind = PhoneControlIntentKind.DRAG_START,
-                        normalizedX = x,
-                        normalizedY = y,
-                    ))
-                },
-                onDragMoveNormalized = { x, y ->
-                    sendPhoneControlIntent(PhoneControlIntent(
-                        kind = PhoneControlIntentKind.DRAG_MOVE,
-                        normalizedX = x,
-                        normalizedY = y,
-                    ))
-                },
-                onDragEndNormalized = { x, y ->
-                    sendPhoneControlIntent(PhoneControlIntent(
-                        kind = PhoneControlIntentKind.DRAG_END,
-                        normalizedX = x,
-                        normalizedY = y,
+                        kind = PhoneControlIntentKind.SCROLL,
+                        normalizedX = x1,
+                        normalizedY = y1,
+                        normalizedX2 = x2,
+                        normalizedY2 = y2,
                     ))
                 },
                 onScrollNormalized = { deltaY ->
+                    val endY = (0.5 + deltaY).coerceIn(0.0, 1.0)
                     sendPhoneControlIntent(PhoneControlIntent(
                         kind = PhoneControlIntentKind.SCROLL,
-                        normalizedY = deltaY,
+                        normalizedX = 0.5,
+                        normalizedY = 0.5,
+                        normalizedX2 = 0.5,
+                        normalizedY2 = endY,
+                    ))
+                },
+                onPointerMove = { dx, dy ->
+                    sendPhoneControlIntent(PhoneControlIntent(
+                        kind = PhoneControlIntentKind.POINTER_MOVE,
+                        normalizedX2 = dx,
+                        normalizedY2 = dy,
+                    ))
+                },
+                onPointerClick = { mouseButton ->
+                    sendPhoneControlIntent(PhoneControlIntent(
+                        kind = PhoneControlIntentKind.POINTER_CLICK,
+                        mouseButton = mouseButton,
                     ))
                 },
                 onTypeText = { text ->
@@ -130,6 +146,9 @@ class ScreenShareViewerActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (!isChangingConfigurations) {
+            sendMirrorStop(reason = "activity_destroyed")
+        }
         val coordinator = BurnBarApplication.mediaControlCoordinator
         coordinator?.mirrorFrameHandler = null
         coordinator?.mirrorFrameV2Handler = null
@@ -159,6 +178,28 @@ class ScreenShareViewerActivity : ComponentActivity() {
         val coordinator = BurnBarApplication.mediaControlCoordinator ?: return
         coordinator.mirrorFrameHandler = { frame -> pipeline.ingest(frame) }
         coordinator.mirrorFrameV2Handler = { frame -> pipeline.ingest(frame) }
+    }
+
+    private fun closeMirrorAndFinish() {
+        sendMirrorStop(reason = "viewer_closed")
+        finish()
+    }
+
+    private fun sendMirrorStop(reason: String) {
+        val requestID = mirrorRequestID?.takeIf { it.isNotBlank() } ?: return
+        if (mirrorStopSent) return
+        mirrorStopSent = true
+        BurnBarApplication.applicationScope.launch {
+            runCatching {
+                BurnBarApplication.mediaControlCoordinator
+                    ?.stopMirror(requestID = requestID, reason = reason)
+                    ?: throw IllegalStateException("Mercury control coordinator is not available.")
+            }.onSuccess {
+                Log.i(TAG, "Android screen-share mirror stop sent requestID=$requestID reason=$reason")
+            }.onFailure { error ->
+                Log.w(TAG, "Android screen-share mirror stop failed requestID=$requestID error=${error.message}", error)
+            }
+        }
     }
 
     private fun sendPhoneControlIntent(intent: PhoneControlIntent) {

@@ -66,6 +66,17 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var consecutiveDialFailures: Int = 0
+    /// Most recent failure reason surfaced from a `.failed` transition.
+    /// Survives the subsequent `.reconnecting` transitions so the viewer
+    /// can show *why* Mercury lost contact. Cleared on `.live`.
+    @Published private(set) var lastFailureReason: String?
+    /// Wall-clock anchor for the active `.reconnecting` interval so the
+    /// viewer can animate a real ticking countdown instead of a static
+    /// `nextAttemptIn` value.
+    @Published private(set) var reconnectAttemptStartedAt: Date?
+    /// Wall-clock anchor for the most recent `.live` transition. Used by
+    /// the viewer to show "last seen 12s ago" when the stream drops.
+    @Published private(set) var lastLiveAt: Date?
     var connectionID: String? { activeConnectionID }
 
     private let dialer: StreamDialer
@@ -121,7 +132,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
         dialer: @escaping StreamDialer,
         receiver: iOSFileTransferService,
         initialBackoff: TimeInterval = 1.0,
-        maxBackoff: TimeInterval = 30.0
+        maxBackoff: TimeInterval = 8.0
     ) {
         self.dialer = dialer
         self.receiver = receiver
@@ -155,6 +166,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
         phase = .stopped
         activeUID = nil
         activeConnectionID = nil
+        reconnectAttemptStartedAt = nil
+        lastFailureReason = nil
     }
 
     /// Outbound send entry point. Blocks until the stream is live (or
@@ -186,6 +199,31 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 connectionId: connectionID,
                 requestId: requestId,
                 media: HermesRealtimeRelayMediaPayload(longTermReferenceAck: ack)
+            ),
+            timeout: timeout
+        )
+    }
+
+    func sendMirrorStop(
+        requestId: String,
+        reason: String? = nil,
+        timeout: TimeInterval = 8
+    ) async throws {
+        guard let uid = activeUID, let connectionID = activeConnectionID else {
+            throw ControlStreamError.notLive
+        }
+        let stop = HermesRealtimeRelayMirrorStop(
+            requestId: requestId,
+            stoppedAt: Date(),
+            reason: reason
+        )
+        try await send(
+            frame: HermesRealtimeRelayFrame(
+                type: .mediaMirrorStop,
+                uid: uid,
+                connectionId: connectionID,
+                requestId: requestId,
+                media: HermesRealtimeRelayMediaPayload(mirrorStop: stop)
             ),
             timeout: timeout
         )
@@ -242,6 +280,9 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 consecutiveDialFailures = 0
                 attempt = 0
                 phase = .live
+                lastLiveAt = Date()
+                lastFailureReason = nil
+                reconnectAttemptStartedAt = nil
                 Self.log.info("control_stream_live connectionID=\(connectionID, privacy: .public)")
                 Self.debugTrace("control_stream_live connectionID=\(connectionID)")
                 resolvePending(with: stream)
@@ -260,6 +301,9 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 heartbeatTask = nil
                 currentStream = nil
                 if Task.isCancelled { break }
+                if lastFailureReason == nil {
+                    lastFailureReason = "Mac closed the control stream."
+                }
                 // Peer closed cleanly — quick retry once before the
                 // exponential backoff kicks in.
                 attempt = max(0, attempt - 1)
@@ -267,6 +311,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 break
             } catch {
                 consecutiveDialFailures += 1
+                lastFailureReason = error.localizedDescription
                 Self.log.error("control_stream_dial_failed connectionID=\(connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                 Self.debugTrace("control_stream_dial_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
                 phase = .failed(reason: error.localizedDescription)
@@ -274,10 +319,12 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
             let backoff = nextBackoff(attempt: attempt)
             attempt += 1
+            reconnectAttemptStartedAt = Date()
             phase = .reconnecting(nextAttemptIn: backoff)
             try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
         }
         phase = .stopped
+        reconnectAttemptStartedAt = nil
     }
 
     private func readLoop(
@@ -348,6 +395,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
             }
         } catch {
             // Surface as a soft failure; supervisor handles reconnect.
+            lastFailureReason = error.localizedDescription
             phase = .reconnecting(nextAttemptIn: initialBackoff)
         }
     }

@@ -68,4 +68,49 @@ final class UnifiedQuotaSignalCurrencyTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ProviderQuotaBucket.self, from: encoded)
         XCTAssertEqual(decoded.meta?["unit"], "credits")
     }
+
+    func test_usedPercentDrivesDisplayRemainingPercent() {
+        let bucket = ProviderQuotaBucket(
+            name: "claude-five-hour",
+            used: 0,
+            limit: 100,
+            remaining: 0,
+            window: "5h",
+            meta: [
+                "unit": "percent",
+                "usedPercent": "62"
+            ]
+        )
+
+        XCTAssertEqual(bucket.displayRemainingPercent ?? -1, 38, accuracy: 0.0001)
+        XCTAssertTrue(bucket.isDisplayableQuotaSignal)
+    }
+
+    func test_zeroLimitPercentBucketUsesPercentDenominator() {
+        let bucket = ProviderQuotaBucket(
+            name: "codex-primary",
+            used: 37,
+            limit: 0,
+            remaining: 63,
+            window: "5h",
+            meta: ["unit": "percent"]
+        )
+
+        XCTAssertEqual(bucket.displayRemainingPercent ?? -1, 63, accuracy: 0.0001)
+        XCTAssertTrue(bucket.isDisplayableQuotaSignal)
+    }
+
+    func test_remainingOnlyUnknownLimitDoesNotRenderAsExhausted() {
+        let bucket = ProviderQuotaBucket(
+            name: "zai-balance",
+            used: 0,
+            limit: -1,
+            remaining: 23,
+            window: "account",
+            meta: ["currency": "CNY"]
+        )
+
+        XCTAssertEqual(bucket.displayRemainingPercent ?? -1, 100, accuracy: 0.0001)
+        XCTAssertTrue(bucket.isDisplayableQuotaSignal)
+    }
 }

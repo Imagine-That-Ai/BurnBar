@@ -84,7 +84,11 @@ final class MissionFABResurrectionController {
     // MARK: - Init
 
     init() {
-        self.isDismissed = UserDefaults.standard.bool(forKey: Self.isDismissedKey)
+        if UserDefaults.standard.object(forKey: Self.isDismissedKey) == nil {
+            self.isDismissed = true
+        } else {
+            self.isDismissed = UserDefaults.standard.bool(forKey: Self.isDismissedKey)
+        }
         if let ts = UserDefaults.standard.object(forKey: Self.dismissedAtKey) as? TimeInterval {
             self.dismissedAt = Date(timeIntervalSince1970: ts)
         } else {
@@ -93,7 +97,7 @@ final class MissionFABResurrectionController {
     }
 
     /// Test/preview seed.
-    static func offline(initiallyDismissed: Bool = false) -> MissionFABResurrectionController {
+    static func offline(initiallyDismissed: Bool = true) -> MissionFABResurrectionController {
         let inst = MissionFABResurrectionController()
         inst.isDismissed = initiallyDismissed
         inst.wasAutoResurrected = false

@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
@@ -47,7 +48,7 @@ import com.openburnbar.ui.theme.*
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraTypography
 import com.openburnbar.util.Formatting
-import kotlin.math.min
+import kotlin.math.roundToInt
 
 @Composable
 fun BurnView(
@@ -63,6 +64,31 @@ fun BurnView(
     val demoError by demoDataStore.error.collectAsState()
     val userStore: UserStore = viewModel()
     val currentUser by userStore.user.collectAsState()
+
+    val context = LocalContext.current
+    val quotaPrefs = remember(context) { QuotaPreferences.get(context) }
+    val providerOrder by quotaPrefs.providerOrder.collectAsState()
+    val visibleProviders by quotaPrefs.visibleProviders.collectAsState()
+    val hiddenBuckets by quotaPrefs.hiddenBuckets.collectAsState()
+    val bucketOrders by quotaPrefs.bucketOrders.collectAsState()
+    val percentageDisplayMode by quotaPrefs.percentageDisplayMode.collectAsState()
+
+    val visibleSnapshots = remember(snapshots, providerOrder, visibleProviders) {
+        snapshots
+            .filter { snapshot ->
+                val prov = AgentProvider.fromKey(snapshot.provider)
+                prov != null && prov in visibleProviders
+            }
+            .sortedWith { lhs, rhs ->
+                val lhsProv = AgentProvider.fromKey(lhs.provider)
+                val rhsProv = AgentProvider.fromKey(rhs.provider)
+                val lhsIdx = if (lhsProv != null) providerOrder.indexOf(lhsProv) else -1
+                val rhsIdx = if (rhsProv != null) providerOrder.indexOf(rhsProv) else -1
+                val lhsVal = if (lhsIdx >= 0) lhsIdx else Int.MAX_VALUE
+                val rhsVal = if (rhsIdx >= 0) rhsIdx else Int.MAX_VALUE
+                lhsVal.compareTo(rhsVal)
+            }
+    }
 
     var detailSnapshot by remember { mutableStateOf<ProviderQuotaSnapshot?>(null) }
     var displayMode by remember { mutableStateOf(UsageDisplayMode.CURRENCY) }
@@ -124,7 +150,7 @@ fun BurnView(
                 ) {
                     StaggeredEntrance(delay = 0) {
                         FleetHealthRing(
-                            snapshots = snapshots,
+                            snapshots = visibleSnapshots,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = AuroraSpacing.lg.dp)
                         )
                     }
@@ -139,7 +165,7 @@ fun BurnView(
                         )
                     }
 
-                    val urgent = snapshots.filter { it.percentageRemaining <= 25 }
+                    val urgent = visibleSnapshots.filter { it.percentageRemaining <= 25 }
                     if (urgent.isNotEmpty()) {
                         StaggeredEntrance(delay = 75) {
                             UrgentBanner(
@@ -151,7 +177,7 @@ fun BurnView(
 
                     StaggeredEntrance(delay = 100) {
                         ProviderRingStrip(
-                            snapshots = snapshots,
+                            snapshots = visibleSnapshots,
                             onProviderClick = { detailSnapshot = it },
                             modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)
                         )
@@ -172,13 +198,16 @@ fun BurnView(
                         )
                     }
 
-                    snapshots.forEachIndexed { index, snapshot ->
+                    visibleSnapshots.forEachIndexed { index, snapshot ->
                         StaggeredEntrance(delay = 150 + index * 25) {
                             ProviderAccordionCard(
                                 snapshot = snapshot,
                                 accounts = matchingQuotaAccounts(snapshot, accounts),
                                 signedInEmail = currentUser.email,
                                 onOpenDetail = { detailSnapshot = snapshot },
+                                hiddenBuckets = hiddenBuckets,
+                                bucketOrders = bucketOrders,
+                                percentageDisplayMode = percentageDisplayMode,
                                 modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)
                             )
                         }
@@ -217,7 +246,7 @@ fun ProviderDetailDialog(
                         detailRow("Quota Limit", Formatting.formatTokens(snapshot.quotaLimit.toInt()))
                         detailRow("Used", Formatting.formatTokens((snapshot.quotaLimit - snapshot.quotaRemaining).toInt()))
                         detailRow("Remaining", Formatting.formatTokens(snapshot.quotaRemaining.toInt()))
-                        detailRow("% Remaining", "${snapshot.percentageRemaining.toInt()}%")
+                        detailRow("% Remaining", "${snapshot.percentageRemaining.roundToInt()}%")
                         if (!accountName.equals("Account", ignoreCase = true)) {
                             detailRow("Account", accountName)
                         }
@@ -342,7 +371,7 @@ fun FleetHealthRing(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "${pct.toInt()}% remaining",
+                    text = "${pct.roundToInt()}% remaining",
                     fontSize = AuroraTypography.title.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -482,7 +511,7 @@ fun ProviderChip(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                "${snapshot.percentageRemaining.toInt()}%",
+                "${snapshot.percentageRemaining.roundToInt()}%",
                 fontSize = 11.sp,
                 color = if (snapshot.percentageRemaining <= 25) AuroraColors.burnOrange
                         else MaterialTheme.colorScheme.onSurfaceVariant
@@ -520,13 +549,20 @@ fun ProviderAccordionCard(
     accounts: List<ProviderAccount>,
     signedInEmail: String?,
     onOpenDetail: () -> Unit,
+    hiddenBuckets: Set<String>,
+    bucketOrders: Map<String, List<String>>,
+    percentageDisplayMode: String,
     modifier: Modifier = Modifier
 ) {
     val defaultWindow by rememberQuotaDefaultWindow()
     var expanded by remember(snapshot.id) { mutableStateOf(false) }
 
-    val classified = remember(snapshot.buckets) {
-        snapshot.buckets.map { it to QuotaWindowKind.infer(it) }
+    val customizedBuckets = remember(snapshot, hiddenBuckets, bucketOrders) {
+        snapshot.customizedBuckets(hiddenBuckets, bucketOrders)
+    }
+
+    val classified = remember(customizedBuckets) {
+        customizedBuckets.map { it to QuotaWindowKind.infer(it) }
     }
     // Pick the bucket that matches the user's preferred default; fall back to
     // the freshest non-OTHER bucket, then any bucket.
@@ -590,12 +626,12 @@ fun ProviderAccordionCard(
         } else if (!expanded) {
             // Compact: just the user's preferred bucket
             primaryBucket?.let { (bucket, kind) ->
-                BucketRow(bucket = bucket, kind = kind)
+                BucketRow(bucket = bucket, kind = kind, displayMode = percentageDisplayMode)
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
                 classified.forEach { (bucket, kind) ->
-                    BucketRow(bucket = bucket, kind = kind)
+                    BucketRow(bucket = bucket, kind = kind, displayMode = percentageDisplayMode)
                 }
                 TextButton(onClick = onOpenDetail, modifier = Modifier.align(Alignment.End)) {
                     Text("Open details")
@@ -606,15 +642,13 @@ fun ProviderAccordionCard(
 }
 
 @Composable
-private fun BucketRow(bucket: QuotaBucket, kind: QuotaWindowKind) {
-    val pct = if (bucket.limit > 0) {
-        ((bucket.remaining / bucket.limit) * 100).coerceIn(0.0, 100.0).toInt()
-    } else if (bucket.limit < 0) -1 // unlimited
-    else 0
+private fun BucketRow(bucket: QuotaBucket, kind: QuotaWindowKind, displayMode: String) {
+    val pct = bucket.displayRemainingPercent?.roundToInt()
+    val isUnlimited = bucket.meta?.get("unit")?.toString()?.equals("unlimited", ignoreCase = true) == true
 
-    val isLow = pct in 0..25
+    val isLow = pct != null && pct in 0..25
     val barColor = when {
-        pct < 0 -> AuroraColors.success
+        pct == null || isUnlimited -> AuroraColors.success
         isLow -> AuroraColors.burnOrange
         pct < 50 -> AuroraColors.warning
         else -> AuroraColors.burnCoral
@@ -629,8 +663,8 @@ private fun BucketRow(bucket: QuotaBucket, kind: QuotaWindowKind) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                if (pct < 0) "Unlimited"
-                else "${formatQuotaValue(bucket.remaining)} / ${formatQuotaValue(bucket.limit)} left",
+                if (isUnlimited) "Unlimited"
+                else bucket.getRemainingText(displayMode),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -639,13 +673,29 @@ private fun BucketRow(bucket: QuotaBucket, kind: QuotaWindowKind) {
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                if (pct < 0) "∞" else "$pct%",
+                if (isUnlimited) "∞"
+                else when (displayMode) {
+                    "remainingPercent" -> pct?.let { "$it%" } ?: "—"
+                    "usedPercent" -> pct?.let { "${100 - it}%" } ?: "—"
+                    "fractional" -> pct?.let { "%.2f".format(it / 100.0) } ?: "—"
+                    "absoluteValues" -> {
+                        val unit = bucket.bucketUnit
+                        if (unit == ProviderQuotaUnit.PERCENT) pct?.let { "$it%" } ?: "—"
+                        else if (bucket.limit > 0.0) bucket.formatValue(bucket.remaining)
+                        else bucket.formatValue(bucket.remaining)
+                    }
+                    else -> pct?.let { "$it%" } ?: "—"
+                },
                 fontWeight = FontWeight.Bold,
                 color = if (isLow) AuroraColors.burnOrange else MaterialTheme.colorScheme.onSurface
             )
-            if (pct >= 0) {
+            if (pct != null) {
+                val progressFraction = when (displayMode) {
+                    "usedPercent" -> ((100 - pct) / 100f).coerceIn(0f, 1f)
+                    else -> (pct / 100f).coerceIn(0f, 1f)
+                }
                 LinearProgressIndicator(
-                    progress = { (pct / 100f).coerceIn(0f, 1f) },
+                    progress = { progressFraction },
                     modifier = Modifier.width(96.dp).height(6.dp).clip(RoundedCornerShape(3.dp)),
                     color = barColor,
                     trackColor = AuroraColors.darkBorder.copy(alpha = 0.35f)

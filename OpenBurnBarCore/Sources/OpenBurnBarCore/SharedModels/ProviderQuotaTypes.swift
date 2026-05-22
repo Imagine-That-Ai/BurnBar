@@ -153,6 +153,21 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
 // MARK: - Reset Time Display
 
 public extension ProviderQuotaBucket {
+    var key: String {
+        let nameKey = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let windowKey = window?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if windowKey.isEmpty {
+            return nameKey
+        }
+        return "\(nameKey)::\(windowKey)"
+    }
+
+    var label: String {
+        if let customLabel = meta?["label"] {
+            return customLabel
+        }
+        return name
+    }
     /// Pre-formatted reset-time strings used by every quota details surface
     /// (Mac, iOS, Android via the shared logic, Smart Hub cast). Returns
     /// `nil` when the bucket has no known reset moment so callers can omit
@@ -227,8 +242,89 @@ public extension ProviderQuotaBucket {
 }
 
 public extension ProviderQuotaBucket {
+    /// Display-safe remaining fraction for quota UI. Provider payloads are not
+    /// perfectly uniform: some sources expose only `meta.usedPercent`, some
+    /// percent buckets arrive with `limit == 0`, and unknown/unlimited buckets
+    /// use `limit == -1`. Treating all of those as `remaining / limit` makes
+    /// healthy providers render as `0%`.
+    var displayRemainingFraction: Double? {
+        if let usedPercent = quotaMetaNumber(for: [
+            "usedPercent",
+            "used_percent",
+            "used_percentage",
+            "usagePercent",
+            "usage_percent",
+            "percentage"
+        ]) {
+            return Self.clamp((100 - usedPercent) / 100)
+        }
+
+        if let remainingPercent = quotaMetaNumber(for: [
+            "remainingPercent",
+            "remaining_percent",
+            "remainingPercentage",
+            "remaining_percentage",
+            "percentRemaining",
+            "percent_remaining"
+        ]) {
+            return Self.clamp(remainingPercent / 100)
+        }
+
+        let unit = meta?["unit"]?.lowercased()
+        let limitKind = meta?["limitKind"]?.lowercased()
+        if unit == "unlimited" || limitKind == "unlimited" {
+            return 1
+        }
+
+        guard used.isFinite, limit.isFinite, remaining.isFinite else {
+            return nil
+        }
+
+        if limit > 0 {
+            return Self.clamp(max(0, remaining) / limit)
+        }
+
+        if unit == "percent" || unit == "%" {
+            if remaining >= 0 {
+                return Self.clamp(remaining / 100)
+            }
+            if used >= 0 {
+                return Self.clamp((100 - used) / 100)
+            }
+        }
+
+        if limit < 0, remaining > 0 {
+            // Remaining-only or balance-only provider signals have no cap, so
+            // they should not be presented as exhausted.
+            let syntheticLimit = remaining + max(0, used)
+            return syntheticLimit > 0 ? Self.clamp(remaining / syntheticLimit) : 1
+        }
+
+        return nil
+    }
+
+    var displayRemainingPercent: Double? {
+        displayRemainingFraction.map { $0 * 100 }
+    }
+
+    private func quotaMetaNumber(for keys: [String]) -> Double? {
+        guard let meta else { return nil }
+        for key in keys {
+            guard let raw = meta[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  raw.isEmpty == false else { continue }
+            if let value = Double(raw.replacingOccurrences(of: "%", with: "")) {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private static func clamp(_ value: Double) -> Double {
+        min(max(value, 0), 1)
+    }
+
     var isDisplayableQuotaSignal: Bool {
-        guard limit.isFinite, limit > 0, used.isFinite, remaining.isFinite else {
+        guard limit.isFinite, used.isFinite, remaining.isFinite else {
             return false
         }
 
@@ -246,7 +342,7 @@ public extension ProviderQuotaBucket {
             }
         }
 
-        return used >= 0 || remaining >= 0 || meta?["usedPercent"] != nil
+        return displayRemainingFraction != nil
     }
 }
 
@@ -410,5 +506,35 @@ public extension ProviderQuotaSnapshot {
             schemaVersion: schemaVersion,
             updatedAt: updatedAt
         )
+    }
+
+    public var providerToken: String {
+        quotaProvider?.persistedToken ?? provider.lowercased()
+    }
+
+    public func customizedBuckets(
+        hiddenBuckets: Set<String>,
+        bucketOrders: [String: [String]]
+    ) -> [ProviderQuotaBucket] {
+        let displayable = displayableQuotaBuckets
+        let token = providerToken
+
+        let filtered = displayable.filter { bucket in
+            let compositeKey = "\(token):\(bucket.key)"
+            return !hiddenBuckets.contains(compositeKey)
+        }
+
+        if let customOrder = bucketOrders[token] {
+            return filtered.sorted { lhs, rhs in
+                let lhsIdx = customOrder.firstIndex(of: lhs.key) ?? Int.max
+                let rhsIdx = customOrder.firstIndex(of: rhs.key) ?? Int.max
+                if lhsIdx != rhsIdx {
+                    return lhsIdx < rhsIdx
+                }
+                return lhs.label.localizedCompare(rhs.label) == .orderedAscending
+            }
+        }
+
+        return filtered
     }
 }

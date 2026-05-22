@@ -1,7 +1,9 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarMedia
+import FirebaseAuth
 
-// MARK: - Hermes Square Split Layout (Hermes Square §6.11 / S6)
+// MARK: - Hermes Square Split Layout (Agents Split Layout §6.11 / S6)
 //
 // iPad-adaptive two-column layout that activates at width ≥ 720pt. Thread
 // list + pinned grid live on the left; active thread / mission situation
@@ -20,7 +22,22 @@ struct HermesSquareSplitLayout: View {
     @State private var selectedDetail: DetailRoute? = .runtimeNative(.codex)
     @State private var sidebarMode: SidebarMode = .square
     @State private var resizeStartWidth: CGFloat?
+    @StateObject private var mercuryPeerSource: MercuryPeerSource
+    @State private var bootingMercuryConnectionID: String?
+    @State private var mercuryBootError: String?
     @AppStorage("hermes_square_ipad_left_column_width") private var storedLeftColumnWidth: Double = 0
+    @AppStorage(HermesMobileChatPreferences.agentsLiveBackgroundEnabledKey) private var liveBackgroundEnabled = false
+
+    init(hermesService: HermesService, missionHost: MobileMissionConsoleHost) {
+        self.hermesService = hermesService
+        self.missionHost = missionHost
+        _mercuryPeerSource = StateObject(wrappedValue: MercuryPeerSource(
+            relayConnectionProvider: {
+                hermesService.suggestedRelayConnection
+                    ?? (hermesService.selectedConnection.mode == .relayLink ? hermesService.selectedConnection : nil)
+            }
+        ))
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -49,6 +66,7 @@ struct HermesSquareSplitLayout: View {
                     HermesSquareLeftColumn(
                         hermesService: hermesService,
                         missionHost: missionHost,
+                        mercuryPeer: mercuryPeerSource.peer,
                         onSelect: { route in selectedDetail = route },
                         onOpenThread: openThreadFromSidebar
                     )
@@ -82,20 +100,43 @@ struct HermesSquareSplitLayout: View {
                             resizeStartWidth = nil
                         }
                 )
-                .accessibilityLabel("Resize Hermes Square sidebar")
-                .accessibilityHint("Drag left or right to resize the Hermes Square sidebar.")
+                .accessibilityLabel("Resize Agents sidebar")
+                .accessibilityHint("Drag left or right to resize the Agents sidebar.")
 
             HermesSquareDetailColumn(
                 hermesService: hermesService,
                 missionHost: missionHost,
                 detail: selectedDetail,
+                mercuryPeer: mercuryPeerSource.peer,
+                mercuryBootError: mercuryBootError,
+                isBootingMercury: bootingMercuryConnectionID != nil,
+                ensureMercuryLive: { connectionID in
+                    await ensureMercuryLive(connectionID: connectionID)
+                },
                 onOpenRuntimeThread: openRuntimeThreadFromDetail
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .background {
+            if liveBackgroundEnabled {
+                SwarmCanvasView(accent: .purple, pace: .cinematic).ignoresSafeArea()
+            } else {
+                AuroraBackdrop().ignoresSafeArea()
+            }
+        }
+        .task {
+            HermesIrohRelayTransport.shared.mediaPresenceHeartbeatHandler = { heartbeat in
+                await MainActor.run {
+                    mercuryPeerSource.ingestHeartbeat(heartbeat)
+                }
+            }
+            mercuryPeerSource.start()
+        }
+        .onDisappear {
+            mercuryPeerSource.stop()
+        }
     }
 
     private func openThreadFromSidebar(_ item: ThreadInboxItem) {
@@ -132,11 +173,63 @@ struct HermesSquareSplitLayout: View {
         case runtimeThread(AssistantRuntimeID)
         case cloudSession(String)     // cloud conversation search row id
         case projectMemory(String)    // project id
+        case mercuryLive(String)      // paired Mac iroh connection id
     }
 
     private enum SidebarMode: Hashable {
         case square
         case history(AssistantRuntimeID)
+    }
+
+    private func resolvedMercuryConnectionID(for routedConnectionID: String) -> String {
+        if !routedConnectionID.hasPrefix("paired-mac:") {
+            return routedConnectionID
+        }
+        if let relay = hermesService.suggestedRelayConnection {
+            return relay.id
+        }
+        if hermesService.selectedConnection.mode == .relayLink {
+            return hermesService.selectedConnection.id
+        }
+        return routedConnectionID
+    }
+
+    private func ensureMercuryLive(connectionID: String) async {
+        let resolvedID = resolvedMercuryConnectionID(for: connectionID)
+        guard bootingMercuryConnectionID != resolvedID else { return }
+        bootingMercuryConnectionID = resolvedID
+        mercuryBootError = nil
+        defer { bootingMercuryConnectionID = nil }
+
+        await hermesService.refreshConnections(refreshSelectedConnection: false)
+
+        let relay: HermesConnectionRecord?
+        if let exact = hermesService.relayConnections.first(where: { $0.id == resolvedID }) {
+            _ = hermesService.selectConnection(exact, refresh: false)
+            relay = exact
+        } else if let selected = hermesService.relayConnections.first(where: { $0.id == hermesService.selectedConnection.id }) {
+            relay = selected
+        } else if let suggested = hermesService.suggestedRelayConnection {
+            _ = hermesService.selectConnection(suggested, refresh: false)
+            relay = suggested
+        } else {
+            relay = hermesService.suggestedRelayConnection
+            if let relay {
+                _ = hermesService.selectConnection(relay, refresh: false)
+            }
+        }
+
+        guard let relay else {
+            mercuryBootError = "No online Mac relay found. Open BurnBar on the Mac, enable Remote Relay, then refresh."
+            return
+        }
+
+        do {
+            try await HermesIrohRelayTransport.shared.ensureMediaControlStream(connectionID: relay.id)
+            mercuryBootError = nil
+        } catch {
+            mercuryBootError = error.localizedDescription
+        }
     }
 }
 
@@ -167,6 +260,25 @@ private enum HermesSquareThreadRouting {
     }
 }
 
+@MainActor
+enum HermesSquarePinnedRoute {
+    static func route(
+        for uri: String,
+        registry: AgentIdentityRegistry,
+        visibleTiles: [AssistantRuntimeID]
+    ) -> HermesSquareSplitLayout.DetailRoute? {
+        if uri.hasPrefix(AgentIdentityRegistry.pairedMacURIPrefix) {
+            let connectionID = String(uri.dropFirst(AgentIdentityRegistry.pairedMacURIPrefix.count))
+            return .mercuryLive(connectionID)
+        }
+        guard let identity = registry.identity(for: uri) else { return nil }
+        if let runtime = identity.runtimeID, visibleTiles.contains(runtime) {
+            return .runtimeNative(runtime)
+        }
+        return .brandZone(uri)
+    }
+}
+
 private struct HermesSquareRuntimeHistorySidebar: View {
     let runtime: AssistantRuntimeID
     let missionHost: MobileMissionConsoleHost
@@ -176,6 +288,7 @@ private struct HermesSquareRuntimeHistorySidebar: View {
     @State private var inbox: ThreadInboxStore
     @State private var historyStore = MobileChatHistoryStore.shared
     @State private var registry = AgentIdentityRegistry.shared
+    @AppStorage(HermesMobileChatPreferences.agentsLiveBackgroundEnabledKey) private var liveBackgroundEnabled = false
 
     init(
         runtime: AssistantRuntimeID,
@@ -196,7 +309,11 @@ private struct HermesSquareRuntimeHistorySidebar: View {
 
     var body: some View {
         ZStack {
-            EmberSurfaceBackground().ignoresSafeArea()
+            if liveBackgroundEnabled {
+                SwarmCanvasView(accent: .purple, pace: .cinematic).ignoresSafeArea()
+            } else {
+                AuroraBackdrop().ignoresSafeArea()
+            }
             VStack(spacing: 0) {
                 header
                 ScrollView {
@@ -243,7 +360,7 @@ private struct HermesSquareRuntimeHistorySidebar: View {
                     .background(Circle().fill(DesignSystemColors.surface.opacity(0.85)))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Back to Hermes Square")
+            .accessibilityLabel("Back to Agents")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(runtime.displayName) History")
@@ -290,14 +407,18 @@ private struct HermesSquareRuntimeHistorySidebar: View {
 // MARK: - Left column
 //
 // Feature-parity with HermesSquareRoot's compact layout, adapted for the
-// sidebar width. Uses the same visual language: EmberSurfaceBackground,
+// sidebar width. Uses the same visual language: AuroraBackdrop,
 // section headers, rounded-rect surfaces, etc.
 
 private struct HermesSquareLeftColumn: View {
     let hermesService: HermesService
     let missionHost: MobileMissionConsoleHost
+    let mercuryPeer: MercuryPeer?
     let onSelect: (HermesSquareSplitLayout.DetailRoute) -> Void
     let onOpenThread: (ThreadInboxItem) -> Void
+
+    @State private var showCancelForIDs: Set<String> = []
+    @State private var missionToCancel: MissionConsoleActiveTile? = nil
 
     @State private var piService = PiService()
     @State private var registry = AgentIdentityRegistry.shared
@@ -314,6 +435,8 @@ private struct HermesSquareLeftColumn: View {
 
     @AppStorage(PinnedAgentGridConfig.userDefaultsKey) private var pinnedJSON: String = ""
     @AppStorage(ChatTilePreferencesStorage.userDefaultsKey) private var tilePreferencesJSON: String = ""
+    @AppStorage(HermesMobileChatPreferences.agentsLiveBackgroundEnabledKey) private var liveBackgroundEnabled = false
+    @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
 
     @State private var isShowingDiscover: Bool = false
     @State private var isShowingSubscriptions: Bool = false
@@ -338,11 +461,13 @@ private struct HermesSquareLeftColumn: View {
     init(
         hermesService: HermesService,
         missionHost: MobileMissionConsoleHost,
+        mercuryPeer: MercuryPeer?,
         onSelect: @escaping (HermesSquareSplitLayout.DetailRoute) -> Void,
         onOpenThread: @escaping (ThreadInboxItem) -> Void
     ) {
         self.hermesService = hermesService
         self.missionHost = missionHost
+        self.mercuryPeer = mercuryPeer
         self.onSelect = onSelect
         self.onOpenThread = onOpenThread
         _inbox = State(initialValue: ThreadInboxStore(
@@ -354,7 +479,11 @@ private struct HermesSquareLeftColumn: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            EmberSurfaceBackground().ignoresSafeArea()
+            if liveBackgroundEnabled {
+                SwarmCanvasView(accent: .purple, pace: .cinematic).ignoresSafeArea()
+            } else {
+                AuroraBackdrop().ignoresSafeArea()
+            }
             ScrollView {
                 VStack(spacing: 14) {
                     federatedSearchBar
@@ -420,10 +549,11 @@ private struct HermesSquareLeftColumn: View {
                 .padding(.bottom, 60)
             }
         }
-        .navigationTitle("Hermes Square")
+        .navigationTitle("Agents")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             inbox.bind(historyStore: historyStore, missionHost: missionHost)
+            syncMercuryPeer(mercuryPeer)
             await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
             await inbox.refresh()
             await projectsStore.load()
@@ -446,6 +576,9 @@ private struct HermesSquareLeftColumn: View {
         }
         .onChange(of: projectsStore.summaries) { _, _ in
             Task { await reindexSearch() }
+        }
+        .onChange(of: mercuryPeer) { _, peer in
+            syncMercuryPeer(peer)
         }
         .sheet(isPresented: $isShowingDiscover) {
             HermesSquareDiscoverDrawer(
@@ -475,6 +608,26 @@ private struct HermesSquareLeftColumn: View {
         .sheet(isPresented: $isShowingVoice) {
             voiceSheetContent
         }
+        .alert("Cancel Mission?", isPresented: Binding(
+            get: { missionToCancel != nil },
+            set: { if !$0 { missionToCancel = nil } }
+        )) {
+            Button("Cancel Mission", role: .destructive) {
+                if let mission = missionToCancel {
+                    Task {
+                        await missionHost.cancelMission(id: mission.id)
+                    }
+                }
+                missionToCancel = nil
+            }
+            Button("Keep Running", role: .cancel) {
+                missionToCancel = nil
+            }
+        } message: {
+            if let mission = missionToCancel {
+                Text("Are you sure you want to stop the Mac from working on \"\(mission.title)\"? This will abort the running processes and cannot be undone.")
+            }
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
@@ -483,6 +636,16 @@ private struct HermesSquareLeftColumn: View {
                     Image(systemName: "rectangle.stack.badge.plus")
                 }
                 .accessibilityLabel("Fan-out dispatch")
+
+                Button {
+                    liveBackgroundEnabled.toggle()
+                    HapticBus.toggle()
+                } label: {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(liveBackgroundEnabled ? MobileTheme.hermesAureate : .secondary)
+                }
+                .accessibilityLabel("Toggle live background")
+
                 Button {
                     isShowingVoice = true
                 } label: {
@@ -573,7 +736,7 @@ private struct HermesSquareLeftColumn: View {
                     ).snapshot(for: runtime).provider
                 },
                 onTap: { uri in handlePinnedTap(uri: uri) },
-                onLongPress: { uri in onSelect(.brandZone(uri)) }
+                onLongPress: { uri in handlePinnedLongPress(uri: uri) }
             )
         }
     }
@@ -687,13 +850,46 @@ private struct HermesSquareLeftColumn: View {
                             .padding(.vertical, 14)
                     } else {
                         ForEach(tiles) { tile in
-                            Button {
-                                onSelect(.mission(tile.id))
-                            } label: {
-                                HermesSquareMissionTile(tile: tile)
-                                    .frame(width: 220)
+                            let isCancelling = showCancelForIDs.contains(tile.id)
+                            ZStack(alignment: .topTrailing) {
+                                Button {
+                                    if !showCancelForIDs.isEmpty {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                            showCancelForIDs.removeAll()
+                                        }
+                                    } else {
+                                        onSelect(.mission(tile.id))
+                                    }
+                                } label: {
+                                    HermesSquareMissionTile(tile: tile)
+                                }
+                                .buttonStyle(.plain)
+                                .frame(width: 220)
+                                .onLongPressGesture(minimumDuration: 0.6) {
+                                    HapticBus.threshold()
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        showCancelForIDs.insert(tile.id)
+                                    }
+                                }
+
+                                if isCancelling {
+                                    Button {
+                                        HapticBus.destructive()
+                                        missionToCancel = tile
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.title2)
+                                            .foregroundStyle(Color.red)
+                                            .background(Circle().fill(Color.white))
+                                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
+                                            .padding(6)
+                                    }
+                                    .transition(.asymmetric(
+                                        insertion: .scale.combined(with: .opacity),
+                                        removal: .scale.combined(with: .opacity)
+                                    ))
+                                }
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     Spacer(minLength: 16)
@@ -862,13 +1058,24 @@ private struct HermesSquareLeftColumn: View {
     // MARK: - Actions
 
     private func handlePinnedTap(uri: String) {
-        guard let identity = registry.identity(for: uri) else { return }
-        if let runtime = identity.runtimeID, visibleTiles.contains(runtime) {
-            onSelect(.runtimeNative(runtime))
+        guard let route = HermesSquarePinnedRoute.route(
+            for: uri,
+            registry: registry,
+            visibleTiles: visibleTiles
+        ) else {
+            return
+        }
+        onSelect(route)
+        HapticBus.tabChange()
+    }
+
+    private func handlePinnedLongPress(uri: String) {
+        if uri.hasPrefix(AgentIdentityRegistry.pairedMacURIPrefix) {
+            let connectionID = String(uri.dropFirst(AgentIdentityRegistry.pairedMacURIPrefix.count))
+            onSelect(.mercuryLive(connectionID))
         } else {
             onSelect(.brandZone(uri))
         }
-        HapticBus.tabChange()
     }
 
     private func handleThreadTap(_ item: ThreadInboxItem) {
@@ -908,6 +1115,19 @@ private struct HermesSquareLeftColumn: View {
     private func unpin(_ uri: String) {
         let updated = pinnedGrid.unpinning(uri).sanitized()
         pinnedJSON = updated.jsonString()
+    }
+
+    private func syncMercuryPeer(_ peer: MercuryPeer?) {
+        registry.pairedMacPeer = peer
+        autoPinPairedMacIfNeeded(peer: peer)
+    }
+
+    private func autoPinPairedMacIfNeeded(peer: MercuryPeer?) {
+        guard mercuryPinnedTileEnabled, let peer else { return }
+        let uri = "\(AgentIdentityRegistry.pairedMacURIPrefix)\(peer.connectionID)"
+        let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
+        guard !grid.pinnedURIs.contains(uri) else { return }
+        pinnedJSON = grid.pinningPairedMac(uri).jsonString()
     }
 
     private func recordApprovalPolicy(_ ask: MissionConsoleApprovalAsk, decision: ApprovalPolicy.Decision) {
@@ -1085,10 +1305,106 @@ private struct HermesSquareLeftColumn: View {
 // full conversation view; missions show the full tile + context;
 // brand zones, project memory, and cloud sessions all render natively.
 
+private struct MercuryLiveDetailView: View {
+    let connectionID: String
+    let peer: MercuryPeer?
+    let bootError: String?
+    let isBooting: Bool
+    let ensureMercuryLive: (String) async -> Void
+
+    @State private var coordinator: MediaControlStreamCoordinator?
+
+    var body: some View {
+        Group {
+            if let coordinator {
+                MercuryLiveSheet(
+                    connectionID: coordinator.connectionID ?? connectionID,
+                    peer: peer ?? fallbackPeer(for: coordinator),
+                    controlStreamCoordinator: coordinator,
+                    fileTransferService: iOSFileTransferService.current,
+                    uidProvider: { Auth.auth().currentUser?.uid }
+                )
+            } else {
+                bootState
+            }
+        }
+        .task(id: connectionID) {
+            await bootMercuryIfNeeded()
+        }
+        .onChange(of: isBooting) { _, booting in
+            guard !booting else { return }
+            refreshCoordinator()
+        }
+        .onChange(of: bootError) { _, _ in
+            refreshCoordinator()
+        }
+    }
+
+    @ViewBuilder
+    private var bootState: some View {
+        ZStack {
+            AuroraBackdrop().ignoresSafeArea()
+            VStack(spacing: 14) {
+                Image(systemName: "display.and.arrow.down")
+                    .font(.system(size: 38, weight: .semibold))
+                    .foregroundStyle(DesignSystemColors.textMuted)
+                Text("Connecting Mercury")
+                    .font(.title3.bold())
+                    .foregroundStyle(DesignSystemColors.textPrimary)
+                Text(bootError ?? "Preparing the Mac mirror control stream.")
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(DesignSystemColors.textSecondary)
+                    .frame(maxWidth: 420)
+                if isBooting {
+                    ProgressView()
+                        .controlSize(.regular)
+                } else {
+                    Button {
+                        Task { await bootMercuryIfNeeded(force: true) }
+                    } label: {
+                        Label("Reconnect", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(24)
+        }
+    }
+
+    private func bootMercuryIfNeeded(force: Bool = false) async {
+        refreshCoordinator()
+        if coordinator == nil || force {
+            await ensureMercuryLive(connectionID)
+            refreshCoordinator()
+        }
+    }
+
+    private func refreshCoordinator() {
+        if let active = HermesIrohRelayTransport.shared.currentMediaControlCoordinator {
+            coordinator = active
+        }
+    }
+
+    private func fallbackPeer(for coordinator: MediaControlStreamCoordinator) -> MercuryPeer {
+        MercuryPeer(
+            connectionID: coordinator.connectionID ?? connectionID,
+            displayName: "My Mac",
+            isOnline: coordinator.phase == .live,
+            lastSeenAt: Date(),
+            capabilities: MercuryPeer.macFallbackCapabilities
+        )
+    }
+}
+
 private struct HermesSquareDetailColumn: View {
     let hermesService: HermesService
     let missionHost: MobileMissionConsoleHost
     let detail: HermesSquareSplitLayout.DetailRoute?
+    let mercuryPeer: MercuryPeer?
+    let mercuryBootError: String?
+    let isBootingMercury: Bool
+    let ensureMercuryLive: (String) async -> Void
     let onOpenRuntimeThread: (AssistantRuntimeID, String) -> Void
 
     @State private var registry = AgentIdentityRegistry.shared
@@ -1098,6 +1414,7 @@ private struct HermesSquareDetailColumn: View {
     @State private var piService = PiService()
     @State private var historyStore = MobileChatHistoryStore.shared
     @State private var cliReader = CLIAgentChatReader.shared
+    @AppStorage(HermesMobileChatPreferences.agentsLiveBackgroundEnabledKey) private var liveBackgroundEnabled = false
 
     var body: some View {
         Group {
@@ -1118,6 +1435,14 @@ private struct HermesSquareDetailColumn: View {
                 cloudSessionView(hitID: hitID)
             case .projectMemory(let projectID):
                 projectMemoryView(projectID: projectID)
+            case .mercuryLive(let connectionID):
+                MercuryLiveDetailView(
+                    connectionID: connectionID,
+                    peer: mercuryPeer,
+                    bootError: mercuryBootError,
+                    isBooting: isBootingMercury,
+                    ensureMercuryLive: ensureMercuryLive
+                )
             }
         }
         .task {
@@ -1264,7 +1589,13 @@ private struct HermesSquareDetailColumn: View {
             }
             .padding(18)
         }
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .background {
+            if liveBackgroundEnabled {
+                SwarmCanvasView(accent: .purple, pace: .cinematic).ignoresSafeArea()
+            } else {
+                AuroraBackdrop().ignoresSafeArea()
+            }
+        }
     }
 
     // MARK: Brand zone
@@ -1363,7 +1694,13 @@ private struct HermesSquareDetailColumn: View {
             }
             .padding(18)
         }
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .background {
+            if liveBackgroundEnabled {
+                SwarmCanvasView(accent: .purple, pace: .cinematic).ignoresSafeArea()
+            } else {
+                AuroraBackdrop().ignoresSafeArea()
+            }
+        }
         .navigationTitle("Cloud Session")
         .navigationBarTitleDisplayMode(.inline)
     }

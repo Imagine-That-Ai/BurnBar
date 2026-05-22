@@ -34,6 +34,9 @@ public final class AgentWatchReceiver: ObservableObject {
 
     public func ingest(_ frame: HermesRealtimeRelayFrame) {
         guard frame.uid == uid, frame.connectionId == connectionId else { return }
+        if let focus = frame.media?.focusContext {
+            state.ingestFocusContext(focus)
+        }
         switch frame.type {
         case .controlClassify:
             if let sessionId = frame.control?.sessionId {

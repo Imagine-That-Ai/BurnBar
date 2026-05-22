@@ -454,8 +454,7 @@ struct BurnView: View {
                 ?? AgentProvider.fromPersistedToken(key) else { return nil }
             let pressure = snaps
                 .flatMap(\.buckets)
-                .filter { $0.limit > 0 }
-                .map { max(0, $0.remaining) / $0.limit }
+                .compactMap(\.displayRemainingFraction)
                 .min() ?? 1.0
             return QuotaRingsConstellation.Item(
                 provider: provider,
@@ -638,18 +637,20 @@ private struct BurnProviderRow: View {
 
     private var hasUrgentBucket: Bool {
         snapshots.flatMap(\.buckets).contains { bucket in
-            guard bucket.limit > 0 else { return false }
-            return max(0, bucket.remaining) / bucket.limit < 0.25
+            guard let fraction = bucket.displayRemainingFraction else { return false }
+            return fraction < 0.25
         }
     }
 
     private var mostPressuredBucket: ProviderQuotaBucket? {
         snapshots
             .flatMap(\.buckets)
-            .filter { $0.limit > 0 }
-            .min {
-                max(0, $0.remaining) / $0.limit < max(0, $1.remaining) / $1.limit
-            } ?? snapshots.first?.buckets.first
+            .compactMap { bucket -> (bucket: ProviderQuotaBucket, fraction: Double)? in
+                guard let fraction = bucket.displayRemainingFraction else { return nil }
+                return (bucket, fraction)
+            }
+            .min { $0.fraction < $1.fraction }?
+            .bucket ?? snapshots.first?.buckets.first
     }
 
     var body: some View {

@@ -6,9 +6,12 @@ package com.openburnbar.data.models
  * source document.
  */
 fun List<ProviderQuotaSnapshot>.deduplicatedByProviderAccount(): List<ProviderQuotaSnapshot> {
-    return groupBy { it.providerAccountDedupKey() }
+    val merged = groupBy { it.providerAccountDedupKey() }
         .values
         .map { snapshots -> snapshots.mergeQuotaSnapshotGroup() }
+        .dropShadowedProviderLevelSnapshots()
+
+    return merged
         .sortedWith(
             compareBy<ProviderQuotaSnapshot> { it.providerDisplaySortKey() }
                 .thenBy { it.accountLabel.orEmpty().lowercase() }
@@ -74,3 +77,18 @@ private fun ProviderQuotaSnapshot.providerDisplaySortKey(): String =
 
 private fun QuotaBucket.bucketDedupKey(): String =
     "${name.trim().lowercase()}::${window?.trim()?.lowercase().orEmpty()}"
+
+private fun List<ProviderQuotaSnapshot>.dropShadowedProviderLevelSnapshots(): List<ProviderQuotaSnapshot> {
+    val providersWithAccountSnapshots = filter { snapshot ->
+        !snapshot.accountId.isNullOrBlank() || !snapshot.accountLabel.isNullOrBlank()
+    }
+        .map { it.providerDisplaySortKey() }
+        .toSet()
+
+    if (providersWithAccountSnapshots.isEmpty()) return this
+
+    return filter { snapshot ->
+        val isProviderLevel = snapshot.accountId.isNullOrBlank() && snapshot.accountLabel.isNullOrBlank()
+        !(isProviderLevel && snapshot.providerDisplaySortKey() in providersWithAccountSnapshots)
+    }
+}

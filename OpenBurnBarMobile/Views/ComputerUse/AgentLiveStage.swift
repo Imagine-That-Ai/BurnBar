@@ -25,7 +25,6 @@ struct AgentLiveStage: View {
     var onTapHermesTab: () -> Void
 
     @ObservedObject private var stateRef: AgentWatchState
-    @StateObject private var video = AgentWatchVideoCoordinator()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var lastInputAt: Date?
@@ -53,6 +52,7 @@ struct AgentLiveStage: View {
                 AgentLiveStageDockTile(
                     state: stateRef,
                     presenter: presenter,
+                    videoCoordinator: singleton.videoCoordinator,
                     horizontalSizeClass: horizontalSizeClass,
                     onApprove: { approveCurrent() },
                     onReject: { rejectCurrent(halt: false) },
@@ -79,13 +79,6 @@ struct AgentLiveStage: View {
                    ? .easeInOut(duration: 0.18)
                    : .spring(response: 0.46, dampingFraction: 0.84),
                    value: presenter.mode)
-        .onChange(of: stateRef.currentFrame) { _, frame in
-            // Keep the stage's coordinator warm even while the dock tile
-            // (which has its own AVSampleBufferDisplayLayer) is visible,
-            // so transitions from dock to split never paint a black frame.
-            guard let frame else { return }
-            Task { await video.ingest(frame: frame) }
-        }
         .onChange(of: presenter.mode) { _, mode in
             if mode == .maximize || mode == .split {
                 NotificationCenter.default.post(
@@ -148,7 +141,7 @@ struct AgentLiveStage: View {
         ZStack(alignment: .top) {
             Color.black
 
-            AgentWatchVideoSurface(coordinator: video)
+            AgentWatchVideoSurface(coordinator: singleton.videoCoordinator)
                 .opacity(stateRef.currentFrame == nil ? 0 : 1)
 
             if stateRef.currentFrame == nil {
@@ -250,7 +243,7 @@ struct AgentLiveStage: View {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.octagon.fill")
                         Text("HALT")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .tracking(0.5)
                     }
                     .foregroundStyle(.white)
