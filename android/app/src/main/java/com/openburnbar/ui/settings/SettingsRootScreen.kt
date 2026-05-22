@@ -655,7 +655,7 @@ fun ThemePrefsScreen(
                         AuroraSettingsToggle(
                             icon = Icons.Filled.AutoAwesome,
                             label = "Swarm Background",
-                            subtitle = "Active, reconverging token-ember swarms pulled from burnbar.ai — particles drift and reform into $, </>, quota rings, and router failover paths",
+                            subtitle = "Active, reconverging token-ember swarms pulled from burnbar.ai",
                             checked = useWebsiteBackground,
                             onCheckedChange = {
                                 GlobalVisualSettings.setWebsiteBackground(it)
@@ -663,6 +663,50 @@ fun ThemePrefsScreen(
                             },
                             tint = AuroraColors.hermesMercury
                         )
+                    }
+
+                    // Divider
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    )
+
+                    // 3. Color Palette
+                    val themePalette by rememberThemePalette()
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Color Palette", fontWeight = FontWeight.Bold, color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface)
+                        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            itemsIndexed(AppThemePalette.entries) { _, palette ->
+                                val isSelected = themePalette == palette.name
+                                Surface(
+                                    color = if (isSelected) AuroraColors.amber.copy(alpha = 0.3f) else Color.Transparent,
+                                    shape = RoundedCornerShape(16.dp),
+                                    onClick = { GlobalVisualSettings.setThemePalette(palette.name) }
+                                ) {
+                                    Text(
+                                        text = palette.displayName,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    )
+
+                    // 4. Tab Layout Note
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Tab Layout", fontWeight = FontWeight.Bold, color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface)
+                        Text("Android Tab arrangement customized via DataStore.", fontSize = 12.sp, color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
