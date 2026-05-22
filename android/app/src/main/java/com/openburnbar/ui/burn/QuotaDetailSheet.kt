@@ -25,6 +25,7 @@ import com.openburnbar.util.QuotaResetFormatter
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.QuotaBucket
+import com.openburnbar.data.models.displayRemainingFraction
 import com.openburnbar.data.models.effectiveResetsAt
 import com.openburnbar.data.models.effectiveWindowLabel
 import com.openburnbar.data.models.isStale
@@ -259,9 +260,7 @@ fun UnifiedQuotaSignalView(
     compact: Boolean
 ) {
     val primary = provider?.let { Color(it.brandColor) } ?: AuroraColors.ember
-    val progress = if (bucket.limit > 0) {
-        (bucket.used / bucket.limit).coerceIn(0.0, 1.0)
-    } else 0.0
+    val progress = 1.0 - (bucket.displayRemainingFraction ?: 1.0)
     val animatedProgress by animateFloatAsState(
         targetValue = progress.toFloat(),
         animationSpec = tween(500),
@@ -296,7 +295,7 @@ fun UnifiedQuotaSignalView(
                     Spacer(modifier = Modifier.width(8.dp))
                 }
                 Text(
-                    text = "${Formatting.formatTokens(bucket.used.toInt())} / ${Formatting.formatTokens(bucket.limit.toInt())}",
+                    text = quotaUsageText(bucket),
                     fontSize = if (compact) AuroraTypography.tiny.sp else AuroraTypography.caption.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -335,4 +334,13 @@ fun UnifiedQuotaSignalView(
             )
         }
     }
+}
+
+private fun quotaUsageText(bucket: QuotaBucket): String {
+    val unit = bucket.meta?.get("unit")?.toString()?.lowercase()
+    if (unit == "unlimited") return "Unlimited"
+    if (bucket.limit <= 0) {
+        return "${Formatting.formatTokens(bucket.remaining.toInt())} remaining"
+    }
+    return "${Formatting.formatTokens(bucket.used.toInt())} / ${Formatting.formatTokens(bucket.limit.toInt())}"
 }

@@ -381,6 +381,24 @@ final class CLIAgentMissionDispatcher {
             ], merge: true)
     }
 
+    func cancelMission(requestID: String) async throws {
+        guard FirebaseApp.app() != nil else {
+            throw DispatchError.firebaseUnavailable
+        }
+        guard let uid = Auth.auth().currentUser?.uid else {
+            throw DispatchError.notSignedIn
+        }
+        try await firestoreProvider()
+            .collection("users").document(uid)
+            .collection("cli_agent_mission_requests").document(requestID)
+            .setData([
+                "status": "cancelled",
+                "liveSummary": "Mission cancelled by user.",
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+    }
+
+
     enum DispatchError: LocalizedError {
         case firebaseUnavailable
         case notSignedIn

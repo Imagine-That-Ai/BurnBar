@@ -211,7 +211,7 @@ fun MissionActivityOverlay(
 ) {
     val status by viewModel.status.collectAsState()
     var showMissionDetail by remember { mutableStateOf(false) }
-    var isDismissed by remember { mutableStateOf(false) }
+    var isDismissed by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) { viewModel.start() }
 

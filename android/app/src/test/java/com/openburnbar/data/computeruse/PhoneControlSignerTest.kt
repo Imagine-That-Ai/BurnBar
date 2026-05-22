@@ -63,6 +63,23 @@ class PhoneControlSignerTest {
     }
 
     @Test
+    fun canonicalJsonIncludesDisplayAndMouseButtonInSwiftSortedShape() {
+        val intent = PhoneControlIntent(
+            kind = PhoneControlIntentKind.TAP,
+            displayId = "display-1",
+            normalizedX = 0.25,
+            normalizedY = 0.75,
+            mouseButton = 1,
+            clientIntentId = "intent-1",
+        )
+
+        assertEquals(
+            """{"clientIntentId":"intent-1","displayId":"display-1","kind":"tap","mouseButton":1,"normalizedX":0.25,"normalizedY":0.75}""",
+            PhoneControlSigner.canonicalIntentJson(intent),
+        )
+    }
+
+    @Test
     fun signablePayloadIsStableAndBigEndian() {
         val payload = PhoneControlSigner.signablePayload(
             intentHashHex = "abc",

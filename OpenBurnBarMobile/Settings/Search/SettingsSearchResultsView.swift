@@ -124,6 +124,7 @@ struct SettingsSearchResultsView: View {
         case .chatTiles: return "Chat tiles"
         case .media: return "Media"
         case .theme: return "Theme"
+        case .quotaCustomization: return "Quota Customization"
         }
     }
 }

@@ -128,28 +128,15 @@ final class QuotaWorkspaceViewModel {
                 for: provider,
                 cumulative: cumulativeAcrossAccounts
             )
+            let isConnected = quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore)
             let candidateSnapshots = allAccountSnapshots
-                .filter { $0.hasDisplayableQuotaSignal }
+                .filter { snapshot in
+                    if snapshot.hasDisplayableQuotaSignal { return true }
+                    return isConnected || snapshot.accountID != nil || snapshot.source != .unavailable
+                }
 
             if !candidateSnapshots.isEmpty {
                 for snapshot in candidateSnapshots {
-                    let entry = Self.makeEntry(
-                        provider: provider,
-                        snapshot: snapshot,
-                        isRefreshing: quotaService.isRefreshing(provider)
-                    )
-                    byID[entry.id] = entry
-                }
-                continue
-            }
-
-            let isConnected = quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore)
-            let fallbackAccountSnapshots = allAccountSnapshots.filter { snapshot in
-                guard !snapshot.hasDisplayableQuotaSignal else { return false }
-                return isConnected || snapshot.accountID != nil || snapshot.source != .unavailable
-            }
-            if !fallbackAccountSnapshots.isEmpty {
-                for snapshot in fallbackAccountSnapshots {
                     let entry = Self.makeEntry(
                         provider: provider,
                         snapshot: snapshot,

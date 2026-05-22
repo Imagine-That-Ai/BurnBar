@@ -17,11 +17,14 @@ enum class PhoneControlIntentKind(val wireValue: String) {
     TYPE("type"),
     SHORTCUT("shortcut"),
     SCROLL("scroll"),
+    POINTER_MOVE("pointer_move"),
+    POINTER_CLICK("pointer_click"),
     PANIC("panic"),
 }
 
 data class PhoneControlIntent(
     val kind: PhoneControlIntentKind,
+    val displayId: String? = null,
     val normalizedX: Double? = null,
     val normalizedY: Double? = null,
     val normalizedX2: Double? = null,
@@ -29,6 +32,7 @@ data class PhoneControlIntent(
     val text: String? = null,
     val key: String? = null,
     val modifiers: List<String>? = null,
+    val mouseButton: Int? = null,
     val clientIntentId: String? = null,
 )
 
@@ -161,9 +165,11 @@ object PhoneControlSigner {
     fun canonicalIntentJson(intent: PhoneControlIntent): String {
         val fields = linkedMapOf<String, String>()
         intent.clientIntentId?.let { fields["clientIntentId"] = quote(it) }
+        intent.displayId?.let { fields["displayId"] = quote(it) }
         fields["kind"] = quote(intent.kind.wireValue)
         intent.key?.let { fields["key"] = quote(it) }
         intent.modifiers?.let { fields["modifiers"] = it.joinToString(prefix = "[", postfix = "]") { item -> quote(item) } }
+        intent.mouseButton?.let { fields["mouseButton"] = it.toString() }
         intent.normalizedX?.let { fields["normalizedX"] = number(it) }
         intent.normalizedX2?.let { fields["normalizedX2"] = number(it) }
         intent.normalizedY?.let { fields["normalizedY"] = number(it) }

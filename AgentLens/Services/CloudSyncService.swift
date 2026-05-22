@@ -988,6 +988,9 @@ final class HermesRelayHostService {
         transfer.setMercuryDispatcher { @Sendable frame, reply in
             await router.handleFrame(frame, replySender: reply)
         }
+        transfer.setMercuryControlStreamCloseHandler { @Sendable _, connectionID in
+            await router.handleControlStreamClosed(connectionID: connectionID)
+        }
     }
 
     var connectionID: String {

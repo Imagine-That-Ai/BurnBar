@@ -582,7 +582,11 @@ final class OpenBurnBarRuntimeContext {
             ensureComputerUseSession: { [weak self] in
                 guard let self else { return }
                 self.startComputerUseServices()
+                self.computerUseRuntimeController?.attachFocusFollow(mediaSessionCoordinator: session)
                 _ = try await self.computerUseRuntimeController?.ensureSystemSession(trustMode: .manual)
+            },
+            applyFocusFollowMode: { [weak self] mode in
+                self?.computerUseRuntimeController?.setFocusFollowMode(mode)
             }
         )
 
@@ -602,7 +606,10 @@ final class OpenBurnBarRuntimeContext {
                     registry: registry,
                     uid: frame.uid,
                     connectionID: frame.connectionId,
-                    streamClass: MediaStreamClass(rawValue: request.streamClass)
+                    streamClass: MediaStreamClass(rawValue: request.streamClass),
+                    extraHeartbeatCapabilities: consent.alwaysAllow
+                        ? [MercuryPeer.Feature.mirrorAutoAccept.rawValue]
+                        : []
                 )
             }
         }

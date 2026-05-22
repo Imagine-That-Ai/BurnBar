@@ -70,6 +70,70 @@ class PhoneControlSenderTest {
     }
 
     @Test
+    fun sendWritesPointerClickMouseButton() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val sender = PhoneControlSender(
+            uid = "uid-1",
+            connectionId = "conn-1",
+            peerNodeId = "android-phone-1",
+            privateKeySeedProvider = { privateSeed },
+            counterStore = InMemoryPhoneControlCounterStore(),
+            nowMillis = { 1_700_000_000_123L },
+            frameSink = { frames += it },
+        )
+
+        val authority = sender.send(
+            PhoneControlIntent(
+                kind = PhoneControlIntentKind.POINTER_CLICK,
+                mouseButton = 1,
+            )
+        )
+
+        val input = frames.single().control?.inputIntent
+        assertEquals(HermesRealtimeRelayInputIntentKind.POINTER_CLICK, input?.kind)
+        assertEquals(1, input?.mouseButton)
+
+        PhoneControlSigner.verify(
+            intent = PhoneControlIntent(
+                kind = PhoneControlIntentKind.POINTER_CLICK,
+                mouseButton = 1,
+                clientIntentId = input?.clientIntentId,
+            ),
+            authority = authority,
+            publicKey = PhoneControlSigner.publicKey(privateSeed),
+            lastSeenCounter = 0,
+            nowMillis = 1_700_000_000_123L,
+        )
+    }
+
+    @Test
+    fun sendWritesPointerMoveDeltas() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val sender = PhoneControlSender(
+            uid = "uid-1",
+            connectionId = "conn-1",
+            peerNodeId = "android-phone-1",
+            privateKeySeedProvider = { privateSeed },
+            counterStore = InMemoryPhoneControlCounterStore(),
+            nowMillis = { 1_700_000_000_123L },
+            frameSink = { frames += it },
+        )
+
+        sender.send(
+            PhoneControlIntent(
+                kind = PhoneControlIntentKind.POINTER_MOVE,
+                normalizedX2 = 16.0,
+                normalizedY2 = -7.0,
+            )
+        )
+
+        val input = frames.single().control?.inputIntent
+        assertEquals(HermesRealtimeRelayInputIntentKind.POINTER_MOVE, input?.kind)
+        assertEquals(16.0, input?.normalizedX2 ?: -1.0, 0.0)
+        assertEquals(-7.0, input?.normalizedY2 ?: 1.0, 0.0)
+    }
+
+    @Test
     fun sendIncrementsCounterPerPeer() = runBlocking {
         val frames = mutableListOf<HermesRealtimeRelayFrame>()
         val sender = PhoneControlSender(

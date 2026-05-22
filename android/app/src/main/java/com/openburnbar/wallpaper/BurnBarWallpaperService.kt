@@ -1,5 +1,6 @@
 package com.openburnbar.wallpaper
 
+import android.content.SharedPreferences
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -9,6 +10,8 @@ import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.ui.components.SwarmPace
@@ -53,6 +56,14 @@ class BurnBarWallpaperService : WallpaperService() {
         // Simulation
         private lateinit var simulation: SwarmSimulation
         private var providerWeights: List<ProviderColorWeight> = emptyList()
+        private val wallpaperPrefs by lazy {
+            getSharedPreferences("wallpaper_settings", android.content.Context.MODE_PRIVATE)
+        }
+        private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "pace" || key == "shape" || key == BurnBarWallpaperGlyphSettings.key) {
+                updateSettings()
+            }
+        }
 
         // Render loop
         private val handler = Handler(Looper.getMainLooper())
@@ -93,8 +104,10 @@ class BurnBarWallpaperService : WallpaperService() {
             super.onCreate(surfaceHolder)
             simulation = SwarmSimulation(
                 particleCount = WALLPAPER_PARTICLE_COUNT,
-                pace = SwarmPace.CINEMATIC // Default, updated via settings
+                pace = SwarmPace.CINEMATIC, // Default, updated via settings
+                context = applicationContext
             )
+            wallpaperPrefs.registerOnSharedPreferenceChangeListener(preferenceListener)
             // Bind snapshot store so the StateFlow hydrates from disk.
             BurnBarWidgetSnapshotStore.bind(applicationContext)
             updateSettings()
@@ -102,11 +115,12 @@ class BurnBarWallpaperService : WallpaperService() {
         }
 
         private fun updateSettings() {
-            val prefs = getSharedPreferences("wallpaper_settings", android.content.Context.MODE_PRIVATE)
-            val pacePref = prefs.getString("pace", "cinematic") ?: "cinematic"
-            val shapePref = prefs.getString("shape", "all") ?: "all"
+            val pacePref = wallpaperPrefs.getString("pace", "cinematic") ?: "cinematic"
+            val shapePref = wallpaperPrefs.getString("shape", "all") ?: "all"
+            val providerGlyphs = BurnBarWallpaperGlyphSettings.read(wallpaperPrefs)
 
             simulation.setPace(if (pacePref == "energetic") SwarmPace.ENERGETIC else SwarmPace.CINEMATIC)
+            simulation.setEnabledProviderGlyphs(providerGlyphs)
 
             // Adjust framerate based on pace to save battery if cinematic
             frameIntervalMs = if (pacePref == "energetic") 16L else 33L
@@ -144,6 +158,7 @@ class BurnBarWallpaperService : WallpaperService() {
 
         override fun onDestroy() {
             handler.removeCallbacks(drawRunnable)
+            wallpaperPrefs.unregisterOnSharedPreferenceChangeListener(preferenceListener)
             super.onDestroy()
         }
 
@@ -173,11 +188,11 @@ class BurnBarWallpaperService : WallpaperService() {
                 for (i in particles.indices) {
                     val p = particles[i]
                     if (p.isGlyph) {
-                        val color = resolveColor(p.colorIndex, p.opacity)
+                        val color = resolveColor(p)
                         glyphPaint.color = color
                         canvas.drawText(p.glyph, p.x.toFloat(), p.y.toFloat(), glyphPaint)
                     } else {
-                        val color = resolveColor(p.colorIndex, p.opacity)
+                        val color = resolveColor(p)
                         particlePaint.color = color
                         canvas.drawCircle(p.x.toFloat(), p.y.toFloat(), max(0.5f, p.size.toFloat()), particlePaint)
                     }
@@ -203,25 +218,29 @@ class BurnBarWallpaperService : WallpaperService() {
          * Falls back to the default ember/amber/blaze palette when no
          * provider data is available.
          */
-        private fun resolveColor(colorIndex: Double, opacity: Double): Int {
+        private fun resolveColor(p: SwarmSimulation.Particle): Int {
+            if (p.role?.contains(":") == true) {
+                return simulation.colorFor(p, Color(0xFFFF6B35), isDark = true).toArgb()
+            }
+
             if (providerWeights.isNotEmpty()) {
                 var accumulated = 0.0
                 for (pw in providerWeights) {
                     accumulated += pw.weight
-                    if (colorIndex < accumulated) {
-                        return applyOpacity(pw.argb, opacity)
+                    if (p.colorIndex < accumulated) {
+                        return applyOpacity(pw.argb, p.opacity)
                     }
                 }
                 // Rounding residual — use last provider
-                return applyOpacity(providerWeights.last().argb, opacity)
+                return applyOpacity(providerWeights.last().argb, p.opacity)
             }
 
             // Fallback: default palette
             return when {
-                colorIndex < 0.08 -> applyOpacity(0xFF8080FF.toInt(), opacity) // whimsy
-                colorIndex < 0.35 -> applyOpacity(0xFFFA6B06.toInt(), opacity) // ember
-                colorIndex < 0.62 -> applyOpacity(0xFFFDC42C.toInt(), opacity) // amber
-                else              -> applyOpacity(0xFFEE1803.toInt(), opacity) // blaze
+                p.colorIndex < 0.08 -> applyOpacity(0xFF8080FF.toInt(), p.opacity) // whimsy
+                p.colorIndex < 0.35 -> applyOpacity(0xFFFA6B06.toInt(), p.opacity) // ember
+                p.colorIndex < 0.62 -> applyOpacity(0xFFFDC42C.toInt(), p.opacity) // amber
+                else                -> applyOpacity(0xFFEE1803.toInt(), p.opacity) // blaze
             }
         }
 

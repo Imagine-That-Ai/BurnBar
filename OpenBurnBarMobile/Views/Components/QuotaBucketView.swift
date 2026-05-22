@@ -8,8 +8,7 @@ struct QuotaBucketView: View {
     let bucket: ProviderQuotaBucket
 
     private var remainingPercent: Double {
-        guard bucket.limit > 0 else { return 0 }
-        return max(0, bucket.remaining) / bucket.limit
+        bucket.displayRemainingFraction ?? 0
     }
 
     private var bandColor: Color {
@@ -76,12 +75,11 @@ struct QuotaBucketView: View {
     }
 
     private var remainingPercentLabel: String {
-        guard bucket.limit > 0 else { return "—" }
-        let pct = remainingPercent * 100
+        guard let pct = bucket.displayRemainingPercent else { return "—" }
         if pct < 1 {
             return String(format: "%.1f%% left", pct)
         }
-        return "\(Int(pct))% left"
+        return "\(Int(pct.rounded()))% left"
     }
 
     private func formatNumber(_ value: Double) -> String {

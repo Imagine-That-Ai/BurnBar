@@ -52,6 +52,8 @@ enum class HermesRealtimeRelayFrameType {
     @SerialName("media.blob.ack") MEDIA_BLOB_ACK,
     @SerialName("media.mirror.request") MEDIA_MIRROR_REQUEST,
     @SerialName("media.mirror.ack") MEDIA_MIRROR_ACK,
+    @SerialName("media.mirror.stop") MEDIA_MIRROR_STOP,
+    @SerialName("media.mirror.display.select") MEDIA_MIRROR_DISPLAY_SELECT,
     @SerialName("media.presence.heartbeat") MEDIA_PRESENCE_HEARTBEAT,
     @SerialName("media.call.invite") MEDIA_CALL_INVITE,
     @SerialName("media.call.ack") MEDIA_CALL_ACK,
@@ -111,12 +113,23 @@ data class HermesRealtimeRelayMediaPayload(
     val ack: HermesRealtimeRelayMediaAck? = null,
     val mirrorRequest: HermesRealtimeRelayMirrorRequest? = null,
     val mirrorAck: HermesRealtimeRelayMirrorAck? = null,
+    val mirrorStop: HermesRealtimeRelayMirrorStop? = null,
+    val mirrorDisplaySelection: HermesRealtimeRelayMirrorDisplaySelection? = null,
     val presence: HermesRealtimeRelayPresenceHeartbeat? = null,
     val callInvite: HermesRealtimeRelayCallInvite? = null,
     val callAck: HermesRealtimeRelayCallAck? = null,
     val longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck? = null,
     val encodedFrameBase64: String? = null,
     val frameChunk: HermesRealtimeRelayMediaFrameChunk? = null,
+    val focusContext: HermesRealtimeRelayFocusContext? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayFocusContext(
+    val appName: String,
+    val bundleId: String,
+    val windowTitle: String? = null,
+    val windowId: Long? = null,
 )
 
 @Serializable
@@ -160,6 +173,7 @@ data class HermesRealtimeRelayMirrorRequest(
     val requesterDisplayName: String,
     val streamClass: String,
     val streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = null,
+    val focusFollowMode: String? = null,
 )
 
 @Serializable
@@ -178,6 +192,22 @@ data class HermesRealtimeRelayMirrorAck(
         @SerialName("busy") BUSY,
     }
 }
+
+@Serializable
+data class HermesRealtimeRelayMirrorStop(
+    val requestId: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val stoppedAt: Double,
+    val reason: String? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayMirrorDisplaySelection(
+    val requestId: String,
+    val displayId: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val selectedAt: Double,
+)
 
 @Serializable
 data class HermesRealtimeRelayCallInvite(
@@ -312,6 +342,7 @@ data class HermesRealtimeRelayApprovalResponse(
 @Serializable
 data class HermesRealtimeRelayInputIntent(
     val kind: HermesRealtimeRelayInputIntentKind,
+    val displayId: String? = null,
     val normalizedX: Double? = null,
     val normalizedY: Double? = null,
     val normalizedX2: Double? = null,
@@ -319,6 +350,7 @@ data class HermesRealtimeRelayInputIntent(
     val text: String? = null,
     val key: String? = null,
     val modifiers: List<String>? = null,
+    val mouseButton: Int? = null,
     val clientIntentId: String? = null,
     val authority: HermesRealtimeRelayAuthorityEnvelope,
 )
@@ -332,6 +364,8 @@ enum class HermesRealtimeRelayInputIntentKind {
     @SerialName("type") TYPE,
     @SerialName("shortcut") SHORTCUT,
     @SerialName("scroll") SCROLL,
+    @SerialName("pointer_move") POINTER_MOVE,
+    @SerialName("pointer_click") POINTER_CLICK,
     @SerialName("panic") PANIC,
 }
 

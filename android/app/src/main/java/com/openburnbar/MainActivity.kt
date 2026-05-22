@@ -430,8 +430,11 @@ class MainActivity : ComponentActivity() {
                         PhoneControlIntentKind.TYPE -> HermesRealtimeRelayInputIntentKind.TYPE
                         PhoneControlIntentKind.SHORTCUT -> HermesRealtimeRelayInputIntentKind.SHORTCUT
                         PhoneControlIntentKind.SCROLL -> HermesRealtimeRelayInputIntentKind.SCROLL
+                        PhoneControlIntentKind.POINTER_MOVE -> HermesRealtimeRelayInputIntentKind.POINTER_MOVE
+                        PhoneControlIntentKind.POINTER_CLICK -> HermesRealtimeRelayInputIntentKind.POINTER_CLICK
                         PhoneControlIntentKind.PANIC -> HermesRealtimeRelayInputIntentKind.PANIC
                     },
+                    displayId = intent.displayId,
                     normalizedX = intent.normalizedX,
                     normalizedY = intent.normalizedY,
                     normalizedX2 = intent.normalizedX2,
@@ -439,6 +442,7 @@ class MainActivity : ComponentActivity() {
                     text = intent.text,
                     key = intent.key,
                     modifiers = intent.modifiers,
+                    mouseButton = intent.mouseButton,
                     authority = HermesRealtimeRelayAuthorityEnvelope(
                         peerNodeId = authority.peerNodeId,
                         counter = authority.counter,

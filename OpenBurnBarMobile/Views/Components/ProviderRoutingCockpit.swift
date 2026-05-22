@@ -127,7 +127,7 @@ struct ProviderRoutingCockpit: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(destinationTint)
                         Text(destination)
                             .fontWeight(.semibold)
@@ -205,7 +205,7 @@ struct ProviderRoutingCockpit: View {
                         )
                     )
                 Image(systemName: "arrow.right")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
             }
             .frame(width: 18, height: 18)

@@ -191,6 +191,26 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
+        case .xAI:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.token, .bearer],
+                defaultKind: .bearer,
+                labelSuggestion: "xAI",
+                dashboardURL: URL(string: "https://console.x.ai"),
+                dashboardCTA: "Open xAI console",
+                oneLineHint: "API key from xAI Console for Grok routing and quota checks.",
+                instructions: [
+                    GuideStep(1, "Open the xAI console", detail: "Sign in to console.x.ai."),
+                    GuideStep(2, "Create an API key", detail: "Generate a key for the account you want OpenBurnBar to track."),
+                    GuideStep(3, "Paste it below", detail: "xAI is OpenAI-compatible, so the Mac proxy can route Grok requests through this key.")
+                ],
+                credentialPlaceholder: "xai-...",
+                credentialFooterMarkdown: "xAI keys are encrypted at rest and used only for provider validation, quota checks, and routed Grok requests.",
+                supportsHosted: false,
+                supportsSelfHosted: false
+            )
+
         case .codex:
             return ProviderSetupGuide(
                 provider: provider,

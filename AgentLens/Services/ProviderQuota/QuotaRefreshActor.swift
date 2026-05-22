@@ -42,6 +42,7 @@ actor QuotaRefreshActor {
     let homeDirectoryURL: URL
     let miniMaxModeProvider: () -> MiniMaxQuotaMode
     let factoryPlanProvider: () -> FactoryQuotaPlanTier
+    let xaiPlanProvider: () -> XAIQuotaPlanTier
     let claudeCredentialsReader: any ClaudeCredentialsReading
     let adapters: [AgentProvider: any ProviderQuotaAdapter]
     let refreshProviders: [AgentProvider]
@@ -59,6 +60,7 @@ actor QuotaRefreshActor {
         homeDirectoryURL: URL,
         miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode,
         factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier,
+        xaiPlanProvider: @escaping () -> XAIQuotaPlanTier,
         claudeCredentialsReader: any ClaudeCredentialsReading,
         refreshProviders: [AgentProvider]
     ) {
@@ -71,6 +73,7 @@ actor QuotaRefreshActor {
         self.homeDirectoryURL = homeDirectoryURL
         self.miniMaxModeProvider = miniMaxModeProvider
         self.factoryPlanProvider = factoryPlanProvider
+        self.xaiPlanProvider = xaiPlanProvider
         self.claudeCredentialsReader = claudeCredentialsReader
         self.refreshProviders = refreshProviders
 
@@ -88,6 +91,7 @@ actor QuotaRefreshActor {
             .ollama: OllamaQuotaAdapter(),
             .kimi: KimiQuotaAdapter(),
             .antigravity: AntigravityQuotaAdapter(),
+            .xAI: XAIQuotaAdapter(),
         ]
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -182,6 +186,7 @@ actor QuotaRefreshActor {
             bridgeManager: bridgeManager,
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
+            xaiPlanProvider: xaiPlanProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: currentCache,
             updateCodexRolloutScanCache: { [self] cache, didChange in
@@ -539,6 +544,8 @@ private func daemonProviderID(for provider: AgentProvider) -> String? {
         return "deepseek"
     case .kimi:
         return "moonshot"
+    case .xAI:
+        return "xai"
     default:
         return nil
     }
@@ -593,10 +600,7 @@ private func resolveSwitcherCLIQuotaProfiles(dataStoreActor: DataStoreActor) -> 
             return nil
         }
 
-        let label = quotaNonEmpty(profile.cliMetadata?.accountDescription)
-            ?? quotaNonEmpty(profile.cliMetadata?.displayLabel)
-            ?? quotaNonEmpty(profile.displayName)
-            ?? "\(cliType.displayName) OAuth profile"
+        let label = quotaSwitcherProfileLabel(profile, cliType: cliType)
 
         return SwitcherCLIQuotaProfile(
             provider: provider,
@@ -620,6 +624,24 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
     }
 }
 
+private func quotaSwitcherProfileLabel(
+    _ profile: SwitcherProfileRecord,
+    cliType: SwitcherCLIProfileType
+) -> String {
+    let accountDescription = quotaNonEmpty(profile.cliMetadata?.accountDescription)
+    let displayLabel = quotaNonEmpty(profile.cliMetadata?.displayLabel)
+    if let accountDescription,
+       let displayLabel,
+       displayLabel != accountDescription,
+       displayLabel.localizedCaseInsensitiveContains(accountDescription) {
+        return displayLabel
+    }
+    return accountDescription
+        ?? displayLabel
+        ?? quotaNonEmpty(profile.displayName)
+        ?? "\(cliType.displayName) OAuth profile"
+}
+
 private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
     switch ProviderID.normalize(providerID) {
     case "minimax":
@@ -638,6 +660,8 @@ private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
         return .deepSeek
     case "moonshot", "kimi":
         return .kimi
+    case "xai", "x-ai", "x.ai", "grok":
+        return .xAI
     default:
         return nil
     }
@@ -666,6 +690,16 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
         identifiers.append(contentsOf: ["opencode", "open_code", "opencode_auth_json"])
     case .deepSeek:
         identifiers.append(contentsOf: ["deepseek", "deep_seek"])
+    case .xAI:
+        identifiers.append(contentsOf: [
+            "xai",
+            "x_ai",
+            "x-ai",
+            "grok",
+            "xai_api_key",
+            "xai_management_key",
+            "xai-management-key"
+        ])
     default:
         break
     }

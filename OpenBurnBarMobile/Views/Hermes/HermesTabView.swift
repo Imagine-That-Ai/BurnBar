@@ -118,7 +118,11 @@ enum HermesMobileChatPreferences {
     /// to native `Text` while measurement is in flight, and adds visible
     /// chips for `@mentions` and `` `code spans` `` when ready.
     static let usePretextRenderingKey = "hermesUsePretextRendering"
+    /// `@AppStorage` key for opting into the interactive SwarmCanvasView live background
+    /// in the Agents (formerly Hermes Square) root scene. Defaults to `false`.
+    static let agentsLiveBackgroundEnabledKey = "agentsLiveBackgroundEnabled"
 }
+
 
 private enum HermesChatLayout {
     static let hiddenNavigationTrayReserve: CGFloat = 70
@@ -3027,7 +3031,7 @@ struct HermesMessageBubble: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
                 Image(systemName: "link")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                 Text("Sources")
                     .font(MobileTheme.Typography.tiny.weight(.semibold))
             }
@@ -3037,7 +3041,7 @@ struct HermesMessageBubble: View {
                 Link(destination: source.url) {
                     HStack(spacing: 7) {
                         Image(systemName: "safari")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(MobileTheme.hermesAureate)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(source.title)
@@ -3053,7 +3057,7 @@ struct HermesMessageBubble: View {
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                         Spacer(minLength: 8)
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                     }
                     .padding(.horizontal, 9)

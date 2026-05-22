@@ -20,6 +20,7 @@ struct SubscriptionCard: View {
     @State private var expanded = false
     @State private var hover = false
     @AppStorage private var isPinned: Bool
+    @AppStorage private var hiddenBucketKeysRaw: String
 
     init(
         entry: SubscriptionEntry,
@@ -30,9 +31,63 @@ struct SubscriptionCard: View {
         self.onRefresh = onRefresh
         self.onTogglePin = onTogglePin
         self._isPinned = AppStorage(wrappedValue: false, "quotaTab.pinned.\(entry.id)")
+        self._hiddenBucketKeysRaw = AppStorage(wrappedValue: "", "quotaTab.hiddenBuckets.\(entry.id)")
     }
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: entry.provider) }
+
+    private var hiddenBucketKeys: Set<String> {
+        Set(hiddenBucketKeysRaw.split(separator: "\n").map(String.init))
+    }
+
+    private var activeHiddenBucketKeys: Set<String> {
+        hiddenBucketKeys.intersection(Set(entry.allDisplayableBuckets.map(\.id)))
+    }
+
+    private var visibleDisplayableBuckets: [ProviderQuotaBucket] {
+        let hidden = hiddenBucketKeys
+        return entry.allDisplayableBuckets.filter { !hidden.contains($0.id) }
+    }
+
+    private var visiblePrimaryDisplayableBucket: ProviderQuotaBucket? {
+        if let primary = entry.primaryDisplayableBucket,
+           isBucketVisible(primary) {
+            return primary
+        }
+        return visibleDisplayableBuckets.sorted {
+            let lhsRemaining = $0.remainingPercent ?? .infinity
+            let rhsRemaining = $1.remainingPercent ?? .infinity
+            if lhsRemaining == rhsRemaining {
+                return ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture)
+            }
+            return lhsRemaining < rhsRemaining
+        }.first
+    }
+
+    private var visibleHourlyBucket: ProviderQuotaBucket? {
+        visibleDisplayableBuckets.first { $0.windowKind == .rollingHours }
+    }
+
+    private var visibleWeeklyOrMonthlyBucket: ProviderQuotaBucket? {
+        visibleDisplayableBuckets.first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
+            ?? visibleDisplayableBuckets.first { $0.windowKind == .monthly }
+    }
+
+    private var visibleNextResetDate: Date? {
+        visibleDisplayableBuckets
+            .compactMap(\.resetsAt)
+            .filter { $0 > Date() }
+            .min()
+    }
+
+    private var visibleRemainingPercentRounded: Int {
+        guard let bucket = visiblePrimaryDisplayableBucket else { return 0 }
+        if let remaining = bucket.remainingPercent {
+            return Int(max(0.0, min(100.0, remaining)).rounded())
+        }
+        let fraction = max(0.0, min(1.0, 1.0 - bucket.progressFraction))
+        return Int((fraction * 100).rounded())
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -42,11 +97,7 @@ struct SubscriptionCard: View {
 
             if expanded {
                 Divider().opacity(0.4)
-                VStack(spacing: DesignSystem.Spacing.md) {
-                    ForEach(entry.allDisplayableBuckets) { bucket in
-                        ProviderQuotaBucketRow(bucket: bucket, provider: entry.provider)
-                    }
-                }
+                bucketVisibilitySection
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -68,8 +119,8 @@ struct SubscriptionCard: View {
         .accessibilityLabel(
             "\(entry.provider.displayName)" +
             (entry.planTierBadge.map { " \($0)" } ?? "") +
-            (entry.primaryDisplayableBucket == nil ? ", quota signal unavailable" : ", \(entry.remainingPercentRounded) percent remaining") +
-            (entry.nextResetDate.map { ", resets \($0.formatted(.relative(presentation: .numeric)))" } ?? "")
+            (visiblePrimaryDisplayableBucket == nil ? ", quota signal unavailable" : ", \(visibleRemainingPercentRounded) percent remaining") +
+            (visibleNextResetDate.map { ", resets \($0.formatted(.relative(presentation: .numeric)))" } ?? "")
         )
     }
 
@@ -121,8 +172,8 @@ struct SubscriptionCard: View {
     private var mainRow: some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.lg) {
             QuotaArcDial(
-                outer: entry.weeklyOrMonthlyBucket ?? entry.primaryDisplayableBucket,
-                inner: entry.hourlyBucket,
+                outer: visibleWeeklyOrMonthlyBucket ?? visiblePrimaryDisplayableBucket,
+                inner: visibleHourlyBucket,
                 provider: entry.provider,
                 diameter: 138
             )
@@ -131,18 +182,18 @@ struct SubscriptionCard: View {
                 metricRow(
                     glyph: "clock.fill",
                     label: shortLabel,
-                    bucket: entry.hourlyBucket,
+                    bucket: visibleHourlyBucket,
                     fallback: "Short-window quota not exposed"
                 )
 
                 metricRow(
                     glyph: "calendar",
                     label: longLabel,
-                    bucket: entry.weeklyOrMonthlyBucket,
+                    bucket: visibleWeeklyOrMonthlyBucket,
                     fallback: "Long-window quota not exposed"
                 )
 
-                if let nextReset = entry.nextResetDate {
+                if let nextReset = visibleNextResetDate {
                     HStack(spacing: 6) {
                         Image(systemName: "hourglass")
                             .font(.system(size: 10, weight: .semibold))
@@ -169,8 +220,10 @@ struct SubscriptionCard: View {
                     QuotaMicroBadge(text: "Stale signal", tint: DesignSystem.Colors.warning)
                 }
 
-                if entry.allDisplayableBuckets.isEmpty {
-                    Text(entry.snapshot.statusMessage)
+                if visibleDisplayableBuckets.isEmpty {
+                    Text(entry.allDisplayableBuckets.isEmpty
+                         ? entry.snapshot.statusMessage
+                         : "No quota bars selected. Use Show all buckets to restore them.")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                         .lineLimit(3)
@@ -309,7 +362,81 @@ struct SubscriptionCard: View {
 
     private var bucketToggleLabel: String {
         if entry.allDisplayableBuckets.isEmpty { return "No live buckets" }
+        if !activeHiddenBucketKeys.isEmpty {
+            return expanded
+                ? "Hide buckets"
+                : "Show buckets (\(visibleDisplayableBuckets.count)/\(entry.allDisplayableBuckets.count))"
+        }
         return expanded ? "Hide buckets" : "Show all buckets (\(entry.allDisplayableBuckets.count))"
+    }
+
+    private var bucketVisibilitySection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Text("Quota bars")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .tracking(0.8)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .textCase(.uppercase)
+
+                Spacer()
+
+                Button {
+                    showAllBuckets()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "eye")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Show all")
+                            .font(DesignSystem.Typography.tiny)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.primaryColor)
+                .disabled(activeHiddenBucketKeys.isEmpty)
+                .help("Show every quota bar on this account")
+
+                Button {
+                    hideAllBuckets()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "eye.slash")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Hide all")
+                            .font(DesignSystem.Typography.tiny)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .disabled(entry.allDisplayableBuckets.isEmpty || visibleDisplayableBuckets.isEmpty)
+                .help("Hide every quota bar on this account")
+            }
+
+            if entry.allDisplayableBuckets.isEmpty {
+                Text(entry.snapshot.statusMessage)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            } else {
+                ForEach(entry.allDisplayableBuckets) { bucket in
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                        Toggle(
+                            isOn: Binding(
+                                get: { isBucketVisible(bucket) },
+                                set: { setBucket(bucket, visible: $0) }
+                            )
+                        ) {
+                            Text(bucket.label)
+                        }
+                        .labelsHidden()
+                        .toggleStyle(.checkbox)
+                        .help(isBucketVisible(bucket) ? "Hide this quota bar" : "Show this quota bar")
+
+                        ProviderQuotaBucketRow(bucket: bucket, provider: entry.provider)
+                            .opacity(isBucketVisible(bucket) ? 1 : 0.42)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Chrome
@@ -365,7 +492,7 @@ struct SubscriptionCard: View {
     }
 
     private var shortLabel: String {
-        switch entry.hourlyBucket?.windowKind {
+        switch visibleHourlyBucket?.windowKind {
         case .rollingHours: return "5-hour window"
         case .daily: return "Daily window"
         default: return "Short window"
@@ -373,12 +500,34 @@ struct SubscriptionCard: View {
     }
 
     private var longLabel: String {
-        switch entry.weeklyOrMonthlyBucket?.windowKind {
+        switch visibleWeeklyOrMonthlyBucket?.windowKind {
         case .weekly, .rollingDays: return "7-day window"
         case .monthly: return "30-day window"
         case .lifetime: return "Lifetime"
         default: return "Long window"
         }
+    }
+
+    private func isBucketVisible(_ bucket: ProviderQuotaBucket) -> Bool {
+        !hiddenBucketKeys.contains(bucket.id)
+    }
+
+    private func setBucket(_ bucket: ProviderQuotaBucket, visible: Bool) {
+        var keys = hiddenBucketKeys
+        if visible {
+            keys.remove(bucket.id)
+        } else {
+            keys.insert(bucket.id)
+        }
+        hiddenBucketKeysRaw = keys.sorted().joined(separator: "\n")
+    }
+
+    private func showAllBuckets() {
+        hiddenBucketKeysRaw = ""
+    }
+
+    private func hideAllBuckets() {
+        hiddenBucketKeysRaw = entry.allDisplayableBuckets.map(\.id).sorted().joined(separator: "\n")
     }
 
     private func open(url: URL) {

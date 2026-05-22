@@ -16,7 +16,7 @@ enum MercuryBackgroundStyle: Codable, Hashable, Sendable, CaseIterable {
         case .wallpaper: return "Wallpaper"
         case .aurora:    return "Aurora"
         case .solid:     return "Solid"
-        case .website:   return "Website"
+        case .website:   return "Logo Swarm"
         }
     }
 
@@ -25,7 +25,7 @@ enum MercuryBackgroundStyle: Codable, Hashable, Sendable, CaseIterable {
         case .wallpaper: return "photo.fill"
         case .aurora:    return "sparkles"
         case .solid:     return "circle.fill"
-        case .website:   return "globe"
+        case .website:   return "point.3.filled.connected.trianglepath.dotted"
         }
     }
 }

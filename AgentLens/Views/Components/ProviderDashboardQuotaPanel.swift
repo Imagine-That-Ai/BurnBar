@@ -61,7 +61,10 @@ struct ProviderDashboardQuotaPanel: View {
 
                     if let active = activeSnapshot, active.hasDisplayableQuotaSignal {
                         VStack(spacing: DesignSystem.Spacing.md) {
-                            ForEach(active.displayableQuotaBuckets) { bucket in
+                            ForEach(active.customizedBuckets(
+                                hiddenBuckets: SettingsManager.shared.quotas.hiddenBuckets,
+                                bucketOrders: SettingsManager.shared.quotas.bucketOrders
+                            )) { bucket in
                                 ProviderQuotaBucketRow(bucket: bucket, provider: provider)
                             }
                         }

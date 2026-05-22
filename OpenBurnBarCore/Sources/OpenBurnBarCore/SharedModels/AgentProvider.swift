@@ -31,8 +31,42 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case ollama = "Ollama"
     case windsurf = "Windsurf"
     case warp = "Warp"
+    case xAI = "xAI"
 
     public var id: String { rawValue }
+
+    /// Providers that participate in the cross-platform swarm-logo wallpaper
+    /// cycle. Kept explicit so grouped desktop formations start with the
+    /// primary agent runtimes instead of raw enum declaration order.
+    public static let swarmGlyphProviders: [AgentProvider] = [
+        .factory,
+        .claudeCode,
+        .codex,
+        .openCode,
+        .openClaw,
+        .hermes,
+        .geminiCLI,
+        .antigravity,
+        .openAI,
+        .deepSeek,
+        .minimax,
+        .zai,
+        .xAI,
+        .cursor,
+        .copilot,
+        .kimi,
+        .aider,
+        .cline,
+        .kiloCode,
+        .rooCode,
+        .forgeDev,
+        .augment,
+        .piAgent,
+        .goose,
+        .ollama,
+        .windsurf,
+        .warp
+    ]
 
     /// Providers that expose a real quota/rate-limit signal either through an
     /// official API, a provider dashboard scrape, or a first-party local quota
@@ -52,6 +86,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .ollama,
         .kimi,
         .antigravity,
+        .xAI,
     ]
 
     public var isQuotaSignalProvider: Bool {
@@ -75,6 +110,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .openAI,
         .kimi,
         .antigravity,
+        .xAI,
     ]
 
     /// A stable, lowercased, space-stripped token for persisting provider identifiers.
@@ -97,6 +133,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .openCode
         case .kimi:
             return .kimi
+        case .xAI:
+            return .xAI
         default:
             return ProviderID(rawValue: persistedToken)
         }
@@ -124,6 +162,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .codex
         case "opencode":
             return .openCode
+        case "xai":
+            return .xAI
         default:
             return AgentProvider.allCases.first { $0.providerID == providerID }
         }
@@ -196,6 +236,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .kiloCode
         case "roocode", "roo-code":
             return .rooCode
+        case "xai", "x-ai", "x.ai", "grok":
+            return .xAI
         default:
             if let direct = fromPersistedToken(normalized) {
                 return direct
@@ -226,13 +268,14 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .hermes:     return "HermesLogo"
         case .piAgent:    return "PiAgentLogo"
         case .geminiCLI:  return "GeminiCLILogo"
-        case .antigravity: return "GeminiCLILogo"
+        case .antigravity: return "AntigravityLogo"
         case .goose:      return "GooseLogo"
         case .openClaw:   return "OpenClawLogo"
         case .ollama:     return "OllamaLogo"
         case .windsurf:   return "WindsurfLogo"
         case .warp:       return "WarpLogo"
         case .openCode:   return "OpenCodeLogo"
+        case .xAI:        return "xAILogo"
         }
     }
 
@@ -265,8 +308,59 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .windsurf: return "sailboat.fill"
         case .warp: return "terminal.fill"
         case .openCode: return "chevron.left.forwardslash.chevron.right"
+        case .xAI: return "bolt.fill"
         }
     }
 
     public var displayName: String { rawValue }
+}
+
+// MARK: - Swarm Provider Glyph Selection
+
+public enum SwarmProviderGlyphSelection {
+    public static let allSentinel = "__all__"
+    public static let noneSentinel = "__none__"
+
+    public static var allProviders: [AgentProvider] {
+        AgentProvider.swarmGlyphProviders
+    }
+
+    public static func normalized(_ providers: [AgentProvider]) -> [AgentProvider] {
+        let selected = Set(providers)
+        return AgentProvider.swarmGlyphProviders.filter { selected.contains($0) }
+    }
+
+    public static func decode(_ rawValue: String?, fallbackToAll: Bool = true) -> [AgentProvider] {
+        guard let rawValue else {
+            return fallbackToAll ? allProviders : []
+        }
+
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == allSentinel {
+            return fallbackToAll ? allProviders : []
+        }
+        if trimmed == noneSentinel {
+            return []
+        }
+
+        let decoded = trimmed
+            .split(separator: ",")
+            .compactMap { AgentProvider.fromPersistedToken(String($0)) }
+        let providers = normalized(decoded)
+        if providers.isEmpty && fallbackToAll {
+            return allProviders
+        }
+        return providers
+    }
+
+    public static func encode(_ providers: [AgentProvider]) -> String {
+        let normalizedProviders = normalized(providers)
+        if normalizedProviders.isEmpty {
+            return noneSentinel
+        }
+        if normalizedProviders == allProviders {
+            return allSentinel
+        }
+        return normalizedProviders.map(\.persistedToken).joined(separator: ",")
+    }
 }

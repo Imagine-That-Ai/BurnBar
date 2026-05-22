@@ -110,6 +110,29 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
         }
     }
 
+    func respond(to missionID: String, approve: Bool) async {
+        do {
+            try await CLIAgentMissionDispatcher.shared.respondToApproval(
+                requestID: missionID,
+                approve: approve
+            )
+        } catch {
+            inlineError = error.localizedDescription
+        }
+    }
+
+    func cancelMission(id: String) async {
+        do {
+            try await CLIAgentMissionDispatcher.shared.cancelMission(requestID: id)
+        } catch {
+            inlineError = error.localizedDescription
+        }
+    }
+
+    func missionSnapshot(for id: String) -> CLIAgentMissionSnapshot? {
+        observedMissions[id]
+    }
+
     func clearInlineError() { inlineError = nil }
 
     func refresh() async {

@@ -9,11 +9,16 @@ class AgentProviderTest {
     @Test
     fun `fromKey returns correct provider`() {
         assertEquals(AgentProvider.OPEN_AI, AgentProvider.fromKey("openai"))
+        assertEquals(AgentProvider.DEEP_SEEK, AgentProvider.fromKey("deepseek"))
         assertEquals(AgentProvider.CLAUDE_CODE, AgentProvider.fromKey("claude-code"))
         assertEquals(AgentProvider.GEMINI_CLI, AgentProvider.fromKey("gemini-cli"))
         assertEquals(AgentProvider.OLLAMA, AgentProvider.fromKey("ollama"))
         assertEquals(AgentProvider.ANTIGRAVITY, AgentProvider.fromKey("antigravity"))
         assertEquals(AgentProvider.ANTIGRAVITY, AgentProvider.fromKey("antigravity-cli"))
+        assertEquals(AgentProvider.XAI, AgentProvider.fromKey("xai"))
+        assertEquals(AgentProvider.XAI, AgentProvider.fromKey("x.ai"))
+        assertEquals(AgentProvider.XAI, AgentProvider.fromKey("grok"))
+        assertEquals(AgentProvider.PI_AGENT, AgentProvider.fromKey("pi-agent"))
     }
 
     @Test

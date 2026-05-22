@@ -26,6 +26,8 @@ func providerQuotaManagementURL(
         "https://app.factory.ai"
     case .cursor:
         "https://cursor.com/pricing"
+    case .xAI:
+        "https://grok.com/plans"
     default:
         nil
     }
@@ -47,15 +49,17 @@ struct ProviderQuotaSettingsSection: View {
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-            ForEach(ProviderQuotaService.supportedProviders, id: \.self) { provider in
-                ProviderQuotaSettingsCard(
-                    provider: provider,
-                    settingsManager: settingsManager,
-                    quotaService: quotaService,
-                    dataStore: dataStore,
-                    onOpenProviderPlans: onOpenProviderPlans,
-                    quotaSourceSummary: quotaSourceSummary(provider)
-                )
+            ForEach(settingsManager.quotas.providerOrder, id: \.self) { provider in
+                if settingsManager.quotas.visibleProviders.contains(provider) {
+                    ProviderQuotaSettingsCard(
+                        provider: provider,
+                        settingsManager: settingsManager,
+                        quotaService: quotaService,
+                        dataStore: dataStore,
+                        onOpenProviderPlans: onOpenProviderPlans,
+                        quotaSourceSummary: quotaSourceSummary(provider)
+                    )
+                }
             }
         }
         .task {
@@ -100,8 +104,10 @@ struct ProviderQuotaOverviewPanel: View {
                 }
 
                 VStack(spacing: DesignSystem.Spacing.sm) {
-                    ForEach(ProviderQuotaService.supportedProviders, id: \.self) { provider in
-                        quotaRow(for: provider)
+                    ForEach(SettingsManager.shared.quotas.providerOrder, id: \.self) { provider in
+                        if SettingsManager.shared.quotas.visibleProviders.contains(provider) {
+                            quotaRow(for: provider)
+                        }
                     }
                 }
             }
@@ -504,6 +510,35 @@ private struct ProviderQuotaSettingsCard: View {
         case .cursor:
             CursorQuotaInlineSetup(quotaService: quotaService, dataStore: dataStore)
 
+        case .xAI:
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text("Pick your Grok tier. SuperGrok tiers estimate a rolling 2-hour prompt window from local usage; GrokBuild reads exact prepaid credit balance from the xAI Management API.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("Plan tier")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                Picker("xAI plan tier", selection: $settingsManager.xaiQuotaPlanTier) {
+                    ForEach(XAIQuotaPlanTier.allCases) { tier in
+                        Text(tier.displayName).tag(tier)
+                    }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: settingsManager.xaiQuotaPlanTier) { _, _ in
+                    Task {
+                        await quotaService.refresh(provider: .xAI, dataStore: dataStore)
+                    }
+                }
+
+                Button("Manage Plans") {
+                    onOpenProviderPlans(provider)
+                }
+                .buttonStyle(.link)
+            }
+
         default:
             EmptyView()
         }
@@ -530,6 +565,9 @@ private struct ProviderQuotaSettingsCard: View {
         }
         if provider == .zai {
             return "Z.ai"
+        }
+        if provider == .xAI {
+            return "Grok (xAI)"
         }
         return provider.displayName
     }

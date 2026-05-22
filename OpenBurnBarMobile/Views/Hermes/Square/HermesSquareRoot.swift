@@ -31,6 +31,10 @@ struct HermesSquareRoot: View {
 
     // MARK: State
 
+    @State private var selectedMissionID: String? = nil
+    @State private var showCancelForIDs: Set<String> = []
+    @State private var missionToCancel: MissionConsoleActiveTile? = nil
+
     @State private var piService = PiService()
     @State private var registry = AgentIdentityRegistry.shared
     @State private var inbox: ThreadInboxStore
@@ -46,6 +50,7 @@ struct HermesSquareRoot: View {
 
     @AppStorage(PinnedAgentGridConfig.userDefaultsKey) private var pinnedJSON: String = ""
     @AppStorage(ChatTilePreferencesStorage.userDefaultsKey) private var tilePreferencesJSON: String = ""
+    @AppStorage(HermesMobileChatPreferences.agentsLiveBackgroundEnabledKey) private var liveBackgroundEnabled = false
 
     @State private var navTarget: NavTarget?
     @State private var isShowingDiscover: Bool = false
@@ -95,82 +100,108 @@ struct HermesSquareRoot: View {
         ))
     }
 
+    // MARK: Background
+
+    @ViewBuilder
+    private var squareBackground: some View {
+        Group {
+            if liveBackgroundEnabled {
+                SwarmCanvasView(accent: .purple, pace: .cinematic).ignoresSafeArea()
+            } else {
+                AuroraBackdrop().ignoresSafeArea()
+            }
+        }
+    }
+
+    // MARK: Content
+
+    private var squareContent: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                federatedSearchBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+
+                if !query.isEmpty {
+                    searchResults
+                        .padding(.horizontal, 16)
+                } else {
+                    mainDashboardContent
+                }
+            }
+            .padding(.bottom, 80)
+        }
+    }
+
+    @ViewBuilder
+    private var mainDashboardContent: some View {
+        Group {
+            // Approval inbox — always visible. Pending
+            // approvals stick at the top until handled.
+            if !missionHost.snapshot.approvalAsks.isEmpty {
+                ApprovalInboxStrip(
+                    asks: missionHost.snapshot.approvalAsks,
+                    onApprove: { ask in
+                        Task { await missionHost.respond(to: ask, approve: true) }
+                    },
+                    onDeny: { ask in
+                        Task { await missionHost.respond(to: ask, approve: false) }
+                    },
+                    onApproveAlways: { ask in recordApprovalPolicy(ask, decision: .approve) },
+                    onDenyAlways: { ask in recordApprovalPolicy(ask, decision: .deny) }
+                )
+                .padding(.horizontal, 16)
+            }
+
+            // Fan-out group card — when an observer is active,
+            // render the side-by-side child tiles.
+            if let group = activeGroupObserver.group {
+                let tiles = childTilesForActiveGroup(group)
+                MissionFanOutGroupCard(
+                    group: group,
+                    childTiles: tiles,
+                    onMerge: { action in
+                        Task { await activeGroupObserver.applyMerge(action) }
+                    },
+                    onOpenChild: { _ in /* drilldown deferred */ }
+                )
+                .padding(.horizontal, 16)
+            }
+
+            pinnedGridSection
+                .padding(.horizontal, 16)
+
+            projectMemorySection
+                .padding(.horizontal, 16)
+
+            activeMissionsStrip
+                .padding(.leading, 16)
+
+            // Rollback card surfaces for any active session
+            // that has snapshots — gives the user one tap to
+            // revert what an agent just did.
+            rollbackSections
+                .padding(.horizontal, 16)
+
+            threadInboxSection
+                .padding(.horizontal, 16)
+
+            subscriptionsSection
+                .padding(.horizontal, 16)
+
+            discoverButton
+                .padding(.horizontal, 16)
+        }
+    }
+
     // MARK: Body
 
     var body: some View {
         ZStack(alignment: .top) {
-            EmberSurfaceBackground().ignoresSafeArea()
-            ScrollView {
-                VStack(spacing: 18) {
-                    federatedSearchBar
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-
-                    if !query.isEmpty {
-                        searchResults
-                            .padding(.horizontal, 16)
-                    } else {
-                        // Approval inbox — always visible. Pending
-                        // approvals stick at the top until handled.
-                        if !missionHost.snapshot.approvalAsks.isEmpty {
-                            ApprovalInboxStrip(
-                                asks: missionHost.snapshot.approvalAsks,
-                                onApprove: { ask in
-                                    Task { await missionHost.respond(to: ask, approve: true) }
-                                },
-                                onDeny: { ask in
-                                    Task { await missionHost.respond(to: ask, approve: false) }
-                                },
-                                onApproveAlways: { ask in recordApprovalPolicy(ask, decision: .approve) },
-                                onDenyAlways: { ask in recordApprovalPolicy(ask, decision: .deny) }
-                            )
-                            .padding(.horizontal, 16)
-                        }
-
-                        // Fan-out group card — when an observer is active,
-                        // render the side-by-side child tiles.
-                        if let group = activeGroupObserver.group {
-                            let tiles = childTilesForActiveGroup(group)
-                            MissionFanOutGroupCard(
-                                group: group,
-                                childTiles: tiles,
-                                onMerge: { action in
-                                    Task { await activeGroupObserver.applyMerge(action) }
-                                },
-                                onOpenChild: { _ in /* drilldown deferred */ }
-                            )
-                            .padding(.horizontal, 16)
-                        }
-
-                        pinnedGridSection
-                            .padding(.horizontal, 16)
-
-                        projectMemorySection
-                            .padding(.horizontal, 16)
-
-                        activeMissionsStrip
-                            .padding(.leading, 16)
-
-                        // Rollback card surfaces for any active session
-                        // that has snapshots — gives the user one tap to
-                        // revert what an agent just did.
-                        rollbackSections
-                            .padding(.horizontal, 16)
-
-                        threadInboxSection
-                            .padding(.horizontal, 16)
-
-                        subscriptionsSection
-                            .padding(.horizontal, 16)
-
-                        discoverButton
-                            .padding(.horizontal, 16)
-                    }
-                }
-                .padding(.bottom, 80)
-            }
+            squareBackground
+            squareContent
         }
-        .navigationTitle("Hermes Square")
+        .navigationTitle("Agents")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             inbox.bind(historyStore: historyStore, missionHost: missionHost)
@@ -200,146 +231,61 @@ struct HermesSquareRoot: View {
             Task { await reindexSearch() }
         }
         .sheet(isPresented: $isShowingDiscover) {
-            HermesSquareDiscoverDrawer(
-                registry: registry,
-                pinnedGrid: pinnedGrid,
-                projectSummaries: Array(projectsStore.summaries.prefix(8)),
-                onPin: { uri in pin(uri) },
-                onUnpin: { uri in unpin(uri) },
-                onOpenProjectMemory: { project in
-                    navTarget = .projectMemory(project.id)
-                    isShowingDiscover = false
-                },
-                onAskWiki: { project in
-                    askWiki(for: project)
-                    isShowingDiscover = false
-                }
-            )
+            discoverDrawerSheet
         }
         .sheet(isPresented: $isShowingFanOut) {
-            FanOutComposerSheet(
-                registry: registry,
-                onDispatched: { result in
-                    activeGroupObserver.start(groupID: result.groupID)
-                }
-            )
+            fanOutSheet
         }
         .sheet(isPresented: $isShowingVoice) {
             voiceSheetContent
         }
-        .task {
-            // Mercury Phase 8 — start the peer-presence loop. The peer
-            // source polls `HermesIrohRelayTransport`'s control-stream
-            // phase, consumes Mac presence heartbeats, and updates
-            // `registry.pairedMacPeer` so the pinned tile resolver can
-            // synthesize the "My Mac" identity.
-            HermesIrohRelayTransport.shared.mediaPresenceHeartbeatHandler = { heartbeat in
-                mercuryPeerSource.ingestHeartbeat(heartbeat)
-            }
-            mercuryPeerSource.start()
-        }
-        .onChange(of: mercuryPeerSource.peer) { _, newPeer in
-            registry.pairedMacPeer = newPeer
-            autoPinPairedMacIfNeeded(peer: newPeer)
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    isShowingFanOut = true
-                } label: {
-                    Image(systemName: "rectangle.stack.badge.plus")
-                }
-                .accessibilityLabel("Fan-out dispatch")
-                Button {
-                    isShowingVoice = true
-                } label: {
-                    Image(systemName: "mic.circle.fill")
-                }
-                .accessibilityLabel("Voice command")
-            }
-        }
-        .overlay(alignment: .top) {
-            if let intent = voiceIntentBanner {
-                VoiceIntentBanner(intent: intent, onDismiss: { voiceIntentBanner = nil })
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .sheet(isPresented: $isShowingSubscriptions) {
-            HermesSquareSubscriptionsFolder()
-        }
-        .navigationDestination(item: $navTarget) { target in
-            switch target {
-            case .brandZone(let uri):
-                if let identity = registry.identity(for: uri) {
-                    AgentBrandZoneView(
-                        identity: identity,
-                        registry: registry,
-                        missionHost: missionHost,
-                        onOpenRuntimeThread: { runtime in
-                            navTarget = .runtimeThread(runtime)
-                        },
-                        onOpenRuntimeList: { runtime in
-                            navTarget = .runtimeNative(runtime)
-                        }
-                    )
-                } else {
-                    Text("Agent unavailable")
-                        .foregroundStyle(DesignSystemColors.textMuted)
-                }
-            case .runtimeNative(let runtime):
-                runtimeNativeView(for: runtime)
-            case .runtimeThread(let runtime):
-                runtimeThreadView(for: runtime)
-            case .cloudSession(let hitID):
-                if let row = cloudSearchRowsByID[hitID] {
-                    HermesSquareCloudSessionDetailView(row: row)
-                } else {
-                    Text("Session unavailable")
-                        .foregroundStyle(DesignSystemColors.textMuted)
-                }
-            case .projectMemory(let projectID):
-                if let project = projectSummary(for: projectID) {
-                    ProjectDetailView(project: project, store: projectsStore)
-                } else {
-                    Text("Project unavailable")
-                        .foregroundStyle(DesignSystemColors.textMuted)
-                }
-            case .mercuryLive(let connectionID):
-                let effectiveConnectionID = resolvedMercuryConnectionID(for: connectionID)
-                if let coordinator = HermesIrohRelayTransport.shared.currentMediaControlCoordinator,
-                   HermesIrohRelayTransport.shared.currentMediaControlConnectionID == effectiveConnectionID,
-                   let peer = mercuryPeerSource.peer {
-                    MercuryLiveSheet(
-                        connectionID: effectiveConnectionID,
-                        peer: peer,
-                        controlStreamCoordinator: coordinator,
-                        fileTransferService: iOSFileTransferService.current,
-                        uidProvider: { Auth.auth().currentUser?.uid }
-                    )
-                } else {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text(bootingMercuryConnectionID == effectiveConnectionID ? "Connecting to Mercury..." : "Starting Mercury...")
-                            .foregroundStyle(DesignSystemColors.textSecondary)
-                        if let mercuryBootError {
-                            Text(mercuryBootError)
-                                .font(.footnote)
-                                .foregroundStyle(DesignSystemColors.textMuted)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                        }
-                    }
-                    .task(id: effectiveConnectionID) {
-                        await ensureMercuryLive(connectionID: effectiveConnectionID)
-                    }
-                }
-            }
+        .sheet(isPresented: Binding(
+            get: { selectedMissionID != nil },
+            set: { if !$0 { selectedMissionID = nil } }
+        )) {
+            missionLiveDetailSheet
         }
     }
 
     // MARK: Subviews
+
+    @ViewBuilder
+    private var discoverDrawerSheet: some View {
+        HermesSquareDiscoverDrawer(
+            registry: registry,
+            pinnedGrid: pinnedGrid,
+            projectSummaries: Array(projectsStore.summaries.prefix(8)),
+            onPin: { uri in pin(uri) },
+            onUnpin: { uri in unpin(uri) },
+            onOpenProjectMemory: { project in
+                navTarget = .projectMemory(project.id)
+                isShowingDiscover = false
+            },
+            onAskWiki: { project in
+                askWiki(for: project)
+                isShowingDiscover = false
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var fanOutSheet: some View {
+        FanOutComposerSheet(
+            registry: registry,
+            onDispatched: { result in
+                activeGroupObserver.start(groupID: result.groupID)
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var missionLiveDetailSheet: some View {
+        if let id = selectedMissionID, let snapshot = missionHost.missionSnapshot(for: id) {
+            MissionLiveDetailView(mission: snapshot, onApprovalResponse: { approve in
+                Task { await missionHost.respond(to: snapshot.id, approve: approve) }
+            })
+        }
+    }
 
     @ViewBuilder
     private var rollbackSections: some View {
@@ -553,8 +499,46 @@ struct HermesSquareRoot: View {
                             .padding(.vertical, 14)
                     } else {
                         ForEach(tiles) { tile in
-                            HermesSquareMissionTile(tile: tile)
+                            let isCancelling = showCancelForIDs.contains(tile.id)
+                            ZStack(alignment: .topTrailing) {
+                                Button {
+                                    if !showCancelForIDs.isEmpty {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                            showCancelForIDs.removeAll()
+                                        }
+                                    } else {
+                                        selectedMissionID = tile.id
+                                    }
+                                } label: {
+                                    HermesSquareMissionTile(tile: tile)
+                                }
+                                .buttonStyle(.plain)
                                 .frame(width: 240)
+                                .onLongPressGesture(minimumDuration: 0.6) {
+                                    HapticBus.threshold()
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        showCancelForIDs.insert(tile.id)
+                                    }
+                                }
+
+                                if isCancelling {
+                                    Button {
+                                        HapticBus.destructive()
+                                        missionToCancel = tile
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.title2)
+                                            .foregroundStyle(Color.red)
+                                            .background(Circle().fill(Color.white))
+                                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
+                                            .padding(6)
+                                    }
+                                    .transition(.asymmetric(
+                                        insertion: .scale.combined(with: .opacity),
+                                        removal: .scale.combined(with: .opacity)
+                                    ))
+                                }
+                            }
                         }
                     }
                     Spacer(minLength: 16)
@@ -1123,7 +1107,7 @@ private struct HermesSquareCloudSessionDetailView: View {
             }
             .padding(18)
         }
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .background(AuroraBackdrop().ignoresSafeArea())
         .navigationTitle("Cloud Session")
         .navigationBarTitleDisplayMode(.inline)
         .task {

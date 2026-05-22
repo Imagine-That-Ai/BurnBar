@@ -52,6 +52,26 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         relayHostService.setComputerUseControlDispatcher(coordinator.controlDispatcher)
     }
 
+    func attachFocusFollow(mediaSessionCoordinator: MediaSessionCoordinator) {
+        let coordinator = self.coordinator
+        let focus = AgentFocusFollowController(
+            targetSwitcher: { displayId, windowID in
+                try await mediaSessionCoordinator.switchScreenShareTarget(
+                    displayId: displayId,
+                    windowID: windowID
+                )
+            },
+            focusContextSink: { [weak coordinator] context in
+                coordinator?.emitFocusContext(context)
+            }
+        )
+        coordinator.attachFocusFollowController(focus)
+    }
+
+    func setFocusFollowMode(_ mode: AgentFocusFollowMode) {
+        coordinator.setFocusFollowMode(mode)
+    }
+
     func startPanicMonitoring() {
         guard panicCoordinator == nil else { return }
         let panic = ComputerUsePanicHaltCoordinator { [weak self] source in
@@ -141,7 +161,7 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
             FileManager.default.createFile(atPath: url.path, contents: nil)
         }
         if let handle = try? FileHandle(forWritingTo: url) {
-            try? handle.seekToEnd()
+            _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: lineData)
             try? handle.close()
         }

@@ -59,7 +59,7 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
         signingKeyStore: PhoneControlSigningKeyStore = .shared,
         authorityPublisher: PhoneControlAuthorityPublishing = PhoneControlAuthorityPublisher.shared,
         initialBackoff: TimeInterval = 1,
-        maxBackoff: TimeInterval = 30
+        maxBackoff: TimeInterval = 8
     ) {
         self.state = state
         self.dialer = dialer

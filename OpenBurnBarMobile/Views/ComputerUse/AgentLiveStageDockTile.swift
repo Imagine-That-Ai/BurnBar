@@ -11,19 +11,19 @@ import OpenBurnBarMedia
 /// pinch-in collapses or hides. Dragging moves the tile and snaps to the
 /// nearest corner inside the container.
 ///
-/// Wire: subscribes directly to the singleton's `AgentWatchState` so the
-/// existing decode pipeline (`AgentWatchVideoCoordinator`) keeps doing all
-/// the heavy lifting; the tile only mounts a display layer.
+/// Wire: reads the singleton's `AgentWatchState` and mounts the singleton's
+/// shared `AgentWatchVideoCoordinator` layer. The singleton does the decode
+/// work so dock/split/maximize transitions keep the last frame warm.
 struct AgentLiveStageDockTile: View {
     @ObservedObject var state: AgentWatchState
     @ObservedObject var presenter: AgentLiveStagePresenter
+    @ObservedObject var videoCoordinator: AgentWatchVideoCoordinator
     var horizontalSizeClass: UserInterfaceSizeClass?
     var onApprove: () -> Void
     var onReject: () -> Void
     var onRejectHalt: () -> Void
     var onPanic: () -> Void
 
-    @StateObject private var video = AgentWatchVideoCoordinator()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dragOffset: CGSize = .zero
     @State private var dragStart: CGSize?
@@ -78,7 +78,7 @@ struct AgentLiveStageDockTile: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.black)
 
-            AgentWatchVideoSurface(coordinator: video)
+            AgentWatchVideoSurface(coordinator: videoCoordinator)
                 .opacity(state.currentFrame == nil ? 0 : 1)
 
             if state.currentFrame == nil {
@@ -126,10 +126,6 @@ struct AgentLiveStageDockTile: View {
         .gesture(tapGesture)
         .simultaneousGesture(dragGesture)
         .simultaneousGesture(pinchGesture)
-        .onChange(of: state.currentFrame) { _, frame in
-            guard let frame else { return }
-            Task { await video.ingest(frame: frame) }
-        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Tap to expand. Pinch out to maximize.")
@@ -157,7 +153,7 @@ struct AgentLiveStageDockTile: View {
             Text(state.sessionId == nil
                  ? "Waiting for a Mac session…"
                  : "Live mirror ready")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.65))
         }
     }
@@ -175,7 +171,7 @@ struct AgentLiveStageDockTile: View {
                 onPanic()
             } label: {
                 Image(systemName: "exclamationmark.octagon.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(5)
                     .background(
@@ -206,10 +202,10 @@ struct AgentLiveStageDockTile: View {
 
             HStack(spacing: 6) {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 9.5, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white.opacity(0.7))
                 Text("Tap to drive")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.6))
                     .tracking(0.4)
                 Spacer(minLength: 0)

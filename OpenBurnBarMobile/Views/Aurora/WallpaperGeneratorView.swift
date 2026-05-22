@@ -23,9 +23,11 @@ struct WallpaperGeneratorView: View {
     @State private var selectedStyle: WallpaperStyle = .swarmDark
     @State private var showClock: Bool = true
     @State private var showProviderLabels: Bool = true
+    @State private var showProviderGlyphCustomizer: Bool = false
     @State private var isSaving = false
     @State private var saveResult: SaveResult?
     @State private var previewPhase: CGFloat = 0
+    @AppStorage("burnbar.wallpaper.providerGlyphs") private var providerGlyphSelectionRaw = SwarmProviderGlyphSelection.allSentinel
 
     enum WallpaperStyle: String, CaseIterable, Identifiable {
         case swarmDark = "Swarm Dark"
@@ -48,6 +50,15 @@ struct WallpaperGeneratorView: View {
             switch self {
             case .swarmLight: return false
             default: return true
+            }
+        }
+
+        var swarmPalette: SwarmColorPalette {
+            switch self {
+            case .swarmDark: return .auroraTeal
+            case .swarmLight: return .forestMoss
+            case .swarmAMOLED: return .cyberpunkViolet
+            case .swarmEmber: return .solarFlare
             }
         }
     }
@@ -118,7 +129,9 @@ struct WallpaperGeneratorView: View {
             SwarmCanvasView(
                 accent: selectedStyle == .swarmEmber ? MobileTheme.ember : .white,
                 pace: .cinematic,
-                colorDriver: colorDriver
+                colorDriver: colorDriver,
+                colorPalette: selectedStyle.swarmPalette,
+                enabledProviderGlyphs: selectedProviderGlyphs
             )
 
             // Subtle radial vignette
@@ -210,7 +223,7 @@ struct WallpaperGeneratorView: View {
                             .fill(DesignSystemColors.primary(for: pw.provider))
                             .frame(width: 8, height: 8)
                         Text(pw.provider.rawValue)
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
                             .foregroundStyle(selectedStyle.isDark ? .white.opacity(0.6) : .black.opacity(0.5))
                     }
                 }
@@ -225,53 +238,164 @@ struct WallpaperGeneratorView: View {
     // MARK: - Bottom Controls
 
     private var bottomControls: some View {
-        HStack(spacing: 16) {
-            // Toggle options
-            HStack(spacing: 12) {
-                toggleButton(
-                    icon: "clock.fill",
-                    isOn: $showClock,
-                    label: "Clock"
-                )
-                toggleButton(
-                    icon: "tag.fill",
-                    isOn: $showProviderLabels,
-                    label: "Labels"
-                )
+        VStack(spacing: 12) {
+            if showProviderGlyphCustomizer {
+                providerGlyphCustomizer
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            Spacer()
-
-            // Save button
-            Button {
-                Task { await saveWallpaper() }
-            } label: {
-                HStack(spacing: 8) {
-                    if isSaving {
-                        ProgressView()
-                            .tint(.white)
-                            .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "square.and.arrow.down.fill")
-                    }
-                    Text(isSaving ? "Saving…" : "Save Wallpaper")
-                        .font(.subheadline.weight(.bold))
+            HStack(spacing: 16) {
+                // Toggle options
+                HStack(spacing: 12) {
+                    toggleButton(
+                        icon: "clock.fill",
+                        isOn: $showClock,
+                        label: "Clock"
+                    )
+                    toggleButton(
+                        icon: "tag.fill",
+                        isOn: $showProviderLabels,
+                        label: "Labels"
+                    )
+                    toggleButton(
+                        icon: "slider.horizontal.3",
+                        isOn: $showProviderGlyphCustomizer,
+                        label: "Provider glyphs"
+                    )
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: [MobileTheme.ember, MobileTheme.blaze],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ),
-                    in: Capsule()
-                )
-                .foregroundStyle(.white)
+
+                Spacer()
+
+                // Save button
+                Button {
+                    Task { await saveWallpaper() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isSaving {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "square.and.arrow.down.fill")
+                        }
+                        Text(isSaving ? "Saving…" : "Save Wallpaper")
+                            .font(.subheadline.weight(.bold))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(
+                        LinearGradient(
+                            colors: [MobileTheme.ember, MobileTheme.blaze],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        in: Capsule()
+                    )
+                    .foregroundStyle(.white)
+                }
+                .disabled(isSaving)
             }
-            .disabled(isSaving)
         }
         .padding(.bottom, 30)
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: showProviderGlyphCustomizer)
+    }
+
+    private var providerGlyphCustomizer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(providerGlyphSummaryText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(selectedStyle.isDark ? .white.opacity(0.78) : .black.opacity(0.62))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+
+                Spacer()
+
+                Button("All") {
+                    providerGlyphSelectionRaw = SwarmProviderGlyphSelection.encode(SwarmProviderGlyphSelection.allProviders)
+                }
+                .font(.caption.weight(.semibold))
+
+                Button("None") {
+                    providerGlyphSelectionRaw = SwarmProviderGlyphSelection.encode([])
+                }
+                .font(.caption.weight(.semibold))
+            }
+
+            LazyVGrid(columns: providerGlyphColumns, alignment: .leading, spacing: 8) {
+                ForEach(SwarmProviderGlyphSelection.allProviders) { provider in
+                    providerGlyphChip(provider)
+                }
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var providerGlyphColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: 106, maximum: 144), spacing: 8, alignment: .leading)
+        ]
+    }
+
+    private var selectedProviderGlyphs: [AgentProvider] {
+        SwarmProviderGlyphSelection.decode(providerGlyphSelectionRaw)
+    }
+
+    private var selectedProviderGlyphSet: Set<AgentProvider> {
+        Set(selectedProviderGlyphs)
+    }
+
+    private var providerGlyphSummaryText: String {
+        let count = selectedProviderGlyphs.count
+        let total = SwarmProviderGlyphSelection.allProviders.count
+        if count == total { return "All providers" }
+        if count == 0 { return "Provider logos hidden" }
+        return "\(count)/\(total) provider logos"
+    }
+
+    private func providerGlyphChip(_ provider: AgentProvider) -> some View {
+        let isSelected = selectedProviderGlyphSet.contains(provider)
+
+        return Button {
+            var next = selectedProviderGlyphSet
+            if isSelected {
+                next.remove(provider)
+            } else {
+                next.insert(provider)
+            }
+            providerGlyphSelectionRaw = SwarmProviderGlyphSelection.encode(
+                SwarmProviderGlyphSelection.allProviders.filter { next.contains($0) }
+            )
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(DesignSystemColors.primary(for: provider))
+                    .frame(width: 8, height: 8)
+
+                Text(provider.displayName)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(
+                isSelected
+                    ? Color.white.opacity(selectedStyle.isDark ? 0.18 : 0.32)
+                    : Color.white.opacity(selectedStyle.isDark ? 0.07 : 0.18),
+                in: Capsule()
+            )
+            .foregroundStyle(selectedStyle.isDark ? .white : .black)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(provider.displayName)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 
     @ViewBuilder
@@ -318,7 +442,7 @@ struct WallpaperGeneratorView: View {
 
     @MainActor
     private func saveWallpaper() async {
-        #if canImport(UIKit)
+        #if canImport(UIKit) && canImport(AVFoundation)
         isSaving = true
         defer { isSaving = false }
 
@@ -345,67 +469,114 @@ struct WallpaperGeneratorView: View {
             return
         }
 
-        // Render the wallpaper at screen scale
         let screenBounds = UIScreen.main.bounds
         let scale = UIScreen.main.scale
+        let size = CGSize(width: screenBounds.width * scale, height: screenBounds.height * scale)
 
-        let wallpaperView = ZStack {
-            selectedStyle.backgroundColor
-            SwarmCanvasView(
-                accent: selectedStyle == .swarmEmber ? MobileTheme.ember : .white,
-                pace: .cinematic,
-                colorDriver: colorDriver
-            )
-            RadialGradient(
-                colors: [.clear, selectedStyle.backgroundColor.opacity(0.7)],
-                center: .center,
-                startRadius: 120,
-                endRadius: 500
-            )
-        }
-        .frame(width: screenBounds.width, height: screenBounds.height)
-        .preferredColorScheme(selectedStyle.isDark ? .dark : .light)
-
-        let renderer = ImageRenderer(content: wallpaperView)
-        renderer.scale = scale
-        renderer.proposedSize = ProposedViewSize(
-            width: screenBounds.width,
-            height: screenBounds.height
-        )
-
-        guard let uiImage = renderer.uiImage else {
-            saveResult = .error("Failed to render wallpaper image.")
-            return
-        }
-
-        guard let data = uiImage.pngData() else {
-            saveResult = .error("Failed to encode wallpaper as PNG.")
-            return
-        }
-
-        // Write to temp file and save to Photos
         let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("burnbar_wallpaper_\(Int(Date().timeIntervalSince1970)).png")
+            .appendingPathComponent("burnbar_wallpaper_\(Int(Date().timeIntervalSince1970)).mov")
+
         do {
-            try data.write(to: tempURL)
+            let assetWriter = try AVAssetWriter(outputURL: tempURL, fileType: .mov)
+            let videoSettings: [String: Any] = [
+                AVVideoCodecKey: AVVideoCodecType.hevc,
+                AVVideoWidthKey: size.width,
+                AVVideoHeightKey: size.height
+            ]
+            let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+            videoInput.expectsMediaDataInRealTime = false
+            let pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(
+                assetWriterInput: videoInput,
+                sourcePixelBufferAttributes: [
+                    kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32ARGB),
+                    kCVPixelBufferWidthKey as String: size.width,
+                    kCVPixelBufferHeightKey as String: size.height
+                ]
+            )
+
+            guard assetWriter.canAdd(videoInput) else { throw NSError(domain: "AVAssetWriter", code: -1) }
+            assetWriter.add(videoInput)
+            assetWriter.startWriting()
+            assetWriter.startSession(atSourceTime: .zero)
+
+            let frameCount = 60
+            let fps: Int32 = 30
+            let frameDuration = CMTime(value: 1, timescale: fps)
+
+            for i in 0..<frameCount {
+                while !videoInput.isReadyForMoreMediaData {
+                    try await Task.sleep(nanoseconds: 10_000_000)
+                }
+
+                let wallpaperView = ZStack {
+                    selectedStyle.backgroundColor
+                    SwarmCanvasView(
+                        accent: selectedStyle == .swarmEmber ? MobileTheme.ember : .white,
+                        pace: .cinematic,
+                        colorDriver: colorDriver,
+                        colorPalette: selectedStyle.swarmPalette,
+                        enabledProviderGlyphs: selectedProviderGlyphs
+                    )
+                    RadialGradient(
+                        colors: [.clear, selectedStyle.backgroundColor.opacity(0.7)],
+                        center: .center,
+                        startRadius: 120,
+                        endRadius: 500
+                    )
+                }
+                .frame(width: screenBounds.width, height: screenBounds.height)
+                .preferredColorScheme(selectedStyle.isDark ? .dark : .light)
+
+                let renderer = ImageRenderer(content: wallpaperView)
+                renderer.scale = scale
+                renderer.proposedSize = ProposedViewSize(width: screenBounds.width, height: screenBounds.height)
+
+                guard let cgImage = renderer.uiImage?.cgImage else { continue }
+
+                var pixelBuffer: CVPixelBuffer?
+                CVPixelBufferPoolCreatePixelBuffer(nil, pixelBufferAdaptor.pixelBufferPool!, &pixelBuffer)
+                guard let buffer = pixelBuffer else { continue }
+
+                CVPixelBufferLockBaseAddress(buffer, [])
+                let context = CGContext(
+                    data: CVPixelBufferGetBaseAddress(buffer),
+                    width: Int(size.width),
+                    height: Int(size.height),
+                    bitsPerComponent: 8,
+                    bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+                )
+                context?.draw(cgImage, in: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+                CVPixelBufferUnlockBaseAddress(buffer, [])
+
+                let presentationTime = CMTimeMultiply(frameDuration, multiplier: Int32(i))
+                pixelBufferAdaptor.append(buffer, withPresentationTime: presentationTime)
+
+                // Allow UI to update and SwarmCanvasView to tick forward
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+
+            videoInput.markAsFinished()
+            await assetWriter.finishWriting()
+
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 PHPhotoLibrary.shared().performChanges {
                     let request = PHAssetCreationRequest.forAsset()
-                    request.addResource(with: .photo, fileURL: tempURL, options: nil)
+                    request.addResource(with: .video, fileURL: tempURL, options: nil)
                 } completionHandler: { success, error in
                     try? FileManager.default.removeItem(at: tempURL)
                     if success {
                         continuation.resume()
                     } else {
-                        continuation.resume(
-                            throwing: error ?? NSError(domain: "WallpaperGenerator", code: -1)
-                        )
+                        continuation.resume(throwing: error ?? NSError(domain: "WallpaperGenerator", code: -1))
                     }
                 }
             }
             saveResult = .success
         } catch {
             saveResult = .error(error.localizedDescription)
+            try? FileManager.default.removeItem(at: tempURL)
         }
         #endif
     }

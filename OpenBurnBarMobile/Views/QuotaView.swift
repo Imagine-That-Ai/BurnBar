@@ -4,6 +4,7 @@ import OpenBurnBarCore
 struct QuotaView: View {
     @State private var store = QuotaStore()
     @State private var selectedProvider: String?
+    @State private var settings = QuotaSettingsStore()
 
     var body: some View {
         ScrollView {
@@ -51,6 +52,9 @@ struct QuotaView: View {
                     provider: provider,
                     snapshots: store.sortedSnapshots(for: provider),
                     routingState: store.routingState(for: ProviderID(rawValue: provider)),
+                    hiddenBuckets: settings.hiddenBuckets,
+                    bucketOrders: settings.bucketOrders,
+                    displayMode: settings.percentageDisplayMode.rawValue,
                     onRefresh: {
                         await store.refreshAllAccounts(for: ProviderID(rawValue: provider))
                     }
@@ -87,6 +91,9 @@ struct QuotaView: View {
                         snapshots: store.snapshotsByProvider[provider] ?? [],
                         accountCount: store.accountCount(for: provider),
                         routingState: store.routingState(for: ProviderID(rawValue: provider)),
+                        hiddenBuckets: settings.hiddenBuckets,
+                        bucketOrders: settings.bucketOrders,
+                        displayMode: settings.percentageDisplayMode.rawValue,
                         onTap: { selectedProvider = provider }
                     )
                 }
@@ -119,6 +126,9 @@ struct QuotaView: View {
                         snapshots: store.snapshotsByProvider[provider] ?? [],
                         accountCount: store.accountCount(for: provider),
                         routingState: store.routingState(for: ProviderID(rawValue: provider)),
+                        hiddenBuckets: settings.hiddenBuckets,
+                        bucketOrders: settings.bucketOrders,
+                        displayMode: settings.percentageDisplayMode.rawValue,
                         onTap: { selectedProvider = provider }
                     )
                 }
@@ -154,6 +164,9 @@ struct QuotaProviderCard: View {
     let snapshots: [ProviderQuotaSnapshot]
     let accountCount: Int
     let routingState: ProviderRoutingStateSnapshot?
+    let hiddenBuckets: Set<String>
+    let bucketOrders: [String: [String]]
+    let displayMode: String
     let onTap: () -> Void
 
     var providerEnum: AgentProvider? {
@@ -257,7 +270,7 @@ struct QuotaProviderCard: View {
     @ViewBuilder
     private var bucketRow: some View {
         if let bucket = mostPressuredBucket, let providerEnum {
-            UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: true)
+            UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: true, displayMode: displayMode)
         } else {
             QuotaPlaceholderRow()
         }
@@ -288,8 +301,8 @@ struct QuotaProviderCard: View {
 
     private var hasUrgentBucket: Bool {
         snapshots.flatMap(\.buckets).contains { bucket in
-            guard bucket.limit > 0 else { return false }
-            return max(0, bucket.remaining) / bucket.limit < 0.25
+            guard let fraction = bucket.displayRemainingFraction else { return false }
+            return fraction < 0.25
         }
     }
 
@@ -304,12 +317,15 @@ struct QuotaProviderCard: View {
     }
 
     private var mostPressuredBucket: ProviderQuotaBucket? {
-        snapshots
-            .flatMap(\.buckets)
-            .filter { $0.limit > 0 }
-            .min {
-                max(0, $0.remaining) / $0.limit < max(0, $1.remaining) / $1.limit
-            } ?? snapshots.first?.buckets.first
+        let customized = snapshots
+            .flatMap { $0.customizedBuckets(hiddenBuckets: hiddenBuckets, bucketOrders: bucketOrders) }
+        return customized
+            .compactMap { bucket -> (bucket: ProviderQuotaBucket, fraction: Double)? in
+                guard let fraction = bucket.displayRemainingFraction else { return nil }
+                return (bucket, fraction)
+            }
+            .min { $0.fraction < $1.fraction }?
+            .bucket ?? customized.first ?? snapshots.first?.buckets.first
     }
 
     private var accessibilityLabel: String {
@@ -319,9 +335,8 @@ struct QuotaProviderCard: View {
             parts.append("active account \(active.accountLabel)")
         }
         if hasUrgentBucket { parts.append("quota under pressure") }
-        if let bucket = mostPressuredBucket, bucket.limit > 0 {
-            let pct = Int((max(0, bucket.remaining) / bucket.limit) * 100)
-            parts.append("\(bucket.name) \(pct) percent remaining")
+        if let bucket = mostPressuredBucket, let pct = bucket.displayRemainingPercent {
+            parts.append("\(bucket.name) \(Int(pct.rounded())) percent remaining")
         }
         return parts.joined(separator: ", ")
     }

@@ -57,6 +57,9 @@ final class AgentLiveStagePresenter: ObservableObject {
     /// `true` while the user has expanded the Chat Puck into the
     /// floating chat panel. Reset on every maximize-exit.
     @Published var chatPuckExpanded: Bool = false
+    /// Mirrors system PiP lifecycle so views and tests can distinguish
+    /// background PiP from an in-app dock/split/maximize stage.
+    @Published private(set) var pipActive: Bool = false
     /// User-facing reason the stage collapsed (panic, session-end,
     /// dismissed). Cleared on the next dock entry.
     @Published private(set) var collapseReason: CollapseReason?
@@ -103,6 +106,7 @@ final class AgentLiveStagePresenter: ObservableObject {
         } else if manualDockAfterSessionEnd {
             cancelGrace()
         } else if mode != .hidden {
+            pipActive = false
             scheduleGraceCollapse(reason: .sessionEnded)
         }
     }
@@ -112,6 +116,7 @@ final class AgentLiveStagePresenter: ObservableObject {
     func enterDock() {
         cancelGrace()
         manualDockAfterSessionEnd = observedState?.sessionId == nil
+        pipActive = false
         mode = .dock
         chatPuckExpanded = false
     }
@@ -158,6 +163,7 @@ final class AgentLiveStagePresenter: ObservableObject {
     func dismiss() {
         cancelGrace()
         manualDockAfterSessionEnd = false
+        pipActive = false
         mode = .hidden
         chatPuckExpanded = false
         collapseReason = .dismissed
@@ -169,9 +175,26 @@ final class AgentLiveStagePresenter: ObservableObject {
     func panicCollapse() {
         cancelGrace()
         manualDockAfterSessionEnd = false
+        pipActive = false
         mode = .hidden
         chatPuckExpanded = false
         collapseReason = .panic
+    }
+
+    /// System PiP started or stopped outside SwiftUI's own stage chrome.
+    func setPiPActive(_ active: Bool) {
+        pipActive = active
+    }
+
+    /// User tapped the system PiP tile. Flip back into the full mirror with
+    /// the chat puck available, matching the spec's SysPiP → Maximize edge.
+    func enterMaximizeFromPiP() {
+        cancelGrace()
+        manualDockAfterSessionEnd = false
+        pipActive = false
+        collapseReason = nil
+        mode = .maximize
+        chatPuckExpanded = false
     }
 
     /// Toggle Chat Puck between collapsed (56pt) and expanded
@@ -211,6 +234,7 @@ final class AgentLiveStagePresenter: ObservableObject {
             self.collapseReason = reason
             self.mode = .hidden
             self.chatPuckExpanded = false
+            self.pipActive = false
             self.graceTask = nil
         }
     }

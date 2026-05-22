@@ -20,6 +20,7 @@ public final class AgentWatchState: ObservableObject {
     @Published public private(set) var currentCursor: MediaFrame.CursorMetadata?
     @Published public private(set) var actionTimeline: [HermesRealtimeRelayActionLogEntry] = []
     @Published public private(set) var pendingApproval: HermesRealtimeRelayApprovalRequest?
+    @Published public private(set) var currentFocus: HermesRealtimeRelayFocusContext?
     @Published public private(set) var liveTrustMode: ComputerUseTrustMode = .manual
     @Published public private(set) var sessionId: ComputerUseSessionID?
     @Published public private(set) var sessionStartedAt: Date?
@@ -61,6 +62,10 @@ public final class AgentWatchState: ObservableObject {
         pendingApproval = request
     }
 
+    public func ingestFocusContext(_ focus: HermesRealtimeRelayFocusContext?) {
+        currentFocus = focus
+    }
+
     public func setDeniedReason(_ reason: ComputerUseDenyReason?) {
         lastDeniedReason = reason
     }
@@ -81,6 +86,7 @@ public final class AgentWatchState: ObservableObject {
     public func clear() {
         currentCursor = nil
         currentFrame = nil
+        currentFocus = nil
         lastFrameReceivedAt = nil
         actionTimeline.removeAll()
         pendingApproval = nil

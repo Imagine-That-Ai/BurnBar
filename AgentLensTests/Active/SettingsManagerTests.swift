@@ -204,6 +204,125 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: "amoledDarkBackground"))
     }
 
+    func test_desktopWallpaperBackground_postsChangeNotification() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        let expectation = expectation(description: "desktop wallpaper background change notification")
+        let token = NotificationCenter.default.addObserver(
+            forName: .desktopWallpaperBackgroundDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            expectation.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        settings.desktopWallpaperBackground = .forestMoss
+
+        wait(for: [expectation], timeout: 1)
+    }
+
+    func test_desktopWallpaperBackgrounds_areBurnBarOwnedBackdrops() {
+        XCTAssertFalse(DesktopWallpaperBackground.macOSDesktop.isTransparent)
+        XCTAssertEqual(DesktopWallpaperBackground.forestMoss.swarmPalette, .forestMoss)
+        XCTAssertEqual(DesktopWallpaperBackground.solarFlare.swarmPalette, .solarFlare)
+    }
+
+    func test_clickDesktopToCycleSwarm_defaultValue_isFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertFalse(settings.clickDesktopToCycleSwarm)
+    }
+
+    func test_clickDesktopToCycleSwarm_persists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.clickDesktopToCycleSwarm = true
+
+        XCTAssertTrue(defaults.bool(forKey: "clickDesktopToCycleSwarm"))
+    }
+
+    func test_desktopWallpaperSpeed_defaultValue_isBalanced() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertEqual(settings.desktopWallpaperSpeed, 1.0, accuracy: 0.000_001)
+    }
+
+    func test_desktopWallpaperSpeed_persistsAndClamps() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.desktopWallpaperSpeed = 1.75
+        XCTAssertEqual(defaults.double(forKey: "desktopWallpaperSpeed"), 1.75, accuracy: 0.000_001)
+
+        settings.desktopWallpaperSpeed = 5.0
+        XCTAssertEqual(settings.desktopWallpaperSpeed, 2.5, accuracy: 0.000_001)
+        XCTAssertEqual(defaults.double(forKey: "desktopWallpaperSpeed"), 2.5, accuracy: 0.000_001)
+
+        settings.desktopWallpaperSpeed = 0.1
+        XCTAssertEqual(settings.desktopWallpaperSpeed, 0.35, accuracy: 0.000_001)
+        XCTAssertEqual(defaults.double(forKey: "desktopWallpaperSpeed"), 0.35, accuracy: 0.000_001)
+    }
+
+    func test_desktopWallpaperSpeed_postsChangeNotification() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        let expectation = expectation(description: "desktop wallpaper speed change notification")
+        let token = NotificationCenter.default.addObserver(
+            forName: .desktopWallpaperSpeedDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            expectation.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        settings.desktopWallpaperSpeed = 1.2
+
+        wait(for: [expectation], timeout: 1)
+    }
+
+    func test_desktopWallpaperProviderGlyphs_defaultToAllProviders() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertEqual(settings.desktopWallpaperProviderGlyphs, SwarmProviderGlyphSelection.allProviders)
+    }
+
+    func test_desktopWallpaperProviderGlyphs_persistSelectedProvidersAndNone() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.desktopWallpaperProviderGlyphs = [.openClaw, .codex]
+        XCTAssertEqual(settings.desktopWallpaperProviderGlyphs, [.codex, .openClaw])
+        XCTAssertEqual(defaults.string(forKey: "desktopWallpaperProviderGlyphs"), "codex,openclaw")
+
+        settings.desktopWallpaperProviderGlyphs = []
+        XCTAssertEqual(settings.desktopWallpaperProviderGlyphs, [])
+        XCTAssertEqual(defaults.string(forKey: "desktopWallpaperProviderGlyphs"), SwarmProviderGlyphSelection.noneSentinel)
+    }
+
+    func test_desktopWallpaperProviderGlyphs_postsChangeNotification() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        let expectation = expectation(description: "desktop wallpaper provider glyph change notification")
+        let token = NotificationCenter.default.addObserver(
+            forName: .desktopWallpaperProviderGlyphsDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            expectation.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        settings.desktopWallpaperProviderGlyphs = [.codex]
+
+        wait(for: [expectation], timeout: 1)
+    }
+
     func test_swarmWallpaperColorDriver_prioritizesRunningProvidersOverHistoricalUsage() {
         let summaries = [
             makeProviderSummary(provider: .codex, cost: 10, tokens: 10_000),
@@ -243,6 +362,15 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(statuses[AgentProvider.factory.persistedToken], .running)
         XCTAssertEqual(statuses[AgentProvider.openCode.persistedToken], .running)
         XCTAssertNil(statuses[AgentProvider.openClaw.persistedToken])
+    }
+
+    func test_agentProcessDetectorRecognizesGrokAsXAI() {
+        let statuses = PixelClockAgentProcessDetector.statuses(fromPSOutput: """
+        COMM ARGS
+        node node /opt/homebrew/bin/grok --model grok-code-fast
+        """)
+
+        XCTAssertEqual(statuses[AgentProvider.xAI.persistedToken], .running)
     }
 
     func test_swarmWallpaperColorDriver_fallsBackToHistoricalUsageWhenNoProviderIsRunning() {

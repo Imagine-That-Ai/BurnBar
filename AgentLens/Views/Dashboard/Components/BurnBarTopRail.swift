@@ -343,7 +343,7 @@ struct BurnRailSearchOmnibar: View {
             scopeBadge
 
             TextField("", text: $text, prompt: Text("Search sessions, projects, models…")
-                .foregroundColor(DesignSystem.Colors.textMuted))
+                .foregroundStyle(DesignSystem.Colors.textMuted))
                 .textFieldStyle(.plain)
                 .font(.system(size: 12.5, weight: .regular, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)

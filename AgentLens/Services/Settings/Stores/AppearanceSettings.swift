@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 enum DesktopWallpaperBackground: String, CaseIterable, Codable, Hashable, Identifiable {
     case macOSDesktop
@@ -7,28 +8,43 @@ enum DesktopWallpaperBackground: String, CaseIterable, Codable, Hashable, Identi
     case graphite
     case warmEmber
     case deepIndigo
+    case auroraTeal
+    case sunsetCrimson
+    case cyberpunkViolet
+    case forestMoss
+    case solarFlare
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .macOSDesktop: return "macOS Desktop"
+        case .macOSDesktop: return "BurnBar Desktop"
         case .midnight: return "Midnight"
         case .amoledBlack: return "AMOLED Black"
         case .graphite: return "Graphite"
         case .warmEmber: return "Warm Ember"
         case .deepIndigo: return "Deep Indigo"
+        case .auroraTeal: return "Aurora Teal"
+        case .sunsetCrimson: return "Sunset Crimson"
+        case .cyberpunkViolet: return "Cyberpunk Violet"
+        case .forestMoss: return "Forest Moss"
+        case .solarFlare: return "Solar Flare"
         }
     }
 
     var detailText: String {
         switch self {
-        case .macOSDesktop: return "Let your current macOS desktop show behind the swarm."
+        case .macOSDesktop: return "Use a BurnBar-owned macOS-style gradient under the live swarm."
         case .midnight: return "A quiet near-black surface with a soft blue cast."
         case .amoledBlack: return "Pitch black for OLED and maximum particle contrast."
         case .graphite: return "Neutral dark gray for less contrast than black."
         case .warmEmber: return "Dark warm brown tuned for BurnBar embers."
         case .deepIndigo: return "A deep violet-blue stage for provider colors."
+        case .auroraTeal: return "An ethereal deep teal wash inspired by northern lights."
+        case .sunsetCrimson: return "A premium dark velvet burgundy-red sunset mood."
+        case .cyberpunkViolet: return "A futuristic dark indigo-magenta cybernetic grid backdrop."
+        case .forestMoss: return "A quiet dark pine green inspired by ancient foggy forests."
+        case .solarFlare: return "A stellar dark solar corona backdrop with rich golden accents."
         }
     }
 
@@ -40,17 +56,27 @@ enum DesktopWallpaperBackground: String, CaseIterable, Codable, Hashable, Identi
         case .graphite: return "square.fill"
         case .warmEmber: return "flame.fill"
         case .deepIndigo: return "sparkles"
+        case .auroraTeal: return "leaf.fill"
+        case .sunsetCrimson: return "sunset.fill"
+        case .cyberpunkViolet: return "bolt.horizontal.fill"
+        case .forestMoss: return "tree.fill"
+        case .solarFlare: return "sun.max.fill"
         }
     }
 
     var swatchColor: Color {
         switch self {
-        case .macOSDesktop: return Color.clear
+        case .macOSDesktop: return Color(red: 0.180, green: 0.455, blue: 0.930)
         case .midnight: return Color(red: 0.020, green: 0.024, blue: 0.040)
         case .amoledBlack: return Color.black
         case .graphite: return Color(red: 0.110, green: 0.115, blue: 0.125)
         case .warmEmber: return Color(red: 0.115, green: 0.065, blue: 0.045)
         case .deepIndigo: return Color(red: 0.050, green: 0.045, blue: 0.115)
+        case .auroraTeal: return Color(red: 0.020, green: 0.050, blue: 0.055)
+        case .sunsetCrimson: return Color(red: 0.050, green: 0.020, blue: 0.024)
+        case .cyberpunkViolet: return Color(red: 0.035, green: 0.020, blue: 0.050)
+        case .forestMoss: return Color(red: 0.020, green: 0.040, blue: 0.025)
+        case .solarFlare: return Color(red: 0.055, green: 0.040, blue: 0.020)
         }
     }
 
@@ -92,6 +118,36 @@ enum DesktopWallpaperBackground: String, CaseIterable, Codable, Hashable, Identi
                 Color(red: 0.180, green: 0.115, blue: 0.390),
                 Color(red: 0.410, green: 0.300, blue: 0.880)
             ]
+        case .auroraTeal:
+            return [
+                Color(red: 0.015, green: 0.045, blue: 0.050),
+                Color(red: 0.050, green: 0.180, blue: 0.200),
+                Color(red: 0.120, green: 0.380, blue: 0.400)
+            ]
+        case .sunsetCrimson:
+            return [
+                Color(red: 0.045, green: 0.018, blue: 0.020),
+                Color(red: 0.180, green: 0.055, blue: 0.070),
+                Color(red: 0.420, green: 0.115, blue: 0.145)
+            ]
+        case .cyberpunkViolet:
+            return [
+                Color(red: 0.030, green: 0.015, blue: 0.045),
+                Color(red: 0.150, green: 0.055, blue: 0.220),
+                Color(red: 0.380, green: 0.120, blue: 0.520)
+            ]
+        case .forestMoss:
+            return [
+                Color(red: 0.015, green: 0.035, blue: 0.020),
+                Color(red: 0.055, green: 0.140, blue: 0.080),
+                Color(red: 0.150, green: 0.320, blue: 0.180)
+            ]
+        case .solarFlare:
+            return [
+                Color(red: 0.050, green: 0.035, blue: 0.015),
+                Color(red: 0.200, green: 0.140, blue: 0.055),
+                Color(red: 0.480, green: 0.340, blue: 0.120)
+            ]
         }
     }
 
@@ -109,11 +165,38 @@ enum DesktopWallpaperBackground: String, CaseIterable, Codable, Hashable, Identi
             return Color(red: 0.920, green: 0.355, blue: 0.055)
         case .deepIndigo:
             return Color(red: 0.500, green: 0.380, blue: 0.960)
+        case .auroraTeal:
+            return Color(red: 0.120, green: 0.380, blue: 0.400)
+        case .sunsetCrimson:
+            return Color(red: 0.420, green: 0.115, blue: 0.145)
+        case .cyberpunkViolet:
+            return Color(red: 0.380, green: 0.120, blue: 0.520)
+        case .forestMoss:
+            return Color(red: 0.150, green: 0.320, blue: 0.180)
+        case .solarFlare:
+            return Color(red: 0.480, green: 0.340, blue: 0.120)
         }
     }
 
     var isTransparent: Bool {
-        self == .macOSDesktop
+        false
+    }
+
+    var swarmPalette: SwarmColorPalette {
+        switch self {
+        case .macOSDesktop, .midnight, .amoledBlack, .graphite, .warmEmber, .deepIndigo:
+            return .defaultEmber
+        case .auroraTeal:
+            return .auroraTeal
+        case .sunsetCrimson:
+            return .sunsetCrimson
+        case .cyberpunkViolet:
+            return .cyberpunkViolet
+        case .forestMoss:
+            return .forestMoss
+        case .solarFlare:
+            return .solarFlare
+        }
     }
 }
 
@@ -173,6 +256,40 @@ final class AppearanceSettings {
         didSet { persistence.set(cycleShapesScreensaver, forKey: "cycleShapesScreensaver") }
     }
 
+    var clickDesktopToCycleSwarm: Bool = false {
+        didSet {
+            persistence.set(clickDesktopToCycleSwarm, forKey: "clickDesktopToCycleSwarm")
+            NotificationCenter.default.post(name: .clickDesktopToCycleSwarmDidChange, object: nil)
+        }
+    }
+
+    var desktopWallpaperSpeed: Double = 1.0 {
+        didSet {
+            let clamped = min(max(desktopWallpaperSpeed, 0.35), 2.5)
+            guard desktopWallpaperSpeed == clamped else {
+                desktopWallpaperSpeed = clamped
+                return
+            }
+            persistence.set(desktopWallpaperSpeed, forKey: "desktopWallpaperSpeed")
+            NotificationCenter.default.post(name: .desktopWallpaperSpeedDidChange, object: nil)
+        }
+    }
+
+    var desktopWallpaperProviderGlyphs: [AgentProvider] = SwarmProviderGlyphSelection.allProviders {
+        didSet {
+            let normalized = SwarmProviderGlyphSelection.normalized(desktopWallpaperProviderGlyphs)
+            guard desktopWallpaperProviderGlyphs == normalized else {
+                desktopWallpaperProviderGlyphs = normalized
+                return
+            }
+            persistence.set(
+                SwarmProviderGlyphSelection.encode(normalized),
+                forKey: "desktopWallpaperProviderGlyphs"
+            )
+            NotificationCenter.default.post(name: .desktopWallpaperProviderGlyphsDidChange, object: nil)
+        }
+    }
+
     var preferredSwiftUIColorScheme: ColorScheme? {
         appearanceMode.colorScheme
     }
@@ -208,6 +325,11 @@ final class AppearanceSettings {
         persistence.set(self.desktopWallpaperBackground.rawValue, forKey: "desktopWallpaperBackground")
         persistence.set(self.amoledDarkBackground, forKey: "amoledDarkBackground")
         self.cycleShapesScreensaver = persistence.bool(forKey: "cycleShapesScreensaver", defaultValue: true)
+        self.clickDesktopToCycleSwarm = persistence.bool(forKey: "clickDesktopToCycleSwarm", defaultValue: false)
+        self.desktopWallpaperSpeed = min(max(persistence.double(forKey: "desktopWallpaperSpeed", defaultValue: 1.0), 0.35), 2.5)
+        self.desktopWallpaperProviderGlyphs = SwarmProviderGlyphSelection.decode(
+            persistence.optionalString(forKey: "desktopWallpaperProviderGlyphs")
+        )
     }
 
     private func syncAMOLEDAliasFromDesktopBackground() {
@@ -240,4 +362,7 @@ extension Notification.Name {
     static let enableDesktopWallpaperDidChange = Notification.Name("com.openburnbar.appearance.enableDesktopWallpaperDidChange")
     static let amoledDarkBackgroundDidChange = Notification.Name("com.openburnbar.appearance.amoledDarkBackgroundDidChange")
     static let desktopWallpaperBackgroundDidChange = Notification.Name("com.openburnbar.appearance.desktopWallpaperBackgroundDidChange")
+    static let clickDesktopToCycleSwarmDidChange = Notification.Name("com.openburnbar.appearance.clickDesktopToCycleSwarmDidChange")
+    static let desktopWallpaperSpeedDidChange = Notification.Name("com.openburnbar.appearance.desktopWallpaperSpeedDidChange")
+    static let desktopWallpaperProviderGlyphsDidChange = Notification.Name("com.openburnbar.appearance.desktopWallpaperProviderGlyphsDidChange")
 }

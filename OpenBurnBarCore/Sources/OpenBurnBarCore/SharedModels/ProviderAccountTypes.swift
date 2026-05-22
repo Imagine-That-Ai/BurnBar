@@ -35,6 +35,7 @@ public struct ProviderID: RawRepresentable, Codable, Hashable, Sendable, Express
     public static let kimi = ProviderID(rawValue: "kimi")
     public static let factory = ProviderID(rawValue: "factory")
     public static let antigravity = ProviderID(rawValue: "antigravity")
+    public static let xAI = ProviderID(rawValue: "xai")
 }
 
 // MARK: - Provider Account Status

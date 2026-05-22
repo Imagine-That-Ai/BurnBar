@@ -88,6 +88,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private let displayBoundsProvider: PhoneControlReceiver.DisplayBoundsProvider
     private let screenshotService: MacScreenshotService?
     private let authorityProvider: PhoneControlAuthorityPublicKeyProviding
+    private var focusFollowController: AgentFocusFollowController?
+    private var focusFollowMode: AgentFocusFollowMode = .smart
 
     private var phoneValidator = PhoneControlAuthorityValidator()
     private var phoneReceiver: PhoneControlReceiver?
@@ -122,7 +124,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             FileManager.default.createFile(atPath: url.path, contents: nil)
         }
         if let handle = try? FileHandle(forWritingTo: url) {
-            try? handle.seekToEnd()
+            _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: lineData)
             try? handle.close()
         }
@@ -212,6 +214,18 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         phoneValidator.registerPeer(nodeId: nodeId, publicKey: publicKey)
     }
 
+    func attachFocusFollowController(_ controller: AgentFocusFollowController) {
+        focusFollowController = controller
+        if let activeSessionId {
+            controller.start(sessionId: activeSessionId.rawValue, mode: focusFollowMode)
+        }
+    }
+
+    func setFocusFollowMode(_ mode: AgentFocusFollowMode) {
+        focusFollowMode = mode
+        focusFollowController?.setMode(mode)
+    }
+
     @discardableResult
     public func startSession(
         request: ComputerUseSessionStartRequest
@@ -285,6 +299,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             summary: "Computer Use session started",
             status: .planned
         )
+        focusFollowController?.start(sessionId: sessionId.rawValue, mode: focusFollowMode)
 
         return ComputerUseSessionStartResponse(
             sessionId: sessionId.rawValue,
@@ -300,6 +315,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         cancelPendingApprovals(decision: .reject, note: "session ended")
         activeSessionId = nil
         phoneReceiver = nil
+        focusFollowController?.stop()
         auditLogger = nil
         screenshotEvidenceDataByHash.removeAll()
         pendingApproval = nil
@@ -331,6 +347,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         }
         activeSessionId = nil
         phoneReceiver = nil
+        focusFollowController?.stop()
         auditLogger = nil
         screenshotEvidenceDataByHash.removeAll()
         pendingApproval = nil
@@ -363,6 +380,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         }
         activeSessionId = nil
         phoneReceiver = nil
+        focusFollowController?.stop()
         auditLogger = nil
         screenshotEvidenceDataByHash.removeAll()
         pendingApproval = nil
@@ -1123,6 +1141,24 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             uid: latestControlUID,
             connectionId: latestControlConnectionID,
             control: payload
+        )
+        Task {
+            try? await latestReplySender(frame)
+        }
+    }
+
+    func emitFocusContext(_ context: HermesRealtimeRelayFocusContext) {
+        guard let latestReplySender,
+              let latestControlUID,
+              let latestControlConnectionID else { return }
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaStreamFrame,
+            uid: latestControlUID,
+            connectionId: latestControlConnectionID,
+            media: HermesRealtimeRelayMediaPayload(
+                streamClass: MediaStreamClass.screenVideo.rawValue,
+                focusContext: context
+            )
         )
         Task {
             try? await latestReplySender(frame)

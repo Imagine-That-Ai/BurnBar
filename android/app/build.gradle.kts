@@ -37,8 +37,8 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.0.4"
+        versionCode = 15
+        versionName = "1.0.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // App Check: when this build is meant for Firebase App Distribution
@@ -84,6 +84,18 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.md",
+                "META-INF/LICENSE-notice.md",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.md"
+            )
+        }
     }
 
     testOptions {

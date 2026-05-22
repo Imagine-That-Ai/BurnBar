@@ -1084,10 +1084,6 @@ private struct CloudStoreActionBar: View {
         VStack(spacing: MobileTheme.Spacing.md) {
             Button {
                 Haptics.medium()
-                guard isSignedIn else {
-                    onSignInRequired()
-                    return
-                }
                 Task { await store.purchase() }
             } label: {
                 HStack(spacing: MobileTheme.Spacing.sm) {
@@ -1104,7 +1100,7 @@ private struct CloudStoreActionBar: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.aurora(.primary, fullWidth: true))
-            .disabled(store.isPurchasing || store.product == nil)
+            .disabled(store.isPurchasing)
             .accessibilityIdentifier("cloudStore.subscribe")
             .accessibilityLabel(primaryButtonTitle)
 
@@ -1145,7 +1141,7 @@ private struct CloudStoreActionBar: View {
             return "Purchasing..."
         }
         guard let product = store.product else {
-            return "Loading App Store price..."
+            return "Subscribe with App Store"
         }
         return "Subscribe for \(product.displayPrice) / month"
     }

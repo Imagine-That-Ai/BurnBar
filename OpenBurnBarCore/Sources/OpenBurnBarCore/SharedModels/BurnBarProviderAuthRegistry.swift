@@ -669,11 +669,25 @@ public enum BurnBarProviderAuthRegistry {
                 storage: .daemonSlot,
                 unlocksProxyRouting: true,
                 unlocksQuotaRefresh: false
+            ),
+            BurnBarProviderAuthMethod(
+                id: "xai-management-key",
+                kind: .apiKey,
+                displayName: "xAI Management Key",
+                summary: "Reads remaining GrokBuild prepaid credits and rolling usage.",
+                helperText: "Generate a management key from the xAI Console → Team API Keys. This is separate from the inference key and is used only to query the Management API for credit balance and usage history.",
+                placeholder: "xai-mgmt-…",
+                prefixHint: "xai-mgmt-",
+                dashboardURL: "https://console.x.ai/team/api-keys",
+                dashboardLabel: "xAI team keys",
+                storage: .appKeychain(account: "provider.xai.managementKey"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
             )
         ],
-        summary: "xAI Grok — OpenAI-compatible routing.",
+        summary: "xAI Grok — OpenAI-compatible routing plus Management-API quota reporting (GrokBuild + SuperGrok tiers).",
         proxyHint: "Routed via api.x.ai (OpenAI-compatible).",
-        quotaHint: nil
+        quotaHint: "Add a Management Key for exact GrokBuild credit balance; SuperGrok tiers use local pacing estimates."
     )
 
     private static let deepseekDescriptor = BurnBarProviderAuthDescriptor(

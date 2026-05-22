@@ -57,12 +57,22 @@ struct MercuryLiveSheet: View {
     @State private var ackAnimateTrigger = false
     @State private var isShowingCustomizeSheet = false
     @StateObject private var screenShareViewer = ScreenShareViewerCoordinator()
-    @StateObject private var phoneControlCoordinator = AgentWatchOverlayCoordinator()
+    /// Mercury Phase 8 / Computer Use Phase 12 — the phone-as-controller
+    /// coordinator is owned by the app-wide `AgentWatchOverlaySingleton`
+    /// so the live mirror, the Agent Live Stage dock tile, and the You
+    /// tab all share a single Computer Use bi-stream instead of each
+    /// opening their own and racing on the same Firestore authority
+    /// doc. The singleton is brought up by `RootTabView`'s relay-link
+    /// gate, so by the time this sheet is on screen it is already
+    /// dialing or live.
+    @ObservedObject private var phoneControlCoordinator = AgentWatchOverlaySingleton.shared.coordinator
     @State private var phoneControlError: String?
     @State private var selectedMirrorDisplayId: String?
     @State private var backgroundImage: UIImage? = nil
     @ObservedObject private var personalizationStore = MercuryPersonalizationStore.shared
     @ObservedObject private var transferHistoryStore = MercuryTransferHistoryStore.shared
+    @ObservedObject private var focusFollowPreference = AgentFocusFollowPreferenceStore.shared
+    @State private var dashboardStore = DashboardStore()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dismiss) private var dismiss
@@ -101,7 +111,6 @@ struct MercuryLiveSheet: View {
                     MercuryHeaderCard(
                         peer: peer,
                         nickname: effectiveNickname,
-                        badges: personalization.normalizedBadges(),
                         accent: accent,
                         pulse: pulseTrigger,
                         avatarStyle: personalization.avatar,
@@ -146,6 +155,7 @@ struct MercuryLiveSheet: View {
                         canRequestMirror: canRequestMirror,
                         canPlaceCall: peer.canPlaceCall,
                         canSendFile: peer.canSendFile && fileTransferService != nil,
+                        mirrorAutoAccept: mirrorAutoAccept,
                         awaitingRequestID: awaitingRequestID,
                         sendingFile: sendingFile,
                         mercuryStatusMessage: mercuryStatusMessage,
@@ -197,11 +207,17 @@ struct MercuryLiveSheet: View {
             if !reduceMotion { pulseTrigger.toggle() }
             installAckHandler()
             decodeWallpaper(peer.blurredWallpaperBase64)
+            Task {
+                await dashboardStore.load()
+            }
         }
         .onChange(of: peer.blurredWallpaperBase64) { _, newBase64 in
             decodeWallpaper(newBase64)
         }
         .onDisappear {
+            if activeMirrorRequestID != nil {
+                Task { await stopActiveMirror(reason: "sheet_disappeared") }
+            }
             // Don't permanently remove — `HermesSquareRoot` may have
             // installed a longer-lived handler. Only clear our pending
             // banner state.
@@ -217,7 +233,10 @@ struct MercuryLiveSheet: View {
             controlStreamCoordinator.mirrorFrameHandler = nil
             controlStreamCoordinator.mirrorFrameV2Handler = nil
             screenShareViewer.longTermReferenceTokenHandler = nil
-            Task { await phoneControlCoordinator.stop() }
+            // Do NOT stop the phone control coordinator here — it is the
+            // app-scope singleton; tearing it down would close the
+            // Computer Use bi-stream that the Agent Live Stage and the
+            // You-tab Agent Watch surface also depend on.
         }
         .fullScreenCover(isPresented: $isShowingMirrorViewer) {
             MercuryMirrorViewerFullScreen(
@@ -225,6 +244,9 @@ struct MercuryLiveSheet: View {
                 resetToken: activeMirrorRequestID,
                 controlStatus: mirrorControlStatus,
                 streamPhase: controlStreamCoordinator.phase,
+                reconnectAttemptStartedAt: controlStreamCoordinator.reconnectAttemptStartedAt,
+                lastFailureReason: controlStreamCoordinator.lastFailureReason,
+                lastLiveAt: controlStreamCoordinator.lastLiveAt,
                 displays: lastAck?.availableDisplays ?? [],
                 selectedDisplayId: selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
                 usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false,
@@ -274,6 +296,11 @@ struct MercuryLiveSheet: View {
                     Task { await stopActiveMirror(reason: "viewer_closed") }
                 }
             )
+            .onDisappear {
+                if activeMirrorRequestID != nil {
+                    Task { await stopActiveMirror(reason: "viewer_disappeared") }
+                }
+            }
         }
         .fileImporter(
             isPresented: $isShowingFileImporter,
@@ -365,7 +392,10 @@ struct MercuryLiveSheet: View {
                 )
             }
         case .website:
-            WebsiteBackgroundView(accent: accent)
+            WebsiteBackgroundView(
+                accent: accent,
+                colorDriver: dashboardStore.swarmColorDriver
+            )
         }
     }
 
@@ -546,7 +576,7 @@ struct MercuryLiveSheet: View {
 
                 if let cooldown = cooldownSecondsRemaining(for: ack), cooldown > 0 {
                     Text("Cooling down · \(cooldown)s")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.5))
                 }
             }
@@ -693,6 +723,10 @@ struct MercuryLiveSheet: View {
             && controlStreamCoordinator.phase == .live
     }
 
+    private var mirrorAutoAccept: Bool {
+        peer.capabilities.contains(.mirrorAutoAccept)
+    }
+
     private var mercuryStatusMessage: String? {
         if !peer.capabilities.contains(.mirrorHost) {
             return "This Mac is not advertising screen mirroring yet."
@@ -748,7 +782,9 @@ struct MercuryLiveSheet: View {
                     self.activeMirrorRequestID = nil
                     self.selectedMirrorDisplayId = nil
                     self.isShowingMirrorViewer = false
-                    Task { await self.phoneControlCoordinator.stop() }
+                    // Mirror rejected — keep the singleton's Computer
+                    // Use bi-stream alive; it is shared with other
+                    // surfaces and will be reused on the next mirror.
                 }
                 self.refreshCooldownTicker(for: ack)
             }
@@ -785,7 +821,9 @@ struct MercuryLiveSheet: View {
         lastError = nil
         lastAck = nil
         lastAckReceivedAt = nil
-        await phoneControlCoordinator.stop()
+        // Don't tear down the app-scope phone control coordinator on
+        // every mirror request — it stays warm and is reused for tap /
+        // scroll input once the Mac approves the mirror.
         cooldownTickerTask?.cancel()
         cooldownTickerTask = nil
         let request = HermesRealtimeRelayMirrorRequest(
@@ -795,7 +833,8 @@ struct MercuryLiveSheet: View {
             streamClass: MediaStreamClass.screenVideo.rawValue,
             streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
                 mediaFrameVersions: .v1Only
-            ).wireValue
+            ).wireValue,
+            focusFollowMode: focusFollowPreference.wireValue
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -830,11 +869,11 @@ struct MercuryLiveSheet: View {
     }
 
     private func stopActiveMirror(reason: String) async {
-        guard let uid = uidProvider(), !uid.isEmpty else {
+        guard uidProvider()?.isEmpty == false else {
             activeMirrorRequestID = nil
             selectedMirrorDisplayId = nil
             isShowingMirrorViewer = false
-            await phoneControlCoordinator.stop()
+            // Phone control coordinator is app-scope; do not stop it.
             return
         }
         guard let requestID = activeMirrorRequestID else { return }
@@ -845,21 +884,13 @@ struct MercuryLiveSheet: View {
         lastAckReceivedAt = nil
         cooldownTickerTask?.cancel()
         cooldownTickerTask = nil
-        await phoneControlCoordinator.stop()
-        let stop = HermesRealtimeRelayMirrorStop(
-            requestId: requestID,
-            stoppedAt: Date(),
-            reason: reason
-        )
-        let frame = HermesRealtimeRelayFrame(
-            type: .mediaMirrorStop,
-            uid: uid,
-            connectionId: connectionID,
-            requestId: requestID,
-            media: HermesRealtimeRelayMediaPayload(mirrorStop: stop)
-        )
+        // Phone control coordinator is app-scope; do not stop it.
         do {
-            try await controlStreamCoordinator.send(frame: frame, timeout: 2)
+            try await controlStreamCoordinator.sendMirrorStop(
+                requestId: requestID,
+                reason: reason,
+                timeout: 2
+            )
         } catch {
             Self.log.error("mirror_stop_send_failed requestID=\(requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
             Self.debugTrace("mirror_stop_send_failed requestID=\(requestID) error=\(error.localizedDescription)")
@@ -999,6 +1030,12 @@ struct MercuryLiveSheet: View {
             phoneControlError = "Sign in to control your Mac."
             return
         }
+        // The app-scope singleton owns the phone control coordinator's
+        // lifecycle and is brought up by `RootTabView` whenever a
+        // relay-link connection is selected. The call below is
+        // idempotent — if the singleton is already dialing or live it
+        // returns immediately; if not, it starts the bi-stream so
+        // tap/scroll intents have a destination.
         do {
             let pairingPublicKey = try await FirestoreIrohPairingPublicKeyProvider.shared.fetchPublicKey(uid: uid)
             phoneControlCoordinator.start(
@@ -1018,6 +1055,9 @@ private struct MercuryMirrorViewerFullScreen: View {
     let resetToken: String?
     let controlStatus: ScreenSharePhoneControlStatus
     let streamPhase: MediaControlStreamCoordinator.Phase
+    let reconnectAttemptStartedAt: Date?
+    let lastFailureReason: String?
+    let lastLiveAt: Date?
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let usePremiumSOTAUX: Bool
@@ -1040,6 +1080,9 @@ private struct MercuryMirrorViewerFullScreen: View {
             displays: displays,
             selectedDisplayId: selectedDisplayId,
             streamPhase: streamPhase,
+            reconnectAttemptStartedAt: reconnectAttemptStartedAt,
+            lastFailureReason: lastFailureReason,
+            lastLiveAt: lastLiveAt,
             usePremiumSOTAUX: usePremiumSOTAUX,
             onForceReconnect: onForceReconnect,
             onRetryRequest: onRetryRequest,
@@ -1055,4 +1098,3 @@ private struct MercuryMirrorViewerFullScreen: View {
         .background(Color.black.ignoresSafeArea())
     }
 }
-

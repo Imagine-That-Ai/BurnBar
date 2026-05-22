@@ -155,8 +155,8 @@ struct QuotaPulseCard: View {
 
     private var hasUrgent: Bool {
         snapshots.flatMap(\.buckets).contains { bucket in
-            guard bucket.limit > 0 else { return false }
-            return max(0, bucket.remaining) / bucket.limit < 0.25
+            guard let fraction = bucket.displayRemainingFraction else { return false }
+            return fraction < 0.25
         }
     }
 
@@ -167,8 +167,7 @@ struct QuotaPulseCard: View {
                 ?? AgentProvider.fromPersistedToken(key) else { return nil }
             let pressure = snaps
                 .flatMap(\.buckets)
-                .filter { $0.limit > 0 }
-                .map { max(0, $0.remaining) / $0.limit }
+                .compactMap(\.displayRemainingFraction)
                 .min() ?? 1.0
             return QuotaRingsConstellation.Item(
                 provider: provider,
