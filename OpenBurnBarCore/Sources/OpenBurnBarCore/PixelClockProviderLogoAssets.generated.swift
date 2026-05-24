@@ -172,6 +172,20 @@ enum PixelClockProviderLogoAssets {
         ]
     )
 
+    static let xAI = PixelClockProviderLogo(
+        sourceName: "GrokLogo",
+        pixels: [
+            ["#0F0F0F", nil, nil, nil, nil, nil, nil, "#0F0F0F"],
+            ["#0F0F0F", "#0F0F0F", nil, nil, nil, nil, "#0F0F0F", "#0F0F0F"],
+            [nil, "#0F0F0F", "#0F0F0F", nil, nil, "#0F0F0F", "#0F0F0F", nil],
+            [nil, nil, "#0F0F0F", "#0F0F0F", "#0F0F0F", "#0F0F0F", nil, nil],
+            [nil, nil, "#4A4A4A", "#0F0F0F", "#0F0F0F", "#4A4A4A", nil, nil],
+            [nil, "#4A4A4A", "#4A4A4A", nil, nil, "#4A4A4A", "#4A4A4A", nil],
+            ["#4A4A4A", "#4A4A4A", nil, nil, nil, nil, "#4A4A4A", "#4A4A4A"],
+            ["#4A4A4A", nil, nil, nil, nil, nil, nil, "#4A4A4A"]
+        ]
+    )
+
     static let antigravity = PixelClockProviderLogo(
         sourceName: "GeminiCLILogo",
         pixels: [

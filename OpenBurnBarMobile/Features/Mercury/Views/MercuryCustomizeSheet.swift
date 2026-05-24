@@ -181,7 +181,7 @@ struct MercuryCustomizeSheet: View {
         VStack(spacing: 14) {
             Toggle(isOn: $personalization.showHermesSquareTile) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Hermes Square tile")
+                    Text("Agents tile")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                     Text("Show My Mac on the main grid")

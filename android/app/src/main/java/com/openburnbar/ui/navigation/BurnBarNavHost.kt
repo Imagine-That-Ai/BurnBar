@@ -71,8 +71,22 @@ sealed class BurnBarTab(
     object YOU      : BurnBarTab("you",      "You",      AuroraNavDestination.YOU)
 
     companion object {
-        val all: List<BurnBarTab> = listOf(PULSE, BURN, INSIGHTS, STREAMS, HERMES, YOU)
-        fun fromRoute(route: String?): BurnBarTab? = all.firstOrNull { it.route == route }
+        val allCandidates: List<BurnBarTab> = listOf(PULSE, BURN, INSIGHTS, STREAMS, HERMES, YOU)
+        val all: List<BurnBarTab> get() {
+            try {
+                val primary = com.openburnbar.ui.settings.GlobalVisualSettings.primaryTabs.value
+                val secondary = com.openburnbar.ui.settings.GlobalVisualSettings.secondaryTabs.value
+                val keys = (primary.split(",") + secondary.split(",")).map { it.trim() }.filter { it.isNotEmpty() }
+                val mapped = keys.mapNotNull { key -> allCandidates.firstOrNull { it.route == key } }
+                if (mapped.isEmpty()) return allCandidates
+                // Add any missing
+                val missing = allCandidates.filter { !mapped.contains(it) }
+                return mapped + missing
+            } catch (e: Throwable) {
+                return allCandidates
+            }
+        }
+        fun fromRoute(route: String?): BurnBarTab? = allCandidates.firstOrNull { it.route == route }
     }
 }
 

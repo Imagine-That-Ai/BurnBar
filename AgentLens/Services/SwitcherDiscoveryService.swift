@@ -561,11 +561,22 @@ final class SwitcherDiscoveryService: ObservableObject {
         }
 
         guard let metadata = updatedProfile.cliMetadata else { return nil }
-        if let detected = normalized(metadata.accountDescription),
-           existingProfiles.contains(where: { normalized($0.cliMetadata?.accountDescription)?.caseInsensitiveCompare(detected) == .orderedSame }) {
-            scanErrors.append("Already added: \(detected) is already connected as a \(cliType.displayName) profile. Sign into a different account to add another reserve.")
+        if let detectedDirectory = normalized(metadata.configDirectory),
+           existingProfiles.contains(where: { normalized($0.cliMetadata?.configDirectory) == detectedDirectory }) {
+            scanErrors.append("Already added: this local auth directory is already saved as a \(cliType.displayName) profile. Reconnect that profile instead of saving the same directory twice.")
             return nil
         }
+
+        let detectedAccountDescription = normalized(metadata.accountDescription)
+        let fallbackDisplayLabel = normalized(metadata.displayLabel) ?? cliType.displayName
+        let hasMatchingIdentity = detectedAccountDescription.map { detected in
+            existingProfiles.contains {
+                normalized($0.cliMetadata?.accountDescription)?.caseInsensitiveCompare(detected) == .orderedSame
+            }
+        } ?? false
+        let displayLabel = detectedAccountDescription.map { detected in
+            hasMatchingIdentity ? "\(detected) · \(fallbackDisplayLabel)" : detected
+        } ?? fallbackDisplayLabel
 
         let record = SwitcherProfileRecord(
             targetKind: .cli,
@@ -574,7 +585,7 @@ final class SwitcherDiscoveryService: ObservableObject {
                 workingDirectory: metadata.workingDirectory,
                 additionalArgs: metadata.additionalArgs,
                 envKeysToPass: metadata.envKeysToPass,
-                displayLabel: metadata.accountDescription ?? metadata.displayLabel ?? cliType.displayName,
+                displayLabel: displayLabel,
                 configDirectory: metadata.configDirectory,
                 accountDescription: metadata.accountDescription,
                 providerID: metadata.providerID,

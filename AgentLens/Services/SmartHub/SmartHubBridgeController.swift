@@ -987,6 +987,7 @@ final class SmartHubBridgeController {
         case .ollama:     return "6B7280"
         case .windsurf:   return "06B6D4"
         case .warp:       return "DDE4EA"
+        case .xAI:        return "1A1A1A"
         }
     }
 

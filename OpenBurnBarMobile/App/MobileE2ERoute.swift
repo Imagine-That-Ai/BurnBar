@@ -6,6 +6,10 @@ enum MobileE2ERoute {
         route == "cloud-store" || route == "cloud"
     }
 
+    static var allowsGuestCloudStore: Bool {
+        ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_CLOUD_STORE_GUEST"] == "1"
+    }
+
     private static var route: String? {
         let environment = ProcessInfo.processInfo.environment
         return environment["OPENBURNBAR_E2E_ROUTE"]?

@@ -15,18 +15,10 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
 
-    <!-- Mercury Media Phase 5: foreground service while a call session
-         is active. Granular sub-types per Android 14 + 15 enforcement. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
-
     <!-- Mercury Media Phase 5: incoming-call sheet from FCM data push. -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
 
     <!-- Android 14: Picture-in-Picture is opt-in via this feature flag. -->
     <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
@@ -204,13 +196,23 @@
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:launchMode="singleTask" />
 
-        <!-- Mercury Media — call session foreground service. Aggregates
-             microphone, camera, and (when sharing) media-projection sub
-             types so a single notification covers the active call. -->
+        <!-- Hermes Skill Runs — text timeline Picture-in-Picture host.
+             Video-backed Agent Watch and Mercury screen share continue to
+             use their dedicated PiP surfaces. -->
+        <activity
+            android:name=".ui.media.SkillRunPiPActivity"
+            android:exported="false"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:launchMode="singleTask" />
+
+        <!-- Mercury Media — call session notification service. Capture and
+             transport are owned by the visible call surfaces; this service
+             only keeps the user-facing return-to-call notification current. -->
         <service
             android:name=".services.media.MediaSessionForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="microphone|camera|mediaProjection|phoneCall" />
+            android:exported="false" />
 
         <!-- Mercury Media — high-priority FCM data messages from
              `triggerVoIPCall` Cloud Function. Same envelope shape the

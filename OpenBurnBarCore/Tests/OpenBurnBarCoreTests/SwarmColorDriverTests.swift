@@ -69,6 +69,20 @@ final class SwarmColorDriverTests: XCTestCase {
         XCTAssertNotEqual(claudeTone, codexTone)
     }
 
+    func testActiveProvidersKeepsEveryConcurrentProvider() {
+        let driver = SwarmColorDriver(
+            mode: .active,
+            providers: [
+                .init(provider: .codex, weight: 0.34),
+                .init(provider: .claudeCode, weight: 0.33),
+                .init(provider: .xAI, weight: 0.33)
+            ],
+            totalBurnRateUSD: 1
+        )
+
+        XCTAssertEqual(driver.activeProviders, [.codex, .claudeCode, .xAI])
+    }
+
     func testFlameToneReturnsNilWithoutProviders() {
         let driver = SwarmColorDriver(mode: .active, providers: [], totalBurnRateUSD: 1)
 

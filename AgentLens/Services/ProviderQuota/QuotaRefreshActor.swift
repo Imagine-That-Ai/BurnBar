@@ -42,6 +42,7 @@ actor QuotaRefreshActor {
     let homeDirectoryURL: URL
     let miniMaxModeProvider: () -> MiniMaxQuotaMode
     let factoryPlanProvider: () -> FactoryQuotaPlanTier
+    let xaiPlanProvider: () -> XAIQuotaPlanTier
     let claudeCredentialsReader: any ClaudeCredentialsReading
     let adapters: [AgentProvider: any ProviderQuotaAdapter]
     let refreshProviders: [AgentProvider]
@@ -59,6 +60,7 @@ actor QuotaRefreshActor {
         homeDirectoryURL: URL,
         miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode,
         factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier,
+        xaiPlanProvider: @escaping () -> XAIQuotaPlanTier,
         claudeCredentialsReader: any ClaudeCredentialsReading,
         refreshProviders: [AgentProvider]
     ) {
@@ -71,6 +73,7 @@ actor QuotaRefreshActor {
         self.homeDirectoryURL = homeDirectoryURL
         self.miniMaxModeProvider = miniMaxModeProvider
         self.factoryPlanProvider = factoryPlanProvider
+        self.xaiPlanProvider = xaiPlanProvider
         self.claudeCredentialsReader = claudeCredentialsReader
         self.refreshProviders = refreshProviders
 
@@ -88,6 +91,7 @@ actor QuotaRefreshActor {
             .ollama: OllamaQuotaAdapter(),
             .kimi: KimiQuotaAdapter(),
             .antigravity: AntigravityQuotaAdapter(),
+            .xAI: XAIQuotaAdapter(),
         ]
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -182,6 +186,7 @@ actor QuotaRefreshActor {
             bridgeManager: bridgeManager,
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
+            xaiPlanProvider: xaiPlanProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: currentCache,
             updateCodexRolloutScanCache: { [self] cache, didChange in
@@ -366,7 +371,10 @@ actor QuotaRefreshActor {
         using context: ProviderQuotaAdapterContext,
         providers: Set<AgentProvider>
     ) async -> [String: ProviderQuotaSnapshot] {
-        let profiles = resolveSwitcherCLIQuotaProfiles(dataStoreActor: context.dataStoreActor)
+        let profiles = resolveSwitcherCLIQuotaProfiles(
+            dataStoreActor: context.dataStoreActor,
+            homeDirectoryURL: context.homeDirectoryURL
+        )
             .filter { providers.contains($0.provider) }
         guard !profiles.isEmpty else { return [:] }
 
@@ -539,6 +547,8 @@ private func daemonProviderID(for provider: AgentProvider) -> String? {
         return "deepseek"
     case .kimi:
         return "moonshot"
+    case .xAI:
+        return "xai"
     default:
         return nil
     }
@@ -580,7 +590,10 @@ private func resolveDaemonAccountCredentials(
     return credentials
 }
 
-private func resolveSwitcherCLIQuotaProfiles(dataStoreActor: DataStoreActor) -> [SwitcherCLIQuotaProfile] {
+private func resolveSwitcherCLIQuotaProfiles(
+    dataStoreActor: DataStoreActor,
+    homeDirectoryURL: URL
+) -> [SwitcherCLIQuotaProfile] {
     let profiles = (try? dataStoreActor.switcherStore.fetchAllProfiles()) ?? []
 
     return profiles.compactMap { profile in
@@ -592,11 +605,15 @@ private func resolveSwitcherCLIQuotaProfiles(dataStoreActor: DataStoreActor) -> 
               let configDirectory = quotaNonEmpty(profile.cliMetadata?.configDirectory) else {
             return nil
         }
+        guard !isDefaultSwitcherCLIConfigDirectory(
+            configDirectory,
+            cliType: cliType,
+            homeDirectoryURL: homeDirectoryURL
+        ) else {
+            return nil
+        }
 
-        let label = quotaNonEmpty(profile.cliMetadata?.accountDescription)
-            ?? quotaNonEmpty(profile.cliMetadata?.displayLabel)
-            ?? quotaNonEmpty(profile.displayName)
-            ?? "\(cliType.displayName) OAuth profile"
+        let label = quotaSwitcherProfileLabel(profile, cliType: cliType)
 
         return SwitcherCLIQuotaProfile(
             provider: provider,
@@ -609,6 +626,58 @@ private func resolveSwitcherCLIQuotaProfiles(dataStoreActor: DataStoreActor) -> 
     }
 }
 
+func isDefaultSwitcherCLIConfigDirectory(
+    _ configDirectory: String,
+    cliType: SwitcherCLIProfileType,
+    homeDirectoryURL: URL
+) -> Bool {
+    guard let normalized = normalizedSwitcherConfigPath(configDirectory, homeDirectoryURL: homeDirectoryURL),
+          let defaultPath = normalizedSwitcherConfigPath(
+            defaultSwitcherConfigDirectory(for: cliType, homeDirectoryURL: homeDirectoryURL),
+            homeDirectoryURL: homeDirectoryURL
+          ) else {
+        return false
+    }
+    return normalized == defaultPath
+}
+
+private func defaultSwitcherConfigDirectory(
+    for cliType: SwitcherCLIProfileType,
+    homeDirectoryURL: URL
+) -> String {
+    switch cliType {
+    case .codex:
+        return homeDirectoryURL.appendingPathComponent(".codex", isDirectory: true).path
+    case .claude:
+        return homeDirectoryURL.appendingPathComponent(".claude", isDirectory: true).path
+    case .opencode:
+        return homeDirectoryURL.appendingPathComponent(".config/opencode", isDirectory: true).path
+    }
+}
+
+private func normalizedSwitcherConfigPath(
+    _ rawPath: String,
+    homeDirectoryURL: URL
+) -> String? {
+    let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    let expanded: String
+    if trimmed == "~" {
+        expanded = homeDirectoryURL.path
+    } else if trimmed.hasPrefix("~/") {
+        expanded = homeDirectoryURL
+            .appendingPathComponent(String(trimmed.dropFirst(2)), isDirectory: true)
+            .path
+    } else {
+        expanded = trimmed
+    }
+
+    return URL(fileURLWithPath: expanded, isDirectory: true)
+        .standardizedFileURL
+        .path
+}
+
 private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider? {
     switch cliType {
     case .codex:
@@ -618,6 +687,24 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
     case .opencode:
         return nil
     }
+}
+
+private func quotaSwitcherProfileLabel(
+    _ profile: SwitcherProfileRecord,
+    cliType: SwitcherCLIProfileType
+) -> String {
+    let accountDescription = quotaNonEmpty(profile.cliMetadata?.accountDescription)
+    let displayLabel = quotaNonEmpty(profile.cliMetadata?.displayLabel)
+    if let accountDescription,
+       let displayLabel,
+       displayLabel != accountDescription,
+       displayLabel.localizedCaseInsensitiveContains(accountDescription) {
+        return displayLabel
+    }
+    return accountDescription
+        ?? displayLabel
+        ?? quotaNonEmpty(profile.displayName)
+        ?? "\(cliType.displayName) OAuth profile"
 }
 
 private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
@@ -638,6 +725,8 @@ private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
         return .deepSeek
     case "moonshot", "kimi":
         return .kimi
+    case "xai", "x-ai", "x.ai", "grok":
+        return .xAI
     default:
         return nil
     }
@@ -666,6 +755,16 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
         identifiers.append(contentsOf: ["opencode", "open_code", "opencode_auth_json"])
     case .deepSeek:
         identifiers.append(contentsOf: ["deepseek", "deep_seek"])
+    case .xAI:
+        identifiers.append(contentsOf: [
+            "xai",
+            "x_ai",
+            "x-ai",
+            "grok",
+            "xai_api_key",
+            "xai_management_key",
+            "xai-management-key"
+        ])
     default:
         break
     }

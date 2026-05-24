@@ -35,3 +35,10 @@
 # Coil image loading (Insights icons)
 -keep class coil.** { *; }
 -dontwarn coil.**
+
+# JNA is bundled by the iroh UniFFI bridge. Its optional desktop/AWT helpers
+# reference Java SE UI classes that are unavailable and unused on Android.
+-dontwarn java.awt.Component
+-dontwarn java.awt.GraphicsEnvironment
+-dontwarn java.awt.HeadlessException
+-dontwarn java.awt.Window

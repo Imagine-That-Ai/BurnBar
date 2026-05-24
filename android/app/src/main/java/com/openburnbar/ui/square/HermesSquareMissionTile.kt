@@ -1,5 +1,7 @@
 package com.openburnbar.ui.square
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,9 +40,11 @@ import com.openburnbar.ui.theme.AuroraColors
 // Compact horizontally-scrolling mission card for the Active Missions
 // strip. Mirrors the iOS `HermesSquareMissionTile`.
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun HermesSquareMissionTile(
     tile: ActiveMission,
+    onLongPress: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -50,6 +54,10 @@ internal fun HermesSquareMissionTile(
         modifier = modifier
             .height(120.dp)
             .fillMaxWidth()
+            .combinedClickable(
+                onClick = {},
+                onLongClick = onLongPress
+            )
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(6.dp),

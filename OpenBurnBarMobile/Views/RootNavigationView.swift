@@ -21,8 +21,9 @@ struct RootNavigationView: View {
     let devicesStore: DevicesStore
     let transferStore: CredentialTransferStore
 
-    @State private var selection: SidebarDestination = .pulse
+    @State private var selection: AppDestination = .pulse
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @StateObject private var customization = AppCustomization.shared
     @State private var didApplyScreenshotRoute = false
     #if DEBUG
     @State private var didApplyHermesE2EPrompt = false
@@ -38,59 +39,14 @@ struct RootNavigationView: View {
     @State private var subscriptionStore = HostedQuotaSubscriptionStore()
     @State private var detailPath = NavigationPath()
     @State private var isCloudStoreChromeHidden = false
+    /// App-scope Agent Watch overlay singleton. The iPad split shell needs the
+    /// same always-on control stream as iPhone so Mac-initiated screen sharing
+    /// can surface without first navigating to You -> Agent Watch.
+    @ObservedObject private var liveStageSingleton = AgentWatchOverlaySingleton.shared
+    @StateObject private var liveStagePresenter = AgentLiveStagePresenter()
+    @StateObject private var skillRunPiPController = SkillRunTextPiPController()
 
-    enum SidebarDestination: Hashable, Identifiable {
-        case pulse, burn, insights, streams, hermes, you, settings, devices, providers
-        var id: String { String(describing: self) }
-        var label: String {
-            switch self {
-            case .pulse:    return "Pulse"
-            case .burn:     return "Burn"
-            case .insights: return "Insights"
-            case .streams:  return "Streams"
-            case .hermes:   return "Hermes"
-            case .you:      return "You"
-            case .settings: return "Settings"
-            case .devices:  return "Devices"
-            case .providers: return "Providers"
-            }
-        }
-        var accent: Color {
-            switch self {
-            case .pulse:    return MobileTheme.ember
-            case .burn:     return MobileTheme.amber
-            case .insights: return MobileTheme.whimsy
-            case .streams:  return MobileTheme.whimsy
-            case .hermes:   return MobileTheme.hermesAureate
-            case .you:      return MobileTheme.blaze
-            case .settings: return MobileTheme.amber
-            case .devices:  return MobileTheme.whimsy
-            case .providers: return MobileTheme.ember
-            }
-        }
-
-        var asAuroraDestination: AuroraNavDestination? {
-            switch self {
-            case .pulse:    return .pulse
-            case .burn:     return .burn
-            case .insights: return .insights
-            case .streams:  return .streams
-            case .hermes:   return .hermes
-            case .you:      return .you
-            default:        return nil
-            }
-        }
-
-        var fallbackIcon: String {
-            switch self {
-            case .insights:  return "sparkles.tv.fill"
-            case .settings:  return "gearshape.fill"
-            case .devices:   return "macbook.and.iphone"
-            case .providers: return "externaldrive.connected.to.line.below"
-            default:         return "circle.fill"
-            }
-        }
-    }
+    // Sidebar destinations have been moved to AppDestination in AppCustomization.swift
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -101,6 +57,19 @@ struct RootNavigationView: View {
                 detail
             }
 
+            AgentLiveStage(
+                singleton: liveStageSingleton,
+                presenter: liveStagePresenter,
+                hermesService: hermesService,
+                onTapHermesTab: { selection = .agents }
+            )
+            .zIndex(20)
+
+            SkillRunLiveStage(
+                host: missionConsoleHost,
+                pipController: skillRunPiPController
+            )
+            .zIndex(19)
         }
         .environment(\.motionStore, motionStore)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
@@ -110,6 +79,20 @@ struct RootNavigationView: View {
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
         .task { missionActivityCenter.start() }
         .task { missionConsoleHost.start() }
+        .task { liveStagePresenter.observe(liveStageSingleton.state) }
+        .task { liveStageSingleton.installLiveActivityIntentRouter() }
+        .task {
+            liveStageSingleton.configurePictureInPicture(
+                onDidStart: { liveStagePresenter.setPiPActive(true) },
+                onDidStop: { liveStagePresenter.enterMaximizeFromPiP() }
+            )
+        }
+        .task(id: liveStageEvaluationKey) {
+            liveStageSingleton.evaluate(
+                authUID: authStore.currentIdentity?.uid,
+                hermesService: hermesService
+            )
+        }
         .onAppear {
             applyScreenshotRouteIfNeeded()
             applyHermesE2EPromptIfNeeded()
@@ -122,6 +105,9 @@ struct RootNavigationView: View {
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
+            openAgentWatchRoute()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
         }
@@ -129,18 +115,24 @@ struct RootNavigationView: View {
 
     // MARK: - Sidebar
 
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+
     private var sidebar: some View {
         ZStack {
-            AuroraBackdrop(density: .subtle)
+            if useWebsiteBackground {
+                AuroraBackdrop(density: .subtle)
+            } else {
+                Rectangle().fill(.clear).background(.regularMaterial)
+            }
             List {
                 Section {
                     sidebarLogoHeader
-                    ForEach([SidebarDestination.pulse, .burn, .insights, .streams, .hermes], id: \.self) { destination in
+                    ForEach(customization.primaryDestinations, id: \.self) { destination in
                         sidebarItem(destination)
                     }
                 }
                 Section("Account") {
-                    ForEach([SidebarDestination.you, .providers, .devices, .settings], id: \.self) { destination in
+                    ForEach(customization.secondaryDestinations, id: \.self) { destination in
                         sidebarItem(destination)
                     }
                 }
@@ -170,7 +162,7 @@ struct RootNavigationView: View {
         .listRowBackground(Color.clear)
     }
 
-    private func sidebarItem(_ destination: SidebarDestination) -> some View {
+    private func sidebarItem(_ destination: AppDestination) -> some View {
         Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                 selection = destination
@@ -300,9 +292,15 @@ struct RootNavigationView: View {
 
     // MARK: - Detail
 
+    private var liveStageEvaluationKey: String {
+        let uid = authStore.currentIdentity?.uid ?? ""
+        let conn = hermesService.selectedConnection.id
+        return "\(uid)|\(conn)"
+    }
+
     @ViewBuilder
     private var detail: some View {
-        if selection == .hermes {
+        if selection == .agents {
             HermesSquareSplitLayout(
                 hermesService: hermesService,
                 missionHost: missionConsoleHost
@@ -315,7 +313,7 @@ struct RootNavigationView: View {
                     case .burn:     BurnView()
                     case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
                     case .streams:  StreamsView()
-                    case .hermes:   EmptyView()
+                    case .agents:   EmptyView()
                     case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
                     case .settings: SettingsHubView(authStore: authStore)
                     case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
@@ -348,7 +346,7 @@ struct RootNavigationView: View {
         switch destination {
         case .burn:     selection = .burn
         case .streams:  selection = .streams
-        case .hermes:   selection = .hermes
+        case .hermes:   selection = .agents
         case .session:  selection = .streams
         case .project:  selection = .streams
         case .provider: selection = .burn
@@ -356,8 +354,15 @@ struct RootNavigationView: View {
         router.clear()
     }
 
-    private func updateColumnVisibility(for destination: SidebarDestination, animated: Bool = true) {
-        let nextVisibility: NavigationSplitViewVisibility = destination == .hermes ? .detailOnly : .automatic
+    private func openAgentWatchRoute() {
+        selection = .you
+        detailPath = NavigationPath()
+        detailPath.append(YouRoute.computerUse)
+        updateColumnVisibility(for: .you, animated: false)
+    }
+
+    private func updateColumnVisibility(for destination: AppDestination, animated: Bool = true) {
+        let nextVisibility: NavigationSplitViewVisibility = destination == .agents ? .detailOnly : .automatic
         guard columnVisibility != nextVisibility else { return }
         if animated {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -377,7 +382,7 @@ struct RootNavigationView: View {
         case "streams", "activity":
             selection = .streams
         case "hermes", "chat":
-            selection = .hermes
+            selection = .agents
         case "you", "account":
             selection = .you
         case "settings":
@@ -441,7 +446,7 @@ struct RootNavigationView: View {
         print("OpenBurnBarMobile Hermes E2E RootNavigation apply promptCharacters=\(prompt.count) model=\(selectedModelID)")
         Self.hermesE2ELogger.info("Applying Hermes E2E prompt promptCharacters=\(prompt.count, privacy: .public) model=\(selectedModelID, privacy: .public)")
         didApplyHermesE2EPrompt = true
-        selection = .hermes
+        selection = .agents
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             await hermesService.refreshRuntime()

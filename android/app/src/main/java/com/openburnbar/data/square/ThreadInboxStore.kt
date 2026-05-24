@@ -7,8 +7,13 @@ import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.FieldValue
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.data.assistants.AssistantChatHistoryStore
+import com.openburnbar.data.missions.MobileMissionConsoleHost
+import com.openburnbar.data.missions.ActiveMission
 import kotlinx.coroutines.tasks.await
+import java.time.Instant
 
 data class CLIAgentToolUse(
     val id: String,
@@ -36,7 +41,11 @@ data class CLIAgentSessionRecord(
     val modelName: String?,
     val workspaceLabel: String?,
     val updatedAtEpoch: Long,
-    val messages: List<CLIAgentMessage>
+    val messages: List<CLIAgentMessage>,
+    val customTitle: String? = null,
+    val labelColorHex: String? = null,
+    val isPinned: Boolean = false,
+    val priorityOrder: Int? = null
 ) {
     val searchableText: String = listOf(
         title,
@@ -77,6 +86,14 @@ class ThreadInboxStore private constructor(
     var cliSessionsByItemID by mutableStateOf<Map<String, CLIAgentSessionRecord>>(emptyMap())
         private set
 
+    private var historyStore: AssistantChatHistoryStore? = null
+    private var missionHost: MobileMissionConsoleHost? = null
+
+    fun bind(historyStore: AssistantChatHistoryStore? = null, missionHost: MobileMissionConsoleHost? = null) {
+        if (historyStore != null) this.historyStore = historyStore
+        if (missionHost != null) this.missionHost = missionHost
+    }
+
     fun replace(items: List<ThreadInboxItem>) {
         this.items = items.sortedForInbox()
         this.lastRefreshedAtEpoch = System.currentTimeMillis()
@@ -100,6 +117,7 @@ class ThreadInboxStore private constructor(
                 return
             }
 
+            // 1. Fetch CLI mirrored sessions
             val snapshot = firestore.collection("users")
                 .document(uid)
                 .collection("cli_sessions")
@@ -110,7 +128,61 @@ class ThreadInboxStore private constructor(
 
             val parsed = snapshot.documents.mapNotNull { document -> parseCLISession(document.data.orEmpty(), document.id) }
             cliSessionsByItemID = parsed.associateBy { "cli:${it.id}" }
-            items = parsed.map { record ->
+
+            val merged = mutableListOf<ThreadInboxItem>()
+
+            // A. Add mobile assistant chat threads from historyStore
+            val history = historyStore
+            val mobileCLIThreadIDs = mutableSetOf<String>()
+            if (history != null) {
+                val historyThreads = history.threads.value.mapNotNull { thread ->
+                    val agentURI: String
+                    val source: ThreadInboxItem.Source
+                    val runtimeLower = thread.runtime.lowercase().trim()
+                    when (runtimeLower) {
+                        "hermes" -> {
+                            agentURI = AgentIdentity.builtInURI(AssistantRuntimeID.HERMES)
+                            source = ThreadInboxItem.Source.HERMES
+                        }
+                        "pi" -> {
+                            agentURI = AgentIdentity.builtInURI(AssistantRuntimeID.PI)
+                            source = ThreadInboxItem.Source.PI
+                        }
+                        "codex", "claude", "openclaw" -> {
+                            val runtime = when (runtimeLower) {
+                                "codex" -> AssistantRuntimeID.CODEX
+                                "claude" -> AssistantRuntimeID.CLAUDE
+                                "openclaw" -> AssistantRuntimeID.OPEN_CLAW
+                                else -> return@mapNotNull null
+                            }
+                            agentURI = AgentIdentity.builtInURI(runtime)
+                            source = ThreadInboxItem.Source.CLI_MIRROR
+                            mobileCLIThreadIDs.add(thread.id)
+                        }
+                        else -> return@mapNotNull null
+                    }
+                    ThreadInboxItem(
+                        id = "${source.token}:${thread.id}",
+                        agentURI = agentURI,
+                        title = thread.title.ifBlank { "(untitled)" },
+                        preview = thread.preview,
+                        lastActivityAtEpoch = thread.updatedAtMillis,
+                        unreadCount = 0,
+                        needsAttention = false,
+                        source = source,
+                        liveMissionID = null,
+                        searchText = listOf(thread.title, thread.preview, agentURI).joinToString(" "),
+                        customTitle = thread.customTitle,
+                        labelColorHex = thread.labelColorHex,
+                        isPinned = thread.isPinned,
+                        priorityOrder = thread.priorityOrder
+                    )
+                }
+                merged.addAll(historyThreads)
+            }
+
+            // B. Add parsed CLI sessions excluding mobileCLIThreadIDs
+            val cliItems = parsed.filter { it.id !in mobileCLIThreadIDs }.map { record ->
                 ThreadInboxItem(
                     id = "cli:${record.id}",
                     agentURI = record.agentURI,
@@ -121,14 +193,77 @@ class ThreadInboxStore private constructor(
                     needsAttention = false,
                     source = ThreadInboxItem.Source.CLI_MIRROR,
                     liveMissionID = null,
-                    searchText = record.searchableText
+                    searchText = record.searchableText,
+                    customTitle = record.customTitle,
+                    labelColorHex = record.labelColorHex,
+                    isPinned = record.isPinned,
+                    priorityOrder = record.priorityOrder
                 )
-            }.sortedForInbox()
+            }
+            merged.addAll(cliItems)
+
+            // C. Add active missions from missionHost
+            val host = missionHost
+            if (host != null) {
+                val missionItems = host.snapshot.value.activeMissions.map { tile ->
+                    val runtimeID = tile.runtimeID?.let { runtimeStr ->
+                        AssistantRuntimeID.values().firstOrNull { it.token == runtimeStr }
+                    }
+                    val agentURI = runtimeID?.let { AgentIdentity.builtInURI(it) } ?: "agent://burnbar/auto"
+                    ThreadInboxItem(
+                        id = "mission:${tile.id}",
+                        agentURI = agentURI,
+                        title = tile.title,
+                        preview = tile.phaseDetail ?: tile.phase.displayLabel,
+                        lastActivityAtEpoch = tile.startedAt?.toEpochMilli() ?: System.currentTimeMillis(),
+                        unreadCount = if (tile.approvalPending) 1 else 0,
+                        needsAttention = tile.approvalPending || tile.phase == ActiveMission.Phase.FAILED || tile.phase == ActiveMission.Phase.BLOCKED,
+                        source = ThreadInboxItem.Source.MISSION_GROUP,
+                        liveMissionID = tile.id
+                    )
+                }
+                merged.addAll(missionItems)
+            }
+
+            items = merged.sortedForInbox()
             lastRefreshedAtEpoch = System.currentTimeMillis()
         } catch (e: Exception) {
             refreshError = e.message ?: e::class.java.simpleName
         } finally {
             isLoading = false
+        }
+    }
+
+    suspend fun updateSessionMetadata(
+        id: String,
+        customTitle: String? = null,
+        labelColorHex: String? = null,
+        isPinned: Boolean? = null,
+        priorityOrder: Int? = null
+    ) {
+        val uid = auth.currentUser?.uid ?: return
+        val docRef = firestore.collection("users")
+            .document(uid)
+            .collection("cli_sessions")
+            .document(id)
+
+        val updates = mutableMapOf<String, Any?>()
+        if (customTitle != null) {
+            updates["customTitle"] = if (customTitle.isEmpty()) FieldValue.delete() else customTitle
+        }
+        if (labelColorHex != null) {
+            updates["labelColorHex"] = if (labelColorHex == "#NONE#") FieldValue.delete() else labelColorHex
+        }
+        if (isPinned != null) {
+            updates["isPinned"] = isPinned
+        }
+        if (priorityOrder != null) {
+            updates["priorityOrder"] = if (priorityOrder <= 0) FieldValue.delete() else priorityOrder
+        }
+
+        if (updates.isNotEmpty()) {
+            docRef.update(updates).await()
+            refreshFromCloud()
         }
     }
 
@@ -140,6 +275,10 @@ class ThreadInboxStore private constructor(
         val runtime = runtimeForAgent(agent) ?: return null
         val recordID = (data["id"] as? String)?.ifBlank { null } ?: documentID
         val updatedAt = epochMillis(data["updatedAt"]) ?: System.currentTimeMillis()
+        val customTitle = data["customTitle"] as? String
+        val labelColorHex = data["labelColorHex"] as? String
+        val isPinned = data["isPinned"] as? Boolean ?: false
+        val priorityOrder = (data["priorityOrder"] as? Number)?.toInt()
         return CLIAgentSessionRecord(
             id = recordID,
             agent = agent,
@@ -149,7 +288,11 @@ class ThreadInboxStore private constructor(
             modelName = data["modelName"] as? String,
             workspaceLabel = data["workspaceLabel"] as? String,
             updatedAtEpoch = updatedAt,
-            messages = parseMessages(data["messages"])
+            messages = parseMessages(data["messages"]),
+            customTitle = customTitle,
+            labelColorHex = labelColorHex,
+            isPinned = isPinned,
+            priorityOrder = priorityOrder
         )
     }
 

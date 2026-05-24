@@ -462,6 +462,108 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertTrue(deniedFrames.isEmpty)
     }
 
+    @MainActor
+    func testPhoneControlGateDenialEmitsControlDeniedFrame() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let peerNodeId = "ios-phone-denied"
+        let provider = StaticPhoneControlAuthorityProvider(
+            expectedUID: "uid-denied",
+            expectedConnectionID: "conn-denied",
+            expectedPeerNodeID: peerNodeId,
+            publicKey: privateKey.publicKey
+        )
+        let replies = ControlFrameCapture()
+        let coordinator = ComputerUseSessionCoordinator(
+            configuration: ComputerUseSessionCoordinator.Configuration(
+                userId: "uid-denied",
+                macHostNodeId: "mac-denied",
+                entitlement: ComputerUseEntitlementSnapshot(
+                    isActive: true,
+                    productId: "hosted_computer_use_sync",
+                    allowsSystem: true,
+                    allowsPhoneControl: true
+                ),
+                quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-23"),
+                auditBaseDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("computer-use-phone-denied-\(UUID().uuidString)", isDirectory: true),
+                macAppVersion: "test"
+            ),
+            authorityProvider: provider,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            approvalPresenter: { request, _ in
+                HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "test",
+                    respondedAt: Date()
+                )
+            }
+        )
+        let started = try await coordinator.startSession(
+            request: ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "client-denied")
+            )
+        )
+
+        let dispatcher = coordinator.controlDispatcher
+        await dispatcher(
+            HermesRealtimeRelayFrame(
+                type: .controlClassify,
+                uid: "uid-denied",
+                connectionId: "conn-denied",
+                control: HermesRealtimeRelayControlPayload(
+                    streamClass: MediaStreamClass.controlInput.rawValue,
+                    sessionId: started.sessionId,
+                    authorityPeerNodeId: peerNodeId
+                )
+            ),
+            { frame in await replies.record(frame) }
+        )
+        coordinator.updateEntitlement(ComputerUseEntitlementSnapshot(
+            isActive: false,
+            productId: "hosted_computer_use_sync",
+            allowsSystem: true,
+            allowsPhoneControl: true
+        ))
+
+        let placeholder = emptyAuthority()
+        var intent = HermesRealtimeRelayInputIntent(
+            kind: .tap,
+            normalizedX: 0.5,
+            normalizedY: 0.5,
+            authority: placeholder
+        )
+        let signed = try ComputerUsePhoneControlSigner().sign(
+            intent: intent,
+            peerNodeId: peerNodeId,
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        intent.authority = envelope(from: signed)
+        await dispatcher(
+            HermesRealtimeRelayFrame(
+                type: .controlInputIntent,
+                uid: "uid-denied",
+                connectionId: "conn-denied",
+                control: HermesRealtimeRelayControlPayload(
+                    streamClass: MediaStreamClass.controlInput.rawValue,
+                    sessionId: started.sessionId,
+                    inputIntent: intent
+                )
+            ),
+            { frame in await replies.record(frame) }
+        )
+
+        let denied = try await replies.firstFrame { $0.type == .controlDenied }
+        XCTAssertEqual(denied.control?.denied?.reason, .entitlement)
+        XCTAssertEqual(denied.control?.denied?.detail, ComputerUseDenyReason.entitlement.rawValue)
+    }
+
     func testSignedScrollIntentDispatchesMacScrollAction() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let signer = ComputerUsePhoneControlSigner()

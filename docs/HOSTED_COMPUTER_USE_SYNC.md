@@ -4,10 +4,12 @@ Hosted Computer Use Sync is the paid entitlement that unlocks OpenBurnBar Comput
 
 ## Product IDs
 
+- `com.openburnbar.computerUse.monthly`
 - `com.openburnbar.hostedComputerUseSync.monthly`
+- `com.openburnbar.proMax.bundle.monthly`
 - `com.openburnbar.proMax.monthly`
 
-Either entitlement unlocks the Computer Use Firestore write paths and the local capability gate snapshot when active.
+Either Computer Use or Pro Max entitlement unlocks the Computer Use Firestore write paths and the local capability gate snapshot when active. The `hostedComputerUseSync` and `proMax.monthly` IDs are legacy aliases kept valid for existing receipts.
 
 ## Client Contract
 

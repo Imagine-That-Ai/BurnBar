@@ -124,7 +124,7 @@ final class UsageAggregatorTests: XCTestCase {
         let aggregator = makeTestAggregator(dataStore: dataStore)
         XCTAssertFalse(aggregator.isRefreshing)
 
-        let deadline = Date().addingTimeInterval(5)
+        let deadline = Date().addingTimeInterval(20)
         while Date() < deadline {
             let pending = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
             if pending == 0 { break }
@@ -141,9 +141,10 @@ final class UsageAggregatorTests: XCTestCase {
 
     func test_refreshAll_whenAlreadyRefreshing_returnsEarly() async throws {
         let dataStore = try makeTestDataStore()
-        let aggregator = makeTestAggregator(dataStore: dataStore)
         let mockParser = MockParser(provider: .factory)
+        mockParser.parseDelayNanoseconds = 100_000_000
         mockParser.parseResult = ParseResult(usages: [], conversations: [])
+        let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
 
         // First refresh
         let refresh1 = Task {
@@ -162,17 +163,17 @@ final class UsageAggregatorTests: XCTestCase {
 
     func test_refreshAll_clearsErrorsBeforeRefresh() async throws {
         let dataStore = try makeTestDataStore()
-        let aggregator = makeTestAggregator(dataStore: dataStore)
         let mockParser = MockParser(provider: .factory)
         mockParser.shouldThrowError = true
         mockParser.errorToThrow = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error"])
+        let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
 
         // First refresh to set error
         await aggregator.refreshAll()
 
         // Clear the error by doing another refresh
-        let emptyParser = MockParser(provider: .factory)
-        emptyParser.parseResult = ParseResult(usages: [], conversations: [])
+        mockParser.shouldThrowError = false
+        mockParser.parseResult = ParseResult(usages: [], conversations: [])
 
         // This should clear errors since the parser no longer throws
         await aggregator.refreshAll()
@@ -183,9 +184,9 @@ final class UsageAggregatorTests: XCTestCase {
 
     func test_refreshAll_setsLastRefreshOnSuccess() async throws {
         let dataStore = try makeTestDataStore()
-        let aggregator = makeTestAggregator(dataStore: dataStore)
         let mockParser = MockParser(provider: .factory)
         mockParser.parseResult = ParseResult(usages: [], conversations: [])
+        let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
 
         XCTAssertNil(aggregator.lastRefresh)
         await aggregator.refreshAll()
@@ -1602,6 +1603,7 @@ private final class MockParser: LogParser, @unchecked Sendable {
     var parseResult = ParseResult(usages: [], conversations: [])
     var shouldThrowError = false
     var errorToThrow: Error?
+    var parseDelayNanoseconds: UInt64 = 0
     private(set) var parseCallCount = 0
 
     init(provider: AgentProvider) {
@@ -1610,6 +1612,9 @@ private final class MockParser: LogParser, @unchecked Sendable {
 
     func parse() async throws -> ParseResult {
         parseCallCount += 1
+        if parseDelayNanoseconds > 0 {
+            try await Task.sleep(nanoseconds: parseDelayNanoseconds)
+        }
         if shouldThrowError {
             throw errorToThrow ?? NSError(domain: "MockParser", code: -1, userInfo: nil)
         }

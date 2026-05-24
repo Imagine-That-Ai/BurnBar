@@ -154,6 +154,9 @@ enum SettingsAnchor {
     static let useWebsiteBackground = "general.appearance.useWebsiteBackground"
     static let desktopWallpaperEnabled = "general.appearance.desktopWallpaperEnabled"
     static let desktopWallpaperBackground = "general.appearance.desktopWallpaperBackground"
+    static let desktopWallpaperSpeed = "general.appearance.desktopWallpaperSpeed"
+    static let desktopWallpaperProviderGlyphs = "general.appearance.desktopWallpaperProviderGlyphs"
+    static let desktopWallpaperClickCycle = "general.appearance.desktopWallpaperClickCycle"
 
     // General → Defaults
     static let defaultsTimeRange = "general.defaults.timeRange"

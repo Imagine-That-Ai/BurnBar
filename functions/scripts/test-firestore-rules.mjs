@@ -80,6 +80,26 @@ async function seedBurnBarProEntitlement(uid) {
   });
 }
 
+async function seedHostedComputerUseEntitlement(
+  uid,
+  entitlementId = "hosted_computer_use_sync",
+  productID = "com.openburnbar.hostedComputerUseSync.monthly"
+) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), `users/${uid}/entitlements/${entitlementId}`),
+      {
+        id: entitlementId,
+        active: true,
+        productID,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        expireAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00.000Z")),
+        schemaVersion: 1,
+      }
+    );
+  });
+}
+
 function authedDb(uid) {
   return testEnv.authenticatedContext(uid, { email: `${uid}@example.test` }).firestore();
 }
@@ -154,6 +174,154 @@ test("owners can publish iroh pairing data and audit events without leaking secr
       schemaVersion: 1,
     })
   );
+});
+
+test("mobile agent grant queue is entitlement-gated and metadata-only", async () => {
+  const db = authedDb("grant-user");
+  const otherDb = authedDb("mallory");
+  const authorityPath = "users/grant-user/agent_grant_authorities/phone-1";
+  const requestPath = "users/grant-user/agent_capability_grant_requests/grant-1";
+  const authorityDoc = {
+    sourceDeviceId: "phone-1",
+    peerNodeId: "ios-phone-" + "a".repeat(24),
+    publicKeyBase64: "A".repeat(44),
+    updatedAt: serverTimestamp(),
+  };
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/grant-user/escrow_devices/phone-1"), {
+      deviceId: "phone-1",
+      platform: "iOS",
+      deviceName: "Grant Phone",
+      trustState: "trusted",
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await assertFails(setDoc(doc(db, authorityPath), authorityDoc));
+  await seedHostedComputerUseEntitlement("grant-user");
+  await assertSucceeds(setDoc(doc(db, authorityPath), authorityDoc));
+  await assertFails(getDoc(doc(otherDb, authorityPath)));
+  await assertFails(
+    setDoc(doc(db, "users/grant-user/agent_grant_authorities/phone-2"), {
+      ...authorityDoc,
+      sourceDeviceId: "phone-2",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, authorityPath), {
+      ...authorityDoc,
+      prompt: "do desktop work",
+    })
+  );
+
+  const baseRequest = {
+    requestId: "grant-1",
+    runtime: "hermes",
+    threadId: "thread-1",
+    preset: "desktop",
+    capabilities: ["desktop_browser", "desktop_screenshot", "workspace_read", "desktop_file_export"],
+    trustMode: "manual",
+    deliveryMode: "live_then_queued",
+    requestedAt: 804934232,
+    expiresAt: 804936032,
+    grantDurationSeconds: 1800,
+    sourceDeviceId: "phone-1",
+    clientIntentId: "intent-1",
+    localAuthenticationSatisfied: true,
+    authority: {
+      peerNodeId: authorityDoc.peerNodeId,
+      counter: 1,
+      timestamp: 804934232,
+      intentHashBlake3: "a".repeat(64),
+      signatureEd25519: "B".repeat(88),
+    },
+    status: "queued",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  await assertSucceeds(setDoc(doc(db, requestPath), baseRequest));
+  await assertFails(getDoc(doc(otherDb, requestPath)));
+  await assertFails(
+    setDoc(doc(db, "users/grant-user/agent_capability_grant_requests/grant-with-prompt"), {
+      ...baseRequest,
+      requestId: "grant-with-prompt",
+      prompt: "create an svg on my desktop",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/grant-user/agent_capability_grant_requests/grant-bad-capability"), {
+      ...baseRequest,
+      requestId: "grant-bad-capability",
+      capabilities: ["desktop_browser", "messages"],
+    })
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(db, requestPath),
+      {
+        status: "applied",
+        receipt: {
+          receiptId: "receipt-1",
+          requestId: "grant-1",
+          runtime: "hermes",
+          threadId: "thread-1",
+          status: "applied",
+          appliedGrantId: "agent-grant-1",
+          capabilities: ["desktop_browser", "desktop_screenshot", "workspace_read", "desktop_file_export"],
+          trustMode: "manual",
+          receivedAt: 804934233,
+          grantExpiresAt: 804936033,
+          sourceDeviceId: "phone-1",
+          message: "Grant applied.",
+        },
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, requestPath),
+      {
+        threadId: "other-thread",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+});
+
+test("current and legacy computer use subscription product ids satisfy the client authority gate", async () => {
+  const cases = [
+    ["computer-use-current", "hosted_computer_use_sync", "com.openburnbar.computerUse.monthly"],
+    ["computer-use-legacy", "hosted_computer_use_sync", "com.openburnbar.hostedComputerUseSync.monthly"],
+    ["pro-max-current", "burnbar_pro_max", "com.openburnbar.proMax.bundle.monthly"],
+    ["pro-max-legacy", "burnbar_pro_max", "com.openburnbar.proMax.monthly"],
+  ];
+
+  for (const [uid, entitlementId, productID] of cases) {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), `users/${uid}/escrow_devices/phone-1`), {
+        deviceId: "phone-1",
+        platform: "iOS",
+        deviceName: "Grant Phone",
+        trustState: "trusted",
+        updatedAt: serverTimestamp(),
+      });
+    });
+    await seedHostedComputerUseEntitlement(uid, entitlementId, productID);
+
+    await assertSucceeds(
+      setDoc(doc(authedDb(uid), `users/${uid}/agent_grant_authorities/phone-1`), {
+        sourceDeviceId: "phone-1",
+        peerNodeId: `${uid}-peer-${"a".repeat(24)}`,
+        publicKeyBase64: "A".repeat(44),
+        updatedAt: serverTimestamp(),
+      })
+    );
+  }
 });
 
 test("owner can write free usage rows without hosted cloud entitlement", async () => {

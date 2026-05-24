@@ -181,11 +181,11 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(today.providerSummaries.map(\.provider), [.codex])
     }
 
-    func test_sqliteDateStringFormatsLocalWallTimeForDashboardWindows() {
-        let startOfToday = Calendar.current.startOfDay(for: Date())
-        let rendered = OpenBurnBarDatabase.sqliteDateString(startOfToday)
+    func test_sqliteDateStringFormatsCanonicalUTCForDashboardWindows() {
+        let utcMidnight = Date(timeIntervalSince1970: 1_779_580_800)
+        let rendered = OpenBurnBarDatabase.sqliteDateString(utcMidnight)
 
-        XCTAssertTrue(rendered.hasSuffix("00:00:00.000"))
+        XCTAssertEqual(rendered, "2026-05-24 00:00:00.000")
     }
 
     func test_makeProviderSummaries_groupsProvidersAndModelsInOneDerivedSnapshot() throws {

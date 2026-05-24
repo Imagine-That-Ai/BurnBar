@@ -111,7 +111,8 @@ final class MediaFrameProtocolTests: XCTestCase {
             requestId: "req_abc",
             requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
             requesterDisplayName: "Alberto's iPhone",
-            streamClass: MediaStreamClass.screenVideo.rawValue
+            streamClass: MediaStreamClass.screenVideo.rawValue,
+            focusFollowMode: AgentFocusFollowMode.smart.rawValue
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -128,6 +129,7 @@ final class MediaFrameProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.media?.mirrorRequest?.requesterDisplayName, "Alberto's iPhone")
         XCTAssertEqual(decoded.media?.mirrorRequest?.streamClass,
                        MediaStreamClass.screenVideo.rawValue)
+        XCTAssertEqual(decoded.media?.mirrorRequest?.focusFollowMode, AgentFocusFollowMode.smart.rawValue)
     }
 
     func testMirrorRequestDecodesAndroidISODateAndStreamingCapabilities() throws {
@@ -161,6 +163,48 @@ final class MediaFrameProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.requestId, "mirror_android")
         XCTAssertEqual(decoded.requesterDisplayName, "Alberto's Android")
         XCTAssertEqual(decoded.streamingCapabilities?.source, "MediaCodec")
+    }
+
+    func testFocusContextRoundTripsAsOptionalMediaPayload() throws {
+        let focus = HermesRealtimeRelayFocusContext(
+            appName: "Chrome",
+            bundleId: "com.google.Chrome",
+            windowTitle: "OpenBurnBar",
+            windowId: 42
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaStreamFrame,
+            uid: "u1",
+            connectionId: "c1",
+            media: HermesRealtimeRelayMediaPayload(
+                streamClass: MediaStreamClass.screenVideo.rawValue,
+                focusContext: focus
+            )
+        )
+
+        let decoded = try JSONDecoder().decode(
+            HermesRealtimeRelayFrame.self,
+            from: try JSONEncoder().encode(frame)
+        )
+
+        XCTAssertEqual(decoded.media?.focusContext, focus)
+        XCTAssertNil(decoded.media?.mirrorRequest)
+    }
+
+    func testOlderMirrorRequestWithoutFocusModeStillDecodes() throws {
+        let json = """
+        {
+          "requestId": "mirror_legacy",
+          "requestedAt": "2026-05-18T09:30:00Z",
+          "requesterDisplayName": "Legacy iPhone",
+          "streamClass": "media.screen.video"
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayMirrorRequest.self, from: json)
+
+        XCTAssertEqual(decoded.requestId, "mirror_legacy")
+        XCTAssertNil(decoded.focusFollowMode)
     }
 
     func testMirrorAckOmitsNilCooldownFromJSON() throws {
@@ -427,5 +471,34 @@ final class MediaFrameProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.type, .mediaMirrorStop)
         XCTAssertEqual(decoded.requestId, "req_stop")
         XCTAssertEqual(decoded.media?.mirrorStop, stop)
+    }
+
+    func testMirrorStopFrameDecodesIsoDateForAndroidTolerance() throws {
+        let raw = #"""
+        {
+          "type": "media.mirror.stop",
+          "uid": "u1",
+          "connectionId": "c1",
+          "requestId": "req_stop",
+          "protocolVersion": 1,
+          "media": {
+            "mirrorStop": {
+              "requestId": "req_stop",
+              "stoppedAt": "2026-05-21T12:00:00.000Z",
+              "reason": "activity_destroyed"
+            }
+          }
+        }
+        """#
+
+        let decoded = try JSONDecoder().decode(
+            HermesRealtimeRelayFrame.self,
+            from: Data(raw.utf8)
+        )
+
+        XCTAssertEqual(decoded.type, .mediaMirrorStop)
+        XCTAssertEqual(decoded.media?.mirrorStop?.requestId, "req_stop")
+        XCTAssertEqual(decoded.media?.mirrorStop?.reason, "activity_destroyed")
+        XCTAssertNotNil(decoded.media?.mirrorStop?.stoppedAt)
     }
 }

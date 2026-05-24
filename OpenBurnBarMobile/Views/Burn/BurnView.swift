@@ -17,6 +17,8 @@ struct BurnView: View {
     @State private var selectedWindow: RollupWindowKey = .today
     @State private var expandedProvider: String?
     @State private var sheetProvider: String?
+    @State private var isEditing = false
+    @State private var draggingKey: String? = nil
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -51,6 +53,18 @@ struct BurnView: View {
         }
         .navigationTitle("Burn")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(isEditing ? "Done" : "Edit") {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isEditing.toggle()
+                    }
+                    HapticBus.toggle()
+                }
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(MobileTheme.primaryGradient)
+            }
+        }
         .toolbarBackground(.hidden, for: .navigationBar)
         .task {
             if let initialFocus { expandedProvider = initialFocus }
@@ -319,13 +333,15 @@ struct BurnView: View {
                 accent: MobileTheme.ember
             )
             ForEach(allProviderKeys, id: \.self) { providerKey in
+                let index = allProviderKeys.firstIndex(of: providerKey) ?? 0
                 BurnProviderRow(
                     providerKey: providerKey,
                     snapshots: quotaStore.snapshotsByProvider[providerKey] ?? [],
                     accountCount: quotaStore.accountCount(for: providerKey),
                     routingState: quotaStore.routingState(for: ProviderID(rawValue: providerKey)),
-                    isExpanded: expandedProvider == providerKey,
+                    isExpanded: isEditing ? false : (expandedProvider == providerKey),
                     onToggle: {
+                        guard !isEditing else { return }
                         withAnimation(AuroraDesign.Motion.auroraSpring) {
                             expandedProvider = expandedProvider == providerKey ? nil : providerKey
                         }
@@ -333,6 +349,55 @@ struct BurnView: View {
                     },
                     onOpenDetail: { sheetProvider = providerKey }
                 )
+                .jiggling(isEnabled: isEditing, index: index)
+                .onLongPressGesture(minimumDuration: 0.6) {
+                    HapticBus.refreshStarted() // haptic pop
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        isEditing = true
+                    }
+                }
+                .draggable(providerKey) {
+                    BurnProviderRow(
+                        providerKey: providerKey,
+                        snapshots: quotaStore.snapshotsByProvider[providerKey] ?? [],
+                        accountCount: quotaStore.accountCount(for: providerKey),
+                        routingState: quotaStore.routingState(for: ProviderID(rawValue: providerKey)),
+                        isExpanded: false,
+                        onToggle: {},
+                        onOpenDetail: {}
+                    )
+                    .frame(width: 340)
+                    .onAppear {
+                        draggingKey = providerKey
+                    }
+                }
+                .dropDestination(for: String.self) { items, _ in
+                    draggingKey = nil
+                    return true
+                } isTargeted: { isTargeted in
+                    if isTargeted, let dragged = draggingKey, dragged != providerKey {
+                        moveProvider(from: dragged, to: providerKey)
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    if isEditing {
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                quotaStore.hideProvider(providerKey)
+                            }
+                            HapticBus.destructive()
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundStyle(Color.red)
+                                .background(Circle().fill(Color.white).frame(width: 16, height: 16))
+                                .shadow(color: .black.opacity(0.2), radius: 2)
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: -8, y: -8)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
             }
             if allProviderKeys.isEmpty {
                 AuroraStatePane(
@@ -445,6 +510,21 @@ struct BurnView: View {
         _ = await (q, d)
     }
 
+    private func moveProvider(from sourceKey: String, to targetKey: String) {
+        var order = allProviderKeys
+        guard let sourceIdx = order.firstIndex(of: sourceKey),
+              let targetIdx = order.firstIndex(of: targetKey) else { return }
+
+        if sourceIdx != targetIdx {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                order.remove(at: sourceIdx)
+                order.insert(sourceKey, at: targetIdx)
+                quotaStore.updateProviderOrder(order)
+            }
+            HapticBus.toggle()
+        }
+    }
+
     // MARK: - Derived
 
     private var quotaItems: [QuotaRingsConstellation.Item] {
@@ -454,8 +534,7 @@ struct BurnView: View {
                 ?? AgentProvider.fromPersistedToken(key) else { return nil }
             let pressure = snaps
                 .flatMap(\.buckets)
-                .filter { $0.limit > 0 }
-                .map { max(0, $0.remaining) / $0.limit }
+                .compactMap(\.displayRemainingFraction)
                 .min() ?? 1.0
             return QuotaRingsConstellation.Item(
                 provider: provider,
@@ -475,27 +554,24 @@ struct BurnView: View {
     private var allProviderKeys: [String] {
         var seen = Set<String>()
         var keys: [String] = []
-        for k in quotaStore.urgentProviders {
+        for k in quotaStore.visibleProviders {
             if seen.insert(k).inserted { keys.append(k) }
         }
-        for k in quotaStore.healthyProviders {
-            if seen.insert(k).inserted { keys.append(k) }
-        }
-        // Surface providers that the user has connected as cloud accounts but
-        // for which the upstream returned no usable quota signal yet (e.g.
-        // MiniMax Token Plan unlimited rows, Z.ai endpoints that return zero
-        // buckets). The dashboard still needs a tile for these so users can
-        // confirm their key is wired up — `BurnProviderRow` already renders a
-        // graceful "no signal" state when its `snapshots` list is empty.
         let connectedProviderKeys = Set(
             quotaStore.accounts
                 .filter { $0.status != .deleted }
                 .map(\.providerID.rawValue)
         )
-        for k in connectedProviderKeys.sorted() {
+        for k in connectedProviderKeys {
             if seen.insert(k).inserted { keys.append(k) }
         }
-        return keys
+        let order = quotaStore.providerOrderTokens
+        return keys.sorted { lhs, rhs in
+            let lhsIdx = order.firstIndex(of: lhs) ?? Int.max
+            let rhsIdx = order.firstIndex(of: rhs) ?? Int.max
+            if lhsIdx != rhsIdx { return lhsIdx < rhsIdx }
+            return lhs < rhs
+        }
     }
 
     private var quotaEmptyMessage: String {
@@ -638,18 +714,20 @@ private struct BurnProviderRow: View {
 
     private var hasUrgentBucket: Bool {
         snapshots.flatMap(\.buckets).contains { bucket in
-            guard bucket.limit > 0 else { return false }
-            return max(0, bucket.remaining) / bucket.limit < 0.25
+            guard let fraction = bucket.displayRemainingFraction else { return false }
+            return fraction < 0.25
         }
     }
 
     private var mostPressuredBucket: ProviderQuotaBucket? {
         snapshots
             .flatMap(\.buckets)
-            .filter { $0.limit > 0 }
-            .min {
-                max(0, $0.remaining) / $0.limit < max(0, $1.remaining) / $1.limit
-            } ?? snapshots.first?.buckets.first
+            .compactMap { bucket -> (bucket: ProviderQuotaBucket, fraction: Double)? in
+                guard let fraction = bucket.displayRemainingFraction else { return nil }
+                return (bucket, fraction)
+            }
+            .min { $0.fraction < $1.fraction }?
+            .bucket ?? snapshots.first?.buckets.first
     }
 
     var body: some View {
@@ -742,5 +820,47 @@ private struct BurnProviderRow: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(MobileTheme.Colors.surfaceElevated.opacity(0.6))
         )
+    }
+}
+
+// MARK: - Jiggle Modifier
+
+private struct JiggleModifier: ViewModifier {
+    let isEnabled: Bool
+    let index: Int
+    @State private var isJiggling = false
+
+    func body(content: Content) -> some View {
+        let rotation = isEnabled ? (isJiggling ? 1.1 : -1.1) : 0.0
+        let offsetX = isEnabled ? (isJiggling ? -0.8 : 0.8) : 0.0
+        let offsetY = isEnabled ? (isJiggling ? 0.8 : -0.8) : 0.0
+
+        content
+            .rotationEffect(.degrees(rotation))
+            .offset(x: offsetX, y: offsetY)
+            .task(id: isEnabled) {
+                if isEnabled {
+                    do {
+                        let delayMs = index % 5
+                        try await Task.sleep(nanoseconds: UInt64(delayMs) * 25_000_000)
+                        withAnimation(
+                            Animation.easeInOut(duration: 0.11 + Double(index % 3) * 0.008)
+                                .repeatForever(autoreverses: true)
+                        ) {
+                            isJiggling = true
+                        }
+                    } catch {
+                        // Safe exit when task is cancelled
+                    }
+                } else {
+                    isJiggling = false
+                }
+            }
+    }
+}
+
+extension View {
+    func jiggling(isEnabled: Bool, index: Int) -> some View {
+        self.modifier(JiggleModifier(isEnabled: isEnabled, index: index))
     }
 }

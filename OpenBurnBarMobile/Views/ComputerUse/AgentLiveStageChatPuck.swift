@@ -102,7 +102,7 @@ struct AgentLiveStageChatPuck: View {
 
             if unreadDelta > 0, !presenter.chatPuckExpanded {
                 Text("\(unreadDelta)")
-                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1.5)
@@ -203,7 +203,7 @@ struct AgentLiveStageChatPuck: View {
                                 .font(.system(size: 22, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.32))
                             Text("Type to brief Hermes while the agent works.")
-                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.6))
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 16)

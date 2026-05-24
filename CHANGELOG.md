@@ -7,6 +7,202 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Dashboard drill-down affordances
+- **Made overview activity cards navigable.** Recent Sessions now opens the
+  full Session Logs workspace, and Model Leaders rows open the matching model
+  detail page with the searchable session ledger.
+
+### Fixed — Mercury Mac mirror reliability
+- **Restored the Mac Local Network permission declaration.** The built macOS
+  app now carries the real `NSLocalNetworkUsageDescription` and Bonjour service
+  declarations used by Mercury, Hermes relay, Cast, and Smart Hub paths, so
+  macOS can prompt and authorize LAN transport instead of silently reporting
+  `Local network prohibited`.
+- **Kept OpenBurnBar chrome out of display mirrors.** Display capture now
+  excludes the OpenBurnBar Mac app from ScreenCaptureKit display streams, so the
+  phone sees the real Mac desktop instead of the transient "Starting mirror"
+  overlay or tray popover.
+- **Made mirror controls use the live Mercury control stream.** iOS and Android
+  now send tap, pointer, keyboard, scroll, and display-select actions through
+  the active `media.control` stream, and both clients surface Mac
+  `control.denied` replies such as missing Accessibility permission.
+- **Kept full-screen mirror tools interactive while control warms up.** iOS no
+  longer disables touch, trackpad, keyboard, or direct display switching while
+  the phone-control sender is being prepared, and legacy v1 mirror frames use
+  the larger screen-frame ceiling before chunking so fallback keyframes do not
+  drop before reaching the phone.
+- **Retargeted stale iPhone control streams before sending Mac input.** Phone
+  control frames now verify that the live Mercury stream matches the frame's
+  current Mac connection ID before sending. If the app had been attached to an
+  older route, the coordinator closes that stale stream, redials the active Mac,
+  and only then sends taps, trackpad clicks, keyboard input, or display actions.
+- **Added the missing iPhone trust path for Mac control.** The iOS mirror now
+  registers the phone as a controller, exposes a Trust action in the mirror
+  dock, auto-retries signed control setup after promoting a pending current
+  iPhone, accepts current and legacy Computer Use/Pro Max product IDs in the
+  Firestore authority gate, and explains trusted-device or entitlement failures
+  instead of silently showing local tap ripples that never reach the Mac.
+- **Made mobile mirror keyboards type directly into the Mac.** iOS and Android
+  now use hidden keyboard-capture fields for Mercury mirror typing, stream
+  committed text plus Return/Tab/Delete over phone-control intents, and keep the
+  phone UI free of lingering text-entry bars after the keyboard is dismissed.
+- **Stopped defaulting to fake mobile cursors.** The iOS mirror hides its local
+  cursor overlay by default, and Android no longer draws its own mirror cursor,
+  so the Mac cursor captured in the stream is the pointer users see and control.
+- **Stopped applying agent Computer Use action caps to human phone control.**
+  Signed iOS and Android mirror input still goes through entitlement,
+  Accessibility, deny-region, scope, and kill-switch checks, but no longer burns
+  through the browser/agent action budget or returns a generic Computer Use
+  limit after repeated taps, pointer moves, or keyboard input.
+
+### Added — Agent desktop permission grants
+- **Made desktop tools user-grantable from Hermes chat.** Hermes, OpenClaw, Pi,
+  Codex, and Claude now share a per-thread `AgentCapabilityGrant` model for
+  Browser, screenshot, Accessibility inspect, Mac input, workspace read,
+  workspace write, and shell access.
+- **Brought desktop grants to iPhone, iPad, and Android.** Hermes, Pi, Codex,
+  Claude, and OpenClaw mobile chat surfaces now include an Agent Permissions
+  control with Off, Low, Workspace, Desktop, All, and YOLO presets. Desktop,
+  All, and YOLO require Face ID/Touch ID or Android biometric unlock before the
+  phone can issue the signed grant.
+- **Made mobile grants live-first and queue-safe.** Phones send signed
+  `control.agent_grant.request` frames over the paired Mac iroh control stream
+  when available, or fall back to a metadata-only Firestore queue that the Mac
+  listener validates and receipts.
+- **Routed granted tools through the real Computer Use stack.** Hermes/OpenClaw/Pi
+  receive OpenAI-compatible function tools while a grant is active; browser
+  actions go through daemon Browser Computer Use, Mac input/inspect actions go
+  through the app-owned System Computer Use coordinator, and workspace/shell
+  tools stay confined to the selected chat workspace. Workspace file tools now
+  reject symlink escapes, empty-file writes work, and shell writes are denied
+  outside the workspace by the local macOS sandbox.
+- **Added explicit Desktop export and YOLO shell tools.** `desktop_export_file`
+  copies granted workspace artifacts to
+  `~/Desktop/OpenBurnBar Agent Drops/{threadId}/`, while
+  `shell_run_unrestricted` is available only through YOLO/Trusted
+  all-capability grants.
+- **Mapped grants onto native CLI permissions.** Codex receives read-only or
+  workspace-write sandbox arguments from the active grant, while Claude receives
+  matching `--allowedTools` and edit-permission arguments. The YOLO preset maps
+  to each CLI's explicit dangerous/full-permission bypass flag.
+- **Made permission choice obvious.** The chat UI now starts with Off, Low,
+  Workspace, Desktop, All, and YOLO presets, with fine-grained toggles and risk
+  copy for users who want exact control.
+- **Added revocation and docs.** Grants are revoked on backend/thread changes,
+  checked before every brokered tool call, surfaced in the chat UI, and
+  documented in `docs/HERMES_COMPUTER_USE.md`.
+
+### Added — Hermes Skill Runs on mobile
+- **Made Hermes Skill Runs first-class mobile missions.** iOS, iPadOS, and
+  Android mission requests now carry shared Skill Run metadata
+  (`sourceSkillID`, `sourceSurface`, `deliveryMode`, and
+  `parentHermesThreadID`) so companion apps can receive and follow live Mac
+  execution timelines.
+- **Added customizable delivery controls.** Agent subscriptions now support
+  `action_only`, `full_stream`, and `muted` delivery modes across iOS/iPadOS
+  and Android, with Android subscription topics syncing through Firestore
+  instead of staying local-only.
+- **Added live follow-along and PiP for Skill Runs.** iOS, iPadOS, and Android
+  now surface eligible Skill Runs in a floating in-app tile, and text-only
+  Skill Runs can enter OS Picture in Picture while preserving the existing
+  Mercury/Agent Watch video PiP path.
+- **Documented the Skill Run contract.** Added `docs/HERMES_SKILL_RUNS.md` and
+  updated the Hermes BurnBar skill with stable mobile-ready skill IDs.
+
+### Fixed — Cross-platform swarm palette settings
+- **Made app-wide mobile swarms follow the selected palette and provider glyph
+  filters.** iOS, iPadOS, and Android now apply the chosen color palette to the
+  shared app backdrop and swarm particles, and the provider glyph customization
+  controls affect the general app background instead of only wallpaper
+  generation surfaces.
+
+### Fixed — Live desktop wallpaper appearance settings
+- **Applied wallpaper appearance changes immediately.** The macOS desktop
+  wallpaper now observes the provider glyph list, auto-cycle toggle, and
+  click-to-cycle toggle without requiring an app restart, and Hermes provider
+  glyphs now resolve to the anime-girl Hermes logo instead of falling back to a
+  generic generated mark.
+
+### Fixed — Mobile quota freshness
+- **Stopped stale quota snapshots from winning mobile summaries.** iOS and
+  Android now drop time-stale bucket values when a fresh snapshot exists for
+  the same provider account, normalize bucket dedupe keys across punctuation
+  changes, and avoid presenting no-signal Android quota docs as `0%`.
+
+### Fixed — iPad Agent Watch screen-share parity
+- **Opened paired-Mac screen shares from the iPad Hermes split view.** iPad now
+  keeps the same app-scoped Agent Watch live stage as iPhone and resolves the
+  paired Mac tile directly into Mercury Live, so screen-share viewing, PiP
+  setup, and live-activity deep links work from the iPad shell instead of
+  requiring the phone layout.
+- **Stopped stale Mercury reconnect loops on iPad.** The iPad Mercury Live
+  detail view now rejects stopped, failed, or wrong-relay control-stream
+  coordinators and reboots the selected Mac route instead of cycling between
+  connecting and lost-connection states.
+
+### Fixed — Swarm glyph inspection timing
+- **Let provider and symbol glyphs settle before cycling.** Standard swarm mode
+  now waits for static glyph formations to finish converging, then keeps them
+  visible for a short admire hold before transforming into the next swarm shape
+  across macOS/iOS/iPadOS and Android wallpaper surfaces.
+
+### Added — Click-to-Open and Long-press-to-Cancel Active Missions
+- **Click-to-Open progress dashboard**: Active mission tiles in the Agents tab (iOS single-column and multi-column split layout sidebars) are now clickable, opening the live progress tracking sheet (`MissionLiveDetailView`) to observe real-time logs, outputs, and milestones.
+- **Tap-and-Hold visual interactive cancellation**: Added a premium spring-animated visual transition that reveals a circular red `"X"` overlay button on active mission tiles during long-press, complete with custom threshold haptics (`HapticBus.threshold()`).
+- **Destructive cancellation confirmation**: Pressing the close `"X"` button triggers an elegant Swift confirmation dialog before destructively cancelling the mission via the client's `cancelMission(requestID:)` Firestore writer.
+- **Daemon-level shell process and streaming generation termination**: Defined a thread-safe `MissionCancellationTracker` inside the Mac daemon listener. The daemon intercepts the cancellation snapshot, immediately terminates running CLI sub-processes (via `process.terminate()`), and cleanly cancels active interactive chat stream generation (via `chatController.cancelGeneration()`).
+
+### Added — xAI / Grok as a full-service quota provider
+- **Promoted Grok (xAI) to a first-class quota provider.** xAI now appears as a
+  subscription card with a real remaining-percentage, participates in failover
+  routing alongside Claude / Codex / Factory / MiniMax, and renders on the Pixel
+  Clock and Nest Hub smart-display surfaces with a dedicated 8×8 Grok glyph.
+- **Three SuperGrok consumer tiers plus the GrokBuild developer tier.** A plan
+  picker (SuperGrok Lite / SuperGrok / SuperGrok Heavy / GrokBuild) is available
+  in the quota popover, command center, and the macOS plan wizard. SuperGrok
+  tiers estimate a rolling 2-hour prompt window from local routing activity;
+  GrokBuild reads exact prepaid credit balance and 24h/7d/30d spend from the xAI
+  Management API.
+- **Management-key auth.** A new optional `xai-mgmt-…` Management Key (stored in
+  the device keychain, separate from the inference key) unlocks exact GrokBuild
+  credit reporting. Mobile provider connections and the Firebase quota-refresh
+  backend recognize xAI end-to-end.
+
+### Fixed — Quota account visibility controls
+- **Allowed multiple OpenAI/Codex OAuth profiles with the same account label.**
+  The add-account flow now dedupes only the exact local auth directory, keeps
+  same-email isolated profiles distinguishable, and shows the current local CLI
+  login beside saved reserve profiles on the quota dashboard.
+- **Added per-account quota bar visibility.** Expanded quota cards now let users
+  show or hide individual bucket bars, with Show all / Hide all controls and
+  persisted selections per account.
+
+### Fixed — Mercury mirror iOS controls
+- **Persisted mirror consent after the first Mac approval.** Accepting a phone
+  mirror request now enables the existing Mac auto-accept fast path, advertises
+  the trusted state through Mercury presence, and changes mobile pending copy to
+  “opening mirror” instead of telling an already-approved user to check the Mac.
+- **Stopped false “Mac video stalled” recovery prompts.** The Mac mirror sink
+  now emits lightweight health heartbeats while a mirror is active, Android
+  treats fresh Mac heartbeats as live stream health even when the desktop is
+  visually idle, and stale receiver state starts automatic mirror recovery
+  instead of telling the user to tap Retry.
+- **Restored direct Mac input from the iOS mirror.** Single taps now send
+  primary click intents immediately, long-press still maps to secondary click,
+  trackpad mode appears as soon as it is selected, the mirror cursor is visible
+  before the first pointer event, and the Mac typing bar retries focus so the
+  iOS keyboard reliably opens.
+- **Restored Android mirror control parity.** Android now sends the same
+  `pointer_move`, `pointer_click`, and `mouseButton` control payloads as iOS,
+  exposes explicit View/Touch/Trackpad/Scroll modes, shows a live mirror cursor,
+  opens a focused Mac typing row, and sends complete scroll endpoints instead of
+  malformed partial scroll intents.
+- **Cleared Mac-side mirror sessions when phones hang up.** iPhone/iPad now sends
+  `media.mirror.stop` even when the full-screen viewer is dismissed outside the
+  close button, Android emits the same stop frame on close/back/activity teardown,
+  and the Mac immediately frees the active mirror slot so reconnects and another
+  paired device can connect without waiting for a stale session to time out.
+
 ### Fixed — Cached input cost accounting
 - **Corrected inflated GPT-5.5 cached-input estimates.** Added the OpenAI
   GPT-5.5 catalog entry and refreshed the GPT-5.5 Factory-family cache pricing
@@ -37,8 +233,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cross-platform shared simulation.** Added `SwarmCanvasView` in
   `OpenBurnBarCore` driving both AgentLens (Mac) and OpenBurnBarMobile from
   one `TimelineView` + `Canvas` implementation with two paces (energetic for
-  Mac, cinematic for iPhone/iPad) and adaptive particle budgets (1200 on Mac,
-  720 on iPad, 360 on iPhone, halved under Low Power Mode). Android gets a
+  Mac, cinematic for iPhone/iPad) and adaptive particle budgets (1800 on Mac,
+  1080 on iPad, 520 on iPhone, halved under Low Power Mode). Android gets a
   parallel `SwarmBackground` composable using `withFrameNanos` + Compose
   `Canvas`, scaled per device class and respecting Power Save mode. Both
   honor Reduce Motion (pauses cycling, silences the noise field).
@@ -53,13 +249,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BurnBar logo swarm formation.** The shared swarm cycle now adds the
   OpenBurnBar flame-shaped bar graph mark as a first-class particle formation
   between the code glyph and quota rings.
-- **Swarm wallpaper polish.** The BurnBar logo formation now renders upright,
-  active wallpaper particles share the field across every running provider
-  detected from the process table, and the Desktop Wallpaper Background picker
-  uses distinct preview swatches instead of nearly identical dark dots. Provider
-  colors remain exact outside the BurnBar flame, whose particles now use
-  provider-family highlights and shadows so a single active provider still reads
-  dimensional instead of flat.
+- **Provider-logo and Grok/xAI swarm formations.** Provider logos can now form
+  concurrently instead of one-at-a-time, default mode preserves each provider's
+  brand colors, selected swarm palettes tint logo highlights intentionally, and
+  macOS can cycle through symbols, individual provider marks, Grok, xAI, and
+  multi-provider formations by clicking empty desktop space.
+- **Asset-derived logo dot masks and wallpaper speed dial.** Provider-logo
+  formations now sample bundled logo assets into pure dot masks instead of
+  letting text glyph particles pollute the marks, so Gemini/Antigravity keeps
+  its rainbow source colors, Cursor/Grok/OpenAI/Codex match the app assets, and
+  macOS gets a live speed dial for desktop swarm drift and cycle pacing.
+- **Complete provider-logo swarm coverage.** The desktop click-cycle and
+  cross-platform swarm cycle now include every `AgentProvider` case — Factory,
+  Claude Code, Codex, OpenCode, Gemini CLI, Antigravity, OpenAI, DeepSeek,
+  MiniMax, Z.ai, xAI, Cursor, Copilot, Kimi, Aider, Cline, Kilo Code, Roo Code,
+  Forge, Augment, Hermes, Pi Agent, Goose, OpenClaw, Ollama, Windsurf, and
+  Warp — with grouped formations sized for legible logo detail instead of one
+  overcrowded tile.
+- **Pristine logo sampling.** Swift and Android logo samplers now detect and
+  remove solid asset backgrounds before generating dot targets, preventing
+  white rounded-square PNG backgrounds from turning into giant dotted boxes
+  around provider marks.
+- **Provider glyph customization.** macOS desktop wallpaper settings and the
+  iPhone/iPad wallpaper exporter now include a collapsible provider-glyph
+  customizer, while Android live wallpaper settings expose the same provider
+  filter. Selection changes feed the live swarm cycle so disabled providers no
+  longer appear in click-cycle, default-cycle, or grouped logo formations.
+- **Swarm wallpaper polish.** The BurnBar logo formation now uses the real
+  bundled flame/bar-graph silhouette so the flame stays above the bars instead
+  of wrapping under them, active wallpaper particles share the field across
+  every running provider detected from the process table, and the Desktop
+  Wallpaper Background picker uses distinct preview swatches instead of nearly
+  identical dark dots. Provider colors remain exact outside the BurnBar flame,
+  whose particles now use provider-family highlights and shadows so a single
+  active provider still reads dimensional instead of flat.
 
 ### Added — Iroh Services observability
 - **Official Iroh Services endpoint metrics.** Upgraded the native iroh bridge

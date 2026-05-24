@@ -92,7 +92,9 @@ extension ProviderBrand {
             candidates.append(contentsOf: ["OpenAILogo", "CodexLogo"])
         case "opencode", "open-code":
             candidates.append("OpenCodeLogo")
-        case "google", "gemini", "gemini-cli", "antigravity", "antigravitycli", "antigravity-cli":
+        case "antigravity", "antigravitycli", "antigravity-cli":
+            candidates.append(contentsOf: ["AntigravityLogo", "GoogleLogo", "GeminiCLILogo"])
+        case "google", "gemini", "gemini-cli":
             candidates.append(contentsOf: ["GoogleLogo", "GeminiCLILogo"])
         case "xai", "grok", "x-ai":
             candidates.append("GrokLogo")

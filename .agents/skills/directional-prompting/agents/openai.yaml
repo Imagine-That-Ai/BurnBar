@@ -1,0 +1,4 @@
+interface:
+  display_name: "Directional Prompting"
+  short_description: "Outcome-first plus directional language for any prompt"
+  default_prompt: "Use directional-prompting whenever you write or audit a prompt, agent directive, skill description, slash command, AGENTS.md, CLAUDE.md, tool description, or eval rubric. Open with the outcome block (goal, success criteria, stopping condition), then make every sentence in the body name the path forward with positive verbs so the wrong behavior has no room to exist."

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Image
@@ -74,9 +75,12 @@ import com.openburnbar.data.assistants.AssistantChatMessage
 import com.openburnbar.data.assistants.AssistantChatThread
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
+import com.openburnbar.data.computeruse.AgentCapabilityGrantState
+import com.openburnbar.data.computeruse.AgentDesktopCapability
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.components.ProviderLogo
+import com.openburnbar.ui.computeruse.AgentPermissionGrantSheet
 import java.util.UUID
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -135,6 +139,7 @@ fun CliAgentChatView(
     var stagedAttachments by remember(activeThreadID) {
         mutableStateOf<List<AssistantChatAttachment>>(emptyList())
     }
+    var showPermissionSheet by remember(activeThreadID) { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
 
@@ -230,6 +235,12 @@ fun CliAgentChatView(
                         Icon(
                             imageVector = Icons.Filled.Psychology,
                             contentDescription = "Model",
+                        )
+                    }
+                    IconButton(onClick = { showPermissionSheet = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.Security,
+                            contentDescription = "Agent permissions",
                         )
                     }
                     IconButton(onClick = { /* settings — defer to global Settings */ }) {
@@ -342,6 +353,14 @@ fun CliAgentChatView(
                 },
             )
         }
+    }
+
+    if (showPermissionSheet) {
+        AgentPermissionGrantSheet(
+            runtime = runtime.token,
+            threadId = activeThreadID,
+            onDismiss = { showPermissionSheet = false },
+        )
     }
 }
 
@@ -867,14 +886,18 @@ private fun sendMessage(
 
     val job = scope.launch {
         val requestID = try {
+            val grant = AgentCapabilityGrantState.optimisticGrant(runtime.token, threadID)
             dispatcher.dispatch(
                 title = thread.title,
                 prompt = text,
                 missionKind = "chat",
                 requestedRuntime = runtime.token,
                 approvalMode = "existing_policy",
-                commandsAllowed = false,
-                fileEditsAllowed = false,
+                commandsAllowed = grant?.capabilities?.any {
+                    it == AgentDesktopCapability.SHELL.wireValue ||
+                        it == AgentDesktopCapability.SHELL_UNRESTRICTED.wireValue
+                } == true,
+                fileEditsAllowed = grant?.capabilities?.contains(AgentDesktopCapability.WORKSPACE_WRITE.wireValue) == true,
                 clientThreadID = threadID,
                 resumeAction = "continue",
             )

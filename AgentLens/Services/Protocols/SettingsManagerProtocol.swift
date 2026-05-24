@@ -27,6 +27,12 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Derived SwiftUI color scheme from appearance mode.
     var preferredSwiftUIColorScheme: ColorScheme? { get }
 
+    /// Provider glyphs enabled in the desktop swarm wallpaper logo cycle.
+    var desktopWallpaperProviderGlyphs: [AgentProvider] { get set }
+
+    /// Whether to exclude brand shapes from the swarm cycle.
+    var excludeBrandShapesFromSwarm: Bool { get set }
+
     // MARK: - Behavior
 
     /// Refresh interval in seconds for usage aggregation.
@@ -258,6 +264,7 @@ protocol SettingsManagerProtocol: AnyObject {
 
     /// Factory quota plan tier.
     var factoryQuotaPlanTier: FactoryQuotaPlanTier { get set }
+    var xaiQuotaPlanTier: XAIQuotaPlanTier { get set }
 
     /// Whether the smart hub quota display integration is enabled.
     var smartHubQuotaDisplayEnabled: Bool { get set }

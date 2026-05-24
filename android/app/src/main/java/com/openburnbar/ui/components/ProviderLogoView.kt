@@ -42,6 +42,7 @@ object ProviderLogo {
         AgentProvider.AIDER        -> R.drawable.aider_logo
         AgentProvider.CURSOR       -> R.drawable.cursor_logo
         AgentProvider.OPEN_AI      -> R.drawable.open_ai_logo
+        AgentProvider.DEEP_SEEK    -> R.drawable.deep_seek_logo
         AgentProvider.CODEX        -> R.drawable.codex_logo
         AgentProvider.OPENCODE     -> R.drawable.open_code_logo
         AgentProvider.ZAI          -> R.drawable.zai_logo
@@ -53,13 +54,15 @@ object ProviderLogo {
         AgentProvider.FORGE_DEV    -> R.drawable.forge_logo
         AgentProvider.AUGMENT      -> R.drawable.augment_logo
         AgentProvider.HERMES       -> R.drawable.hermes_logo
+        AgentProvider.PI_AGENT     -> R.drawable.pi_agent_logo
         AgentProvider.GEMINI_CLI   -> R.drawable.gemini_cli_logo
         AgentProvider.GOOSE        -> R.drawable.goose_logo
         AgentProvider.OPEN_CLAW    -> R.drawable.open_claw_logo
         AgentProvider.OLLAMA       -> R.drawable.ollama_logo
         AgentProvider.WINDSURF     -> R.drawable.windsurf_logo
         AgentProvider.WARP         -> R.drawable.warp_logo
-        AgentProvider.ANTIGRAVITY  -> R.drawable.gemini_cli_logo
+        AgentProvider.XAI          -> R.drawable.grok_logo
+        AgentProvider.ANTIGRAVITY  -> R.drawable.antigravity_logo
     }
 
     /// Asset for an `AssistantRuntimeID`. Maps the 5 runtimes to their

@@ -175,6 +175,26 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("google"), .geminiCLI)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("antigravity"), .antigravity)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("antigravity-cli"), .antigravity)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("xai"), .xAI)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("x-ai"), .xAI)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("grok"), .xAI)
+    }
+
+    func test_xaiDescriptor_exposesInferenceAndManagementMethods() {
+        guard let descriptor = BurnBarProviderAuthRegistry.descriptors.first(where: { $0.providerID == "xai" }) else {
+            XCTFail("xAI descriptor not registered")
+            return
+        }
+        let methodIDs = Set(descriptor.methods.map(\.id))
+        XCTAssertTrue(methodIDs.contains("xai-api-key"))
+        XCTAssertTrue(methodIDs.contains("xai-management-key"))
+
+        guard let management = descriptor.methods.first(where: { $0.id == "xai-management-key" }) else {
+            XCTFail("Management-key method missing")
+            return
+        }
+        XCTAssertTrue(management.unlocksQuotaRefresh)
+        XCTAssertEqual(management.prefixHint, "xai-mgmt-")
     }
 
     func test_storageScope_appKeychainHasAccountIdentifier() {

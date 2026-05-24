@@ -64,4 +64,75 @@ final class QuotaSettingsTests: XCTestCase {
         let settings2 = QuotaSettings(persistence: coordinator2)
         XCTAssertTrue(settings2.tokenizerAssistedFallbackEnabled)
     }
+
+    // MARK: - Custom Quota Preferences Tests
+
+    func test_percentageDisplayMode_persistsAcrossRecreate() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+        settings.percentageDisplayMode = .fractional
+        coordinator.flush()
+
+        let coordinator2 = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings2 = QuotaSettings(persistence: coordinator2)
+        XCTAssertEqual(settings2.percentageDisplayMode, .fractional)
+    }
+
+    func test_providerOrder_persistsAcrossRecreate() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        // Shuffle or change order
+        let newOrder: [AgentProvider] = [.cursor, .claudeCode, .codex, .openAI]
+        settings.providerOrder = newOrder
+        coordinator.flush()
+
+        let coordinator2 = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings2 = QuotaSettings(persistence: coordinator2)
+
+        // Assert first few match our custom order
+        XCTAssertEqual(settings2.providerOrder.prefix(4), ArraySlice(newOrder))
+    }
+
+    func test_visibleProviders_persistsAcrossRecreate() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        let newVisible: Set<AgentProvider> = [.cursor, .claudeCode]
+        settings.visibleProviders = newVisible
+        coordinator.flush()
+
+        let coordinator2 = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings2 = QuotaSettings(persistence: coordinator2)
+
+        XCTAssertEqual(settings2.visibleProviders, newVisible)
+    }
+
+    func test_hiddenBuckets_persistsAcrossRecreate() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        let hidden: Set<String> = ["cursor:fast", "claudeCode:weekly"]
+        settings.hiddenBuckets = hidden
+        coordinator.flush()
+
+        let coordinator2 = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings2 = QuotaSettings(persistence: coordinator2)
+
+        XCTAssertEqual(settings2.hiddenBuckets, hidden)
+    }
+
+    func test_bucketOrders_persistsAcrossRecreate() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        let orders = ["cursor": ["slow", "fast"], "claudeCode": ["weekly", "mcp"]]
+        settings.bucketOrders = orders
+        coordinator.flush()
+
+        let coordinator2 = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings2 = QuotaSettings(persistence: coordinator2)
+
+        XCTAssertEqual(settings2.bucketOrders, orders)
+    }
 }

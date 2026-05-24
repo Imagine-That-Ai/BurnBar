@@ -91,10 +91,15 @@ class QuotaStore(
             // See ActivityStore.startListening for the rationale —
             // Firestore listener errors must NEVER reach
             // Dispatchers.Main.immediate as unhandled exceptions.
-            repo.listenToQuotaSnapshots()
+            repo.listenToQuotaSnapshotUpdates()
                 .catch { e -> _error.value = e.message ?: e::class.simpleName }
-                .collect { snapshots ->
-                    _snapshots.value = snapshots.dedupeFresh()
+                .collect { update ->
+                    val incoming = update.snapshots.dedupeFresh()
+                    _snapshots.value = if (update.isFromCache && _snapshots.value.isNotEmpty()) {
+                        (_snapshots.value + incoming).dedupeFresh()
+                    } else {
+                        incoming
+                    }
                     refreshStaleCloudQuotaIfPossible()
                 }
         }

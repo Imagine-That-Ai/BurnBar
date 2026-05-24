@@ -3,6 +3,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseCore
 import OpenBurnBarCore
+import OpenBurnBarIrohRelay
 @testable import OpenBurnBarMobile
 
 @MainActor
@@ -16,6 +17,58 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(
             HermesIrohRelayTransport.bootstrapStartupTimeout(connectTimeout: 10),
             35
+        )
+    }
+
+    func testMediaControlStreamUsesPublishedRelayURLAndMediaTimeout() async throws {
+        let defaultsKey = "hermes_iroh_hosted_relay_url"
+        UserDefaults.standard.set("https://unused-remote-config-relay.example/", forKey: defaultsKey)
+        defer { UserDefaults.standard.removeObject(forKey: defaultsKey) }
+
+        let directory = InMemoryIrohPairingDirectory()
+        let publisher = IrohPairingPublisher(directory: directory)
+        let macKeypair = IrohPairingKeypair()
+        let uid = "uid-mercury"
+        let connectionID = "relay-mac"
+        let publishedRelayURL = "https://relay.mac.example/"
+        let now = Date(timeIntervalSince1970: 1_715_000_000)
+        _ = try await publisher.publish(
+            uid: uid,
+            connectionId: connectionID,
+            nodeId: "mac-node",
+            relayURL: publishedRelayURL,
+            directAddresses: ["10.0.0.2:1234"],
+            publishedAt: now,
+            with: macKeypair
+        )
+
+        let factory = RecordingIrohRelayTransportFactory()
+        let transport = HermesIrohRelayTransport(
+            directory: directory,
+            pairingPublicKeyProvider: StaticIrohPairingPublicKeyProvider(publicKey: macKeypair.publicKeyRaw),
+            auditLogger: NoopIrohTransportAuditLogger(),
+            transportFactory: { relayURL in
+                factory.make(relayURL: relayURL)
+            },
+            connectTimeout: HermesIrohRelayTransport.defaultConnectTimeout,
+            now: { now.addingTimeInterval(30) }
+        )
+
+        _ = try await transport.openMediaControlStream(
+            uid: uid,
+            connectionID: connectionID,
+            relayPublicKey: macKeypair.publicKeyRaw
+        )
+
+        XCTAssertEqual(factory.requestedRelayURLs, [publishedRelayURL])
+        let endpoint = try XCTUnwrap(factory.transports.first)
+        XCTAssertEqual(endpoint.startCount, 1)
+        XCTAssertEqual(endpoint.connectAttempts.count, 1)
+        XCTAssertEqual(endpoint.connectAttempts.first?.target.relayURL, publishedRelayURL)
+        XCTAssertEqual(endpoint.connectAttempts.first?.target.directAddresses, ["10.0.0.2:1234"])
+        XCTAssertEqual(
+            endpoint.connectAttempts.first?.timeout,
+            HermesIrohRelayTransport.defaultMediaControlConnectTimeout
         )
     }
 
@@ -1928,6 +1981,86 @@ final class HermesServiceTests: XCTestCase {
 
 private final class RequestCapture: @unchecked Sendable {
     nonisolated(unsafe) var authorization: String?
+}
+
+private struct StaticIrohPairingPublicKeyProvider: IrohPairingPublicKeyProviding {
+    let publicKey: Data
+
+    func fetchPublicKey(uid: String) async throws -> Data {
+        publicKey
+    }
+}
+
+private struct NoopIrohTransportAuditLogger: IrohTransportAuditLogging {
+    func record(
+        event: IrohTransportAuditEvent,
+        uid: String,
+        connectionId: String,
+        transport: IrohTransportSelection?,
+        rttMillis: Int?,
+        detail: [String: String]
+    ) async {}
+}
+
+@MainActor
+private final class RecordingIrohRelayTransportFactory {
+    private(set) var requestedRelayURLs: [String?] = []
+    private(set) var transports: [RecordingIrohRelayTransport] = []
+
+    func make(relayURL: String?) -> any IrohRelayTransport {
+        requestedRelayURLs.append(relayURL)
+        let transport = RecordingIrohRelayTransport(relayURL: relayURL)
+        transports.append(transport)
+        return transport
+    }
+}
+
+private final class RecordingIrohRelayTransport: IrohRelayTransport, @unchecked Sendable {
+    struct ConnectAttempt {
+        let target: IrohDialTarget
+        let timeout: TimeInterval
+    }
+
+    let relayURL: String?
+    private(set) var startCount = 0
+    private(set) var shutdownCount = 0
+    private(set) var connectAttempts: [ConnectAttempt] = []
+
+    init(relayURL: String?) {
+        self.relayURL = relayURL
+    }
+
+    func start() async throws -> IrohEndpointIdentity {
+        startCount += 1
+        return IrohEndpointIdentity(
+            nodeId: "ios-node",
+            rawPublicKey: Data(repeating: 0x11, count: 32),
+            relayURL: relayURL
+        )
+    }
+
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
+        connectAttempts.append(ConnectAttempt(target: target, timeout: timeout))
+        return RecordingIrohRelayStream()
+    }
+
+    func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.endpointNotReady
+    }
+
+    func shutdown() async {
+        shutdownCount += 1
+    }
+}
+
+private actor RecordingIrohRelayStream: IrohRelayStream {
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {}
+
+    func receive() async throws -> HermesRealtimeRelayFrame? {
+        nil
+    }
+
+    func close() async {}
 }
 
 @MainActor

@@ -16,38 +16,48 @@ struct HermesSquareThreadRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            avatar
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(identity?.displayName ?? "Agent")
-                        .font(.caption.bold())
-                        .foregroundStyle(DesignSystemColors.textSecondary)
-                    Spacer()
-                    Text(MissionConsoleFormatting.relativeTime(item.lastActivityAt))
-                        .font(.caption2)
-                        .foregroundStyle(DesignSystemColors.textMuted)
-                }
-                Text(item.title)
-                    .font(.callout.bold())
-                    .foregroundStyle(DesignSystemColors.textPrimary)
-                    .lineLimit(1)
-                Text(item.preview)
-                    .font(.caption)
-                    .foregroundStyle(DesignSystemColors.textMuted)
-                    .lineLimit(2)
-                MobileAttachmentSummaryStrip(attachments: item.attachments)
-                    .padding(.top, item.attachments.isEmpty ? 0 : 3)
-                if item.needsAttention {
-                    HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.circle.fill")
+        HStack(spacing: 0) {
+            if let colorHex = item.labelColorHex, !colorHex.isEmpty {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color(hex: colorHex))
+                    .frame(width: 4)
+                    .padding(.vertical, 8)
+                    .padding(.trailing, 8)
+            }
+
+            HStack(alignment: .top, spacing: 10) {
+                avatar
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(identity?.displayName ?? "Agent")
+                            .font(.caption.bold())
+                            .foregroundStyle(DesignSystemColors.textSecondary)
+                        Spacer()
+                        Text(MissionConsoleFormatting.relativeTime(item.lastActivityAt))
                             .font(.caption2)
-                            .foregroundStyle(DesignSystemColors.warning)
-                        Text("Needs attention")
-                            .font(.caption2.bold())
-                            .foregroundStyle(DesignSystemColors.warning)
+                            .foregroundStyle(DesignSystemColors.textMuted)
                     }
-                    .padding(.top, 2)
+                    Text(item.customTitle ?? item.title)
+                        .font(.callout.bold())
+                        .foregroundStyle(DesignSystemColors.textPrimary)
+                        .lineLimit(1)
+                    Text(item.preview)
+                        .font(.caption)
+                        .foregroundStyle(DesignSystemColors.textMuted)
+                        .lineLimit(2)
+                    MobileAttachmentSummaryStrip(attachments: item.attachments)
+                        .padding(.top, item.attachments.isEmpty ? 0 : 3)
+                    if item.needsAttention {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(DesignSystemColors.warning)
+                            Text("Needs attention")
+                                .font(.caption2.bold())
+                                .foregroundStyle(DesignSystemColors.warning)
+                        }
+                        .padding(.top, 2)
+                    }
                 }
             }
         }

@@ -126,64 +126,29 @@ extension DashboardView {
     }
 
     var activityLane: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-            UnifiedGlassCard {
-                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-                    Text("Recent Sessions")
-                        .font(UnifiedDesignSystem.Typography.headline)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-
-                    VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                        ForEach(Array(filteredUsages.prefix(6))) { usage in
-                            SessionPreviewRow(usage: usage, settingsManager: settingsManager)
-                        }
-                    }
+        DashboardActivityLaneView(
+            usages: filteredUsages,
+            topModels: topModels,
+            settingsManager: settingsManager,
+            overviewAppeared: overviewAppeared,
+            onOpenAllSessions: {
+                sessionLogJumpTarget = nil
+                withAnimation(UnifiedDesignSystem.Animation.standard) {
+                    navigate(to: .sessionLogs)
                 }
-                .padding(DesignSystem.Spacing.lg)
-            }
-            .opacity(overviewAppeared ? 1 : 0)
-            .offset(y: overviewAppeared ? 0 : 8)
-            .animation(UnifiedDesignSystem.Animation.standard.delay(0.28), value: overviewAppeared)
-
-            UnifiedGlassCard {
-                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-                    Text("Model Leaders")
-                        .font(UnifiedDesignSystem.Typography.headline)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-
-                    VStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                        ForEach(Array(topModels.prefix(4).enumerated()), id: \.offset) { index, item in
-                            HStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                                Text("\(index + 1)")
-                                    .font(UnifiedDesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                                    .frame(width: 16, alignment: .leading)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.model)
-                                        .font(UnifiedDesignSystem.Typography.body)
-                                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-
-                                    Text(item.provider.displayName)
-                                        .font(UnifiedDesignSystem.Typography.tiny)
-                                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                                }
-
-                                Spacer()
-
-                                Text(settingsManager.formatUsageMetric(cost: item.cost, tokens: item.tokens))
-                                    .font(UnifiedDesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                            }
-                        }
-                    }
+            },
+            onOpenSession: { _ in
+                sessionLogJumpTarget = nil
+                withAnimation(UnifiedDesignSystem.Animation.standard) {
+                    navigate(to: .sessionLogs)
                 }
-                .padding(DesignSystem.Spacing.lg)
+            },
+            onNavigateToModel: { model in
+                withAnimation(UnifiedDesignSystem.Animation.standard) {
+                    navigate(to: .model(model))
+                }
             }
-            .opacity(overviewAppeared ? 1 : 0)
-            .offset(y: overviewAppeared ? 0 : 8)
-            .animation(UnifiedDesignSystem.Animation.standard.delay(0.34), value: overviewAppeared)
-        }
+        )
         .frame(minWidth: 300, idealWidth: 320, maxWidth: 360, alignment: .topLeading)
     }
 

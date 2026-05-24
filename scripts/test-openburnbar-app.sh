@@ -28,7 +28,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-cache_dir="$repo_root/.spm-cache"
+cache_dir="$repo_root/.spm-cache-new"
 artifact_root="$repo_root/.derived-data"
 
 # Keep runnable app/test-host products out of the repo's Documents path. macOS

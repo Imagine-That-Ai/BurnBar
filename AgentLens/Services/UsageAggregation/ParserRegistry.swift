@@ -23,6 +23,7 @@ enum ParserRegistry {
         parsers[.augment] = AugmentParser()
         parsers[.hermes] = HermesParser()
         parsers[.geminiCLI] = GeminiCLIParser()
+        parsers[.antigravity] = AntigravityParser()
         parsers[.goose] = GooseParser()
         parsers[.openClaw] = OpenClawParser()
         parsers[.windsurf] = WindsurfParser()

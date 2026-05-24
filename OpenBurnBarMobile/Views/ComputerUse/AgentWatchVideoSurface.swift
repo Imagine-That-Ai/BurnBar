@@ -6,11 +6,11 @@ import OpenBurnBarMedia
 /// Decodes incoming `MediaFrame`s through `VideoReceivePipeline` and feeds
 /// the resulting `CMSampleBuffer`s into a `AVSampleBufferDisplayLayer`.
 ///
-/// One coordinator per rendering view: the full-bleed Agent Watch screen and
-/// the in-chat Agent Live Stage each own their own coordinator + display
-/// layer so they can render concurrently without contending for a single
-/// hosted layer. Both consume the same `AgentWatchState.currentFrame`
-/// stream, which is gated by `displayLayer.isReadyForMoreMediaData`.
+/// The in-chat Agent Live Stage uses one coordinator owned by
+/// `AgentWatchOverlaySingleton` so system PiP, dock, split, and maximize bind
+/// to one canonical `AVSampleBufferDisplayLayer`. Standalone watch surfaces
+/// may still create their own coordinator when they are not part of that stage
+/// lifecycle.
 @MainActor
 final class AgentWatchVideoCoordinator: ObservableObject {
     let displayLayer: AVSampleBufferDisplayLayer

@@ -85,6 +85,9 @@ extension AgentProvider {
         case .ollama: return "~/.ollama/logs"
         case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
         case .warp: return "~/Library/Application Support/dev.warp.Warp-Stable"
+        // xAI (Grok) usage flows through the xAI Management API / SuperGrok
+        // event log written by Hermes; there is no scanned log directory.
+        case .xAI: return "~/Library/Application Support/OpenBurnBar/xai"
         }
     }
 
@@ -118,6 +121,7 @@ extension AgentProvider {
         case .ollama: return "server*.log"
         case .windsurf: return "state.vscdb"
         case .warp: return "warp_network*.log"
+        case .xAI: return "superGrok-events.jsonl"
         }
     }
 
@@ -130,7 +134,7 @@ extension AgentProvider {
         // parsing, but exact aggregate counts.
         case .openAI, .deepSeek:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent, .xAI:
             return .partial
         case .augment:
             return .unsupported
@@ -146,7 +150,7 @@ extension AgentProvider {
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI, .deepSeek:
             return .exact
-        case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama:
+        case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama, .xAI:
             return .estimated
         case .augment:
             return .unavailable

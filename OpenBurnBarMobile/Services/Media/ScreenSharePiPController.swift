@@ -11,29 +11,43 @@ import AVKit
 @MainActor
 final class ScreenSharePiPController: NSObject {
     private weak var displayLayer: AVSampleBufferDisplayLayer?
+    private let isPictureInPictureSupported: () -> Bool
+    private(set) var didRequestAutomaticInlinePiP = false
+    private(set) var isPictureInPictureActive = false
+    var onDidStart: (() -> Void)?
+    var onDidStop: (() -> Void)?
+
     #if canImport(AVKit)
     private var pipController: AVPictureInPictureController?
     #endif
 
+    init(
+        isPictureInPictureSupported: @escaping () -> Bool = {
+            #if canImport(AVKit)
+            AVPictureInPictureController.isPictureInPictureSupported()
+            #else
+            false
+            #endif
+        }
+    ) {
+        self.isPictureInPictureSupported = isPictureInPictureSupported
+        super.init()
+    }
+
     func attach(displayLayer: AVSampleBufferDisplayLayer) {
         #if canImport(AVKit)
+        if self.displayLayer === displayLayer, pipController != nil { return }
         self.displayLayer = displayLayer
-        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        guard isPictureInPictureSupported() else { return }
         let source = AVPictureInPictureController.ContentSource(
             sampleBufferDisplayLayer: displayLayer,
             playbackDelegate: self
         )
         let controller = AVPictureInPictureController(contentSource: source)
         controller.canStartPictureInPictureAutomaticallyFromInline = true
+        didRequestAutomaticInlinePiP = true
+        controller.delegate = self
         self.pipController = controller
-        #endif
-    }
-
-    func startIfPossible() {
-        #if canImport(AVKit)
-        if let pipController, pipController.isPictureInPicturePossible {
-            pipController.startPictureInPicture()
-        }
         #endif
     }
 
@@ -41,6 +55,29 @@ final class ScreenSharePiPController: NSObject {
         #if canImport(AVKit)
         pipController?.stopPictureInPicture()
         #endif
+    }
+
+    @discardableResult
+    func start() -> Bool {
+        #if canImport(AVKit)
+        guard let pipController else { return false }
+        guard !pipController.isPictureInPictureActive else { return true }
+        guard pipController.isPictureInPicturePossible else { return false }
+        pipController.startPictureInPicture()
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    func handleDidStartPictureInPicture() {
+        isPictureInPictureActive = true
+        onDidStart?()
+    }
+
+    func handleDidStopPictureInPicture() {
+        isPictureInPictureActive = false
+        onDidStop?()
     }
 }
 
@@ -79,6 +116,20 @@ extension ScreenSharePiPController: @preconcurrency AVPictureInPictureSampleBuff
         completion completionHandler: @escaping () -> Void
     ) {
         completionHandler()
+    }
+}
+
+extension ScreenSharePiPController: @preconcurrency AVPictureInPictureControllerDelegate {
+    func pictureInPictureControllerDidStartPictureInPicture(
+        _ pictureInPictureController: AVPictureInPictureController
+    ) {
+        handleDidStartPictureInPicture()
+    }
+
+    func pictureInPictureControllerDidStopPictureInPicture(
+        _ pictureInPictureController: AVPictureInPictureController
+    ) {
+        handleDidStopPictureInPicture()
     }
 }
 #endif

@@ -127,6 +127,25 @@ final class MediaPacketCodecTests: XCTestCase {
         }
     }
 
+    func testCustomPayloadCeilingAllowsChunkableMirrorFrames() throws {
+        let codec = MediaPacketCodec(maxPayloadBytes: MediaFrameV2Codec.defaultMaxPayloadBytes)
+        let payloadSize = MediaPacketCodec.defaultMaxPayloadBytes + (64 * 1024)
+        let frame = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 9,
+            frameIndex: 2,
+            presentationTimestampMillis: 1_777,
+            payload: Data(repeating: 0xAB, count: payloadSize)
+        )
+
+        let encoded = try codec.encode(frame)
+        let (decoded, consumed) = try codec.decode(encoded)
+
+        XCTAssertEqual(consumed, encoded.count)
+        XCTAssertEqual(decoded, frame)
+    }
+
     func testTruncatedEnvelopeRejectedAtFirstGuard() {
         let codec = MediaPacketCodec()
         // Length prefix is well-formed but the envelope is shorter than even

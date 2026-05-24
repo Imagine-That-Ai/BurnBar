@@ -26,16 +26,22 @@ final class MissionFABResurrectionControllerTests: XCTestCase {
 
     // MARK: Manual paths
 
-    func testInitialStateIsVisible() {
+    func testInitialStateIsDismissed() {
         let c = MissionFABResurrectionController.offline()
-        XCTAssertFalse(c.isDismissed)
+        XCTAssertTrue(c.isDismissed)
         XCTAssertNil(c.dismissedAt)
         XCTAssertFalse(c.wasAutoResurrected)
         XCTAssertNil(c.autoResurrectReason)
     }
 
+    func testUnpersistedDefaultIsDismissed() {
+        let c = MissionFABResurrectionController()
+        XCTAssertTrue(c.isDismissed)
+        XCTAssertNil(c.dismissedAt)
+    }
+
     func testDismissStampsTimeAndClearsAutoFlag() {
-        let c = MissionFABResurrectionController.offline()
+        let c = MissionFABResurrectionController.offline(initiallyDismissed: false)
         c.dismiss()
         XCTAssertTrue(c.isDismissed)
         XCTAssertNotNil(c.dismissedAt)
@@ -68,7 +74,7 @@ final class MissionFABResurrectionControllerTests: XCTestCase {
     }
 
     func testSetDismissedRoutesToCorrectPath() {
-        let c = MissionFABResurrectionController.offline()
+        let c = MissionFABResurrectionController.offline(initiallyDismissed: false)
         c.setDismissed(true)
         XCTAssertTrue(c.isDismissed)
         c.setDismissed(false)
@@ -77,7 +83,7 @@ final class MissionFABResurrectionControllerTests: XCTestCase {
     }
 
     func testRestoreOnAlreadyVisibleIsNoOp() {
-        let c = MissionFABResurrectionController.offline()
+        let c = MissionFABResurrectionController.offline(initiallyDismissed: false)
         c.restoreFromDot()
         XCTAssertFalse(c.isDismissed)
         XCTAssertNil(c.autoResurrectReason, "Restore on already-visible should not stamp a reason")
@@ -164,7 +170,7 @@ final class MissionFABResurrectionControllerTests: XCTestCase {
     }
 
     func testReconcileOnVisibleOrbDoesNothing() {
-        let c = MissionFABResurrectionController.offline()
+        let c = MissionFABResurrectionController.offline(initiallyDismissed: false)
         let snapshot = MissionConsoleSnapshot(
             health: .empty,
             runtimes: [],
@@ -205,7 +211,7 @@ final class MissionFABResurrectionControllerTests: XCTestCase {
     // MARK: Persistence
 
     func testDismissalSurvivesNewControllerInstance() {
-        let original = MissionFABResurrectionController()
+        let original = MissionFABResurrectionController.offline(initiallyDismissed: false)
         original.dismiss()
         // New instance reads from UserDefaults — cold-launch behaviour.
         let revived = MissionFABResurrectionController()

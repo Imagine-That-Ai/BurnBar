@@ -15,8 +15,8 @@ import com.openburnbar.ui.media.MercuryIncomingSheet
  * because we need lock-screen / turn-screen-on semantics.
  *
  * Launched from:
- *   • `MercuryFcmService` via `FullScreenIntent` (background dispatch
- *     path mirrors iOS Decision 1 — Mac → APNs → PushKit → CallKit).
+ *   • `MercuryFcmService` notification actions (background dispatch path
+ *     mirrors iOS Decision 1 — Mac → APNs → PushKit → CallKit).
  *   • A foreground BurnBar instance via `Intent` (in-app dispatch path).
  *
  * The activity itself does not own the call — it dispatches accept /

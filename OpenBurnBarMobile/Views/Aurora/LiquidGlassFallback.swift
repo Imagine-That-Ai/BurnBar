@@ -33,6 +33,7 @@ struct LiquidGlassFallback: ViewModifier {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
     func body(content: Content) -> some View {
         content
@@ -53,6 +54,7 @@ struct LiquidGlassFallback: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(sheenGradient)
             }
+            .opacity(useWebsiteBackground ? 0.72 : 1.0)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
             ZStack {
@@ -61,6 +63,7 @@ struct LiquidGlassFallback: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(sheenGradient)
             }
+            .opacity(useWebsiteBackground ? 0.72 : 1.0)
         }
     }
 

@@ -9,10 +9,25 @@ import OpenBurnBarCore
 // `ProjectsStore` (no Firestore round-trip).
 
 struct ProjectDetailView: View {
+    enum ProjectDetailTab: String, CaseIterable, Identifiable {
+        case wiki = "📖 Wiki Brief"
+        case stats = "📊 Billing Stats"
+
+        var id: String { rawValue }
+    }
+
     let project: ProjectSummary
     let store: ProjectsStore
 
     @State private var selectedSession: TokenUsage?
+    @State private var activeTab: ProjectDetailTab
+
+    init(project: ProjectSummary, store: ProjectsStore, initialTab: ProjectDetailTab = .wiki) {
+        self.project = project
+        self.store = store
+        self._selectedSession = State(initialValue: nil)
+        self._activeTab = State(initialValue: initialTab)
+    }
 
     private var providerColor: Color {
         project.dominantProvider.map { MobileTheme.Colors.primary(for: $0) } ?? MobileTheme.ember
@@ -25,12 +40,33 @@ struct ProjectDetailView: View {
                 VStack(spacing: MobileTheme.Spacing.lg) {
                     heroCard
                     statRow
-                    projectMemoryCard
-                    if !project.dailyTokens.isEmpty {
-                        chartCard
+                    tabSelector
+
+                    if activeTab == .wiki {
+                        MobileProjectMemoryWikiView(
+                            project: project,
+                            memory: projectMemorySnapshot,
+                            store: store,
+                            selectedSession: $selectedSession
+                        )
+                        .transition(AnyTransition.asymmetric(
+                            insertion: AnyTransition.opacity.combined(with: AnyTransition.move(edge: .leading)),
+                            removal: AnyTransition.opacity.combined(with: AnyTransition.move(edge: .trailing))
+                        ))
+                    } else {
+                        VStack(spacing: MobileTheme.Spacing.lg) {
+                            projectMemoryCard
+                            if !project.dailyTokens.isEmpty {
+                                chartCard
+                            }
+                            topModelsCard
+                            sessionsCard
+                        }
+                        .transition(AnyTransition.asymmetric(
+                            insertion: AnyTransition.opacity.combined(with: AnyTransition.move(edge: .trailing)),
+                            removal: AnyTransition.opacity.combined(with: AnyTransition.move(edge: .leading))
+                        ))
                     }
-                    topModelsCard
-                    sessionsCard
                 }
                 .padding(.horizontal, AuroraDesign.Layout.cardInset)
                 .padding(.vertical, MobileTheme.Spacing.md)
@@ -43,6 +79,40 @@ struct ProjectDetailView: View {
         .navigationDestination(item: $selectedSession) { session in
             SessionDetailView(usage: session)
         }
+    }
+
+    private var tabSelector: some View {
+        HStack(spacing: 0) {
+            ForEach(ProjectDetailTab.allCases) { tab in
+                Button {
+                    HapticBus.send()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        activeTab = tab
+                    }
+                } label: {
+                    Text(tab.rawValue)
+                        .font(MobileTheme.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(activeTab == tab ? MobileTheme.Colors.textPrimary : MobileTheme.Colors.textMuted)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(activeTab == tab ? AnyShapeStyle(MobileTheme.Colors.surfaceElevated) : AnyShapeStyle(Color.clear))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(MobileTheme.Colors.border.opacity(0.32), lineWidth: 0.6)
+                )
+        )
     }
 
     // MARK: - Hero
@@ -111,59 +181,83 @@ struct ProjectDetailView: View {
 
     private var projectMemoryCard: some View {
         let memory = projectMemorySnapshot
-        return AuroraGlassCard(variant: .standard, cornerRadius: 18) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    AuroraSection("Project memory", subtitle: memory.freshnessLabel, accent: MobileTheme.hermesAureate)
-                    Spacer()
-                    Text(memory.generatedAt, style: .relative)
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-
-                Text(memory.summary)
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                ForEach(memory.sections.prefix(2), id: \.title) { section in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(section.title)
-                            .font(MobileTheme.Typography.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text(section.body)
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                            .lineLimit(3)
-                        Text("\(section.citationCount) citation\(section.citationCount == 1 ? "" : "s")")
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.hermesAureate)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(MobileTheme.Colors.border.opacity(0.32), lineWidth: 0.6)
-                            )
-                    )
-                }
-
-                if memory.visuals.isEmpty == false {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(memory.visuals, id: \.id) { visual in
-                                MobileProjectMemoryVisualCard(visual: visual)
-                            }
+        return Button {
+            HapticBus.send()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                activeTab = .wiki
+            }
+        } label: {
+            AuroraGlassCard(variant: .standard, cornerRadius: 18) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        AuroraSection("Project memory", subtitle: memory.freshnessLabel, accent: MobileTheme.hermesAureate)
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Text("Open Wiki")
+                                .font(MobileTheme.Typography.tiny)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(MobileTheme.hermesAureate)
+                            Image(systemName: "chevron.right")
+                                .font(MobileTheme.Typography.caption)
+                                .fontWeight(.bold)
+                                .foregroundStyle(MobileTheme.hermesAureate)
                         }
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(MobileTheme.hermesAureate.opacity(0.12))
+                        )
+                    }
+
+                    Text(memory.summary)
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+
+                    ForEach(memory.sections.prefix(2), id: \.title) { section in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(section.title)
+                                .font(MobileTheme.Typography.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            Text(section.body)
+                                .font(MobileTheme.Typography.tiny)
+                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                                .lineLimit(3)
+                                .multilineTextAlignment(.leading)
+                            Text("\(section.citationCount) citation\(section.citationCount == 1 ? "" : "s")")
+                                .font(MobileTheme.Typography.tiny)
+                                .foregroundStyle(MobileTheme.hermesAureate)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(MobileTheme.Colors.border.opacity(0.32), lineWidth: 0.6)
+                                )
+                        )
+                    }
+
+                    if memory.visuals.isEmpty == false {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(memory.visuals, id: \.id) { visual in
+                                    MobileProjectMemoryVisualCard(visual: visual)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
                     }
                 }
             }
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Chart

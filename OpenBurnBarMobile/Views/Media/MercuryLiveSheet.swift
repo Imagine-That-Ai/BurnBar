@@ -3,10 +3,46 @@ import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 import FirebaseAuth
+@preconcurrency import FirebaseFirestore
 import OSLog
 #if canImport(UIKit)
 import UIKit
 #endif
+
+enum PhoneControlSetupMessage {
+    static let trustedDeviceRequired = "Trust this iPhone for Mac control. If it is already trusted, confirm Computer Use is enabled for this account."
+
+    static func message(for error: Error) -> String {
+        if let gatewayError = error as? CloudGatewayError {
+            switch gatewayError.classification {
+            case .notAuthenticated:
+                return "Sign in to control your Mac."
+            case .networkUnavailable:
+                return "You appear to be offline. Reconnect, then try Mac control again."
+            case .appCheckBlocked:
+                return "App Check blocked Mac control on this iPhone."
+            case .permissionDenied:
+                return trustedDeviceRequired
+            default:
+                return gatewayError.classification.recoveryHint
+            }
+        }
+        if isFirestorePermissionDenied(error) {
+            return trustedDeviceRequired
+        }
+        return error.localizedDescription
+    }
+
+    static func isFirestorePermissionDenied(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == FirestoreErrorDomain,
+           FirestoreErrorCode.Code(rawValue: ns.code) == .permissionDenied {
+            return true
+        }
+        return ns.localizedDescription.localizedCaseInsensitiveContains("permission")
+            || ns.localizedDescription.localizedCaseInsensitiveContains("insufficient")
+    }
+}
 
 /// Mercury Phase 8 — the beautiful entry sheet that opens when the
 /// user taps "My Mac" in the Hermes Square pinned grid. Three actions
@@ -57,12 +93,19 @@ struct MercuryLiveSheet: View {
     @State private var ackAnimateTrigger = false
     @State private var isShowingCustomizeSheet = false
     @StateObject private var screenShareViewer = ScreenShareViewerCoordinator()
-    @StateObject private var phoneControlCoordinator = AgentWatchOverlayCoordinator()
+    /// Mercury screen-share controls share the already-live
+    /// `media.control` stream, matching Android. Agent Watch still owns
+    /// its dedicated Computer Use stream, but the mirror tools must not
+    /// depend on that separate lifecycle.
+    @State private var phoneControlSender: PhoneControlSender?
+    @State private var phoneControlConnectionID: String?
+    @State private var phoneControlStarting = false
     @State private var phoneControlError: String?
     @State private var selectedMirrorDisplayId: String?
     @State private var backgroundImage: UIImage? = nil
     @ObservedObject private var personalizationStore = MercuryPersonalizationStore.shared
     @ObservedObject private var transferHistoryStore = MercuryTransferHistoryStore.shared
+    @State private var dashboardStore = DashboardStore()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dismiss) private var dismiss
@@ -101,7 +144,6 @@ struct MercuryLiveSheet: View {
                     MercuryHeaderCard(
                         peer: peer,
                         nickname: effectiveNickname,
-                        badges: personalization.normalizedBadges(),
                         accent: accent,
                         pulse: pulseTrigger,
                         avatarStyle: personalization.avatar,
@@ -146,6 +188,7 @@ struct MercuryLiveSheet: View {
                         canRequestMirror: canRequestMirror,
                         canPlaceCall: peer.canPlaceCall,
                         canSendFile: peer.canSendFile && fileTransferService != nil,
+                        mirrorAutoAccept: mirrorAutoAccept,
                         awaitingRequestID: awaitingRequestID,
                         sendingFile: sendingFile,
                         mercuryStatusMessage: mercuryStatusMessage,
@@ -197,11 +240,17 @@ struct MercuryLiveSheet: View {
             if !reduceMotion { pulseTrigger.toggle() }
             installAckHandler()
             decodeWallpaper(peer.blurredWallpaperBase64)
+            Task {
+                await dashboardStore.load()
+            }
         }
         .onChange(of: peer.blurredWallpaperBase64) { _, newBase64 in
             decodeWallpaper(newBase64)
         }
         .onDisappear {
+            if activeMirrorRequestID != nil {
+                Task { await stopActiveMirror(reason: "sheet_disappeared") }
+            }
             // Don't permanently remove — `HermesSquareRoot` may have
             // installed a longer-lived handler. Only clear our pending
             // banner state.
@@ -216,46 +265,58 @@ struct MercuryLiveSheet: View {
             awaitingRequestID = nil
             controlStreamCoordinator.mirrorFrameHandler = nil
             controlStreamCoordinator.mirrorFrameV2Handler = nil
+            controlStreamCoordinator.controlDeniedHandler = nil
             screenShareViewer.longTermReferenceTokenHandler = nil
-            Task { await phoneControlCoordinator.stop() }
+            // Do NOT stop the phone control coordinator here — it is the
+            // app-scope singleton; tearing it down would close the
+            // Computer Use bi-stream that the Agent Live Stage and the
+            // You-tab Agent Watch surface also depend on.
         }
         .fullScreenCover(isPresented: $isShowingMirrorViewer) {
             MercuryMirrorViewerFullScreen(
                 coordinator: screenShareViewer,
                 resetToken: activeMirrorRequestID,
                 controlStatus: mirrorControlStatus,
+                controlInputEnabled: activeMirrorRequestID != nil,
                 streamPhase: controlStreamCoordinator.phase,
+                reconnectAttemptStartedAt: controlStreamCoordinator.reconnectAttemptStartedAt,
+                lastFailureReason: controlStreamCoordinator.lastFailureReason,
+                lastLiveAt: controlStreamCoordinator.lastLiveAt,
                 displays: lastAck?.availableDisplays ?? [],
                 selectedDisplayId: selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
                 usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false,
                 sendTapIntent: { x, y, mouseButton in
                     let displayId = selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
-                    Task { try? await phoneControlCoordinator.receiver?.tap(normalizedX: x, normalizedY: y, displayId: displayId, mouseButton: mouseButton) }
+                    Task { await sendPhoneControlIntent(kind: .tap, displayId: displayId, normalizedX: x, normalizedY: y, mouseButton: mouseButton) }
                 },
                 sendScrollIntent: { x1, y1, x2, y2, displayId in
                     Task {
-                        try? await phoneControlCoordinator.receiver?.scrollDrag(
-                            startNormalizedX: x1,
-                            startNormalizedY: y1,
-                            endNormalizedX: x2,
-                            endNormalizedY: y2,
-                            displayId: displayId ?? selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
+                        await sendPhoneControlIntent(
+                            kind: .scroll,
+                            displayId: displayId ?? selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
+                            normalizedX: x1,
+                            normalizedY: y1,
+                            normalizedX2: x2,
+                            normalizedY2: y2
                         )
                     }
                 },
                 sendPointerMoveIntent: { dx, dy in
-                    Task { try? await phoneControlCoordinator.receiver?.pointerMove(deltaX: dx, deltaY: dy) }
+                    Task { await sendPhoneControlIntent(kind: .pointerMove, normalizedX2: dx, normalizedY2: dy) }
                 },
                 sendPointerClickIntent: { mouseButton in
-                    Task { try? await phoneControlCoordinator.receiver?.pointerClick(mouseButton: mouseButton) }
+                    Task { await sendPhoneControlIntent(kind: .pointerClick, mouseButton: mouseButton) }
                 },
                 sendTextIntent: { text in
-                    Task { try? await phoneControlCoordinator.receiver?.type(text) }
+                    Task { await sendPhoneControlIntent(kind: .type, text: text) }
                 },
                 sendShortcutIntent: { key, modifiers in
-                    Task { try? await phoneControlCoordinator.receiver?.shortcut(key: key, modifiers: modifiers) }
+                    Task { await sendPhoneControlIntent(kind: .shortcut, key: key, modifiers: modifiers) }
                 },
                 onSelectDisplay: selectMirrorDisplay,
+                onTrustControlDevice: {
+                    Task { await trustThisIPhoneForControl() }
+                },
                 onForceReconnect: {
                     Task {
                         await controlStreamCoordinator.stop()
@@ -274,6 +335,11 @@ struct MercuryLiveSheet: View {
                     Task { await stopActiveMirror(reason: "viewer_closed") }
                 }
             )
+            .onDisappear {
+                if activeMirrorRequestID != nil {
+                    Task { await stopActiveMirror(reason: "viewer_disappeared") }
+                }
+            }
         }
         .fileImporter(
             isPresented: $isShowingFileImporter,
@@ -365,7 +431,10 @@ struct MercuryLiveSheet: View {
                 )
             }
         case .website:
-            WebsiteBackgroundView(accent: accent)
+            WebsiteBackgroundView(
+                accent: accent,
+                colorDriver: dashboardStore.swarmColorDriver
+            )
         }
     }
 
@@ -431,9 +500,9 @@ struct MercuryLiveSheet: View {
                     .foregroundStyle(.white.opacity(0.85))
                     .multilineTextAlignment(.leading)
             }
-            
+
             Spacer()
-            
+
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     lastError = nil
@@ -451,7 +520,7 @@ struct MercuryLiveSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(.ultraThinMaterial)
-                
+
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color.red.opacity(0.04))
             }
@@ -546,7 +615,7 @@ struct MercuryLiveSheet: View {
 
                 if let cooldown = cooldownSecondsRemaining(for: ack), cooldown > 0 {
                     Text("Cooling down · \(cooldown)s")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.5))
                 }
             }
@@ -570,7 +639,7 @@ struct MercuryLiveSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(.ultraThinMaterial)
-                
+
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(ackColor(for: ack).opacity(0.04))
             }
@@ -693,6 +762,10 @@ struct MercuryLiveSheet: View {
             && controlStreamCoordinator.phase == .live
     }
 
+    private var mirrorAutoAccept: Bool {
+        peer.capabilities.contains(.mirrorAutoAccept)
+    }
+
     private var mercuryStatusMessage: String? {
         if !peer.capabilities.contains(.mirrorHost) {
             return "This Mac is not advertising screen mirroring yet."
@@ -737,7 +810,7 @@ struct MercuryLiveSheet: View {
                     self.activeMirrorRequestID = ack.requestId
                     self.selectedMirrorDisplayId = ack.selectedDisplayId ?? ack.availableDisplays?.first?.id ?? self.selectedMirrorDisplayId
                     self.isShowingMirrorViewer = true
-                    Task { await self.startPhoneControlIfPossible() }
+                    Task { await self.startPhoneControlIfPossible(surfaceError: false) }
                 } else if ack.requestId == self.activeMirrorRequestID {
                     if isActiveDisplaySelectionAck {
                         self.selectedMirrorDisplayId = ack.selectedDisplayId ?? self.selectedMirrorDisplayId
@@ -748,7 +821,9 @@ struct MercuryLiveSheet: View {
                     self.activeMirrorRequestID = nil
                     self.selectedMirrorDisplayId = nil
                     self.isShowingMirrorViewer = false
-                    Task { await self.phoneControlCoordinator.stop() }
+                    // Mirror rejected — keep the singleton's Computer
+                    // Use bi-stream alive; it is shared with other
+                    // surfaces and will be reused on the next mirror.
                 }
                 self.refreshCooldownTicker(for: ack)
             }
@@ -758,6 +833,18 @@ struct MercuryLiveSheet: View {
         }
         controlStreamCoordinator.mirrorFrameV2Handler = { frame in
             await screenShareViewer.ingest(frameV2: frame)
+        }
+        controlStreamCoordinator.controlDeniedHandler = { denied in
+            await MainActor.run {
+                self.phoneControlError = self.phoneControlDeniedMessage(for: denied)
+                switch denied.reason {
+                case .signatureFailure, .counterReplay, .staleTimestamp:
+                    self.phoneControlSender = nil
+                    self.phoneControlConnectionID = nil
+                default:
+                    break
+                }
+            }
         }
         screenShareViewer.longTermReferenceTokenHandler = { token in
             try? await controlStreamCoordinator.sendLongTermReferenceAcknowledgement(
@@ -785,7 +872,18 @@ struct MercuryLiveSheet: View {
         lastError = nil
         lastAck = nil
         lastAckReceivedAt = nil
-        await phoneControlCoordinator.stop()
+        do {
+            try await controlStreamCoordinator.ensureResponsive(uid: uid, connectionID: connectionID)
+        } catch {
+            Self.log.error("mirror_request_probe_failed requestID=\(requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.debugTrace("mirror_request_probe_failed requestID=\(requestID) error=\(error.localizedDescription)")
+            lastError = error.localizedDescription
+            awaitingRequestID = nil
+            return
+        }
+        // Don't tear down the app-scope phone control coordinator on
+        // every mirror request — it stays warm and is reused for tap /
+        // scroll input once the Mac approves the mirror.
         cooldownTickerTask?.cancel()
         cooldownTickerTask = nil
         let request = HermesRealtimeRelayMirrorRequest(
@@ -794,8 +892,9 @@ struct MercuryLiveSheet: View {
             requesterDisplayName: deviceDisplayName(),
             streamClass: MediaStreamClass.screenVideo.rawValue,
             streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
-                mediaFrameVersions: .v1Only
-            ).wireValue
+                mediaFrameVersions: .v1AndV2
+            ).wireValue,
+            focusFollowMode: AgentFocusFollowMode.off.rawValue
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -830,11 +929,11 @@ struct MercuryLiveSheet: View {
     }
 
     private func stopActiveMirror(reason: String) async {
-        guard let uid = uidProvider(), !uid.isEmpty else {
+        guard uidProvider()?.isEmpty == false else {
             activeMirrorRequestID = nil
             selectedMirrorDisplayId = nil
             isShowingMirrorViewer = false
-            await phoneControlCoordinator.stop()
+            // Phone control coordinator is app-scope; do not stop it.
             return
         }
         guard let requestID = activeMirrorRequestID else { return }
@@ -845,21 +944,13 @@ struct MercuryLiveSheet: View {
         lastAckReceivedAt = nil
         cooldownTickerTask?.cancel()
         cooldownTickerTask = nil
-        await phoneControlCoordinator.stop()
-        let stop = HermesRealtimeRelayMirrorStop(
-            requestId: requestID,
-            stoppedAt: Date(),
-            reason: reason
-        )
-        let frame = HermesRealtimeRelayFrame(
-            type: .mediaMirrorStop,
-            uid: uid,
-            connectionId: connectionID,
-            requestId: requestID,
-            media: HermesRealtimeRelayMediaPayload(mirrorStop: stop)
-        )
+        // Phone control coordinator is app-scope; do not stop it.
         do {
-            try await controlStreamCoordinator.send(frame: frame, timeout: 2)
+            try await controlStreamCoordinator.sendMirrorStop(
+                requestId: requestID,
+                reason: reason,
+                timeout: 2
+            )
         } catch {
             Self.log.error("mirror_stop_send_failed requestID=\(requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
             Self.debugTrace("mirror_stop_send_failed requestID=\(requestID) error=\(error.localizedDescription)")
@@ -982,33 +1073,224 @@ struct MercuryLiveSheet: View {
         if let phoneControlError {
             return .unavailable(phoneControlError)
         }
-        switch phoneControlCoordinator.phase {
-        case .live:
+        if phoneControlSender != nil {
             return .live
-        case .dialing, .reconnecting:
+        }
+        if phoneControlStarting {
             return .connecting
-        case .failed(let reason):
-            return .unavailable(reason)
-        case .idle, .stopped:
-            return activeMirrorRequestID == nil ? .unavailable("Mirror is read only.") : .connecting
+        }
+        return activeMirrorRequestID == nil ? .unavailable("Mirror is read only.") : .connecting
+    }
+
+    private func startPhoneControlIfPossible(surfaceError: Bool = true, allowTrustRetry: Bool = true) async {
+        guard let uid = uidProvider(), !uid.isEmpty else {
+            if surfaceError {
+                phoneControlError = "Sign in to control your Mac."
+            }
+            return
+        }
+        if phoneControlSender != nil, phoneControlConnectionID == connectionID { return }
+        phoneControlStarting = true
+        defer { phoneControlStarting = false }
+        do {
+            await LiveDeviceTrustGateway().registerSelfIfNeeded()
+            try await ensurePhoneControlStreamResponsive(uid: uid, connectionID: connectionID)
+            let signingKey = try PhoneControlSigningKeyStore.shared.signingKey()
+            let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+            try await PhoneControlAuthorityPublisher.shared.publish(
+                uid: uid,
+                connectionId: connectionID,
+                deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
+                peerNodeId: peerNodeId,
+                publicKey: signingKey.privateKey.publicKey
+            )
+            try await sendPhoneControlClassify(uid: uid, connectionID: connectionID, peerNodeId: peerNodeId)
+            phoneControlSender = PhoneControlSender(
+                peerNodeId: peerNodeId,
+                uid: uid,
+                connectionId: connectionID,
+                signingKeyProvider: { signingKey },
+                frameSink: { frame in
+                    try await controlStreamCoordinator.send(frame: frame)
+                }
+            )
+            phoneControlConnectionID = connectionID
+            phoneControlError = nil
+        } catch {
+            phoneControlSender = nil
+            phoneControlConnectionID = nil
+            if allowTrustRetry, PhoneControlSetupMessage.isFirestorePermissionDenied(error) {
+                do {
+                    try await LiveDeviceTrustGateway().trustSelfForComputerUseControl()
+                    Self.debugTrace("phone_control_auto_trusted_retry connectionID=\(connectionID) deviceID=\(MobileDeviceIdentity.loadOrCreateDeviceId())")
+                    await startPhoneControlIfPossible(surfaceError: surfaceError, allowTrustRetry: false)
+                    return
+                } catch {
+                    let message = PhoneControlSetupMessage.message(for: error)
+                    Self.log.error("phone_control_auto_trust_failed connectionID=\(self.connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                    Self.debugTrace("phone_control_auto_trust_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
+                    if surfaceError || PhoneControlSetupMessage.isFirestorePermissionDenied(error) {
+                        phoneControlError = message
+                    }
+                    return
+                }
+            }
+            let message = PhoneControlSetupMessage.message(for: error)
+            Self.log.error("phone_control_start_failed connectionID=\(self.connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.debugTrace("phone_control_start_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
+            if surfaceError || PhoneControlSetupMessage.isFirestorePermissionDenied(error) {
+                phoneControlError = message
+            }
         }
     }
 
-    private func startPhoneControlIfPossible() async {
+    private func trustThisIPhoneForControl() async {
+        guard let uid = uidProvider(), !uid.isEmpty else {
+            phoneControlError = "Sign in to control your Mac."
+            return
+        }
+        phoneControlStarting = true
+        defer { phoneControlStarting = false }
+        do {
+            try await LiveDeviceTrustGateway().trustSelfForComputerUseControl()
+            phoneControlSender = nil
+            phoneControlConnectionID = nil
+            phoneControlError = nil
+            Self.debugTrace("phone_control_device_trusted connectionID=\(connectionID) deviceID=\(MobileDeviceIdentity.loadOrCreateDeviceId())")
+            await startPhoneControlIfPossible()
+        } catch {
+            phoneControlSender = nil
+            phoneControlConnectionID = nil
+            phoneControlError = PhoneControlSetupMessage.message(for: error)
+            Self.log.error("phone_control_trust_failed connectionID=\(self.connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.debugTrace("phone_control_trust_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
+        }
+    }
+
+    private func ensurePhoneControlStreamResponsive(uid: String, connectionID: String) async throws {
+        try await controlStreamCoordinator.ensureResponsive(
+            uid: uid,
+            connectionID: connectionID,
+            freshnessInterval: 2.0,
+            probeTimeout: 0.85,
+            restartTimeout: 3.0
+        )
+    }
+
+    private func sendPhoneControlClassify(uid: String, connectionID: String, peerNodeId: String) async throws {
+        try await controlStreamCoordinator.send(frame: HermesRealtimeRelayFrame(
+            type: .controlClassify,
+            uid: uid,
+            connectionId: connectionID,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlInput.rawValue,
+                authorityPeerNodeId: peerNodeId
+            )
+        ))
+    }
+
+    private func phoneControlDeniedMessage(for denied: HermesRealtimeRelayControlDenied) -> String {
+        if denied.reason == .unknown, denied.detail == ComputerUseDenyReason.accessibilityRevoked.rawValue {
+            return "Allow OpenBurnBar in Mac System Settings > Privacy & Security > Accessibility, then reopen the mirror."
+        }
+        switch denied.reason {
+        case .entitlement:
+            return "Mac control is not enabled for this account."
+        case .sessionLimit:
+            return "Mac control session limit reached. Reopen the mirror to start a fresh session."
+        case .dailyLimit:
+            return "Mac control hit today's Computer Use action limit."
+        case .softCap:
+            return "Mac control is limited while Computer Use is in soft-cap mode."
+        case .hardCap:
+            return "Mac control is blocked by the Computer Use hard cap."
+        case .scope:
+            return "The Mac blocked that control action for this screen."
+        case .denyRegion:
+            return "The Mac blocked control in a protected area."
+        case .killSwitch:
+            return "Mac control is temporarily disabled."
+        case .signatureFailure, .counterReplay, .staleTimestamp:
+            return "Mac rejected the control signature. Try the action again."
+        case .unknown:
+            return denied.detail ?? "The Mac rejected that control action."
+        }
+    }
+
+    private func sendPhoneControlIntent(
+        kind: HermesRealtimeRelayInputIntent.Kind,
+        displayId: String? = nil,
+        normalizedX: Double? = nil,
+        normalizedY: Double? = nil,
+        normalizedX2: Double? = nil,
+        normalizedY2: Double? = nil,
+        text: String? = nil,
+        key: String? = nil,
+        modifiers: [String]? = nil,
+        mouseButton: Int? = nil
+    ) async {
         guard let uid = uidProvider(), !uid.isEmpty else {
             phoneControlError = "Sign in to control your Mac."
             return
         }
         do {
-            let pairingPublicKey = try await FirestoreIrohPairingPublicKeyProvider.shared.fetchPublicKey(uid: uid)
-            phoneControlCoordinator.start(
+            try await ensurePhoneControlStreamResponsive(uid: uid, connectionID: connectionID)
+        } catch {
+            self.phoneControlSender = nil
+            self.phoneControlConnectionID = nil
+            phoneControlError = error.localizedDescription
+            Self.debugTrace("phone_control_stream_not_responsive kind=\(kind.rawValue) connectionID=\(connectionID) error=\(error.localizedDescription)")
+            return
+        }
+        if phoneControlSender == nil {
+            await startPhoneControlIfPossible()
+        }
+        guard let phoneControlSender else {
+            Self.debugTrace("phone_control_no_sender_after_start kind=\(kind.rawValue) connectionID=\(connectionID)")
+            return
+        }
+        do {
+            try await sendPhoneControlClassify(
                 uid: uid,
                 connectionID: connectionID,
-                relayPublicKey: pairingPublicKey
+                peerNodeId: phoneControlSender.peerNodeId
             )
+        } catch {
+            self.phoneControlSender = nil
+            self.phoneControlConnectionID = nil
+            phoneControlError = error.localizedDescription
+            Self.debugTrace("phone_control_classify_failed kind=\(kind.rawValue) connectionID=\(connectionID) error=\(error.localizedDescription)")
+            return
+        }
+        let emptyAuthority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        let intent = HermesRealtimeRelayInputIntent(
+            kind: kind,
+            displayId: displayId,
+            normalizedX: normalizedX,
+            normalizedY: normalizedY,
+            normalizedX2: normalizedX2,
+            normalizedY2: normalizedY2,
+            text: text,
+            key: key,
+            modifiers: modifiers,
+            mouseButton: mouseButton,
+            authority: emptyAuthority
+        )
+        do {
+            Self.debugTrace("phone_control_send kind=\(kind.rawValue) connectionID=\(connectionID)")
+            _ = try await phoneControlSender.send(intent: intent)
             phoneControlError = nil
         } catch {
+            self.phoneControlSender = nil
+            self.phoneControlConnectionID = nil
             phoneControlError = error.localizedDescription
+            Self.debugTrace("phone_control_send_failed kind=\(kind.rawValue) connectionID=\(connectionID) error=\(error.localizedDescription)")
         }
     }
 }
@@ -1017,7 +1299,11 @@ private struct MercuryMirrorViewerFullScreen: View {
     @ObservedObject var coordinator: ScreenShareViewerCoordinator
     let resetToken: String?
     let controlStatus: ScreenSharePhoneControlStatus
+    let controlInputEnabled: Bool
     let streamPhase: MediaControlStreamCoordinator.Phase
+    let reconnectAttemptStartedAt: Date?
+    let lastFailureReason: String?
+    let lastLiveAt: Date?
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let usePremiumSOTAUX: Bool
@@ -1028,6 +1314,7 @@ private struct MercuryMirrorViewerFullScreen: View {
     let sendTextIntent: (String) -> Void
     let sendShortcutIntent: (String, [String]) -> Void
     let onSelectDisplay: (String) -> Void
+    let onTrustControlDevice: () -> Void
     let onForceReconnect: () -> Void
     let onRetryRequest: () -> Void
     let onClose: () -> Void
@@ -1037,9 +1324,13 @@ private struct MercuryMirrorViewerFullScreen: View {
             coordinator: coordinator,
             resetToken: resetToken,
             controlStatus: controlStatus,
+            controlInputEnabled: controlInputEnabled,
             displays: displays,
             selectedDisplayId: selectedDisplayId,
             streamPhase: streamPhase,
+            reconnectAttemptStartedAt: reconnectAttemptStartedAt,
+            lastFailureReason: lastFailureReason,
+            lastLiveAt: lastLiveAt,
             usePremiumSOTAUX: usePremiumSOTAUX,
             onForceReconnect: onForceReconnect,
             onRetryRequest: onRetryRequest,
@@ -1050,9 +1341,9 @@ private struct MercuryMirrorViewerFullScreen: View {
             sendTextIntent: sendTextIntent,
             sendShortcutIntent: sendShortcutIntent,
             onSelectDisplay: onSelectDisplay,
+            onTrustControlDevice: onTrustControlDevice,
             onClose: onClose
         )
         .background(Color.black.ignoresSafeArea())
     }
 }
-

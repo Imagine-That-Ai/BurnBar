@@ -104,6 +104,7 @@ tools/burnbar-mcp/.venv/
 
 # Local Xcode/SwiftPM caches used by scripts/build.sh
 .spm-cache/
+.spm-cache-*/
 .xcode-source-packages/
 .derived-data/
 .derived-data-*/
@@ -136,6 +137,9 @@ tools/**/lib/
 
 # QA harness output (qa skill writes timestamped reports + screenshots)
 qa-results/
+output/playwright-screenshots/
+output/playwright-user-data/
+build_output*.log
 
 # Local language/tool caches and ad-hoc backups
 android/.kotlin/

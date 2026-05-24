@@ -25,6 +25,7 @@ export const SUPPORTED_PROVIDERS = [
   "codex",
   "opencode",
   "antigravity",
+  "xai",
 ] as const;
 
 export type Provider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -37,6 +38,7 @@ export const BACKEND_REFRESH_PROVIDERS: readonly Provider[] = [
   "kimi",
   "factory",
   "cursor",
+  "xai",
 ];
 
 /** Providers that are treated as local-only (no backend refresh). */
@@ -2730,4 +2732,123 @@ export interface ComputerUseOpenTimestampsValidationResponse {
   proofSizeBytes: number;
   checkedAt: string;
   otsVerifierOutput?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Hermes Skill Runs / mobile mission dispatch
+// ---------------------------------------------------------------------------
+
+export type HermesSkillRunIDDoc =
+  | "what_happened"
+  | "burn_forensics"
+  | "pattern_miner"
+  | "compare_agents"
+  | "next_action_coach"
+  | "handoff_builder"
+  | "regression_watch"
+  | "run_pulse";
+
+export type SkillRunDeliveryModeDoc = "action_only" | "full_stream" | "muted";
+
+export type SkillRunEventImportanceDoc =
+  | "quiet"
+  | "normal"
+  | "action_required"
+  | "terminal";
+
+export interface CLIAgentMissionEventDoc {
+  sequence: number;
+  timestamp: string;
+  kind:
+    | "status"
+    | "llm_response"
+    | "assistant_message"
+    | "tool_call"
+    | "tool_result"
+    | "error"
+    | "approval_request"
+    | "artifact"
+    | "changed_file"
+    | "final_answer";
+  phase: string;
+  title: string;
+  message: string;
+  fullMessage?: string;
+  messageLength?: number;
+  messageTruncated?: boolean;
+  runtime?: string;
+  source: "ios" | "android" | "ios-chat" | "android-chat" | "mac";
+  sourceSkillID?: HermesSkillRunIDDoc;
+  deliveryMode?: SkillRunDeliveryModeDoc;
+  eventImportance?: SkillRunEventImportanceDoc;
+  skillStepID?: string;
+  toolName?: string;
+  artifactPath?: string;
+  changedFilePath?: string;
+  isError: boolean;
+}
+
+export interface CLIAgentMissionRequestDoc {
+  id: string;
+  title: string;
+  prompt: string;
+  missionKind: string;
+  requestedRuntime: string;
+  requestedModelID?: string;
+  targetProject?: string;
+  depth?: "light" | "standard" | "deep" | "max";
+  approvalMode?: "existing_policy" | "manual_all" | "risky_only" | "read_only";
+  commandsAllowed?: boolean;
+  fileEditsAllowed?: boolean;
+  source: "ios-insights" | "android-insights" | "mac-insights" | "ios-chat" | "android-chat";
+  sourceSkillID?: HermesSkillRunIDDoc;
+  sourceSurface?: string;
+  deliveryMode?: SkillRunDeliveryModeDoc;
+  parentHermesThreadID?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: unknown;
+  startedAt?: string;
+  completedAt?: string;
+  claimedBy?: string;
+  selectedRuntime?: string;
+  selectedRuntimeName?: string;
+  selectedModelID?: string;
+  sessionId?: string;
+  approvalRequestId?: string;
+  approvalStatus?: "pending" | "approved" | "rejected" | "canceled" | "cancelled";
+  approvalRequestedAt?: string;
+  approvalRespondedAt?: string;
+  approvalTitle?: string;
+  approvalMessage?: string;
+  liveSummary?: string;
+  events?: CLIAgentMissionEventDoc[];
+  resultPreview?: string;
+  errorMessage?: string;
+  lastEventSequence?: number;
+  schemaVersion: number;
+  groupID?: string;
+  siblingIndex?: number;
+  siblingCount?: number;
+  isGroupChild?: boolean;
+  personaScopeJSON?: string;
+  personaID?: string;
+  clientThreadID?: string;
+  parentSessionID?: string;
+  resumeAction?: "new" | "resume" | "fork" | "forward";
+}
+
+export interface SubscriptionTopicDoc {
+  agentURI: string;
+  topicID: string;
+  displayName: string;
+  description: string;
+  cadence: "on_demand" | "daily" | "weekly" | "monthly";
+  consentGivenAt?: import("firebase-admin/firestore").Timestamp | string | number;
+  isMuted: boolean;
+  deliveryMode: SkillRunDeliveryModeDoc;
+  minimumEventImportance: SkillRunEventImportanceDoc;
+  deliveryCountThisMonth: number;
+  lastDeliveredAt?: import("firebase-admin/firestore").Timestamp | string | number;
+  updatedAt?: import("firebase-admin/firestore").Timestamp;
 }

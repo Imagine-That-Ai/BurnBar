@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 /// Settings → Media. Phase 2 brings the per-partner save preferences
 /// link; Phase 6 adds the iPad back-camera toggle (only visible on
@@ -12,6 +13,7 @@ struct MediaSettingsView: View {
     /// next detection. Persisted via `UserDefaults` (key matches
     /// `HermesSquareRoot`).
     @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
+    @StateObject private var focusFollowPreference = AgentFocusFollowPreferenceStore.shared
 
     var body: some View {
         Form {
@@ -37,12 +39,21 @@ struct MediaSettingsView: View {
             }
 
             Section {
-                Toggle("Show My Mac on Hermes Square", isOn: $mercuryPinnedTileEnabled)
-                    .accessibilityLabel("Show My Mac tile on Hermes Square pinned grid")
+                Toggle("Show My Mac on Agents", isOn: $mercuryPinnedTileEnabled)
+                    .accessibilityLabel("Show My Mac tile on Agents pinned grid")
+                Picker("Agent mirror tracking", selection: $focusFollowPreference.mode) {
+                    ForEach(AgentFocusFollowMode.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Text(focusFollowPreference.mode.settingsDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } header: {
                 Text("Mercury")
             } footer: {
-                Text("When on, your paired Mac auto-pins to the Hermes Square so you can mirror, call, or send a file with one tap.")
+                Text("Your paired Mac can auto-pin to the Agents tab for mirror, call, or file actions. Tracking is reserved for Agent Watch views; regular Mac mirrors stay full display.")
             }
         }
         .navigationTitle("Media")

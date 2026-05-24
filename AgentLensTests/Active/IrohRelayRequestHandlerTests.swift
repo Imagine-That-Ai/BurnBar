@@ -217,6 +217,57 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
 
 @MainActor
 final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
+    func testRecoverablePeerAcceptFailuresDoNotRebuildAndDropActiveEndpoint() async throws {
+        let suiteName = "hermes.iroh.host.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(defaults: defaults, flushDelayNanoseconds: 0)
+        settings.hermesIrohTransportEnabled = true
+
+        let directory = InMemoryIrohPairingDirectory()
+        let keyPublisher = RecordingIrohPairingPublicKeyPublisher()
+        let auditLogger = RecordingIrohTransportAuditLogger()
+        let first = TestIrohRelayTransport(
+            nodeId: "node-first",
+            acceptBehavior: .failThenPark(
+                .streamRejected("iroh stream failed: connection lost"),
+                failures: 4
+            )
+        )
+        let second = TestIrohRelayTransport(nodeId: "node-second", acceptBehavior: .park)
+        var transports = [first, second]
+
+        let client = HermesIrohRelayHostClient(
+            settingsManager: settings,
+            pairingKeyStore: IrohPairingKeyStore(
+                service: "ai.openburnbar.tests.iroh-pairing.\(UUID().uuidString)",
+                account: "host"
+            ),
+            directory: directory,
+            publicKeyPublisher: keyPublisher,
+            auditLogger: auditLogger,
+            pairingPublishInterval: 3_600,
+            transportFactory: { _ in
+                transports.removeFirst()
+            }
+        )
+
+        let started = await client.start(uid: "uid-1", connectionID: "connection-1")
+        XCTAssertTrue(started)
+        try await waitUntil(timeout: 3) {
+            first.acceptCount >= 5
+        }
+
+        let record = try await directory.fetch(uid: "uid-1", connectionId: "connection-1")
+        XCTAssertEqual(record?.nodeId, "node-first")
+        XCTAssertTrue(client.isReady)
+        XCTAssertEqual(first.shutdownCount, 0)
+        XCTAssertEqual(first.startCount, 1)
+        XCTAssertEqual(second.startCount, 0)
+
+        client.stop()
+    }
+
     func testAcceptLoopClosedRuntimeRebuildsAndPublishesFreshIdentity() async throws {
         let suiteName = "hermes.iroh.host.test.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -292,6 +343,7 @@ private actor RecordingIrohTransportAuditLogger: IrohTransportAuditLogging {
 private final class TestIrohRelayTransport: IrohRelayTransport, @unchecked Sendable {
     enum AcceptBehavior: Sendable {
         case fail(IrohRelayTransportError)
+        case failThenPark(IrohRelayTransportError, failures: Int)
         case park
     }
 
@@ -299,6 +351,7 @@ private final class TestIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     private let acceptBehavior: AcceptBehavior
     private(set) var startCount = 0
     private(set) var shutdownCount = 0
+    private(set) var acceptCount = 0
 
     init(nodeId: String, acceptBehavior: AcceptBehavior) {
         self.identity = IrohEndpointIdentity(
@@ -320,9 +373,18 @@ private final class TestIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     }
 
     func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        acceptCount += 1
         switch acceptBehavior {
         case .fail(let error):
             throw error
+        case .failThenPark(let error, let failures):
+            if acceptCount <= failures {
+                throw error
+            }
+            while !Task.isCancelled {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+            throw IrohRelayTransportError.shutdown
         case .park:
             while !Task.isCancelled {
                 try await Task.sleep(nanoseconds: 100_000_000)

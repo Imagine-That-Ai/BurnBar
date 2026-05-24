@@ -5,10 +5,25 @@ import OpenBurnBarCore
 @main
 struct OpenBurnBarMobileApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var customization = AppCustomization.shared
+
+    // Bound to ThemeSettingsView's "Appearance Mode" picker. Values match
+    // the picker tags: "system" (no override), "light", "dark".
+    @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
+
+    private var appearanceOverride: ColorScheme? {
+        switch preferredAppearance {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
             AuthGateView()
+                .tint(customization.themePalette.tintColor)
+                .preferredColorScheme(appearanceOverride)
                 .onOpenURL { url in
                     handleDeepLink(url)
                 }
@@ -28,6 +43,8 @@ struct OpenBurnBarMobileApp: App {
             NotificationCenter.default.post(name: .init("NavigateToDashboard"), object: nil)
         case "settings":
             NotificationCenter.default.post(name: .init("ShowSettings"), object: nil)
+        case "agent-watch", "agent-live", "computer-use":
+            NotificationCenter.default.post(name: .init("ShowAgentWatch"), object: nil)
         case "chat", "hermes":
             // Hermes legacy deep link stays valid. The Assistants tab opens
             // with the Hermes runtime selected. An optional `?prompt=` is

@@ -13,9 +13,9 @@ import OpenBurnBarMedia
 ///   1. `MediaControlStreamRegistry.latestStream(uid:)` — if a control
 ///      stream is registered for the current user, the iPhone is
 ///      currently dialed in.
-///   2. The most recent `media.presence.heartbeat` ingested via
-///      `MercuryRouter` (Phase 8 frame). Carries the iPhone's display
-///      name and advertised capabilities.
+///   2. The most recent `media.presence.heartbeat` for that same
+///      connection, ingested via `MercuryRouter` (Phase 8 frame). Carries
+///      the iPhone's display name and advertised capabilities.
 ///
 /// Capabilities default to `MercuryPeer.iphoneFallbackCapabilities` until
 /// the first heartbeat arrives — Macs always assume an online iPhone can
@@ -30,7 +30,7 @@ final class MercuryPeerSource: ObservableObject {
     private let clock: @Sendable () -> Date
 
     private var pollTask: Task<Void, Never>?
-    private var lastHeartbeat: HermesRealtimeRelayPresenceHeartbeat?
+    private var heartbeatsByConnectionID: [String: HermesRealtimeRelayPresenceHeartbeat] = [:]
     private var lastHeartbeatConnectionID: String?
 
     init(
@@ -69,9 +69,24 @@ final class MercuryPeerSource: ObservableObject {
         _ heartbeat: HermesRealtimeRelayPresenceHeartbeat,
         connectionID: String
     ) {
-        lastHeartbeat = heartbeat
+        heartbeatsByConnectionID[connectionID] = heartbeat
         lastHeartbeatConnectionID = connectionID
         Task { @MainActor in await refresh() }
+    }
+
+    /// The transport registry already knows the stream is gone; drop any
+    /// identity/capability cache for that specific peer so a later iPhone
+    /// registration cannot inherit a stale Android heartbeat.
+    func handleControlStreamClosed(connectionID: String) {
+        heartbeatsByConnectionID.removeValue(forKey: connectionID)
+        if lastHeartbeatConnectionID == connectionID {
+            lastHeartbeatConnectionID = nil
+        }
+        Task { @MainActor in await refresh() }
+    }
+
+    func refreshForTesting() async {
+        await refresh()
     }
 
     private func refresh() async {
@@ -82,12 +97,16 @@ final class MercuryPeerSource: ObservableObject {
         }()
 
         let isOnline = registeredKey != nil
+        let heartbeatConnectionID =
+            registeredKey?.connectionID
+            ?? lastHeartbeatConnectionID
         let connectionID =
-            lastHeartbeatConnectionID
-            ?? registeredKey?.connectionID
+            registeredKey?.connectionID
+            ?? heartbeatConnectionID
             ?? "paired-iphone:default"
-        let displayName = resolveDisplayName()
-        let capabilities = resolveCapabilities()
+        let heartbeat = heartbeatConnectionID.flatMap { heartbeatsByConnectionID[$0] }
+        let displayName = resolveDisplayName(heartbeat: heartbeat)
+        let capabilities = resolveCapabilities(heartbeat: heartbeat)
         let lastSeen = isOnline ? clock() : (peer?.lastSeenAt ?? clock())
 
         let next = MercuryPeer(
@@ -104,16 +123,18 @@ final class MercuryPeerSource: ObservableObject {
         }
     }
 
-    private func resolveDisplayName() -> String {
-        if let heartbeatName = lastHeartbeat?.deviceDisplayName,
+    private func resolveDisplayName(heartbeat: HermesRealtimeRelayPresenceHeartbeat?) -> String {
+        if let heartbeatName = heartbeat?.deviceDisplayName,
            !heartbeatName.isEmpty {
             return heartbeatName
         }
         return "Paired iPhone"
     }
 
-    private func resolveCapabilities() -> Set<MercuryPeer.Feature> {
-        guard let heartbeat = lastHeartbeat else {
+    private func resolveCapabilities(
+        heartbeat: HermesRealtimeRelayPresenceHeartbeat?
+    ) -> Set<MercuryPeer.Feature> {
+        guard let heartbeat else {
             return MercuryPeer.iphoneFallbackCapabilities
         }
         let parsed = Set(heartbeat.capabilities.compactMap { MercuryPeer.Feature(rawValue: $0) })

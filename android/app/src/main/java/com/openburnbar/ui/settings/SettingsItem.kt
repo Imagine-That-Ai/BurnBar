@@ -72,6 +72,8 @@ enum class SettingsPageRoute {
     SMART_DISPLAYS,
     MENU_BAR_PREFS,
     THEME_PREFS,
+    QUOTA_PREFS,
+    WALLPAPER_GENERATOR,
 }
 
 /**
@@ -90,6 +92,7 @@ object SettingsAnchor {
     const val QUICK_GLANCE_ROW = "root.quickGlance"
     const val COMPUTER_USE_ROW = "root.computerUse"
     const val THEME_ROW = "root.theme"
+    const val QUOTA_CUSTOMIZATION_ROW = "root.quotaCustomization"
 
     // Smart Displays
     const val GOOGLE_SMART_DISPLAY = "smartDisplays.google"
@@ -101,6 +104,7 @@ object SettingsAnchor {
     // Theme & SOTA UX
     const val USE_PREMIUM_SOTA_UX = "themePrefs.usePremiumSOTAUX"
     const val USE_WEBSITE_BACKGROUND = "themePrefs.useWebsiteBackground"
+    const val ENABLE_SWARM_SPARKLES = "themePrefs.enableSwarmSparkles"
 
     // Hermes
     const val HERMES_CONNECTIONS = "hermes.connections"

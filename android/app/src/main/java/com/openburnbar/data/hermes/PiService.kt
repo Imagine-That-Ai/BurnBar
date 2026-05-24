@@ -3,12 +3,16 @@ package com.openburnbar.data.hermes
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.assistants.AssistantChatMessage
 import com.openburnbar.data.assistants.AssistantChatThread
+import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
+import com.openburnbar.data.computeruse.AgentCapabilityGrantState
+import com.openburnbar.data.computeruse.AgentDesktopCapability
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -276,7 +280,11 @@ class PiService {
         streamJob?.cancel()
         streamJob = scope.launch {
             try {
-                streamChat(prompt = trimmed, assistantId = assistantId)
+                if (shouldUseDesktopAgentRelay()) {
+                    streamDesktopAgentChat(prompt = trimmed, assistantId = assistantId)
+                } else {
+                    streamChat(prompt = trimmed, assistantId = assistantId)
+                }
             } catch (e: Exception) {
                 applyError(assistantId, e.message ?: "Pi stream failed.")
             } finally {
@@ -294,6 +302,54 @@ class PiService {
                 }
                 persistCurrentThread()
             }
+        }
+    }
+
+    fun ensureDesktopGrantThreadID(): String {
+        if (_currentThreadID.value == null) {
+            _currentThreadID.value = UUID.randomUUID().toString()
+        }
+        return _currentThreadID.value ?: UUID.randomUUID().toString()
+    }
+
+    private fun shouldUseDesktopAgentRelay(): Boolean {
+        val threadID = _currentThreadID.value ?: return false
+        return AgentCapabilityGrantState.optimisticGrant(AssistantRuntimeID.PI.token, threadID) != null
+    }
+
+    private suspend fun streamDesktopAgentChat(prompt: String, assistantId: String) {
+        val threadID = _currentThreadID.value ?: throw IllegalStateException("Create a Pi thread before granting desktop permissions.")
+        val grant = AgentCapabilityGrantState.optimisticGrant(AssistantRuntimeID.PI.token, threadID)
+            ?: throw IllegalStateException("Pi desktop permissions are not active.")
+        val requestID = CLIAgentMissionDispatcher().dispatch(
+            title = "Pi desktop chat",
+            prompt = prompt,
+            missionKind = "chat",
+            requestedRuntime = AssistantRuntimeID.PI.token,
+            approvalMode = "existing_policy",
+            commandsAllowed = grant.capabilities.any {
+                it == AgentDesktopCapability.SHELL.wireValue ||
+                    it == AgentDesktopCapability.SHELL_UNRESTRICTED.wireValue
+            },
+            fileEditsAllowed = grant.capabilities.contains(AgentDesktopCapability.WORKSPACE_WRITE.wireValue),
+            clientThreadID = threadID,
+            resumeAction = "continue",
+        )
+        CLIAgentMissionDispatcher().observe(requestID).first { snapshot ->
+            val text = snapshot.errorMessage
+                ?: snapshot.resultPreview
+                ?: snapshot.displayLiveSummary
+                ?: snapshot.events.lastOrNull()?.message
+                ?: "Waiting for your Mac..."
+            appendToAssistant(assistantId, "") { msg ->
+                msg.copy(
+                    content = text,
+                    isStreaming = !snapshot.isTerminal,
+                    isError = snapshot.errorMessage != null,
+                    modelName = snapshot.selectedModelID ?: msg.modelName,
+                )
+            }
+            snapshot.isTerminal
         }
     }
 

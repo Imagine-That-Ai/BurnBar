@@ -41,7 +41,11 @@ data class AssistantChatThread(
     var modelName: String? = null,
     var createdAtMillis: Long,
     var updatedAtMillis: Long,
-    var messages: List<AssistantChatMessage> = emptyList()
+    var messages: List<AssistantChatMessage> = emptyList(),
+    var customTitle: String? = null,
+    var labelColorHex: String? = null,
+    var isPinned: Boolean = false,
+    var priorityOrder: Int? = null
 ) {
     val messageCount: Int get() = messages.size
 }
@@ -255,6 +259,29 @@ class AssistantChatHistoryStore internal constructor(
         }
     }
 
+    fun updateThreadMetadata(
+        id: String,
+        customTitle: String? = null,
+        labelColorHex: String? = null,
+        isPinned: Boolean? = null,
+        priorityOrder: Int? = null
+    ) {
+        val thread = thread(id) ?: return
+        if (customTitle != null) {
+            thread.customTitle = customTitle.takeIf { it.isNotEmpty() }
+        }
+        if (labelColorHex != null) {
+            thread.labelColorHex = labelColorHex.takeIf { it != "#NONE#" }
+        }
+        if (isPinned != null) {
+            thread.isPinned = isPinned
+        }
+        if (priorityOrder != null) {
+            thread.priorityOrder = priorityOrder.takeIf { it > 0 }
+        }
+        upsert(thread)
+    }
+
     fun switchPartition(uid: String?) {
         val raw = if (uid.isNullOrEmpty()) "local" else uid
         val sanitized = sanitizePartitionKey(raw)
@@ -439,6 +466,16 @@ internal class AssistantChatFirestoreMirror(
             "messageCount" to thread.messageCount,
             "messages" to thread.messages.map(::encodeMessage)
         )
+        if (thread.customTitle != null) {
+            payload["customTitle"] = thread.customTitle
+        }
+        if (thread.labelColorHex != null) {
+            payload["labelColorHex"] = thread.labelColorHex
+        }
+        payload["isPinned"] = thread.isPinned
+        if (thread.priorityOrder != null) {
+            payload["priorityOrder"] = thread.priorityOrder
+        }
         collection(uid).document(thread.id).set(payload).await()
     }
 
@@ -516,6 +553,10 @@ internal class AssistantChatFirestoreMirror(
         val updatedAt = (data["updatedAt"] as? Timestamp)?.toDate()?.time ?: createdAt
         val rawMessages = data["messages"] as? List<Map<String, Any?>> ?: emptyList()
         val messages = rawMessages.mapNotNull(::decodeMessage)
+        val customTitle = data["customTitle"] as? String
+        val labelColorHex = data["labelColorHex"] as? String
+        val isPinned = data["isPinned"] as? Boolean ?: false
+        val priorityOrder = (data["priorityOrder"] as? Number)?.toInt()
         return AssistantChatThread(
             id = id,
             runtime = runtime,
@@ -524,7 +565,11 @@ internal class AssistantChatFirestoreMirror(
             modelName = modelName,
             createdAtMillis = createdAt,
             updatedAtMillis = updatedAt,
-            messages = messages
+            messages = messages,
+            customTitle = customTitle,
+            labelColorHex = labelColorHex,
+            isPinned = isPinned,
+            priorityOrder = priorityOrder
         )
     }
 

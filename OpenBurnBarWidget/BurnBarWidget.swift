@@ -7,6 +7,7 @@ struct BurnBarWidgets: WidgetBundle {
         BurnBarWidget()
         InsightTodayWidget()
         InsightSessionLiveActivityWidget()
+        AgentWatchLiveActivity()
     }
 }
 

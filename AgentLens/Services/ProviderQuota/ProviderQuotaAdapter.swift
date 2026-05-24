@@ -17,6 +17,7 @@ struct ProviderQuotaAdapterContext {
     let bridgeManager: ClaudeQuotaBridgeManager
     let miniMaxModeProvider: () -> MiniMaxQuotaMode
     let factoryPlanProvider: () -> FactoryQuotaPlanTier
+    let xaiPlanProvider: () -> XAIQuotaPlanTier
     let claudeBridgeStatus: ClaudeQuotaBridgeStatus
     let codexRolloutScanCache: CodexRolloutScanCache
     let updateCodexRolloutScanCache: (CodexRolloutScanCache, Bool) -> Void
@@ -46,6 +47,7 @@ extension ProviderQuotaAdapterContext {
             bridgeManager: bridgeManager,
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
+            xaiPlanProvider: xaiPlanProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
@@ -67,6 +69,7 @@ extension ProviderQuotaAdapterContext {
             bridgeManager: bridgeManager,
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
+            xaiPlanProvider: xaiPlanProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
@@ -88,6 +91,7 @@ extension ProviderQuotaAdapterContext {
             bridgeManager: bridgeManager,
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
+            xaiPlanProvider: xaiPlanProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,

@@ -55,6 +55,10 @@ final class MercuryRouter: ObservableObject {
         /// `respond()` can emit the ack on the correct stream even when
         /// interleaved presence heartbeats have arrived since.
         fileprivate let replySender: (@Sendable (HermesRealtimeRelayFrame) async throws -> Void)
+        /// Per-control-stream lease ID from `MacFileTransferService`. iPhone
+        /// and Android can share a Mac pairing `connectionID`; this keeps
+        /// ownership tied to the exact stream that requested it.
+        fileprivate let controlStreamID: UUID?
 
         static func == (lhs: PendingRequest, rhs: PendingRequest) -> Bool {
             lhs.id == rhs.id
@@ -68,7 +72,8 @@ final class MercuryRouter: ObservableObject {
     /// than waiting on a stream that will never carry bytes.
     typealias MirrorSinkFactory = @MainActor (
         _ request: HermesRealtimeRelayMirrorRequest,
-        _ frame: HermesRealtimeRelayFrame
+        _ frame: HermesRealtimeRelayFrame,
+        _ replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async throws -> MediaStreamSink
     typealias ScreenShareStarter = @MainActor (
         _ peerDeviceID: String,
@@ -80,6 +85,7 @@ final class MercuryRouter: ObservableObject {
         _ codecPolicy: MercuryCodecPolicy
     ) async throws -> Void
     typealias ComputerUseSessionEnsurer = @MainActor () async throws -> Void
+    typealias FocusFollowModeApplier = @MainActor (AgentFocusFollowMode) -> Void
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var lastError: String?
@@ -93,6 +99,7 @@ final class MercuryRouter: ObservableObject {
     private let clock: @Sendable () -> Date
     private let startScreenShare: ScreenShareStarter
     private let ensureComputerUseSession: ComputerUseSessionEnsurer?
+    private let applyFocusFollowMode: FocusFollowModeApplier?
 
     private var mirrorSinkFactory: MirrorSinkFactory?
     /// The frame + reply sender from the most recently accepted request.
@@ -101,14 +108,18 @@ final class MercuryRouter: ObservableObject {
     /// cleared on accept.
     private var activeSessionSender: (@Sendable (HermesRealtimeRelayFrame) async throws -> Void)?
     private var activeSessionFrame: HermesRealtimeRelayFrame?
+    private var activeSessionControlStreamID: UUID?
     private var remoteStreamingCapabilitiesByConnectionID: [String: MercuryStreamingCapabilitySnapshot] = [:]
+    private var remoteStreamingCapabilitiesByControlStreamID: [UUID: MercuryStreamingCapabilitySnapshot] = [:]
     private var cooldownTask: Task<Void, Never>?
+    private var workspaceAuthGateObservers: [NSObjectProtocol] = []
 
     init(
         sessionCoordinator: MediaSessionCoordinator,
         peerSource: MercuryPeerSource,
         consentStore: MercuryConsentStore,
         ensureComputerUseSession: ComputerUseSessionEnsurer? = nil,
+        applyFocusFollowMode: FocusFollowModeApplier? = nil,
         startScreenShare: ScreenShareStarter? = nil,
         cooldownSeconds: TimeInterval = 30,
         clock: @escaping @Sendable () -> Date = { Date() }
@@ -117,6 +128,7 @@ final class MercuryRouter: ObservableObject {
         self.peerSource = peerSource
         self.consentStore = consentStore
         self.ensureComputerUseSession = ensureComputerUseSession
+        self.applyFocusFollowMode = applyFocusFollowMode
         if let startScreenShare {
             self.startScreenShare = startScreenShare
         } else {
@@ -134,11 +146,66 @@ final class MercuryRouter: ObservableObject {
         }
         self.cooldownSeconds = cooldownSeconds
         self.clock = clock
+        installHostAuthGateListeners()
+    }
+
+    deinit {
+        for observer in workspaceAuthGateObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
     }
 
     /// Inject the sink factory once the iroh per-GOP dial is available.
     func setMirrorSinkFactory(_ factory: @escaping MirrorSinkFactory) {
         self.mirrorSinkFactory = factory
+    }
+
+    /// Called by the media-control stream owner after the registry entry has
+    /// been invalidated. A peer disconnect is semantically the same as that
+    /// peer ending any in-flight mirror, but it must not unlock an unrelated
+    /// live session.
+    func handleControlStreamClosed(
+        connectionID: String,
+        controlStreamID: UUID? = nil,
+        removedLastStreamForConnection: Bool = true
+    ) async {
+        Self.log.info("router_control_stream_closed connectionID=\(connectionID, privacy: .public) controlStreamID=\(controlStreamID?.uuidString ?? "legacy", privacy: .public) removedLast=\(removedLastStreamForConnection, privacy: .public)")
+        Self.debugTrace("router_control_stream_closed connectionID=\(connectionID) controlStreamID=\(controlStreamID?.uuidString ?? "legacy") removedLast=\(removedLastStreamForConnection)")
+        if let controlStreamID {
+            remoteStreamingCapabilitiesByControlStreamID.removeValue(forKey: controlStreamID)
+        }
+        if removedLastStreamForConnection {
+            remoteStreamingCapabilitiesByConnectionID.removeValue(forKey: connectionID)
+            peerSource.handleControlStreamClosed(connectionID: connectionID)
+        }
+
+        let pendingMirrorClosed = pendingRequest.map {
+            request($0, matchesClosedConnectionID: connectionID, controlStreamID: controlStreamID)
+        } ?? false
+        let pendingCallClosed = pendingCall.map {
+            request($0, matchesClosedConnectionID: connectionID, controlStreamID: controlStreamID)
+        } ?? false
+        if pendingMirrorClosed { pendingRequest = nil }
+        if pendingCallClosed { pendingCall = nil }
+
+        let activeMirrorClosed = activeSessionMatches(
+            connectionID: connectionID,
+            controlStreamID: controlStreamID
+        )
+        if activeMirrorClosed {
+            await sessionCoordinator.stop(reason: .completedUserCancel)
+            clearActiveSessionState()
+        }
+
+        switch phase {
+        case .ringing where pendingMirrorClosed,
+             .callRinging where pendingCallClosed,
+             .starting where activeMirrorClosed,
+             .streaming where activeMirrorClosed:
+            phase = .idle
+        default:
+            break
+        }
     }
 
     /// Closure entry point handed to `MacFileTransferService` via
@@ -147,6 +214,7 @@ final class MercuryRouter: ObservableObject {
     /// accepts/declines send acks on the correct stream.
     func handleFrame(
         _ frame: HermesRealtimeRelayFrame,
+        controlStreamID: UUID? = nil,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         Self.log.info("router_handle_frame type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
@@ -155,31 +223,29 @@ final class MercuryRouter: ObservableObject {
 
             if let heartbeat = frame.media?.presence {
                 if let streamingCapabilities = heartbeat.streamingCapabilities {
-                    remoteStreamingCapabilitiesByConnectionID[frame.connectionId] =
-                        MercuryStreamingCapabilitySnapshot(wire: streamingCapabilities)
+                    let snapshot = MercuryStreamingCapabilitySnapshot(wire: streamingCapabilities)
+                    if let controlStreamID {
+                        remoteStreamingCapabilitiesByControlStreamID[controlStreamID] = snapshot
+                    } else {
+                        remoteStreamingCapabilitiesByConnectionID[frame.connectionId] = snapshot
+                    }
                 }
                 peerSource.ingestHeartbeat(
                     heartbeat,
                     connectionID: frame.connectionId
                 )
 
-                // Reply with our own presence heartbeat containing capabilities and blurred wallpaper base64
-                let macCapabilities = [
-                    MercuryPeer.Feature.mirrorHost.rawValue,
-                    MercuryPeer.Feature.fileSend.rawValue,
-                    MercuryPeer.Feature.fileReceive.rawValue,
-                    MercuryPeer.Feature.callReceive.rawValue
-                ]
-                let blurredWallpaper = getBlurredWallpaperBase64()
+                // Reply with a lightweight presence heartbeat. The control
+                // stream uses this as a liveness probe before mirror setup;
+                // keep expensive capability probing and wallpaper transfer out
+                // of this path so the stream is still alive for the actual
+                // mirror request.
+                let macCapabilities = macPresenceCapabilities()
                 let responseBeat = HermesRealtimeRelayPresenceHeartbeat(
                     sentAt: Date(),
                     deviceDisplayName: Host.current().localizedName ?? "My Mac",
                     capabilities: macCapabilities,
-                    blurredWallpaperBase64: blurredWallpaper,
-                    peerDeviceId: frame.connectionId,
-                    streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
-                        mediaFrameVersions: .v1AndV2
-                    ).wireValue
+                    peerDeviceId: frame.connectionId
                 )
                 let responseFrame = HermesRealtimeRelayFrame(
                     type: .mediaPresenceHeartbeat,
@@ -196,16 +262,28 @@ final class MercuryRouter: ObservableObject {
             }
 
         case .mediaMirrorRequest:
-            await handleMirrorRequest(frame: frame, replySender: replySender)
+            await handleMirrorRequest(
+                frame: frame,
+                controlStreamID: controlStreamID,
+                replySender: replySender
+            )
         case .mediaMirrorStop:
-            await handleMirrorStop(frame: frame)
+            await handleMirrorStop(frame: frame, controlStreamID: controlStreamID)
         case .mediaMirrorDisplaySelect:
-            await handleMirrorDisplaySelect(frame: frame, replySender: replySender)
+            await handleMirrorDisplaySelect(
+                frame: frame,
+                controlStreamID: controlStreamID,
+                replySender: replySender
+            )
         case .mediaMirrorAck:
             // Mac is the producer of acks, not the consumer. Ignore.
             break
         case .mediaCallInvite:
-            await handleCallInvite(frame: frame, replySender: replySender)
+            await handleCallInvite(
+                frame: frame,
+                controlStreamID: controlStreamID,
+                replySender: replySender
+            )
         case .mediaCallAck:
             // Mac is the producer of call acks, not the consumer. Ignore.
             break
@@ -221,8 +299,24 @@ final class MercuryRouter: ObservableObject {
         }
     }
 
+    private func macPresenceCapabilities() -> [String] {
+        var capabilities = [
+            MercuryPeer.Feature.mirrorHost.rawValue,
+            MercuryPeer.Feature.fileSend.rawValue,
+            MercuryPeer.Feature.fileReceive.rawValue,
+            MercuryPeer.Feature.callReceive.rawValue
+        ]
+        if consentStore.alwaysAllow {
+            capabilities.append(MercuryPeer.Feature.mirrorAutoAccept.rawValue)
+        }
+        return capabilities
+    }
+
     /// User tapped "Accept" on the incoming-call sheet.
     func acceptMirror(_ request: PendingRequest) async {
+        if !consentStore.alwaysAllow {
+            consentStore.alwaysAllow = true
+        }
         await beginMirror(for: request)
     }
 
@@ -290,15 +384,134 @@ final class MercuryRouter: ObservableObject {
             )
         }
         pendingRequest = nil
-        activeSessionSender = nil
-        activeSessionFrame = nil
+        clearActiveSessionState()
         phase = .idle
+    }
+
+    func handleHostAuthGateClosedForTesting(reason: String = "test") async {
+        await handleHostAuthGateClosed(reason: reason)
     }
 
     // MARK: - Private
 
+    private func installHostAuthGateListeners() {
+        let center = NSWorkspace.shared.notificationCenter
+        let names: [Notification.Name] = [
+            NSWorkspace.screensDidSleepNotification,
+            NSWorkspace.sessionDidResignActiveNotification,
+            NSWorkspace.didActivateApplicationNotification
+        ]
+        for name in names {
+            let observer = center.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                guard let reason = Self.hostAuthGateReason(from: note) else { return }
+                Task { @MainActor [weak self] in
+                    await self?.handleHostAuthGateClosed(reason: reason)
+                }
+            }
+            workspaceAuthGateObservers.append(observer)
+        }
+    }
+
+    private static func hostAuthGateReason(from note: Notification) -> String? {
+        switch note.name {
+        case NSWorkspace.screensDidSleepNotification:
+            return "screen_sleep"
+        case NSWorkspace.sessionDidResignActiveNotification:
+            return "session_resigned_active"
+        case NSWorkspace.didActivateApplicationNotification:
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let bundle = app.bundleIdentifier,
+                  bundle == "com.apple.loginwindow" || bundle == "com.apple.SecurityAgent"
+            else { return nil }
+            return bundle
+        default:
+            return nil
+        }
+    }
+
+    private static func effectiveFocusFollowMode(
+        for request: HermesRealtimeRelayMirrorRequest,
+        requestedMode: AgentFocusFollowMode?
+    ) -> AgentFocusFollowMode {
+        guard request.streamClass == MediaStreamClass.controlSurfaceFrame.rawValue else {
+            return .off
+        }
+        return requestedMode ?? .smart
+    }
+
+    private func handleHostAuthGateClosed(reason: String) async {
+        let pendingMirror = pendingRequest
+        let pendingPhoneCall = pendingCall
+        let activeSender = activeSessionSender
+        let activeFrame = activeSessionFrame
+        let activeRequestID: String?
+        switch phase {
+        case .streaming(let requestID, _),
+             .starting(let requestID):
+            activeRequestID = requestID
+        default:
+            activeRequestID = activeFrame?.media?.mirrorRequest?.requestId
+        }
+
+        let hadWorkToStop = pendingMirror != nil
+            || pendingPhoneCall != nil
+            || activeSender != nil
+            || activeFrame != nil
+            || phase != .idle
+
+        guard hadWorkToStop else { return }
+
+        Self.log.info("router_host_auth_gate_closed reason=\(reason, privacy: .public)")
+        Self.debugTrace("router_host_auth_gate_closed reason=\(reason)")
+        lastError = "Mirror stopped because the Mac locked or screen capture became unavailable."
+
+        pendingRequest = nil
+        pendingCall = nil
+
+        if let pendingMirror {
+            await respond(
+                requestID: pendingMirror.id,
+                decision: .denied,
+                detail: "Mac locked or screen capture became unavailable",
+                frame: pendingMirror.frame,
+                replySender: pendingMirror.replySender
+            )
+        }
+
+        if let pendingPhoneCall {
+            await respondToCall(
+                requestID: pendingPhoneCall.id,
+                decision: .denied,
+                detail: "Mac locked or became unavailable",
+                frame: pendingPhoneCall.frame,
+                replySender: pendingPhoneCall.replySender
+            )
+        }
+
+        if let activeSender,
+           let activeFrame,
+           let activeRequestID {
+            await sessionCoordinator.stop(reason: .completedUserCancel)
+            await respond(
+                requestID: activeRequestID,
+                decision: .denied,
+                detail: "Mac locked or screen capture became unavailable",
+                frame: activeFrame,
+                replySender: activeSender
+            )
+        }
+
+        clearActiveSessionState()
+        phase = .idle
+    }
+
     private func handleMirrorRequest(
         frame: HermesRealtimeRelayFrame,
+        controlStreamID: UUID?,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         guard let req = frame.media?.mirrorRequest else {
@@ -330,13 +543,12 @@ final class MercuryRouter: ObservableObject {
         // phone viewer/app teardown without weakening the one-peer-at-a-time
         // guard for other devices.
         if case .streaming = phase,
-           activeSessionFrame?.connectionId == frame.connectionId {
+           activeSessionMatches(connectionID: frame.connectionId, controlStreamID: controlStreamID) {
             Self.log.info("router_mirror_request_restarting_same_peer requestID=\(req.requestId, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
             Self.debugTrace("router_mirror_request_restarting_same_peer requestID=\(req.requestId) connectionID=\(frame.connectionId)")
             await sessionCoordinator.stop(reason: .completedUserCancel)
             pendingRequest = nil
-            activeSessionSender = nil
-            activeSessionFrame = nil
+            clearActiveSessionState()
             phase = .idle
         }
 
@@ -371,7 +583,8 @@ final class MercuryRouter: ObservableObject {
             requesterName: req.requesterDisplayName,
             requestedAt: req.requestedAt,
             frame: frame,
-            replySender: replySender
+            replySender: replySender,
+            controlStreamID: controlStreamID
         )
 
         // Consent fast-path: if the user has flipped "Always allow my
@@ -394,7 +607,7 @@ final class MercuryRouter: ObservableObject {
         Self.debugTrace("router_mirror_request_ringing requestID=\(req.requestId)")
     }
 
-    private func handleMirrorStop(frame: HermesRealtimeRelayFrame) async {
+    private func handleMirrorStop(frame: HermesRealtimeRelayFrame, controlStreamID: UUID?) async {
         guard let stop = frame.media?.mirrorStop else {
             Self.log.error("router_mirror_stop_missing_payload requestID=\(frame.requestId ?? "", privacy: .public)")
             Self.debugTrace("router_mirror_stop_missing_payload requestID=\(frame.requestId ?? "")")
@@ -408,15 +621,15 @@ final class MercuryRouter: ObservableObject {
         default:
             activeRequestID = activeSessionFrame?.media?.mirrorRequest?.requestId
         }
-        guard activeRequestID == stop.requestId else {
+        guard activeRequestID == stop.requestId,
+              activeSessionAcceptsExplicitControlFrame(connectionID: frame.connectionId, controlStreamID: controlStreamID) else {
             Self.log.info("router_mirror_stop_ignored requestID=\(stop.requestId, privacy: .public) phase_mismatch=true")
             Self.debugTrace("router_mirror_stop_ignored requestID=\(stop.requestId) phase=\(String(describing: phase))")
             return
         }
         await sessionCoordinator.stop(reason: .completedUserCancel)
         pendingRequest = nil
-        activeSessionSender = nil
-        activeSessionFrame = nil
+        clearActiveSessionState()
         phase = .idle
         Self.log.info("router_mirror_stop_completed requestID=\(stop.requestId, privacy: .public)")
         Self.debugTrace("router_mirror_stop_completed requestID=\(stop.requestId)")
@@ -424,6 +637,7 @@ final class MercuryRouter: ObservableObject {
 
     private func handleMirrorDisplaySelect(
         frame: HermesRealtimeRelayFrame,
+        controlStreamID: UUID?,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         guard let selection = frame.media?.mirrorDisplaySelection else { return }
@@ -435,7 +649,8 @@ final class MercuryRouter: ObservableObject {
         default:
             activeRequestID = nil
         }
-        guard activeRequestID == selection.requestId else { return }
+        guard activeRequestID == selection.requestId,
+              activeSessionMatches(connectionID: frame.connectionId, controlStreamID: controlStreamID) else { return }
         let displays = ScreenCapturePipeline.availableDisplays()
         guard displays.contains(where: { $0.id == selection.displayId }) else {
             await respond(
@@ -475,6 +690,7 @@ final class MercuryRouter: ObservableObject {
 
     private func handleCallInvite(
         frame: HermesRealtimeRelayFrame,
+        controlStreamID: UUID?,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         guard let invite = frame.media?.callInvite else {
@@ -521,7 +737,8 @@ final class MercuryRouter: ObservableObject {
             requesterName: invite.requesterDisplayName,
             requestedAt: invite.requestedAt,
             frame: frame,
-            replySender: replySender
+            replySender: replySender,
+            controlStreamID: controlStreamID
         )
         pendingCall = pending
         phase = .callRinging(
@@ -536,6 +753,17 @@ final class MercuryRouter: ObservableObject {
     private func beginMirror(for request: PendingRequest) async {
         phase = .starting(requestID: request.id)
         pendingRequest = nil
+        guard let mirrorRequest = request.frame.media?.mirrorRequest else {
+            await respond(
+                requestID: request.id,
+                decision: .unsupported,
+                detail: "Malformed request payload",
+                frame: request.frame,
+                replySender: request.replySender
+            )
+            phase = .idle
+            return
+        }
         guard let factory = mirrorSinkFactory else {
             Self.log.error("router_mirror_accept_unsupported_missing_sink requestID=\(request.id, privacy: .public)")
             Self.debugTrace("router_mirror_accept_unsupported_missing_sink requestID=\(request.id)")
@@ -549,21 +777,26 @@ final class MercuryRouter: ObservableObject {
             phase = .idle
             return
         }
+        activeSessionSender = request.replySender
+        activeSessionFrame = request.frame
+        activeSessionControlStreamID = request.controlStreamID
         do {
-            guard let mirrorRequest = request.frame.media?.mirrorRequest else {
-                await respond(
-                    requestID: request.id,
-                    decision: .unsupported,
-                    detail: "Malformed request payload",
-                    frame: request.frame,
-                    replySender: request.replySender
-                )
-                phase = .idle
+            let requestedFocusMode = mirrorRequest.focusFollowMode
+                .flatMap(AgentFocusFollowMode.init(rawValue:))
+            let focusMode = Self.effectiveFocusFollowMode(
+                for: mirrorRequest,
+                requestedMode: requestedFocusMode
+            )
+            let sink = try await factory(mirrorRequest, request.frame, request.replySender)
+            guard isActiveMirrorRequest(request) else {
+                await sink.close()
                 return
             }
-            let sink = try await factory(mirrorRequest, request.frame)
             let remoteCapabilities = mirrorRequest.streamingCapabilities
                 .map(MercuryStreamingCapabilitySnapshot.init(wire:))
+                ?? request.controlStreamID.flatMap {
+                    remoteStreamingCapabilitiesByControlStreamID[$0]
+                }
                 ?? remoteStreamingCapabilitiesByConnectionID[request.frame.connectionId]
             let localCapabilities = remoteCapabilities.map { _ in
                 MercuryVideoToolboxCapabilityProbe.snapshot(mediaFrameVersions: .v1AndV2)
@@ -577,7 +810,12 @@ final class MercuryRouter: ObservableObject {
                 remoteCapabilities,
                 .production
             )
+            guard isActiveMirrorRequest(request) else {
+                await sessionCoordinator.stop(reason: .completedUserCancel)
+                return
+            }
             do {
+                applyFocusFollowMode?(focusMode)
                 if let ensureComputerUseSession {
                     try await ensureComputerUseSession()
                 }
@@ -585,6 +823,10 @@ final class MercuryRouter: ObservableObject {
                 lastError = "Mirror is read-only: \(error.localizedDescription)"
                 Self.log.error("router_computer_use_session_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                 Self.debugTrace("router_computer_use_session_failed requestID=\(request.id) error=\(error.localizedDescription)")
+            }
+            guard isActiveMirrorRequest(request) else {
+                await sessionCoordinator.stop(reason: .completedUserCancel)
+                return
             }
             let displays = ScreenCapturePipeline.availableDisplays()
             await respond(
@@ -596,10 +838,15 @@ final class MercuryRouter: ObservableObject {
                 frame: request.frame,
                 replySender: request.replySender
             )
+            guard isActiveMirrorRequest(request) else {
+                await sessionCoordinator.stop(reason: .completedUserCancel)
+                return
+            }
             // Remember the session so stopMirror can ack when the
             // host ends the mirror via the CallHUD.
             activeSessionSender = request.replySender
             activeSessionFrame = request.frame
+            activeSessionControlStreamID = request.controlStreamID
             phase = .streaming(requestID: request.id, since: clock())
         } catch {
             lastError = error.localizedDescription
@@ -613,7 +860,53 @@ final class MercuryRouter: ObservableObject {
                 replySender: request.replySender
             )
             phase = .idle
+            clearActiveSessionState()
         }
+    }
+
+    private func request(
+        _ request: PendingRequest,
+        matchesClosedConnectionID connectionID: String,
+        controlStreamID: UUID?
+    ) -> Bool {
+        if let requestControlStreamID = request.controlStreamID {
+            return requestControlStreamID == controlStreamID
+        }
+        return request.frame.connectionId == connectionID
+    }
+
+    private func activeSessionMatches(connectionID: String, controlStreamID: UUID?) -> Bool {
+        guard let activeSessionFrame else { return false }
+        if let activeSessionControlStreamID {
+            return activeSessionControlStreamID == controlStreamID
+        }
+        return activeSessionFrame.connectionId == connectionID
+    }
+
+    private func activeSessionAcceptsExplicitControlFrame(connectionID: String, controlStreamID: UUID?) -> Bool {
+        guard let activeSessionFrame else { return false }
+        if let activeSessionControlStreamID {
+            guard let controlStreamID else { return false }
+            return activeSessionControlStreamID == controlStreamID
+        }
+        if controlStreamID != nil {
+            return activeSessionFrame.connectionId == connectionID
+        }
+        return true
+    }
+
+    private func isActiveMirrorRequest(_ request: PendingRequest) -> Bool {
+        activeSessionMatches(
+            connectionID: request.frame.connectionId,
+            controlStreamID: request.controlStreamID
+        )
+            && activeSessionFrame?.media?.mirrorRequest?.requestId == request.id
+    }
+
+    private func clearActiveSessionState() {
+        activeSessionSender = nil
+        activeSessionFrame = nil
+        activeSessionControlStreamID = nil
     }
 
     private func respond(

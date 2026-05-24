@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderQuotaSnapshot
-import com.openburnbar.data.models.QuotaBucket
+import com.openburnbar.data.models.displayRemainingFraction
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -60,8 +60,7 @@ fun buildQuotaRingItems(snapshots: List<ProviderQuotaSnapshot>): List<QuotaRingI
         val provider = AgentProvider.fromKey(key) ?: return@mapNotNull null
         val pressure = snaps
             .flatMap { it.buckets }
-            .filter { it.limit > 0 }
-            .map { maxOf(0.0, it.remaining) / it.limit }
+            .mapNotNull { it.displayRemainingFraction }
             .minOrNull() ?: 1.0
         QuotaRingItem(
             provider = provider,

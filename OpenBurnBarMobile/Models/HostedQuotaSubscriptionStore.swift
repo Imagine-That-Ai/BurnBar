@@ -178,10 +178,7 @@ final class HostedQuotaSubscriptionStore {
     /// trusting any client-supplied identifier.
     func purchase() async {
         guard !isPurchasing else { return }
-        guard isSignedIn() else {
-            error = Self.signedOutPurchaseMessage
-            return
-        }
+        let canBindEntitlement = isSignedIn()
         isPurchasing = true
         error = nil
         defer { isPurchasing = false }
@@ -192,10 +189,25 @@ final class HostedQuotaSubscriptionStore {
             guard let product else {
                 throw HostedQuotaSubscriptionError.productUnavailable
             }
-            let token = try await mintAppAccountToken()
-            let result = try await purchaseProduct(product, [.appAccountToken(token)])
+            let purchaseOptions: Set<Product.PurchaseOption>
+            if canBindEntitlement {
+                let token = try await mintAppAccountToken()
+                purchaseOptions = [.appAccountToken(token)]
+            } else {
+                purchaseOptions = []
+            }
+            let result = try await purchaseProduct(product, purchaseOptions)
             switch result {
             case .success(let signedTransactionJWS, let finish):
+                guard canBindEntitlement else {
+                    await finish()
+                    isActive = false
+                    expirationDate = nil
+                    purchaseDate = nil
+                    latestTransactionID = nil
+                    error = Self.signedOutPurchaseMessage
+                    return
+                }
                 do {
                     try await verifyOnServer(jws: signedTransactionJWS)
                     await finish()
@@ -462,7 +474,14 @@ final class HostedQuotaSubscriptionStore {
         _ product: Product,
         options: Set<Product.PurchaseOption>
     ) async throws -> HostedQuotaPurchaseOutcome {
+        #if os(iOS)
+        guard let scene = activePurchaseScene() else {
+            throw HostedQuotaSubscriptionError.purchasePresentationUnavailable
+        }
+        let result = try await product.purchase(confirmIn: scene, options: options)
+        #else
         let result = try await product.purchase(options: options)
+        #endif
         switch result {
         case .success(let verification):
             let transaction = try checked(verification)
@@ -478,6 +497,16 @@ final class HostedQuotaSubscriptionStore {
             return .pending
         }
     }
+
+    #if os(iOS)
+    private static func activePurchaseScene() -> UIWindowScene? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return scenes.first(where: { $0.activationState == .foregroundActive && !$0.windows.isEmpty })
+            ?? scenes.first(where: { $0.activationState == .foregroundInactive && !$0.windows.isEmpty })
+            ?? scenes.first(where: { !$0.windows.isEmpty })
+            ?? scenes.first
+    }
+    #endif
 
     private static func syncAppStore() async throws {
         try await AppStore.sync()
@@ -506,7 +535,7 @@ final class HostedQuotaSubscriptionStore {
     }
 
     private static let signedOutPurchaseMessage =
-        "Sign in to OpenBurnBar before subscribing so Apple can link OpenBurnBar Cloud to your account."
+        "Apple purchase completed. Sign in to OpenBurnBar and tap Restore Purchases so OpenBurnBar Cloud can link the subscription to your account."
 
     private static let signedOutRestoreMessage =
         "Sign in to OpenBurnBar before restoring purchases so Apple can link OpenBurnBar Cloud to your account."
@@ -532,6 +561,7 @@ final class HostedQuotaSubscriptionStore {
 enum HostedQuotaSubscriptionError: Error, LocalizedError {
     case productUnavailable
     case invalidBindingToken
+    case purchasePresentationUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -539,6 +569,8 @@ enum HostedQuotaSubscriptionError: Error, LocalizedError {
             return "OpenBurnBar Cloud is still loading from the App Store. Please try Subscribe again in a moment."
         case .invalidBindingToken:
             return "Could not initialize the entitlement binding token. Please try again."
+        case .purchasePresentationUnavailable:
+            return "Could not open the App Store purchase sheet. Please keep OpenBurnBar in the foreground and tap Subscribe again."
         }
     }
 }

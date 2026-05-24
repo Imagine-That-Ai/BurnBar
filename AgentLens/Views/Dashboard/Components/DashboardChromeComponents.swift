@@ -386,15 +386,8 @@ struct ProjectNavigationPill: View {
                 .padding(.horizontal, 6)
 
             HStack(spacing: 6) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(DesignSystem.Colors.primaryGradient)
-                        .frame(width: 14, height: 14)
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundStyle(.white)
-                }
-                .shadow(color: DesignSystem.Colors.ember.opacity(0.32), radius: 4, x: 0, y: 1)
+                AppLogoView(size: 14)
+                    .shadow(color: DesignSystem.Colors.ember.opacity(0.32), radius: 4, x: 0, y: 1)
 
                 Text(projectName)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -489,11 +482,34 @@ struct ToolbarPillButton<Label: View>: View {
 struct SessionPreviewRow: View {
     let usage: TokenUsage
     @Bindable var settingsManager: SettingsManager
+    var onTap: (() -> Void)? = nil
 
     private var theme: ProviderTheme { .theme(for: usage.provider) }
 
     var body: some View {
+        if let onTap {
+            Button(action: onTap) {
+                rowContent
+            }
+            .buttonStyle(.plain)
+            .contentShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            .accessibilityLabel("Open \(usage.projectName) session")
+        } else {
+            rowContent
+        }
+    }
+
+    private var rowContent: some View {
         HStack(spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(theme.primaryColor.opacity(0.14))
+                    .frame(width: 32, height: 32)
+
+                ProviderLogoView(provider: usage.provider, size: 20, useFallbackColor: false)
+            }
+            .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(usage.projectName)
                     .font(DesignSystem.Typography.body)
@@ -505,6 +521,7 @@ struct SessionPreviewRow: View {
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .lineLimit(1)
             }
+            .layoutPriority(1)
 
             Spacer()
 
@@ -516,9 +533,13 @@ struct SessionPreviewRow: View {
                 Text(settingsManager.formatUsageMetric(cost: usage.cost, tokens: usage.totalTokens))
                     .font(DesignSystem.Typography.monoSmall)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                    .allowsTightening(true)
                     .contentTransition(.numericText())
                     .animation(DesignSystem.Animation.gentle, value: usage.id)
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)

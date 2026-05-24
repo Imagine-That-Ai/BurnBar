@@ -172,7 +172,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, provider, sessionId, projectName, model
         case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, reasoningTokens
-        case totalTokens, cost, startTime, endTime, createdAt, usageSource
+        case totalTokens, cost, costUsd, startTime, endTime, createdAt, usageSource
         case sourceDeviceId, sourceDeviceName, isRemote
         case providerID, providerAccountID, providerAccountLabel, providerAccountSource
         case provenanceMethod, provenanceConfidence, estimatorVersion
@@ -198,7 +198,9 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
                 cacheRead: cacheReadTokens,
                 reasoning: reasoningTokens
             )
-        cost = try c.decode(Double.self, forKey: .cost)
+        cost = try c.decodeIfPresent(Double.self, forKey: .cost)
+            ?? c.decodeIfPresent(Double.self, forKey: .costUsd)
+            ?? 0.0
         startTime = try c.decode(Date.self, forKey: .startTime)
         endTime = try c.decode(Date.self, forKey: .endTime)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()

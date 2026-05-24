@@ -40,6 +40,8 @@ struct DashboardChatWorkspaceToolbar: View {
             .buttonStyle(.plain)
             .help("Show this chat's workspace in Finder")
 
+            ChatDesktopControlButton(controller: controller, tint: accent)
+
             Spacer(minLength: 0)
 
             Button(action: onNewChat) {
