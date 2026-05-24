@@ -20,6 +20,7 @@ import UIKit
 // Respects `accessibilityReduceMotion` (locks pace + cycling). Pointer or
 // touch position pushes nearby particles away, matching the web build.
 
+@MainActor
 public struct SwarmCanvasView: View {
     public let accent: Color
     public let pace: Pace
