@@ -53,7 +53,7 @@ struct MediaSettingsView: View {
             } header: {
                 Text("Mercury")
             } footer: {
-                Text("When on, your paired Mac auto-pins to the Agents tab so you can mirror, call, or send a file with one tap. Tracking applies to the next mirror request and can be reissued while live.")
+                Text("Your paired Mac can auto-pin to the Agents tab for mirror, call, or file actions. Tracking is reserved for Agent Watch views; regular Mac mirrors stay full display.")
             }
         }
         .navigationTitle("Media")

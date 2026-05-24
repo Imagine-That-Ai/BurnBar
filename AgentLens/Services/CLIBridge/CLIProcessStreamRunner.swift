@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 
 struct CLIProcessStreamRunner: Sendable {
     let runtime: CLIBridgeStreamRuntimeCoordinator
@@ -9,12 +10,13 @@ struct CLIProcessStreamRunner: Sendable {
         prompt: String,
         model: String,
         workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         await runProcess(
             invocation: CLIProcessInvocation(
                 executable: executable,
-                arguments: CLIArgumentBuilder.claudeArguments(prompt: prompt, model: model),
+                arguments: CLIArgumentBuilder.claudeArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant),
                 environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .claude
@@ -30,13 +32,14 @@ struct CLIProcessStreamRunner: Sendable {
         prompt: String,
         model: String,
         workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         var parser = CodexExecJSONLParser()
         await runProcess(
             invocation: CLIProcessInvocation(
                 executable: executable,
-                arguments: CLIArgumentBuilder.codexArguments(prompt: prompt, model: model),
+                arguments: CLIArgumentBuilder.codexArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant),
                 environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .codex

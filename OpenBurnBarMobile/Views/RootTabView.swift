@@ -51,6 +51,7 @@ struct RootTabView: View {
     /// swaps via `@StateObject`. Observes the singleton's session-id on
     /// `.onAppear` and auto-opens to dock on session start.
     @StateObject private var liveStagePresenter = AgentLiveStagePresenter()
+    @StateObject private var skillRunPiPController = SkillRunTextPiPController()
 
     // Per-tab navigation paths
     @State private var pulsePath = NavigationPath()
@@ -131,6 +132,12 @@ struct RootTabView: View {
                 onTapHermesTab: { selection = .hermes }
             )
             .zIndex(20)
+
+            SkillRunLiveStage(
+                host: missionConsoleHost,
+                pipController: skillRunPiPController
+            )
+            .zIndex(19)
         }
         .environment(\.motionStore, motionStore)
         .environment(\.chartStudioPresenter, studioPresenter)

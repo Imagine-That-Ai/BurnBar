@@ -48,6 +48,48 @@ struct SubscriptionSetupSlot: Identifiable, Hashable {
     let statusMessage: String
 }
 
+struct QuotaWorkspaceProfileIndex: Sendable {
+    let defaultConfigAccountIDs: Set<String>
+
+    init(defaultConfigAccountIDs: Set<String> = []) {
+        self.defaultConfigAccountIDs = Set(defaultConfigAccountIDs.compactMap(Self.normalizedIdentifier))
+    }
+
+    init(
+        profiles: [SwitcherProfileRecord],
+        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) {
+        self.defaultConfigAccountIDs = Set(
+            profiles.compactMap { profile in
+                guard profile.targetKind == .cli,
+                      let cliType = profile.cliType,
+                      let configDirectory = profile.cliMetadata?.configDirectory,
+                      isDefaultSwitcherCLIConfigDirectory(
+                        configDirectory,
+                        cliType: cliType,
+                        homeDirectoryURL: homeDirectoryURL
+                      ) else {
+                    return nil
+                }
+                return Self.normalizedIdentifier(profile.id)
+            }
+        )
+    }
+
+    func isDefaultConfigProfile(accountID: String?) -> Bool {
+        guard let normalized = Self.normalizedIdentifier(accountID) else { return false }
+        return defaultConfigAccountIDs.contains(normalized)
+    }
+
+    private static func normalizedIdentifier(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return value.lowercased()
+    }
+}
+
 // MARK: - Sort + view modes
 
 enum QuotaSortMode: String, CaseIterable, Identifiable {
@@ -118,15 +160,22 @@ final class QuotaWorkspaceViewModel {
         cumulativeAcrossAccounts: Bool = false
     ) {
         var byID: [String: SubscriptionEntry] = [:]
+        let profileIndex = QuotaWorkspaceProfileIndex(
+            profiles: (try? dataStore.switcherStore.fetchAllProfiles()) ?? [],
+            homeDirectoryURL: quotaService.quotaHomeDirectoryURL
+        )
 
         for provider in AgentProvider.quotaSignalProviders {
             // When `cumulativeAcrossAccounts` is on and the provider has
             // more than one account, `displaySnapshots` returns the
             // synthetic merged snapshot. Otherwise it returns the
             // per-account list unchanged.
-            let allAccountSnapshots = quotaService.displaySnapshots(
-                for: provider,
-                cumulative: cumulativeAcrossAccounts
+            let allAccountSnapshots = Self.filteredDisplaySnapshots(
+                quotaService.displaySnapshots(
+                    for: provider,
+                    cumulative: cumulativeAcrossAccounts
+                ),
+                profileIndex: profileIndex
             )
             let isConnected = quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore)
             let candidateSnapshots = allAccountSnapshots
@@ -288,6 +337,86 @@ final class QuotaWorkspaceViewModel {
             isRefreshing: isRefreshing,
             lastValidatedAt: snapshot.fetchedAt
         )
+    }
+
+    static func filteredDisplaySnapshots(
+        _ snapshots: [ProviderQuotaSnapshot],
+        profileIndex: QuotaWorkspaceProfileIndex
+    ) -> [ProviderQuotaSnapshot] {
+        var order: [String] = []
+        var snapshotsByIdentity: [String: [ProviderQuotaSnapshot]] = [:]
+
+        for snapshot in snapshots {
+            guard !profileIndex.isDefaultConfigProfile(accountID: snapshot.accountID) else {
+                continue
+            }
+            let key = accountIdentityKey(for: snapshot)
+            if snapshotsByIdentity[key] == nil {
+                order.append(key)
+            }
+            snapshotsByIdentity[key, default: []].append(snapshot)
+        }
+
+        return order.compactMap { key in
+            snapshotsByIdentity[key]?.sorted(by: isPreferredSnapshot(_:over:)).first
+        }
+    }
+
+    private static func accountIdentityKey(for snapshot: ProviderQuotaSnapshot) -> String {
+        let providerKey = snapshot.providerID.rawValue.lowercased()
+        if let label = normalizedAccountIdentity(snapshot.accountLabel) {
+            return "\(providerKey):label:\(label)"
+        }
+        if let accountID = normalizedAccountIdentity(snapshot.accountID) {
+            return "\(providerKey):account:\(accountID)"
+        }
+        return "\(providerKey):source:\(normalizedAccountIdentity(snapshot.sourceId) ?? "default")"
+    }
+
+    private static func normalizedAccountIdentity(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return value.lowercased()
+    }
+
+    private static func isPreferredSnapshot(
+        _ candidate: ProviderQuotaSnapshot,
+        over incumbent: ProviderQuotaSnapshot
+    ) -> Bool {
+        let candidateHasSignal = !candidate.displayableQuotaBuckets.isEmpty
+        let incumbentHasSignal = !incumbent.displayableQuotaBuckets.isEmpty
+        if candidateHasSignal != incumbentHasSignal {
+            return candidateHasSignal
+        }
+
+        let candidateIsExplicitProfile = isExplicitSwitcherProfileSnapshot(candidate)
+        let incumbentIsExplicitProfile = isExplicitSwitcherProfileSnapshot(incumbent)
+        if candidateIsExplicitProfile != incumbentIsExplicitProfile {
+            return candidateIsExplicitProfile
+        }
+
+        let candidateIsSyntheticCurrent = isSyntheticCurrentCLISnapshot(candidate)
+        let incumbentIsSyntheticCurrent = isSyntheticCurrentCLISnapshot(incumbent)
+        if candidateIsSyntheticCurrent != incumbentIsSyntheticCurrent {
+            return !candidateIsSyntheticCurrent
+        }
+
+        return candidate.fetchedAt > incumbent.fetchedAt
+    }
+
+    private static func isExplicitSwitcherProfileSnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
+        let sourceID = snapshot.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return sourceID.hasPrefix("switcher-cli:")
+            && !sourceID.hasPrefix("switcher-cli-current:")
+    }
+
+    private static func isSyntheticCurrentCLISnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
+        let sourceID = snapshot.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let accountID = snapshot.accountID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return sourceID.hasPrefix("switcher-cli-current:")
+            || accountID?.hasPrefix("current-") == true
     }
 
     static func makeSetupSlots(

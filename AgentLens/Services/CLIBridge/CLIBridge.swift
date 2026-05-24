@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 
 @MainActor
 final class CLIBridge: ObservableObject {
@@ -230,7 +231,8 @@ final class CLIBridge: ObservableObject {
         model: String = "hermes",
         attachmentBytes: [String: Data] = [:],
         capabilities: HermesBackendCapabilities = .default,
-        workspaceURL: URL? = nil
+        workspaceURL: URL? = nil,
+        toolBroker: AgentToolBroker? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
             let streamIDTask = Task { [streamRuntime] in
@@ -254,6 +256,7 @@ final class CLIBridge: ObservableObject {
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,
                     workspaceURL: workspaceURL,
+                    toolBroker: toolBroker,
                     continuation: continuation
                 )
             }
@@ -281,7 +284,8 @@ final class CLIBridge: ObservableObject {
         model: String = "",
         attachmentBytes: [String: Data] = [:],
         capabilities: HermesBackendCapabilities = .default,
-        workspaceURL: URL? = nil
+        workspaceURL: URL? = nil,
+        toolBroker: AgentToolBroker? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let streamIDTask = Task { [streamRuntime] in
@@ -305,6 +309,7 @@ final class CLIBridge: ObservableObject {
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,
                     workspaceURL: workspaceURL,
+                    toolBroker: toolBroker,
                     continuation: continuation
                 )
             }
@@ -333,7 +338,8 @@ final class CLIBridge: ObservableObject {
         model: String = "pi",
         attachmentBytes: [String: Data] = [:],
         capabilities: HermesBackendCapabilities = .default,
-        workspaceURL: URL? = nil
+        workspaceURL: URL? = nil,
+        toolBroker: AgentToolBroker? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let streamIDTask = Task { [streamRuntime] in
@@ -360,6 +366,7 @@ final class CLIBridge: ObservableObject {
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,
                     workspaceURL: workspaceURL,
+                    toolBroker: toolBroker,
                     continuation: continuation
                 )
             }
@@ -382,7 +389,8 @@ final class CLIBridge: ObservableObject {
         systemPrompt: String,
         userMessage: String,
         workspaceDirectory: URL? = nil,
-        model: String = ""
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task.detached { [weak self] in
@@ -400,6 +408,7 @@ final class CLIBridge: ObservableObject {
                     prompt: fullPrompt,
                     model: model,
                     workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
                     continuation: continuation
                 )
             }
@@ -411,7 +420,8 @@ final class CLIBridge: ObservableObject {
         systemPrompt: String,
         userMessage: String,
         workspaceDirectory: URL? = nil,
-        model: String = ""
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task.detached { [weak self] in
@@ -429,6 +439,7 @@ final class CLIBridge: ObservableObject {
                     prompt: fullPrompt,
                     model: model,
                     workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
                     continuation: continuation
                 )
             }

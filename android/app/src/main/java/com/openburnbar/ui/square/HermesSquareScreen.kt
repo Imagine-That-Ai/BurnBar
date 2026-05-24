@@ -41,6 +41,11 @@ import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -56,11 +61,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.cloud.CloudConversationSearchRow
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.ui.components.AuroraBackdrop
+import com.openburnbar.ui.components.AuroraBottomSheet
+import com.openburnbar.ui.components.rememberAuroraSheetState
 import com.openburnbar.ui.theme.AuroraColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -188,10 +201,47 @@ fun HermesSquareScreen(
     var selectedCloudRow by remember { mutableStateOf<CloudConversationSearchRow?>(null) }
     var selectedCliSession by remember { mutableStateOf<CLIAgentSessionRecord?>(null) }
 
+    val historyStore = remember(context) { com.openburnbar.data.assistants.AssistantChatHistoryStore.shared(context.applicationContext) }
+
+    var threadToManage by remember { mutableStateOf<ThreadInboxItem?>(null) }
+    var showRenameDialogForThread by remember { mutableStateOf<ThreadInboxItem?>(null) }
+    var renameDialogText by remember { mutableStateOf("") }
+    var missionToManage by remember { mutableStateOf<com.openburnbar.data.missions.ActiveMission?>(null) }
+    var pinnedAgentToManage by remember { mutableStateOf<String?>(null) }
+
+    fun updateThreadItemMetadata(
+        item: ThreadInboxItem,
+        customTitle: String? = null,
+        labelColorHex: String? = null,
+        isPinned: Boolean? = null,
+        priorityOrder: Int? = null
+    ) {
+        scope.launch {
+            if (item.id.startsWith("cli:")) {
+                inbox.updateSessionMetadata(
+                    id = item.id.removePrefix("cli:"),
+                    customTitle = customTitle,
+                    labelColorHex = labelColorHex,
+                    isPinned = isPinned,
+                    priorityOrder = priorityOrder
+                )
+            } else {
+                historyStore.updateThreadMetadata(
+                    id = item.id.substringAfter(":"),
+                    customTitle = customTitle,
+                    labelColorHex = labelColorHex,
+                    isPinned = isPinned,
+                    priorityOrder = priorityOrder
+                )
+            }
+        }
+    }
+
     // Phase A/3: hydrate availability for built-ins + bring up the mission
     // host + projects store + rollback service so the new sections have
     // live data on first paint.
     LaunchedEffect(Unit) {
+        inbox.bind(historyStore = historyStore, missionHost = missionHost)
         inbox.refreshFromCloud()
         registry.refreshAvailability(
             mapOf(
@@ -246,6 +296,24 @@ fun HermesSquareScreen(
 
     val splitInbox by remember(inbox.items) {
         derivedStateOf { inbox.items.splitForInbox() }
+    }
+
+    fun moveThreadItem(item: ThreadInboxItem, direction: Int) {
+        val (service, _) = splitInbox
+        val index = service.indexOfFirst { it.id == item.id }
+        if (index == -1) return
+        val targetIndex = index + direction
+        if (targetIndex !in service.indices) return
+
+        val list = service.toMutableList()
+        val temp = list[index]
+        list[index] = list[targetIndex]
+        list[targetIndex] = temp
+
+        list.forEachIndexed { i, threadItem ->
+            val newOrder = i + 1
+            updateThreadItemMetadata(threadItem, priorityOrder = newOrder)
+        }
     }
     val filteredHits by remember(query, inbox.items, registry.identities, cloudHits) {
         derivedStateOf {
@@ -427,7 +495,7 @@ fun HermesSquareScreen(
                                 }
                             }
                         },
-                        onLongPress = { uri -> showBrandZoneURI = uri },
+                        onLongPress = { uri -> pinnedAgentToManage = uri },
                         onAdd = { showDiscover = true },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
@@ -447,6 +515,9 @@ fun HermesSquareScreen(
                 item {
                     ActiveMissionsStrip(
                         missions = missionSnapshot.activeMissions,
+                        onLongPress = { mission ->
+                            missionToManage = mission
+                        },
                         modifier = Modifier.padding(start = 16.dp, end = 0.dp)
                     )
                 }
@@ -499,6 +570,9 @@ fun HermesSquareScreen(
                                 } else {
                                     showBrandZoneURI = item.agentURI
                                 }
+                            },
+                            onLongPress = {
+                                threadToManage = item
                             },
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
@@ -603,7 +677,303 @@ fun HermesSquareScreen(
             )
         }
     }
+
+    // --- Bottom Sheets & Dialogs for Living Inbox Features ---
+
+    threadToManage?.let { item ->
+        AuroraBottomSheet(
+            onDismissRequest = { threadToManage = null }
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp, horizontal = 8.dp)
+            ) {
+                Text(
+                    text = item.customTitle ?: item.title,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                // Rename Button
+                TextButton(
+                    onClick = {
+                        renameDialogText = item.customTitle ?: item.title
+                        showRenameDialogForThread = item
+                        threadToManage = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Rename Conversation",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // Pin / Unpin Button
+                TextButton(
+                    onClick = {
+                        updateThreadItemMetadata(item, isPinned = !item.isPinned)
+                        threadToManage = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (item.isPinned) "Unpin from Top" else "Pin to Top",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = if (item.isPinned) Icons.Outlined.PushPin else Icons.Filled.PushPin,
+                            contentDescription = null,
+                            tint = AuroraColors.ember,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Move Up / Move Down Buttons
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TextButton(
+                        onClick = {
+                            moveThreadItem(item, -1)
+                            threadToManage = null
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.ArrowUpward, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Move Up", fontSize = 14.sp)
+                        }
+                    }
+
+                    TextButton(
+                        onClick = {
+                            moveThreadItem(item, 1)
+                            threadToManage = null
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Move Down", fontSize = 14.sp)
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                // Color Swatches Row
+                Text(
+                    text = "Label Color",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                val colorLabels = listOf(
+                    ColorLabelOption("None", "#NONE#", Color.Gray.copy(alpha = 0.5f)),
+                    ColorLabelOption("Amber", "#f59e0b", Color(0xFFF59E0B)),
+                    ColorLabelOption("Teal", "#14b8a6", Color(0xFF14B8A6)),
+                    ColorLabelOption("Red", "#ef4444", Color(0xFFEF4444)),
+                    ColorLabelOption("Purple", "#a855f7", Color(0xFFA855F7)),
+                    ColorLabelOption("Emerald", "#10b981", Color(0xFF10B981))
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    colorLabels.forEach { option ->
+                        val isSelected = (item.labelColorHex ?: "#NONE#") == option.hex
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(option.color)
+                                .border(
+                                    width = if (isSelected) 3.dp else 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(50)
+                                )
+                                .clickableUnit {
+                                    updateThreadItemMetadata(item, labelColorHex = option.hex)
+                                    threadToManage = null
+                                }
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = "Selected",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    showRenameDialogForThread?.let { item ->
+        AlertDialog(
+            onDismissRequest = { showRenameDialogForThread = null },
+            title = { Text("Rename Conversation") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter a new custom title for this thread. Leave blank to reset to default.")
+                    OutlinedTextField(
+                        value = renameDialogText,
+                        onValueChange = { renameDialogText = it },
+                        placeholder = { Text(item.title) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        updateThreadItemMetadata(item, customTitle = renameDialogText)
+                        showRenameDialogForThread = null
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showRenameDialogForThread = null }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    missionToManage?.let { mission ->
+        AlertDialog(
+            onDismissRequest = { missionToManage = null },
+            title = { Text("Manage Mission") },
+            text = { Text("Would you like to cancel this active mission or dismiss it from your console?") },
+            confirmButton = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                missionHost.cancelMission(mission.id)
+                                missionHost.dismissMission(mission.id)
+                            }
+                            missionToManage = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Cancel & Dismiss", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(
+                        onClick = {
+                            missionHost.dismissMission(mission.id)
+                            missionToManage = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Just Dismiss")
+                    }
+                    TextButton(
+                        onClick = { missionToManage = null },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Keep Running")
+                    }
+                }
+            }
+        )
+    }
+
+    pinnedAgentToManage?.let { uri ->
+        val identity = registry.identity(uri)
+        val index = pinned.pinnedURIs.indexOf(uri)
+        AlertDialog(
+            onDismissRequest = { pinnedAgentToManage = null },
+            title = { Text("Rearrange ${identity?.displayName ?: "Agent"}") },
+            text = { Text("Move this pinned agent within your grid or unpin it completely.") },
+            confirmButton = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (index > 0) {
+                        TextButton(
+                            onClick = {
+                                persistPinned(pinned.moving(index, index - 1))
+                                pinnedAgentToManage = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Move Left")
+                        }
+                    }
+                    if (index < pinned.pinnedURIs.size - 1) {
+                        TextButton(
+                            onClick = {
+                                persistPinned(pinned.moving(index, index + 1))
+                                pinnedAgentToManage = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Move Right")
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            persistPinned(pinned.unpinning(uri))
+                            pinnedAgentToManage = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Unpin Agent", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(
+                        onClick = { pinnedAgentToManage = null },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
 }
+
+private data class ColorLabelOption(
+    val name: String,
+    val hex: String,
+    val color: Color
+)
 
 @Composable
 private fun CLIAgentSessionSheet(
@@ -1147,6 +1517,7 @@ private fun PinnedCell(
 @Composable
 private fun ActiveMissionsStrip(
     missions: List<com.openburnbar.data.missions.ActiveMission>,
+    onLongPress: (com.openburnbar.data.missions.ActiveMission) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -1204,6 +1575,7 @@ private fun ActiveMissionsStrip(
                 items(missions, key = { it.id }) { mission ->
                     HermesSquareMissionTile(
                         tile = mission,
+                        onLongPress = { onLongPress(mission) },
                         modifier = Modifier.width(260.dp)
                     )
                 }
@@ -1423,6 +1795,7 @@ private fun ThreadInboxRow(
     item: ThreadInboxItem,
     registry: AgentIdentityRegistry,
     onTap: () -> Unit,
+    onLongPress: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val identity = registry.identity(item.agentURI)
@@ -1432,67 +1805,98 @@ private fun ThreadInboxRow(
         tonalElevation = 0.5.dp,
         modifier = modifier
             .fillMaxWidth()
-            .clickableUnit(onClick = onTap)
+            .clickableLongPress(onClick = onTap, onLongClick = onLongPress)
     ) {
         Row(
-            verticalAlignment = Alignment.Top,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .height(IntrinsicSize.Min)
         ) {
-            if (identity != null) {
-                com.openburnbar.ui.components.BurnBarAgentAvatar(
-                    identity = identity,
-                    size = 36.dp
-                )
-            } else {
-                com.openburnbar.ui.components.ProviderLogoView(
-                    drawableRes = com.openburnbar.ui.components.ProviderLogo.drawableForAnyIdentifier(
-                        item.agentURI
-                    ),
-                    size = 36.dp,
-                    style = com.openburnbar.ui.components.ProviderLogoStyle.Disc
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        identity?.displayName ?: "Agent",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        relativeTime(item.lastActivityAtEpoch),
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            // Left accent color bar if labelColorHex exists
+            val colorHex = item.labelColorHex
+            if (!colorHex.isNullOrBlank()) {
+                val parsedColor = remember(colorHex) {
+                    try { hexColor(colorHex) } catch (e: Exception) { Color.Transparent }
+                }
+                if (parsedColor != Color.Transparent) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(4.dp)
+                            .background(parsedColor)
                     )
                 }
-                Text(
-                    item.title,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    item.preview,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (item.needsAttention) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        "Needs attention",
-                        color = MaterialTheme.colorScheme.tertiary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
+            }
+
+            Row(
+                verticalAlignment = Alignment.Top,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                if (identity != null) {
+                    com.openburnbar.ui.components.BurnBarAgentAvatar(
+                        identity = identity,
+                        size = 36.dp
                     )
+                } else {
+                    com.openburnbar.ui.components.ProviderLogoView(
+                        drawableRes = com.openburnbar.ui.components.ProviderLogo.drawableForAnyIdentifier(
+                            item.agentURI
+                        ),
+                        size = 36.dp,
+                        style = com.openburnbar.ui.components.ProviderLogoStyle.Disc
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            identity?.displayName ?: "Agent",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (item.isPinned) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Filled.PushPin,
+                                contentDescription = "Pinned",
+                                tint = AuroraColors.ember,
+                                modifier = Modifier.size(10.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            relativeTime(item.lastActivityAtEpoch),
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        item.customTitle ?: item.title,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        item.preview,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (item.needsAttention) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "Needs attention",
+                            color = MaterialTheme.colorScheme.tertiary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }

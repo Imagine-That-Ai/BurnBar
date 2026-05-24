@@ -7,6 +7,8 @@ struct ProviderLogoView: View {
     let size: CGFloat
     let useFallbackColor: Bool
 
+    @Environment(\.colorScheme) private var colorScheme
+
     init(provider: AgentProvider, size: CGFloat = 24, useFallbackColor: Bool = true) {
         self.provider = provider
         self.size = size
@@ -14,17 +16,64 @@ struct ProviderLogoView: View {
     }
 
     var body: some View {
-        Group {
-            if let bundledImage {
-                bundledImage
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                fallbackView
+        ZStack {
+            if needsBackdropTreatment {
+                logoBackdrop
+            }
+            Group {
+                if let bundledImage {
+                    bundledImage
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .padding(needsBackdropTreatment ? size * 0.08 : 0)
+                } else {
+                    fallbackView
+                }
             }
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous))
+    }
+
+    private var needsBackdropTreatment: Bool {
+        guard bundledImage != nil else { return false }
+        if colorScheme == .dark {
+            switch provider {
+            case .openAI, .codex, .cursor, .forgeDev, .claudeCode,
+                 .factory, .windsurf, .copilot, .aider, .ollama,
+                 .openClaw, .geminiCLI, .antigravity, .goose, .augment, .cline,
+                 .kiloCode, .rooCode, .hermes:
+                return true
+            default:
+                return false
+            }
+        } else {
+            // Light mode: Kimi, Goose, and Augment have white/light silhouettes and need a backdrop
+            switch provider {
+            case .kimi, .goose, .augment:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var logoBackdrop: some View {
+        let fillStyle: AnyShapeStyle = {
+            if colorScheme == .dark {
+                return AnyShapeStyle(.white.opacity(0.92))
+            } else {
+                return AnyShapeStyle(DesignSystem.Colors.primary(for: provider))
+            }
+        }()
+
+        RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
+            .fill(fillStyle)
+            .overlay(
+                RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
+                    .stroke(colorScheme == .dark ? Color.black.opacity(0.06) : Color.white.opacity(0.12), lineWidth: 0.5)
+            )
     }
 
     @ViewBuilder

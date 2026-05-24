@@ -27,12 +27,33 @@ final class QuotaStore {
     private var automaticRefreshTask: Task<Void, Never>?
     private let settingsStore = QuotaSettingsStore()
 
+    /// Exposes the current provider order as persistent tokens
+    var providerOrderTokens: [String] {
+        settingsStore.providerOrder.map(\.persistedToken)
+    }
+
     init(
         firestore: FirestoreRepository = FirestoreRepository(),
         functions: FunctionsRepository = FunctionsRepository()
     ) {
         self.firestore = firestore
         self.functions = functions
+    }
+
+    /// Updates the provider sorting order and persists it
+    func updateProviderOrder(_ newOrder: [String]) {
+        let providers = newOrder.compactMap { AgentProvider.fromPersistedToken($0) }
+        settingsStore.providerOrder = providers
+        rebuildDerivedSnapshotState()
+    }
+
+    /// Hides a provider from the list and persists it
+    func hideProvider(_ providerKey: String) {
+        guard let provider = AgentProvider.fromPersistedToken(providerKey) else { return }
+        var visible = settingsStore.visibleProviders
+        visible.remove(provider)
+        settingsStore.visibleProviders = visible
+        rebuildDerivedSnapshotState()
     }
 
     // Listener cleanup happens in `stopListening()` which is invoked from the
@@ -181,6 +202,7 @@ final class QuotaStore {
         return dropShadowedProviderLevelSnapshots(
             deduplicateQuotaSnapshotsByProviderAccount(displayable)
         )
+        .filter(\.hasDisplayableQuotaSignal)
     }
 
     nonisolated static func deduplicateQuotaSnapshotsByProviderAccount(_ snapshots: [ProviderQuotaSnapshot]) -> [ProviderQuotaSnapshot] {
@@ -235,14 +257,37 @@ final class QuotaStore {
             return $0.id > $1.id
         }
         guard let latest = ordered.first else { return snapshots[0] }
+        if latest.isExplicitlyStale {
+            return ProviderQuotaSnapshot(
+                id: latest.id,
+                provider: latest.provider,
+                providerID: latest.providerID,
+                accountID: latest.accountID,
+                accountLabel: latest.accountLabel,
+                accountStorageScope: latest.accountStorageScope,
+                sourceKind: latest.sourceKind,
+                sourceId: latest.sourceID,
+                fetchedAt: latest.fetchedAt,
+                source: latest.source,
+                confidence: latest.confidence,
+                managementURL: latest.managementURL,
+                statusMessage: latest.statusMessage,
+                buckets: [],
+                schemaVersion: latest.schemaVersion,
+                updatedAt: latest.updatedAt
+            )
+        }
         guard ordered.count > 1 else { return latest }
 
+        let nonExplicitSnapshots = ordered.filter { !$0.isExplicitlyStale }
+        let freshSnapshots = nonExplicitSnapshots.filter { !$0.isStale() }
+        let bucketSourceSnapshots = freshSnapshots.isEmpty ? nonExplicitSnapshots : freshSnapshots
+
         var seenBuckets = Set<String>()
-        let mergedBuckets = ordered
-            .filter { !$0.isExplicitlyStale }
+        let mergedBuckets = bucketSourceSnapshots
             .flatMap(\.buckets)
             .filter { bucket in
-                let key = "\(bucket.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())::\(bucket.window?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "")"
+                let key = quotaBucketDedupKey(bucket)
                 guard !seenBuckets.contains(key) else { return false }
                 seenBuckets.insert(key)
                 return true
@@ -283,6 +328,19 @@ final class QuotaStore {
 
     nonisolated private static func freshnessDate(_ snapshot: ProviderQuotaSnapshot) -> Date {
         max(snapshot.updatedAt, snapshot.fetchedAt)
+    }
+
+    nonisolated private static func quotaBucketDedupKey(_ bucket: ProviderQuotaBucket) -> String {
+        let nameKey = normalizedQuotaBucketToken(bucket.name)
+        let windowKey = normalizedQuotaBucketToken(bucket.window ?? "")
+        let unitKey = normalizedQuotaBucketToken(bucket.meta?["unit"] ?? "")
+        return "\(nameKey)::\(windowKey)::\(unitKey)"
+    }
+
+    nonisolated private static func normalizedQuotaBucketToken(_ raw: String) -> String {
+        raw
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
     }
 
     nonisolated private static func confidenceRank(_ confidence: ProviderQuotaConfidence) -> Int {

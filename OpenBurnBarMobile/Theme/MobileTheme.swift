@@ -186,6 +186,8 @@ private enum LLMModelBrand: Hashable {
     case amazon
     case alibaba
     case ollama
+    case openBurnBar
+    case zai
     case unknown
 
     var emblemColor: Color {
@@ -206,12 +208,15 @@ private enum LLMModelBrand: Hashable {
         case .amazon:     return Color(hex: "FF9900")
         case .alibaba:    return Color(hex: "FF6A00")
         case .ollama:     return Color(hex: "8B8589")
+        case .openBurnBar: return Color(hex: "FA5053")
+        case .zai:        return Color(hex: "8B5CF6")
         case .unknown:    return MobileTheme.textSecondary
         }
     }
 
     static func infer(fromModelKey key: String) -> LLMModelBrand {
         let key = key.lowercased()
+        if key.contains("openburnbar") || key.contains("burnbar") { return .openBurnBar }
         if key.contains("claude") || key.contains("anthropic") { return .anthropic }
         if key.contains("gpt") || key.contains("openai") || key.contains("chatgpt") { return .openAI }
         if key.contains("gemini") || key.contains("google") { return .google }
@@ -228,6 +233,7 @@ private enum LLMModelBrand: Hashable {
         if key.contains("nova") || key.contains("amazon") || key.contains("bedrock") { return .amazon }
         if key.contains("qwen") || key.contains("alibaba") || key.contains("tongyi") { return .alibaba }
         if key.contains("ollama") { return .ollama }
+        if key.contains("zai") || key.contains("glm") { return .zai }
         return .unknown
     }
 }

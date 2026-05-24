@@ -5,9 +5,8 @@ import XCTest
 
 /// Verifies the Risk-1 control-stream registry behaves correctly under
 /// the contract `MacFileTransferService` relies on:
-/// register-replaces-stale, invalidate-removes, latest-stream-by-time,
-/// await-blocks-until-register, and idempotent close on the displaced
-/// stream when a re-register happens.
+/// register-retains-siblings, invalidate-removes, latest-stream-by-time,
+/// await-blocks-until-register, and lease-scoped cleanup.
 final class MediaControlStreamRegistryTests: XCTestCase {
     func testRegisterAndLookupByConnection() async {
         let registry = MediaControlStreamRegistry()
@@ -33,7 +32,7 @@ final class MediaControlStreamRegistryTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(closedCount, 1)
     }
 
-    func testReRegisterClosesPriorStream() async {
+    func testReRegisterKeepsPriorStreamForSiblingPhones() async {
         let registry = MediaControlStreamRegistry()
         let oldStream = RecordingStream()
         let newStream = RecordingStream()
@@ -42,8 +41,49 @@ final class MediaControlStreamRegistryTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 50_000_000)
         let oldClosed = await oldStream.closedCount()
         let newClosed = await newStream.closedCount()
+        XCTAssertEqual(oldClosed, 0)
+        XCTAssertEqual(newClosed, 0)
+        let count = await registry.activeStreamCount()
+        XCTAssertEqual(count, 2)
+    }
+
+    func testStaleLeaseInvalidationDoesNotCloseFreshRedial() async {
+        let registry = MediaControlStreamRegistry()
+        let oldStream = RecordingStream()
+        let newStream = RecordingStream()
+        let staleLease = await registry.register(stream: oldStream, uid: "u", connectionID: "c1")
+        await registry.register(stream: newStream, uid: "u", connectionID: "c1")
+
+        let removed = await registry.invalidate(staleLease)
+
+        XCTAssertFalse(removed)
+        let activeAfterStaleInvalidate = await registry.activeStreamCount()
+        XCTAssertEqual(activeAfterStaleInvalidate, 1)
+        let current = await registry.stream(uid: "u", connectionID: "c1")
+        XCTAssertNotNil(current)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let oldClosed = await oldStream.closedCount()
+        let newClosed = await newStream.closedCount()
         XCTAssertGreaterThanOrEqual(oldClosed, 1)
         XCTAssertEqual(newClosed, 0)
+    }
+
+    func testLeaseInvalidationReturnsTrueOnlyAfterLastSiblingCloses() async {
+        let registry = MediaControlStreamRegistry()
+        let first = RecordingStream()
+        let second = RecordingStream()
+        let firstLease = await registry.register(stream: first, uid: "u", connectionID: "c1")
+        let secondLease = await registry.register(stream: second, uid: "u", connectionID: "c1")
+
+        let removedFirst = await registry.invalidate(firstLease)
+        let countAfterFirst = await registry.activeStreamCount()
+        let removedSecond = await registry.invalidate(secondLease)
+        let countAfterSecond = await registry.activeStreamCount()
+
+        XCTAssertFalse(removedFirst)
+        XCTAssertEqual(countAfterFirst, 1)
+        XCTAssertTrue(removedSecond)
+        XCTAssertEqual(countAfterSecond, 0)
     }
 
     func testLatestStreamPicksMostRecent() async {

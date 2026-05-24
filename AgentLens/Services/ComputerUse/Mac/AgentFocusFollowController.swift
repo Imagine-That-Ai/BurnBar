@@ -43,6 +43,11 @@ final class AgentFocusFollowController {
     private let focusContextSink: FocusContextSink
     private let clock: any AgentFocusFollowClock
     private let notificationCenter: NotificationCenter
+    private static let ignoredBundleIdentifiers: Set<String> = [
+        "com.openburnbar.app",
+        "com.apple.loginwindow",
+        "com.apple.SecurityAgent"
+    ]
 
     private var observer: NSObjectProtocol?
     private var activeSessionId: String?
@@ -74,6 +79,10 @@ final class AgentFocusFollowController {
         if let mode {
             self.mode = mode
         }
+        guard self.mode != .off else {
+            stopTracking()
+            return
+        }
         installObserverIfNeeded()
         startHeartbeat()
         Task { @MainActor [weak self] in
@@ -83,6 +92,10 @@ final class AgentFocusFollowController {
 
     func stop() {
         activeSessionId = nil
+        stopTracking()
+    }
+
+    private func stopTracking() {
         pendingSwitchTask?.cancel()
         pendingSwitchTask = nil
         heartbeatTask?.cancel()
@@ -100,6 +113,13 @@ final class AgentFocusFollowController {
         self.mode = mode
         pendingSwitchTask?.cancel()
         pendingSwitchTask = nil
+        guard activeSessionId != nil else { return }
+        guard mode != .off else {
+            stopTracking()
+            return
+        }
+        installObserverIfNeeded()
+        startHeartbeat()
         Task { @MainActor [weak self] in
             await self?.handleWorkspaceActivation()
         }
@@ -129,7 +149,14 @@ final class AgentFocusFollowController {
 
     private func handleActivation(_ target: AgentFocusFollowTarget) {
         guard activeSessionId != nil else { return }
+        guard !Self.ignoredBundleIdentifiers.contains(target.bundleIdentifier) else {
+            pendingSwitchTask?.cancel()
+            pendingSwitchTask = nil
+            return
+        }
         switch mode {
+        case .off:
+            return
         case .immediate:
             Task { @MainActor [weak self] in
                 await self?.switchNow(to: target)

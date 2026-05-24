@@ -188,6 +188,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 }
             }
 
+            AppLogger.network.info(
+                "hermes_iroh_relay_started connectionID=\(connectionID) nodeID=\(identity.nodeId) directAddressCount=\(identity.directAddresses.count)"
+            )
             return true
         } catch {
             AppLogger.network.silentFailure("hermes_iroh_relay_start_failed", error: error)
@@ -270,7 +273,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         detail: [:]
                     )
                     do {
-                        try await handler.serve(
+                        let disposition = try await handler.serve(
                             stream: stream,
                             uid: uid,
                             connectionID: connectionID
@@ -282,8 +285,11 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                             connectionId: connectionID,
                             transport: .irohDirect,
                             rttMillis: rtt,
-                            detail: [:]
+                            detail: ["disposition": "\(disposition)"]
                         )
+                        if disposition == .callerOwnsStream {
+                            await stream.close()
+                        }
                     } catch {
                         await auditLogger.record(
                             event: .streamFailed,
@@ -293,8 +299,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                             rttMillis: nil,
                             detail: ["error": String(error.localizedDescription.prefix(256))]
                         )
+                        await stream.close()
                     }
-                    await stream.close()
                     self?.releaseServeTask(serveID)
                 }
                 serveTasks[serveID] = task
@@ -311,6 +317,14 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 )
                 return
             } catch {
+                if Self.isRecoverablePeerAcceptError(error) {
+                    consecutiveAcceptFailures = 0
+                    AppLogger.network.info(
+                        "hermes_iroh_relay_accept_peer_closed connectionID=\(connectionID) error=\(String(error.localizedDescription.prefix(160)))"
+                    )
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    continue
+                }
                 consecutiveAcceptFailures += 1
                 AppLogger.network.silentFailure("hermes_iroh_relay_accept_failed", error: error)
                 let shouldRebuild = Self.shouldRebuildAfterAcceptError(error)
@@ -440,6 +454,24 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 || lowered.contains("not initialized")
                 || lowered.contains("runtime")
         case .nodeIdUnreachable, .protocolMismatch, .timedOut:
+            return false
+        }
+    }
+
+    private static func isRecoverablePeerAcceptError(_ error: Error) -> Bool {
+        guard let transportError = error as? IrohRelayTransportError else { return false }
+        switch transportError {
+        case .streamRejected(let message), .decodeFailed(let message):
+            let lowered = message.lowercased()
+            return lowered.contains("connection lost")
+                || lowered.contains("connection reset")
+                || lowered.contains("reset by peer")
+                || lowered.contains("closed by peer")
+                || lowered.contains("application closed")
+                || lowered.contains("finished early")
+        case .timedOut:
+            return true
+        case .endpointNotReady, .nodeIdUnreachable, .protocolMismatch, .shutdown:
             return false
         }
     }

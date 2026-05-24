@@ -1,9 +1,13 @@
 import Foundation
 import AVFoundation
 import AppKit
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
 #endif
+import OSLog
 import OpenBurnBarCore
 import OpenBurnBarMedia
 
@@ -15,6 +19,8 @@ import OpenBurnBarMedia
 /// See `plans/2026-05-15-mercury-media-master-plan.md` § C.1.
 @MainActor
 final class ScreenCapturePipeline: NSObject {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
+
     enum Failure: Error, LocalizedError {
         case screenRecordingPermissionDenied
         case noShareableContent
@@ -87,7 +93,7 @@ final class ScreenCapturePipeline: NSObject {
     static func availableWindows() async -> [WindowDescriptor] {
         #if canImport(ScreenCaptureKit)
         do {
-            let content = try await SCShareableContent.current
+            let content = try await currentShareableContent(requestPermissionIfNeeded: false)
             return content.windows.compactMap { window in
                 guard let application = window.owningApplication,
                       application.applicationName.isEmpty == false,
@@ -112,9 +118,12 @@ final class ScreenCapturePipeline: NSObject {
         #if canImport(ScreenCaptureKit)
         let content: SCShareableContent
         do {
-            content = try await SCShareableContent.current
+            content = try await Self.currentShareableContent(requestPermissionIfNeeded: true)
         } catch {
-            throw Failure.screenRecordingPermissionDenied
+            if case Failure.screenRecordingPermissionDenied = error {
+                throw error
+            }
+            throw Failure.streamConfigurationFailed(error.localizedDescription)
         }
         let filter: SCContentFilter
         if let windowID = configuration.windowID,
@@ -125,9 +134,11 @@ final class ScreenCapturePipeline: NSObject {
                 content.displays.first { String($0.displayID) == wanted }
             } ?? content.displays.first
             guard let display else {
+                Self.log.error("screen_capture_shareable_content_empty displays=\(content.displays.count, privacy: .public) windows=\(content.windows.count, privacy: .public)")
                 throw Failure.noShareableContent
             }
-            filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+            let excludedApplications = Self.displayCaptureExcludedApplications(in: content)
+            filter = SCContentFilter(display: display, excludingApplications: excludedApplications, exceptingWindows: [])
         }
         let cfg = SCStreamConfiguration()
         cfg.width = configuration.width
@@ -154,6 +165,52 @@ final class ScreenCapturePipeline: NSObject {
         stream = nil
         #endif
     }
+
+    #if canImport(ScreenCaptureKit)
+    static func shouldExcludeApplicationFromDisplayCapture(
+        bundleIdentifier: String?,
+        ownBundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) -> Bool {
+        guard let bundleIdentifier, !bundleIdentifier.isEmpty else { return false }
+        var excludedBundleIdentifiers: Set<String> = [
+            "com.openburnbar.app",
+            "com.openburnbar.AgentLens"
+        ]
+        if let ownBundleIdentifier, !ownBundleIdentifier.isEmpty {
+            excludedBundleIdentifiers.insert(ownBundleIdentifier)
+        }
+        return excludedBundleIdentifiers.contains(bundleIdentifier)
+    }
+
+    private static func displayCaptureExcludedApplications(in content: SCShareableContent) -> [SCRunningApplication] {
+        content.applications.filter {
+            shouldExcludeApplicationFromDisplayCapture(bundleIdentifier: $0.bundleIdentifier)
+        }
+    }
+
+    private static func currentShareableContent(requestPermissionIfNeeded: Bool) async throws -> SCShareableContent {
+        #if canImport(CoreGraphics)
+        if !CGPreflightScreenCaptureAccess() {
+            guard requestPermissionIfNeeded, CGRequestScreenCaptureAccess() else {
+                log.error("screen_capture_permission_missing requestPermission=\(requestPermissionIfNeeded, privacy: .public)")
+                throw Failure.screenRecordingPermissionDenied
+            }
+        }
+        #endif
+
+        let visibleContent = try await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: true
+        )
+        if !visibleContent.displays.isEmpty || !visibleContent.windows.isEmpty {
+            return visibleContent
+        }
+
+        let fallback = try await SCShareableContent.current
+        log.info("screen_capture_shareable_content_fallback visibleDisplays=0 visibleWindows=0 fallbackDisplays=\(fallback.displays.count, privacy: .public) fallbackWindows=\(fallback.windows.count, privacy: .public)")
+        return fallback
+    }
+    #endif
 }
 
 #if canImport(ScreenCaptureKit)

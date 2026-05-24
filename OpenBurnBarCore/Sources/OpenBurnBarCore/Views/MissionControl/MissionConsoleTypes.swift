@@ -444,6 +444,10 @@ public struct MissionConsoleDispatchRequest: Sendable, Hashable {
     public var approvalMode: MissionConsoleApprovalMode
     public var commandsAllowed: Bool
     public var fileEditsAllowed: Bool
+    public var sourceSkillID: HermesSkillRunID?
+    public var sourceSurface: String?
+    public var deliveryMode: SkillRunDeliveryMode
+    public var parentHermesThreadID: String?
 
     public init(
         title: String,
@@ -454,7 +458,11 @@ public struct MissionConsoleDispatchRequest: Sendable, Hashable {
         depth: MissionConsoleDepth,
         approvalMode: MissionConsoleApprovalMode,
         commandsAllowed: Bool,
-        fileEditsAllowed: Bool
+        fileEditsAllowed: Bool,
+        sourceSkillID: HermesSkillRunID? = nil,
+        sourceSurface: String? = nil,
+        deliveryMode: SkillRunDeliveryMode = .actionOnly,
+        parentHermesThreadID: String? = nil
     ) {
         self.title = title
         self.prompt = prompt
@@ -465,6 +473,10 @@ public struct MissionConsoleDispatchRequest: Sendable, Hashable {
         self.approvalMode = approvalMode
         self.commandsAllowed = commandsAllowed
         self.fileEditsAllowed = fileEditsAllowed
+        self.sourceSkillID = sourceSkillID
+        self.sourceSurface = sourceSurface
+        self.deliveryMode = deliveryMode
+        self.parentHermesThreadID = parentHermesThreadID
     }
 }
 

@@ -51,13 +51,18 @@ fun ProviderLogo(
     modifier: Modifier = Modifier,
     circular: Boolean = false
 ) {
+    val backgroundColor = when (provider) {
+        AgentProvider.KIMI, AgentProvider.GOOSE, AgentProvider.AUGMENT -> Color(provider.brandColor)
+        else -> Color.White
+    }
     BundledLogo(
         resId = provider.logoRes,
         fallbackInitials = provider.displayName.take(2).uppercase(),
         fallbackColors = listOf(Color(provider.brandColor), Color(provider.accentColor)),
         size = size,
         circular = circular,
-        modifier = modifier
+        modifier = modifier,
+        backgroundColor = backgroundColor
     )
 }
 
@@ -92,13 +97,18 @@ fun ModelLogo(
     circular: Boolean = false
 ) {
     val accent = Color(brand.emblemColor)
+    val backgroundColor = when (brand) {
+        LLMModelBrand.KIMI -> accent
+        else -> Color.White
+    }
     BundledLogo(
         resId = brand.logoRes,
         fallbackInitials = brand.displayName.take(2).uppercase(),
         fallbackColors = listOf(accent, accent.copy(alpha = 0.6f)),
         size = size,
         circular = circular,
-        modifier = modifier
+        modifier = modifier,
+        backgroundColor = backgroundColor
     )
 }
 
@@ -117,15 +127,16 @@ private fun BundledLogo(
     fallbackColors: List<Color>,
     size: Dp,
     circular: Boolean,
-    modifier: Modifier
+    modifier: Modifier,
+    backgroundColor: Color = Color.White
 ) {
     val shape = if (circular) CircleShape else RoundedCornerShape(size * 0.2237f)
     Box(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(Color.White)
-            .border(0.5.dp, Color.Black.copy(alpha = 0.08f), shape),
+            .background(backgroundColor)
+            .border(0.5.dp, if (backgroundColor == Color.White) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.12f), shape),
         contentAlignment = Alignment.Center
     ) {
         if (resId != 0) {

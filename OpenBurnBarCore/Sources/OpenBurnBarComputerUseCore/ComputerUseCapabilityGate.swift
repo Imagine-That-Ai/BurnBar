@@ -210,23 +210,30 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         // 2. Concurrency.
         if context.concurrentSessionActive { return .denied(.concurrentSession) }
 
-        // 3. Budget caps (hard > soft).
-        if context.envelope.level == .hardCap { return .denied(.hardCap) }
-        if context.envelope.level == .softCap && exceedsSoftCap(context: context) {
-            return .denied(.softCap)
-        }
+        let skipsMeteredComputerUseCaps = skipsMeteredCapsForDirectPhoneControl(
+            action: action,
+            context: context
+        )
 
-        // 4. Daily caps.
-        if context.usage.totalActionsExecuted >= context.envelope.activeActionsPerDay {
-            return .denied(.dailyLimit)
-        }
-        if context.usage.visionModelSpendUSD >= context.envelope.perUserDailySpendCeilingUSD {
-            return .denied(.dailySpendCeiling)
-        }
+        if !skipsMeteredComputerUseCaps {
+            // 3. Budget caps (hard > soft).
+            if context.envelope.level == .hardCap { return .denied(.hardCap) }
+            if context.envelope.level == .softCap && exceedsSoftCap(context: context) {
+                return .denied(.softCap)
+            }
 
-        // 5. Per-session caps.
-        if context.session.actionsExecuted >= context.session.manifest.actionCap {
-            return .denied(.sessionLimit)
+            // 4. Daily caps.
+            if context.usage.totalActionsExecuted >= context.envelope.activeActionsPerDay {
+                return .denied(.dailyLimit)
+            }
+            if context.usage.visionModelSpendUSD >= context.envelope.perUserDailySpendCeilingUSD {
+                return .denied(.dailySpendCeiling)
+            }
+
+            // 5. Per-session caps.
+            if context.session.actionsExecuted >= context.session.manifest.actionCap {
+                return .denied(.sessionLimit)
+            }
         }
 
         // 6. Accessibility deny region beats scope outcome — even an
@@ -255,6 +262,19 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             // Manual / Step / Trusted all fall back to per-action
             // approval here; the dispatcher will pop the sheet.
             return .allowed(approvedBy: .mac)
+        }
+    }
+
+    private func skipsMeteredCapsForDirectPhoneControl(
+        action: ComputerUseAction,
+        context: ComputerUseCapabilityContext
+    ) -> Bool {
+        guard context.originatedFromPhone else { return false }
+        switch action {
+        case .macInput, .phoneIntent:
+            return true
+        case .browser, .macInspect:
+            return false
         }
     }
 

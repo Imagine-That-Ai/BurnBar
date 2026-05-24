@@ -98,6 +98,8 @@ final class ProviderQuotaService {
     private(set) var snapshotsByAccountID: [String: ProviderQuotaSnapshot] = [:]
     private(set) var errors: [AgentProvider: String] = [:]
     private(set) var isFetching = false
+
+    var quotaHomeDirectoryURL: URL { homeDirectoryURL }
     private(set) var activeProviders: Set<AgentProvider> = []
     private(set) var lastFetch: Date?
     private(set) var claudeBridgeStatus: ClaudeQuotaBridgeStatus

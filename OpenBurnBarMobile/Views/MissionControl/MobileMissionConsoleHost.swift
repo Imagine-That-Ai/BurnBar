@@ -88,7 +88,11 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
                 depth: request.depth.rawValue,
                 approvalMode: request.approvalMode.rawValue,
                 commandsAllowed: request.commandsAllowed,
-                fileEditsAllowed: request.fileEditsAllowed
+                fileEditsAllowed: request.fileEditsAllowed,
+                sourceSkillID: request.sourceSkillID,
+                sourceSurface: request.sourceSurface,
+                deliveryMode: request.deliveryMode,
+                parentHermesThreadID: request.parentHermesThreadID
             )
             lastDispatchedMissionID = id
             beginObservingIfNeeded(missionID: id)
@@ -129,8 +133,25 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
         }
     }
 
+    func dismissMission(id: String) {
+        dismissedTerminalIDs.insert(id)
+        rebuildSnapshot()
+    }
+
     func missionSnapshot(for id: String) -> CLIAgentMissionSnapshot? {
         observedMissions[id]
+    }
+
+    var skillRunMissions: [CLIAgentMissionSnapshot] {
+        observedOrder
+            .compactMap { observedMissions[$0] }
+            .filter { mission in
+                mission.skillRunID != nil && !dismissedTerminalIDs.contains(mission.id)
+            }
+    }
+
+    var focusedSkillRunMission: CLIAgentMissionSnapshot? {
+        skillRunMissions.first { !$0.isTerminal } ?? skillRunMissions.first
     }
 
     func clearInlineError() { inlineError = nil }
@@ -229,6 +250,7 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
 
         let macOnline = isHermesUsable || orderedMissions.contains { $0.hasBeenClaimedByMac }
         for mission in orderedMissions {
+            guard !dismissedTerminalIDs.contains(mission.id) else { continue }
             guard shouldShowActiveTile(for: mission, macOnline: macOnline) else { continue }
             tiles.append(tile(from: mission))
             if mission.isWaitingForApproval {

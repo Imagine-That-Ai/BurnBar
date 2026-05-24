@@ -1,5 +1,6 @@
 import StoreKit
 import StoreKitTest
+import UIKit
 import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
@@ -52,7 +53,8 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertTrue(didFinishTransaction)
         XCTAssertEqual(service.bindingRequests.count, 1)
         XCTAssertEqual(service.bindingRequests.first?.productID, HostedQuotaSubscriptionStore.productID)
-        XCTAssertEqual(service.bindingRequests.first?.clientPlatform, "ios")
+        let expectedPlatform = UIDevice.current.userInterfaceIdiom == .pad ? "ipados" : "ios"
+        XCTAssertEqual(service.bindingRequests.first?.clientPlatform, expectedPlatform)
         XCTAssertEqual(service.verifyRequests.count, 1)
         XCTAssertEqual(service.verifyRequests.first?.signedTransactionJWS, "signed-transaction-jws")
         XCTAssertEqual(service.verifyRequests.first?.productID, HostedQuotaSubscriptionStore.productID)

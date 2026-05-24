@@ -131,6 +131,38 @@ final class CLIAgentChatReader {
                 }
             }
     }
+
+    func updateSessionMetadata(
+        id: String,
+        customTitle: String? = nil,
+        labelColorHex: String? = nil,
+        isPinned: Bool? = nil,
+        priorityOrder: Int? = nil
+    ) async throws {
+        guard FirebaseApp.app() != nil else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        var payload: [String: Any] = [:]
+        if let customTitle = customTitle {
+            payload["customTitle"] = customTitle.isEmpty ? FieldValue.delete() : customTitle
+        }
+        if let labelColorHex = labelColorHex {
+            payload["labelColorHex"] = labelColorHex == "#NONE#" ? FieldValue.delete() : labelColorHex
+        }
+        if let isPinned = isPinned {
+            payload["isPinned"] = isPinned
+        }
+        if let priorityOrder = priorityOrder {
+            payload["priorityOrder"] = priorityOrder
+        }
+
+        if !payload.isEmpty {
+            try await Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("cli_sessions").document(id)
+                .setData(payload, merge: true)
+        }
+    }
 }
 
 // MARK: - Firestore implementation

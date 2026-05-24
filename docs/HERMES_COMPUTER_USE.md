@@ -42,6 +42,8 @@ control.action.log.entry      ← Mac → phone planned/executing/completed/fail
 control.input.intent          ← Phone → Mac signed envelope
 control.approval.request      ← Mac → phone approval ask
 control.approval.response     ← Phone → Mac decision
+control.agent_grant.request   ← iOS/iPadOS/Android → Mac signed agent capability grant
+control.agent_grant.receipt   ← Mac → iOS/iPadOS/Android grant/revoke acknowledgement
 control.denied                ← Mac → phone iroh accept-loop refusal
 ```
 
@@ -164,7 +166,15 @@ intentHashBlake3 (hex SHA-256 of canonical-JSON intent)
 signatureEd25519 (base64 Ed25519 over UTF8(intentHash) ‖ u64BE(counter) ‖ i64BE(timestampMs))
 ```
 
-For `HermesRealtimeRelayInputIntent`, the signed `intentHashBlake3` covers the action fields and excludes the `authority` envelope. The phone signs before attaching the final envelope; the Mac verifier recomputes the same authority-free hash before checking the Ed25519 signature. The pure signer/verifier lives in `OpenBurnBarComputerUseCore.ComputerUsePhoneControlSigner` so iOS issuer and Mac validator share canonical signing semantics and the test target can prove sig + counter + freshness + intent-hash semantics from a single fixture. Android mirrors the same contract in `PhoneControlSigner.kt` with Tink Ed25519: sorted authority-free JSON, SHA-256 hex in the `intentHashBlake3` field, `UTF8(hash) || u64BE(counter) || i64BE(timestampMs)`, replay/freshness/tamper checks, and Swift Date reference-second conversion for the Mac-bound `timestamp` JSON field. `PhoneControlSender.kt` then wraps the signed authority in the Android relay model as a `control.input.intent` frame with `control.streamClass = "control.input"` and `control.inputIntent.authority` attached. Android publishes the verifier root with `PhoneControlAuthorityPublisher.kt` under `iroh_pairing/{connectionId}/controllers/{peerNodeId}`; `PhoneControlSigningKeyStore` keeps the Ed25519 seed wrapped by Android Keystore AES-GCM.
+For `HermesRealtimeRelayInputIntent`, the signed `intentHashBlake3` covers the action fields and excludes the `authority` envelope. The phone signs before attaching the final envelope; the Mac verifier recomputes the same authority-free hash before checking the Ed25519 signature. The pure signer/verifier lives in `OpenBurnBarComputerUseCore.ComputerUsePhoneControlSigner` so iOS issuer and Mac validator share canonical signing semantics and the test target can prove sig + counter + freshness + intent-hash semantics from a single fixture. Android mirrors the same contract in `PhoneControlSigner.kt` with Tink Ed25519: sorted authority-free JSON, SHA-256 hex in the `intentHashBlake3` field, `UTF8(hash) || u64BE(counter) || i64BE(timestampMs)`, replay/freshness/tamper checks, and Swift Date reference-second conversion for the Mac-bound `timestamp` JSON field. `PhoneControlSender.kt` then wraps the signed authority in the Android relay model as a `control.input.intent` frame with `control.streamClass = "control.input"` and `control.inputIntent.authority` attached. Android publishes the verifier root with `PhoneControlAuthorityPublisher.kt` under `iroh_pairing/{connectionId}/controllers/{peerNodeId}`; `PhoneControlSigningKeyStore` keeps the Ed25519 seed wrapped by Android Keystore AES-GCM. iOS and Android both register the current phone under `escrow_devices/{deviceId}` and expose a mirror Trust action; Firestore rejects the controller authority document until that device is `trusted`, the pairing document exists, and the account has the hosted Computer Use entitlement.
+
+Agent capability grants reuse the same authority envelope and signing payload,
+but the authority-free hash is computed over `AgentCapabilityGrantRequest`.
+iOS/iPadOS use LocalAuthentication before issuing Desktop, All, or YOLO grants.
+Android uses AndroidX BiometricPrompt from `FragmentActivity` for the same
+high-trust presets. Low and Workspace do not require biometric unlock, but
+still require a signed-in user, a paired Mac, the hosted Computer Use
+entitlement, and a trusted controller identity.
 
 ### 6.1 Replay rejection contract
 
@@ -230,6 +240,80 @@ All four converge on `ComputerUseRunCoordinator.panicHalt(sessionId:, source:)`.
 
 Available via `BurnBarToolKind.computerUseToolKinds` for daemon dispatch routing.
 
+### 9.1 Agent chat grants
+
+Hermes, OpenClaw, Pi, Codex, and Claude do not get desktop authority merely
+because their chat is running on the Mac. OpenBurnBar now treats desktop access
+as an explicit, revocable `AgentCapabilityGrant` issued from the chat UI.
+
+Grant shape:
+
+- Scoped to one chat thread, one runtime (`hermes`, `openclaw`, `pi`, `codex`,
+  or `claude`), and one expiration window.
+- Never sticky across backend switches, new threads, or history-thread opens.
+- Revocation is live: the in-process broker re-checks the active grant before
+  every tool call and denies calls after the user turns access off.
+- Capabilities are split instead of using an all-or-nothing "desktop" bit:
+  Browser, screenshot, Accessibility inspect, Mac input, workspace read,
+  workspace write, and shell.
+- The UI starts with plain-language presets: **Off** (no tools), **Low**
+  (workspace read-only), **Workspace** (workspace read/write, the default),
+  **Desktop** (browser, screenshot, Accessibility inspect, workspace read/write),
+  **All** (every capability in Manual mode), and **YOLO** (every capability in
+  Trusted mode). A "Fine tune" section exposes the individual toggles for users
+  who want an exact custom grant.
+- Accessibility inspect, Mac input, shell, All, and YOLO carry inline risk copy
+  because they can expose visible app text, type/click in apps, or run
+  high-trust local commands.
+- Workspace file tools reject absolute paths, `..` escapes, and symlink escapes.
+  The local shell runner executes from the workspace with bounded output and a
+  macOS sandbox that denies writes outside the workspace; shell remains a
+  high-trust capability because commands can still read local files.
+- Trust mode remains per session (`Manual`, `Step`, `Trusted`) and feeds the
+  same Computer Use coordinator, scope rules, approvals, audit chain, budgets,
+  and panic-halt paths described above.
+
+Mobile surfaces:
+
+- iPhone and iPad expose **Agent permissions** in Hermes, Pi, and CLI-agent
+  chat menus.
+- Android exposes the same Security control in Hermes, Pi, and CLI-agent chat
+  headers.
+- Grant delivery is live-first: if the paired Mac control stream is active,
+  the phone sends `control.agent_grant.request` over iroh and waits for
+  `control.agent_grant.receipt`.
+- If the live stream is unavailable, the phone queues the signed grant under
+  `users/{uid}/agent_capability_grant_requests/{requestId}`. The Mac queue
+  listener validates the trusted-device authority, applies the grant, and writes
+  the receipt back to the same document.
+- Firestore rules keep queued grant documents metadata-only. They reject prompt
+  text, message bodies, screenshots, ciphertext blobs, and other payload fields
+  so the queue cannot become a data exfiltration channel.
+- Mobile applies an optimistic local receipt while the request is in flight, so
+  the next Hermes/Pi/Codex/Claude send can route to the Mac desktop executor
+  immediately. The Mac receipt is still the source of truth and can revoke or
+  downgrade the optimistic state.
+
+Runtime behavior:
+
+| Agent backend | Grant delivery | Execution path |
+|---|---|---|
+| Hermes / OpenClaw / Pi | OpenAI-compatible `tools` descriptors from `AgentDesktopToolDefinitions` | `AgentToolBroker` routes browser calls to the daemon Browser CU session, Mac input/inspect calls to the app-owned System CU coordinator, and workspace/shell calls through a workspace-confined local broker. Mobile sends route through the Mac agent-relay mission path when a grant is active. |
+| Codex | CLI-native sandbox arguments | Read grants map to `--sandbox read-only`; write/shell grants map to `--sandbox workspace-write`; YOLO maps to Codex's explicit dangerous sandbox bypass flag. |
+| Claude | CLI-native permission arguments | Workspace tools map to `--allowedTools`; write grants enable `--permission-mode acceptEdits`; YOLO maps to Claude's explicit dangerous permission bypass flag. |
+
+The broker intentionally does not mutate global agent config, MCP config, or
+provider account settings. Grants are session-local app authority, which keeps
+Hermes and other agents honest: without a grant, they should say they cannot use
+desktop tools; with a grant, the prompt and tool envelope tell them exactly what
+was enabled.
+
+Desktop export behavior is intentionally explicit. `desktop_export_file` copies
+a workspace file to `~/Desktop/OpenBurnBar Agent Drops/{threadId}/` and never
+lets the model choose an arbitrary absolute Desktop path. `shell_run_unrestricted`
+requires the YOLO or Trusted all-capability preset and remains blocked by the
+session-level panic halt and remote kill switch.
+
 ---
 
 ## 10. Operations runbook quick-links
@@ -252,5 +336,5 @@ Available via `BurnBarToolKind.computerUseToolKinds` for daemon dispatch routing
 - **Audit chain:** content-addressed JSONL whose entries form a parent-hash linked list.
 - **Authority envelope:** Ed25519-signed `PhoneControlAuthority` carrying intent hash + counter + timestamp.
 - **Panic halt:** instant cross-path session termination.
-- **`hosted_computer_use_sync`:** the $14.99/mo entitlement that gates Browser + System + PhoneControl.
+- **`hosted_computer_use_sync`:** the Computer Use entitlement that gates Browser + System + PhoneControl. Current product ID `com.openburnbar.computerUse.monthly`; legacy ID `com.openburnbar.hostedComputerUseSync.monthly`.
 - **`computer_use_kill_switch`:** Remote Config flag that suspends all new sessions and ends existing ones within 60 s.

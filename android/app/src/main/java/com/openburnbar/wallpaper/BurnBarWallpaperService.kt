@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
+import android.view.MotionEvent
 import android.view.SurfaceHolder
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -59,9 +60,17 @@ class BurnBarWallpaperService : WallpaperService() {
         private val wallpaperPrefs by lazy {
             getSharedPreferences("wallpaper_settings", android.content.Context.MODE_PRIVATE)
         }
+        private val globalPrefs by lazy {
+            getSharedPreferences("global_visual_settings", android.content.Context.MODE_PRIVATE)
+        }
         private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == "pace" || key == "shape" || key == BurnBarWallpaperGlyphSettings.key) {
                 updateSettings()
+            }
+        }
+        private val globalPreferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "appThemePalette") {
+                updatePalette()
             }
         }
 
@@ -108,10 +117,14 @@ class BurnBarWallpaperService : WallpaperService() {
                 context = applicationContext
             )
             wallpaperPrefs.registerOnSharedPreferenceChangeListener(preferenceListener)
+            globalPrefs.registerOnSharedPreferenceChangeListener(globalPreferenceListener)
             // Bind snapshot store so the StateFlow hydrates from disk.
             BurnBarWidgetSnapshotStore.bind(applicationContext)
             updateSettings()
+            updatePalette()
             refreshProviderColors()
+            // Enable touch events for tap-to-cycle
+            setTouchEventsEnabled(true)
         }
 
         private fun updateSettings() {
@@ -128,10 +141,16 @@ class BurnBarWallpaperService : WallpaperService() {
             simulation.setShapeMode(shapePref)
         }
 
+        private fun updatePalette() {
+            val paletteName = globalPrefs.getString("appThemePalette", "System") ?: "System"
+            simulation.paletteName = paletteName
+        }
+
         override fun onVisibilityChanged(visible: Boolean) {
             this.visible = visible
             if (visible) {
                 updateSettings()
+                updatePalette()
                 refreshProviderColors()
                 handler.removeCallbacks(drawRunnable)
                 handler.post(drawRunnable)
@@ -159,7 +178,15 @@ class BurnBarWallpaperService : WallpaperService() {
         override fun onDestroy() {
             handler.removeCallbacks(drawRunnable)
             wallpaperPrefs.unregisterOnSharedPreferenceChangeListener(preferenceListener)
+            globalPrefs.unregisterOnSharedPreferenceChangeListener(globalPreferenceListener)
             super.onDestroy()
+        }
+
+        override fun onTouchEvent(event: MotionEvent?) {
+            super.onTouchEvent(event)
+            if (event?.action == MotionEvent.ACTION_DOWN) {
+                simulation.forceCycleShape()
+            }
         }
 
         // MARK: - Drawing
@@ -235,13 +262,8 @@ class BurnBarWallpaperService : WallpaperService() {
                 return applyOpacity(providerWeights.last().argb, p.opacity)
             }
 
-            // Fallback: default palette
-            return when {
-                p.colorIndex < 0.08 -> applyOpacity(0xFF8080FF.toInt(), p.opacity) // whimsy
-                p.colorIndex < 0.35 -> applyOpacity(0xFFFA6B06.toInt(), p.opacity) // ember
-                p.colorIndex < 0.62 -> applyOpacity(0xFFFDC42C.toInt(), p.opacity) // amber
-                else                -> applyOpacity(0xFFEE1803.toInt(), p.opacity) // blaze
-            }
+            // Fallback: use simulation's colorFor which correctly respects the selected palette!
+            return simulation.colorFor(p, Color(0xFFFF6B35), isDark = true).toArgb()
         }
 
         private fun applyOpacity(argb: Int, opacity: Double): Int {

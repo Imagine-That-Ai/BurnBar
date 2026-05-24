@@ -44,6 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var wallpaperBackgroundObserver: Any?
     private var wallpaperSpeedObserver: Any?
     private var wallpaperProviderGlyphsObserver: Any?
+    private var wallpaperCycleShapesObserver: Any?
+    private var wallpaperExcludeBrandShapesObserver: Any?
+    private var wallpaperClickCycleObserver: Any?
     private var wallpaperPollTimer: Timer?
     private var dataStoreObservation: Any?
     private var daemonObservation: Any?
@@ -310,6 +313,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self?.sharedWallpaperViewModel.providerGlyphs = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
             }
         }
+
+        wallpaperCycleShapesObserver = NotificationCenter.default.addObserver(
+            forName: .cycleShapesScreensaverDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.sharedWallpaperViewModel.autoCyclesShapes = SettingsManager.shared.appearance.cycleShapesScreensaver
+            }
+        }
+
+        wallpaperClickCycleObserver = NotificationCenter.default.addObserver(
+            forName: .clickDesktopToCycleSwarmDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.sharedWallpaperViewModel.allowsDesktopClickCycle = SettingsManager.shared.appearance.clickDesktopToCycleSwarm
+            }
+        }
+
+        wallpaperExcludeBrandShapesObserver = NotificationCenter.default.addObserver(
+            forName: .excludeBrandShapesFromSwarmDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.sharedWallpaperViewModel.excludeBrandShapesFromSwarm = SettingsManager.shared.appearance.excludeBrandShapesFromSwarm
+            }
+        }
     }
 
     @objc private func handleWallpaperEnabledChange() {
@@ -366,6 +399,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         sharedWallpaperViewModel.background = SettingsManager.shared.appearance.desktopWallpaperBackground
         sharedWallpaperViewModel.speed = SettingsManager.shared.appearance.desktopWallpaperSpeed
         sharedWallpaperViewModel.providerGlyphs = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
+        sharedWallpaperViewModel.autoCyclesShapes = SettingsManager.shared.appearance.cycleShapesScreensaver
+        sharedWallpaperViewModel.allowsDesktopClickCycle = SettingsManager.shared.appearance.clickDesktopToCycleSwarm
+        sharedWallpaperViewModel.excludeBrandShapesFromSwarm = SettingsManager.shared.appearance.excludeBrandShapesFromSwarm
         syncSystemDesktopFallback()
         let screens = NSScreen.screens
         for screen in screens {
@@ -789,6 +825,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             NotificationCenter.default.removeObserver(wallpaperSpeedObserver)
             self.wallpaperSpeedObserver = nil
         }
+        if let wallpaperProviderGlyphsObserver {
+            NotificationCenter.default.removeObserver(wallpaperProviderGlyphsObserver)
+            self.wallpaperProviderGlyphsObserver = nil
+        }
+        if let wallpaperCycleShapesObserver {
+            NotificationCenter.default.removeObserver(wallpaperCycleShapesObserver)
+            self.wallpaperCycleShapesObserver = nil
+        }
+        if let wallpaperClickCycleObserver {
+            NotificationCenter.default.removeObserver(wallpaperClickCycleObserver)
+            self.wallpaperClickCycleObserver = nil
+        }
+        if let wallpaperExcludeBrandShapesObserver {
+            NotificationCenter.default.removeObserver(wallpaperExcludeBrandShapesObserver)
+            self.wallpaperExcludeBrandShapesObserver = nil
+        }
         wallpaperPollTimer?.invalidate()
         wallpaperPollTimer = nil
         if let wallpaperAgentStatusObserver {
@@ -1088,6 +1140,10 @@ public final class SwarmWallpaperViewModel {
     var background: DesktopWallpaperBackground = SettingsManager.shared.appearance.desktopWallpaperBackground
     var speed: Double = SettingsManager.shared.appearance.desktopWallpaperSpeed
     var providerGlyphs: [AgentProvider] = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
+    var autoCyclesShapes: Bool = SettingsManager.shared.appearance.cycleShapesScreensaver
+    var allowsDesktopClickCycle: Bool = SettingsManager.shared.appearance.clickDesktopToCycleSwarm
+    var enableSwarmSparkles: Bool = SettingsManager.shared.appearance.enableSwarmSparkles
+    var excludeBrandShapesFromSwarm: Bool = SettingsManager.shared.appearance.excludeBrandShapesFromSwarm
 
     public init() {}
 }
@@ -1100,6 +1156,9 @@ struct SwarmWallpaperView: View {
         let background = viewModel.background
         let speed = viewModel.speed
         let providerGlyphs = viewModel.providerGlyphs
+        let autoCyclesShapes = viewModel.autoCyclesShapes
+        let enableSparkles = viewModel.enableSwarmSparkles
+        let excludeBrandShapes = viewModel.excludeBrandShapesFromSwarm
 
         SwarmCanvasView(
             accent: .purple,
@@ -1112,12 +1171,16 @@ struct SwarmWallpaperView: View {
             backdropColors: background.swatchPreviewColors,
             colorPalette: background.swarmPalette,
             motionSpeedMultiplier: speed,
-            enabledProviderGlyphs: providerGlyphs
+            isAutoCyclingEnabled: autoCyclesShapes,
+            enabledProviderGlyphs: providerGlyphs,
+            enableSwarmSparkles: enableSparkles,
+            excludeBrandShapesFromSwarm: excludeBrandShapes
         )
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 0.18), value: background)
         .animation(.easeInOut(duration: 0.18), value: speed)
         .animation(.easeInOut(duration: 0.18), value: providerGlyphs)
+        .animation(.easeInOut(duration: 0.18), value: autoCyclesShapes)
         .onReceive(NotificationCenter.default.publisher(for: .desktopWallpaperBackgroundDidChange)) { _ in
             viewModel.background = SettingsManager.shared.appearance.desktopWallpaperBackground
         }
@@ -1126,6 +1189,18 @@ struct SwarmWallpaperView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .desktopWallpaperProviderGlyphsDidChange)) { _ in
             viewModel.providerGlyphs = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cycleShapesScreensaverDidChange)) { _ in
+            viewModel.autoCyclesShapes = SettingsManager.shared.appearance.cycleShapesScreensaver
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .clickDesktopToCycleSwarmDidChange)) { _ in
+            viewModel.allowsDesktopClickCycle = SettingsManager.shared.appearance.clickDesktopToCycleSwarm
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .enableSwarmSparklesDidChange)) { _ in
+            viewModel.enableSwarmSparkles = SettingsManager.shared.appearance.enableSwarmSparkles
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .excludeBrandShapesFromSwarmDidChange)) { _ in
+            viewModel.excludeBrandShapesFromSwarm = SettingsManager.shared.appearance.excludeBrandShapesFromSwarm
         }
     }
 }
@@ -1197,13 +1272,13 @@ public class BurnBarWallpaperPanel: NSPanel {
     }
 
     private func scheduleDesktopClickCycleIfNeeded() {
-        guard SettingsManager.shared.appearance.clickDesktopToCycleSwarm else { return }
+        guard viewModel.allowsDesktopClickCycle else { return }
         let globalPoint = NSEvent.mouseLocation
         guard targetScreen.frame.contains(globalPoint) else { return }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
             guard let self,
-                  SettingsManager.shared.appearance.clickDesktopToCycleSwarm,
+                  self.viewModel.allowsDesktopClickCycle,
                   self.targetScreen.frame.contains(globalPoint) else {
                 return
             }

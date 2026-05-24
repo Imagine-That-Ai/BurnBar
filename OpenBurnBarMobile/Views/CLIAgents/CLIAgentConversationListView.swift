@@ -1005,6 +1005,7 @@ struct CLIAgentChatThreadView: View {
     @State private var draft: String = ""
     @State private var showConnectionSheet = false
     @State private var showModelPicker = false
+    @State private var showPermissionSheet = false
     @FocusState private var inputFocused: Bool
 
     init(runtime: CLIAgentRuntime, route: CLIAgentChatRoute) {
@@ -1029,6 +1030,11 @@ struct CLIAgentChatThreadView: View {
                         showModelPicker = true
                     } label: {
                         Label("Switch model", systemImage: "cpu")
+                    }
+                    Button {
+                        showPermissionSheet = true
+                    } label: {
+                        Label("Agent permissions", systemImage: "hand.raised")
                     }
                     Button {
                         showConnectionSheet = true
@@ -1060,6 +1066,12 @@ struct CLIAgentChatThreadView: View {
                 runtime: runtime.assistantRuntime,
                 hermesService: HermesService.shared,
                 piService: PiService.shared
+            )
+        }
+        .sheet(isPresented: $showPermissionSheet) {
+            AgentPermissionGrantSheet(
+                runtimeID: runtime.assistantRuntime,
+                threadID: chatService.threadID
             )
         }
         .task {

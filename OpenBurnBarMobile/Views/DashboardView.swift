@@ -193,7 +193,7 @@ struct DashboardView: View {
             }
 
             if let topProvider = store.topProviders.first,
-               let provider = AgentProvider.fromPersistedToken(topProvider.provider) {
+               let provider = AgentProvider.fromCatalogProviderID(topProvider.provider) ?? AgentProvider.fromPersistedToken(topProvider.provider) {
                 ProviderAvatar(provider: provider, mode: .aurora, size: 56)
                     .padding(MobileTheme.Spacing.md)
                     .offset(x: 0, y: -MobileTheme.Spacing.sm)
@@ -468,7 +468,7 @@ private struct RollupProviderSummaryRow: View {
     let displayMode: UsageDisplayMode
 
     var provider: AgentProvider? {
-        AgentProvider.fromPersistedToken(summary.provider)
+        AgentProvider.fromCatalogProviderID(summary.provider) ?? AgentProvider.fromPersistedToken(summary.provider)
     }
 
     var body: some View {

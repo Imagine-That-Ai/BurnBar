@@ -3,6 +3,7 @@ import AppKit
 import Combine
 import CryptoKit
 import Foundation
+import OSLog
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
@@ -16,6 +17,9 @@ import OpenBurnBarMedia
 /// `OpenBurnBarComputerUseCore`.
 @MainActor
 public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked Sendable {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "ComputerUse")
+    private static let phoneControlActionCap = 10_000
+
     public struct Configuration: Sendable {
         public var userId: String
         public var macHostNodeId: String?
@@ -194,7 +198,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
     public func updateBudgetEnvelope(_ envelope: ComputerUseBudgetEnvelope) {
         configuration.budgetEnvelope = envelope
-        if envelope.level == .hardCap {
+        if envelope.level == .hardCap, !activeSessionIsDirectPhoneControl {
             haltForBudgetHardCap()
         }
     }
@@ -697,6 +701,17 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     peerNodeId: peerNodeId
                 )
                 registerPhonePeer(nodeId: peerNodeId, publicKey: publicKey)
+                if activeSessionId == nil {
+                    _ = try await startSession(request: ComputerUseSessionStartRequest(
+                        mode: ComputerUseMode.system.rawValue,
+                        trustMode: ComputerUseTrustMode.manual.rawValue,
+                        phoneViewerNodeId: peerNodeId,
+                        macHostNodeId: configuration.macHostNodeId,
+                        actionCap: Self.phoneControlActionCap,
+                        sessionTimeoutSeconds: 1800,
+                        clientID: BurnBarClientID(rawValue: "phone-control-\(peerNodeId)")
+                    ))
+                }
                 recordE2EProofEvent([
                     "event": "mac_control_classified",
                     "peerNodeId": peerNodeId,
@@ -740,8 +755,85 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             if let response = frame.control?.approvalResponse {
                 submitApprovalResponse(response)
             }
+        case .controlAgentGrantRequest:
+            guard let wireRequest = frame.control?.agentGrantRequest else { return }
+            let receipt: AgentCapabilityGrantReceipt
+            do {
+                _ = try phoneValidator.validate(
+                    envelope: wireRequest.authority,
+                    grantRequest: wireRequest,
+                    now: Date()
+                )
+                let request = try AgentCapabilityGrantRequest(wire: wireRequest)
+                receipt = await AgentCapabilityGrantStore.shared.apply(request)
+            } catch let error as PhoneControlAuthorityValidator.ValidationError {
+                receipt = Self.agentGrantReceipt(
+                    for: wireRequest,
+                    status: .denied,
+                    denialReason: Self.agentGrantDenialReason(for: error),
+                    message: "Grant signature failed: \(error)"
+                )
+            } catch let error as AgentCapabilityGrantWireError {
+                receipt = Self.agentGrantReceipt(
+                    for: wireRequest,
+                    status: .denied,
+                    denialReason: .malformedRequest,
+                    message: "Grant request could not be decoded: \(error)"
+                )
+            } catch {
+                receipt = Self.agentGrantReceipt(
+                    for: wireRequest,
+                    status: .denied,
+                    denialReason: .unknown,
+                    message: error.localizedDescription
+                )
+            }
+            emitControlFrame(
+                type: .controlAgentGrantReceipt,
+                payload: HermesRealtimeRelayControlPayload(
+                    streamClass: "control.agent.grant",
+                    sessionId: activeSessionId?.rawValue,
+                    agentGrantReceipt: receipt.wire()
+                )
+            )
         default:
             break
+        }
+    }
+
+    private static func agentGrantReceipt(
+        for request: HermesRealtimeRelayAgentGrantRequest,
+        status: AgentGrantDecisionStatus,
+        denialReason: AgentGrantDenialReason?,
+        message: String
+    ) -> AgentCapabilityGrantReceipt {
+        let runtime = AssistantRuntimeID(rawValue: request.runtime) ?? .hermes
+        let trustMode = ComputerUseTrustMode(rawValue: request.trustMode) ?? .manual
+        let capabilities = Set(request.capabilities.compactMap(AgentDesktopCapability.init(rawValue:)))
+        return AgentCapabilityGrantReceipt(
+            requestID: request.requestId,
+            runtimeID: runtime,
+            threadID: request.threadId,
+            status: status,
+            capabilities: capabilities,
+            trustMode: trustMode,
+            receivedAt: Date(),
+            sourceDeviceID: request.sourceDeviceId,
+            denialReason: denialReason,
+            message: message
+        )
+    }
+
+    private static func agentGrantDenialReason(
+        for error: PhoneControlAuthorityValidator.ValidationError
+    ) -> AgentGrantDenialReason {
+        switch error {
+        case .counterReplay:
+            return .counterReplay
+        case .staleTimestamp:
+            return .staleTimestamp
+        case .missingPeerPubKey, .signatureFailed, .intentHashMismatch:
+            return .signatureFailure
         }
     }
 
@@ -837,8 +929,67 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         }
         if let denyReason = response.denyReason {
             fields["denyReason"] = denyReason
+            Self.log.warning(
+                "mac_phone_action_denied tool=\(invocation.tool.rawValue, privacy: .public) reason=\(denyReason, privacy: .public) status=\(response.status.rawValue, privacy: .public)"
+            )
         }
         recordE2EProofEvent(fields)
+        emitPhoneControlDeniedFrameIfNeeded(response)
+    }
+
+    private var activeSessionIsDirectPhoneControl: Bool {
+        guard let manifest = state?.manifest else { return false }
+        return manifest.mode == .system && manifest.phoneViewerNodeId?.isEmpty == false
+    }
+
+    private func emitPhoneControlDeniedFrameIfNeeded(_ response: ComputerUseInvokeResponse) {
+        guard response.status != .executed,
+              let denyReason = response.denyReason else { return }
+        let denied = HermesRealtimeRelayControlDenied(
+            reason: controlDeniedReason(for: denyReason),
+            detail: denyReason
+        )
+        emitControlFrame(
+            type: .controlDenied,
+            payload: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlInput.rawValue,
+                sessionId: response.sessionId,
+                denied: denied
+            )
+        )
+    }
+
+    private func controlDeniedReason(for denyReason: String) -> HermesRealtimeRelayControlDenied.Reason {
+        switch ComputerUseDenyReason(rawValue: denyReason) {
+        case .entitlement:
+            return .entitlement
+        case .sessionLimit:
+            return .sessionLimit
+        case .dailyLimit:
+            return .dailyLimit
+        case .softCap:
+            return .softCap
+        case .hardCap:
+            return .hardCap
+        case .scopeDenied, .scopeNotMatched:
+            return .scope
+        case .denyRegion:
+            return .denyRegion
+        case .killSwitch:
+            return .killSwitch
+        case .signatureFailure:
+            return .signatureFailure
+        case .counterReplay:
+            return .counterReplay
+        case .staleTimestamp:
+            return .staleTimestamp
+        case .dailySpendCeiling,
+             .concurrentSession,
+             .accessibilityRevoked,
+             .userRejected,
+             nil:
+            return .unknown
+        }
     }
 
     private func invocationFromPhoneAction(

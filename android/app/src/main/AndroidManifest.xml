@@ -196,6 +196,17 @@
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:launchMode="singleTask" />
 
+        <!-- Hermes Skill Runs — text timeline Picture-in-Picture host.
+             Video-backed Agent Watch and Mercury screen share continue to
+             use their dedicated PiP surfaces. -->
+        <activity
+            android:name=".ui.media.SkillRunPiPActivity"
+            android:exported="false"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:launchMode="singleTask" />
+
         <!-- Mercury Media — call session notification service. Capture and
              transport are owned by the visible call surfaces; this service
              only keeps the user-facing return-to-call notification current. -->

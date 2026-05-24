@@ -137,4 +137,36 @@ class ScreenShareInputPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun remoteKeyboardDiffExtractsInsertedAndDeletedText() {
+        assertEquals(
+            RemoteKeyboardDiff(insertedText = "lo", deletedCount = 0),
+            remoteKeyboardDiff(oldText = "hel", newText = "hello"),
+        )
+        assertEquals(
+            RemoteKeyboardDiff(insertedText = "", deletedCount = 2),
+            remoteKeyboardDiff(oldText = "hello", newText = "hel"),
+        )
+        assertEquals(
+            RemoteKeyboardDiff(insertedText = "p", deletedCount = 1),
+            remoteKeyboardDiff(oldText = "cat", newText = "cap"),
+        )
+    }
+
+    @Test
+    fun remoteKeyboardDispatchRoutesControlKeysSeparatelyFromText() {
+        val events = mutableListOf<String>()
+
+        dispatchRemoteKeyboardText(
+            text = "hi\tthere\n",
+            onText = { events += "text:$it" },
+            onKey = { events += "key:$it" },
+        )
+
+        assertEquals(
+            listOf("text:hi", "key:tab", "text:there", "key:return"),
+            events,
+        )
+    }
 }

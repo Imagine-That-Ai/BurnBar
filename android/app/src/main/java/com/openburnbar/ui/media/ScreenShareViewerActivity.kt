@@ -10,8 +10,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import com.openburnbar.data.computeruse.InMemoryPhoneControlCounterStore
 import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
 import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
@@ -26,6 +28,10 @@ import com.openburnbar.data.media.VideoReceivePipeline
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
+import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
+import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorDisplaySelection
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -71,33 +77,72 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 heartbeatFlow?.collectAsState()
                     ?: remember { mutableStateOf(0L) }
                 )
+            val mirrorAckFlow = BurnBarApplication.mediaControlCoordinator?.lastMirrorAck
+            val lastMirrorAck by (
+                mirrorAckFlow?.collectAsState()
+                    ?: remember { mutableStateOf<HermesRealtimeRelayMirrorAck?>(null) }
+                )
+            val controlDeniedFlow = BurnBarApplication.mediaControlCoordinator?.lastControlDenied
+            val lastControlDenied by (
+                controlDeniedFlow?.collectAsState()
+                    ?: remember { mutableStateOf<HermesRealtimeRelayControlDenied?>(null) }
+                )
+            var selectedDisplayId by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(lastMirrorAck) {
+                lastMirrorAck?.selectedDisplayId?.let { selectedDisplayId = it }
+            }
+            LaunchedEffect(lastControlDenied) {
+                lastControlDenied?.let { denied ->
+                    controlStatus.value = controlDeniedMessage(denied)
+                    when (denied.reason) {
+                        HermesRealtimeRelayControlDenied.Reason.SIGNATURE_FAILURE,
+                        HermesRealtimeRelayControlDenied.Reason.COUNTER_REPLAY,
+                        HermesRealtimeRelayControlDenied.Reason.STALE_TIMESTAMP -> {
+                            phoneControlSender = null
+                            phoneControlConnectionID = null
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+            val activeDisplayId = selectedDisplayId ?: lastMirrorAck?.selectedDisplayId ?: "main"
+
             ScreenShareViewerScreen(
                 pipeline = pipeline,
                 lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
+                availableDisplays = lastMirrorAck?.availableDisplays ?: emptyList(),
+                selectedDisplayId = activeDisplayId,
+                onSelectDisplay = { displayId ->
+                    selectedDisplayId = displayId
+                    sendMirrorDisplaySelect(displayId)
+                },
                 onClose = { closeMirrorAndFinish() },
                 onEnterPictureInPicture = { enterMirrorPictureInPicture() },
                 onReconnect = { reconnectMirror() },
-                onTapNormalized = { x, y, mouseButton ->
+                onTapNormalized = { x, y, mouseButton, displayId ->
                     sendPhoneControlIntent(PhoneControlIntent(
                         kind = PhoneControlIntentKind.TAP,
+                        displayId = displayId,
                         normalizedX = x,
                         normalizedY = y,
                         mouseButton = mouseButton,
                     ))
                 },
-                onScrollDragNormalized = { x1, y1, x2, y2 ->
+                onScrollDragNormalized = { x1, y1, x2, y2, displayId ->
                     sendPhoneControlIntent(PhoneControlIntent(
                         kind = PhoneControlIntentKind.SCROLL,
+                        displayId = displayId,
                         normalizedX = x1,
                         normalizedY = y1,
                         normalizedX2 = x2,
                         normalizedY2 = y2,
                     ))
                 },
-                onScrollNormalized = { deltaY ->
+                onScrollNormalized = { deltaY, displayId ->
                     val endY = (0.5 + deltaY).coerceIn(0.0, 1.0)
                     sendPhoneControlIntent(PhoneControlIntent(
                         kind = PhoneControlIntentKind.SCROLL,
+                        displayId = displayId,
                         normalizedX = 0.5,
                         normalizedY = 0.5,
                         normalizedX2 = 0.5,
@@ -107,6 +152,7 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 onPointerMove = { dx, dy ->
                     sendPhoneControlIntent(PhoneControlIntent(
                         kind = PhoneControlIntentKind.POINTER_MOVE,
+                        displayId = activeDisplayId,
                         normalizedX2 = dx,
                         normalizedY2 = dy,
                     ))
@@ -114,24 +160,30 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 onPointerClick = { mouseButton ->
                     sendPhoneControlIntent(PhoneControlIntent(
                         kind = PhoneControlIntentKind.POINTER_CLICK,
+                        displayId = activeDisplayId,
                         mouseButton = mouseButton,
                     ))
                 },
                 onTypeText = { text ->
                     sendPhoneControlIntent(PhoneControlIntent(
                         kind = PhoneControlIntentKind.TYPE,
+                        displayId = activeDisplayId,
                         text = text,
                     ))
                 },
                 onShortcut = { key, modifiers ->
                     sendPhoneControlIntent(PhoneControlIntent(
                         kind = PhoneControlIntentKind.SHORTCUT,
+                        displayId = activeDisplayId,
                         key = key,
                         modifiers = modifiers,
                     ))
                 },
                 onPanic = {
-                    sendPhoneControlIntent(PhoneControlIntent(kind = PhoneControlIntentKind.PANIC))
+                    sendPhoneControlIntent(PhoneControlIntent(
+                        kind = PhoneControlIntentKind.PANIC,
+                        displayId = activeDisplayId,
+                    ))
                 },
                 controlStatus = controlStatus.value,
                 onTrustControlDevice = { trustThisAndroidForControl() },
@@ -202,6 +254,31 @@ class ScreenShareViewerActivity : ComponentActivity() {
         }
     }
 
+    private fun sendMirrorDisplaySelect(displayId: String) {
+        val requestID = mirrorRequestID?.takeIf { it.isNotBlank() } ?: return
+        controlScope.launch {
+            runCatching {
+                val coordinator = BurnBarApplication.mediaControlCoordinator ?: return@launch
+                val pair = coordinator.activePair.value ?: return@launch
+                coordinator.send(HermesRealtimeRelayFrame(
+                    type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_DISPLAY_SELECT,
+                    uid = pair.uid,
+                    connectionId = pair.connectionID,
+                    media = HermesRealtimeRelayMediaPayload(
+                        mirrorDisplaySelection = HermesRealtimeRelayMirrorDisplaySelection(
+                            requestId = requestID,
+                            displayId = displayId,
+                            selectedAt = System.currentTimeMillis() / 1000.0
+                        )
+                    )
+                ))
+                Log.i(TAG, "Android screen-share mirror display selection sent requestID=$requestID displayId=$displayId")
+            }.onFailure { error ->
+                Log.w(TAG, "Android screen-share mirror display selection failed displayId=$displayId error=${error.message}", error)
+            }
+        }
+    }
+
     private fun sendPhoneControlIntent(intent: PhoneControlIntent) {
         controlScope.launch {
             runCatching {
@@ -217,6 +294,38 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 }
                 Log.w(TAG, "Android phone-control intent failed kind=${intent.kind} error=${error.message}", error)
             }
+        }
+    }
+
+    private fun controlDeniedMessage(denied: HermesRealtimeRelayControlDenied): String {
+        if (denied.reason == HermesRealtimeRelayControlDenied.Reason.UNKNOWN &&
+            denied.detail == "accessibility_revoked"
+        ) {
+            return "Allow OpenBurnBar in Mac System Settings > Privacy & Security > Accessibility, then reopen the mirror."
+        }
+        return when (denied.reason) {
+            HermesRealtimeRelayControlDenied.Reason.ENTITLEMENT ->
+                "Mac control is not enabled for this account."
+            HermesRealtimeRelayControlDenied.Reason.SESSION_LIMIT ->
+                "Mac control session limit reached. Reopen the mirror to start a fresh session."
+            HermesRealtimeRelayControlDenied.Reason.DAILY_LIMIT ->
+                "Mac control hit today's Computer Use action limit."
+            HermesRealtimeRelayControlDenied.Reason.SOFT_CAP ->
+                "Mac control is limited while Computer Use is in soft-cap mode."
+            HermesRealtimeRelayControlDenied.Reason.HARD_CAP ->
+                "Mac control is blocked by the Computer Use hard cap."
+            HermesRealtimeRelayControlDenied.Reason.SCOPE ->
+                "The Mac blocked that control action for this screen."
+            HermesRealtimeRelayControlDenied.Reason.DENY_REGION ->
+                "The Mac blocked control in a protected area."
+            HermesRealtimeRelayControlDenied.Reason.KILL_SWITCH ->
+                "Mac control is temporarily disabled."
+            HermesRealtimeRelayControlDenied.Reason.SIGNATURE_FAILURE,
+            HermesRealtimeRelayControlDenied.Reason.COUNTER_REPLAY,
+            HermesRealtimeRelayControlDenied.Reason.STALE_TIMESTAMP ->
+                "Mac rejected the control signature. Try the action again."
+            HermesRealtimeRelayControlDenied.Reason.UNKNOWN ->
+                denied.detail ?: "The Mac rejected that control action."
         }
     }
 

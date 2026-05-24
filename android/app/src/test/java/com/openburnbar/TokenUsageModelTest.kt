@@ -85,6 +85,15 @@ class TokenUsageModelTest {
     }
 
     @Test
+    fun `empty quota snapshots do not render as exhausted`() {
+        assertEquals(
+            100.0,
+            ProviderQuotaSnapshot(provider = "openai", buckets = emptyList()).percentageRemaining,
+            0.001
+        )
+    }
+
+    @Test
     fun `effectiveCost prefers costUsd and falls back to cost`() {
         // Case 1: Both present, costUsd is preferred
         val usageBoth = TokenUsage(cost = 0.05, costUsd = 0.08)

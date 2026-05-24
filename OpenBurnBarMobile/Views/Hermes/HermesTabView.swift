@@ -279,6 +279,7 @@ struct HermesConversationListView: View {
     @State private var showConnectionSheet = false
     @State private var showRuntimeSheet = false
     @State private var showModelPicker = false
+    @State private var permissionGrantThreadID: String?
     @State private var showSetupWizard = false
     @State private var didAutoPresentSetupWizard = false
     @State private var libraryStore = HermesCloudLibraryStore()
@@ -1163,6 +1164,7 @@ struct HermesChatView: View {
     @State private var showRuntimeSheet = false
     @State private var showModelPicker = false
     @State private var showSetupWizard = false
+    @State private var permissionGrantThreadID: String?
     @State private var didAutoPresentSetupWizard = false
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
     @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
@@ -1322,6 +1324,11 @@ struct HermesChatView: View {
 
                     Section {
                         Button {
+                            permissionGrantThreadID = service.ensureDesktopGrantThreadID()
+                        } label: {
+                            Label("Agent permissions", systemImage: "hand.raised")
+                        }
+                        Button {
                             showConnectionSheet = true
                         } label: {
                             Label("Connections", systemImage: "network")
@@ -1394,6 +1401,16 @@ struct HermesChatView: View {
                 hermesService: service,
                 piService: PiService.shared
             )
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { permissionGrantThreadID != nil },
+                set: { if !$0 { permissionGrantThreadID = nil } }
+            )
+        ) {
+            if let threadID = permissionGrantThreadID {
+                AgentPermissionGrantSheet(runtimeID: .hermes, threadID: threadID)
+            }
         }
         .sheet(isPresented: $showSetupWizard) {
             HermesMobileSetupWizardView(
@@ -1788,7 +1805,7 @@ struct HermesChatView: View {
             "Top 3 projects by cost"
         ]
         if let topProvider = dashboardSnapshot?.topProviders.first?.provider,
-           let provider = AgentProvider.fromPersistedToken(topProvider) {
+           let provider = AgentProvider.fromCatalogProviderID(topProvider) ?? AgentProvider.fromPersistedToken(topProvider) {
             list.append("How is \(provider.displayName) trending?")
         }
         return list
@@ -1902,6 +1919,7 @@ struct HermesChatView: View {
     }
 
     private var bottomReserveHeight: CGFloat {
+        if UIDevice.current.userInterfaceIdiom == .pad { return 0 }
         if inputFocused { return 0 }
         switch presentation {
         case .cover: return 0

@@ -113,4 +113,31 @@ final class UnifiedQuotaSignalCurrencyTests: XCTestCase {
         XCTAssertEqual(bucket.displayRemainingPercent ?? -1, 100, accuracy: 0.0001)
         XCTAssertTrue(bucket.isDisplayableQuotaSignal)
     }
+
+    func test_fullRemainingTextFormattingForDisplayModes() {
+        let bucket = ProviderQuotaBucket(
+            name: "gpt-4o",
+            used: 7_500_000,
+            limit: 10_000_000,
+            remaining: 2_500_000,
+            window: "daily",
+            meta: ["unit": "tokens"]
+        )
+
+        // 1. Used % display mode should display "75% used" without any redundant remaining suffix
+        let viewUsed = UnifiedQuotaSignalView(bucket: bucket, provider: .openAI, compact: false, displayMode: "usedPercent")
+        XCTAssertEqual(viewUsed.fullRemainingText, "75% used")
+
+        // 2. Remaining % display mode should display "25% remaining"
+        let viewRemaining = UnifiedQuotaSignalView(bucket: bucket, provider: .openAI, compact: false, displayMode: "remainingPercent")
+        XCTAssertEqual(viewRemaining.fullRemainingText, "25% remaining")
+
+        // 3. Absolute values display mode should display "7.5M / 10.0M used"
+        let viewAbsolute = UnifiedQuotaSignalView(bucket: bucket, provider: .openAI, compact: false, displayMode: "absoluteValues")
+        XCTAssertEqual(viewAbsolute.fullRemainingText, "7.5M / 10.0M used")
+
+        // 4. Fractional display mode should display "0.25 remaining"
+        let viewFractional = UnifiedQuotaSignalView(bucket: bucket, provider: .openAI, compact: false, displayMode: "fractional")
+        XCTAssertEqual(viewFractional.fullRemainingText, "0.25 remaining")
+    }
 }

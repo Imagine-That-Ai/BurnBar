@@ -41,6 +41,15 @@ typealias MediaControlStreamRegistrar = @Sendable (
 /// crypto envelope and forwarding logic are byte-identical to the WSS
 /// `HermesRealtimeRelayHostClient`.
 final class IrohRelayRequestHandler: Sendable {
+    enum ServeDisposition: Sendable, Equatable {
+        /// The request handler still owns the stream and the caller should
+        /// close it after `serve` exits.
+        case callerOwnsStream
+        /// A long-lived owner, such as Mercury's media-control registry, took
+        /// over the stream. The accept loop must not close it.
+        case transferredStreamOwnership
+    }
+
     private static let chatForwardTimeout: TimeInterval = 600
     private static let unaryForwardTimeout: TimeInterval = 20
     private static let streamSendTimeoutNanoseconds: UInt64 = 120_000_000_000
@@ -79,7 +88,7 @@ final class IrohRelayRequestHandler: Sendable {
         stream: any IrohRelayStream,
         uid: String,
         connectionID: String
-    ) async throws {
+    ) async throws -> ServeDisposition {
         var classifiedAsMediaControl = false
         while let frame = try await stream.receive() {
             guard frame.uid == uid, frame.connectionId == connectionID else { continue }
@@ -101,7 +110,7 @@ final class IrohRelayRequestHandler: Sendable {
                frame.media?.streamClass == "media.control" {
                 classifiedAsMediaControl = true
                 await mediaControlRegistrar(stream, uid, connectionID)
-                return
+                return .transferredStreamOwnership
             }
             switch frame.type {
             case .requestStart:
@@ -134,7 +143,7 @@ final class IrohRelayRequestHandler: Sendable {
                         stream: stream
                     )
                 } catch is CancellationError {
-                    return
+                    return .callerOwnsStream
                 } catch {
                     await auditStage(
                         "host_request_error",
@@ -193,6 +202,8 @@ final class IrohRelayRequestHandler: Sendable {
                  .controlInputIntent,
                  .controlApprovalRequest,
                  .controlApprovalResponse,
+                 .controlAgentGrantRequest,
+                 .controlAgentGrantReceipt,
                  .controlDenied:
                 guard let controlDispatcher else { continue }
                 let replySender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
@@ -203,6 +214,7 @@ final class IrohRelayRequestHandler: Sendable {
                 continue
             }
         }
+        return .callerOwnsStream
     }
 
     private func handleRequest(

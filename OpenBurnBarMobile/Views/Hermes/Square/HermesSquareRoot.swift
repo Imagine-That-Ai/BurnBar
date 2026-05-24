@@ -34,6 +34,10 @@ struct HermesSquareRoot: View {
     @State private var selectedMissionID: String? = nil
     @State private var showCancelForIDs: Set<String> = []
     @State private var missionToCancel: MissionConsoleActiveTile? = nil
+    @State private var renameTargetItem: ThreadInboxItem? = nil
+    @State private var newTitleText: String = ""
+    @State private var isShowingRenameAlert: Bool = false
+    @State private var missionForActionSheet: MissionConsoleActiveTile? = nil
 
     @State private var piService = PiService()
     @State private var registry = AgentIdentityRegistry.shared
@@ -50,7 +54,6 @@ struct HermesSquareRoot: View {
 
     @AppStorage(PinnedAgentGridConfig.userDefaultsKey) private var pinnedJSON: String = ""
     @AppStorage(ChatTilePreferencesStorage.userDefaultsKey) private var tilePreferencesJSON: String = ""
-    @AppStorage(HermesMobileChatPreferences.agentsLiveBackgroundEnabledKey) private var liveBackgroundEnabled = false
 
     @State private var navTarget: NavTarget?
     @State private var isShowingDiscover: Bool = false
@@ -105,11 +108,7 @@ struct HermesSquareRoot: View {
     @ViewBuilder
     private var squareBackground: some View {
         Group {
-            if liveBackgroundEnabled {
-                SwarmCanvasView(accent: .purple, pace: .cinematic).ignoresSafeArea()
-            } else {
-                AuroraBackdrop().ignoresSafeArea()
-            }
+            WebsiteBackgroundView(accent: .purple).ignoresSafeArea()
         }
     }
 
@@ -221,6 +220,15 @@ struct HermesSquareRoot: View {
                 rollbackService.startObservingSession(sessionID)
             }
         }
+        .task {
+            HermesIrohRelayTransport.shared.mediaPresenceHeartbeatHandler = { heartbeat in
+                await MainActor.run {
+                    mercuryPeerSource.ingestHeartbeat(heartbeat)
+                }
+            }
+            mercuryPeerSource.start()
+            syncMercuryPeer(mercuryPeerSource.peer)
+        }
         .onChange(of: inbox.items) { _, _ in
             Task { await reindexSearch() }
         }
@@ -229,6 +237,12 @@ struct HermesSquareRoot: View {
         }
         .onChange(of: projectsStore.summaries) { _, _ in
             Task { await reindexSearch() }
+        }
+        .onChange(of: mercuryPeerSource.peer) { _, peer in
+            syncMercuryPeer(peer)
+        }
+        .onDisappear {
+            mercuryPeerSource.stop()
         }
         .sheet(isPresented: $isShowingDiscover) {
             discoverDrawerSheet
@@ -245,6 +259,82 @@ struct HermesSquareRoot: View {
         )) {
             missionLiveDetailSheet
         }
+        .alert("Rename Conversation", isPresented: $isShowingRenameAlert) {
+            TextField("New Title", text: $newTitleText)
+            Button("Cancel", role: .cancel) {
+                renameTargetItem = nil
+            }
+            Button("Rename") {
+                if let item = renameTargetItem {
+                    updateThreadItemMetadata(item: item, customTitle: newTitleText)
+                }
+                renameTargetItem = nil
+            }
+        } message: {
+            Text("Enter a new title for this conversation.")
+        }
+        .confirmationDialog(
+            "Manage Mission",
+            isPresented: Binding(
+                get: { missionForActionSheet != nil },
+                set: { if !$0 { missionForActionSheet = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Cancel & Dismiss", role: .destructive) {
+                if let mission = missionForActionSheet {
+                    let mid = mission.id
+                    Task {
+                        await missionHost.cancelMission(id: mid)
+                        missionHost.dismissMission(id: mid)
+                    }
+                }
+                missionForActionSheet = nil
+            }
+
+            Button("Just Dismiss", role: .none) {
+                if let mission = missionForActionSheet {
+                    missionHost.dismissMission(id: mission.id)
+                }
+                missionForActionSheet = nil
+            }
+
+            Button("Keep Running", role: .cancel) {
+                missionForActionSheet = nil
+            }
+        } message: {
+            if let mission = missionForActionSheet {
+                Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
+            }
+        }
+        .navigationDestination(item: $navTarget) { target in
+            switch target {
+            case .brandZone(let uri):
+                brandZoneView(uri: uri)
+            case .runtimeNative(let runtime):
+                runtimeNativeView(for: runtime)
+            case .runtimeThread(let runtime):
+                runtimeThreadView(for: runtime)
+            case .cloudSession(let hitID):
+                if let row = cloudSearchRowsByID[hitID] {
+                    HermesSquareCloudSessionDetailView(row: row)
+                } else {
+                    Text("Session unavailable")
+                }
+            case .projectMemory(let projectID):
+                projectMemoryView(projectID: projectID)
+            case .mercuryLive(let connectionID):
+                MercuryLiveDetailView(
+                    connectionID: connectionID,
+                    peer: mercuryPeerSource.peer,
+                    bootError: mercuryBootError,
+                    isBooting: bootingMercuryConnectionID != nil,
+                    ensureMercuryLive: { id in
+                        await ensureMercuryLive(connectionID: id)
+                    }
+                )
+            }
+        }
     }
 
     // MARK: Subviews
@@ -258,7 +348,7 @@ struct HermesSquareRoot: View {
             onPin: { uri in pin(uri) },
             onUnpin: { uri in unpin(uri) },
             onOpenProjectMemory: { project in
-                navTarget = .projectMemory(project.id)
+                setNavTarget(.projectMemory(project.id))
                 isShowingDiscover = false
             },
             onAskWiki: { project in
@@ -385,7 +475,10 @@ struct HermesSquareRoot: View {
                     ).snapshot(for: runtime).provider
                 },
                 onTap: { uri in handlePinnedTap(uri: uri) },
-                onLongPress: { uri in handlePinnedLongPress(uri: uri) }
+                onLongPress: { uri in handlePinnedLongPress(uri: uri) },
+                onMoveLeft: { uri in handlePinnedMoveLeft(uri: uri) },
+                onMoveRight: { uri in handlePinnedMoveRight(uri: uri) },
+                onUnpin: { uri in handlePinnedUnpin(uri: uri) }
             )
         }
     }
@@ -404,7 +497,7 @@ struct HermesSquareRoot: View {
                         askWiki(for: project)
                     } else {
                         AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: "/wiki")
-                        navTarget = .runtimeNative(.hermes)
+                        setNavTarget(.runtimeNative(.hermes))
                     }
                 } label: {
                     HStack(spacing: 4) {
@@ -439,7 +532,7 @@ struct HermesSquareRoot: View {
                             }
                             Spacer(minLength: 8)
                             Button {
-                                navTarget = .projectMemory(project.id)
+                                setNavTarget(.projectMemory(project.id))
                             } label: {
                                 Text("Open")
                                     .font(.caption.bold())
@@ -499,45 +592,16 @@ struct HermesSquareRoot: View {
                             .padding(.vertical, 14)
                     } else {
                         ForEach(tiles) { tile in
-                            let isCancelling = showCancelForIDs.contains(tile.id)
-                            ZStack(alignment: .topTrailing) {
-                                Button {
-                                    if !showCancelForIDs.isEmpty {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                            showCancelForIDs.removeAll()
-                                        }
-                                    } else {
-                                        selectedMissionID = tile.id
-                                    }
-                                } label: {
-                                    HermesSquareMissionTile(tile: tile)
-                                }
-                                .buttonStyle(.plain)
-                                .frame(width: 240)
-                                .onLongPressGesture(minimumDuration: 0.6) {
-                                    HapticBus.threshold()
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        showCancelForIDs.insert(tile.id)
-                                    }
-                                }
-
-                                if isCancelling {
-                                    Button {
-                                        HapticBus.destructive()
-                                        missionToCancel = tile
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.title2)
-                                            .foregroundStyle(Color.red)
-                                            .background(Circle().fill(Color.white))
-                                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
-                                            .padding(6)
-                                    }
-                                    .transition(.asymmetric(
-                                        insertion: .scale.combined(with: .opacity),
-                                        removal: .scale.combined(with: .opacity)
-                                    ))
-                                }
+                            Button {
+                                selectedMissionID = tile.id
+                            } label: {
+                                HermesSquareMissionTile(tile: tile)
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: 240)
+                            .onLongPressGesture(minimumDuration: 0.5) {
+                                HapticBus.threshold()
+                                missionForActionSheet = tile
                             }
                         }
                     }
@@ -578,6 +642,66 @@ struct HermesSquareRoot: View {
                             HermesSquareThreadRow(item: item, registry: registry)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                renameTargetItem = item
+                                newTitleText = item.customTitle ?? item.title
+                                isShowingRenameAlert = true
+                            } label: {
+                                Label("Rename Conversation", systemImage: "pencil")
+                            }
+
+                            Menu("Label Color") {
+                                Button {
+                                    updateThreadItemMetadata(item: item, labelColorHex: "#f59e0b")
+                                } label: {
+                                    Label("Amber", systemImage: item.labelColorHex == "#f59e0b" ? "checkmark.circle.fill" : "circle")
+                                }
+                                Button {
+                                    updateThreadItemMetadata(item: item, labelColorHex: "#14b8a6")
+                                } label: {
+                                    Label("Teal", systemImage: item.labelColorHex == "#14b8a6" ? "checkmark.circle.fill" : "circle")
+                                }
+                                Button {
+                                    updateThreadItemMetadata(item: item, labelColorHex: "#ef4444")
+                                } label: {
+                                    Label("Red", systemImage: item.labelColorHex == "#ef4444" ? "checkmark.circle.fill" : "circle")
+                                }
+                                Button {
+                                    updateThreadItemMetadata(item: item, labelColorHex: "#a855f7")
+                                } label: {
+                                    Label("Purple", systemImage: item.labelColorHex == "#a855f7" ? "checkmark.circle.fill" : "circle")
+                                }
+                                Button {
+                                    updateThreadItemMetadata(item: item, labelColorHex: "#10b981")
+                                } label: {
+                                    Label("Emerald", systemImage: item.labelColorHex == "#10b981" ? "checkmark.circle.fill" : "circle")
+                                }
+                                Button {
+                                    updateThreadItemMetadata(item: item, labelColorHex: "#NONE#")
+                                } label: {
+                                    Label("None", systemImage: item.labelColorHex == nil ? "checkmark.circle.fill" : "circle")
+                                }
+                            }
+
+                            Button {
+                                updateThreadItemMetadata(item: item, isPinned: !item.isPinned)
+                            } label: {
+                                Label(item.isPinned ? "Unpin from Top" : "Pin to Top", systemImage: item.isPinned ? "pin.slash.fill" : "pin.fill")
+                            }
+
+                            Button {
+                                moveThreadItem(item, direction: .up)
+                            } label: {
+                                Label("Move Up", systemImage: "arrow.up")
+                            }
+
+                            Button {
+                                moveThreadItem(item, direction: .down)
+                            } label: {
+                                Label("Move Down", systemImage: "arrow.down")
+                            }
+                        }
                     }
                 }
             }
@@ -678,15 +802,15 @@ struct HermesSquareRoot: View {
     private func handlePinnedTap(uri: String) {
         if uri.hasPrefix(AgentIdentityRegistry.pairedMacURIPrefix) {
             let connectionID = String(uri.dropFirst(AgentIdentityRegistry.pairedMacURIPrefix.count))
-            navTarget = .mercuryLive(connectionID)
+            setNavTarget(.mercuryLive(connectionID))
             HapticBus.tabChange()
             return
         }
         guard let identity = registry.identity(for: uri) else { return }
         if let runtime = identity.runtimeID, visibleTiles.contains(runtime) {
-            navTarget = .runtimeNative(runtime)
+            setNavTarget(.runtimeNative(runtime))
         } else {
-            navTarget = .brandZone(uri)
+            setNavTarget(.brandZone(uri))
         }
         HapticBus.tabChange()
     }
@@ -694,10 +818,29 @@ struct HermesSquareRoot: View {
     private func handlePinnedLongPress(uri: String) {
         if uri.hasPrefix(AgentIdentityRegistry.pairedMacURIPrefix) {
             let connectionID = String(uri.dropFirst(AgentIdentityRegistry.pairedMacURIPrefix.count))
-            navTarget = .mercuryLive(connectionID)
+            setNavTarget(.mercuryLive(connectionID))
             return
         }
-        navTarget = .brandZone(uri)
+        setNavTarget(.brandZone(uri))
+    }
+
+    private func syncMercuryPeer(_ peer: MercuryPeer?) {
+        registry.pairedMacPeer = peer
+        autoPinPairedMacIfNeeded(peer: peer)
+    }
+
+    private func setNavTarget(_ target: NavTarget) {
+        let sequence = HermesSquareNavigationRetarget.sequence(
+            current: navTarget,
+            requested: target
+        )
+        guard let first = sequence.first else { return }
+        navTarget = first
+        if sequence.count == 2, let final = sequence.last {
+            Task { @MainActor in
+                navTarget = final
+            }
+        }
     }
 
     /// Mercury Phase 8 — idempotent auto-pin of the "My Mac" tile when
@@ -730,9 +873,9 @@ struct HermesSquareRoot: View {
     private func handleThreadTap(_ item: ThreadInboxItem) {
         if let runtime = AgentIdentity.builtInRuntime(from: item.agentURI),
            visibleTiles.contains(runtime) {
-            navTarget = .runtimeNative(runtime)
+            setNavTarget(.runtimeNative(runtime))
         } else {
-            navTarget = .brandZone(item.agentURI)
+            setNavTarget(.brandZone(item.agentURI))
         }
         HapticBus.tabChange()
     }
@@ -740,9 +883,9 @@ struct HermesSquareRoot: View {
     private func handleSearchHit(_ hit: UnifiedSearchIndex.Hit) {
         switch hit.ref.corpus {
         case .agents:
-            navTarget = .brandZone(hit.ref.id)
+            setNavTarget(.brandZone(hit.ref.id))
         case .projects:
-            navTarget = .projectMemory(hit.ref.id)
+            setNavTarget(.projectMemory(hit.ref.id))
         case .threads, .missions, .cards:
             // For Phase A: open the brand zone of the owning agent if we
             // can resolve one from the search index doc. The thread/
@@ -751,10 +894,10 @@ struct HermesSquareRoot: View {
             if let dot = hit.ref.id.firstIndex(of: ":"),
                let identity = registry.identities.first(where: { _ in true }) {
                 _ = dot
-                navTarget = .brandZone(identity.id)
+                setNavTarget(.brandZone(identity.id))
             }
         case .cloudSessions:
-            navTarget = .cloudSession(hit.ref.id)
+            setNavTarget(.cloudSession(hit.ref.id))
         default:
             break
         }
@@ -765,7 +908,7 @@ struct HermesSquareRoot: View {
             assistant: .hermes,
             prompt: "/wiki \(project.projectName)"
         )
-        navTarget = .runtimeNative(.hermes)
+        setNavTarget(.runtimeNative(.hermes))
     }
 
     private func projectSummary(for projectID: String) -> ProjectSummary? {
@@ -784,6 +927,96 @@ struct HermesSquareRoot: View {
     private func unpin(_ uri: String) {
         let updated = pinnedGrid.unpinning(uri).sanitized()
         pinnedJSON = updated.jsonString()
+    }
+
+    private func handlePinnedMoveLeft(uri: String) {
+        let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
+        guard let index = grid.pinnedURIs.firstIndex(of: uri), index > 0 else { return }
+        let updated = grid.moving(from: index, to: index - 1)
+        pinnedJSON = updated.jsonString()
+        HapticBus.threshold()
+    }
+
+    private func handlePinnedMoveRight(uri: String) {
+        let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
+        guard let index = grid.pinnedURIs.firstIndex(of: uri), index < grid.pinnedURIs.count - 1 else { return }
+        let updated = grid.moving(from: index, to: index + 1)
+        pinnedJSON = updated.jsonString()
+        HapticBus.threshold()
+    }
+
+    private func handlePinnedUnpin(uri: String) {
+        let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
+        let updated = grid.unpinning(uri)
+        pinnedJSON = updated.jsonString()
+        HapticBus.threshold()
+    }
+
+    enum MoveDirection {
+        case up, down
+    }
+
+    private func updateThreadItemMetadata(
+        item: ThreadInboxItem,
+        customTitle: String? = nil,
+        labelColorHex: String? = nil,
+        isPinned: Bool? = nil,
+        priorityOrder: Int? = nil
+    ) {
+        let parts = item.id.split(separator: ":", maxSplits: 1)
+        guard parts.count == 2 else { return }
+        let prefix = parts[0]
+        let rawId = String(parts[1])
+
+        if prefix == "cli" {
+            Task {
+                do {
+                    try await CLIAgentChatReader.shared.updateSessionMetadata(
+                        id: rawId,
+                        customTitle: customTitle,
+                        labelColorHex: labelColorHex,
+                        isPinned: isPinned,
+                        priorityOrder: priorityOrder
+                    )
+                    await inbox.refresh()
+                } catch {
+                    print("Error updating CLI session metadata: \(error)")
+                }
+            }
+        } else if prefix == "hermes" || prefix == "pi" || prefix == "cliMirror" {
+            MobileChatHistoryStore.shared.updateThreadMetadata(
+                id: rawId,
+                customTitle: customTitle,
+                labelColorHex: labelColorHex,
+                isPinned: isPinned,
+                priorityOrder: priorityOrder
+            )
+            Task {
+                await inbox.refresh()
+            }
+        }
+    }
+
+    private func moveThreadItem(_ item: ThreadInboxItem, direction: MoveDirection) {
+        let (service, _) = inbox.items.splitForInbox()
+        let conversations = service.filter { $0.source != .missionGroup }
+        guard let index = conversations.firstIndex(where: { $0.id == item.id }) else { return }
+
+        var newConversations = conversations
+        if direction == .up && index > 0 {
+            newConversations.swapAt(index, index - 1)
+        } else if direction == .down && index < conversations.count - 1 {
+            newConversations.swapAt(index, index + 1)
+        } else {
+            return
+        }
+
+        for (i, element) in newConversations.enumerated() {
+            let newPriority = i + 1
+            if element.priorityOrder != newPriority {
+                updateThreadItemMetadata(item: element, priorityOrder: newPriority)
+            }
+        }
     }
 
     // MARK: Search
@@ -855,7 +1088,7 @@ struct HermesSquareRoot: View {
 
     // MARK: Navigation
 
-    enum NavTarget: Hashable {
+    enum NavTarget: Hashable, Identifiable {
         case brandZone(String)        // agent URI
         case runtimeNative(AssistantRuntimeID)
         case runtimeThread(AssistantRuntimeID)
@@ -864,6 +1097,8 @@ struct HermesSquareRoot: View {
         /// Mercury Phase 8 — paired Mac tile destination. Carries the
         /// peer's iroh connection id, which doubles as the URI tail.
         case mercuryLive(String)
+
+        var id: Self { self }
     }
 
     // MARK: - Phase B helpers
@@ -921,25 +1156,25 @@ struct HermesSquareRoot: View {
         }
         switch intent {
         case .openAgent(let uri):
-            navTarget = .brandZone(uri)
+            setNavTarget(.brandZone(uri))
         case .search(let q):
             query = q
             Task { await runSearch() }
         case .sendMessageToCurrentThread(let text):
             AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: text)
-            navTarget = .runtimeNative(.hermes)
+            setNavTarget(.runtimeNative(.hermes))
         case .dispatchMission(let prompt, _):
             AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: prompt)
-            navTarget = .runtimeNative(.hermes)
+            setNavTarget(.runtimeNative(.hermes))
         case .fallbackToHermes(let text):
             AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: text)
-            navTarget = .runtimeNative(.hermes)
+            setNavTarget(.runtimeNative(.hermes))
         case .ambientBriefing:
             AssistantPendingPrompt.shared.stash(
                 assistant: .hermes,
                 prompt: "What's important across my fleet right now? Summarize in 5 bullets."
             )
-            navTarget = .runtimeNative(.hermes)
+            setNavTarget(.runtimeNative(.hermes))
         }
     }
 
@@ -1058,6 +1293,62 @@ struct HermesSquareRoot: View {
         case .claude, .codex, .openClaw:
             runtimeNativeView(for: runtime)
         }
+    }
+
+    @ViewBuilder
+    private func brandZoneView(uri: String) -> some View {
+        if let identity = registry.identity(for: uri) {
+            AgentBrandZoneView(
+                identity: identity,
+                registry: registry,
+                missionHost: missionHost,
+                onOpenRuntimeThread: { runtime in
+                    setNavTarget(.runtimeThread(runtime))
+                },
+                onOpenRuntimeList: { runtime in
+                    setNavTarget(.runtimeNative(runtime))
+                }
+            )
+        } else {
+            Text("Agent not found")
+        }
+    }
+
+    @ViewBuilder
+    private func projectMemoryView(projectID: String) -> some View {
+        let query = projectID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let project = projectsStore.summaries.first { summary in
+            summary.id == query
+                || summary.projectName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == query
+        }
+        if let project {
+            ProjectDetailView(project: project, store: projectsStore, initialTab: .wiki)
+        } else {
+            ScrollView {
+                VStack(spacing: 12) {
+                    Image(systemName: "book.closed")
+                        .font(.system(size: 36))
+                        .foregroundStyle(DesignSystemColors.textMuted)
+                    Text("Project not found")
+                        .font(.callout)
+                        .foregroundStyle(DesignSystemColors.textMuted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 80)
+            }
+        }
+    }
+}
+
+enum HermesSquareNavigationRetarget {
+    static func sequence(
+        current: HermesSquareRoot.NavTarget?,
+        requested: HermesSquareRoot.NavTarget
+    ) -> [HermesSquareRoot.NavTarget?] {
+        if current == requested {
+            return [nil, requested]
+        }
+        return [requested]
     }
 }
 

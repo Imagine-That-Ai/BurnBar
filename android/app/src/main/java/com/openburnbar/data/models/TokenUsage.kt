@@ -251,7 +251,7 @@ data class ProviderQuotaSnapshot(
             return buckets
                 .mapNotNull { it.displayRemainingPercent }
                 .minOrNull()
-                ?: 0.0
+                ?: 100.0
         }
 
     /** @deprecated Use accountId + accountLabel instead. */

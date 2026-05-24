@@ -40,7 +40,7 @@ class QuotaStoreTest {
 
         assertEquals(1, store.snapshots.value.size)
         assertEquals("openai", store.snapshots.value.first().provider)
-        assertEquals(0.0, store.snapshots.value.first().percentageRemaining, 0.01)
+        assertEquals(100.0, store.snapshots.value.first().percentageRemaining, 0.01)
         assertNull(store.error.value)
 
         store.stopListening()
@@ -58,10 +58,10 @@ class QuotaStoreTest {
         val store = QuotaStore(mockRepo)
         store.load()
         advanceUntilIdle()
-        assertEquals(0.0, store.snapshots.value.first().percentageRemaining, 0.01)
+        assertEquals(100.0, store.snapshots.value.first().percentageRemaining, 0.01)
 
         store.refresh()
         advanceUntilIdle()
-        assertEquals(0.0, store.snapshots.value.first().percentageRemaining, 0.01)
+        assertEquals(100.0, store.snapshots.value.first().percentageRemaining, 0.01)
     }
 }

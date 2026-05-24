@@ -41,5 +41,12 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+		<string>_http._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>OpenBurnBar uses the local network to connect this Mac to your trusted iPhone, iPad, Android devices, and local smart displays for pairing, Hermes relay, Mercury media sessions, and screen sharing.</string>
 </dict>
 </plist>

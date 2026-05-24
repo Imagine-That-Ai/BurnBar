@@ -209,7 +209,20 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
 extension ProviderQuotaBucket {
     var isDisplayableQuotaSignal: Bool {
         let marker = "\(key) \(label)".lowercased()
-        if ["cache", "hit rate", "local model", "cloud model", "installed", "task", "conversation", "line", "file"].contains(where: marker.contains) {
+        let markerWords = Set(marker.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        let excludedPhrases = ["cache", "hit rate", "local model", "cloud model"]
+        let excludedWords: Set<String> = [
+            "installed",
+            "task",
+            "tasks",
+            "conversation",
+            "conversations",
+            "line",
+            "lines",
+            "file",
+            "files"
+        ]
+        if excludedPhrases.contains(where: marker.contains) || !markerWords.isDisjoint(with: excludedWords) {
             return false
         }
 

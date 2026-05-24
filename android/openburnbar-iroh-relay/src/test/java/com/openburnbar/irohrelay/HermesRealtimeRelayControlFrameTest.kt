@@ -44,6 +44,32 @@ class HermesRealtimeRelayControlFrameTest {
     }
 
     @Test
+    fun codecRoundTripsControlDeniedFrame() {
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.CONTROL_DENIED,
+            uid = "uid-1",
+            connectionId = "conn-1",
+            control = HermesRealtimeRelayControlPayload(
+                streamClass = "control.input",
+                sessionId = "session-1",
+                denied = HermesRealtimeRelayControlDenied(
+                    reason = HermesRealtimeRelayControlDenied.Reason.UNKNOWN,
+                    detail = "accessibility_revoked",
+                ),
+            ),
+        )
+
+        val codec = IrohRelayFrameCodec()
+        val decoded = codec.decode(codec.encode(frame)).frame
+
+        assertEquals(HermesRealtimeRelayFrameType.CONTROL_DENIED, decoded.type)
+        assertEquals("control.input", decoded.control?.streamClass)
+        assertEquals("session-1", decoded.control?.sessionId)
+        assertEquals(HermesRealtimeRelayControlDenied.Reason.UNKNOWN, decoded.control?.denied?.reason)
+        assertEquals("accessibility_revoked", decoded.control?.denied?.detail)
+    }
+
+    @Test
     fun codecRoundTripsControlApprovalRequestAndResponseFrames() {
         val requestFrame = HermesRealtimeRelayFrame(
             type = HermesRealtimeRelayFrameType.CONTROL_APPROVAL_REQUEST,

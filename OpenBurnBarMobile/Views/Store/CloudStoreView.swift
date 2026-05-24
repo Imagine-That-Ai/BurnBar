@@ -116,7 +116,7 @@ struct CloudStoreView: View {
                         .staggeredEntrance(delay: 0.23)
                     }
 
-                    if let error = store.error {
+                    if store.isActive, let error = store.error {
                         CloudStoreErrorCard(message: error)
                             .padding(.horizontal, MobileTheme.Spacing.lg)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -1103,6 +1103,11 @@ private struct CloudStoreActionBar: View {
             .disabled(store.isPurchasing)
             .accessibilityIdentifier("cloudStore.subscribe")
             .accessibilityLabel(primaryButtonTitle)
+
+            if let error = store.error {
+                CloudStoreErrorCard(message: error)
+                    .accessibilityIdentifier("cloudStore.purchaseError")
+            }
 
             Button {
                 guard isSignedIn else {

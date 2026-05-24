@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarComputerUseCore
 
 enum CodexModelCatalog {
     static let chatModelIDs: [String] = [
@@ -69,7 +70,11 @@ enum CLIArgumentBuilder {
             .replacingOccurrences(of: "\u{000C}", with: "")
     }
 
-    static func claudeArguments(prompt: String, model: String = "") -> [String] {
+    static func claudeArguments(
+        prompt: String,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
         var arguments = [
             "-p",
             sanitizedPrompt(prompt),
@@ -83,10 +88,25 @@ enum CLIArgumentBuilder {
             "stream-json",
             "--verbose",
         ])
+        if let capabilityGrant, capabilityGrant.isActive() {
+            let allowed = claudeAllowedTools(for: capabilityGrant)
+            if !allowed.isEmpty {
+                arguments.append(contentsOf: ["--allowedTools", allowed.joined(separator: ",")])
+            }
+            if isYOLOGrant(capabilityGrant) {
+                arguments.append("--dangerously-skip-permissions")
+            } else if capabilityGrant.capabilities.contains(.workspaceWrite) {
+                arguments.append(contentsOf: ["--permission-mode", "acceptEdits"])
+            }
+        }
         return arguments
     }
 
-    static func codexArguments(prompt: String, model: String = "") -> [String] {
+    static func codexArguments(
+        prompt: String,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
         var arguments = [
             "exec",
             "--json",
@@ -100,7 +120,35 @@ enum CLIArgumentBuilder {
         if !normalizedModel.isEmpty {
             arguments.insert(contentsOf: ["-m", normalizedModel], at: 4)
         }
+        if let capabilityGrant, capabilityGrant.isActive() {
+            if isYOLOGrant(capabilityGrant) {
+                arguments.insert("--dangerously-bypass-approvals-and-sandbox", at: arguments.count - 1)
+            } else if capabilityGrant.capabilities.contains(.workspaceWrite) ||
+                capabilityGrant.capabilities.contains(.shell) {
+                arguments.insert(contentsOf: ["--sandbox", "workspace-write"], at: arguments.count - 1)
+            } else if capabilityGrant.capabilities.contains(.workspaceRead) {
+                arguments.insert(contentsOf: ["--sandbox", "read-only"], at: arguments.count - 1)
+            }
+        }
         return arguments
+    }
+
+    private static func claudeAllowedTools(for grant: AgentCapabilityGrant) -> [String] {
+        var tools: [String] = []
+        if grant.capabilities.contains(.workspaceRead) {
+            tools.append(contentsOf: ["Read", "Glob", "Grep", "LS"])
+        }
+        if grant.capabilities.contains(.workspaceWrite) {
+            tools.append(contentsOf: ["Write", "Edit", "MultiEdit"])
+        }
+        if grant.capabilities.contains(.shell) {
+            tools.append("Bash")
+        }
+        return Array(NSOrderedSet(array: tools)) as? [String] ?? tools
+    }
+
+    private static func isYOLOGrant(_ grant: AgentCapabilityGrant) -> Bool {
+        grant.trustMode == .trusted && Set(AgentDesktopCapability.allCases).isSubset(of: grant.capabilities)
     }
 
     static func combinedPrompt(systemPrompt: String, userMessage: String) -> String {
@@ -118,8 +166,12 @@ extension CLIBridge {
         CLIArgumentBuilder.sanitizedPrompt(input)
     }
 
-    nonisolated static func claudeArguments(prompt: String, model: String = "") -> [String] {
-        CLIArgumentBuilder.claudeArguments(prompt: prompt, model: model)
+    nonisolated static func claudeArguments(
+        prompt: String,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.claudeArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant)
     }
 
     nonisolated static var codexChatModelIDs: [String] {
@@ -130,7 +182,11 @@ extension CLIBridge {
         CodexModelCatalog.normalizedModel(model, fallback: fallback)
     }
 
-    nonisolated static func codexArguments(prompt: String, model: String = "") -> [String] {
-        CLIArgumentBuilder.codexArguments(prompt: prompt, model: model)
+    nonisolated static func codexArguments(
+        prompt: String,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.codexArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant)
     }
 }

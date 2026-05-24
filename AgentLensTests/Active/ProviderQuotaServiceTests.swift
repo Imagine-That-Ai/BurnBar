@@ -4005,14 +4005,22 @@ final class ProviderQuotaServiceTests: XCTestCase {
             request: ProviderRoutingRequest(preferredProviderIDs: [.openAI, .codex, .claudeCode])
         )
 
-        // OpenAI and Codex should see the cross-provider event because they
-        // were the source and destination of the failover.
-        XCTAssertEqual(states[.openAI]?.recentEvents.count, 1)
-        XCTAssertEqual(states[.codex]?.recentEvents.count, 1)
+        let isCrossProviderEvent: (ProviderRoutingDecisionEvent) -> Bool = {
+            $0.originalProviderID == .openAI
+            && $0.failoverDestinationProviderID == .codex
+            && $0.attemptedCanonicalModelID == "gpt-5.4"
+        }
 
-        // Claude must NOT inherit the event — it was not involved in the
-        // provider change and should have zero recentEvents after filtering.
-        XCTAssertEqual(states[.claudeCode]?.recentEvents.count, 0)
+        // OpenAI and Codex should see the persisted cross-provider event because
+        // they were the source and destination of the failover. Current routing
+        // refreshes may also append provider-local events, so assert event
+        // membership instead of total event count.
+        XCTAssertTrue((states[.openAI]?.recentEvents ?? []).contains(where: isCrossProviderEvent))
+        XCTAssertTrue((states[.codex]?.recentEvents ?? []).contains(where: isCrossProviderEvent))
+
+        // Claude must NOT inherit the cross-provider event — it was not involved
+        // in the provider change.
+        XCTAssertFalse((states[.claudeCode]?.recentEvents ?? []).contains(where: isCrossProviderEvent))
     }
 
     func test_providerRoutingEventPersistencePreservesHistoryBeyondDisplayLimit() throws {

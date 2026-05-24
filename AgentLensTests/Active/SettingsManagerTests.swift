@@ -244,6 +244,42 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(defaults.bool(forKey: "clickDesktopToCycleSwarm"))
     }
 
+    func test_clickDesktopToCycleSwarm_postsChangeNotification() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        let expectation = expectation(description: "desktop click cycle change notification")
+        let token = NotificationCenter.default.addObserver(
+            forName: .clickDesktopToCycleSwarmDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            expectation.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        settings.clickDesktopToCycleSwarm = true
+
+        wait(for: [expectation], timeout: 1)
+    }
+
+    func test_cycleShapesScreensaver_postsChangeNotification() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        let expectation = expectation(description: "cycle shapes screensaver change notification")
+        let token = NotificationCenter.default.addObserver(
+            forName: .cycleShapesScreensaverDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            expectation.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        settings.cycleShapesScreensaver = false
+
+        wait(for: [expectation], timeout: 1)
+    }
+
     func test_desktopWallpaperSpeed_defaultValue_isBalanced() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
@@ -319,6 +355,40 @@ final class SettingsManagerTests: XCTestCase {
         defer { NotificationCenter.default.removeObserver(token) }
 
         settings.desktopWallpaperProviderGlyphs = [.codex]
+
+        wait(for: [expectation], timeout: 1)
+    }
+
+    func test_excludeBrandShapesFromSwarm_defaultsToFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertFalse(settings.excludeBrandShapesFromSwarm)
+    }
+
+    func test_excludeBrandShapesFromSwarm_persistsValue() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.excludeBrandShapesFromSwarm = true
+        XCTAssertTrue(settings.excludeBrandShapesFromSwarm)
+        XCTAssertTrue(defaults.bool(forKey: "excludeBrandShapesFromSwarm"))
+    }
+
+    func test_excludeBrandShapesFromSwarm_postsChangeNotification() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        let expectation = expectation(description: "exclude brand shapes change notification")
+        let token = NotificationCenter.default.addObserver(
+            forName: .excludeBrandShapesFromSwarmDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            expectation.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        settings.excludeBrandShapesFromSwarm = true
 
         wait(for: [expectation], timeout: 1)
     }

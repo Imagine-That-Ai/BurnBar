@@ -53,6 +53,8 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case controlInputIntent = "control.input.intent"
     case controlApprovalRequest = "control.approval.request"
     case controlApprovalResponse = "control.approval.response"
+    case controlAgentGrantRequest = "control.agent.grant.request"
+    case controlAgentGrantReceipt = "control.agent.grant.receipt"
     case controlDenied = "control.denied"
 }
 
@@ -110,6 +112,8 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
     public var inputIntent: HermesRealtimeRelayInputIntent?
     public var approvalRequest: HermesRealtimeRelayApprovalRequest?
     public var approvalResponse: HermesRealtimeRelayApprovalResponse?
+    public var agentGrantRequest: HermesRealtimeRelayAgentGrantRequest?
+    public var agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt?
     public var denied: HermesRealtimeRelayControlDenied?
     public var authorityPeerNodeId: String?
     public var authorityPublicKeyBase64: String?
@@ -121,6 +125,8 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         inputIntent: HermesRealtimeRelayInputIntent? = nil,
         approvalRequest: HermesRealtimeRelayApprovalRequest? = nil,
         approvalResponse: HermesRealtimeRelayApprovalResponse? = nil,
+        agentGrantRequest: HermesRealtimeRelayAgentGrantRequest? = nil,
+        agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt? = nil,
         denied: HermesRealtimeRelayControlDenied? = nil,
         authorityPeerNodeId: String? = nil,
         authorityPublicKeyBase64: String? = nil
@@ -131,6 +137,8 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         self.inputIntent = inputIntent
         self.approvalRequest = approvalRequest
         self.approvalResponse = approvalResponse
+        self.agentGrantRequest = agentGrantRequest
+        self.agentGrantReceipt = agentGrantReceipt
         self.denied = denied
         self.authorityPeerNodeId = authorityPeerNodeId
         self.authorityPublicKeyBase64 = authorityPublicKeyBase64
@@ -256,6 +264,101 @@ public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable
         self.timestamp = timestamp
         self.intentHashBlake3 = intentHashBlake3
         self.signatureEd25519 = signatureEd25519
+    }
+}
+
+public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var runtime: String
+    public var threadId: String
+    public var preset: String
+    public var capabilities: [String]
+    public var trustMode: String
+    public var deliveryMode: String
+    public var requestedAt: Date
+    public var expiresAt: Date
+    public var grantDurationSeconds: Double
+    public var sourceDeviceId: String
+    public var clientIntentId: String
+    public var localAuthenticationSatisfied: Bool
+    public var authority: HermesRealtimeRelayAuthorityEnvelope
+
+    public init(
+        requestId: String,
+        runtime: String,
+        threadId: String,
+        preset: String,
+        capabilities: [String],
+        trustMode: String,
+        deliveryMode: String,
+        requestedAt: Date,
+        expiresAt: Date,
+        grantDurationSeconds: Double,
+        sourceDeviceId: String,
+        clientIntentId: String,
+        localAuthenticationSatisfied: Bool,
+        authority: HermesRealtimeRelayAuthorityEnvelope
+    ) {
+        self.requestId = requestId
+        self.runtime = runtime
+        self.threadId = threadId
+        self.preset = preset
+        self.capabilities = capabilities
+        self.trustMode = trustMode
+        self.deliveryMode = deliveryMode
+        self.requestedAt = requestedAt
+        self.expiresAt = expiresAt
+        self.grantDurationSeconds = grantDurationSeconds
+        self.sourceDeviceId = sourceDeviceId
+        self.clientIntentId = clientIntentId
+        self.localAuthenticationSatisfied = localAuthenticationSatisfied
+        self.authority = authority
+    }
+}
+
+public struct HermesRealtimeRelayAgentGrantReceipt: Codable, Sendable, Equatable {
+    public var receiptId: String
+    public var requestId: String
+    public var runtime: String
+    public var threadId: String
+    public var status: String
+    public var appliedGrantId: String?
+    public var capabilities: [String]
+    public var trustMode: String
+    public var receivedAt: Date
+    public var grantExpiresAt: Date?
+    public var sourceDeviceId: String?
+    public var denialReason: String?
+    public var message: String?
+
+    public init(
+        receiptId: String,
+        requestId: String,
+        runtime: String,
+        threadId: String,
+        status: String,
+        appliedGrantId: String? = nil,
+        capabilities: [String],
+        trustMode: String,
+        receivedAt: Date,
+        grantExpiresAt: Date? = nil,
+        sourceDeviceId: String? = nil,
+        denialReason: String? = nil,
+        message: String? = nil
+    ) {
+        self.receiptId = receiptId
+        self.requestId = requestId
+        self.runtime = runtime
+        self.threadId = threadId
+        self.status = status
+        self.appliedGrantId = appliedGrantId
+        self.capabilities = capabilities
+        self.trustMode = trustMode
+        self.receivedAt = receivedAt
+        self.grantExpiresAt = grantExpiresAt
+        self.sourceDeviceId = sourceDeviceId
+        self.denialReason = denialReason
+        self.message = message
     }
 }
 
@@ -385,6 +488,7 @@ public struct HermesRealtimeRelayMediaFrameChunk: Codable, Sendable, Equatable {
 }
 
 public enum AgentFocusFollowMode: String, Codable, CaseIterable, Sendable, Equatable {
+    case off
     case smart
     case debounced
     case immediate

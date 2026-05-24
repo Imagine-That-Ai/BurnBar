@@ -138,6 +138,15 @@ object SettingsManifest {
             keywords = listOf("swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar"),
         ),
         SettingsItem(
+            id = "themePrefs.enableSwarmSparkles",
+            section = SettingsSection.THEME,
+            pageRoute = SettingsPageRoute.THEME_PREFS,
+            anchorId = SettingsAnchor.ENABLE_SWARM_SPARKLES,
+            title = "Enable Screensaver Sparkles",
+            subtitle = "Render an elegant, gentle twinkling shimmer on particles while they hold a reformed shape.",
+            keywords = listOf("sparkles", "twinkle", "shimmer", "screensaver", "swarm", "animation", "visual"),
+        ),
+        SettingsItem(
             id = "root.quotaCustomization",
             section = SettingsSection.THEME,
             pageRoute = SettingsPageRoute.QUOTA_PREFS,
@@ -261,6 +270,7 @@ object SettingsManifest {
         SettingsAnchor.THEME_ROW,
         SettingsAnchor.USE_PREMIUM_SOTA_UX,
         SettingsAnchor.USE_WEBSITE_BACKGROUND,
+        SettingsAnchor.ENABLE_SWARM_SPARKLES,
         SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
         SettingsAnchor.HERMES_CONNECTIONS,
         SettingsAnchor.HERMES_MODELS,
