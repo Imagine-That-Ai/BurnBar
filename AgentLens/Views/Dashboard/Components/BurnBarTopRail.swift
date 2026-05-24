@@ -217,15 +217,12 @@ private struct BurnRailBrandMark: View {
         HStack(spacing: 7) {
             ZStack {
                 if hover {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.ember.opacity(0.35))
-                        .blur(radius: 4)
+                    AppLogoView(size: 16)
+                        .blur(radius: 2)
+                        .opacity(0.35)
                         .transition(.opacity)
                 }
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                AppLogoView(size: 14)
             }
             .frame(width: 18, height: 18)
 
@@ -343,7 +340,7 @@ struct BurnRailSearchOmnibar: View {
             scopeBadge
 
             TextField("", text: $text, prompt: Text("Search sessions, projects, models…")
-                .foregroundColor(DesignSystem.Colors.textMuted))
+                .foregroundStyle(DesignSystem.Colors.textMuted))
                 .textFieldStyle(.plain)
                 .font(.system(size: 12.5, weight: .regular, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)

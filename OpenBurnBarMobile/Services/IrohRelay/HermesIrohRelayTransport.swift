@@ -117,6 +117,11 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// back to WSS within 5s instead of after the full chat completion
     /// budget.
     static let defaultConnectTimeout: TimeInterval = 5
+    /// Mercury media-control streams are long-lived and user-visible.
+    /// Android gives this path a wider dial budget than one-shot chat
+    /// requests so home-relay negotiation can settle before the sheet
+    /// falls back into reconnect churn.
+    static let defaultMediaControlConnectTimeout: TimeInterval = 15
     /// Endpoint startup can legitimately include one Rust-side home-relay
     /// retry (`10s + retry delay + second bootstrap`). Keep this wider than
     /// the dial timeout so a transient hosted-relay bootstrap miss does not
@@ -126,13 +131,14 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     private nonisolated static let responseCompleteGraceTimeout: TimeInterval = 15
 
     private let directory: any IrohPairingDirectory
-    private let transportFactory: @MainActor () -> any IrohRelayTransport
+    private let transportFactory: @MainActor (_ relayURL: String?) -> any IrohRelayTransport
     private let pairingPublicKeyProvider: any IrohPairingPublicKeyProviding
     private let auditLogger: any IrohTransportAuditLogging
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var endpoint: (any IrohRelayTransport)?
     private var identity: IrohEndpointIdentity?
+    private var endpointRelayURL: String?
     /// Mercury Phase 1b — single-shot installer for the persistent media
     /// control stream. AppDelegate calls
     /// `installMediaControlStream(into:)` at boot; the actual coordinator
@@ -146,6 +152,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// `transport.start()` invocation rather than racing to spin up two
     /// endpoints and leaking one of them.
     private var bootstrapTask: Task<any IrohRelayTransport, Error>?
+    private var bootstrapRelayURL: String?
+    private var bootstrapGeneration = 0
     private let connectTimeout: TimeInterval
     private let now: @Sendable () -> Date
 
@@ -153,8 +161,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         directory: any IrohPairingDirectory = FirestoreIrohPairingDirectory.shared,
         pairingPublicKeyProvider: any IrohPairingPublicKeyProviding = FirestoreIrohPairingPublicKeyProvider.shared,
         auditLogger: any IrohTransportAuditLogging = FirestoreIrohAuditLogger.shared,
-        transportFactory: @escaping @MainActor () -> any IrohRelayTransport = {
-            HermesIrohRelayTransport.defaultTransport()
+        transportFactory: @escaping @MainActor (_ relayURL: String?) -> any IrohRelayTransport = { relayURL in
+            HermesIrohRelayTransport.defaultTransport(relayURL: relayURL)
         },
         connectTimeout: TimeInterval = HermesIrohRelayTransport.defaultConnectTimeout,
         now: @escaping @Sendable () -> Date = { Date() }
@@ -266,10 +274,10 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             publicKey: relayPublicKey,
             now: now()
         )
-        let transport = try await transport()
+        let transport = try await transport(relayURL: verifiedTarget.relayURL)
         return try await transport.connect(
             to: verifiedTarget,
-            timeout: connectTimeout
+            timeout: Self.defaultMediaControlConnectTimeout
         )
     }
 
@@ -285,7 +293,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             publicKey: relayPublicKey,
             now: now()
         )
-        let transport = try await transport()
+        let transport = try await transport(relayURL: verifiedTarget.relayURL)
         return try await transport.connect(
             to: verifiedTarget,
             timeout: connectTimeout
@@ -375,7 +383,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             let transport = try await withIrohOperationTimeout(
                 seconds: Self.bootstrapStartupTimeout(connectTimeout: connectTimeout)
             ) {
-                try await self.transport()
+                try await self.transport(relayURL: verifiedTarget.relayURL)
             }
             stage = "dial_start"
             let localNodeId = identity?.nodeId ?? ""
@@ -619,7 +627,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 throw HermesServiceError.relayFailure(frame.payload?.error, fallback: "Hermes iroh relay failed.")
             case .ping, .pong, .requestCancel, .requestStart, .hostReady, .hostRegister,
                  .controlClassify, .controlActionLogEntry, .controlInputIntent,
-                 .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
+                 .controlApprovalRequest, .controlApprovalResponse,
+                 .controlAgentGrantRequest, .controlAgentGrantReceipt,
+                 .controlDenied:
                 continue
             case .mediaClassify,
                     .mediaBlobAdvertise,
@@ -770,17 +780,34 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         self.mediaControlCoordinator = coordinator
     }
 
-    private func transport() async throws -> any IrohRelayTransport {
-        if let endpoint, identity != nil { return endpoint }
+    private func transport(relayURL: String?) async throws -> any IrohRelayTransport {
+        let normalizedRelayURL = Self.normalizedRelayURL(relayURL)
+        if let endpoint, identity != nil, endpointRelayURL == normalizedRelayURL {
+            return endpoint
+        }
         if let bootstrapTask {
             // A concurrent caller is already starting the endpoint —
-            // hand them the same outcome so we never spin up twice.
-            return try await bootstrapTask.value
+            // hand them the same outcome when it targets the same home relay.
+            if bootstrapRelayURL == normalizedRelayURL {
+                return try await bootstrapTask.value
+            }
+            bootstrapTask.cancel()
+            self.bootstrapTask = nil
+            self.bootstrapRelayURL = nil
+            bootstrapGeneration += 1
+        }
+        if let endpoint {
+            await endpoint.shutdown()
+            self.endpoint = nil
+            self.identity = nil
+            self.endpointRelayURL = nil
         }
         let factory = transportFactory
-        let task = Task { @MainActor [factory] () throws -> any IrohRelayTransport in
+        bootstrapGeneration += 1
+        let generation = bootstrapGeneration
+        let task = Task { @MainActor [factory, normalizedRelayURL, generation] () throws -> any IrohRelayTransport in
             await HermesIrohHostedRelayConfig.refreshRemoteConfigIfAvailable()
-            let transport = factory()
+            let transport = factory(normalizedRelayURL)
             #if DEBUG
             if ProcessInfo.processInfo.environment["OPENBURNBAR_ALLOW_IROH_LOOPBACK"] != "1",
                transport is LoopbackIrohRelayTransport {
@@ -790,17 +817,33 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             }
             #endif
             let identity = try await transport.start()
+            guard !Task.isCancelled, self.bootstrapGeneration == generation else {
+                await transport.shutdown()
+                throw CancellationError()
+            }
             self.endpoint = transport
             self.identity = identity
+            self.endpointRelayURL = normalizedRelayURL
             return transport
         }
         bootstrapTask = task
-        defer { bootstrapTask = nil }
+        bootstrapRelayURL = normalizedRelayURL
+        defer {
+            if bootstrapRelayURL == normalizedRelayURL {
+                bootstrapTask = nil
+                bootstrapRelayURL = nil
+            }
+        }
         return try await task.value
     }
 
     static func bootstrapStartupTimeout(connectTimeout: TimeInterval) -> TimeInterval {
         max(defaultBootstrapStartupTimeout, connectTimeout + 25)
+    }
+
+    static func normalizedRelayURL(_ relayURL: String?) -> String? {
+        let normalized = relayURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalized.isEmpty ? nil : normalized
     }
 
     private func chunkRecord(
@@ -840,16 +883,17 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         )
     }
 
-    static func defaultTransport() -> any IrohRelayTransport {
+    static func defaultTransport(relayURL: String? = nil) -> any IrohRelayTransport {
         let secretProvider: @Sendable () throws -> IrohSecretKeyMaterial = {
             try IrohRelayKeyStore.shared.secretKeyMaterial()
         }
         if let backend = OpenBurnBarIrohFFIBackendFactory.make() {
+            let normalizedRelayURL = Self.normalizedRelayURL(relayURL)
             return IrohXcframeworkTransport(
                 backend: backend,
                 secretProvider: secretProvider,
                 relayURLProvider: {
-                    HermesIrohHostedRelayConfig.currentURL()
+                    normalizedRelayURL ?? HermesIrohHostedRelayConfig.currentURL()
                 }
             )
         }

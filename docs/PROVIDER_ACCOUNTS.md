@@ -40,13 +40,46 @@ and quota snapshots sync to mobile devices.
 - **Device Keychain accounts:** daemon-managed slots appear as provider accounts
   with their labels and status, while the credential remains on that Mac.
   Catalog-only routing providers such as DeepSeek, Alibaba/Qwen, Meta, Mistral,
-  xAI/Grok, and Cohere use the same daemon-slot projection even when they have no
-  `AgentProvider` enum case.
+  and Cohere use the same daemon-slot projection even when they have no
+  `AgentProvider` enum case. (xAI/Grok is now a first-class `AgentProvider.xAI`
+  with its own quota adapter — see below.)
 
 Quota snapshots use schema version 2 and include `providerID`, `accountID`,
 `accountLabel`, `accountStorageScope`, and `sourceID`. Provider-level views keep
 aggregates, while detail views preserve per-account snapshots and unattributed
 legacy usage.
+
+## xAI / Grok
+
+Grok is a full-service quota provider (`AgentProvider.xAI`, catalog id `xai`).
+It supports a consumer tier and a developer tier, selected via the **plan
+picker** in the quota popover, command center, and macOS plan wizard.
+
+### Connect via xAI Management Key (GrokBuild — exact credits)
+
+1. Open the [xAI Console → Team API Keys](https://console.x.ai/team/api-keys).
+2. Generate a **Management Key** (prefix `xai-mgmt-…`). This is separate from
+   the inference key the proxy uses to serve requests.
+3. Paste it into the Grok card's "Management Key" field and pick the
+   **GrokBuild** tier.
+
+The adapter then reports the exact prepaid credit balance from
+`GET /v1/billing/teams/{team_id}/prepaid/balance` (xAI returns a negative
+`total.val` in USD cents when credit is unspent; the adapter inverts it) plus
+rolling 24h / 7d / 30d spend from `POST /v1/billing/teams/{team_id}/usage`. The
+team id is auto-discovered via `GET /v1/teams` and cached.
+
+### Connect via SuperGrok login (consumer pacing estimate)
+
+SuperGrok Lite / SuperGrok / SuperGrok Heavy have no public consumer-quota
+endpoint, so OpenBurnBar estimates a rolling 2-hour prompt window from local
+routing activity. Pick the matching tier in the plan picker; the rolling cap is
+community-estimated (Lite 30 / SuperGrok 100 / Heavy 400 prompts per 2h) and the
+snapshot is flagged as estimated. Add an `xai-…` inference key in Accounts so the
+Mac proxy can route Grok traffic, which also populates the pacing log
+(`~/Library/Application Support/OpenBurnBar/xai/superGrok-events.jsonl`).
+
+See [grok.com/plans](https://grok.com/plans) for current tier pricing.
 
 ## Routing Policy
 

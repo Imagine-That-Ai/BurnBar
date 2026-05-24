@@ -109,7 +109,11 @@ final class ThreadInboxStore {
                 needsAttention: false,
                 source: source,
                 liveMissionID: nil,
-                attachments: thread.recentAttachmentPreviews
+                attachments: thread.recentAttachmentPreviews,
+                customTitle: thread.customTitle,
+                labelColorHex: thread.labelColorHex,
+                isPinned: thread.isPinned ?? false,
+                priorityOrder: thread.priorityOrder ?? 0
             )
         }
     }
@@ -147,7 +151,12 @@ final class ThreadInboxStore {
                                 .joined(separator: " ")
                         ].joined(separator: " ")
                     }.joined(separator: " ")
-                ].joined(separator: " ")
+                ].joined(separator: " "),
+                attachments: [],
+                customTitle: record.customTitle,
+                labelColorHex: record.labelColorHex,
+                isPinned: record.isPinned ?? false,
+                priorityOrder: record.priorityOrder ?? 0
             )
         }
     }

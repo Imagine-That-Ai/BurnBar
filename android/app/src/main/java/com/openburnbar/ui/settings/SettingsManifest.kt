@@ -138,6 +138,24 @@ object SettingsManifest {
             keywords = listOf("swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar"),
         ),
         SettingsItem(
+            id = "themePrefs.enableSwarmSparkles",
+            section = SettingsSection.THEME,
+            pageRoute = SettingsPageRoute.THEME_PREFS,
+            anchorId = SettingsAnchor.ENABLE_SWARM_SPARKLES,
+            title = "Enable Screensaver Sparkles",
+            subtitle = "Render an elegant, gentle twinkling shimmer on particles while they hold a reformed shape.",
+            keywords = listOf("sparkles", "twinkle", "shimmer", "screensaver", "swarm", "animation", "visual"),
+        ),
+        SettingsItem(
+            id = "root.quotaCustomization",
+            section = SettingsSection.THEME,
+            pageRoute = SettingsPageRoute.QUOTA_PREFS,
+            anchorId = SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
+            title = "Quota Customisation",
+            subtitle = "Rearrange providers, toggle visible buckets, and format percentage displays",
+            keywords = listOf("quota", "customization", "customise", "percentage", "rearrange", "sort", "order", "hidden"),
+        ),
+        SettingsItem(
             id = "menuBarPrefs.persistent",
             section = SettingsSection.NOTIFICATIONS,
             pageRoute = SettingsPageRoute.ROOT,
@@ -252,6 +270,8 @@ object SettingsManifest {
         SettingsAnchor.THEME_ROW,
         SettingsAnchor.USE_PREMIUM_SOTA_UX,
         SettingsAnchor.USE_WEBSITE_BACKGROUND,
+        SettingsAnchor.ENABLE_SWARM_SPARKLES,
+        SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
         SettingsAnchor.HERMES_CONNECTIONS,
         SettingsAnchor.HERMES_MODELS,
         SettingsAnchor.HERMES_DISPLAY,
@@ -275,11 +295,13 @@ object SettingsManifest {
             AgentProvider.CODEX -> keywords.addAll(listOf("openai codex", "codex cli", "chatgpt", "openai"))
             AgentProvider.OPENCODE -> keywords.addAll(listOf("opencode", "open code", "opencode go", "open code go", "cli"))
             AgentProvider.OPEN_AI -> keywords.addAll(listOf("open ai", "openai", "gpt", "chatgpt"))
+            AgentProvider.DEEP_SEEK -> keywords.addAll(listOf("deep seek", "deepseek", "deepseek coder"))
             AgentProvider.GEMINI_CLI -> keywords.addAll(listOf("gemini", "google", "google ai", "gemini cli"))
             AgentProvider.KILO_CODE -> keywords.addAll(listOf("kilo", "kilo code", "kilocode"))
             AgentProvider.ROO_CODE -> keywords.addAll(listOf("roo", "roo code", "roocode"))
             AgentProvider.FORGE_DEV -> keywords.addAll(listOf("forge", "forge dev", "forgedev"))
             AgentProvider.OPEN_CLAW -> keywords.addAll(listOf("open claw", "openclaw"))
+            AgentProvider.PI_AGENT -> keywords.addAll(listOf("pi", "pi agent", "pi-agent"))
             AgentProvider.KIMI -> keywords.addAll(listOf("moonshot", "kimi k2"))
             AgentProvider.ZAI -> keywords.addAll(listOf("z.ai", "z-ai", "zai"))
             AgentProvider.MINIMAX -> keywords.addAll(listOf("mini max", "minimax"))

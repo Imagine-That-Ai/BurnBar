@@ -4,6 +4,31 @@ import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
 final class SettingsManagerSecretStorageTests: XCTestCase {
+    func test_macInfoPlistDeclaresLocalNetworkUsageForMercuryTransport() throws {
+        let plistURL = repoRoot()
+            .appendingPathComponent("AgentLens")
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("OpenBurnBar-Info.plist")
+        let data = try Data(contentsOf: plistURL)
+        let plist = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        )
+
+        let description = try XCTUnwrap(plist["NSLocalNetworkUsageDescription"] as? String)
+        XCTAssertTrue(description.localizedCaseInsensitiveContains("trusted iPhone"))
+        XCTAssertTrue(description.localizedCaseInsensitiveContains("Mercury media sessions"))
+        XCTAssertTrue(description.localizedCaseInsensitiveContains("screen sharing"))
+
+        let services = Set(try XCTUnwrap(plist["NSBonjourServices"] as? [String]))
+        XCTAssertTrue(services.contains("_googlecast._tcp"))
+        XCTAssertTrue(services.contains("_http._tcp"))
+
+        let projectSource = try String(contentsOf: repoRoot().appendingPathComponent("project.yml"), encoding: .utf8)
+        XCTAssertTrue(projectSource.contains("NSLocalNetworkUsageDescription: OpenBurnBar uses the local network to connect this Mac"))
+        XCTAssertTrue(projectSource.contains("- _googlecast._tcp"))
+        XCTAssertTrue(projectSource.contains("- _http._tcp"))
+    }
+
     func test_initMigratesLegacyDefaultsTokensIntoKeychain() throws {
         let suiteName = "com.openburnbar.tests.settings.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -180,6 +205,20 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         )
     }
 
+    func test_hermesRelayPrivateKeyFallsBackToStableEphemeralKeyWhenKeychainWriteFails() throws {
+        let service = "tests.hermes.relay.fallback.\(UUID().uuidString)"
+        let keyStore = HermesRelayKeyStore(
+            keychain: KeychainStore(service: service, legacyServices: [], backend: FailingWriteKeychainBackend()),
+            fallbackCacheKey: service
+        )
+
+        let first = try keyStore.privateKey()
+        let second = try keyStore.privateKey()
+
+        XCTAssertEqual(first.rawRepresentation, second.rawRepresentation)
+        XCTAssertEqual(try keyStore.existingPublicKeyBase64(), first.publicKeyBase64)
+    }
+
     func test_piRelayPublicKeyLookup_doesNotCreateMissingBackgroundKey() throws {
         let service = "tests.pi.relay.\(UUID().uuidString)"
         let backend = InteractionLockedWriteTestKeychainBackend()
@@ -192,6 +231,20 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
             backend.writeCount(for: service, account: "settings.chat.piagent.relay.p256.v1"),
             0
         )
+    }
+
+    func test_piRelayPrivateKeyFallsBackToStableEphemeralKeyWhenKeychainWriteFails() throws {
+        let service = "tests.pi.relay.fallback.\(UUID().uuidString)"
+        let keyStore = PiAgentRelayKeyStore(
+            keychain: KeychainStore(service: service, legacyServices: [], backend: FailingWriteKeychainBackend()),
+            fallbackCacheKey: service
+        )
+
+        let first = try keyStore.privateKey()
+        let second = try keyStore.privateKey()
+
+        XCTAssertEqual(first.rawRepresentation, second.rawRepresentation)
+        XCTAssertEqual(try keyStore.existingPublicKeyBase64(), first.publicKeyBase64)
     }
 
     // MARK: - Keychain Migration Data-Loss Protection (D12)
@@ -285,4 +338,11 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "gatewayAuthToken"), "legacy-verify-value")
     }
 
+    private func repoRoot() -> URL {
+        var url = URL(fileURLWithPath: #filePath)
+        while url.lastPathComponent != "BurnBar", url.path != "/" {
+            url.deleteLastPathComponent()
+        }
+        return url
+    }
 }

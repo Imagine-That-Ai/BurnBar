@@ -4,6 +4,8 @@ import OpenBurnBarCore
 struct QuotaView: View {
     @State private var store = QuotaStore()
     @State private var selectedProvider: String?
+    @State private var settings = QuotaSettingsStore()
+    @State private var isJiggling = false
 
     var body: some View {
         ScrollView {
@@ -23,10 +25,14 @@ struct QuotaView: View {
                 )
             } else {
                 VStack(spacing: MobileTheme.Spacing.xl) {
-                    if !store.urgentProviders.isEmpty {
-                        urgentSection
+                    if isJiggling {
+                        jigglingSection
+                    } else {
+                        if !store.urgentProviders.isEmpty {
+                            urgentSection
+                        }
+                        healthySection
                     }
-                    healthySection
                 }
                 .padding(.vertical, MobileTheme.Spacing.lg)
             }
@@ -51,16 +57,53 @@ struct QuotaView: View {
                     provider: provider,
                     snapshots: store.sortedSnapshots(for: provider),
                     routingState: store.routingState(for: ProviderID(rawValue: provider)),
+                    hiddenBuckets: settings.hiddenBuckets,
+                    bucketOrders: settings.bucketOrders,
+                    displayMode: settings.percentageDisplayMode.rawValue,
                     onRefresh: {
                         await store.refreshAllAccounts(for: ProviderID(rawValue: provider))
                     }
                 )
             }
         }
+        .toolbar {
+            if isJiggling {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: {
+                        Haptics.light()
+                        let modes = QuotaPercentageDisplayMode.allCases
+                        if let idx = modes.firstIndex(of: settings.percentageDisplayMode) {
+                            settings.percentageDisplayMode = modes[(idx + 1) % modes.count]
+                        }
+                    }) {
+                        Image(systemName: "percent")
+                            .foregroundStyle(MobileTheme.ember)
+                    }
+                    .accessibilityLabel("Toggle percentage display mode")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            isJiggling = false
+                        }
+                        Haptics.success()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
     }
 
     private var emberBackground: some View {
         EmberSurfaceBackground()
+            .onLongPressGesture(minimumDuration: 0.5) {
+                if !isJiggling {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        isJiggling = true
+                    }
+                    Haptics.light()
+                }
+            }
     }
 
     private var signedInDiagnostic: String {
@@ -68,6 +111,34 @@ struct QuotaView: View {
             return "Signed into account \(account)."
         }
         return "Not signed in."
+    }
+
+    // MARK: - Jiggling Section
+
+    private var jigglingSection: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            Text("Customize Board")
+                .font(MobileTheme.Typography.headline)
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .padding(.horizontal, MobileTheme.Spacing.lg)
+
+            LazyVStack(spacing: MobileTheme.Spacing.md) {
+                ForEach(Array(store.visibleProviders.enumerated()), id: \.element) { index, provider in
+                    QuotaProviderCard(
+                        provider: provider,
+                        snapshots: store.snapshotsByProvider[provider] ?? [],
+                        accountCount: store.accountCount(for: provider),
+                        routingState: store.routingState(for: ProviderID(rawValue: provider)),
+                        settings: settings,
+                        isJiggling: $isJiggling,
+                        index: index,
+                        totalProviders: store.visibleProviders.count,
+                        onTap: { selectedProvider = provider }
+                    )
+                }
+            }
+            .padding(.horizontal, MobileTheme.Spacing.lg)
+        }
     }
 
     // MARK: - Urgent Section
@@ -87,6 +158,10 @@ struct QuotaView: View {
                         snapshots: store.snapshotsByProvider[provider] ?? [],
                         accountCount: store.accountCount(for: provider),
                         routingState: store.routingState(for: ProviderID(rawValue: provider)),
+                        settings: settings,
+                        isJiggling: .constant(false),
+                        index: 0,
+                        totalProviders: 1,
                         onTap: { selectedProvider = provider }
                     )
                 }
@@ -119,6 +194,10 @@ struct QuotaView: View {
                         snapshots: store.snapshotsByProvider[provider] ?? [],
                         accountCount: store.accountCount(for: provider),
                         routingState: store.routingState(for: ProviderID(rawValue: provider)),
+                        settings: settings,
+                        isJiggling: .constant(false),
+                        index: 0,
+                        totalProviders: 1,
                         onTap: { selectedProvider = provider }
                     )
                 }
@@ -154,6 +233,10 @@ struct QuotaProviderCard: View {
     let snapshots: [ProviderQuotaSnapshot]
     let accountCount: Int
     let routingState: ProviderRoutingStateSnapshot?
+    @Bindable var settings: QuotaSettingsStore
+    @Binding var isJiggling: Bool
+    var index: Int
+    var totalProviders: Int
     let onTap: () -> Void
 
     var providerEnum: AgentProvider? {
@@ -168,8 +251,12 @@ struct QuotaProviderCard: View {
         accountCount > 1 || attributedSnapshots.count > 1
     }
 
+    @State private var phase: CGFloat = 0
+
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            if !isJiggling { onTap() }
+        }) {
             UnifiedGlassCard {
                 VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
                     headerRow
@@ -183,6 +270,28 @@ struct QuotaProviderCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(Text("Tap to see per-account quota detail."))
+        .rotationEffect(.degrees(isJiggling ? sin(phase) * 1.5 : 0))
+        .onAppear {
+            if isJiggling { startJiggling() }
+        }
+        .onChange(of: isJiggling) { _, newValue in
+            if newValue { startJiggling() }
+            else { phase = 0 }
+        }
+        .onLongPressGesture(minimumDuration: 0.5) {
+            if !isJiggling {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    isJiggling = true
+                }
+                Haptics.light()
+            }
+        }
+    }
+
+    private func startJiggling() {
+        withAnimation(.linear(duration: 0.12).repeatForever(autoreverses: true)) {
+            phase = .pi / 2
+        }
     }
 
     // MARK: - Header Row
@@ -220,10 +329,32 @@ struct QuotaProviderCard: View {
                 }
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-                .accessibilityHidden(true)
+            if isJiggling {
+                HStack(spacing: 12) {
+                    Button {
+                        moveProviderUp()
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.headline)
+                    }
+                    .disabled(index == 0)
+                    .foregroundStyle(index == 0 ? .secondary.opacity(0.3) : MobileTheme.ember)
+
+                    Button {
+                        moveProviderDown()
+                    } label: {
+                        Image(systemName: "arrow.down")
+                            .font(.headline)
+                    }
+                    .disabled(index == totalProviders - 1)
+                    .foregroundStyle(index == totalProviders - 1 ? .secondary.opacity(0.3) : MobileTheme.ember)
+                }
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .accessibilityHidden(true)
+            }
         }
     }
 
@@ -256,8 +387,45 @@ struct QuotaProviderCard: View {
 
     @ViewBuilder
     private var bucketRow: some View {
-        if let bucket = mostPressuredBucket, let providerEnum {
-            UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: true)
+        if isJiggling, let providerEnum {
+            let bucketsList = allBuckets(for: providerEnum)
+            VStack(spacing: 8) {
+                ForEach(Array(bucketsList.enumerated()), id: \.element.key) { bIdx, bucket in
+                    HStack(spacing: MobileTheme.Spacing.sm) {
+                        Button {
+                            toggleBucketVisibility(bucket, for: providerEnum)
+                        } label: {
+                            Image(systemName: isBucketHidden(bucket, for: providerEnum) ? "eye.slash" : "eye")
+                                .foregroundStyle(isBucketHidden(bucket, for: providerEnum) ? .secondary : MobileTheme.ember)
+                        }
+
+                        UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: true, displayMode: settings.percentageDisplayMode.rawValue)
+                            .opacity(isBucketHidden(bucket, for: providerEnum) ? 0.5 : 1.0)
+
+                        HStack(spacing: 12) {
+                            Button {
+                                moveBucketUp(bucket, for: providerEnum)
+                            } label: {
+                                Image(systemName: "arrow.up")
+                                    .font(.subheadline)
+                            }
+                            .disabled(bIdx == 0)
+                            .foregroundStyle(bIdx == 0 ? .secondary.opacity(0.3) : MobileTheme.ember)
+
+                            Button {
+                                moveBucketDown(bucket, for: providerEnum)
+                            } label: {
+                                Image(systemName: "arrow.down")
+                                    .font(.subheadline)
+                            }
+                            .disabled(bIdx == bucketsList.count - 1)
+                            .foregroundStyle(bIdx == bucketsList.count - 1 ? .secondary.opacity(0.3) : MobileTheme.ember)
+                        }
+                    }
+                }
+            }
+        } else if let bucket = mostPressuredBucket, let providerEnum {
+            UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: true, displayMode: settings.percentageDisplayMode.rawValue)
         } else {
             QuotaPlaceholderRow()
         }
@@ -288,8 +456,8 @@ struct QuotaProviderCard: View {
 
     private var hasUrgentBucket: Bool {
         snapshots.flatMap(\.buckets).contains { bucket in
-            guard bucket.limit > 0 else { return false }
-            return max(0, bucket.remaining) / bucket.limit < 0.25
+            guard let fraction = bucket.displayRemainingFraction else { return false }
+            return fraction < 0.25
         }
     }
 
@@ -304,12 +472,102 @@ struct QuotaProviderCard: View {
     }
 
     private var mostPressuredBucket: ProviderQuotaBucket? {
-        snapshots
-            .flatMap(\.buckets)
-            .filter { $0.limit > 0 }
-            .min {
-                max(0, $0.remaining) / $0.limit < max(0, $1.remaining) / $1.limit
-            } ?? snapshots.first?.buckets.first
+        let customized = snapshots
+            .flatMap { $0.customizedBuckets(hiddenBuckets: settings.hiddenBuckets, bucketOrders: settings.bucketOrders) }
+        return customized
+            .compactMap { bucket -> (bucket: ProviderQuotaBucket, fraction: Double)? in
+                guard let fraction = bucket.displayRemainingFraction else { return nil }
+                return (bucket, fraction)
+            }
+            .min { $0.fraction < $1.fraction }?
+            .bucket ?? customized.first ?? snapshots.first?.buckets.first
+    }
+
+    // MARK: - Jiggling Actions
+
+    private func moveProviderUp() {
+        guard let p = providerEnum else { return }
+        var order = settings.providerOrder
+        guard let idx = order.firstIndex(of: p), idx > 0 else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            order.swapAt(idx, idx - 1)
+            settings.providerOrder = order
+        }
+        Haptics.light()
+    }
+
+    private func moveProviderDown() {
+        guard let p = providerEnum else { return }
+        var order = settings.providerOrder
+        guard let idx = order.firstIndex(of: p), idx < order.count - 1 else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            order.swapAt(idx, idx + 1)
+            settings.providerOrder = order
+        }
+        Haptics.light()
+    }
+
+    private func allBuckets(for p: AgentProvider) -> [ProviderQuotaBucket] {
+        let displayable = snapshots.flatMap(\.displayableQuotaBuckets)
+        var uniqueBuckets: [ProviderQuotaBucket] = []
+        for b in displayable where !uniqueBuckets.contains(where: { $0.key == b.key }) {
+            uniqueBuckets.append(b)
+        }
+        let token = p.persistedToken
+        if let customOrder = settings.bucketOrders[token] {
+            return uniqueBuckets.sorted { lhs, rhs in
+                let lhsIdx = customOrder.firstIndex(of: lhs.key) ?? Int.max
+                let rhsIdx = customOrder.firstIndex(of: rhs.key) ?? Int.max
+                if lhsIdx != rhsIdx {
+                    return lhsIdx < rhsIdx
+                }
+                return lhs.label.localizedCompare(rhs.label) == .orderedAscending
+            }
+        }
+        return uniqueBuckets
+    }
+
+    private func moveBucketUp(_ bucket: ProviderQuotaBucket, for p: AgentProvider) {
+        let token = p.persistedToken
+        let unique = allBuckets(for: p)
+        var currentKeys = settings.bucketOrders[token] ?? unique.map(\.key)
+        guard let idx = currentKeys.firstIndex(of: bucket.key), idx > 0 else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            currentKeys.swapAt(idx, idx - 1)
+            settings.bucketOrders[token] = currentKeys
+        }
+        Haptics.light()
+    }
+
+    private func moveBucketDown(_ bucket: ProviderQuotaBucket, for p: AgentProvider) {
+        let token = p.persistedToken
+        let unique = allBuckets(for: p)
+        var currentKeys = settings.bucketOrders[token] ?? unique.map(\.key)
+        guard let idx = currentKeys.firstIndex(of: bucket.key), idx < currentKeys.count - 1 else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            currentKeys.swapAt(idx, idx + 1)
+            settings.bucketOrders[token] = currentKeys
+        }
+        Haptics.light()
+    }
+
+    private func toggleBucketVisibility(_ bucket: ProviderQuotaBucket, for p: AgentProvider) {
+        let compositeKey = "\(p.persistedToken):\(bucket.key)"
+        var hidden = settings.hiddenBuckets
+        if hidden.contains(compositeKey) {
+            hidden.remove(compositeKey)
+        } else {
+            hidden.insert(compositeKey)
+        }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            settings.hiddenBuckets = hidden
+        }
+        Haptics.light()
+    }
+
+    private func isBucketHidden(_ bucket: ProviderQuotaBucket, for p: AgentProvider) -> Bool {
+        let compositeKey = "\(p.persistedToken):\(bucket.key)"
+        return settings.hiddenBuckets.contains(compositeKey)
     }
 
     private var accessibilityLabel: String {
@@ -319,9 +577,8 @@ struct QuotaProviderCard: View {
             parts.append("active account \(active.accountLabel)")
         }
         if hasUrgentBucket { parts.append("quota under pressure") }
-        if let bucket = mostPressuredBucket, bucket.limit > 0 {
-            let pct = Int((max(0, bucket.remaining) / bucket.limit) * 100)
-            parts.append("\(bucket.name) \(pct) percent remaining")
+        if let bucket = mostPressuredBucket, let pct = bucket.displayRemainingPercent {
+            parts.append("\(bucket.name) \(Int(pct.rounded())) percent remaining")
         }
         return parts.joined(separator: ", ")
     }

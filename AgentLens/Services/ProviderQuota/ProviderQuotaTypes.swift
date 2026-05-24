@@ -113,13 +113,50 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
     }
 
     var remainingText: String {
-        if let remainingPercent {
-            return Self.format(remainingPercent, unit: .percent)
+        remainingText(displayMode: .remainingPercent)
+    }
+
+    func remainingText(displayMode mode: QuotaPercentageDisplayMode) -> String {
+        switch mode {
+        case .remainingPercent:
+            if let remainingPercent {
+                return Self.format(remainingPercent, unit: .percent)
+            }
+            if let remainingValue {
+                return Self.format(remainingValue, unit: unit)
+            }
+            return "Unavailable"
+        case .usedPercent:
+            let usedP: Double
+            if let usedPercent {
+                usedP = usedPercent
+            } else if let remainingPercent {
+                usedP = max(0, 100 - remainingPercent)
+            } else {
+                usedP = progressFraction * 100
+            }
+            return Self.format(usedP, unit: .percent)
+        case .fractional:
+            let frac: Double
+            if let remainingPercent {
+                frac = remainingPercent / 100.0
+            } else if let remainingValue, let limitValue, limitValue > 0 {
+                frac = remainingValue / limitValue
+            } else {
+                frac = 1.0 - progressFraction
+            }
+            return String(format: "%.2f", frac)
+        case .absoluteValues:
+            if let remainingValue, let limitValue {
+                return "\(Self.format(remainingValue, unit: unit)) / \(Self.format(limitValue, unit: unit))"
+            } else if let remainingValue {
+                return Self.format(remainingValue, unit: unit)
+            } else if let usedValue, let limitValue {
+                let calcRemaining = max(0, limitValue - usedValue)
+                return "\(Self.format(calcRemaining, unit: unit)) / \(Self.format(limitValue, unit: unit))"
+            }
+            return "Unavailable"
         }
-        if let remainingValue {
-            return Self.format(remainingValue, unit: unit)
-        }
-        return "Unavailable"
     }
 
     var usageText: String {
@@ -172,7 +209,20 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
 extension ProviderQuotaBucket {
     var isDisplayableQuotaSignal: Bool {
         let marker = "\(key) \(label)".lowercased()
-        if ["cache", "hit rate", "local model", "cloud model", "installed", "task", "conversation", "line", "file"].contains(where: marker.contains) {
+        let markerWords = Set(marker.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        let excludedPhrases = ["cache", "hit rate", "local model", "cloud model"]
+        let excludedWords: Set<String> = [
+            "installed",
+            "task",
+            "tasks",
+            "conversation",
+            "conversations",
+            "line",
+            "lines",
+            "file",
+            "files"
+        ]
+        if excludedPhrases.contains(where: marker.contains) || !markerWords.isDisjoint(with: excludedWords) {
             return false
         }
 
@@ -464,6 +514,33 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
         buckets.filter(\.isDisplayableQuotaSignal)
     }
 
+    /// Returns the buckets filtered and ordered by user customization settings.
+    func customizedBuckets(
+        hiddenBuckets: Set<String>,
+        bucketOrders: [String: [String]]
+    ) -> [ProviderQuotaBucket] {
+        let displayable = displayableQuotaBuckets
+        let providerToken = provider.persistedToken
+
+        let filtered = displayable.filter { bucket in
+            let compositeKey = "\(providerToken):\(bucket.key)"
+            return !hiddenBuckets.contains(compositeKey)
+        }
+
+        if let customOrder = bucketOrders[providerToken] {
+            return filtered.sorted { lhs, rhs in
+                let lhsIdx = customOrder.firstIndex(of: lhs.key) ?? Int.max
+                let rhsIdx = customOrder.firstIndex(of: rhs.key) ?? Int.max
+                if lhsIdx != rhsIdx {
+                    return lhsIdx < rhsIdx
+                }
+                return lhs.label.localizedCompare(rhs.label) == .orderedAscending
+            }
+        }
+
+        return filtered
+    }
+
     var hasDisplayableQuotaSignal: Bool {
         provider.isQuotaSignalProvider && !displayableQuotaBuckets.isEmpty
     }
@@ -597,6 +674,70 @@ enum FactoryQuotaPlanTier: String, CaseIterable, Codable, Identifiable {
         case .pro: return 20_000_000
         case .plus: return 100_000_000
         case .max: return 200_000_000
+        }
+    }
+}
+
+
+// MARK: - xAI / Grok plan tier
+//
+// The four consumer + developer tiers xAI publishes as of 2026-05. Mirrors
+// `FactoryQuotaPlanTier` so the wizard, popover, and command-center pickers
+// can re-use the same Picker plumbing. Caps are sourced from xAI's public
+// product pages plus community-aggregated rolling-window estimates; treat
+// them as `isEstimated: true` in adapter snapshots.
+
+enum XAIQuotaPlanTier: String, CaseIterable, Codable, Identifiable {
+    case unknown
+    case superGrokLite      // $10/mo  — Grok 4, 30 prompts / 2h (estimated)
+    case superGrok          // $30/mo  — Grok 4 + 4.3, ~100 prompts / 2h
+    case superGrokHeavy     // $300/mo — Grok 4 Heavy, ~400 prompts / 2h
+    case grokBuild          // xAI API prepaid credits (pay-as-you-go)
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .unknown:          return "Unknown"
+        case .superGrokLite:    return "SuperGrok Lite ($10/mo)"
+        case .superGrok:        return "SuperGrok ($30/mo)"
+        case .superGrokHeavy:   return "SuperGrok Heavy ($300/mo)"
+        case .grokBuild:        return "GrokBuild (xAI API credits)"
+        }
+    }
+
+    /// Short label used in compact bucket titles.
+    var shortName: String {
+        switch self {
+        case .unknown:          return "Unknown"
+        case .superGrokLite:    return "Lite"
+        case .superGrok:        return "SuperGrok"
+        case .superGrokHeavy:   return "Heavy"
+        case .grokBuild:        return "GrokBuild"
+        }
+    }
+
+    /// Rolling 2-hour prompt cap used by the SuperGrok pacing branch.
+    /// Returns `nil` for `.grokBuild` (no consumer-style rolling window —
+    /// usage is governed by prepaid credits) and `.unknown`.
+    var rollingTwoHourPromptCap: Double? {
+        switch self {
+        case .unknown, .grokBuild:  return nil
+        case .superGrokLite:        return 30
+        case .superGrok:            return 100
+        case .superGrokHeavy:       return 400
+        }
+    }
+
+    /// Whether the tier routes through the consumer SuperGrok session
+    /// rather than the xAI Management API. The pacing branch of the
+    /// adapter activates for these tiers.
+    var isSuperGrokConsumer: Bool {
+        switch self {
+        case .superGrokLite, .superGrok, .superGrokHeavy:
+            return true
+        case .unknown, .grokBuild:
+            return false
         }
     }
 }

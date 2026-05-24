@@ -69,6 +69,18 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
         )
     }
 
+    func testKillSwitchStillDeniesPhoneOriginatedMacInput() {
+        XCTAssertEqual(
+            gate.check(
+                action: macAction,
+                scopeOutcome: .notMatched,
+                accessibilityDeny: nil,
+                context: makeContext(kill: true, originatedFromPhone: true)
+            ),
+            .denied(.killSwitch)
+        )
+    }
+
     func testEntitlementMissingDenies() {
         XCTAssertEqual(
             gate.check(action: browserAction, scopeOutcome: .notMatched, accessibilityDeny: nil,
@@ -168,6 +180,53 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
             gate.check(action: browserAction, scopeOutcome: .notMatched, accessibilityDeny: nil,
                        context: makeContext(session: session)),
             .denied(.sessionLimit)
+        )
+    }
+
+    func testPhoneOriginatedMacInputSkipsMeteredComputerUseCaps() {
+        let hardCapEnvelope = ComputerUseBudgetEnvelope.hardCapEnvelope(
+            projectedMonthEndUSD: 3_000,
+            monthToDateUSD: 2_700,
+            updatedAt: Date()
+        )
+        let session = makeSession(executed: 50, actionCap: 50)
+        let usage = ComputerUseQuotaUsage(
+            dayKey: "2026-05-17",
+            browserActionsExecuted: ComputerUseBudgetEnvelope.initialNormal.activeActionsPerDay,
+            visionModelSpendUSD: ComputerUseBudgetEnvelope.initialNormal.perUserDailySpendCeilingUSD
+        )
+
+        XCTAssertEqual(
+            gate.check(
+                action: macAction,
+                scopeOutcome: .notMatched,
+                accessibilityDeny: nil,
+                context: makeContext(
+                    envelope: hardCapEnvelope,
+                    usage: usage,
+                    session: session,
+                    originatedFromPhone: true
+                )
+            ),
+            .allowed(approvedBy: .phone)
+        )
+    }
+
+    func testPhoneOriginatedBrowserActionStillHonorsBudgetCaps() {
+        let hardCapEnvelope = ComputerUseBudgetEnvelope.hardCapEnvelope(
+            projectedMonthEndUSD: 3_000,
+            monthToDateUSD: 2_700,
+            updatedAt: Date()
+        )
+
+        XCTAssertEqual(
+            gate.check(
+                action: browserAction,
+                scopeOutcome: .notMatched,
+                accessibilityDeny: nil,
+                context: makeContext(envelope: hardCapEnvelope, originatedFromPhone: true)
+            ),
+            .denied(.hardCap)
         )
     }
 

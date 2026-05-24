@@ -3,21 +3,111 @@ import XCTest
 
 final class SwarmLogoShapeTests: XCTestCase {
     func testDefaultCycleIncludesBurnBarLogoShape() {
+        XCTAssertTrue(SwarmFormationMode.defaultCycle.contains(.shapeBurnBarLogo))
+        XCTAssertTrue(SwarmFormationMode.defaultCycle.contains(.shapeGrok))
+        XCTAssertTrue(SwarmFormationMode.defaultCycle.contains(.shapeRouterFlow))
+    }
+
+    func testDefaultCycleExcludesBrandShapesWhenRequested() {
+        let cycle = SwarmFormationMode.defaultCycle(for: SwarmFormationMode.showcaseProviders, excludeBrandShapes: true)
+        XCTAssertFalse(cycle.contains(.shapeBurnBarLogo))
+        XCTAssertFalse(cycle.contains(.shapeDollar))
+        XCTAssertFalse(cycle.contains(.shapeCode))
+        XCTAssertFalse(cycle.contains(.shapeRings))
+        XCTAssertFalse(cycle.contains(.shapeRouterFlow))
+
+        XCTAssertTrue(cycle.contains(.swarm))
+        XCTAssertTrue(cycle.contains(where: {
+            if case .shapeProviderLogo = $0 { return true }
+            return false
+        }))
+    }
+
+    func testInspectionCycleExcludesBrandShapesWhenRequested() {
+        let cycle = SwarmFormationMode.inspectionCycle(for: SwarmFormationMode.showcaseProviders, excludeBrandShapes: true)
+        XCTAssertFalse(cycle.contains(.shapeBurnBarLogo))
+        XCTAssertFalse(cycle.contains(.shapeDollar))
+        XCTAssertFalse(cycle.contains(.shapeCode))
+        XCTAssertFalse(cycle.contains(.shapeRings))
+        XCTAssertFalse(cycle.contains(.shapeRouterFlow))
+
+        XCTAssertTrue(cycle.contains(.swarm))
+        XCTAssertTrue(cycle.contains(where: {
+            if case .shapeProviderLogo = $0 { return true }
+            return false
+        }))
+    }
+
+    func testInspectionCycleIncludesEveryProviderLogoGrokAndMultiProviderFormations() {
+        XCTAssertEqual(Set(SwarmFormationMode.showcaseProviders), Set(AgentProvider.allCases))
+
+        for provider in AgentProvider.allCases {
+            XCTAssertTrue(
+                SwarmFormationMode.inspectionCycle.contains(.shapeProviderLogo([provider])),
+                "Missing singleton provider logo shape for \(provider.rawValue)"
+            )
+        }
+
+        XCTAssertTrue(SwarmFormationMode.inspectionCycle.contains(.shapeProviderLogo([.xAI])))
+        XCTAssertTrue(SwarmFormationMode.inspectionCycle.contains(.shapeGrok))
+        XCTAssertTrue(SwarmFormationMode.inspectionCycle.contains(.shapeProviderLogo([.deepSeek])))
+        XCTAssertTrue(SwarmFormationMode.inspectionCycle.contains(.shapeProviderLogo([.minimax])))
+        XCTAssertTrue(SwarmFormationMode.inspectionCycle.contains(.shapeProviderLogo([.zai])))
+        // Multi-provider formations are now capped at pairs (group size 2)
+        // so the per-glyph particle budget stays readable on iPhone.
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.factory, .claudeCode]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.codex, .openCode]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.openClaw, .hermes]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.allSatisfy { $0.count <= 2 })
+    }
+
+    func testProviderGlyphSelectionFiltersInspectionAndDefaultCycles() {
+        let providers: [AgentProvider] = [.codex, .openClaw]
+        let inspection = SwarmFormationMode.inspectionCycle(for: providers)
+        let defaultCycle = SwarmFormationMode.defaultCycle(for: providers)
+
+        XCTAssertTrue(inspection.contains(.shapeProviderLogo([.codex])))
+        XCTAssertTrue(inspection.contains(.shapeProviderLogo([.openClaw])))
+        XCTAssertFalse(inspection.contains(.shapeProviderLogo([.claudeCode])))
+        XCTAssertFalse(inspection.contains(.shapeGrok))
+        XCTAssertTrue(defaultCycle.contains(.shapeProviderLogo([.codex, .openClaw])))
+        XCTAssertFalse(defaultCycle.contains(.shapeGrok))
+    }
+
+    func testProviderGlyphSelectionEncodingPreservesNoneAllAndProviderOrder() {
         XCTAssertEqual(
-            SwarmFormationMode.defaultCycle,
-            [
-                .swarm,
-                .shapeDollar,
-                .swarm,
-                .shapeCode,
-                .swarm,
-                .shapeBurnBarLogo,
-                .swarm,
-                .shapeRings,
-                .swarm,
-                .shapeRouterFlow
-            ]
+            SwarmProviderGlyphSelection.decode(SwarmProviderGlyphSelection.allSentinel),
+            SwarmProviderGlyphSelection.allProviders
         )
+        XCTAssertEqual(
+            SwarmProviderGlyphSelection.decode(SwarmProviderGlyphSelection.noneSentinel),
+            []
+        )
+        XCTAssertEqual(
+            SwarmProviderGlyphSelection.decode("openclaw,codex,claudecode"),
+            [.claudeCode, .codex, .openClaw]
+        )
+        XCTAssertEqual(
+            SwarmProviderGlyphSelection.encode([.openClaw, .codex]),
+            "codex,openclaw"
+        )
+    }
+
+    func testStaticGlyphAndProviderShapesUseAdmireHold() {
+        XCTAssertTrue(SwarmFormationMode.shapeDollar.requiresSettledAdmireHold)
+        XCTAssertTrue(SwarmFormationMode.shapeCode.requiresSettledAdmireHold)
+        XCTAssertTrue(SwarmFormationMode.shapeBurnBarLogo.requiresSettledAdmireHold)
+        XCTAssertTrue(SwarmFormationMode.shapeProviderLogo([.codex]).requiresSettledAdmireHold)
+        XCTAssertTrue(SwarmFormationMode.shapeGrok.requiresSettledAdmireHold)
+        XCTAssertFalse(SwarmFormationMode.swarm.requiresSettledAdmireHold)
+        XCTAssertFalse(SwarmFormationMode.shapeRouterFlow.requiresSettledAdmireHold)
+    }
+
+    func testVisuallyInspectedProvidersUseRealBundledLogoAssets() {
+        XCTAssertEqual(AgentProvider.openClaw.bundledLogoName, "OpenClawLogo")
+        XCTAssertEqual(AgentProvider.hermes.bundledLogoName, "HermesLogo")
+        XCTAssertEqual(AgentProvider.codex.bundledLogoName, "CodexLogo")
+        XCTAssertEqual(AgentProvider.antigravity.bundledLogoName, "AntigravityLogo")
     }
 
     func testBurnBarLogoShapeContainsFlameAndBarGraphRoles() throws {
@@ -57,6 +147,7 @@ final class SwarmLogoShapeTests: XCTestCase {
 
         XCTAssertLessThan(flameBounds.minY, barBounds.minY)
         XCTAssertLessThan(flameBounds.midY, barBounds.midY)
+        XCTAssertLessThan(flameBounds.maxY, barBounds.maxY)
     }
 
     func testBurnBarLogoCanvasTargetsKeepFlameAboveBars() throws {
@@ -66,6 +157,7 @@ final class SwarmLogoShapeTests: XCTestCase {
 
         XCTAssertLessThan(flameBounds.minY, barBounds.minY)
         XCTAssertLessThan(flameBounds.midY, barBounds.midY)
+        XCTAssertLessThan(flameBounds.maxY, barBounds.maxY)
     }
 
     func testBurnBarLogoBarsRiseLeftToRight() throws {

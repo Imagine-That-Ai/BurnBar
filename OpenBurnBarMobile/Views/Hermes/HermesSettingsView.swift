@@ -402,6 +402,23 @@ struct HermesSettingsView: View {
                 .tint(MobileTheme.hermesAureate)
                 .settingsAnchor(SettingsAnchor.hermesPretext)
 
+                Divider().background(MobileTheme.Colors.border.opacity(0.4))
+
+                NavigationLink {
+                    SwarmBackgroundSettingsView()
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Live background swarms")
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text("Customize which glyphs appear, where the swarm renders, and battery/Wi-Fi conditions.")
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(MobileTheme.hermesAureate)
+
                 Button {
                     showPretextPlayground = true
                 } label: {

@@ -97,8 +97,35 @@ enum SettingsManifest {
             pageRoute: .appearance,
             anchorID: SettingsAnchor.desktopWallpaperBackground,
             title: "Desktop Wallpaper Background",
-            subtitle: "Choose macOS Desktop, Midnight, AMOLED Black, Graphite, Warm Ember, or Deep Indigo",
-            keywords: ["desktop", "wallpaper", "background", "macos", "amoled", "black", "graphite", "indigo", "swarm", "color"]
+            subtitle: "Choose macOS Desktop, neutral darks, or the Aurora, Crimson, Cyberpunk, Moss, and Solar swarm palettes",
+            keywords: ["desktop", "wallpaper", "background", "macos", "amoled", "black", "graphite", "indigo", "aurora", "crimson", "cyberpunk", "moss", "solar", "swarm", "color", "palette"]
+        ),
+        SettingsItem(
+            id: "general.appearance.desktopWallpaperSpeed",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.desktopWallpaperSpeed,
+            title: "Desktop Wallpaper Speed",
+            subtitle: "Dial how quickly the desktop swarm drifts, reforms, and cycles",
+            keywords: ["desktop", "wallpaper", "speed", "pace", "dial", "slider", "swarm", "motion", "cycle"]
+        ),
+        SettingsItem(
+            id: "general.appearance.desktopWallpaperProviderGlyphs",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.desktopWallpaperProviderGlyphs,
+            title: "Customize Provider Glyphs",
+            subtitle: "Choose which provider logos render in the desktop swarm wallpaper cycle",
+            keywords: ["desktop", "wallpaper", "provider", "glyph", "logo", "customize", "filter", "swarm", "formation"]
+        ),
+        SettingsItem(
+            id: "general.appearance.desktopWallpaperClickCycle",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.desktopWallpaperClickCycle,
+            title: "Click Desktop to Cycle Shapes",
+            subtitle: "Click empty desktop space to inspect swarm symbols, provider logos, Grok, and xAI",
+            keywords: ["desktop", "wallpaper", "click", "cycle", "shape", "provider", "logo", "grok", "xai", "x.ai", "inspection"]
         ),
 
         // MARK: General → Dashboard defaults
@@ -609,6 +636,9 @@ enum SettingsManifest {
         SettingsAnchor.useWebsiteBackground,
         SettingsAnchor.desktopWallpaperEnabled,
         SettingsAnchor.desktopWallpaperBackground,
+        SettingsAnchor.desktopWallpaperSpeed,
+        SettingsAnchor.desktopWallpaperProviderGlyphs,
+        SettingsAnchor.desktopWallpaperClickCycle,
         SettingsAnchor.defaultsTimeRange,
         SettingsAnchor.defaultsUsageMode,
         SettingsAnchor.refreshInterval,

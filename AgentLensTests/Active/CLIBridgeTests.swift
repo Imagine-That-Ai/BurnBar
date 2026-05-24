@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarComputerUseCore
 @testable import OpenBurnBar
 
 @MainActor
@@ -47,6 +48,41 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(args.contains("--model"))
     }
 
+    func test_cliBridge_claudeArguments_grantNarrowsAllowedTools() {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .claude,
+            threadID: "thread-1",
+            capabilities: [.workspaceRead, .shell],
+            now: Date(),
+            duration: 60
+        )
+
+        let args = CLIBridge.claudeArguments(prompt: "test", capabilityGrant: grant)
+        let allowedTools = value(after: "--allowedTools", in: args) ?? ""
+
+        XCTAssertTrue(allowedTools.contains("Read"))
+        XCTAssertTrue(allowedTools.contains("Glob"))
+        XCTAssertTrue(allowedTools.contains("Bash"))
+        XCTAssertFalse(allowedTools.contains("Write"))
+        XCTAssertFalse(args.contains("acceptEdits"))
+    }
+
+    func test_cliBridge_claudeArguments_yoloGrantUsesDangerousBypass() {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .claude,
+            threadID: "thread-1",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: Date(),
+            duration: 60
+        )
+
+        let args = CLIBridge.claudeArguments(prompt: "test", capabilityGrant: grant)
+
+        XCTAssertTrue(args.contains("--dangerously-skip-permissions"))
+        XCTAssertFalse(args.contains("acceptEdits"))
+    }
+
     // MARK: - Codex Arguments Tests
 
     func test_cliBridge_codexArguments_defaultUsesCodexProfileAndReasoning() {
@@ -71,6 +107,278 @@ final class CLIBridgeTests: XCTestCase {
     func test_cliBridge_codexArguments_preservesExplicitModelWhenUnknown() {
         let args = CLIBridge.codexArguments(prompt: "test", model: "MiniMax-M2.7-highspeed")
         XCTAssertTrue(args.contains("MiniMax-M2.7-highspeed"))
+    }
+
+    func test_cliBridge_codexArguments_grantUsesWorkspaceWriteSandbox() {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .codex,
+            threadID: "thread-1",
+            capabilities: [.workspaceRead, .workspaceWrite],
+            now: Date(),
+            duration: 60
+        )
+
+        let args = CLIBridge.codexArguments(prompt: "test", capabilityGrant: grant)
+
+        XCTAssertEqual(value(after: "--sandbox", in: args), "workspace-write")
+        XCTAssertEqual(args.last, "test")
+    }
+
+    func test_cliBridge_codexArguments_yoloGrantBypassesSandbox() {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .codex,
+            threadID: "thread-1",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: Date(),
+            duration: 60
+        )
+
+        let args = CLIBridge.codexArguments(prompt: "test", capabilityGrant: grant)
+
+        XCTAssertTrue(args.contains("--dangerously-bypass-approvals-and-sandbox"))
+        XCTAssertNil(value(after: "--sandbox", in: args))
+        XCTAssertEqual(args.last, "test")
+    }
+
+    func test_openAICompatibleChatGatewayClient_extractsToolCalls() {
+        let response: [String: Any] = [
+            "choices": [
+                [
+                    "message": [
+                        "role": "assistant",
+                        "content": NSNull(),
+                        "tool_calls": [
+                            [
+                                "id": "call-1",
+                                "type": "function",
+                                "function": [
+                                    "name": "workspace_read_file",
+                                    "arguments": "{\"path\":\"notes.md\"}"
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        let calls = OpenAICompatibleChatGatewayClient.extractOpenAIToolCalls(from: response)
+
+        XCTAssertEqual(calls, [
+            OpenAICompatibleChatGatewayClient.OpenAIToolCall(
+                id: "call-1",
+                name: "workspace_read_file",
+                arguments: "{\"path\":\"notes.md\"}"
+            )
+        ])
+    }
+
+    func test_agentToolBroker_deniesWorkspaceReadThroughSymlinkEscape() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-outside-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: workspace)
+            try? FileManager.default.removeItem(at: outside)
+        }
+        let outsideFile = outside.appendingPathComponent("secret.txt")
+        try Data("secret".utf8).write(to: outsideFile)
+        try FileManager.default.createSymbolicLink(
+            at: workspace.appendingPathComponent("secret-link.txt"),
+            withDestinationURL: outsideFile
+        )
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes,
+            threadID: "thread-1",
+            capabilities: [.workspaceRead],
+            now: Date(),
+            duration: 60
+        )
+        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+
+        let result = await broker.invokeOpenAITool(
+            name: "workspace_read_file",
+            arguments: #"{"path":"secret-link.txt"}"#,
+            callID: "call-1",
+            runID: "run-1"
+        )
+        let payload = try jsonPayload(from: result)
+
+        XCTAssertEqual(payload["ok"] as? Bool, false)
+        XCTAssertEqual(payload["status"] as? String, "error")
+        XCTAssertTrue((payload["error"] as? String)?.contains("Path escapes the chat workspace") == true)
+    }
+
+    func test_agentToolBroker_deniesWorkspaceWriteThroughSymlinkedDirectory() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-outside-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: workspace)
+            try? FileManager.default.removeItem(at: outside)
+        }
+        try FileManager.default.createSymbolicLink(
+            at: workspace.appendingPathComponent("outside-dir"),
+            withDestinationURL: outside
+        )
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes,
+            threadID: "thread-1",
+            capabilities: [.workspaceWrite],
+            now: Date(),
+            duration: 60
+        )
+        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+
+        let result = await broker.invokeOpenAITool(
+            name: "workspace_write_file",
+            arguments: #"{"path":"outside-dir/owned.txt","content":"owned"}"#,
+            callID: "call-1",
+            runID: "run-1"
+        )
+        let payload = try jsonPayload(from: result)
+
+        XCTAssertEqual(payload["ok"] as? Bool, false)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outside.appendingPathComponent("owned.txt").path))
+    }
+
+    func test_agentToolBroker_writesEmptyWorkspaceFile() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes,
+            threadID: "thread-1",
+            capabilities: [.workspaceWrite],
+            now: Date(),
+            duration: 60
+        )
+        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+
+        let result = await broker.invokeOpenAITool(
+            name: "workspace_write_file",
+            arguments: #"{"path":"empty.txt","content":""}"#,
+            callID: "call-1",
+            runID: "run-1"
+        )
+        let payload = try jsonPayload(from: result)
+        let fileURL = workspace.appendingPathComponent("empty.txt")
+
+        XCTAssertEqual(payload["ok"] as? Bool, true)
+        XCTAssertEqual((try Data(contentsOf: fileURL)).count, 0)
+    }
+
+    func test_agentToolBroker_liveRevocationDeniesToolCall() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        try Data("visible".utf8).write(to: workspace.appendingPathComponent("notes.txt"))
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes,
+            threadID: "thread-1",
+            capabilities: [.workspaceRead],
+            now: Date(),
+            duration: 60
+        )
+        let broker = AgentToolBroker(
+            grant: grant,
+            workspaceURL: workspace,
+            grantStillActive: { false }
+        )
+
+        let result = await broker.invokeOpenAITool(
+            name: "workspace_read_file",
+            arguments: #"{"path":"notes.txt"}"#,
+            callID: "call-1",
+            runID: "run-1"
+        )
+        let payload = try jsonPayload(from: result)
+
+        XCTAssertEqual(payload["ok"] as? Bool, false)
+        XCTAssertEqual(payload["status"] as? String, "denied")
+        XCTAssertEqual(payload["reason"] as? String, "desktop grant was revoked")
+    }
+
+    func test_agentToolBroker_shellRunDrainsLargeOutput() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes,
+            threadID: "thread-1",
+            capabilities: [.shell],
+            now: Date(),
+            duration: 60
+        )
+        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+
+        let result = await broker.invokeOpenAITool(
+            name: "shell_run",
+            arguments: #"{"command":"yes 1234567890 | head -n 8000","timeoutSeconds":5}"#,
+            callID: "call-1",
+            runID: "run-1"
+        )
+        let payload = try jsonPayload(from: result)
+
+        XCTAssertEqual(payload["ok"] as? Bool, true)
+        XCTAssertEqual(payload["timedOut"] as? Bool, false)
+        XCTAssertEqual((payload["stdout"] as? String)?.count, 20_000)
+    }
+
+    func test_agentToolBroker_shellRunCannotWriteOutsideWorkspace() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-outside-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: workspace)
+            try? FileManager.default.removeItem(at: outside)
+        }
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes,
+            threadID: "thread-1",
+            capabilities: [.shell],
+            now: Date(),
+            duration: 60
+        )
+        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+
+        let arguments = try jsonArguments([
+            "command": "echo ok > inside.txt; (echo bad > \"\(outside.path)\" && echo BAD) || true",
+            "timeoutSeconds": 5
+        ])
+        let result = await broker.invokeOpenAITool(
+            name: "shell_run",
+            arguments: arguments,
+            callID: "call-1",
+            runID: "run-1"
+        )
+        let payload = try jsonPayload(from: result)
+
+        XCTAssertEqual(payload["ok"] as? Bool, true, result.content)
+        XCTAssertEqual(
+            String(decoding: try Data(contentsOf: workspace.appendingPathComponent("inside.txt")), as: UTF8.self),
+            "ok\n",
+            result.content
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outside.path), result.content)
     }
 
     func test_settingsManager_resolvedHermesChatModel_minimaxAdvertised_usesAdvertisedModel() {
@@ -634,5 +942,23 @@ final class CLIBridgeTests: XCTestCase {
             XCTAssertEqual(name, "tool")  // generic fallback
             XCTAssertEqual(detail, "/tmp/test.swift")
         }
+    }
+
+    private func value(after flag: String, in arguments: [String]) -> String? {
+        guard let index = arguments.firstIndex(of: flag),
+              arguments.indices.contains(index + 1) else {
+            return nil
+        }
+        return arguments[index + 1]
+    }
+
+    private func jsonPayload(from result: AgentToolExecutionPayload) throws -> [String: Any] {
+        let data = try XCTUnwrap(result.content.data(using: .utf8))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func jsonArguments(_ object: [String: Any]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
     }
 }

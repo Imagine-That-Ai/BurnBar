@@ -41,8 +41,52 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
         onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
     ) async throws {
         let modelID = try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime.assistantRuntime)?.nonEmpty
+        try await stream(
+            runtimeRawValue: runtime.rawValue,
+            threadID: threadID,
+            prompt: prompt,
+            title: title,
+            modelID: modelID,
+            parentSessionID: parentSessionID,
+            resumeAction: resumeAction,
+            onEvent: onEvent
+        )
+    }
+
+    func stream(
+        runtimeID: AssistantRuntimeID,
+        threadID: String,
+        prompt: String,
+        title: String,
+        modelID: String?,
+        parentSessionID: String?,
+        resumeAction: String?,
+        onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
+    ) async throws {
+        try await stream(
+            runtimeRawValue: runtimeID.rawValue,
+            threadID: threadID,
+            prompt: prompt,
+            title: title,
+            modelID: modelID,
+            parentSessionID: parentSessionID,
+            resumeAction: resumeAction,
+            onEvent: onEvent
+        )
+    }
+
+    private func stream(
+        runtimeRawValue: String,
+        threadID: String,
+        prompt: String,
+        title: String,
+        modelID: String?,
+        parentSessionID: String?,
+        resumeAction: String?,
+        onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
+    ) async throws {
         let request = CLIAgentRelayChatRequest(
-            runtime: runtime.rawValue,
+            runtime: runtimeRawValue,
             prompt: prompt,
             clientThreadID: threadID,
             modelID: modelID,

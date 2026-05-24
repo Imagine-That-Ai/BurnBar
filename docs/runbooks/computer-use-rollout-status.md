@@ -6,6 +6,66 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
 
 ---
 
+## Cross-agent desktop permission grants
+
+- **Code landed (2026-05-22):**
+  - Added `AgentCapabilityGrant` and `AgentDesktopToolDefinitions` to
+    `OpenBurnBarComputerUseCore` so Hermes, OpenClaw, Pi, Codex, and Claude all
+    share the same grant vocabulary.
+  - Added an Agent Permissions control to the Hermes chat header, dashboard
+    workspace toolbar, and popover chat surface. Users can choose Off, Low,
+    Workspace, Desktop, All, or YOLO presets, then fine tune Browser,
+    screenshot, Accessibility inspect, Mac input, workspace read, workspace
+    write, and shell capabilities per active chat thread.
+  - Workspace file tools now reject symlink escapes, empty-file writes are
+    supported, and local shell runs are write-sandboxed to the chat workspace
+    with bounded stdout/stderr capture.
+  - Hermes, OpenClaw, and Pi now receive OpenAI-compatible function tools only
+    while a grant is active. Browser calls route through daemon Browser Computer
+    Use; Mac input and Accessibility inspect route through the app-owned System
+    Computer Use coordinator; workspace and shell tools stay confined to the
+    selected chat workspace.
+  - Codex and Claude now receive CLI-native permission arguments from the same
+    grant instead of relying on global tool toggles or mutable app config; the
+    YOLO preset maps to each CLI's explicit dangerous/full-permission flag.
+  - Grants are revoked automatically when the user switches backend, starts a
+    new thread, or opens a history thread, and the in-flight tool broker checks
+    revocation before every call.
+  - iPhone, iPad, and Android now expose the same Agent Permissions control in
+    Hermes, Pi, Codex, Claude, and OpenClaw chat surfaces. High-trust presets
+    (Desktop, All, YOLO) require Face ID/Touch ID or Android BiometricPrompt
+    before a signed grant is issued.
+  - Mobile grants use live-first delivery over the paired Mac iroh control
+    stream (`control.agent_grant.request` / `control.agent_grant.receipt`) and
+    fall back to a signed Firestore queue when the stream is unavailable. The
+    Mac queue listener validates the trusted-device authority, applies or
+    denies the grant, and writes a receipt back to the request document.
+  - Desktop export and unrestricted shell are explicit capabilities. Desktop
+    export writes only to `~/Desktop/OpenBurnBar Agent Drops/{threadId}/`, and
+    unrestricted shell is available only through YOLO/Trusted all-capability
+    grants.
+- **Verification (2026-05-22):**
+  - `swift test --package-path OpenBurnBarCore --filter AgentCapabilityGrantTests`
+  - `swift test --package-path OpenBurnBarCore --filter ComputerUsePhoneControlSignerTests`
+  - `xcodebuild build -quiet -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS' -derivedDataPath /tmp/DerivedData-agent-mobile-grants -skipPackagePluginValidation -skipMacroValidation`
+  - `xcodebuild build -quiet -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath /tmp/DerivedData-agent-mobile-grants -skipPackagePluginValidation -skipMacroValidation`
+  - `cd android && ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon`
+  - `cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon`
+  - `cd android && ./gradlew :app:testDebugUnitTest --tests com.openburnbar.data.computeruse.AgentCapabilityGrantSignerTest --no-daemon`
+  - `cd android && ./gradlew :app:assembleDebug --no-daemon`; installed `app-debug.apk` on Samsung `R3CXB0CNS0J` with `adb install -r`, launched `com.openburnbar/.MainActivity`, and confirmed it was the resumed focused activity.
+  - `npm --prefix functions run test:firestore-rules`
+  - `xcodebuild test -quiet -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath /tmp/DerivedData-agent-grants -skipPackagePluginValidation -skipMacroValidation -only-testing:OpenBurnBarTests/CLIBridgeTests`
+  - Local CLI contract checks: `codex exec --help` confirms
+    `--sandbox read-only|workspace-write`; `claude --help` confirms
+    `--allowedTools` and `--permission-mode acceptEdits`.
+- **Acceptance gate remaining:**
+  - [ ] Manual live UI proof from the packaged app: from iPhone, iPad, and
+    Android, grant Desktop or YOLO to Hermes, create a small SVG on the Mac,
+    export it to the Desktop drops folder, request a screenshot, revoke the
+    grant, and confirm the next desktop tool call is denied in-stream.
+
+---
+
 ## Phase 8 — Agent Watch (read-only mirror)
 
 - **Flag:** `computer_use_watch_enabled` · default off
@@ -91,6 +151,7 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
   - Android `IrohJniTransport.start()` retries transient home-relay bootstrap failures before surfacing an error, covering mobile network timing where the native endpoint does not select a home relay within the first 10 seconds.
   - Phone scroll maps to first-class `mac_input_scroll` / `MacInputAction.Kind.scroll` and posts a real CGEvent scroll instead of degrading to click
   - Trust-mode downgrade-from-phone wired through `AgentWatchState.setTrustMode` (Mac coordinator subscribes)
+  - Signed Mercury mirror input from iOS/Android remains subject to entitlement, Accessibility, deny-region, scope, and kill-switch gates, but is treated as direct human phone control for metered-budget purposes so repeated taps, pointer moves, and keyboard input do not exhaust the agent/browser Computer Use action caps.
 - **Test coverage:** 16 Swift PhoneControlSigner golden-case tests proving signature, replay, freshness, intent-hash, peer-key, payload-stability, attached-authority, drag endpoint hash coverage, and tamper semantics · 19 Android Computer Use JVM tests covering watch reducer, Tink signing, canonical JSON, big-endian payload, replay/freshness/tamper/foreign-key rejection, drag endpoint hash coverage, Swift Date compatibility, signed `control.input.intent` frame emission, per-peer counter increment, missing-key failure, and authority-doc Firestore map shape/peer-id validation · Android relay codec test round-trips a `control.input.intent` frame through the real length-prefixed JSON codec · Android iroh relay test proves transient home-relay bootstrap retry behavior · 5 MacInputCore normalized-coordinate tests · `PhoneControlReceiverTests` prove signed scroll dispatch + malformed-coordinate denial, coordinator-level `control.classify` authority fetch followed by signed phone `.panic`, stream-level `IrohRelayRequestHandler.serve()` routing of `control.classify` + signed `control.input.intent` into the active coordinator, and receiver-level replay chaos where 1 valid signed tap dispatches once and 1,000 duplicate envelopes are rejected as `counterReplay` (`/tmp/cu-phone-replay-chaos-fresh.log`) · iOS build-for-testing covers `AgentWatchReceiver` signed tap/scroll sender path · physical iPhone 17 Pro Max run passed `OpenBurnBarMobileTests/OpenBurnBarMobileTests/testAgentWatchReceiverSendsSignedTapAndScrollIntents` (1/1) · clean `/tmp/DerivedData-cu-iphone-current` current-checkout `OpenBurnBarMobile.app` built, installed, and launched on the physical iPhone 17 Pro Max · physical Android live paired-device proof sent signed tap/scroll/panic over iroh to the Mac; after Mac restart/TCC reset and the phone-approval gate fix, the current proof app logged `mac_accessibility_trusted`, executed `mac_input_click` and `mac_input_scroll` with audit entries `0` and `1`, and received phone panic (`/tmp/cu-live-proof-android-executed.jsonl`, `/tmp/cu-live-computer-use-proof-executed.jsonl`) · physical Android 100-intent latency proof sent 100 signed tap/scroll intents, with Mac receiving 100/100 and dispatching 100/100 executed; clock-safe Mac receive-to-dispatch latency was p50 152.5 ms, p95 162.0 ms, max 200 ms (`/tmp/cu-live-latency-android.jsonl`, `/tmp/cu-live-latency-mac.jsonl`, `/tmp/cu-live-latency-summary.json`) · physical Android live replay/tamper chaos proof sent 1 valid tap + 1,000 duplicate replay frames + 100 tampered frames over the paired iroh stream; Mac received 1,101 input frames, executed only the valid tap, denied 1,100 bad frames, and executed 0 bad frames; a focused tamper pass proved 100/100 `signature_failure` denials (`/tmp/cu-live-chaos-android.jsonl`, `/tmp/cu-live-chaos-mac.jsonl`, `/tmp/cu-live-tamper-step-android.jsonl`, `/tmp/cu-live-tamper-step-mac.jsonl`, `/tmp/cu-live-chaos-summary.json`) · Firestore emulator covers trusted-device + active-pairing gating for phone authorities
 - **2026-05-18 visible paired-Mac fix:** Android Hermes Square now refreshes relay connections while the screen is open, resolves persisted `device://paired-mac/*` pins before relay hydration, and force-pins the Mac tile ahead of a full 12-slot grid even when the paired relay is offline/pending. iPhone Hermes Square now keys the Mac tile from the real relay ID, refreshes relay state before booting Mercury, passes the real relay ID to Mercury Live, and restarts stale/failed Mercury control-stream coordinators instead of reusing a stream for the wrong Mac connection. Verification: `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` passed, `swift test --package-path OpenBurnBarCore --filter HermesSquarePinnedGridTests` passed 6/6, `xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'id=00008150-00180C661EF0401C' -configuration Debug -derivedDataPath /tmp/DerivedData-cu-mercury-real-relay -quiet build` passed, current Android APK installed on Samsung `R3CXB0CNS0J`, and current iPhone app installed on device `00008150-00180C661EF0401C`. Follow-up hardening on the same day added offline/pending paired-relay pinning plus connection-matched Mercury coordinator restart; focused Android test and iPhone physical build/install passed from `/tmp/DerivedData-cu-mercury-current`. Follow-up live-tap hardening adds a retained Mac `NSPanel` presenter for Mercury mirror approvals, iPhone "Waiting for Mac..." send feedback, and Android paired-Mac tile navigation to `computer_use`; Mac + iPhone current-checkout builds passed, Android paired-Mac tests and `:app:assembleDebug` passed, and fresh Mac/iPhone/Android builds were launched/installed. Follow-up mirror-accept hardening wires `MercuryRouter` to a real `MediaStreamSink` over the paired iOS `media.control` iroh stream, sends encoded `MediaFrame` packets as `media.stream.frame`, and decodes them into the iPhone full-screen screen-share viewer after an accepted ack; fresh macOS and iPhone builds passed and were relaunched/installed from current DerivedData. Follow-up Mac tray hardening adds a current-checkout `NSStatusItem`/`NSMenu` dashboard fallback, duplicate-launch handoff, and `LSMultipleInstancesProhibited`; `open -b com.openburnbar.app openburnbar://dashboard` presents an on-screen dashboard window from `~/Applications/OpenBurnBar.app`, with `/v1/models` reporting 50 models and 0 duplicate IDs. Android Ask-to-Mirror now has first-class `media.mirror.request` / `media.mirror.ack` relay frames, a paired-Mac controls screen, and request/ack unit coverage; focused relay/app tests, `:app:assembleDebug`, and install to Samsung `R3CXB0CNS0J` passed. Android media-control presence now emits `media.presence.heartbeat` every 60s with peer identity and mirror/file-transfer capabilities, the app registers a real iroh-blobs `AndroidFileTransferService` at startup, and paired-Mac Send File now uses the Android document picker plus the persistent `media.control` stream; focused `MediaControlStreamCoordinatorTest`, `:app:compileDebugKotlin`, and `:app:assembleDebug` passed after these additions. Android Call Mac now sends first-class `media.call.invite` frames over the live paired-Mac control stream, Mac `MercuryRouter` surfaces a `.callRinging` approval prompt, and accept/decline replies with `media.call.ack`; Swift protocol tests, Android relay/app tests, Android `:app:assembleDebug`, and the Mac app build pass. Remaining live UI proof is blocked by Samsung lock-screen bouncer covering the app window, and live mirror transport still depends on enabling Local Network for the current Mac app.
 - **2026-05-18 iOS Mercury presence ingest:** iOS `MediaControlStreamCoordinator` now forwards inbound Mac `media.presence.heartbeat` frames through `HermesIrohRelayTransport.mediaPresenceHeartbeatHandler`, and Hermes Square installs that handler into `MercuryPeerSource.ingestHeartbeat(_:)`. This removes the stale "heartbeat ingest is future work" path so the iPhone paired-Mac tile and Mercury Live sheet can consume the Mac's current display name/capabilities from the persistent `media.control` stream. Verification: `xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS' -derivedDataPath /tmp/DerivedData-codex-mobile-presence -quiet build` passed. The focused `OpenBurnBarMobileTests/MediaControlStreamPresenceTests` test was added but could not complete on this Mac's available "Designed for iPad/iPhone" destination; XCTest launched the app and then hung until interrupted, so the runnable proof is currently compile-only.

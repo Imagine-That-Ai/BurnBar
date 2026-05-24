@@ -47,6 +47,41 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(entry.providerID, .claudeCode)
     }
 
+    func test_makeEntry_xaiSuperGrokRollingWindowProducesStableEntry() {
+        let bucket = ProviderQuotaBucket(
+            key: "xai-supergrok-2h-rolling",
+            label: "SuperGrok prompts (rolling 2h)",
+            windowKind: .rollingHours,
+            usedValue: 25,
+            limitValue: 100,
+            remainingValue: 75,
+            usedPercent: 25,
+            resetsAt: Date().addingTimeInterval(60 * 60),
+            unit: .requests,
+            isEstimated: true
+        )
+        let snapshot = ProviderQuotaSnapshot(
+            provider: .xAI,
+            providerID: .xAI,
+            fetchedAt: Date(),
+            source: .localSession,
+            confidence: .estimated,
+            managementURL: "https://grok.com/plans",
+            statusMessage: "SuperGrok rolling window",
+            buckets: [bucket]
+        )
+
+        let entry = QuotaWorkspaceViewModel.makeEntry(
+            provider: .xAI,
+            snapshot: snapshot,
+            isRefreshing: false
+        )
+
+        XCTAssertEqual(entry.provider, .xAI)
+        XCTAssertEqual(entry.providerID, .xAI)
+        XCTAssertEqual(entry.remainingPercentRounded, 75)
+    }
+
     func test_makeEntry_pressureUsesMaxOfDisplayableBuckets() {
         let hourly = ProviderQuotaBucket(
             key: "h",
@@ -182,6 +217,269 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.entries.first?.hourlyBucket)
         XCTAssertEqual(viewModel.entries.first?.allDisplayableBuckets.count, 0)
         XCTAssertEqual(viewModel.entries.first?.remainingPercentText, "—")
+    }
+
+    func test_rebuild_showsDefaultCLILoginAlongsideIsolatedProfiles() throws {
+        let appSupportRoot = try makeTemporaryDirectory()
+        let home = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
+        let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: .default)
+        let current = ProviderQuotaSnapshot(
+            provider: .codex,
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 300),
+            source: .officialAPI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Current Codex quota.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-current-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 3,
+                    limitValue: 100,
+                    remainingValue: 97,
+                    usedPercent: 3,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+        let isolated = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "profile-reserve",
+            accountLabel: "Reserve Codex",
+            accountStorageScope: .localOnly,
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 400),
+            source: .officialAPI,
+            sourceId: "switcher-cli:codex:profile-reserve",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Reserve Codex quota.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-reserve-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 25,
+                    limitValue: 100,
+                    remainingValue: 75,
+                    usedPercent: 25,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+        store.persistSnapshots(
+            [.codex: current],
+            accountSnapshots: [ProviderQuotaSnapshotStore.accountSnapshotKey(isolated): isolated]
+        )
+
+        let service = ProviderQuotaService(
+            keyStore: makeKeyStore(),
+            providerRuntimeKeyStore: makeRuntimeKeyStore(),
+            appPaths: appPaths,
+            environment: [:],
+            homeDirectoryURL: home,
+            refreshProviders: [.codex]
+        )
+        let viewModel = QuotaWorkspaceViewModel()
+
+        viewModel.rebuild(
+            quotaService: service,
+            dataStore: try makeDataStore(),
+            providerSpendByID: [:]
+        )
+
+        let codexEntries = viewModel.entries.filter { $0.provider == .codex }
+        XCTAssertEqual(codexEntries.count, 2)
+        XCTAssertEqual(Set(codexEntries.compactMap { $0.snapshot.accountID }), ["current-codex", "profile-reserve"])
+    }
+
+    func test_rebuild_keepsPendingAccountVisibleAlongsideDisplayableAccounts() throws {
+        let appSupportRoot = try makeTemporaryDirectory()
+        let home = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
+        let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: .default)
+        let active = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "profile-active",
+            accountLabel: "Active Codex",
+            accountStorageScope: .localOnly,
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 400),
+            source: .officialAPI,
+            sourceId: "switcher-cli:codex:profile-active",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Active Codex quota.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-active-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 12,
+                    limitValue: 100,
+                    remainingValue: 88,
+                    usedPercent: 12,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+        let pending = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "profile-pending",
+            accountLabel: "Pending Codex",
+            accountStorageScope: .localOnly,
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 410),
+            source: .unavailable,
+            sourceId: "switcher-cli:codex:profile-pending",
+            confidence: .unavailable,
+            managementURL: nil,
+            statusMessage: "Quota probe pending.",
+            buckets: []
+        )
+        store.persistSnapshots(
+            [:],
+            accountSnapshots: [
+                ProviderQuotaSnapshotStore.accountSnapshotKey(active): active,
+                ProviderQuotaSnapshotStore.accountSnapshotKey(pending): pending
+            ]
+        )
+
+        let service = ProviderQuotaService(
+            keyStore: makeKeyStore(),
+            providerRuntimeKeyStore: makeRuntimeKeyStore(),
+            appPaths: appPaths,
+            environment: [:],
+            homeDirectoryURL: home,
+            refreshProviders: [.codex]
+        )
+        let viewModel = QuotaWorkspaceViewModel()
+
+        viewModel.rebuild(
+            quotaService: service,
+            dataStore: try makeDataStore(),
+            providerSpendByID: [:]
+        )
+
+        let codexEntries = viewModel.entries.filter { $0.provider == .codex }
+        XCTAssertEqual(codexEntries.count, 2)
+        let pendingEntry = try XCTUnwrap(codexEntries.first { $0.snapshot.accountID == "profile-pending" })
+        XCTAssertEqual(pendingEntry.allDisplayableBuckets.count, 0)
+        XCTAssertEqual(pendingEntry.remainingPercentText, "—")
+    }
+
+    func test_filteredDisplaySnapshotsDropsProfilesPointingAtDefaultCLIConfig() {
+        let current = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "current-codex",
+            accountLabel: "Current Codex",
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 500),
+            source: .officialAPI,
+            sourceId: "switcher-cli-current:codex",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Current Codex quota.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-current-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 3,
+                    limitValue: 100,
+                    remainingValue: 97,
+                    usedPercent: 3,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+        let defaultProfileDuplicate = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "default-profile",
+            accountLabel: "Stale Default Profile",
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 510),
+            source: .officialAPI,
+            sourceId: "switcher-cli:codex:default-profile",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Duplicate default Codex profile quota.",
+            buckets: current.buckets
+        )
+
+        let filtered = QuotaWorkspaceViewModel.filteredDisplaySnapshots(
+            [current, defaultProfileDuplicate],
+            profileIndex: QuotaWorkspaceProfileIndex(defaultConfigAccountIDs: ["default-profile"])
+        )
+
+        XCTAssertEqual(filtered.map(\.accountID), ["current-codex"])
+    }
+
+    func test_filteredDisplaySnapshotsCoalescesCurrentCLIWithProfileForSameAccountIdentity() {
+        let current = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "current-codex",
+            accountLabel: "Alberto Nunez-Garcia • alberto@imagine-that.ai",
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 500),
+            source: .officialAPI,
+            sourceId: "switcher-cli-current:codex",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Current Codex quota.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-current-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 1,
+                    limitValue: 100,
+                    remainingValue: 99,
+                    usedPercent: 1,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+        let isolatedProfile = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "profile-imagine-that",
+            accountLabel: "Alberto Nunez-Garcia • alberto@imagine-that.ai",
+            accountStorageScope: .localOnly,
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 490),
+            source: .officialAPI,
+            sourceId: "switcher-cli:codex:profile-imagine-that",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Isolated profile quota.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-profile-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 25,
+                    limitValue: 100,
+                    remainingValue: 75,
+                    usedPercent: 25,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+
+        let filtered = QuotaWorkspaceViewModel.filteredDisplaySnapshots(
+            [current, isolatedProfile],
+            profileIndex: QuotaWorkspaceProfileIndex()
+        )
+
+        XCTAssertEqual(filtered.map(\.accountID), ["profile-imagine-that"])
+        XCTAssertEqual(filtered.first?.displayableQuotaBuckets.first?.remainingPercent, 75)
     }
 
     // MARK: sort

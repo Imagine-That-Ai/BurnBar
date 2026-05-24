@@ -5,6 +5,7 @@ rules_version = '2';
 // - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
 // - users/{uid}/iroh_pairing, iroh_pairing_keys, iroh_audit_events
+// - users/{uid}/agent_grant_authorities, agent_capability_grant_requests
 // - users/{uid}/pi_agent_connections, pi_agent_pairings, pi_agent_relay_requests, pi_agent_audit_events
 // - users/{uid}/provider_account_device_links, runtime_connection_preferences
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
@@ -239,11 +240,13 @@ service cloud.firestore {
     }
 
     function activeComputerUseEntitlementData(entitlement) {
-      return entitlement.active == true
-        && entitlement.productID in [
-          "com.openburnbar.hostedComputerUseSync.monthly",
-          "com.openburnbar.proMax.monthly"
-        ]
+	      return entitlement.active == true
+	        && entitlement.productID in [
+	          "com.openburnbar.computerUse.monthly",
+	          "com.openburnbar.hostedComputerUseSync.monthly",
+	          "com.openburnbar.proMax.bundle.monthly",
+	          "com.openburnbar.proMax.monthly"
+	        ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
     }
@@ -700,7 +703,11 @@ service cloud.firestore {
           "messages",
           "tokenUsage",
           "resumeHandle",
-          "encryptedTranscriptAvailable"
+          "encryptedTranscriptAvailable",
+          "customTitle",
+          "labelColorHex",
+          "isPinned",
+          "priorityOrder"
         ])
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
@@ -715,6 +722,10 @@ service cloud.firestore {
         && (!("workspaceLabel" in request.resource.data) || (request.resource.data.workspaceLabel is string && request.resource.data.workspaceLabel.size() <= 512))
         && (!("messages" in request.resource.data) || (request.resource.data.messages is list && request.resource.data.messages.size() <= 200))
         && (!("encryptedTranscriptAvailable" in request.resource.data) || request.resource.data.encryptedTranscriptAvailable is bool)
+        && (!("customTitle" in request.resource.data) || (request.resource.data.customTitle is string && request.resource.data.customTitle.size() <= 512))
+        && (!("labelColorHex" in request.resource.data) || (request.resource.data.labelColorHex is string && request.resource.data.labelColorHex.size() <= 16))
+        && (!("isPinned" in request.resource.data) || request.resource.data.isPinned is bool)
+        && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int)
         && (!("resumeHandle" in request.resource.data) || (
           request.resource.data.resumeHandle is map
           && request.resource.data.resumeHandle.keys().hasOnly([
@@ -754,6 +765,10 @@ service cloud.firestore {
           "commandsAllowed",
           "fileEditsAllowed",
           "source",
+          "sourceSkillID",
+          "sourceSurface",
+          "deliveryMode",
+          "parentHermesThreadID",
           "status",
           "createdAt",
           "updatedAt",
@@ -798,6 +813,10 @@ service cloud.firestore {
         && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity"]
         && (!("requestedModelID" in request.resource.data) || (request.resource.data.requestedModelID is string && request.resource.data.requestedModelID.size() <= 240))
         && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights", "ios-chat", "android-chat"]
+        && (!("sourceSkillID" in request.resource.data) || (request.resource.data.sourceSkillID is string && request.resource.data.sourceSkillID.size() <= 80))
+        && (!("sourceSurface" in request.resource.data) || (request.resource.data.sourceSurface is string && request.resource.data.sourceSurface.size() <= 160))
+        && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode in ["action_only", "full_stream", "muted"])
+        && (!("parentHermesThreadID" in request.resource.data) || (request.resource.data.parentHermesThreadID is string && request.resource.data.parentHermesThreadID.size() <= 512))
         && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed"]
         && request.resource.data.schemaVersion is int
         && (!("targetProject" in request.resource.data) || (request.resource.data.targetProject is string && request.resource.data.targetProject.size() <= 512))
@@ -941,6 +960,10 @@ service cloud.firestore {
             "messageTruncated",
             "runtime",
             "source",
+            "sourceSkillID",
+            "deliveryMode",
+            "eventImportance",
+            "skillStepID",
             "toolName",
             "artifactPath",
             "changedFilePath",
@@ -967,6 +990,10 @@ service cloud.firestore {
           ))
           && (!("messageTruncated" in request.resource.data) || request.resource.data.messageTruncated is bool)
           && request.resource.data.source in ["ios", "android", "ios-chat", "android-chat", "mac"]
+          && (!("sourceSkillID" in request.resource.data) || (request.resource.data.sourceSkillID is string && request.resource.data.sourceSkillID.size() <= 80))
+          && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode in ["action_only", "full_stream", "muted"])
+          && (!("eventImportance" in request.resource.data) || request.resource.data.eventImportance in ["quiet", "normal", "action_required", "terminal"])
+          && (!("skillStepID" in request.resource.data) || (request.resource.data.skillStepID is string && request.resource.data.skillStepID.size() <= 80))
           && validCliAgentMissionEventSource(userId, requestId, eventId)
           && request.resource.data.isError is bool
           && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto", "antigravity"])
@@ -1146,8 +1173,10 @@ service cloud.firestore {
     match /users/{userId}/subscription_topics/{topicId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.keys().size() <= 16
+        && request.resource.data.keys().size() <= 20
         && (!("cadence" in request.resource.data) || request.resource.data.cadence in ["on_demand", "daily", "weekly", "monthly"])
+        && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode in ["action_only", "full_stream", "muted"])
+        && (!("minimumEventImportance" in request.resource.data) || request.resource.data.minimumEventImportance in ["quiet", "normal", "action_required", "terminal"])
         && (!("deliveryCountThisMonth" in request.resource.data) || (request.resource.data.deliveryCountThisMonth is int && request.resource.data.deliveryCountThisMonth <= 64));
       allow delete: if ownsUserNamespace(userId);
     }
@@ -1559,6 +1588,183 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.trustState == "trusted"
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.platform in ["iOS", "iPadOS", "Android"];
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Phone/iPad/Android -> Mac agent desktop permission grants. These
+    // documents carry only signed capability metadata and public keys.
+    match /users/{userId}/agent_grant_authorities/{deviceId} {
+      function validAgentGrantAuthorityDocument() {
+        return request.resource.data.keys().hasOnly([
+          "sourceDeviceId",
+          "peerNodeId",
+          "publicKeyBase64",
+          "updatedAt"
+        ])
+        && request.resource.data.sourceDeviceId == deviceId
+        && request.resource.data.peerNodeId is string
+        && request.resource.data.peerNodeId.size() <= 160
+        && request.resource.data.publicKeyBase64 is string
+        && request.resource.data.publicKeyBase64.size() >= 32
+        && request.resource.data.publicKeyBase64.size() <= 256
+        && request.resource.data.updatedAt is timestamp
+        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId))
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId)).data.trustState == "trusted"
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId)).data.platform in ["iOS", "iPadOS", "Android"];
+      }
+
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && validAgentGrantAuthorityDocument();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/agent_capability_grant_requests/{requestId} {
+      function validAgentGrantAuthorityEnvelope() {
+        return request.resource.data.authority is map
+          && request.resource.data.authority.keys().hasOnly([
+            "peerNodeId",
+            "counter",
+            "timestamp",
+            "intentHashBlake3",
+            "signatureEd25519"
+          ])
+          && request.resource.data.authority.peerNodeId is string
+          && request.resource.data.authority.peerNodeId.size() <= 160
+          && request.resource.data.authority.counter is number
+          && request.resource.data.authority.counter >= 0
+          && request.resource.data.authority.timestamp is number
+          && request.resource.data.authority.intentHashBlake3 is string
+          && request.resource.data.authority.intentHashBlake3.matches("^[a-fA-F0-9]{64}$")
+          && request.resource.data.authority.signatureEd25519 is string
+          && request.resource.data.authority.signatureEd25519.size() <= 256;
+      }
+
+      function validAgentGrantReceipt(receipt) {
+        return receipt is map
+          && receipt.keys().hasOnly([
+            "receiptId",
+            "requestId",
+            "runtime",
+            "threadId",
+            "status",
+            "appliedGrantId",
+            "capabilities",
+            "trustMode",
+            "receivedAt",
+            "grantExpiresAt",
+            "sourceDeviceId",
+            "denialReason",
+            "message"
+          ])
+          && receipt.receiptId is string
+          && receipt.receiptId.size() <= 160
+          && receipt.requestId == requestId
+          && receipt.runtime in ["hermes", "pi", "codex", "claude", "openclaw"]
+          && receipt.threadId is string
+          && receipt.threadId.size() <= 240
+          && receipt.status in ["queued", "applied", "revoked", "denied", "expired"]
+          && receipt.capabilities is list
+          && receipt.capabilities.size() <= 16
+          && receipt.capabilities.hasOnly([
+            "desktop_browser",
+            "desktop_screenshot",
+            "accessibility_inspect",
+            "desktop_system_input",
+            "workspace_read",
+            "workspace_write",
+            "shell",
+            "desktop_file_export",
+            "shell_unrestricted"
+          ])
+          && receipt.trustMode in ["manual", "step", "trusted"]
+          && receipt.receivedAt is number
+          && (!("appliedGrantId" in receipt) || (receipt.appliedGrantId is string && receipt.appliedGrantId.size() <= 160))
+          && (!("grantExpiresAt" in receipt) || receipt.grantExpiresAt is number)
+          && (!("sourceDeviceId" in receipt) || (receipt.sourceDeviceId is string && receipt.sourceDeviceId.size() <= 160))
+          && (!("denialReason" in receipt) || receipt.denialReason in ["malformed_request", "unsupported_runtime", "expired", "signature_failure", "counter_replay", "stale_timestamp", "no_paired_mac", "local_authentication_required", "yolo_unavailable", "unknown"])
+          && (!("message" in receipt) || (receipt.message is string && receipt.message.size() <= 2048));
+      }
+
+      function validAgentCapabilityGrantDocument() {
+        return request.resource.data.keys().hasOnly([
+          "requestId",
+          "runtime",
+          "threadId",
+          "preset",
+          "capabilities",
+          "trustMode",
+          "deliveryMode",
+          "requestedAt",
+          "expiresAt",
+          "grantDurationSeconds",
+          "sourceDeviceId",
+          "clientIntentId",
+          "localAuthenticationSatisfied",
+          "authority",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "receipt"
+        ])
+        && request.resource.data.requestId == requestId
+        && request.resource.data.runtime in ["hermes", "pi", "codex", "claude", "openclaw"]
+        && request.resource.data.threadId is string
+        && request.resource.data.threadId.size() <= 240
+        && request.resource.data.preset in ["off", "low", "workspace", "desktop", "all", "yolo"]
+        && request.resource.data.capabilities is list
+        && request.resource.data.capabilities.size() <= 16
+        && request.resource.data.capabilities.hasOnly([
+          "desktop_browser",
+          "desktop_screenshot",
+          "accessibility_inspect",
+          "desktop_system_input",
+          "workspace_read",
+          "workspace_write",
+          "shell",
+          "desktop_file_export",
+          "shell_unrestricted"
+        ])
+        && request.resource.data.trustMode in ["manual", "step", "trusted"]
+        && request.resource.data.deliveryMode in ["live", "queued", "live_then_queued"]
+        && request.resource.data.status in ["queued", "applied", "revoked", "denied", "expired"]
+        && request.resource.data.requestedAt is number
+        && request.resource.data.expiresAt is number
+        && request.resource.data.grantDurationSeconds is number
+        && request.resource.data.grantDurationSeconds > 0
+        && request.resource.data.grantDurationSeconds <= 86400
+        && request.resource.data.sourceDeviceId is string
+        && request.resource.data.sourceDeviceId.size() <= 160
+        && request.resource.data.clientIntentId is string
+        && request.resource.data.clientIntentId.size() <= 160
+        && request.resource.data.localAuthenticationSatisfied is bool
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && validAgentGrantAuthorityEnvelope()
+        && (!("receipt" in request.resource.data) || validAgentGrantReceipt(request.resource.data.receipt))
+        && exists(/databases/$(database)/documents/users/$(userId)/agent_grant_authorities/$(request.resource.data.sourceDeviceId))
+        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted"
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.platform in ["iOS", "iPadOS", "Android"];
+      }
+
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && validAgentCapabilityGrantDocument()
+        && request.resource.data.status == "queued"
+        && !("receipt" in request.resource.data);
+      allow update: if ownerWritableNonSecret(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && validAgentCapabilityGrantDocument()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "receipt",
+          "updatedAt"
+        ])
+        && request.resource.data.status in ["applied", "revoked", "denied", "expired"]
+        && ("receipt" in request.resource.data);
       allow delete: if ownsUserNamespace(userId);
     }
 

@@ -531,6 +531,8 @@ fun MissionDetailSheet(
     status: InsightsViewModel.MissionStatus,
     onApprovalResponse: (String, Boolean) -> Unit,
     onDismiss: () -> Unit,
+    onFloat: ((CLIAgentMissionSnapshot) -> Unit)? = null,
+    onPictureInPicture: ((CLIAgentMissionSnapshot) -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -540,6 +542,8 @@ fun MissionDetailSheet(
             is InsightsViewModel.MissionStatus.Tracking -> MissionLiveDetailContent(
                 mission = status.mission,
                 onApprovalResponse = onApprovalResponse,
+                onFloat = onFloat,
+                onPictureInPicture = onPictureInPicture,
             )
             is InsightsViewModel.MissionStatus.Dispatched -> MissionQueuedDetailContent(
                 title = status.title,
@@ -560,9 +564,12 @@ fun MissionDetailSheet(
 private fun MissionLiveDetailContent(
     mission: CLIAgentMissionSnapshot,
     onApprovalResponse: (String, Boolean) -> Unit,
+    onFloat: ((CLIAgentMissionSnapshot) -> Unit)? = null,
+    onPictureInPicture: ((CLIAgentMissionSnapshot) -> Unit)? = null,
 ) {
     var activeFilters by remember { mutableStateOf(MissionEventFilter.entries.toSet()) }
     val visibleEvents = mission.events.filter { activeFilters.contains(MissionEventFilter.from(it)) }
+    val showSkillRunCompanionControls = shouldShowSkillRunCompanionControls(mission)
 
     LazyColumn(
         modifier = Modifier
@@ -596,6 +603,12 @@ private fun MissionLiveDetailContent(
                 item { MissionDetailChip(mission.displayStatus.uppercase(), Icons.Filled.GraphicEq) }
                 item { MissionDetailChip(mission.runtimeLabel, Icons.Filled.CheckCircle) }
                 item { MissionDetailChip(mission.currentStepLabel, Icons.Filled.GraphicEq) }
+                mission.skillRunID?.let { skill ->
+                    item { MissionDetailChip(skill.displayLabel, Icons.Filled.AutoAwesome) }
+                }
+                if (showSkillRunCompanionControls) {
+                    item { MissionDetailChip(mission.deliveryMode.displayLabel, Icons.Filled.GraphicEq) }
+                }
                 mission.activeToolName?.let { tool ->
                     item { MissionDetailChip(tool, Icons.Filled.Tune) }
                 }
@@ -604,6 +617,31 @@ private fun MissionLiveDetailContent(
                 }
                 mission.sessionID?.takeIf { it.isNotBlank() }?.let { session ->
                     item { MissionDetailChip(session, Icons.Filled.AutoAwesome) }
+                }
+            }
+        }
+
+        if (showSkillRunCompanionControls && (onFloat != null || onPictureInPicture != null)) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                    onFloat?.let { callback ->
+                        TextButton(onClick = { callback(mission) }) {
+                            Text(
+                                text = "Float",
+                                style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                    onPictureInPicture?.let { callback ->
+                        TextButton(onClick = { callback(mission) }) {
+                            Text(
+                                text = "PiP",
+                                style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                                color = AuroraColors.amber,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -691,6 +729,9 @@ private fun MissionLiveDetailContent(
         }
     }
 }
+
+fun shouldShowSkillRunCompanionControls(mission: CLIAgentMissionSnapshot): Boolean =
+    mission.skillRunID != null
 
 private enum class MissionEventFilter(val label: String) {
     LLM("LLM"),

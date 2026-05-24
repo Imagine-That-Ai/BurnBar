@@ -6,6 +6,10 @@ struct QuotaDetailSheet: View {
     let snapshots: [ProviderQuotaSnapshot]
     let routingState: ProviderRoutingStateSnapshot?
 
+    var hiddenBuckets: Set<String> = []
+    var bucketOrders: [String: [String]] = [:]
+    var displayMode: String = "remainingPercent"
+
     @State private var isRefreshing = false
     var onRefresh: (() async -> Void)?
 
@@ -125,9 +129,9 @@ struct QuotaDetailSheet: View {
                     ProviderAccountStorageChip(scope: scope, compact: true)
                 }
 
-                ForEach(snapshot.buckets, id: \.name) { bucket in
+                ForEach(snapshot.customizedBuckets(hiddenBuckets: hiddenBuckets, bucketOrders: bucketOrders), id: \.name) { bucket in
                     if let providerEnum {
-                        UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: true)
+                        UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: true, displayMode: displayMode)
                     }
                 }
             }
@@ -208,9 +212,9 @@ struct QuotaDetailSheet: View {
             // Gauges — one per bucket, with name + window labels (now shown
             // by the updated `UnifiedQuotaSignalView`).
             VStack(spacing: MobileTheme.Spacing.sm) {
-                ForEach(snapshot.buckets, id: \.name) { bucket in
+                ForEach(snapshot.customizedBuckets(hiddenBuckets: hiddenBuckets, bucketOrders: bucketOrders), id: \.name) { bucket in
                     if let providerEnum {
-                        UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: false)
+                        UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: false, displayMode: displayMode)
                     }
                 }
             }

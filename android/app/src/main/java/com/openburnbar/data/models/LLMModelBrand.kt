@@ -109,6 +109,7 @@ val AgentProvider.logoRes: Int
         AgentProvider.AIDER       -> R.drawable.logo_aider
         AgentProvider.CURSOR      -> R.drawable.logo_cursor
         AgentProvider.OPEN_AI     -> R.drawable.logo_open_ai
+        AgentProvider.DEEP_SEEK   -> R.drawable.logo_deep_seek
         AgentProvider.CODEX       -> R.drawable.logo_codex
         AgentProvider.ZAI         -> R.drawable.logo_zai
         AgentProvider.MINIMAX     -> R.drawable.logo_mini_max
@@ -119,6 +120,7 @@ val AgentProvider.logoRes: Int
         AgentProvider.FORGE_DEV   -> R.drawable.logo_forge
         AgentProvider.AUGMENT     -> R.drawable.logo_augment
         AgentProvider.HERMES      -> R.drawable.logo_hermes
+        AgentProvider.PI_AGENT    -> R.drawable.pi_agent_logo
         AgentProvider.GEMINI_CLI  -> R.drawable.logo_gemini_cli
         AgentProvider.GOOSE       -> R.drawable.logo_goose
         AgentProvider.OPEN_CLAW   -> R.drawable.logo_openclaw
@@ -126,5 +128,6 @@ val AgentProvider.logoRes: Int
         AgentProvider.OLLAMA      -> R.drawable.logo_ollama
         AgentProvider.WINDSURF    -> R.drawable.logo_windsurf
         AgentProvider.WARP        -> R.drawable.logo_warp
-        AgentProvider.ANTIGRAVITY -> R.drawable.logo_gemini_cli
+        AgentProvider.XAI         -> R.drawable.logo_grok
+        AgentProvider.ANTIGRAVITY -> R.drawable.logo_antigravity
     }

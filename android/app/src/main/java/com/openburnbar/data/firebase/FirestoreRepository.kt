@@ -10,10 +10,16 @@ import com.openburnbar.data.models.*
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import java.util.Date
+
+data class QuotaSnapshotUpdate(
+    val snapshots: List<ProviderQuotaSnapshot>,
+    val isFromCache: Boolean
+)
 
 class FirestoreRepository {
     private val db = Firebase.firestore
@@ -215,21 +221,31 @@ class FirestoreRepository {
 
     // ── Quota Snapshots ──
     suspend fun fetchQuotaSnapshots(): List<ProviderQuotaSnapshot> {
-        val snapshot = quotaCollection.get().await()
+        val snapshot = try {
+            quotaCollection.get(Source.SERVER).await()
+        } catch (_: Exception) {
+            quotaCollection.get(Source.DEFAULT).await()
+        }
         return snapshot.documents
             .mapNotNull { it.toQuotaSnapshot() }
             .deduplicatedByProviderAccount()
     }
 
-    fun listenToQuotaSnapshots(): Flow<List<ProviderQuotaSnapshot>> = callbackFlow {
+    fun listenToQuotaSnapshots(): Flow<List<ProviderQuotaSnapshot>> =
+        listenToQuotaSnapshotUpdates().map { it.snapshots }
+
+    fun listenToQuotaSnapshotUpdates(): Flow<QuotaSnapshotUpdate> = callbackFlow {
         val listener = quotaCollection
-            .addSnapshotListener { snapshot, error ->
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                 if (error != null) { close(error); return@addSnapshotListener }
                 trySend(
-                    snapshot?.documents
-                        ?.mapNotNull { it.toQuotaSnapshot() }
-                        ?.deduplicatedByProviderAccount()
-                        ?: emptyList()
+                    QuotaSnapshotUpdate(
+                        snapshots = snapshot?.documents
+                            ?.mapNotNull { it.toQuotaSnapshot() }
+                            ?.deduplicatedByProviderAccount()
+                            ?: emptyList(),
+                        isFromCache = snapshot?.metadata?.isFromCache ?: false
+                    )
                 )
             }
         awaitClose { listener.remove() }
@@ -237,7 +253,11 @@ class FirestoreRepository {
 
     // ── Provider Accounts ──
     suspend fun fetchProviderAccounts(): List<ProviderAccount> {
-        val snapshot = providerAccountsCollection.get().await()
+        val snapshot = try {
+            providerAccountsCollection.get(Source.SERVER).await()
+        } catch (_: Exception) {
+            providerAccountsCollection.get(Source.DEFAULT).await()
+        }
         return snapshot.documents.mapNotNull { it.toProviderAccount() }
     }
 
@@ -417,16 +437,7 @@ private fun DocumentSnapshot.toTokenUsage(): TokenUsage? {
 private fun DocumentSnapshot.toQuotaSnapshot(): ProviderQuotaSnapshot? {
     val data = data ?: return null
     val buckets = (data["buckets"] as? List<*>)?.mapNotNull { raw ->
-        (raw as? Map<String, Any>)?.let {
-            QuotaBucket(
-                name = it["name"] as? String ?: "",
-                used = (it["used"] as? Number)?.toDouble() ?: 0.0,
-                limit = (it["limit"] as? Number)?.toDouble() ?: 0.0,
-                remaining = (it["remaining"] as? Number)?.toDouble() ?: 0.0,
-                window = it["window"] as? String,
-                meta = it["meta"] as? Map<String, Any?>
-            )
-        }
+        (raw as? Map<*, *>)?.toQuotaBucket()
     } ?: emptyList()
 
     return ProviderQuotaSnapshot(
@@ -447,6 +458,102 @@ private fun DocumentSnapshot.toQuotaSnapshot(): ProviderQuotaSnapshot? {
         schemaVersion = (data["schemaVersion"] as? Number)?.toInt() ?: 0,
         updatedAt = parseTimestampOrString(data["updatedAt"])
     )
+}
+
+private fun Map<*, *>.toQuotaBucket(): QuotaBucket? {
+    val meta = normalizedQuotaBucketMeta(this["meta"]).toMutableMap()
+    val rawUnit = stringValue(this["unit"]) ?: stringValue(meta["unit"])
+    if (rawUnit != null && meta["unit"] == null) {
+        meta["unit"] = rawUnit
+    }
+
+    val name = stringValue(this["name"])
+        ?: stringValue(this["key"])
+        ?: stringValue(this["label"])
+        ?: return null
+    if (name.isBlank()) return null
+
+    if (meta["label"] == null) {
+        stringValue(this["label"])?.let { meta["label"] = it }
+    }
+    if (meta["isEstimated"] == null && this["isEstimated"] != null) {
+        meta["isEstimated"] = stringValue(this["isEstimated"]) ?: this["isEstimated"].toString()
+    }
+    if (meta["usedPercent"] == null) {
+        numberValue(this["usedPercent"])?.let { meta["usedPercent"] = it }
+    }
+    if (meta["resetsAt"] == null) {
+        stringValue(this["resetsAt"])?.let { meta["resetsAt"] = it }
+    }
+
+    val unit = rawUnit?.lowercase()
+    var used = numberValue(this["used"]) ?: numberValue(this["usedValue"])
+    var limit = numberValue(this["limit"]) ?: numberValue(this["limitValue"])
+    var remaining = numberValue(this["remaining"]) ?: numberValue(this["remainingValue"])
+    val usedPercent = numberValue(this["usedPercent"]) ?: numberValue(meta["usedPercent"])
+
+    if (limit != null && limit < 0.0) {
+        if (remaining != null && remaining > 0.0) {
+            used = maxOf(0.0, used ?: 0.0)
+            limit = remaining + maxOf(0.0, used)
+            meta.putIfAbsent("limitKind", "remainingOnly")
+        } else {
+            used = 0.0
+            limit = 100.0
+            remaining = 100.0
+            meta.putIfAbsent("unit", "unlimited")
+            meta.putIfAbsent("limitKind", "unlimited")
+        }
+    }
+
+    if (unit == "percent" && (limit == null || limit == 0.0) && (usedPercent != null || remaining != null)) {
+        limit = 100.0
+    }
+    if (used == null && usedPercent != null) {
+        used = usedPercent
+    }
+    if (remaining == null && unit == "percent" && used != null && (limit ?: 0.0) > 0.0) {
+        remaining = maxOf(0.0, (limit ?: 100.0) - used)
+    }
+    if (used == null && unit == "percent" && remaining != null && (limit ?: 0.0) > 0.0) {
+        used = maxOf(0.0, (limit ?: 100.0) - remaining)
+    }
+
+    return QuotaBucket(
+        name = name,
+        used = used ?: 0.0,
+        limit = limit ?: 0.0,
+        remaining = remaining ?: 0.0,
+        window = stringValue(this["window"]) ?: stringValue(this["windowKind"]),
+        resetsAt = this["resetsAt"] as? Timestamp,
+        meta = meta.takeIf { it.isNotEmpty() }
+    )
+}
+
+private fun normalizedQuotaBucketMeta(raw: Any?): Map<String, Any?> {
+    val map = raw as? Map<*, *> ?: return emptyMap()
+    return map.entries
+        .mapNotNull { (key, value) ->
+            val stringKey = key as? String ?: return@mapNotNull null
+            stringKey to value
+        }
+        .toMap()
+}
+
+private fun stringValue(value: Any?): String? {
+    return when (value) {
+        is String -> value.takeIf { it.isNotBlank() }
+        is Number, is Boolean -> value.toString()
+        else -> null
+    }
+}
+
+private fun numberValue(value: Any?): Double? {
+    return when (value) {
+        is Number -> value.toDouble()
+        is String -> value.trim().removeSuffix("%").toDoubleOrNull()
+        else -> null
+    }
 }
 
 private fun parseTimestampOrString(raw: Any?): String? {

@@ -31,6 +31,23 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         }
     }
 
+    func testMobileInfoPlistRegistersBurnBarDeepLinksUsedByWidgetsAndLiveActivities() throws {
+        let plistURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Info.plist")
+        let data = try Data(contentsOf: plistURL)
+        let plist = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        )
+        let urlTypes = try XCTUnwrap(plist["CFBundleURLTypes"] as? [[String: Any]])
+        let schemes = urlTypes.flatMap { type -> [String] in
+            type["CFBundleURLSchemes"] as? [String] ?? []
+        }
+
+        XCTAssertTrue(schemes.contains("burnbar"))
+        XCTAssertTrue(schemes.contains(where: { $0.hasPrefix("com.googleusercontent.apps.") }))
+    }
+
     func testAppStoreMetadataContainsSubscriptionDisclosureAndLegalLinks() throws {
         let ascURL = repoRoot()
             .appendingPathComponent("tools")
@@ -61,7 +78,9 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("https://burnbar.ai/legal/terms"))
         XCTAssertTrue(source.contains("Terms of Use (EULA)"))
         XCTAssertTrue(source.contains("Task { await store.purchase() }"))
+        XCTAssertTrue(source.contains(".disabled(store.isPurchasing)"))
         XCTAssertTrue(source.contains("Restore Purchases"))
+        XCTAssertTrue(source.contains("cloudStore.purchaseError"))
         XCTAssertTrue(source.contains("onSignInRequired: { showSignIn = true }"))
         XCTAssertTrue(source.contains(".sheet(isPresented: $showSignIn)"))
         XCTAssertTrue(source.contains("CloudStoreActionBar(\n                            store: store"))
@@ -75,6 +94,8 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertFalse(source.contains("SubscriptionStoreView(productIDs: HostedQuotaSubscriptionStore.appStoreReviewVisibleProductIDs)"))
         XCTAssertFalse(source.contains(".onInAppPurchaseCompletion"))
         XCTAssertFalse(source.contains("https://openburnbar.com"))
+        XCTAssertFalse(source.contains("Loading App Store price"))
+        XCTAssertFalse(source.contains(".disabled(store.isPurchasing || store.product == nil)"))
     }
 
     func testCloudStoreHidesRootChromeWhilePurchaseScreenIsVisible() throws {
@@ -101,6 +122,21 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(rootTab.contains("!isCloudStoreChromeHidden"))
         XCTAssertTrue(rootTab.contains(".environment(\\.mobileAuthStore, authStore)"))
         XCTAssertTrue(authGate.contains(".environment(\\.mobileAuthStore, authStore)"))
+    }
+
+    func testIPadRootInstallsAgentWatchLiveStageForScreenSharingParity() throws {
+        let rootNavigationURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("RootNavigationView.swift")
+        let source = try String(contentsOf: rootNavigationURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("AgentWatchOverlaySingleton.shared"))
+        XCTAssertTrue(source.contains("AgentLiveStage("))
+        XCTAssertTrue(source.contains("liveStageSingleton.configurePictureInPicture"))
+        XCTAssertTrue(source.contains("liveStageSingleton.evaluate("))
+        XCTAssertTrue(source.contains("ShowAgentWatch"))
+        XCTAssertTrue(source.contains("openAgentWatchRoute()"))
     }
 
     func testReleaseAppCheckUsesAppAttestEntitlementForEnforcedFirestore() throws {
@@ -159,9 +195,40 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("Draft products stay out of this list until App"))
         XCTAssertFalse(source.contains("appStoreReviewVisibleProductIDs = [\n        productID,\n        legacyHostedQuotaProductID,\n        hostedComputerUseProductID"))
         XCTAssertTrue(source.contains("fetchProducts(Self.appStoreReviewVisibleProductIDs)"))
-        XCTAssertTrue(source.contains("let result = try await purchaseProduct(product, [.appAccountToken(token)])"))
+        XCTAssertTrue(source.contains("let result = try await purchaseProduct(product, purchaseOptions)"))
+        XCTAssertTrue(source.contains("product.purchase(confirmIn: scene, options: options)"))
+        XCTAssertTrue(source.contains("activePurchaseScene()"))
+        XCTAssertTrue(source.contains("purchasePresentationUnavailable"))
+        XCTAssertTrue(source.contains("purchaseOptions = [.appAccountToken(token)]"))
+        XCTAssertTrue(source.contains("purchaseOptions = []"))
         XCTAssertFalse(source.contains("nativeStorePurchaseStarted"))
         XCTAssertFalse(source.contains("handleNativeStorePurchaseCompletion"))
+    }
+
+    func testHostedQuotaSubscribeButtonsExposeVisibleTapFeedbackAcrossReviewPaths() throws {
+        let reviewPathFiles = [
+            repoRoot()
+                .appendingPathComponent("OpenBurnBarMobile")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("Store")
+                .appendingPathComponent("CloudStoreView.swift"),
+            repoRoot()
+                .appendingPathComponent("OpenBurnBarMobile")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("MobileProviderWizardView.swift"),
+            repoRoot()
+                .appendingPathComponent("OpenBurnBarMobile")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("Onboarding")
+                .appendingPathComponent("OnboardingProviderConnectStep.swift")
+        ]
+
+        for url in reviewPathFiles {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            XCTAssertTrue(source.contains("Subscribe with App Store"), "\(url.lastPathComponent) must make the App Store action explicit")
+            XCTAssertTrue(source.contains("store.purchase()") || source.contains("subscriptionStore.purchase()"), "\(url.lastPathComponent) must call the StoreKit purchase path")
+            XCTAssertTrue(source.contains("purchaseError"), "\(url.lastPathComponent) must surface StoreKit failures near the tap path")
+        }
     }
 
     func testSharedTypographyMeetsReadableMobileFloorForAppReview() throws {

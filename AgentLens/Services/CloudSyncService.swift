@@ -985,8 +985,19 @@ final class HermesRelayHostService {
     private func installMercuryRouterIfPossible() {
         guard let router = mercuryRouter,
               let transfer = mercuryFileTransfer else { return }
-        transfer.setMercuryDispatcher { @Sendable frame, reply in
-            await router.handleFrame(frame, replySender: reply)
+        transfer.setMercuryDispatcher { @Sendable frame, controlStreamID, reply in
+            await router.handleFrame(
+                frame,
+                controlStreamID: controlStreamID,
+                replySender: reply
+            )
+        }
+        transfer.setMercuryControlStreamCloseHandler { @Sendable _, connectionID, controlStreamID, removedLast in
+            await router.handleControlStreamClosed(
+                connectionID: connectionID,
+                controlStreamID: controlStreamID,
+                removedLastStreamForConnection: removedLast
+            )
         }
     }
 
@@ -1103,19 +1114,16 @@ final class HermesRelayHostService {
         )
         let now = Self.iso8601.string(from: Date())
         let cliAgentChatAvailable = cliChatDispatcher != nil
-        let relayAvailable = probe.available || cliAgentChatAvailable
-        let realtimeRegistered: Bool
-        if relayAvailable {
-            realtimeRegistered = await realtimeRelayClient.start(uid: uid, connectionID: connectionID)
-        } else {
-            realtimeRelayClient.stop()
-            realtimeRegistered = false
-        }
+        let realtimeRegistered = await realtimeRelayClient.start(uid: uid, connectionID: connectionID)
         let realtimeReady = realtimeRegistered && realtimeRelayClient.isReady
         if realtimeRegistered && !realtimeReady {
             realtimeRelayClient.stop()
         }
+        let relayAvailable = probe.available || cliAgentChatAvailable || realtimeReady
         let realtimeRelayURL = realtimeReady ? realtimeRelayClient.publishableRelayURLString : nil
+        AppLogger.network.info(
+            "hermes_relay_connection_refresh relayAvailable=\(relayAvailable) chatGateway=\(probe.available) cliAgentChat=\(cliAgentChatAvailable) realtimeReady=\(realtimeReady) connectionID=\(connectionID)"
+        )
         var capabilities = ["remote_relay"]
         if probe.available {
             capabilities.append("chat_completions")
@@ -1860,32 +1868,98 @@ private struct HermesRelayRequestContext {
 struct HermesRelayKeyStore {
     private let keychain: KeychainStore
     private let account = "settings.chat.hermes.relay.p256.v1"
+    private let fallbackCacheKey: String
 
     init(
         keychain: KeychainStore = KeychainStore(
             service: "com.openburnbar.hermes-relay",
             legacyServices: []
-        )
+        ),
+        fallbackCacheKey: String = "com.openburnbar.hermes-relay.p256.v1"
     ) {
         self.keychain = keychain
+        self.fallbackCacheKey = fallbackCacheKey
     }
 
     func privateKey() throws -> HermesRelayPrivateKey {
-        if let stored = try keychain.string(for: account),
-           let data = Data(base64Encoded: stored) {
-            return try HermesRelayPrivateKey(rawRepresentation: data)
+        do {
+            if let stored = try keychain.string(for: account),
+               let data = Data(base64Encoded: stored),
+               let key = try? HermesRelayPrivateKey(rawRepresentation: data) {
+                return key
+            }
+            let key = HermesRelayCrypto.generatePrivateKey()
+            do {
+                try keychain.set(key.rawRepresentation.base64EncodedString(), for: account)
+                return key
+            } catch {
+                AppLogger.network.notice(
+                    "hermes_relay_keychain_ephemeral_fallback",
+                    metadata: ["error": error.localizedDescription]
+                )
+                return try cachedFallbackPrivateKey()
+            }
+        } catch {
+            AppLogger.network.notice(
+                "hermes_relay_keychain_read_failed_using_ephemeral",
+                metadata: ["error": error.localizedDescription]
+            )
+            return try cachedFallbackPrivateKey()
         }
-        let key = HermesRelayCrypto.generatePrivateKey()
-        try keychain.set(key.rawRepresentation.base64EncodedString(), for: account)
-        return key
     }
 
     func existingPublicKeyBase64() throws -> String? {
-        guard let stored = try keychain.string(for: account),
-              let data = Data(base64Encoded: stored) else {
+        do {
+            guard let stored = try keychain.string(for: account),
+                  let data = Data(base64Encoded: stored) else {
+                return try cachedFallbackPublicKeyBase64()
+            }
+            return try HermesRelayPrivateKey(rawRepresentation: data).publicKeyBase64
+        } catch {
+            AppLogger.network.notice(
+                "hermes_relay_keychain_public_key_failed_using_ephemeral",
+                metadata: ["error": error.localizedDescription]
+            )
+            return try cachedFallbackPublicKeyBase64()
+        }
+    }
+
+    private func cachedFallbackPrivateKey() throws -> HermesRelayPrivateKey {
+        let data = RelayEphemeralKeyCache.shared.data(for: fallbackCacheKey) {
+            HermesRelayCrypto.generatePrivateKey().rawRepresentation
+        }
+        return try HermesRelayPrivateKey(rawRepresentation: data)
+    }
+
+    private func cachedFallbackPublicKeyBase64() throws -> String? {
+        guard let data = RelayEphemeralKeyCache.shared.existingData(for: fallbackCacheKey) else {
             return nil
         }
         return try HermesRelayPrivateKey(rawRepresentation: data).publicKeyBase64
+    }
+}
+
+private final class RelayEphemeralKeyCache: @unchecked Sendable {
+    static let shared = RelayEphemeralKeyCache()
+
+    private let lock = NSLock()
+    private var keys: [String: Data] = [:]
+
+    func data(for key: String, generate: () -> Data) -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        if let existing = keys[key] {
+            return existing
+        }
+        let fresh = generate()
+        keys[key] = fresh
+        return fresh
+    }
+
+    func existingData(for key: String) -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return keys[key]
     }
 }
 
@@ -2546,29 +2620,71 @@ private struct PiAgentRelayRequestContext {
 struct PiAgentRelayKeyStore {
     private let keychain: KeychainStore
     private let account = "settings.chat.piagent.relay.p256.v1"
+    private let fallbackCacheKey: String
 
     init(
         keychain: KeychainStore = KeychainStore(
             service: "com.openburnbar.pi-agent-relay",
             legacyServices: []
-        )
+        ),
+        fallbackCacheKey: String = "com.openburnbar.pi-agent-relay.p256.v1"
     ) {
         self.keychain = keychain
+        self.fallbackCacheKey = fallbackCacheKey
     }
 
     func privateKey() throws -> PiAgentRelayPrivateKey {
-        if let stored = try keychain.string(for: account),
-           let data = Data(base64Encoded: stored) {
-            return try PiAgentRelayPrivateKey(rawRepresentation: data)
+        do {
+            if let stored = try keychain.string(for: account),
+               let data = Data(base64Encoded: stored),
+               let key = try? PiAgentRelayPrivateKey(rawRepresentation: data) {
+                return key
+            }
+            let key = PiAgentRelayCrypto.generatePrivateKey()
+            do {
+                try keychain.set(key.rawRepresentation.base64EncodedString(), for: account)
+                return key
+            } catch {
+                AppLogger.network.notice(
+                    "pi_agent_relay_keychain_ephemeral_fallback",
+                    metadata: ["error": error.localizedDescription]
+                )
+                return try cachedFallbackPrivateKey()
+            }
+        } catch {
+            AppLogger.network.notice(
+                "pi_agent_relay_keychain_read_failed_using_ephemeral",
+                metadata: ["error": error.localizedDescription]
+            )
+            return try cachedFallbackPrivateKey()
         }
-        let key = PiAgentRelayCrypto.generatePrivateKey()
-        try keychain.set(key.rawRepresentation.base64EncodedString(), for: account)
-        return key
     }
 
     func existingPublicKeyBase64() throws -> String? {
-        guard let stored = try keychain.string(for: account),
-              let data = Data(base64Encoded: stored) else {
+        do {
+            guard let stored = try keychain.string(for: account),
+                  let data = Data(base64Encoded: stored) else {
+                return try cachedFallbackPublicKeyBase64()
+            }
+            return try PiAgentRelayPrivateKey(rawRepresentation: data).publicKeyBase64
+        } catch {
+            AppLogger.network.notice(
+                "pi_agent_relay_keychain_public_key_failed_using_ephemeral",
+                metadata: ["error": error.localizedDescription]
+            )
+            return try cachedFallbackPublicKeyBase64()
+        }
+    }
+
+    private func cachedFallbackPrivateKey() throws -> PiAgentRelayPrivateKey {
+        let data = RelayEphemeralKeyCache.shared.data(for: fallbackCacheKey) {
+            PiAgentRelayCrypto.generatePrivateKey().rawRepresentation
+        }
+        return try PiAgentRelayPrivateKey(rawRepresentation: data)
+    }
+
+    private func cachedFallbackPublicKeyBase64() throws -> String? {
+        guard let data = RelayEphemeralKeyCache.shared.existingData(for: fallbackCacheKey) else {
             return nil
         }
         return try PiAgentRelayPrivateKey(rawRepresentation: data).publicKeyBase64

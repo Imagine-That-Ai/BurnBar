@@ -30,6 +30,12 @@ final class SettingsManager {
 
     let persistence: SettingsPersistenceCoordinator
     let appearance: AppearanceSettings
+
+    /// Bumped by `appearanceSubStoreDidChange()` whenever an
+    /// `AppearanceSettings` property changes. Referenced by the
+    /// computed property bridges below so SwiftUI observation
+    /// tracking always re-evaluates when appearance shifts.
+    private var appearanceMutationVersion: Int = 0
     let behavior: BehaviorSettings
     let alerts: AlertSettings
     let controller: ControllerSettings
@@ -98,7 +104,63 @@ final class SettingsManager {
             name: NSApplication.willResignActiveNotification,
             object: nil
         )
+        // Forward appearance sub-store mutations so views observing
+        // SettingsManager computed properties (e.g. useWebsiteBackground)
+        // re-render when the underlying AppearanceSettings value changes.
+        // @Observable only auto-tracks stored properties; computed bridges
+        // need this forwarding to guarantee SwiftUI refreshes.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
+            name: .useWebsiteBackgroundDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
+            name: .enableDesktopWallpaperDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
+            name: .desktopWallpaperBackgroundDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
+            name: .desktopWallpaperSpeedDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
+            name: .desktopWallpaperProviderGlyphsDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
+            name: .enableSwarmSparklesDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
+            name: .excludeBrandShapesFromSwarmDidChange,
+            object: nil
+        )
         startComputerUseRemoteConfigPolling()
+    }
+
+    /// Triggered when any `AppearanceSettings` property that surfaces
+    /// through a computed bridge on `SettingsManager` changes values.
+    /// Bumps an internal version counter (a stored @Observable property)
+    /// so that any SwiftUI view observing a computed property like
+    /// `useWebsiteBackground` is guaranteed to re-render.
+    @objc private func appearanceSubStoreDidChange() {
+        appearanceMutationVersion &+= 1
     }
 
     @objc private func flushPendingWrites() {
@@ -155,52 +217,78 @@ final class SettingsManager {
 
     // MARK: Appearance / Behavior
     var appearanceMode: AppearanceMode {
-        get { appearance.appearanceMode }
+        get { _ = appearanceMutationVersion; return appearance.appearanceMode }
         set { appearance.appearanceMode = newValue }
     }
 
     var showInMenuBar: Bool {
-        get { appearance.showInMenuBar }
+        get { _ = appearanceMutationVersion; return appearance.showInMenuBar }
         set { appearance.showInMenuBar = newValue }
     }
 
     var colorfulMenuBarIcon: Bool {
-        get { appearance.colorfulMenuBarIcon }
+        get { _ = appearanceMutationVersion; return appearance.colorfulMenuBarIcon }
         set { appearance.colorfulMenuBarIcon = newValue }
     }
 
     var usePremiumSOTAUX: Bool {
-        get { appearance.usePremiumSOTAUX }
+        get { _ = appearanceMutationVersion; return appearance.usePremiumSOTAUX }
         set { appearance.usePremiumSOTAUX = newValue }
     }
 
     var useWebsiteBackground: Bool {
-        get { appearance.useWebsiteBackground }
+        get { _ = appearanceMutationVersion; return appearance.useWebsiteBackground }
         set { appearance.useWebsiteBackground = newValue }
     }
 
     var enableDesktopWallpaper: Bool {
-        get { appearance.enableDesktopWallpaper }
+        get { _ = appearanceMutationVersion; return appearance.enableDesktopWallpaper }
         set { appearance.enableDesktopWallpaper = newValue }
     }
 
     var desktopWallpaperBackground: DesktopWallpaperBackground {
-        get { appearance.desktopWallpaperBackground }
+        get { _ = appearanceMutationVersion; return appearance.desktopWallpaperBackground }
         set { appearance.desktopWallpaperBackground = newValue }
     }
 
     var amoledDarkBackground: Bool {
-        get { appearance.amoledDarkBackground }
+        get { _ = appearanceMutationVersion; return appearance.amoledDarkBackground }
         set { appearance.amoledDarkBackground = newValue }
     }
 
     var cycleShapesScreensaver: Bool {
-        get { appearance.cycleShapesScreensaver }
+        get { _ = appearanceMutationVersion; return appearance.cycleShapesScreensaver }
         set { appearance.cycleShapesScreensaver = newValue }
     }
 
+    var enableSwarmSparkles: Bool {
+        get { _ = appearanceMutationVersion; return appearance.enableSwarmSparkles }
+        set { appearance.enableSwarmSparkles = newValue }
+    }
+
+    var clickDesktopToCycleSwarm: Bool {
+        get { _ = appearanceMutationVersion; return appearance.clickDesktopToCycleSwarm }
+        set { appearance.clickDesktopToCycleSwarm = newValue }
+    }
+
+    var desktopWallpaperSpeed: Double {
+        get { _ = appearanceMutationVersion; return appearance.desktopWallpaperSpeed }
+        set { appearance.desktopWallpaperSpeed = newValue }
+    }
+
+    var desktopWallpaperProviderGlyphs: [AgentProvider] {
+        get { _ = appearanceMutationVersion; return appearance.desktopWallpaperProviderGlyphs }
+        set { appearance.desktopWallpaperProviderGlyphs = newValue }
+    }
+
+    var excludeBrandShapesFromSwarm: Bool {
+        get { _ = appearanceMutationVersion; return appearance.excludeBrandShapesFromSwarm }
+        set { appearance.excludeBrandShapesFromSwarm = newValue }
+    }
+
     var preferredSwiftUIColorScheme: ColorScheme? {
-        appearance.appearanceMode.colorScheme
+        _ = appearanceMutationVersion
+        return appearance.appearanceMode.colorScheme
     }
 
     var launchAtLogin: Bool {
@@ -794,6 +882,11 @@ final class SettingsManager {
     var factoryQuotaPlanTier: FactoryQuotaPlanTier {
         get { quotas.factoryQuotaPlanTier }
         set { quotas.factoryQuotaPlanTier = newValue }
+    }
+
+    var xaiQuotaPlanTier: XAIQuotaPlanTier {
+        get { quotas.xaiQuotaPlanTier }
+        set { quotas.xaiQuotaPlanTier = newValue }
     }
 
     var tokenizerAssistedFallbackEnabled: Bool {

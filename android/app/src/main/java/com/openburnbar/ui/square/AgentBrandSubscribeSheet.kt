@@ -3,6 +3,8 @@ package com.openburnbar.ui.square
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentSubscriptionTopic
 import com.openburnbar.data.square.SubscriptionCadence
@@ -39,7 +42,7 @@ import com.openburnbar.data.square.SubscriptionCadence
 // Opt-in or update an `AgentSubscriptionTopic`. Same shape as the iOS
 // surface — cadence picker + muted toggle + subscribe / unsubscribe.
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun AgentBrandSubscribeSheet(
     identity: AgentIdentity,
@@ -50,6 +53,9 @@ internal fun AgentBrandSubscribeSheet(
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedCadence by remember(existingTopic) {
         mutableStateOf(existingTopic?.cadence ?: SubscriptionCadence.WEEKLY)
+    }
+    var selectedDeliveryMode by remember(existingTopic) {
+        mutableStateOf(existingTopic?.deliveryMode ?: SkillRunDeliveryMode.ACTION_ONLY)
     }
     var muted by remember(existingTopic) { mutableStateOf(existingTopic?.muted ?: false) }
 
@@ -77,7 +83,10 @@ internal fun AgentBrandSubscribeSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 SubscriptionCadence.values().forEach { cadence ->
                     CadencePill(
                         label = cadence.displayLabel,
@@ -86,11 +95,36 @@ internal fun AgentBrandSubscribeSheet(
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                "Delivery",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                SkillRunDeliveryMode.values().forEach { mode ->
+                    CadencePill(
+                        label = mode.displayLabel,
+                        selected = mode == selectedDeliveryMode,
+                        onClick = {
+                            selectedDeliveryMode = mode
+                            muted = mode == SkillRunDeliveryMode.MUTED
+                            if (existingTopic != null) onAction(SubscribeAction.SetDeliveryMode(mode))
+                        }
+                    )
+                }
+            }
             if (existingTopic != null) {
                 Spacer(modifier = Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = muted, onCheckedChange = {
                         muted = it
+                        selectedDeliveryMode = if (it) SkillRunDeliveryMode.MUTED else SkillRunDeliveryMode.ACTION_ONLY
                         onAction(SubscribeAction.SetMuted(it))
                     })
                     Spacer(modifier = Modifier.width(8.dp))
@@ -99,7 +133,7 @@ internal fun AgentBrandSubscribeSheet(
             }
             Spacer(modifier = Modifier.height(14.dp))
             Button(
-                onClick = { onAction(SubscribeAction.Subscribe(selectedCadence)) },
+                onClick = { onAction(SubscribeAction.Subscribe(selectedCadence, selectedDeliveryMode)) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (existingTopic == null) "Subscribe" else "Update")

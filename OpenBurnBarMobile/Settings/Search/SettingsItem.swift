@@ -125,6 +125,8 @@ enum SettingsPageRoute: Hashable, Codable {
     case media
     /// `ThemeSettingsView` — Custom visual/appearance configurations sub-page
     case theme
+    /// `QuotaCustomizationSettingsView` — Custom quota sorting, toggles, and percentage settings
+    case quotaCustomization
 }
 
 // MARK: - Anchor IDs
@@ -135,6 +137,7 @@ enum SettingsAnchor {
     // Hub / root
     static let theme = "hub.appearance.theme"
     static let usageDisplay = "hub.appearance.usageDisplay"
+    static let quotaCustomization = "hub.appearance.quotaCustomization"
     static let usePremiumSOTAUX = "hub.appearance.usePremiumSOTAUX"
     static let useWebsiteBackground = "hub.appearance.useWebsiteBackground"
     static let uiMode = "hub.uiMode"

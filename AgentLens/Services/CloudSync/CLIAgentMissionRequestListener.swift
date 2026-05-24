@@ -341,6 +341,17 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
 // used by the desktop chat surface, and the existing CLIAgentSessionMirror writes
 // Codex / Claude / OpenClaw transcripts back to `cli_sessions` for mobile viewing.
 
+final class MissionCancellationTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _isCancelled = false
+    var isCancelled: Bool {
+        lock.lock(); defer { lock.unlock() }; return _isCancelled
+    }
+    func cancel() {
+        lock.lock(); defer { lock.unlock() }; _isCancelled = true
+    }
+}
+
 @MainActor
 final class CLIAgentMissionRequestListener {
 
@@ -438,6 +449,19 @@ final class CLIAgentMissionRequestListener {
     }
 
     private func handle(document: QueryDocumentSnapshot) async {
+        let cancellationTracker = MissionCancellationTracker()
+        let logger = self.logger
+        let docID = document.documentID
+        let cancellationListener = document.reference.addSnapshotListener { snapshot, _ in
+            guard let snapshot = snapshot, snapshot.exists else { return }
+            let status = snapshot.data()?["status"] as? String
+            if status == "cancelled" || status == "canceled" {
+                logger.warning("cancellation signal received for mission id=\(docID, privacy: .public)")
+                cancellationTracker.cancel()
+            }
+        }
+        defer { cancellationListener.remove() }
+
         let data = document.data()
         let title = (data["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? "Insights mission"
@@ -473,6 +497,11 @@ final class CLIAgentMissionRequestListener {
             missionKind: data["missionKind"] as? String
         )
         if await shouldPauseForApproval(document: document, data: data, backend: backend) {
+            return
+        }
+
+        if cancellationTracker.isCancelled {
+            await handleCancellation(document: document, backend: backend)
             return
         }
 
@@ -516,6 +545,11 @@ final class CLIAgentMissionRequestListener {
             return
         }
 
+        if cancellationTracker.isCancelled {
+            await handleCancellation(document: document, backend: backend)
+            return
+        }
+
         logger.info("starting mission id=\(document.documentID, privacy: .public) backend=\(backend.rawValue, privacy: .public)")
         do {
             try await document.reference.setData([
@@ -537,6 +571,12 @@ final class CLIAgentMissionRequestListener {
                 ?? "Starting \(backend.displayName) with the mission prompt.",
             backend: backend
         )
+
+        if cancellationTracker.isCancelled {
+            await handleCancellation(document: document, backend: backend)
+            return
+        }
+
         let missionWorkingDirectoryURL = workingDirectoryURL(from: data)
         let changedFilesBefore = await gitChangedFiles(in: missionWorkingDirectoryURL)
         do {
@@ -549,7 +589,17 @@ final class CLIAgentMissionRequestListener {
         } catch {
             logger.error("mission running update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
-        if let directResult = await runDirectCLIMissionIfNeeded(title: title, prompt: prompt, backend: backend, data: data, reference: document.reference, requestID: document.documentID) {
+
+        if cancellationTracker.isCancelled {
+            await handleCancellation(document: document, backend: backend)
+            return
+        }
+
+        if let directResult = await runDirectCLIMissionIfNeeded(title: title, prompt: prompt, backend: backend, data: data, reference: document.reference, requestID: document.documentID, cancellationTracker: cancellationTracker) {
+            if cancellationTracker.isCancelled {
+                await handleCancellation(document: document, backend: backend)
+                return
+            }
             await recordChangedFileEvents(
                 before: changedFilesBefore,
                 after: await gitChangedFiles(in: missionWorkingDirectoryURL),
@@ -610,6 +660,11 @@ final class CLIAgentMissionRequestListener {
             return
         }
 
+        if cancellationTracker.isCancelled {
+            await handleCancellation(document: document, backend: backend)
+            return
+        }
+
         guard let chatBackend = backend.chatBackend else {
             await fail(document: document, message: "\(backend.displayName) is not available through the interactive Mac chat controller.")
             return
@@ -626,11 +681,22 @@ final class CLIAgentMissionRequestListener {
         }
         let threadID = chatController.activeThreadID
         chatController.inputText = missionPrompt(title: title, prompt: prompt, backend: backend, data: data)
+
+        if cancellationTracker.isCancelled {
+            await handleCancellation(document: document, backend: backend)
+            return
+        }
+
         await chatController.send()
 
         var lastStreamingEvent = Date.distantPast
         var mirroredTranscriptPieceIDs = Set<String>()
         while chatController.isStreaming {
+            if cancellationTracker.isCancelled {
+                logger.warning("cancelling active streaming chat generation for mission id=\(document.documentID, privacy: .public)")
+                chatController.cancelGeneration()
+                break
+            }
             let assistantMessage = chatController.messages.last(where: { $0.role == .assistant })
             await mirrorTranscriptPieces(
                 assistantMessage?.displayTranscript ?? [],
@@ -657,6 +723,12 @@ final class CLIAgentMissionRequestListener {
             }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
+
+        if cancellationTracker.isCancelled {
+            await handleCancellation(document: document, backend: backend)
+            return
+        }
+
         await mirrorTranscriptPieces(
             chatController.messages.last(where: { $0.role == .assistant })?.displayTranscript ?? [],
             mirroredPieceIDs: &mirroredTranscriptPieceIDs,
@@ -719,6 +791,30 @@ final class CLIAgentMissionRequestListener {
                 : modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: chatController.streamError),
             backend: backend,
             isError: status != "completed"
+        )
+    }
+
+    private func handleCancellation(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend) async {
+        logger.warning("handling cancellation for mission id=\(document.documentID, privacy: .public)")
+        do {
+            try await document.reference.setData([
+                "status": "cancelled",
+                "liveSummary": "Mission cancelled by user.",
+                "completedAt": ISO8601DateFormatter().string(from: Date()),
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+        } catch {
+            logger.error("failed to update cancellation status in firestore: \(error.localizedDescription, privacy: .public)")
+        }
+        await recordEvent(
+            reference: document.reference,
+            requestID: document.documentID,
+            phase: "cancelled",
+            kind: "status",
+            title: "Cancelled",
+            message: "Mission cancelled by user.",
+            backend: backend,
+            isError: true
         )
     }
 
@@ -961,7 +1057,8 @@ final class CLIAgentMissionRequestListener {
         backend: CLIAgentMissionBackend,
         data: [String: Any],
         reference: DocumentReference,
-        requestID: String
+        requestID: String,
+        cancellationTracker: MissionCancellationTracker
     ) async -> DirectCLIMissionResult? {
         let workingDirectoryURL = workingDirectoryURL(from: data)
         // Hermes Square §6.5 — merge any persona-scope env namespace the
@@ -979,7 +1076,8 @@ final class CLIAgentMissionRequestListener {
                 extraEnvironment: env,
                 workingDirectoryURL: workingDirectoryURL,
                 reference: reference,
-                requestID: requestID
+                requestID: requestID,
+                cancellationTracker: cancellationTracker
             )
         }
 
@@ -1117,7 +1215,8 @@ final class CLIAgentMissionRequestListener {
         extraEnvironment: [String: String],
         workingDirectoryURL: URL?,
         reference: DocumentReference,
-        requestID: String
+        requestID: String,
+        cancellationTracker: MissionCancellationTracker
     ) async -> DirectCLIMissionResult {
         guard let executable = await CLIExecutableResolver().resolveExecutable(named: executableName) else {
             return DirectCLIMissionResult(
@@ -1144,6 +1243,7 @@ final class CLIAgentMissionRequestListener {
                 timeoutSeconds: 180,
                 extraEnvironment: extraEnvironment,
                 workingDirectoryURL: workingDirectoryURL,
+                cancellationTracker: cancellationTracker,
                 eventSink: { [weak self] event in
                     Task { @MainActor [weak self] in
                         await self?.recordEvent(
@@ -1182,6 +1282,7 @@ final class CLIAgentMissionRequestListener {
         timeoutSeconds: TimeInterval,
         extraEnvironment: [String: String],
         workingDirectoryURL: URL?,
+        cancellationTracker: MissionCancellationTracker,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
@@ -1225,13 +1326,65 @@ final class CLIAgentMissionRequestListener {
                 }
             }
 
+            if cancellationTracker.isCancelled {
+                throw NSError(
+                    domain: "OpenBurnBar.DirectCLIMission",
+                    code: 299,
+                    userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
+                )
+            }
+
             try process.run()
 
             let deadline = Date().addingTimeInterval(timeoutSeconds)
             while process.isRunning && Date() < deadline {
+                if cancellationTracker.isCancelled {
+                    let pid = process.processIdentifier
+                    let killScript = """
+                    kill_tree() {
+                        local _pid=$1
+                        for _child in $(pgrep -P $_pid); do
+                            kill_tree $_child
+                        done
+                        kill -TERM $_pid 2>/dev/null
+                    }
+                    kill_tree \(pid)
+                    """
+                    let killTask = Process()
+                    killTask.executableURL = URL(fileURLWithPath: "/bin/zsh")
+                    killTask.arguments = ["-c", killScript]
+                    try? killTask.run()
+                    killTask.waitUntilExit()
+
+                    process.terminate()
+                    stdout.fileHandleForReading.readabilityHandler = nil
+                    stderr.fileHandleForReading.readabilityHandler = nil
+                    throw NSError(
+                        domain: "OpenBurnBar.DirectCLIMission",
+                        code: 299,
+                        userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
+                    )
+                }
                 try await Task.sleep(nanoseconds: 100_000_000)
             }
             if process.isRunning {
+                let pid = process.processIdentifier
+                let killScript = """
+                kill_tree() {
+                    local _pid=$1
+                    for _child in $(pgrep -P $_pid); do
+                        kill_tree $_child
+                    done
+                    kill -TERM $_pid 2>/dev/null
+                }
+                kill_tree \(pid)
+                """
+                let killTask = Process()
+                killTask.executableURL = URL(fileURLWithPath: "/bin/zsh")
+                killTask.arguments = ["-c", killScript]
+                try? killTask.run()
+                killTask.waitUntilExit()
+
                 process.terminate()
                 stdout.fileHandleForReading.readabilityHandler = nil
                 stderr.fileHandleForReading.readabilityHandler = nil

@@ -1,6 +1,9 @@
 import SwiftUI
 @preconcurrency import AVKit
 @preconcurrency import MediaPlayer
+#if canImport(UIKit)
+import UIKit
+#endif
 import OpenBurnBarMedia
 import OpenBurnBarCore
 
@@ -21,6 +24,17 @@ enum ScreenSharePhoneControlStatus: Equatable {
         case .unavailable: return "Read only"
         }
     }
+
+    var detail: String? {
+        switch self {
+        case .live:
+            return nil
+        case .connecting:
+            return "Preparing Mac control"
+        case .unavailable(let reason):
+            return reason
+        }
+    }
 }
 
 /// iOS Mercury screen-share viewer. Full-bleed video, optional stats
@@ -32,9 +46,13 @@ struct ScreenShareViewerView: View {
     @ObservedObject var coordinator: ScreenShareViewerCoordinator
     let resetToken: String?
     let controlStatus: ScreenSharePhoneControlStatus
+    let controlInputEnabled: Bool
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let streamPhase: MediaControlStreamCoordinator.Phase
+    let reconnectAttemptStartedAt: Date?
+    let lastFailureReason: String?
+    let lastLiveAt: Date?
     let onForceReconnect: () -> Void
     let onRetryRequest: () -> Void
     let sendTapIntent: (Double, Double, Int) -> Void
@@ -44,13 +62,13 @@ struct ScreenShareViewerView: View {
     let sendTextIntent: (String) -> Void
     let sendShortcutIntent: (String, [String]) -> Void
     let onSelectDisplay: (String) -> Void
+    let onTrustControlDevice: () -> Void
     let onClose: () -> Void
     let usePremiumSOTAUX: Bool
     @State private var statsVisible: Bool = false
     @State private var viewport = ScreenShareViewportState()
     @State private var interactionMode: ScreenShareInteractionMode = .view
     @State private var isTyping = false
-    @State private var textToType = ""
     @State private var panelOffset = CGSize(width: -18, height: 18)
     @State private var panelDragBase = CGSize(width: -18, height: 18)
     @State private var showingDisplayPicker = false
@@ -58,29 +76,30 @@ struct ScreenShareViewerView: View {
     @State private var edgeScrollEnabled = true
     @State private var hardwareScrollEnabled = false
     @State private var trackpadActive = false
-    @State private var trackpadVisible = false
     @State private var panelCollapsed = false
     @State private var controlPanTranslation: CGSize = .zero
     @State private var tapFeedbackPoint: CGPoint?
     @State private var lastControlClickPoint: CGPoint?
     @State private var controlPressStartedAt: Date?
-    @State private var tapCluster = ScreenShareTapCluster()
-    @State private var pendingDoubleTapTask: Task<Void, Never>?
     @State private var cursorPoint: CGPoint?
     @State private var cursorSize: CGFloat = 24
-    @State private var cursorStyle: MirrorCursorStyle = .mercury
+    @State private var cursorStyle: MirrorCursorStyle = .hidden
     @GestureState private var magnification: CGFloat = 1
     @GestureState private var controlMagnification: CGFloat = 1
     @GestureState private var dragTranslation: CGSize = .zero
-    @FocusState private var typingFocused: Bool
+    @State private var typingFocusTask: Task<Void, Never>?
 
     init(
         coordinator: ScreenShareViewerCoordinator,
         resetToken: String?,
         controlStatus: ScreenSharePhoneControlStatus = .unavailable("Phone control is not connected."),
+        controlInputEnabled: Bool? = nil,
         displays: [HermesRealtimeRelayDisplayDescriptor] = [],
         selectedDisplayId: String? = nil,
         streamPhase: MediaControlStreamCoordinator.Phase = .live,
+        reconnectAttemptStartedAt: Date? = nil,
+        lastFailureReason: String? = nil,
+        lastLiveAt: Date? = nil,
         usePremiumSOTAUX: Bool = false,
         onForceReconnect: @escaping () -> Void = {},
         onRetryRequest: @escaping () -> Void = {},
@@ -91,14 +110,19 @@ struct ScreenShareViewerView: View {
         sendTextIntent: @escaping (String) -> Void = { _ in },
         sendShortcutIntent: @escaping (String, [String]) -> Void = { _, _ in },
         onSelectDisplay: @escaping (String) -> Void = { _ in },
+        onTrustControlDevice: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
     ) {
         self.coordinator = coordinator
         self.resetToken = resetToken
         self.controlStatus = controlStatus
+        self.controlInputEnabled = controlInputEnabled ?? controlStatus.isLive
         self.displays = displays
         self.selectedDisplayId = selectedDisplayId
         self.streamPhase = streamPhase
+        self.reconnectAttemptStartedAt = reconnectAttemptStartedAt
+        self.lastFailureReason = lastFailureReason
+        self.lastLiveAt = lastLiveAt
         self.usePremiumSOTAUX = usePremiumSOTAUX
         self.onForceReconnect = onForceReconnect
         self.onRetryRequest = onRetryRequest
@@ -109,6 +133,7 @@ struct ScreenShareViewerView: View {
         self.sendTextIntent = sendTextIntent
         self.sendShortcutIntent = sendShortcutIntent
         self.onSelectDisplay = onSelectDisplay
+        self.onTrustControlDevice = onTrustControlDevice
         self.onClose = onClose
     }
 
@@ -151,6 +176,9 @@ struct ScreenShareViewerView: View {
                         phase: streamPhase,
                         isAwaitingFrame: coordinator.displayAspectRatio == nil,
                         usePremiumSOTAUX: usePremiumSOTAUX,
+                        reconnectAttemptStartedAt: reconnectAttemptStartedAt,
+                        lastFailureReason: lastFailureReason,
+                        lastLiveAt: lastLiveAt,
                         onForceReconnect: onForceReconnect,
                         onRetryRequest: onRetryRequest,
                         onClose: onClose
@@ -158,7 +186,7 @@ struct ScreenShareViewerView: View {
                     .transition(.opacity)
                 }
 
-                if interactionMode == .control, controlStatus.isLive {
+                if interactionMode == .control, controlInputEnabled {
                     Color.clear
                         .contentShape(Rectangle())
                         .gesture(controlSurfaceGesture(in: proxy.size, contentRect: contentRect, viewport: visibleViewport))
@@ -166,18 +194,17 @@ struct ScreenShareViewerView: View {
                         .accessibilityLabel("Mac screen control surface")
                 }
 
-                if interactionMode == .trackpad, controlStatus.isLive {
+                if interactionMode == .trackpad, controlInputEnabled {
                     TrackpadGlassSurface(
-                        isVisible: trackpadVisible || trackpadActive,
+                        isVisible: true,
                         usePremiumSOTAUX: usePremiumSOTAUX,
                         onActiveChange: { active in
                             withAnimation(.snappy) {
                                 trackpadActive = active
-                                trackpadVisible = active
                             }
                         },
                         onMove: { delta in
-                            moveLocalCursorByTrackpadDelta(delta, in: proxy.size)
+                            moveLocalCursorByTrackpadDelta(delta, in: contentRect)
                             sendTrackpadPointerDelta(delta)
                         },
                         onClick: sendPointerClickIntent,
@@ -192,9 +219,12 @@ struct ScreenShareViewerView: View {
                         .allowsHitTesting(false)
                 }
 
-                if controlStatus.isLive, interactionMode != .view, let cursorPoint, cursorStyle != .hidden {
+                if controlInputEnabled,
+                   interactionMode != .view,
+                   let visibleCursorPoint = cursorPoint ?? ScreenShareControlInputPolicy.initialCursorPoint(in: contentRect),
+                   cursorStyle != .hidden {
                     MirrorPointerCursor(
-                        point: cursorPoint,
+                        point: visibleCursorPoint,
                         size: cursorSize,
                         style: cursorStyle,
                         usePremiumSOTAUX: usePremiumSOTAUX
@@ -202,7 +232,7 @@ struct ScreenShareViewerView: View {
                     .allowsHitTesting(false)
                 }
 
-                if hardwareScrollEnabled, controlStatus.isLive {
+                if hardwareScrollEnabled, controlInputEnabled {
                     VolumeButtonScrollBridge { direction in
                         let endY = min(max(0.5 + direction, 0), 1)
                         sendScrollIntent(0.5, 0.5, 0.5, endY, selectedDisplayId)
@@ -224,9 +254,16 @@ struct ScreenShareViewerView: View {
                     cursorStyle: $cursorStyle,
                     stats: coordinator.lastStats,
                     controlStatus: controlStatus,
+                    controlInputEnabled: controlInputEnabled,
                     displays: displays,
                     selectedDisplayId: selectedDisplayId,
                     isZoomed: viewport.isZoomed,
+                    zoomIn: {
+                        withAnimation(.snappy) { viewport.zoom(by: 1.25, in: proxy.size) }
+                    },
+                    zoomOut: {
+                        withAnimation(.snappy) { viewport.zoom(by: 0.8, in: proxy.size) }
+                    },
                     resetZoom: {
                         withAnimation(.snappy) { viewport.reset() }
                     },
@@ -234,6 +271,7 @@ struct ScreenShareViewerView: View {
                         focusTypingBar()
                     },
                     selectDisplay: onSelectDisplay,
+                    onTrustControlDevice: onTrustControlDevice,
                     sendScrollButton: { direction in
                         let endY = min(max(0.5 + direction, 0), 1)
                         sendScrollIntent(0.5, 0.5, 0.5, endY, selectedDisplayId)
@@ -241,36 +279,31 @@ struct ScreenShareViewerView: View {
                     onClose: onClose
                 )
                 .padding(.horizontal, 12)
-                .padding(.bottom, isTyping ? 70 : 14)
+                .padding(.bottom, 14)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
             .ignoresSafeArea()
         }
-        .safeAreaInset(edge: .bottom) {
-            if interactionMode == .control, isTyping {
-                typingBar
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+        .overlay(alignment: .bottomLeading) {
+            remoteKeyboardCapture
         }
         .onChange(of: resetToken) { _, _ in
             withAnimation(.snappy) {
                 viewport.reset()
                 interactionMode = .view
                 isTyping = false
-                textToType = ""
                 controlPanTranslation = .zero
                 tapFeedbackPoint = nil
                 lastControlClickPoint = nil
                 cursorPoint = nil
-                tapCluster.reset()
-                pendingDoubleTapTask?.cancel()
-                pendingDoubleTapTask = nil
+                typingFocusTask?.cancel()
+                typingFocusTask = nil
             }
         }
         .onChange(of: controlStatus) { _, newValue in
-            guard newValue.isLive == false, interactionMode != .view else { return }
+            guard controlInputEnabled == false,
+                  newValue.isLive == false,
+                  interactionMode != .view else { return }
             withAnimation(.snappy) {
                 interactionMode = .view
                 isTyping = false
@@ -281,7 +314,8 @@ struct ScreenShareViewerView: View {
             if newValue {
                 focusTypingBar()
             } else {
-                typingFocused = false
+                typingFocusTask?.cancel()
+                typingFocusTask = nil
             }
         }
     }
@@ -359,31 +393,11 @@ struct ScreenShareViewerView: View {
 
     private func handleControlTap(normalized: (x: Double, y: Double), at point: CGPoint, pressStartedAt: Date?) {
         let heldDuration = pressStartedAt.map { Date().timeIntervalSince($0) } ?? 0
-        if heldDuration >= 0.55 {
-            sendTapIntent(normalized.x, normalized.y, 1)
-            tapCluster.reset()
-            return
-        }
-
-        let count = tapCluster.record(point: point, at: Date())
-        switch count {
-        case 2:
-            pendingDoubleTapTask?.cancel()
-            pendingDoubleTapTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 180_000_000)
-                guard Task.isCancelled == false, tapCluster.count == 2 else { return }
-                sendTapIntent(normalized.x, normalized.y, 0)
-                tapCluster.reset()
-                pendingDoubleTapTask = nil
-            }
-        case 3...:
-            pendingDoubleTapTask?.cancel()
-            pendingDoubleTapTask = nil
-            sendTapIntent(normalized.x, normalized.y, 1)
-            tapCluster.reset()
-        default:
-            break
-        }
+        sendTapIntent(
+            normalized.x,
+            normalized.y,
+            ScreenShareControlInputPolicy.controlClickMouseButton(heldDuration: heldDuration)
+        )
     }
 
     private func controlMagnifyGesture(in size: CGSize) -> some Gesture {
@@ -443,12 +457,11 @@ struct ScreenShareViewerView: View {
         sendPointerMoveIntent(Double(delta.width), Double(delta.height))
     }
 
-    private func moveLocalCursorByTrackpadDelta(_ delta: CGSize, in size: CGSize) {
-        guard size.width > 0, size.height > 0 else { return }
-        let current = cursorPoint ?? CGPoint(x: size.width / 2, y: size.height / 2)
-        cursorPoint = CGPoint(
-            x: min(max(current.x + delta.width, 0), size.width),
-            y: min(max(current.y + delta.height, 0), size.height)
+    private func moveLocalCursorByTrackpadDelta(_ delta: CGSize, in bounds: CGRect) {
+        cursorPoint = ScreenShareControlInputPolicy.movedCursorPoint(
+            current: cursorPoint,
+            delta: delta,
+            bounds: bounds
         )
     }
 
@@ -482,10 +495,13 @@ struct ScreenShareViewerView: View {
     }
 
     private func focusTypingBar() {
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 90_000_000)
-            guard isTyping else { return }
-            typingFocused = true
+        guard controlInputEnabled else { return }
+        typingFocusTask?.cancel()
+        typingFocusTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard Task.isCancelled == false else { return }
+            interactionMode = .control
+            isTyping = true
         }
     }
 
@@ -528,74 +544,148 @@ struct ScreenShareViewerView: View {
         )
     }
 
-    private var typingBar: some View {
-        HStack(spacing: 8) {
-            TextField("Type on Mac", text: $textToType)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($typingFocused)
-                .textFieldStyle(.plain)
-                .foregroundStyle(.white)
-                .submitLabel(.send)
-                .onSubmit(sendTypedText)
-                .padding(.horizontal, 12)
-                .frame(height: 42)
-                .background(Color.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .toolbar {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Done") {
-                            typingFocused = false
-                        }
-                    }
-                }
-
-            Button(action: sendTypedText) {
-                Image(systemName: "paperplane.fill")
-                    .frame(width: 38, height: 38)
+    @ViewBuilder
+    private var remoteKeyboardCapture: some View {
+        #if canImport(UIKit)
+        RemoteKeyboardCaptureView(
+            isActive: $isTyping,
+            onText: sendTextIntent,
+            onKey: { key in
+                sendShortcutIntent(key, [])
             }
-            .disabled(textToType.isEmpty)
-            .accessibilityLabel("Send text")
-
-            Button {
-                sendShortcutIntent("Return", [])
-            } label: {
-                Image(systemName: "return")
-                    .frame(width: 38, height: 38)
-            }
-            .accessibilityLabel("Press Return on Mac")
-
-            Button {
-                sendShortcutIntent("Escape", [])
-            } label: {
-                Image(systemName: "escape")
-                    .frame(width: 38, height: 38)
-            }
-            .accessibilityLabel("Press Escape on Mac")
-
-            Button {
-                typingFocused = false
-            } label: {
-                Image(systemName: "keyboard.chevron.compact.down")
-                    .frame(width: 38, height: 38)
-            }
-            .accessibilityLabel("Dismiss iPhone keyboard")
-        }
-        .buttonStyle(.bordered)
-        .tint(.white)
-        .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .onAppear {
-            focusTypingBar()
-        }
-    }
-
-    private func sendTypedText() {
-        guard textToType.isEmpty == false else { return }
-        sendTextIntent(textToType)
-        textToType = ""
+        )
+        .frame(width: 1, height: 1)
+        .opacity(0.01)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        #else
+        EmptyView()
+        #endif
     }
 }
+
+#if canImport(UIKit)
+private struct RemoteKeyboardCaptureView: UIViewRepresentable {
+    @Binding var isActive: Bool
+    let onText: (String) -> Void
+    let onKey: (String) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> RemoteKeyboardTextView {
+        let textView = RemoteKeyboardTextView(frame: .zero)
+        textView.remoteKeyboardDelegate = context.coordinator
+        textView.backgroundColor = .clear
+        textView.textColor = .clear
+        textView.tintColor = .clear
+        textView.isScrollEnabled = false
+        textView.autocorrectionType = .no
+        textView.autocapitalizationType = .none
+        textView.smartDashesType = .no
+        textView.smartQuotesType = .no
+        textView.smartInsertDeleteType = .no
+        textView.spellCheckingType = .no
+        textView.keyboardDismissMode = .interactive
+        textView.inputAccessoryView = context.coordinator.makeAccessoryToolbar()
+        textView.delegate = context.coordinator
+        context.coordinator.textView = textView
+        return textView
+    }
+
+    func updateUIView(_ uiView: RemoteKeyboardTextView, context: Context) {
+        context.coordinator.parent = self
+        if isActive {
+            if uiView.isFirstResponder == false {
+                DispatchQueue.main.async {
+                    guard self.isActive else { return }
+                    uiView.becomeFirstResponder()
+                }
+            }
+        } else if uiView.isFirstResponder {
+            uiView.resignFirstResponder()
+            uiView.text = ""
+        }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UITextViewDelegate, RemoteKeyboardTextViewDelegate {
+        var parent: RemoteKeyboardCaptureView
+        weak var textView: RemoteKeyboardTextView?
+
+        init(parent: RemoteKeyboardCaptureView) {
+            self.parent = parent
+        }
+
+        func makeAccessoryToolbar() -> UIToolbar {
+            let toolbar = UIToolbar()
+            toolbar.items = [
+                UIBarButtonItem(systemItem: .flexibleSpace),
+                UIBarButtonItem(
+                    title: "Done",
+                    style: .done,
+                    target: self,
+                    action: #selector(donePressed)
+                )
+            ]
+            toolbar.sizeToFit()
+            return toolbar
+        }
+
+        @objc private func donePressed() {
+            parent.isActive = false
+            textView?.resignFirstResponder()
+            textView?.text = ""
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            textView.text = ""
+            if parent.isActive {
+                parent.isActive = false
+            }
+        }
+
+        func remoteKeyboardTextView(_ textView: RemoteKeyboardTextView, didInsert text: String) {
+            textView.text = ""
+            switch text {
+            case "\n", "\r":
+                parent.onKey("Return")
+            case "\t":
+                parent.onKey("Tab")
+            default:
+                parent.onText(text)
+            }
+        }
+
+        func remoteKeyboardTextViewDidDeleteBackward(_ textView: RemoteKeyboardTextView) {
+            textView.text = ""
+            parent.onKey("Delete")
+        }
+    }
+}
+
+@MainActor
+private protocol RemoteKeyboardTextViewDelegate: AnyObject {
+    func remoteKeyboardTextView(_ textView: RemoteKeyboardTextView, didInsert text: String)
+    func remoteKeyboardTextViewDidDeleteBackward(_ textView: RemoteKeyboardTextView)
+}
+
+@MainActor
+private final class RemoteKeyboardTextView: UITextView {
+    weak var remoteKeyboardDelegate: RemoteKeyboardTextViewDelegate?
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func insertText(_ text: String) {
+        remoteKeyboardDelegate?.remoteKeyboardTextView(self, didInsert: text)
+    }
+
+    override func deleteBackward() {
+        remoteKeyboardDelegate?.remoteKeyboardTextViewDidDeleteBackward(self)
+    }
+}
+#endif
 
 struct ScreenShareViewportState: Equatable {
     static let minimumScale: CGFloat = 1
@@ -611,6 +701,11 @@ struct ScreenShareViewportState: Equatable {
 
     mutating func applyMagnification(_ magnification: CGFloat, in size: CGSize) {
         scale = Self.clampScale(scale * magnification)
+        offset = Self.clamp(offset: offset, scale: scale, in: size)
+    }
+
+    mutating func zoom(by multiplier: CGFloat, in size: CGSize) {
+        scale = Self.clampScale(scale * multiplier)
         offset = Self.clamp(offset: offset, scale: scale, in: size)
     }
 
@@ -690,31 +785,33 @@ private enum ScreenShareInteractionMode {
     case trackpad
 }
 
-private struct ScreenShareTapCluster: Equatable {
-    private var lastPoint: CGPoint?
-    private var lastTapAt: Date?
-    private(set) var count: Int = 0
+enum ScreenShareControlInputPolicy {
+    static let rightClickHoldDuration: TimeInterval = 0.55
+    static let trackpadTapTravelLimit: CGFloat = 8
 
-    mutating func record(point: CGPoint, at date: Date) -> Int {
-        let maxInterval: TimeInterval = 0.46
-        let maxDistance: CGFloat = 48
-        if let lastPoint,
-           let lastTapAt,
-           date.timeIntervalSince(lastTapAt) <= maxInterval,
-           hypot(point.x - lastPoint.x, point.y - lastPoint.y) <= maxDistance {
-            count += 1
-        } else {
-            count = 1
-        }
-        lastPoint = point
-        lastTapAt = date
-        return count
+    static func controlClickMouseButton(heldDuration: TimeInterval) -> Int {
+        heldDuration >= rightClickHoldDuration ? 1 : 0
     }
 
-    mutating func reset() {
-        lastPoint = nil
-        lastTapAt = nil
-        count = 0
+    static func trackpadClickMouseButton(heldDuration: TimeInterval, travelDistance: CGFloat) -> Int? {
+        if heldDuration >= rightClickHoldDuration {
+            return 1
+        }
+        return travelDistance < trackpadTapTravelLimit ? 0 : nil
+    }
+
+    static func initialCursorPoint(in bounds: CGRect) -> CGPoint? {
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        return CGPoint(x: bounds.midX, y: bounds.midY)
+    }
+
+    static func movedCursorPoint(current: CGPoint?, delta: CGSize, bounds: CGRect) -> CGPoint? {
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        let base = current ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        return CGPoint(
+            x: min(max(base.x + delta.width, bounds.minX), bounds.maxX),
+            y: min(max(base.y + delta.height, bounds.minY), bounds.maxY)
+        )
     }
 }
 
@@ -751,12 +848,16 @@ private struct MirrorControlPanel: View {
     @Binding var cursorStyle: MirrorCursorStyle
     let stats: ScreenShareViewerCoordinator.Stats
     let controlStatus: ScreenSharePhoneControlStatus
+    let controlInputEnabled: Bool
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let isZoomed: Bool
+    let zoomIn: () -> Void
+    let zoomOut: () -> Void
     let resetZoom: () -> Void
     let focusTyping: () -> Void
     let selectDisplay: (String) -> Void
+    let onTrustControlDevice: () -> Void
     let sendScrollButton: (Double) -> Void
     let onClose: () -> Void
 
@@ -766,34 +867,42 @@ private struct MirrorControlPanel: View {
                 if statsVisible {
                     compactStats
                 }
+                if let detail = controlStatus.detail {
+                    compactControlStatus(detail)
+                }
                 panelButton("hand.draw", selected: interactionMode == .view, label: "View mode") {
                     withAnimation(.snappy) {
                         interactionMode = .view
                         isTyping = false
                     }
                 }
-                panelButton(controlStatus.isLive ? "cursorarrow.click.2" : "lock", selected: interactionMode == .control, label: controlStatus.label, disabled: controlStatus.isLive == false) {
-                    guard controlStatus.isLive else { return }
+                if controlInputEnabled, controlStatus.isLive == false {
+                    panelButton("person.badge.key", selected: false, label: "Trust this iPhone for Mac control", action: onTrustControlDevice)
+                }
+                panelButton(controlInputEnabled ? "cursorarrow.click.2" : "lock", selected: interactionMode == .control, label: controlStatus.label, disabled: controlInputEnabled == false) {
+                    guard controlInputEnabled else { return }
                     withAnimation(.snappy) {
                         interactionMode = .control
                         isTyping = false
                     }
                 }
-                panelButton("rectangle.and.hand.point.up.left", selected: interactionMode == .trackpad, label: "Trackpad mode", disabled: controlStatus.isLive == false) {
-                    guard controlStatus.isLive else { return }
+                panelButton("rectangle.and.hand.point.up.left", selected: interactionMode == .trackpad, label: "Trackpad mode", disabled: controlInputEnabled == false) {
+                    guard controlInputEnabled else { return }
                     withAnimation(.snappy) {
                         interactionMode = .trackpad
                         isTyping = false
                     }
                 }
-                displayMenu
+                displayButton
                 cursorMenu
-                panelButton("chevron.up", selected: false, label: "Scroll up", disabled: controlStatus.isLive == false) { sendScrollButton(-0.22) }
-                panelButton("chevron.down", selected: false, label: "Scroll down", disabled: controlStatus.isLive == false) { sendScrollButton(0.22) }
-                panelButton("arrow.up.to.line", selected: false, label: "Page up", disabled: controlStatus.isLive == false) { sendScrollButton(-0.45) }
-                panelButton("arrow.down.to.line", selected: false, label: "Page down", disabled: controlStatus.isLive == false) { sendScrollButton(0.45) }
-                panelButton("keyboard", selected: isTyping, label: "Type on Mac", disabled: controlStatus.isLive == false) {
-                    guard controlStatus.isLive else { return }
+                panelButton("magnifyingglass.plus", selected: false, label: "Zoom in", action: zoomIn)
+                panelButton("magnifyingglass.minus", selected: false, label: "Zoom out", disabled: isZoomed == false, action: zoomOut)
+                panelButton("chevron.up", selected: false, label: "Scroll up", disabled: controlInputEnabled == false) { sendScrollButton(-0.22) }
+                panelButton("chevron.down", selected: false, label: "Scroll down", disabled: controlInputEnabled == false) { sendScrollButton(0.22) }
+                panelButton("arrow.up.to.line", selected: false, label: "Page up", disabled: controlInputEnabled == false) { sendScrollButton(-0.45) }
+                panelButton("arrow.down.to.line", selected: false, label: "Page down", disabled: controlInputEnabled == false) { sendScrollButton(0.45) }
+                panelButton("keyboard", selected: isTyping, label: "Type on Mac", disabled: controlInputEnabled == false) {
+                    guard controlInputEnabled else { return }
                     withAnimation(.snappy) {
                         interactionMode = .control
                         isTyping.toggle()
@@ -829,7 +938,7 @@ private struct MirrorControlPanel: View {
         case .view:
             return "hand.draw"
         case .control:
-            return controlStatus.isLive ? "cursorarrow.click.2" : "lock"
+            return controlInputEnabled ? "cursorarrow.click.2" : "lock"
         case .trackpad:
             return "rectangle.and.hand.point.up.left"
         }
@@ -849,21 +958,54 @@ private struct MirrorControlPanel: View {
         .accessibilityLabel("Performance \(String(format: "%.2f megabits per second", mbps)), round trip \(stats.roundTripMillis) milliseconds")
     }
 
-    private var displayMenu: some View {
-        Menu {
-            ForEach(displays.isEmpty ? fallbackDisplays : displays) { display in
+    private func compactControlStatus(_ message: String) -> some View {
+        Text(shortControlMessage(message))
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.86))
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .background(Color.white.opacity(0.10), in: Capsule())
+            .accessibilityLabel(message)
+    }
+
+    private func shortControlMessage(_ message: String) -> String {
+        guard message.count > 72 else { return message }
+        return String(message.prefix(69)) + "..."
+    }
+
+    private var displayOptions: [HermesRealtimeRelayDisplayDescriptor] {
+        displays.isEmpty ? fallbackDisplays : displays
+    }
+
+    private var selectedDisplayIndex: Int {
+        displayOptions.firstIndex {
+            $0.id == selectedDisplayId || (selectedDisplayId == nil && $0.isPrimary)
+        } ?? 0
+    }
+
+    private var displayButton: some View {
+        let isDisabled = displayOptions.count <= 1
+        return Button {
+            guard !isDisabled else { return }
+            let nextIndex = (selectedDisplayIndex + 1) % displayOptions.count
+            selectDisplay(displayOptions[nextIndex].id)
+        } label: {
+            railIcon("rectangle.connected.to.line.below", selected: displayOptions.count > 1, disabled: isDisabled)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .contextMenu {
+            ForEach(displayOptions) { display in
                 Button {
                     selectDisplay(display.id)
                 } label: {
                     Label(display.name, systemImage: display.id == selectedDisplayId || (selectedDisplayId == nil && display.isPrimary) ? "checkmark.display" : "display")
                 }
             }
-        } label: {
-            railIcon("rectangle.connected.to.line.below", selected: false, disabled: false)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .accessibilityLabel("Displays")
+        .accessibilityLabel(isDisabled ? "One display available" : "Switch display")
     }
 
     private var cursorMenu: some View {
@@ -1007,7 +1149,7 @@ struct CyberCursorArrow: Shape {
         var path = Path()
         let scaleX = rect.width / 24.0
         let scaleY = rect.height / 24.0
-        
+
         path.move(to: CGPoint(x: 0 * scaleX, y: 0 * scaleY))
         path.addLine(to: CGPoint(x: 18 * scaleX, y: 13 * scaleY))
         path.addLine(to: CGPoint(x: 10 * scaleX, y: 14 * scaleY))
@@ -1016,7 +1158,7 @@ struct CyberCursorArrow: Shape {
         path.addLine(to: CGPoint(x: 7 * scaleX, y: 15 * scaleY))
         path.addLine(to: CGPoint(x: 0 * scaleX, y: 19 * scaleY))
         path.closeSubpath()
-        
+
         return path
     }
 }
@@ -1038,12 +1180,12 @@ private struct MirrorPointerCursor: View {
                         .scaleEffect(haloScale)
                         .opacity(Double(2.0 - haloScale))
                         .offset(x: -4, y: -4)
-                    
+
                     Circle()
                         .fill(glowColor)
                         .frame(width: 3, height: 3)
                         .offset(x: -1.5, y: -1.5)
-                    
+
                     CyberCursorArrow()
                         .fill(
                             LinearGradient(
@@ -1137,8 +1279,6 @@ private struct TrackpadGlassSurface: View {
     let onScroll: (Double) -> Void
     @State private var lastTranslation: CGSize = .zero
     @State private var pressStartedAt: Date?
-    @State private var tapCluster = ScreenShareTapCluster()
-    @State private var pendingDoubleTapTask: Task<Void, Never>?
     @State private var touchLocation: CGPoint? = nil
     @State private var touchHistory: [CGPoint] = []
 
@@ -1150,7 +1290,7 @@ private struct TrackpadGlassSurface: View {
             ZStack {
                 // Fine grid crosshairs in background
                 trackpadGridPattern(width: width, height: height)
-                
+
                 // Trail ring representing current touch location
                 if usePremiumSOTAUX {
                     ForEach(Array(touchHistory.enumerated()), id: \.offset) { index, point in
@@ -1228,31 +1368,16 @@ private struct TrackpadGlassSurface: View {
                         let heldDuration = pressStartedAt.map { Date().timeIntervalSince($0) } ?? 0
                         pressStartedAt = nil
                         let distance = hypot(value.translation.width, value.translation.height)
-                        if heldDuration >= 0.55 {
-                            pendingDoubleTapTask?.cancel()
-                            pendingDoubleTapTask = nil
-                            triggerLightHaptic()
-                            onClick(1)
-                            tapCluster.reset()
-                        } else if distance < 8 {
-                            let count = tapCluster.record(point: value.location, at: Date())
-                            if count == 2 {
-                                pendingDoubleTapTask?.cancel()
-                                pendingDoubleTapTask = Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 180_000_000)
-                                    guard Task.isCancelled == false, tapCluster.count == 2 else { return }
-                                    triggerMediumHaptic()
-                                    onClick(0)
-                                    tapCluster.reset()
-                                    pendingDoubleTapTask = nil
-                                }
-                            } else if count >= 3 {
-                                pendingDoubleTapTask?.cancel()
-                                pendingDoubleTapTask = nil
+                        if let mouseButton = ScreenShareControlInputPolicy.trackpadClickMouseButton(
+                            heldDuration: heldDuration,
+                            travelDistance: distance
+                        ) {
+                            if mouseButton == 1 {
+                                triggerLightHaptic()
+                            } else {
                                 triggerMediumHaptic()
-                                onClick(1)
-                                tapCluster.reset()
                             }
+                            onClick(mouseButton)
                         } else if abs(value.translation.height) > abs(value.translation.width) * 1.5 {
                             onScroll(Double(value.translation.height / max(proxy.size.height, 1)))
                         }
@@ -1308,13 +1433,25 @@ private struct StreamStateOverlay: View {
     let phase: MediaControlStreamCoordinator.Phase
     let isAwaitingFrame: Bool
     let usePremiumSOTAUX: Bool
+    let reconnectAttemptStartedAt: Date?
+    let lastFailureReason: String?
+    let lastLiveAt: Date?
     let onForceReconnect: () -> Void
     let onRetryRequest: () -> Void
     let onClose: () -> Void
 
+    /// Wall-clock anchor for the "Awaiting first video frame" stretch.
+    /// Set the first time the overlay observes `.live + isAwaitingFrame`;
+    /// after `Self.awaitingFrameWatchdog` seconds elapse, the overlay
+    /// shows the recoverable "Mac isn't sending frames" state, fires one
+    /// automatic restart, and leaves manual recovery controls available.
+    @State private var awaitingFrameSince: Date?
+    @State private var automaticRetryTask: Task<Void, Never>?
+
     @State private var spinAngle: Double = 0
     @State private var textIndex = 0
     @State private var pulseScale: CGFloat = 1.0
+    private static let awaitingFrameWatchdog: TimeInterval = 8.0
     private let statusTexts = [
         "Connecting to paired Mac control stream...",
         "Negotiating VideoToolbox hardware codecs...",
@@ -1336,13 +1473,25 @@ private struct StreamStateOverlay: View {
 
                 case .live:
                     if isAwaitingFrame {
-                        connectingContent(title: "Mercury Live", detail: "Awaiting first video frame...")
+                        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+                            if let since = awaitingFrameSince,
+                               context.date.timeIntervalSince(since) >= Self.awaitingFrameWatchdog {
+                                stuckFrameContent(stuckSince: since, now: context.date)
+                            } else {
+                                connectingContent(title: "Mercury Live", detail: "Awaiting first video frame...")
+                            }
+                        }
                     } else {
                         EmptyView()
                     }
 
                 case .reconnecting(let nextAttemptIn):
-                    reconnectingContent(nextAttemptIn: nextAttemptIn)
+                    TimelineView(.periodic(from: .now, by: 0.1)) { context in
+                        reconnectingContent(
+                            nextAttemptIn: nextAttemptIn,
+                            now: context.date
+                        )
+                    }
 
                 case .failed(let reason):
                     failedContent(reason: reason)
@@ -1373,7 +1522,25 @@ private struct StreamStateOverlay: View {
         }
         .onAppear {
             startTextRotation()
+            if isAwaitingLiveFrame {
+                startAwaitingFrameWatchdog()
+            }
         }
+        .onChange(of: isAwaitingLiveFrame) { _, awaiting in
+            if awaiting {
+                startAwaitingFrameWatchdog()
+            } else {
+                stopAwaitingFrameWatchdog()
+            }
+        }
+        .onDisappear {
+            stopAwaitingFrameWatchdog()
+        }
+    }
+
+    private var isAwaitingLiveFrame: Bool {
+        if case .live = phase, isAwaitingFrame { return true }
+        return false
     }
 
     // MARK: - Connecting State
@@ -1396,7 +1563,7 @@ private struct StreamStateOverlay: View {
                         )
                         .frame(width: 76, height: 76)
                         .rotationEffect(.degrees(spinAngle))
-                    
+
                     Circle()
                         .stroke(Color.white.opacity(0.05), lineWidth: 1.5)
                         .frame(width: 52, height: 52)
@@ -1411,7 +1578,7 @@ private struct StreamStateOverlay: View {
                         )
                         .frame(width: 52, height: 52)
                         .rotationEffect(.degrees(-spinAngle * 1.3))
-                    
+
                     Circle()
                         .fill(Color(red: 0.17, green: 0.79, blue: 0.75))
                         .frame(width: 14, height: 14)
@@ -1422,7 +1589,7 @@ private struct StreamStateOverlay: View {
                                 pulseScale = 1.6
                             }
                         }
-                    
+
                     Circle()
                         .fill(Color(red: 0.17, green: 0.79, blue: 0.75))
                         .frame(width: 10, height: 10)
@@ -1437,7 +1604,7 @@ private struct StreamStateOverlay: View {
                     Circle()
                         .stroke(Color.white.opacity(0.1), lineWidth: 4)
                         .frame(width: 64, height: 64)
-                    
+
                     Circle()
                         .stroke(
                             LinearGradient(
@@ -1474,7 +1641,11 @@ private struct StreamStateOverlay: View {
 
     // MARK: - Reconnecting State
     @ViewBuilder
-    private func reconnectingContent(nextAttemptIn: TimeInterval) -> some View {
+    private func reconnectingContent(nextAttemptIn: TimeInterval, now: Date) -> some View {
+        let elapsed = reconnectAttemptStartedAt.map { now.timeIntervalSince($0) } ?? 0
+        let remaining = max(0, nextAttemptIn - elapsed)
+        let lastSeenSeconds = lastLiveAt.map { Int(now.timeIntervalSince($0)) }
+
         VStack(spacing: 20) {
             Image(systemName: "wifi.router.dashed")
                 .font(.system(size: 48, weight: .bold))
@@ -1493,10 +1664,28 @@ private struct StreamStateOverlay: View {
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
 
-                Text("Mercury lost contact with the Mac.\nRetrying automatically in \(String(format: "%.1f", nextAttemptIn))s...")
+                Text(remaining > 0.2
+                     ? "Mercury lost contact with the Mac.\nRetrying automatically in \(String(format: "%.1f", remaining))s..."
+                     : "Mercury lost contact with the Mac.\nRetrying now...")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.75))
                     .multilineTextAlignment(.center)
+
+                if let reason = lastFailureReason, !reason.isEmpty {
+                    Text(reason)
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .padding(.top, 2)
+                }
+
+                if let secs = lastSeenSeconds, secs > 0 {
+                    Text("Last seen \(formattedRelative(seconds: secs)) ago")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .padding(.top, 2)
+                }
             }
 
             VStack(spacing: 12) {
@@ -1539,6 +1728,90 @@ private struct StreamStateOverlay: View {
             }
             .padding(.top, 10)
         }
+    }
+
+    @ViewBuilder
+    private func stuckFrameContent(stuckSince: Date, now: Date) -> some View {
+        let stuckSeconds = Int(now.timeIntervalSince(stuckSince))
+        VStack(spacing: 20) {
+            Image(systemName: "tv.slash")
+                .font(.system(size: 48, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.yellow, .orange],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .symbolEffect(.pulse, options: .repeating)
+                .shadow(color: .yellow.opacity(0.3), radius: 8)
+
+            VStack(spacing: 8) {
+                Text("Mac isn't sending frames")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("The control stream is live, but no video has arrived in \(stuckSeconds)s. Mercury is restarting the mirror automatically.")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 12) {
+                Button(action: onRetryRequest) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise.circle")
+                        Text("Restart Mirror")
+                    }
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.17, green: 0.79, blue: 0.75), Color(red: 0.56, green: 0.50, blue: 0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                        }
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onForceReconnect) {
+                    Text("Force Reconnect")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onClose) {
+                    Text("Close Mirror")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 10)
+        }
+    }
+
+    private func formattedRelative(seconds: Int) -> String {
+        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 3600 { return "\(seconds / 60)m" }
+        return "\(seconds / 3600)h"
     }
 
     // MARK: - Failed State
@@ -1652,6 +1925,22 @@ private struct StreamStateOverlay: View {
                 }
             }
         }
+    }
+
+    private func startAwaitingFrameWatchdog() {
+        awaitingFrameSince = Date()
+        automaticRetryTask?.cancel()
+        automaticRetryTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(Self.awaitingFrameWatchdog * 1_000_000_000))
+            guard !Task.isCancelled, isAwaitingLiveFrame else { return }
+            onRetryRequest()
+        }
+    }
+
+    private func stopAwaitingFrameWatchdog() {
+        awaitingFrameSince = nil
+        automaticRetryTask?.cancel()
+        automaticRetryTask = nil
     }
 }
 

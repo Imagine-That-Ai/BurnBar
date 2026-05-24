@@ -3,6 +3,7 @@ package com.openburnbar.data.insights
 import com.openburnbar.data.assistants.CLIAgentMissionEvent
 import com.openburnbar.data.assistants.CLIAgentMissionRequestPayloadFactory
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
+import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.insights.services.InMemoryInsightDataSource
 import com.openburnbar.data.insights.services.InsightAggregator
 import com.openburnbar.data.insights.services.adapters.LocalRuleBasedAdapter
@@ -393,9 +394,36 @@ class InsightsDataLayerTest {
         assertEquals(true, payload["commandsAllowed"])
         assertEquals(false, payload["fileEditsAllowed"])
         assertEquals("android-insights", payload["source"])
+        assertEquals("android-insights", payload["sourceSurface"])
+        assertEquals("action_only", payload["deliveryMode"])
         assertEquals("pending", payload["status"])
-        assertEquals(2, payload["schemaVersion"])
+        assertEquals(3, payload["schemaVersion"])
         assertFalse(payload.containsKey("events"))
+    }
+
+    @Test
+    fun `CLI agent mission request payload includes Skill Run metadata`() {
+        val payload = CLIAgentMissionRequestPayloadFactory.build(
+            id = "mission-skill",
+            title = "Explain yesterday",
+            prompt = "What happened yesterday?",
+            missionKind = "chat",
+            requestedRuntime = "hermes",
+            targetProject = null,
+            depth = "standard",
+            approvalMode = "existing_policy",
+            commandsAllowed = false,
+            fileEditsAllowed = false,
+            sourceSkillID = "what_happened",
+            sourceSurface = "android-hermes-square",
+            deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
+            parentHermesThreadID = "thread-1",
+        )
+
+        assertEquals("what_happened", payload["sourceSkillID"])
+        assertEquals("android-hermes-square", payload["sourceSurface"])
+        assertEquals("full_stream", payload["deliveryMode"])
+        assertEquals("thread-1", payload["parentHermesThreadID"])
     }
 
     @Test
@@ -437,6 +465,9 @@ class InsightsDataLayerTest {
         assertEquals("queued", event["phase"])
         assertEquals("status", event["kind"])
         assertEquals("android", event["source"])
+        assertEquals("action_only", event["deliveryMode"])
+        assertEquals("normal", event["eventImportance"])
+        assertEquals("queued", event["skillStepID"])
         assertEquals(false, event["isError"])
     }
 

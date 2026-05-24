@@ -22,6 +22,16 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
+			<string>com.openburnbar.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>burnbar</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
 			<string>com.openburnbar.app.google-sign-in</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
@@ -47,5 +57,9 @@
 	<string>OpenBurnBar accesses selected photo library items only when you choose Photo Library to attach media to a Hermes chat.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>OpenBurnBar uses speech recognition only while you hold the voice command control to turn your spoken command into text.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 </dict>
 </plist>

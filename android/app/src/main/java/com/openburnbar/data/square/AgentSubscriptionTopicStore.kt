@@ -2,6 +2,12 @@ package com.openburnbar.data.square
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.openburnbar.data.assistants.SkillRunDeliveryMode
+import com.openburnbar.data.assistants.SkillRunEventImportance
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,10 +22,10 @@ import org.json.JSONObject
 // storage immediately and reconcile against Firestore in the background.
 
 enum class SubscriptionCadence(val token: String) {
-    DAILY("daily"), WEEKLY("weekly"), MONTHLY("monthly");
+    ON_DEMAND("on_demand"), DAILY("daily"), WEEKLY("weekly"), MONTHLY("monthly");
 
     val displayLabel: String get() = when (this) {
-        DAILY -> "Daily"; WEEKLY -> "Weekly"; MONTHLY -> "Monthly"
+        ON_DEMAND -> "On demand"; DAILY -> "Daily"; WEEKLY -> "Weekly"; MONTHLY -> "Monthly"
     }
 
     companion object {
@@ -30,9 +36,13 @@ enum class SubscriptionCadence(val token: String) {
 
 data class AgentSubscriptionTopic(
     val agentURI: String,
+    val topicID: String,
     val displayName: String,
+    val description: String,
     val cadence: SubscriptionCadence,
     val muted: Boolean,
+    val deliveryMode: SkillRunDeliveryMode,
+    val minimumEventImportance: SkillRunEventImportance,
     val createdAtEpoch: Long,
 )
 
@@ -43,19 +53,45 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
     private val _topics = MutableStateFlow<List<AgentSubscriptionTopic>>(emptyList())
     val topics: StateFlow<List<AgentSubscriptionTopic>> = _topics.asStateFlow()
 
-    init { _topics.value = load() }
+    private val auth = FirebaseAuth.getInstance()
+    private val firestore = FirebaseFirestore.getInstance()
+    private var authListener: FirebaseAuth.AuthStateListener? = null
+    private var firestoreListener: ListenerRegistration? = null
+
+    init {
+        _topics.value = load()
+        start()
+    }
+
+    fun start() {
+        if (authListener != null) return
+        val listener = FirebaseAuth.AuthStateListener { firebase ->
+            restartFirestoreListener(firebase.currentUser?.uid)
+        }
+        authListener = listener
+        auth.addAuthStateListener(listener)
+        restartFirestoreListener(auth.currentUser?.uid)
+    }
 
     fun topic(agentURI: String): AgentSubscriptionTopic? =
         _topics.value.firstOrNull { it.agentURI == agentURI }
 
-    fun subscribe(agent: AgentIdentity, cadence: SubscriptionCadence): AgentSubscriptionTopic {
+    fun subscribe(
+        agent: AgentIdentity,
+        cadence: SubscriptionCadence,
+        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+    ): AgentSubscriptionTopic {
         val now = System.currentTimeMillis()
         val existing = topic(agent.id)
         val updated = AgentSubscriptionTopic(
             agentURI = agent.id,
+            topicID = DEFAULT_TOPIC_ID,
             displayName = agent.displayName,
+            description = "Mission and thread activity digests from ${agent.displayName}.",
             cadence = cadence,
             muted = existing?.muted ?: false,
+            deliveryMode = deliveryMode,
+            minimumEventImportance = minimumImportance(forMode = deliveryMode),
             createdAtEpoch = existing?.createdAtEpoch ?: now,
         )
         upsert(updated)
@@ -63,13 +99,37 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
     }
 
     fun unsubscribe(agentURI: String) {
+        val existing = topic(agentURI)
         _topics.value = _topics.value.filterNot { it.agentURI == agentURI }
         save()
+        deleteFirestore(agentURI, existing?.topicID ?: DEFAULT_TOPIC_ID)
     }
 
     fun setMuted(agentURI: String, muted: Boolean): AgentSubscriptionTopic? {
         val existing = topic(agentURI) ?: return null
-        val updated = existing.copy(muted = muted)
+        val mode = if (muted) {
+            SkillRunDeliveryMode.MUTED
+        } else if (existing.deliveryMode == SkillRunDeliveryMode.MUTED) {
+            SkillRunDeliveryMode.ACTION_ONLY
+        } else {
+            existing.deliveryMode
+        }
+        val updated = existing.copy(
+            muted = muted,
+            deliveryMode = mode,
+            minimumEventImportance = minimumImportance(forMode = mode),
+        )
+        upsert(updated)
+        return updated
+    }
+
+    fun setDeliveryMode(agentURI: String, deliveryMode: SkillRunDeliveryMode): AgentSubscriptionTopic? {
+        val existing = topic(agentURI) ?: return null
+        val updated = existing.copy(
+            muted = deliveryMode == SkillRunDeliveryMode.MUTED,
+            deliveryMode = deliveryMode,
+            minimumEventImportance = minimumImportance(forMode = deliveryMode),
+        )
         upsert(updated)
         return updated
     }
@@ -80,6 +140,71 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         if (idx >= 0) list[idx] = topic else list.add(topic)
         _topics.value = list
         save()
+        writeFirestore(topic)
+    }
+
+    private fun restartFirestoreListener(uid: String?) {
+        firestoreListener?.remove()
+        firestoreListener = null
+        if (uid == null) return
+        firestoreListener = firestore.collection("users").document(uid)
+            .collection("subscription_topics")
+            .orderBy("consentGivenAt")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                val decoded = snapshot.documents.mapNotNull { doc ->
+                    val data = doc.data ?: return@mapNotNull null
+                    decodeFirestoreTopic(data)
+                }
+                _topics.value = decoded.sortedByDescending { it.createdAtEpoch }
+                save()
+            }
+    }
+
+    private fun writeFirestore(topic: AgentSubscriptionTopic) {
+        val uid = auth.currentUser?.uid ?: return
+        val payload = mapOf(
+            "agentURI" to topic.agentURI,
+            "topicID" to topic.topicID,
+            "displayName" to topic.displayName,
+            "description" to topic.description,
+            "cadence" to topic.cadence.token,
+            "consentGivenAt" to topic.createdAtEpoch,
+            "isMuted" to topic.muted,
+            "deliveryMode" to topic.deliveryMode.wire,
+            "minimumEventImportance" to topic.minimumEventImportance.wire,
+            "deliveryCountThisMonth" to 0,
+            "updatedAt" to FieldValue.serverTimestamp(),
+        )
+        firestore.collection("users").document(uid)
+            .collection("subscription_topics")
+            .document(documentID(topic.agentURI, topic.topicID))
+            .set(payload, com.google.firebase.firestore.SetOptions.merge())
+    }
+
+    private fun deleteFirestore(agentURI: String, topicID: String) {
+        val uid = auth.currentUser?.uid ?: return
+        firestore.collection("users").document(uid)
+            .collection("subscription_topics")
+            .document(documentID(agentURI, topicID))
+            .delete()
+    }
+
+    private fun decodeFirestoreTopic(data: Map<String, Any>): AgentSubscriptionTopic? {
+        val agentURI = (data["agentURI"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+        val topicID = (data["topicID"] as? String)?.takeIf { it.isNotBlank() } ?: DEFAULT_TOPIC_ID
+        val mode = SkillRunDeliveryMode.fromWire(data["deliveryMode"] as? String)
+        return AgentSubscriptionTopic(
+            agentURI = agentURI,
+            topicID = topicID,
+            displayName = (data["displayName"] as? String)?.takeIf { it.isNotBlank() } ?: agentURI,
+            description = data["description"] as? String ?: "",
+            cadence = SubscriptionCadence.fromToken(data["cadence"] as? String),
+            muted = (data["isMuted"] as? Boolean) ?: (mode == SkillRunDeliveryMode.MUTED),
+            deliveryMode = mode,
+            minimumEventImportance = SkillRunEventImportance.fromWire(data["minimumEventImportance"] as? String),
+            createdAtEpoch = decodeEpoch(data["consentGivenAt"]) ?: System.currentTimeMillis(),
+        )
     }
 
     private fun load(): List<AgentSubscriptionTopic> {
@@ -90,9 +215,13 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                 val obj = arr.getJSONObject(i)
                 AgentSubscriptionTopic(
                     agentURI = obj.optString("agentURI").takeIf { it.isNotBlank() } ?: return@mapNotNull null,
+                    topicID = obj.optString("topicID").takeIf { it.isNotBlank() } ?: DEFAULT_TOPIC_ID,
                     displayName = obj.optString("displayName"),
+                    description = obj.optString("description"),
                     cadence = SubscriptionCadence.fromToken(obj.optString("cadence")),
                     muted = obj.optBoolean("muted", false),
+                    deliveryMode = SkillRunDeliveryMode.fromWire(obj.optString("deliveryMode")),
+                    minimumEventImportance = SkillRunEventImportance.fromWire(obj.optString("minimumEventImportance")),
                     createdAtEpoch = obj.optLong("createdAt", System.currentTimeMillis()),
                 )
             }
@@ -104,9 +233,13 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         for (t in _topics.value) {
             val obj = JSONObject()
             obj.put("agentURI", t.agentURI)
+            obj.put("topicID", t.topicID)
             obj.put("displayName", t.displayName)
+            obj.put("description", t.description)
             obj.put("cadence", t.cadence.token)
             obj.put("muted", t.muted)
+            obj.put("deliveryMode", t.deliveryMode.wire)
+            obj.put("minimumEventImportance", t.minimumEventImportance.wire)
             obj.put("createdAt", t.createdAtEpoch)
             arr.put(obj)
         }
@@ -115,6 +248,7 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
 
     companion object {
         private const val KEY_TOPICS = "topics.v1"
+        const val DEFAULT_TOPIC_ID = "agent-updates"
 
         @Volatile private var instance: AgentSubscriptionTopicStore? = null
 
@@ -122,5 +256,25 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
             instance ?: synchronized(this) {
                 instance ?: AgentSubscriptionTopicStore(context).also { instance = it }
             }
+
+        fun documentID(agentURI: String, topicID: String): String =
+            "${agentURI}:${topicID}"
+                .replace("/", "_")
+                .replace(":", "_")
+
+        private fun minimumImportance(forMode: SkillRunDeliveryMode): SkillRunEventImportance =
+            if (forMode == SkillRunDeliveryMode.FULL_STREAM) {
+                SkillRunEventImportance.NORMAL
+            } else {
+                SkillRunEventImportance.ACTION_REQUIRED
+            }
+
+        private fun decodeEpoch(raw: Any?): Long? = when (raw) {
+            is Number -> raw.toLong()
+            is com.google.firebase.Timestamp -> raw.toDate().time
+            is java.util.Date -> raw.time
+            is String -> raw.toLongOrNull()
+            else -> null
+        }
     }
 }

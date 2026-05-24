@@ -145,7 +145,10 @@ struct DashboardOverviewView: View {
                 usages: usageWindow.usages,
                 topModels: topModels,
                 settingsManager: settingsManager,
-                overviewAppeared: overviewAppeared
+                overviewAppeared: overviewAppeared,
+                onOpenAllSessions: { onNavigate(.sessionLogs) },
+                onOpenSession: { _ in onNavigate(.sessionLogs) },
+                onNavigateToModel: { onNavigate(.model($0)) }
             )
         }
     }

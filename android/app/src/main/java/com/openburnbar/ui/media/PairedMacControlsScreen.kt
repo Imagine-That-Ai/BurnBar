@@ -114,6 +114,9 @@ fun PairedMacControlsScreen(
     val fallbackCallAck = remember { MutableStateFlow<HermesRealtimeRelayCallAck?>(null) }
     val callAck by (coordinator?.lastCallAck ?: fallbackCallAck).collectAsState()
     val activePair by (coordinator?.activePair ?: fallbackPair).collectAsState()
+    val fallbackPeerCapabilities = remember { MutableStateFlow<Set<String>>(emptySet()) }
+    val peerCapabilities by (coordinator?.lastPeerCapabilities ?: fallbackPeerCapabilities).collectAsState()
+    val mirrorAutoAccept = peerCapabilities.contains("mirror.auto_accept")
     var pendingRequestID by remember { mutableStateOf<String?>(null) }
     var pendingCallRequestID by remember { mutableStateOf<String?>(null) }
     var launchedMirrorRequestID by remember { mutableStateOf<String?>(null) }
@@ -460,7 +463,11 @@ fun PairedMacControlsScreen(
                                 }
                                     .onSuccess { requestID ->
                                         pendingRequestID = requestID
-                                        statusMessage = "Request sent. Check your Mac."
+                                        statusMessage = if (mirrorAutoAccept) {
+                                            "Opening mirror on your Mac..."
+                                        } else {
+                                            "Request sent. Check your Mac."
+                                        }
                                     }
                                     .onFailure { error ->
                                         pendingRequestID = null
@@ -497,7 +504,7 @@ fun PairedMacControlsScreen(
                         Text(
                             text = when {
                                 recoveringMercury -> "Connecting..."
-                                pendingRequestID != null -> "Waiting..."
+                                pendingRequestID != null -> if (mirrorAutoAccept) "Opening..." else "Waiting..."
                                 else -> "Mirror"
                             },
                             style = AuroraType.body.copy(

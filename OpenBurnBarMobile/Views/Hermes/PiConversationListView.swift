@@ -291,6 +291,7 @@ struct PiChatThreadView: View {
 
     @State private var input: String = ""
     @State private var showConnectionSheet = false
+    @State private var permissionGrantThreadID: String?
     @State private var atomRouter = HermesAtomRouter()
 
     /// `.tool` messages exist purely as context for the upstream model
@@ -330,6 +331,11 @@ struct PiChatThreadView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
+                        permissionGrantThreadID = service.ensureDesktopGrantThreadID()
+                    } label: {
+                        Label("Agent permissions", systemImage: "hand.raised")
+                    }
+                    Button {
                         Task { await service.refreshRuntime() }
                     } label: {
                         Label("Re-check connection", systemImage: "arrow.clockwise")
@@ -351,6 +357,16 @@ struct PiChatThreadView: View {
                 piService: service,
                 focusedRuntime: .pi
             )
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { permissionGrantThreadID != nil },
+                set: { if !$0 { permissionGrantThreadID = nil } }
+            )
+        ) {
+            if let threadID = permissionGrantThreadID {
+                AgentPermissionGrantSheet(runtimeID: .pi, threadID: threadID)
+            }
         }
         .environment(\.hermesAtomNavigator, atomRouter)
         .sheet(item: Binding(

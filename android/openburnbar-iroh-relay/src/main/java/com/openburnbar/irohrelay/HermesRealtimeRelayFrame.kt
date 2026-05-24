@@ -52,6 +52,8 @@ enum class HermesRealtimeRelayFrameType {
     @SerialName("media.blob.ack") MEDIA_BLOB_ACK,
     @SerialName("media.mirror.request") MEDIA_MIRROR_REQUEST,
     @SerialName("media.mirror.ack") MEDIA_MIRROR_ACK,
+    @SerialName("media.mirror.stop") MEDIA_MIRROR_STOP,
+    @SerialName("media.mirror.display.select") MEDIA_MIRROR_DISPLAY_SELECT,
     @SerialName("media.presence.heartbeat") MEDIA_PRESENCE_HEARTBEAT,
     @SerialName("media.call.invite") MEDIA_CALL_INVITE,
     @SerialName("media.call.ack") MEDIA_CALL_ACK,
@@ -65,6 +67,8 @@ enum class HermesRealtimeRelayFrameType {
     @SerialName("control.input.intent") CONTROL_INPUT_INTENT,
     @SerialName("control.approval.request") CONTROL_APPROVAL_REQUEST,
     @SerialName("control.approval.response") CONTROL_APPROVAL_RESPONSE,
+    @SerialName("control.agent.grant.request") CONTROL_AGENT_GRANT_REQUEST,
+    @SerialName("control.agent.grant.receipt") CONTROL_AGENT_GRANT_RECEIPT,
     @SerialName("control.denied") CONTROL_DENIED,
 }
 
@@ -111,12 +115,23 @@ data class HermesRealtimeRelayMediaPayload(
     val ack: HermesRealtimeRelayMediaAck? = null,
     val mirrorRequest: HermesRealtimeRelayMirrorRequest? = null,
     val mirrorAck: HermesRealtimeRelayMirrorAck? = null,
+    val mirrorStop: HermesRealtimeRelayMirrorStop? = null,
+    val mirrorDisplaySelection: HermesRealtimeRelayMirrorDisplaySelection? = null,
     val presence: HermesRealtimeRelayPresenceHeartbeat? = null,
     val callInvite: HermesRealtimeRelayCallInvite? = null,
     val callAck: HermesRealtimeRelayCallAck? = null,
     val longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck? = null,
     val encodedFrameBase64: String? = null,
     val frameChunk: HermesRealtimeRelayMediaFrameChunk? = null,
+    val focusContext: HermesRealtimeRelayFocusContext? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayFocusContext(
+    val appName: String,
+    val bundleId: String,
+    val windowTitle: String? = null,
+    val windowId: Long? = null,
 )
 
 @Serializable
@@ -160,6 +175,16 @@ data class HermesRealtimeRelayMirrorRequest(
     val requesterDisplayName: String,
     val streamClass: String,
     val streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = null,
+    val focusFollowMode: String? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayDisplayDescriptor(
+    val id: String,
+    val name: String,
+    val width: Int,
+    val height: Int,
+    val isPrimary: Boolean = false,
 )
 
 @Serializable
@@ -168,6 +193,8 @@ data class HermesRealtimeRelayMirrorAck(
     val decision: Decision,
     val detail: String? = null,
     val cooldownSecondsRemaining: Int? = null,
+    val availableDisplays: List<HermesRealtimeRelayDisplayDescriptor>? = null,
+    val selectedDisplayId: String? = null,
 ) {
     @Serializable
     enum class Decision {
@@ -178,6 +205,22 @@ data class HermesRealtimeRelayMirrorAck(
         @SerialName("busy") BUSY,
     }
 }
+
+@Serializable
+data class HermesRealtimeRelayMirrorStop(
+    val requestId: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val stoppedAt: Double,
+    val reason: String? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayMirrorDisplaySelection(
+    val requestId: String,
+    val displayId: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val selectedAt: Double,
+)
 
 @Serializable
 data class HermesRealtimeRelayCallInvite(
@@ -272,7 +315,32 @@ data class HermesRealtimeRelayControlPayload(
     val authorityPublicKeyBase64: String? = null,
     val approvalRequest: HermesRealtimeRelayApprovalRequest? = null,
     val approvalResponse: HermesRealtimeRelayApprovalResponse? = null,
+    val agentGrantRequest: HermesRealtimeRelayAgentGrantRequest? = null,
+    val agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt? = null,
+    val denied: HermesRealtimeRelayControlDenied? = null,
 )
+
+@Serializable
+data class HermesRealtimeRelayControlDenied(
+    val reason: Reason,
+    val detail: String? = null,
+) {
+    @Serializable
+    enum class Reason {
+        @SerialName("entitlement") ENTITLEMENT,
+        @SerialName("session_limit") SESSION_LIMIT,
+        @SerialName("daily_limit") DAILY_LIMIT,
+        @SerialName("soft_cap") SOFT_CAP,
+        @SerialName("hard_cap") HARD_CAP,
+        @SerialName("scope") SCOPE,
+        @SerialName("deny_region") DENY_REGION,
+        @SerialName("kill_switch") KILL_SWITCH,
+        @SerialName("signature_failure") SIGNATURE_FAILURE,
+        @SerialName("counter_replay") COUNTER_REPLAY,
+        @SerialName("stale_timestamp") STALE_TIMESTAMP,
+        @SerialName("unknown") UNKNOWN,
+    }
+}
 
 @Serializable
 data class HermesRealtimeRelayApprovalRequest(
@@ -310,8 +378,48 @@ data class HermesRealtimeRelayApprovalResponse(
 }
 
 @Serializable
+data class HermesRealtimeRelayAgentGrantRequest(
+    val requestId: String,
+    val runtime: String,
+    val threadId: String,
+    val preset: String,
+    val capabilities: List<String>,
+    val trustMode: String,
+    val deliveryMode: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val requestedAt: Double,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val expiresAt: Double,
+    val grantDurationSeconds: Double,
+    val sourceDeviceId: String,
+    val clientIntentId: String,
+    val localAuthenticationSatisfied: Boolean,
+    val authority: HermesRealtimeRelayAuthorityEnvelope,
+)
+
+@Serializable
+data class HermesRealtimeRelayAgentGrantReceipt(
+    val receiptId: String,
+    val requestId: String,
+    val runtime: String,
+    val threadId: String,
+    val status: String,
+    val appliedGrantId: String? = null,
+    val capabilities: List<String>,
+    val trustMode: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val receivedAt: Double,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val grantExpiresAt: Double? = null,
+    val sourceDeviceId: String? = null,
+    val denialReason: String? = null,
+    val message: String? = null,
+)
+
+@Serializable
 data class HermesRealtimeRelayInputIntent(
     val kind: HermesRealtimeRelayInputIntentKind,
+    val displayId: String? = null,
     val normalizedX: Double? = null,
     val normalizedY: Double? = null,
     val normalizedX2: Double? = null,
@@ -319,6 +427,7 @@ data class HermesRealtimeRelayInputIntent(
     val text: String? = null,
     val key: String? = null,
     val modifiers: List<String>? = null,
+    val mouseButton: Int? = null,
     val clientIntentId: String? = null,
     val authority: HermesRealtimeRelayAuthorityEnvelope,
 )
@@ -332,6 +441,8 @@ enum class HermesRealtimeRelayInputIntentKind {
     @SerialName("type") TYPE,
     @SerialName("shortcut") SHORTCUT,
     @SerialName("scroll") SCROLL,
+    @SerialName("pointer_move") POINTER_MOVE,
+    @SerialName("pointer_click") POINTER_CLICK,
     @SerialName("panic") PANIC,
 }
 

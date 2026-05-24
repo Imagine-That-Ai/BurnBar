@@ -53,6 +53,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
     enum ControlStreamError: LocalizedError, Equatable {
         case timedOutWaitingForLiveStream
         case notLive
+        case macDidNotRespond
 
         var errorDescription: String? {
             switch self {
@@ -60,12 +61,30 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 return "Mercury is still connecting. Try again after the Mac shows as online."
             case .notLive:
                 return "Mercury control stream is not live."
+            case .macDidNotRespond:
+                return "Mercury connected, but the Mac did not answer the control-stream probe."
             }
         }
     }
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var consecutiveDialFailures: Int = 0
+    /// Most recent failure reason surfaced from a `.failed` transition.
+    /// Survives the subsequent `.reconnecting` transitions so the viewer
+    /// can show *why* Mercury lost contact. Cleared on `.live`.
+    @Published private(set) var lastFailureReason: String?
+    /// Wall-clock anchor for the active `.reconnecting` interval so the
+    /// viewer can animate a real ticking countdown instead of a static
+    /// `nextAttemptIn` value.
+    @Published private(set) var reconnectAttemptStartedAt: Date?
+    /// Wall-clock anchor for the most recent `.live` transition. Used by
+    /// the viewer to show "last seen 12s ago" when the stream drops.
+    @Published private(set) var lastLiveAt: Date?
+    /// Wall-clock anchor for the most recent frame received from the Mac.
+    /// A stream can become half-stale while local sends still return
+    /// success; mirror requests require this to be fresh so `.live`
+    /// means bidirectional, not merely dialed.
+    @Published private(set) var lastInboundAt: Date?
     var connectionID: String? { activeConnectionID }
 
     private let dialer: StreamDialer
@@ -74,12 +93,13 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private let maxBackoff: TimeInterval
 
     private var currentStream: (any IrohRelayStream)?
+    private var currentSendGate: IrohRelayStreamSendGate?
     private var supervisorTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var streamReadyContinuations: [UUID: CheckedContinuation<any IrohRelayStream, Error>] = [:]
     private var activeUID: String?
     private var activeConnectionID: String?
-    private let mediaPacketCodec = MediaPacketCodec()
+    private let mediaPacketCodec = MediaPacketCodec(maxPayloadBytes: MediaFrameV2Codec.defaultMaxPayloadBytes)
     private let mediaFrameV2Codec = MediaFrameV2Codec()
     private var frameChunkAssembler = MediaFrameChunkAssembler()
 
@@ -105,6 +125,11 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// capabilities instead of relying only on fallback assumptions.
     var presenceHeartbeatHandler: ((HermesRealtimeRelayPresenceHeartbeat) async -> Void)?
 
+    /// Phone-control denials ride the same Mercury control stream as
+    /// mirror acks. Mirror surfaces install this so failed taps/scrolls
+    /// produce an actionable status instead of looking like dead tools.
+    var controlDeniedHandler: ((HermesRealtimeRelayControlDenied) async -> Void)?
+
     /// Mercury Phase 8 — opt-in display name that piggybacks on the
     /// presence heartbeat so the Mac can render it in the popover.
     /// Defaults to `UIDevice.current.name` at start time but can be
@@ -121,7 +146,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
         dialer: @escaping StreamDialer,
         receiver: iOSFileTransferService,
         initialBackoff: TimeInterval = 1.0,
-        maxBackoff: TimeInterval = 30.0
+        maxBackoff: TimeInterval = 8.0
     ) {
         self.dialer = dialer
         self.receiver = receiver
@@ -148,6 +173,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
             await currentStream.close()
         }
         currentStream = nil
+        currentSendGate = nil
         for continuation in streamReadyContinuations.values {
             continuation.resume(throwing: CancellationError())
         }
@@ -155,16 +181,29 @@ final class MediaControlStreamCoordinator: ObservableObject {
         phase = .stopped
         activeUID = nil
         activeConnectionID = nil
+        reconnectAttemptStartedAt = nil
+        lastFailureReason = nil
+        lastInboundAt = nil
     }
 
     /// Outbound send entry point. Blocks until the stream is live (or
     /// the supervisor gives up) so iOS-initiated sends don't race the
     /// initial dial.
     func send(frame: HermesRealtimeRelayFrame, timeout: TimeInterval = 8) async throws {
+        if activeUID != frame.uid || activeConnectionID != frame.connectionId {
+            Self.log.info("control_stream_send_retarget fromConnectionID=\(self.activeConnectionID ?? "", privacy: .public) toConnectionID=\(frame.connectionId, privacy: .public)")
+            Self.debugTrace("control_stream_send_retarget fromConnectionID=\(activeConnectionID ?? "") toConnectionID=\(frame.connectionId)")
+            await stop()
+            start(uid: frame.uid, connectionID: frame.connectionId)
+        }
         let stream = try await awaitLiveStream(timeout: timeout)
         Self.log.info("control_stream_send type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
         Self.debugTrace("control_stream_send type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
-        try await stream.send(frame)
+        if let currentSendGate {
+            try await currentSendGate.send(frame)
+        } else {
+            try await stream.send(frame)
+        }
     }
 
     func sendLongTermReferenceAcknowledgement(
@@ -189,6 +228,68 @@ final class MediaControlStreamCoordinator: ObservableObject {
             ),
             timeout: timeout
         )
+    }
+
+    func sendMirrorStop(
+        requestId: String,
+        reason: String? = nil,
+        timeout: TimeInterval = 8
+    ) async throws {
+        guard let uid = activeUID, let connectionID = activeConnectionID else {
+            throw ControlStreamError.notLive
+        }
+        let stop = HermesRealtimeRelayMirrorStop(
+            requestId: requestId,
+            stoppedAt: Date(),
+            reason: reason
+        )
+        try await send(
+            frame: HermesRealtimeRelayFrame(
+                type: .mediaMirrorStop,
+                uid: uid,
+                connectionId: connectionID,
+                requestId: requestId,
+                media: HermesRealtimeRelayMediaPayload(mirrorStop: stop)
+            ),
+            timeout: timeout
+        )
+    }
+
+    /// Ensure the current control stream is truly bidirectional before a
+    /// request that needs an immediate Mac response. Iroh can leave a stream
+    /// in a half-stale state where local writes return success but the Mac no
+    /// longer receives them; a fresh Mac heartbeat reply is the cheapest
+    /// proof that mirror requests and phone-control input will make it through.
+    func ensureResponsive(
+        uid: String,
+        connectionID: String,
+        freshnessInterval: TimeInterval = 8,
+        probeTimeout: TimeInterval = 2.5,
+        restartTimeout: TimeInterval = 6
+    ) async throws {
+        if activeUID == uid,
+           activeConnectionID == connectionID,
+           phase == .live,
+           let lastInboundAt,
+           Date().timeIntervalSince(lastInboundAt) <= freshnessInterval {
+            return
+        }
+
+        if activeUID == uid,
+           activeConnectionID == connectionID,
+           phase == .live,
+           await probeMac(uid: uid, connectionID: connectionID, timeout: probeTimeout) {
+            return
+        }
+
+        Self.log.info("control_stream_probe_restart connectionID=\(connectionID, privacy: .public)")
+        Self.debugTrace("control_stream_probe_restart connectionID=\(connectionID)")
+        await stop()
+        start(uid: uid, connectionID: connectionID)
+        _ = try await awaitLiveStream(timeout: restartTimeout)
+        guard await probeMac(uid: uid, connectionID: connectionID, timeout: probeTimeout) else {
+            throw ControlStreamError.macDidNotRespond
+        }
     }
 
     private func awaitLiveStream(timeout: TimeInterval) async throws -> any IrohRelayStream {
@@ -229,6 +330,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
             do {
                 phase = .dialing
                 let stream = try await dialer(uid, connectionID)
+                let sendGate = IrohRelayStreamSendGate(stream: stream)
                 let classifyFrame = HermesRealtimeRelayFrame(
                     type: .mediaClassify,
                     uid: uid,
@@ -237,11 +339,15 @@ final class MediaControlStreamCoordinator: ObservableObject {
                         streamClass: MediaStreamClass.control.rawValue
                     )
                 )
-                try await stream.send(classifyFrame)
+                try await sendGate.send(classifyFrame)
                 currentStream = stream
+                currentSendGate = sendGate
                 consecutiveDialFailures = 0
                 attempt = 0
                 phase = .live
+                lastLiveAt = Date()
+                lastFailureReason = nil
+                reconnectAttemptStartedAt = nil
                 Self.log.info("control_stream_live connectionID=\(connectionID, privacy: .public)")
                 Self.debugTrace("control_stream_live connectionID=\(connectionID)")
                 resolvePending(with: stream)
@@ -250,7 +356,6 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 // stream is live. Cancelled inside `stop()` or when the
                 // supervisor loop iterates after a peer-close.
                 startHeartbeatIfNeeded(uid: uid, connectionID: connectionID)
-                await sendHeartbeat(uid: uid, connectionID: connectionID)
 
                 // Drive the read loop. When it returns (peer close or
                 // error) we'll fall through to the reconnect arm.
@@ -259,7 +364,12 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 heartbeatTask?.cancel()
                 heartbeatTask = nil
                 currentStream = nil
+                currentSendGate = nil
                 if Task.isCancelled { break }
+                await stream.close()
+                if lastFailureReason == nil {
+                    lastFailureReason = "Mac closed the control stream."
+                }
                 // Peer closed cleanly — quick retry once before the
                 // exponential backoff kicks in.
                 attempt = max(0, attempt - 1)
@@ -267,6 +377,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 break
             } catch {
                 consecutiveDialFailures += 1
+                lastFailureReason = error.localizedDescription
                 Self.log.error("control_stream_dial_failed connectionID=\(connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                 Self.debugTrace("control_stream_dial_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
                 phase = .failed(reason: error.localizedDescription)
@@ -274,10 +385,12 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
             let backoff = nextBackoff(attempt: attempt)
             attempt += 1
+            reconnectAttemptStartedAt = Date()
             phase = .reconnecting(nextAttemptIn: backoff)
             try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
         }
         phase = .stopped
+        reconnectAttemptStartedAt = nil
     }
 
     private func readLoop(
@@ -286,12 +399,17 @@ final class MediaControlStreamCoordinator: ObservableObject {
         connectionID: String
     ) async {
         let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
-            [stream] outbound in
-            try await stream.send(outbound)
+            [currentSendGate, stream] outbound in
+            if let currentSendGate {
+                try await currentSendGate.send(outbound)
+            } else {
+                try await stream.send(outbound)
+            }
         }
         do {
             while let frame = try await stream.receive() {
                 guard frame.uid == uid, frame.connectionId == connectionID else { continue }
+                lastInboundAt = Date()
                 Self.log.info("control_stream_receive type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
                 Self.debugTrace("control_stream_receive type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
                 switch frame.type {
@@ -339,6 +457,12 @@ final class MediaControlStreamCoordinator: ObservableObject {
                         await handler(heartbeat)
                     }
                     continue
+                case .controlDenied:
+                    if let denied = frame.control?.denied,
+                       let handler = controlDeniedHandler {
+                        await handler(denied)
+                    }
+                    continue
                 case .mediaClassify:
                     // Re-classification mid-stream — protocol noise.
                     continue
@@ -348,6 +472,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
             }
         } catch {
             // Surface as a soft failure; supervisor handles reconnect.
+            lastFailureReason = error.localizedDescription
             phase = .reconnecting(nextAttemptIn: initialBackoff)
         }
     }
@@ -356,7 +481,9 @@ final class MediaControlStreamCoordinator: ObservableObject {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             guard !Task.isCancelled, let self else { return }
-            // Establish presence immediately to fetch Mac capabilities & blurred wallpaper
+            // Establish presence immediately to fetch Mac capabilities.
+            // Wallpaper sync is intentionally not part of this liveness path:
+            // mirror setup depends on small, reliable probe/ack traffic.
             await self.sendHeartbeat(uid: uid, connectionID: connectionID)
 
             while !Task.isCancelled {
@@ -391,11 +518,43 @@ final class MediaControlStreamCoordinator: ObservableObject {
         try? await send(frame: frame)
     }
 
+    private func probeMac(uid: String, connectionID: String, timeout: TimeInterval) async -> Bool {
+        let probeStartedAt = Date()
+        await sendHeartbeat(uid: uid, connectionID: connectionID)
+        return await waitForInbound(after: probeStartedAt, timeout: timeout)
+    }
+
+    private func waitForInbound(after probeStartedAt: Date, timeout: TimeInterval) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !Task.isCancelled {
+            if let lastInboundAt, lastInboundAt > probeStartedAt {
+                return true
+            }
+            if Date() >= deadline {
+                return false
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return false
+    }
+
     private func nextBackoff(attempt: Int) -> TimeInterval {
         let exp = min(maxBackoff, initialBackoff * pow(2.0, Double(attempt)))
         // Decorrelated jitter: between initialBackoff and exp inclusive.
         let jitter = Double.random(in: initialBackoff ... exp)
         return min(maxBackoff, jitter)
+    }
+}
+
+private actor IrohRelayStreamSendGate {
+    private let stream: any IrohRelayStream
+
+    init(stream: any IrohRelayStream) {
+        self.stream = stream
+    }
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {
+        try await stream.send(frame)
     }
 }
 

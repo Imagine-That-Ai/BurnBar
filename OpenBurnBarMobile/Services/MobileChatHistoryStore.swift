@@ -21,6 +21,12 @@ struct MobileChatThread: Identifiable, Codable, Equatable {
     var updatedAt: Date
     var messages: [MobileChatMessage]
 
+    // Custom metadata fields for custom title, HSL label color, pinning, and priority order
+    var customTitle: String? = nil
+    var labelColorHex: String? = nil
+    var isPinned: Bool? = nil
+    var priorityOrder: Int? = nil
+
     var messageCount: Int { messages.count }
 
     var recentAttachmentPreviews: [HermesAttachment] {
@@ -378,7 +384,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
     func upsert(_ thread: MobileChatThread) async throws {
         let uid = try resolveUID()
         let db = firestoreProvider()
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "id": thread.id,
             "runtime": thread.runtime,
             "title": thread.title,
@@ -389,6 +395,18 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             "messageCount": thread.messageCount,
             "messages": thread.messages.map(Self.encodeMessageForCloud)
         ]
+        if let customTitle = thread.customTitle {
+            payload["customTitle"] = customTitle
+        }
+        if let labelColorHex = thread.labelColorHex {
+            payload["labelColorHex"] = labelColorHex
+        }
+        if let isPinned = thread.isPinned {
+            payload["isPinned"] = isPinned
+        }
+        if let priorityOrder = thread.priorityOrder {
+            payload["priorityOrder"] = priorityOrder
+        }
         try await Self.collection(for: db, uid: uid).document(thread.id).setData(payload, merge: false)
     }
 
@@ -505,6 +523,12 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? createdAt
         let rawMessages = (data["messages"] as? [[String: Any]]) ?? []
         let messages = rawMessages.compactMap(decodeMessage)
+
+        let customTitle = data["customTitle"] as? String
+        let labelColorHex = data["labelColorHex"] as? String
+        let isPinned = data["isPinned"] as? Bool
+        let priorityOrder = data["priorityOrder"] as? Int
+
         return MobileChatThread(
             id: id,
             runtime: runtime,
@@ -513,7 +537,11 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             modelName: modelName,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            messages: messages
+            messages: messages,
+            customTitle: customTitle,
+            labelColorHex: labelColorHex,
+            isPinned: isPinned,
+            priorityOrder: priorityOrder
         )
     }
 
@@ -774,6 +802,29 @@ final class MobileChatHistoryStore {
         threads = Self.sorted(threads)
         saveLocally()
         scheduleCloudMirror(for: updated)
+    }
+
+    func updateThreadMetadata(
+        id: String,
+        customTitle: String? = nil,
+        labelColorHex: String? = nil,
+        isPinned: Bool? = nil,
+        priorityOrder: Int? = nil
+    ) {
+        guard var thread = thread(id: id) else { return }
+        if customTitle != nil {
+            thread.customTitle = customTitle
+        }
+        if let color = labelColorHex {
+            thread.labelColorHex = color == "#NONE#" ? nil : color
+        }
+        if let pin = isPinned {
+            thread.isPinned = pin
+        }
+        if let prio = priorityOrder {
+            thread.priorityOrder = prio
+        }
+        upsert(thread)
     }
 
     func delete(threadID: String) {

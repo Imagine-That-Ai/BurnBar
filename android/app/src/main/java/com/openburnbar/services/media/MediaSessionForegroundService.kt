@@ -6,22 +6,18 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.openburnbar.MainActivity
 
 /**
- * Foreground service that keeps a Mercury 1:1 call session alive when
- * the user switches away from BurnBar. Aggregates the granular Android
- * 14+ foreground-service sub-types so a single persistent notification
- * covers microphone + camera + media projection + phone call usage.
+ * Service that owns the persistent Mercury return-to-call notification.
  *
  * The service is intentionally thin — call setup / teardown lives in
- * `CallSessionCoordinator`. The service exists to satisfy the
- * `Notification.CallStyle` lifecycle contract: a call must own a
- * persistent CallStyle notification while audio is captured.
+ * `CallSessionCoordinator`. It does not capture camera, microphone, or
+ * screen content itself, so it deliberately avoids Android foreground
+ * service permissions and their Play Console declaration path.
  */
 class MediaSessionForegroundService : Service() {
 
@@ -30,20 +26,19 @@ class MediaSessionForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         ensureNotificationChannel(this)
         val notification = buildCallStyleNotification()
-        startForegroundCompat(notification)
+        showCallNotification(notification)
         return START_STICKY
     }
 
-    private fun startForegroundCompat(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
-            startForeground(NOTIFICATION_ID, notification, type)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+    override fun onDestroy() {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.cancel(NOTIFICATION_ID)
+        super.onDestroy()
+    }
+
+    private fun showCallNotification(notification: Notification) {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        manager.notify(NOTIFICATION_ID, notification)
     }
 
     private fun buildCallStyleNotification(): Notification {
@@ -90,11 +85,7 @@ class MediaSessionForegroundService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, MediaSessionForegroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            context.startService(intent)
         }
 
         fun stop(context: Context) {

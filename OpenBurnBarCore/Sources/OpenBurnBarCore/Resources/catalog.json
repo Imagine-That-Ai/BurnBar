@@ -1415,14 +1415,14 @@
       "id": "xai",
       "displayName": "xAI",
       "baseURL": "https://api.x.ai/v1",
-      "visibility": "hidden",
+      "visibility": "public",
       "logoKey": "GrokLogo",
       "capabilities": ["routing", "accounting"],
       "models": [
         {
           "id": "grok-4-family",
           "displayName": "Grok 4 Family",
-          "visibility": "hidden",
+          "visibility": "public",
           "aliases": ["grok-4"],
           "matchers": [
             { "all": ["grok", "4"], "any": [], "none": ["fast", "mini"] }
@@ -1436,7 +1436,7 @@
         {
           "id": "grok-4-fast-family",
           "displayName": "Grok 4 Fast Family",
-          "visibility": "hidden",
+          "visibility": "public",
           "aliases": ["grok-4-fast", "grok-4.1-fast"],
           "matchers": [
             { "all": ["grok", "4", "fast"], "any": [], "none": [] },

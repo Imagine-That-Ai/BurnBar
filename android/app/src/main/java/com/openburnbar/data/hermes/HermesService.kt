@@ -7,6 +7,9 @@ import com.openburnbar.data.assistants.AssistantChatMessage
 import com.openburnbar.data.assistants.AssistantChatThread
 import com.openburnbar.data.assistants.AssistantChatTokenUsage
 import com.openburnbar.data.assistants.AssistantChatToolCall
+import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
+import com.openburnbar.data.computeruse.AgentCapabilityGrantState
+import com.openburnbar.data.computeruse.AgentDesktopCapability
 import com.openburnbar.data.hermes.relay.HermesRelayClient
 import com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor
 import com.openburnbar.data.hermes.relay.HermesRelayCrypto
@@ -25,6 +28,7 @@ import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -256,6 +260,16 @@ class HermesService(
         _isConnected.value = false
     }
 
+    fun ensureDesktopGrantThreadID(): String {
+        if (_currentConversationID.value == null) {
+            _currentConversationID.value = UUID.randomUUID().toString()
+        }
+        if (_currentThreadID.value == null) {
+            _currentThreadID.value = _currentConversationID.value
+        }
+        return _currentConversationID.value ?: UUID.randomUUID().toString()
+    }
+
     fun sendMessage(content: String, modelName: String = "hermes", conversationId: String? = null) {
         sendMessage(content, modelName, attachments = emptyList(), conversationIdHint = conversationId)
     }
@@ -306,6 +320,29 @@ class HermesService(
             timestamp = System.currentTimeMillis()
         )
         persistCurrentThread()
+
+        if (shouldUseDesktopAgentRelay(conversationId)) {
+            if (attachments.isNotEmpty()) {
+                appendAssistantError(
+                    "Desktop agent relay from Android accepts text prompts today. Remove attachments and try again.",
+                    resolvedModelName,
+                )
+                return
+            }
+            _isStreaming.value = true
+            scope.launch {
+                try {
+                    streamDesktopAgentRelayCompletion(
+                        prompt = content,
+                        modelName = resolvedModelName,
+                        conversationId = conversationId ?: return@launch,
+                    )
+                } finally {
+                    _isStreaming.value = false
+                }
+            }
+            return
+        }
 
         val selected = _selectedConnection.value
         when (selected.mode) {
@@ -1106,6 +1143,64 @@ class HermesService(
             timestamp = System.currentTimeMillis()
         )
         persistCurrentThread()
+    }
+
+    private fun shouldUseDesktopAgentRelay(threadId: String?): Boolean {
+        val resolved = threadId ?: return false
+        return AgentCapabilityGrantState.optimisticGrant(AssistantRuntimeID.HERMES.token, resolved) != null
+    }
+
+    private suspend fun streamDesktopAgentRelayCompletion(
+        prompt: String,
+        modelName: String,
+        conversationId: String,
+    ) {
+        val grant = AgentCapabilityGrantState.optimisticGrant(AssistantRuntimeID.HERMES.token, conversationId)
+            ?: throw IllegalStateException("Hermes desktop permissions are not active.")
+        val assistantID = UUID.randomUUID().toString()
+        upsertStreamingAssistant(
+            id = assistantID,
+            content = "Queued on your Mac...",
+            modelName = modelName,
+            isStreaming = true,
+        )
+        val dispatcher = CLIAgentMissionDispatcher()
+        val requestID = dispatcher.dispatch(
+            title = derivedTitleForDesktopRelay(),
+            prompt = prompt,
+            missionKind = "chat",
+            requestedRuntime = AssistantRuntimeID.HERMES.token,
+            approvalMode = "existing_policy",
+            commandsAllowed = grant.capabilities.any {
+                it == AgentDesktopCapability.SHELL.wireValue ||
+                    it == AgentDesktopCapability.SHELL_UNRESTRICTED.wireValue
+            },
+            fileEditsAllowed = grant.capabilities.contains(AgentDesktopCapability.WORKSPACE_WRITE.wireValue),
+            requestedModelID = modelName,
+            clientThreadID = conversationId,
+            resumeAction = "continue",
+        )
+        dispatcher.observe(requestID).first { snapshot ->
+            val text = snapshot.errorMessage
+                ?: snapshot.resultPreview
+                ?: snapshot.displayLiveSummary
+                ?: snapshot.events.lastOrNull()?.message
+                ?: "Waiting for your Mac..."
+            upsertStreamingAssistant(
+                id = assistantID,
+                content = text,
+                modelName = snapshot.selectedModelID ?: modelName,
+                isStreaming = !snapshot.isTerminal,
+                isError = snapshot.errorMessage != null,
+            )
+            if (snapshot.isTerminal) persistCurrentThread()
+            snapshot.isTerminal
+        }
+    }
+
+    private fun derivedTitleForDesktopRelay(): String {
+        val firstUserText = _messages.value.firstOrNull { it.role == "user" }?.content.orEmpty()
+        return firstUserText.take(64).ifBlank { "Hermes desktop chat" }
     }
 
     private fun selectedEndpointURL(): String? {

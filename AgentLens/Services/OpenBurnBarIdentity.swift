@@ -107,6 +107,12 @@ struct OpenBurnBarAppPaths {
         supportDirectory.appendingPathComponent("codex_rollout_scan_cache.json")
     }
 
+    /// Scratch directory for adapter-side caches (e.g. xAI team-id discovery).
+    /// Files inside are best-effort caches and can be regenerated.
+    var providerQuotaScratchDirectory: URL {
+        supportDirectory.appendingPathComponent("ProviderQuotaScratch", isDirectory: true)
+    }
+
     var vectorIndexesRootURL: URL {
         supportDirectory.appendingPathComponent("VectorIndexes", isDirectory: true)
     }

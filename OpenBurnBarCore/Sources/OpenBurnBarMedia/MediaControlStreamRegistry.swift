@@ -27,36 +27,95 @@ public actor MediaControlStreamRegistry {
         }
     }
 
-    private var streams: [Key: any IrohRelayStream] = [:]
-    private var lastUpdatedAt: [Key: Date] = [:]
+    public struct Lease: Sendable {
+        public let key: Key
+        public var id: UUID { generation }
+        fileprivate let generation: UUID
+
+        fileprivate init(key: Key, generation: UUID) {
+            self.key = key
+            self.generation = generation
+        }
+    }
+
+    public struct InvalidationResult: Sendable, Equatable {
+        public let didInvalidate: Bool
+        public let removedLastStreamForConnection: Bool
+    }
+
+    private struct Entry: Sendable {
+        let stream: any IrohRelayStream
+        let generation: UUID
+        let order: UInt64
+    }
+
+    private var streams: [Key: [Entry]] = [:]
+    private var nextOrder: UInt64 = 0
     private let pollInterval: UInt64
 
     public init(pollIntervalNanoseconds: UInt64 = 200_000_000) {
         self.pollInterval = pollIntervalNanoseconds
     }
 
-    public func register(stream: any IrohRelayStream, uid: String, connectionID: String) {
+    @discardableResult
+    public func register(stream: any IrohRelayStream, uid: String, connectionID: String) -> Lease {
         let key = Key(uid: uid, connectionID: connectionID)
-        // Replace any stale entry — if iOS reconnected and re-dialed a
-        // control stream while the previous one was orphaned, the new
-        // one wins.
-        if let existing = streams[key] {
-            Task { await existing.close() }
-        }
-        streams[key] = stream
-        lastUpdatedAt[key] = Date()
+        // Keep sibling streams for the same Mac connection alive. iPhone
+        // and Android share the Mac pairing `connectionID`, so replacing
+        // here makes them close each other in a reconnect loop. Latest
+        // still wins for Mac-initiated sends; each lease cleans up only
+        // the stream it registered.
+        let generation = UUID()
+        nextOrder += 1
+        streams[key, default: []].append(
+            Entry(stream: stream, generation: generation, order: nextOrder)
+        )
+        return Lease(key: key, generation: generation)
     }
 
-    public func invalidate(uid: String, connectionID: String) {
+    @discardableResult
+    public func invalidate(uid: String, connectionID: String) -> Bool {
         let key = Key(uid: uid, connectionID: connectionID)
-        if let existing = streams.removeValue(forKey: key) {
-            Task { await existing.close() }
+        guard let entries = streams.removeValue(forKey: key), !entries.isEmpty else {
+            return false
         }
-        lastUpdatedAt.removeValue(forKey: key)
+        for entry in entries {
+            Task { await entry.stream.close() }
+        }
+        return true
+    }
+
+    @discardableResult
+    public func invalidate(_ lease: Lease) -> Bool {
+        invalidateWithResult(lease).removedLastStreamForConnection
+    }
+
+    @discardableResult
+    public func invalidateWithResult(_ lease: Lease) -> InvalidationResult {
+        guard var entries = streams[lease.key],
+              let index = entries.firstIndex(where: { $0.generation == lease.generation }) else {
+            return InvalidationResult(
+                didInvalidate: false,
+                removedLastStreamForConnection: false
+            )
+        }
+        let entry = entries.remove(at: index)
+        if entries.isEmpty {
+            streams.removeValue(forKey: lease.key)
+        } else {
+            streams[lease.key] = entries
+        }
+        Task { await entry.stream.close() }
+        return InvalidationResult(
+            didInvalidate: true,
+            removedLastStreamForConnection: entries.isEmpty
+        )
     }
 
     public func stream(uid: String, connectionID: String) -> (any IrohRelayStream)? {
-        streams[Key(uid: uid, connectionID: connectionID)]
+        streams[Key(uid: uid, connectionID: connectionID)]?
+            .max { lhs, rhs in lhs.order < rhs.order }?
+            .stream
     }
 
     /// Most recently registered stream for a given user, regardless of
@@ -64,14 +123,19 @@ public actor MediaControlStreamRegistry {
     /// caller doesn't have a known connectionID — common during ad-hoc
     /// pair-debug from the Mac chat input.
     public func latestStream(uid: String) -> (key: Key, stream: any IrohRelayStream)? {
-        let candidates = streams.filter { $0.key.uid == uid }
-        guard !candidates.isEmpty else { return nil }
-        let mostRecent = candidates.max { lhs, rhs in
-            (lastUpdatedAt[lhs.key] ?? .distantPast) <
-                (lastUpdatedAt[rhs.key] ?? .distantPast)
+        let candidates = streams.compactMap { key, entries -> (key: Key, entry: Entry)? in
+            guard key.uid == uid,
+                  let entry = entries.max(by: { lhs, rhs in lhs.order < rhs.order }) else {
+                return nil
+            }
+            return (key, entry)
         }
-        guard let chosen = mostRecent else { return nil }
-        return (key: chosen.key, stream: chosen.value)
+        guard let chosen = candidates.max(by: { lhs, rhs in
+            lhs.entry.order < rhs.entry.order
+        }) else {
+            return nil
+        }
+        return (key: chosen.key, stream: chosen.entry.stream)
     }
 
     /// Wait up to `timeout` seconds for a stream to appear for the given
@@ -92,5 +156,7 @@ public actor MediaControlStreamRegistry {
         return nil
     }
 
-    public func activeStreamCount() -> Int { streams.count }
+    public func activeStreamCount() -> Int {
+        streams.values.reduce(0) { $0 + $1.count }
+    }
 }

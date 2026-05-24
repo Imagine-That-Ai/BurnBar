@@ -284,7 +284,7 @@ private fun Content(
         }
 
         StaggeredEntrance(delay = 50) {
-            VelocityForecastCard(rollups = rollups)
+            VelocityForecastCard(rollups = rollups, liveUsages = pulseUsages)
         }
 
         StaggeredEntrance(delay = 75) {
@@ -599,13 +599,36 @@ private fun trailingWindowLabel(scope: PulseTimelineScope): String = when (scope
 }
 
 @Composable
-fun VelocityForecastCard(rollups: UsageRollups) {
+fun VelocityForecastCard(
+    rollups: UsageRollups,
+    liveUsages: List<TokenUsage> = emptyList()
+) {
     // End-of-Day projection: scale today's spend by elapsed-day fraction so the
     // ring fills the way iOS does (17% of day at ~4am, 100% at midnight).
-    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) +
-               java.util.Calendar.getInstance().get(java.util.Calendar.MINUTE) / 60.0
+    val calendar = java.util.Calendar.getInstance()
+    val hour = calendar.get(java.util.Calendar.HOUR_OF_DAY) +
+               calendar.get(java.util.Calendar.MINUTE) / 60.0
     val dayFraction = (hour / 24.0).coerceIn(0.001, 1.0)
-    val projected = rollups.today / dayFraction
+
+    // Compute local-day cost from live usage events. The rollup "today"
+    // document is keyed to the UTC date, which can diverge from the
+    // user's local calendar day (e.g. at 7 PM CDT the UTC date rolls
+    // over, resetting the rollup to ~$0). Supplementing with live data
+    // ensures the forecast always reflects reality.
+    val startOfDayMillis = calendar.clone().let { cal ->
+        (cal as java.util.Calendar).apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+    val liveDayCost = liveUsages
+        .filter { maxOf(it.startTime, it.endTime) >= startOfDayMillis }
+        .sumOf { maxOf(0.0, it.effectiveCost) }
+    val bestTodayCost = maxOf(rollups.today, liveDayCost)
+
+    val projected = bestTodayCost / dayFraction
     val sevenDayAvg = rollups.sevenDays / 7.0
     val aheadOfPace = projected > sevenDayAvg
 
@@ -819,16 +842,24 @@ private data class QuotaPulseSummary(
 
 private fun quotaPulseSummary(snapshot: ProviderQuotaSnapshot): QuotaPulseSummary {
     val constrained = snapshot.buckets
-        .filter { it.limit > 0 }
-        .minByOrNull { maxOf(0.0, it.remaining) / it.limit }
+        .mapNotNull { bucket ->
+            bucket.displayRemainingFraction?.let { fraction -> bucket to fraction }
+        }
+        .minByOrNull { it.second }
 
     if (constrained != null) {
-        val pct = (maxOf(0.0, constrained.remaining) / constrained.limit * 100).toInt()
-        val label = quotaBucketLabel(constrained)
+        val bucket = constrained.first
+        val pct = (constrained.second * 100).toInt()
+        val label = quotaBucketLabel(bucket)
+        val detail = if (bucket.limit > 0) {
+            "Remaining: ${formatQuotaAmount(bucket.remaining, bucket.name)} of ${formatQuotaAmount(bucket.limit, bucket.name)}"
+        } else {
+            "Remaining: ${formatQuotaAmount(bucket.remaining, bucket.name)}"
+        }
         return QuotaPulseSummary(
             label = label,
             metric = "$pct% left",
-            detail = "Remaining: ${formatQuotaAmount(constrained.remaining, constrained.name)} of ${formatQuotaAmount(constrained.limit, constrained.name)}"
+            detail = detail
         )
     }
 

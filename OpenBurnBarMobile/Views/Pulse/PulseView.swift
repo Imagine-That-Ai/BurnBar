@@ -71,7 +71,8 @@ struct PulseView: View {
                     VelocityForecastCard(
                         todayTotals: dashboard.windowTotals[.today],
                         trailingTotals: dashboard.windowTotals[.sevenDays],
-                        displayMode: displayMode
+                        displayMode: displayMode,
+                        liveUsages: liveUsagesForPulse
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.10)
@@ -231,7 +232,7 @@ struct PulseView: View {
 
     private var topProvider: AgentProvider? {
         guard let topKey = dashboard.topProviders.first?.provider else { return nil }
-        return AgentProvider.fromPersistedToken(topKey)
+        return AgentProvider.fromCatalogProviderID(topKey) ?? AgentProvider.fromPersistedToken(topKey)
     }
 
     private var liveUsagesForPulse: [TokenUsage] {

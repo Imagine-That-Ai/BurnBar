@@ -122,12 +122,18 @@ final class FirestoreRepository {
         if enriched["id"] == nil {
             enriched["id"] = docID
         }
-        if T.self == TokenUsage.self,
-           let rawProvider = enriched["provider"] as? String {
-            let providerID = ProviderID(rawValue: rawProvider)
-            if let provider = AgentProvider.fromProviderID(providerID) ?? AgentProvider.fromPersistedToken(rawProvider) {
-                enriched["provider"] = provider.rawValue
+        if T.self == TokenUsage.self {
+            if let rawProvider = enriched["provider"] as? String {
+                let providerID = ProviderID(rawValue: rawProvider)
+                if let provider = AgentProvider.fromProviderID(providerID) ?? AgentProvider.fromPersistedToken(rawProvider) {
+                    enriched["provider"] = provider.rawValue
+                }
             }
+            let cost = (enriched["cost"] as? Double) ?? (enriched["cost"] as? NSNumber)?.doubleValue
+            let costUsd = (enriched["costUsd"] as? Double) ?? (enriched["costUsd"] as? NSNumber)?.doubleValue
+            let effectiveCost = cost ?? costUsd ?? 0.0
+            enriched["cost"] = effectiveCost
+            enriched["costUsd"] = effectiveCost
         }
         if enriched["deviceId"] != nil && enriched["sourceDeviceId"] == nil {
             enriched["sourceDeviceId"] = enriched["deviceId"]

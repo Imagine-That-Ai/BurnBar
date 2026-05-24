@@ -138,7 +138,7 @@ public enum DesignSystemColors {
         case .cursor:     return Color(hex: "B4B8C0")
         case .openAI:     return Color(hex: "00A67E")
         case .deepSeek:   return Color(hex: "6366F1")
-        case .codex:      return Color(hex: "00A67E")
+        case .codex:      return Color(hex: "2563EB")
         case .zai:        return Color(hex: "8B5CF6")
         case .minimax:    return Color(hex: "F59E0B")
         case .kimi:       return Color(hex: "6366F1")
@@ -157,6 +157,7 @@ public enum DesignSystemColors {
         case .windsurf:   return Color(hex: "06B6D4")
         case .warp:       return Color(hex: "DDE4EA")
         case .openCode:   return Color(hex: "2563EB")
+        case .xAI:        return Color(hex: "1A1A1A")
         }
     }
 
@@ -169,7 +170,7 @@ public enum DesignSystemColors {
         case .cursor:     return Color(hex: "1A1A1A")
         case .openAI:     return Color(hex: "00C48C")
         case .deepSeek:   return Color(hex: "818CF8")
-        case .codex:      return Color(hex: "00C48C")
+        case .codex:      return Color(hex: "60A5FA")
         case .zai:        return Color(hex: "A78BFA")
         case .minimax:    return Color(hex: "FCD34D")
         case .kimi:       return Color(hex: "818CF8")
@@ -188,6 +189,7 @@ public enum DesignSystemColors {
         case .windsurf:   return Color(hex: "22D3EE")
         case .warp:       return Color(hex: "111111")
         case .openCode:   return Color(hex: "93C5FD")
+        case .xAI:        return Color(hex: "4A4A4A")
         }
     }
     public static func colorForModel(_ modelName: String) -> Color {
@@ -276,7 +278,7 @@ public enum DesignSystemColors {
         case .cursor:      return "B4B8C0"
         case .openAI:      return "00A67E"
         case .deepSeek:    return "6366F1"
-        case .codex:       return "00A67E"
+        case .codex:       return "2563EB"
         case .zai:         return "8B5CF6"
         case .minimax:     return "F59E0B"
         case .kimi:        return "6366F1"
@@ -295,6 +297,7 @@ public enum DesignSystemColors {
         case .windsurf:    return "06B6D4"
         case .warp:        return "DDE4EA"
         case .openCode:    return "2563EB"
+        case .xAI:         return "1A1A1A"
         }
     }
 

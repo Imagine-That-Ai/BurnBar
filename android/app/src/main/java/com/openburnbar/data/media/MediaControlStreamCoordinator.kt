@@ -1,14 +1,18 @@
 package com.openburnbar.data.media
 
 import android.util.Log
+import com.openburnbar.data.computeruse.AgentCapabilityGrantState
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallInvite
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayLongTermReferenceAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorStop
 import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
 import com.openburnbar.irohrelay.IrohRelayStream
 import java.io.ByteArrayOutputStream
@@ -86,7 +90,7 @@ class MediaControlStreamCoordinator(
     private var activeUID: String? = null
     private var activeConnectionID: String? = null
     private var pendingLive: MutableList<CompletableDeferred<IrohRelayStream>> = mutableListOf()
-    private val mediaPacketCodec = MediaPacketCodec()
+    private val mediaPacketCodec = MediaPacketCodec(maxPayloadBytes = MediaFrameV2Codec.DEFAULT_MAX_PAYLOAD_BYTES)
     private val mediaFrameV2Codec = MediaFrameV2Codec()
     private val frameChunkAssembler = MediaFrameChunkAssembler()
 
@@ -107,6 +111,19 @@ class MediaControlStreamCoordinator(
 
     private val _lastCallAck = MutableStateFlow<HermesRealtimeRelayCallAck?>(null)
     val lastCallAck: StateFlow<HermesRealtimeRelayCallAck?> = _lastCallAck.asStateFlow()
+
+    private val _lastAgentGrantReceipt = MutableStateFlow<HermesRealtimeRelayAgentGrantReceipt?>(null)
+    val lastAgentGrantReceipt: StateFlow<HermesRealtimeRelayAgentGrantReceipt?> =
+        _lastAgentGrantReceipt.asStateFlow()
+
+    private val _lastControlDenied = MutableStateFlow<HermesRealtimeRelayControlDenied?>(null)
+    val lastControlDenied: StateFlow<HermesRealtimeRelayControlDenied?> =
+        _lastControlDenied.asStateFlow()
+
+    private val _lastPeerHeartbeatAtMillis = MutableStateFlow(0L)
+    val lastPeerHeartbeatAtMillis: StateFlow<Long> = _lastPeerHeartbeatAtMillis.asStateFlow()
+    private val _lastPeerCapabilities = MutableStateFlow<Set<String>>(emptySet())
+    val lastPeerCapabilities: StateFlow<Set<String>> = _lastPeerCapabilities.asStateFlow()
 
     private val _activePair = MutableStateFlow<ActivePair?>(null)
     val activePair: StateFlow<ActivePair?> = _activePair.asStateFlow()
@@ -175,6 +192,27 @@ class MediaControlStreamCoordinator(
         )
         logInfo("Mercury mirror request sent requestID=$requestID connectionID=$connectionID")
         return requestID
+    }
+
+    suspend fun stopMirror(requestID: String, reason: String? = null) {
+        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_STOP,
+                uid = uid,
+                connectionId = connectionID,
+                requestId = requestID,
+                media = HermesRealtimeRelayMediaPayload(
+                    mirrorStop = HermesRealtimeRelayMirrorStop(
+                        requestId = requestID,
+                        stoppedAt = swiftReferenceDateSecondsNow(),
+                        reason = reason,
+                    )
+                ),
+            )
+        )
+        logInfo("Mercury mirror stop sent requestID=$requestID connectionID=$connectionID reason=${reason.orEmpty()}")
     }
 
     suspend fun sendLongTermReferenceAcknowledgement(
@@ -325,7 +363,19 @@ class MediaControlStreamCoordinator(
                         handleStreamFrame(frame)
                     }
                     HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT -> {
-                        // Presence updates are consumed by the Square connection store.
+                        _lastPeerHeartbeatAtMillis.value = System.currentTimeMillis()
+                        _lastPeerCapabilities.value = frame.media?.presence?.capabilities.orEmpty().toSet()
+                    }
+                    HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_RECEIPT -> {
+                        frame.control?.agentGrantReceipt?.let { receipt ->
+                            _lastAgentGrantReceipt.value = receipt
+                            AgentCapabilityGrantState.apply(receipt)
+                        }
+                    }
+                    HermesRealtimeRelayFrameType.CONTROL_DENIED -> {
+                        frame.control?.denied?.let { denied ->
+                            _lastControlDenied.value = denied
+                        }
                     }
                     HermesRealtimeRelayFrameType.MEDIA_CLASSIFY -> {
                         // Re-classification mid-stream — protocol noise.
@@ -376,6 +426,9 @@ class MediaControlStreamCoordinator(
             ),
         )
 
+    private fun swiftReferenceDateSecondsNow(): Double =
+        (System.currentTimeMillis() / 1_000.0) - SWIFT_REFERENCE_DATE_UNIX_SECONDS
+
     private suspend fun handleStreamFrame(frame: HermesRealtimeRelayFrame) {
         val media = frame.media ?: return
         if (media.streamClass != MediaStreamClass.SCREEN_VIDEO.raw) return
@@ -413,6 +466,7 @@ class MediaControlStreamCoordinator(
 
     private companion object {
         private const val TAG = "BurnBar"
+        private const val SWIFT_REFERENCE_DATE_UNIX_SECONDS = 978_307_200.0
     }
 }
 

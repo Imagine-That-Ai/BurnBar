@@ -67,6 +67,25 @@ class MediaPacketCodecTest {
     }
 
     @Test
+    fun custom_payload_ceiling_allows_chunkable_mirror_frames() {
+        val codec = MediaPacketCodec(maxPayloadBytes = MediaFrameV2Codec.DEFAULT_MAX_PAYLOAD_BYTES)
+        val source = MediaFrame(
+            kind = MediaFrame.Kind.VIDEO_NAL,
+            flags = MediaFrame.Flags.KEYFRAME,
+            gopID = 9u,
+            frameIndex = 2u,
+            presentationTimestampMillis = 1_777uL,
+            payload = ByteArray(MediaPacketCodec.DEFAULT_MAX_PAYLOAD_BYTES + (64 * 1024)) { 0x7A },
+        )
+
+        val encoded = codec.encode(source)
+        val decoded = codec.decode(encoded)
+
+        assertEquals(source, decoded.frame)
+        assertEquals(encoded.size, decoded.consumed)
+    }
+
+    @Test
     fun decode_rejects_truncated_envelope() {
         val codec = MediaPacketCodec()
         // 4-byte length prefix + half a header is not enough.

@@ -54,6 +54,12 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
     /// stay metadata-only; file bytes remain in the per-thread workspace.
     public let attachments: [HermesAttachment]
 
+    // Custom metadata fields for Rename, HSL color labels, Pinning, and priority reordering
+    public let customTitle: String?
+    public let labelColorHex: String?
+    public let isPinned: Bool
+    public let priorityOrder: Int
+
     public enum Source: String, Codable, Sendable, Hashable {
         case hermes
         case pi
@@ -73,7 +79,11 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
         source: Source,
         liveMissionID: String? = nil,
         searchText: String? = nil,
-        attachments: [HermesAttachment] = []
+        attachments: [HermesAttachment] = [],
+        customTitle: String? = nil,
+        labelColorHex: String? = nil,
+        isPinned: Bool = false,
+        priorityOrder: Int = 0
     ) {
         self.id = id
         self.agentURI = agentURI
@@ -86,19 +96,42 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
         self.source = source
         self.liveMissionID = liveMissionID
         self.attachments = attachments
+        self.customTitle = customTitle
+        self.labelColorHex = labelColorHex
+        self.isPinned = isPinned
+        self.priorityOrder = priorityOrder
     }
 }
 
 // MARK: - Grouping
 
 extension Array where Element == ThreadInboxItem {
-    /// Sort by attention first (needs-attention rows on top), then by
-    /// recency. Matches the plan §3 diagram's "needs-attention" sort.
+    /// Sort by isPinned first, then needs-attention, then priorityOrder
+    /// (ascending, where values > 0 take precedence over 0), then recency.
     public func sortedForInbox() -> [ThreadInboxItem] {
         sorted { a, b in
+            let pinA = a.isPinned
+            let pinB = b.isPinned
+            if pinA != pinB {
+                return pinA && !pinB
+            }
+
             if a.needsAttention != b.needsAttention {
                 return a.needsAttention && !b.needsAttention
             }
+
+            let prioA = a.priorityOrder
+            let prioB = b.priorityOrder
+            if prioA != prioB {
+                if prioA > 0 && prioB > 0 {
+                    return prioA < prioB
+                } else if prioA > 0 {
+                    return true
+                } else if prioB > 0 {
+                    return false
+                }
+            }
+
             return a.lastActivityAt > b.lastActivityAt
         }
     }

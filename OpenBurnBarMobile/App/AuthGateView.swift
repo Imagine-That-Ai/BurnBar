@@ -189,7 +189,7 @@ private struct MobileE2ECloudStoreRouteView: View {
 
     var body: some View {
         Group {
-            if isSignedIn {
+            if isSignedIn || MobileE2ERoute.allowsGuestCloudStore {
                 NavigationStack {
                     CloudStoreView()
                 }
@@ -207,8 +207,8 @@ private struct MobileE2ECloudStoreRouteView: View {
                 }
             }
         }
-        .task(id: isSignedIn) {
-            if isSignedIn {
+        .task(id: isSignedIn || MobileE2ERoute.allowsGuestCloudStore) {
+            if isSignedIn || MobileE2ERoute.allowsGuestCloudStore {
                 await subscriptionStore.load()
             }
         }

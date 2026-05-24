@@ -288,11 +288,13 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(ollama.usesDirectCLI)
     }
 
-    func test_cliAgentRelayExecutor_classifiesCodexAndClaudeOnly() {
+    func test_cliAgentRelayExecutor_classifiesSupportedChatBackends() {
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "codex"), .codex)
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "claude-code"), .claude)
-        XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "hermes"))
-        XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "openclaw"))
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "hermes"), .hermes)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "openclaw"), .openclaw)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "pi-agent"), .piAgent)
+        XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "unknown"))
     }
 
     func test_missionRuntimePlanner_selectsMissionKindFallbacksFromEnabledBackends() {

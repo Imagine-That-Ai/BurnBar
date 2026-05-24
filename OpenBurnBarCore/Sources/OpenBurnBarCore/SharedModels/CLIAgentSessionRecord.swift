@@ -85,6 +85,12 @@ public struct CLIAgentSessionRecord: Codable, Identifiable, Hashable, Sendable {
     /// cloud vault rather than plaintext `messages`.
     public var encryptedTranscriptAvailable: Bool
 
+    // Custom metadata fields for custom title, HSL label color, pinning, and priority order
+    public var customTitle: String?
+    public var labelColorHex: String?
+    public var isPinned: Bool?
+    public var priorityOrder: Int?
+
     public static let currentSchemaVersion = 1
 
     public init(
@@ -102,7 +108,11 @@ public struct CLIAgentSessionRecord: Codable, Identifiable, Hashable, Sendable {
         messages: [CLIAgentMessage] = [],
         tokenUsage: CLIAgentTokenUsage? = nil,
         resumeHandle: CLIAgentResumeHandle? = nil,
-        encryptedTranscriptAvailable: Bool = false
+        encryptedTranscriptAvailable: Bool = false,
+        customTitle: String? = nil,
+        labelColorHex: String? = nil,
+        isPinned: Bool? = nil,
+        priorityOrder: Int? = nil
     ) {
         self.id = id
         self.agent = agent
@@ -119,6 +129,10 @@ public struct CLIAgentSessionRecord: Codable, Identifiable, Hashable, Sendable {
         self.tokenUsage = tokenUsage
         self.resumeHandle = resumeHandle
         self.encryptedTranscriptAvailable = encryptedTranscriptAvailable
+        self.customTitle = customTitle
+        self.labelColorHex = labelColorHex
+        self.isPinned = isPinned
+        self.priorityOrder = priorityOrder
     }
 
     /// `true` when the session has been finalised — no more messages will
@@ -302,6 +316,10 @@ public enum CLIAgentSessionCodec {
         let tokenUsage = (data["tokenUsage"] as? [String: Any]).flatMap(decodeTokenUsage)
         let resumeHandle = (data["resumeHandle"] as? [String: Any]).flatMap(decodeResumeHandle)
         let encryptedTranscriptAvailable = (data["encryptedTranscriptAvailable"] as? Bool) ?? false
+        let customTitle = (data["customTitle"] as? String).flatMap(nonBlank)
+        let labelColorHex = (data["labelColorHex"] as? String).flatMap(nonBlank)
+        let isPinned = data["isPinned"] as? Bool
+        let priorityOrder = data["priorityOrder"] as? Int
         return CLIAgentSessionRecord(
             id: id,
             agent: agent,
@@ -317,7 +335,11 @@ public enum CLIAgentSessionCodec {
             messages: messages,
             tokenUsage: tokenUsage,
             resumeHandle: resumeHandle,
-            encryptedTranscriptAvailable: encryptedTranscriptAvailable
+            encryptedTranscriptAvailable: encryptedTranscriptAvailable,
+            customTitle: customTitle,
+            labelColorHex: labelColorHex,
+            isPinned: isPinned,
+            priorityOrder: priorityOrder
         )
     }
 
@@ -351,6 +373,18 @@ public enum CLIAgentSessionCodec {
         }
         if let resumeHandle = record.resumeHandle {
             dict["resumeHandle"] = encodeResumeHandle(resumeHandle)
+        }
+        if let customTitle = record.customTitle, !customTitle.isEmpty {
+            dict["customTitle"] = customTitle
+        }
+        if let labelColorHex = record.labelColorHex, !labelColorHex.isEmpty {
+            dict["labelColorHex"] = labelColorHex
+        }
+        if let isPinned = record.isPinned {
+            dict["isPinned"] = isPinned
+        }
+        if let priorityOrder = record.priorityOrder {
+            dict["priorityOrder"] = priorityOrder
         }
         return dict
     }

@@ -14,7 +14,7 @@ private func obbSecKeychainGetUserInteractionAllowed(_ allowed: UnsafeMutablePoi
 @_silgen_name("SecKeychainSetUserInteractionAllowed")
 private func obbSecKeychainSetUserInteractionAllowed(_ allowed: Bool) -> OSStatus
 
-private func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
+func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
     var previousAllowed = DarwinBoolean(true)
     let readStatus = obbSecKeychainGetUserInteractionAllowed(&previousAllowed)
     let disableStatus = obbSecKeychainSetUserInteractionAllowed(false)
@@ -30,7 +30,7 @@ private func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) ret
     return try operation()
 }
 #else
-private func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
+func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
     try operation()
 }
 #endif

@@ -176,6 +176,8 @@ struct ProviderCard: View {
                 .font(.system(size: 9, weight: .semibold))
             Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
         .padding(.horizontal, 9)
@@ -188,6 +190,7 @@ struct ProviderCard: View {
             Capsule()
                 .stroke(UnifiedDesignSystem.Colors.border.opacity(0.32), lineWidth: 0.5)
         )
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var secondaryMetricChip: some View {
@@ -196,6 +199,9 @@ struct ProviderCard: View {
                 .font(.system(size: 9, weight: .semibold))
             Text(secondaryMetricValue)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .allowsTightening(true)
         }
         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
         .padding(.horizontal, 9)
@@ -208,6 +214,7 @@ struct ProviderCard: View {
             Capsule()
                 .stroke(UnifiedDesignSystem.Colors.border.opacity(0.32), lineWidth: 0.5)
         )
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var primaryMetric: String {

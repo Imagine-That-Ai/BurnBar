@@ -177,6 +177,37 @@ final class AgentLiveStagePresenterTests: XCTestCase {
         XCTAssertFalse(presenter.chatPuckExpanded)
     }
 
+    // MARK: - PiP lifecycle
+
+    func test_enterMaximizeFromPiP_flips_to_maximize_and_clears_pip_state() {
+        let presenter = AgentLiveStagePresenter()
+        presenter.enterDock()
+        presenter.setPiPActive(true)
+        XCTAssertTrue(presenter.pipActive)
+
+        presenter.enterMaximizeFromPiP()
+
+        XCTAssertEqual(presenter.mode, .maximize)
+        XCTAssertFalse(presenter.pipActive)
+        XCTAssertFalse(presenter.chatPuckExpanded)
+        XCTAssertNil(presenter.collapseReason)
+    }
+
+    func test_session_end_clears_pip_active() async throws {
+        let state = AgentWatchState()
+        let presenter = AgentLiveStagePresenter()
+        presenter.observe(state)
+        state.setSession(id: ComputerUseSessionID("pip-end-1"), startedAt: .now)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        presenter.setPiPActive(true)
+
+        state.clear()
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertFalse(presenter.pipActive)
+        XCTAssertEqual(presenter.mode, .hidden)
+    }
+
     // MARK: - Corner snapping
 
     func test_nearestCorner_returns_correct_quadrant() {

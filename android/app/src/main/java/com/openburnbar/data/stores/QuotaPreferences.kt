@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.QuotaBucket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** Time-window classification used by the provider quota UI. */
 enum class QuotaWindowKind {
@@ -87,6 +90,36 @@ class QuotaPreferences private constructor(private val context: Context) {
         }
         .stateIn(scope, SharingStarted.Eagerly, QuotaWindowKind.FIVE_HOUR)
 
+    val providerOrder: StateFlow<List<AgentProvider>> = context.dataStore.data
+        .map { prefs ->
+            parseProviderOrder(prefs[KEY_PROVIDER_ORDER_CSV])
+        }
+        .stateIn(scope, SharingStarted.Eagerly, defaultOrder)
+
+    val visibleProviders: StateFlow<Set<AgentProvider>> = context.dataStore.data
+        .map { prefs ->
+            parseVisibleProviders(prefs[KEY_VISIBLE_PROVIDERS_CSV])
+        }
+        .stateIn(scope, SharingStarted.Eagerly, defaultOrder.toSet())
+
+    val hiddenBuckets: StateFlow<Set<String>> = context.dataStore.data
+        .map { prefs ->
+            parseHiddenBuckets(prefs[KEY_HIDDEN_BUCKETS_JSON])
+        }
+        .stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    val bucketOrders: StateFlow<Map<String, List<String>>> = context.dataStore.data
+        .map { prefs ->
+            parseBucketOrders(prefs[KEY_BUCKET_ORDERS_JSON])
+        }
+        .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+
+    val percentageDisplayMode: StateFlow<String> = context.dataStore.data
+        .map { prefs ->
+            prefs[KEY_PERCENTAGE_DISPLAY_MODE] ?: "remainingPercent"
+        }
+        .stateIn(scope, SharingStarted.Eagerly, "remainingPercent")
+
     fun setDefaultWindow(kind: QuotaWindowKind) {
         // Only FIVE_HOUR and SEVEN_DAY are user-selectable presets — anything
         // else collapses to FIVE_HOUR (the iOS default).
@@ -98,9 +131,144 @@ class QuotaPreferences private constructor(private val context: Context) {
         }
     }
 
+    fun setProviderOrder(order: List<AgentProvider>) {
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_PROVIDER_ORDER_CSV] = order.joinToString(",") { it.key }
+            }
+        }
+    }
+
+    fun setVisibleProviders(visible: Set<AgentProvider>) {
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_VISIBLE_PROVIDERS_CSV] = visible.joinToString(",") { it.key }
+            }
+        }
+    }
+
+    fun setHiddenBuckets(hidden: Set<String>) {
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_HIDDEN_BUCKETS_JSON] = serializeHiddenBuckets(hidden)
+            }
+        }
+    }
+
+    fun setBucketOrders(orders: Map<String, List<String>>) {
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_BUCKET_ORDERS_JSON] = serializeBucketOrders(orders)
+            }
+        }
+    }
+
+    fun setPercentageDisplayMode(mode: String) {
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_PERCENTAGE_DISPLAY_MODE] = mode
+            }
+        }
+    }
+
+    private fun parseProviderOrder(csv: String?): List<AgentProvider> {
+        if (csv.isNullOrBlank()) return defaultOrder
+        val parsed = csv.split(",").map { it.trim().lowercase() }.mapNotNull { AgentProvider.fromKey(it) }
+        if (parsed.isEmpty()) return defaultOrder
+        val deduped = parsed.distinct().toMutableList()
+        for (provider in defaultOrder) {
+            if (provider !in deduped) {
+                deduped.add(provider)
+            }
+        }
+        return deduped
+    }
+
+    private fun parseVisibleProviders(csv: String?): Set<AgentProvider> {
+        if (csv.isNullOrBlank()) return defaultOrder.toSet()
+        val parsed = csv.split(",").map { it.trim().lowercase() }.mapNotNull { AgentProvider.fromKey(it) }
+        if (parsed.isEmpty()) return defaultOrder.toSet()
+        return parsed.toSet()
+    }
+
+    private fun parseHiddenBuckets(json: String?): Set<String> {
+        if (json.isNullOrBlank()) return emptySet()
+        return try {
+            val array = JSONArray(json)
+            val result = mutableSetOf<String>()
+            for (i in 0 until array.length()) {
+                result.add(array.getString(i))
+            }
+            result
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
+
+    private fun serializeHiddenBuckets(set: Set<String>): String {
+        val array = JSONArray()
+        set.forEach { array.put(it) }
+        return array.toString()
+    }
+
+    private fun parseBucketOrders(json: String?): Map<String, List<String>> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return try {
+            val obj = JSONObject(json)
+            val result = mutableMapOf<String, List<String>>()
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val array = obj.getJSONArray(key)
+                val list = mutableListOf<String>()
+                for (i in 0 until array.length()) {
+                    list.add(array.getString(i))
+                }
+                result[key] = list
+            }
+            result
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    private fun serializeBucketOrders(map: Map<String, List<String>>): String {
+        val obj = JSONObject()
+        map.forEach { (key, list) ->
+            val array = JSONArray()
+            list.forEach { array.put(it) }
+            obj.put(key, array)
+        }
+        return obj.toString()
+    }
+
     companion object {
         private val Context.dataStore by preferencesDataStore("burnbar.quota.prefs")
         private val KEY_DEFAULT_WINDOW = stringPreferencesKey("default_window")
+
+        private val KEY_PROVIDER_ORDER_CSV = stringPreferencesKey("quota_providerOrderCSV")
+        private val KEY_VISIBLE_PROVIDERS_CSV = stringPreferencesKey("quota_visibleProvidersCSV")
+        private val KEY_HIDDEN_BUCKETS_JSON = stringPreferencesKey("quota_hiddenBucketsJSON")
+        private val KEY_BUCKET_ORDERS_JSON = stringPreferencesKey("quota_bucketOrdersJSON")
+        private val KEY_PERCENTAGE_DISPLAY_MODE = stringPreferencesKey("quota_percentageDisplayMode")
+
+        val defaultOrder = listOf(
+            AgentProvider.CODEX,
+            AgentProvider.OPENCODE,
+            AgentProvider.CLAUDE_CODE,
+            AgentProvider.OPEN_AI,
+            AgentProvider.DEEP_SEEK,
+            AgentProvider.COPILOT,
+            AgentProvider.MINIMAX,
+            AgentProvider.ZAI,
+            AgentProvider.FACTORY,
+            AgentProvider.CURSOR,
+            AgentProvider.WARP,
+            AgentProvider.OLLAMA,
+            AgentProvider.KIMI,
+            AgentProvider.ANTIGRAVITY,
+            AgentProvider.XAI
+        )
 
         @Volatile private var instance: QuotaPreferences? = null
 

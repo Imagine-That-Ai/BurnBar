@@ -1,5 +1,7 @@
 package com.openburnbar.ui.insights
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -15,15 +17,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TextSnippet
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
@@ -32,13 +39,13 @@ import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Handyman
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.TextSnippet
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,6 +65,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -73,6 +81,9 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
+import com.openburnbar.data.assistants.SkillRunDeliveryMode
+import com.openburnbar.data.assistants.SkillRunEventImportance
+import com.openburnbar.ui.media.SkillRunPiPActivity
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
@@ -210,8 +221,10 @@ fun MissionActivityOverlay(
     viewModel: MissionActivityViewModel = viewModel(),
 ) {
     val status by viewModel.status.collectAsState()
+    val context = LocalContext.current
     var showMissionDetail by remember { mutableStateOf(false) }
-    var isDismissed by remember { mutableStateOf(false) }
+    var isDismissed by remember { mutableStateOf(true) }
+    var dismissedSkillRunKeys by remember { mutableStateOf(emptyMap<String, String>()) }
 
     LaunchedEffect(Unit) { viewModel.start() }
 
@@ -220,8 +233,35 @@ fun MissionActivityOverlay(
             InsightsViewModel.MissionStatus.Idle -> Unit
             is InsightsViewModel.MissionStatus.Tracking -> {
                 val mission = current.mission
+                LaunchedEffect(
+                    mission.id,
+                    mission.status,
+                    mission.events.lastOrNull()?.sequence,
+                    mission.events.lastOrNull()?.eventImportance,
+                    mission.deliveryMode,
+                    mission.approvalStatus,
+                ) {
+                    if (mission.skillRunID != null &&
+                        dismissedSkillRunKeys[mission.id] != skillRunNotificationKey(mission) &&
+                        shouldAutoOpenSkillRun(mission)
+                    ) {
+                        isDismissed = false
+                    }
+                }
                 if (!isDismissed) {
-                    if (mission.isTerminal) {
+                    if (mission.skillRunID != null) {
+                        SkillRunLiveTile(
+                            mission = mission,
+                            onOpen = { showMissionDetail = true },
+                            onPiP = { openSkillRunPiP(context, mission.id) },
+                            onDismiss = {
+                                dismissedSkillRunKeys = dismissedSkillRunKeys + (mission.id to skillRunNotificationKey(mission))
+                                isDismissed = true
+                            },
+                            onApprove = { viewModel.respondToMissionApproval(mission.id, true) },
+                            onReject = { viewModel.respondToMissionApproval(mission.id, false) },
+                        )
+                    } else if (mission.isTerminal) {
                         MissionDoneOrb(
                             onClick = { showMissionDetail = true },
                             onDismiss = { isDismissed = true }
@@ -265,9 +305,214 @@ fun MissionActivityOverlay(
             onApprovalResponse = { requestID, approve ->
                 viewModel.respondToMissionApproval(requestID, approve)
             },
+            onFloat = { mission ->
+                if (mission.skillRunID != null) {
+                    dismissedSkillRunKeys = dismissedSkillRunKeys - mission.id
+                    isDismissed = false
+                }
+            },
+            onPictureInPicture = { mission ->
+                if (mission.skillRunID != null) {
+                    openSkillRunPiP(context, mission.id)
+                }
+            },
             onDismiss = { showMissionDetail = false },
         )
     }
+}
+
+fun shouldAutoOpenSkillRun(mission: CLIAgentMissionSnapshot): Boolean =
+    when (mission.deliveryMode) {
+        SkillRunDeliveryMode.FULL_STREAM -> true
+        SkillRunDeliveryMode.ACTION_ONLY ->
+            mission.isWaitingForApproval ||
+                mission.isTerminal ||
+                mission.events.lastOrNull()?.eventImportance in setOf(
+                    SkillRunEventImportance.ACTION_REQUIRED,
+                    SkillRunEventImportance.TERMINAL
+                )
+        SkillRunDeliveryMode.MUTED -> false
+    }
+
+fun skillRunNotificationKey(mission: CLIAgentMissionSnapshot): String {
+    val latest = mission.events.lastOrNull()
+    val shouldResurface = mission.isWaitingForApproval ||
+        mission.isTerminal ||
+        latest?.eventImportance in setOf(
+            SkillRunEventImportance.ACTION_REQUIRED,
+            SkillRunEventImportance.TERMINAL,
+        )
+    if (!shouldResurface) {
+        return listOf(
+            mission.id,
+            mission.deliveryMode.wire,
+            "passive",
+        ).joinToString("|")
+    }
+    return listOf(
+        mission.id,
+        mission.status,
+        mission.deliveryMode.wire,
+        mission.approvalStatus ?: "none",
+        latest?.sequence?.toString() ?: "-1",
+        latest?.eventImportance?.wire ?: "none",
+        latest?.phase ?: "none",
+    ).joinToString("|")
+}
+
+private fun openSkillRunPiP(context: Context, missionID: String) {
+    val intent = Intent(context, SkillRunPiPActivity::class.java)
+        .putExtra(SkillRunPiPActivity.EXTRA_MISSION_ID, missionID)
+        .putExtra(SkillRunPiPActivity.EXTRA_ENTER_PIP, true)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(intent)
+}
+
+@Composable
+private fun SkillRunLiveTile(
+    mission: CLIAgentMissionSnapshot,
+    onOpen: () -> Unit,
+    onPiP: () -> Unit,
+    onDismiss: () -> Unit,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+) {
+    val accent = missionAccentColor(mission)
+    var tileOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        shape = RoundedCornerShape(18.dp),
+        shadowElevation = 14.dp,
+        modifier = Modifier
+            .padding(AuroraSpacing.lg.dp)
+            .offset { tileOffset }
+            .widthIn(max = 360.dp)
+            .border(1.dp, accent.copy(alpha = 0.72f), RoundedCornerShape(18.dp))
+            .graphicsLayer {
+                scaleX = if (isDragging) 0.97f else 1f
+                scaleY = if (isDragging) 0.97f else 1f
+                alpha = if (isDragging) 0.82f else 1f
+            }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { isDragging = true },
+                    onDragEnd = {
+                        isDragging = false
+                        tileOffset = IntOffset.Zero
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        tileOffset = IntOffset.Zero
+                    },
+                ) { change, dragAmount ->
+                    change.consume()
+                    tileOffset += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onOpen() })
+            },
+    ) {
+        Column(
+            modifier = Modifier.padding(AuroraSpacing.md.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.TextSnippet,
+                    contentDescription = null,
+                    tint = AuroraColors.amber,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = mission.skillRunID?.displayLabel ?: "Skill Run",
+                    style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onPiP, modifier = Modifier.size(34.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.GraphicEq,
+                        contentDescription = "Open Skill Run in Picture in Picture",
+                        tint = AuroraColors.amber,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(34.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Error,
+                        contentDescription = "Dismiss floating Skill Run",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+
+            Text(
+                text = mission.title,
+                style = AuroraType.body.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = mission.events.lastOrNull()?.fullMessage
+                    ?: mission.events.lastOrNull()?.message
+                    ?: mission.displayLiveSummary
+                    ?: mission.currentStepLabel,
+                style = AuroraType.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+                SkillRunTilePill(mission.displayStatus.uppercase(), accent)
+                SkillRunTilePill(mission.deliveryMode.displayLabel, AuroraColors.whimsy)
+            }
+
+            if (mission.isWaitingForApproval) {
+                Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                    TextButton(onClick = onApprove) {
+                        Text(
+                            text = "Approve",
+                            style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = AuroraColors.success,
+                        )
+                    }
+                    TextButton(onClick = onReject) {
+                        Text(
+                            text = "Reject",
+                            style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkillRunTilePill(text: String, color: Color) {
+    Text(
+        text = text,
+        style = AuroraType.tiny.copy(fontWeight = FontWeight.Bold),
+        color = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .background(color.copy(alpha = 0.12f), RoundedCornerShape(9.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -688,13 +933,13 @@ private fun rememberOrbState(mission: CLIAgentMissionSnapshot): OrbState {
             OrbState(toolIcon(name), name)
         }
         latest.kind in setOf("llm_response", "assistant_message", "final_answer") ->
-            OrbState(Icons.Filled.TextSnippet, "LLM")
+            OrbState(Icons.AutoMirrored.Filled.TextSnippet, "LLM")
         else -> OrbState(Icons.Filled.GraphicEq, null)
     }
 }
 
 private fun toolIcon(name: String): ImageVector = when {
-    name.contains("read", ignoreCase = true) -> Icons.Filled.TextSnippet
+    name.contains("read", ignoreCase = true) -> Icons.AutoMirrored.Filled.TextSnippet
     name.contains("write", ignoreCase = true) -> Icons.Filled.Edit
     name.contains("edit", ignoreCase = true) -> Icons.Filled.Edit
     name.contains("search", ignoreCase = true) -> Icons.Filled.Search
@@ -706,14 +951,15 @@ private fun toolIcon(name: String): ImageVector = when {
 
 private fun runtimeCallSign(mission: CLIAgentMissionSnapshot): String {
     val raw = mission.selectedRuntime ?: mission.requestedRuntime
+    val normalized = raw.lowercase()
     return when {
-        raw == null || raw == "auto" -> "AUTO"
-        raw.contains("claude") -> "CLD"
-        raw.contains("codex") -> "CDX"
-        raw.contains("hermes") -> "HRM"
-        raw == "pi" || raw.contains("piagent") -> "PI"
-        raw.contains("openclaw") -> "OCL"
-        raw.contains("ollama") -> "OLL"
+        normalized == "auto" -> "AUTO"
+        normalized.contains("claude") -> "CLD"
+        normalized.contains("codex") -> "CDX"
+        normalized.contains("hermes") -> "HRM"
+        normalized == "pi" || normalized.contains("piagent") -> "PI"
+        normalized.contains("openclaw") -> "OCL"
+        normalized.contains("ollama") -> "OLL"
         else -> raw.uppercase().take(3)
     }
 }

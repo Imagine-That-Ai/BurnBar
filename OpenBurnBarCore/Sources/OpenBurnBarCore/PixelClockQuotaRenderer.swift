@@ -807,6 +807,9 @@ public enum PixelClockQuotaRenderer {
         if token.contains("antigravity") || token.contains("gemini") {
             return PixelClockProviderLogoAssets.antigravity
         }
+        if token.contains("grok") || token.contains("xai") || token.contains("x.ai") {
+            return PixelClockProviderLogoAssets.xAI
+        }
         return PixelClockProviderLogo(
             sourceName: "monogram",
             rows: monogramPattern(for: shortProviderCode(for: item)),

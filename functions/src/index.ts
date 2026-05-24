@@ -74,6 +74,7 @@ import {
 } from "./piAgent.js";
 import { minimaxAdapter } from "./providers/minimax.js";
 import { zaiAdapter } from "./providers/zai.js";
+import { xaiAdapter } from "./providers/xai.js";
 import { factoryAdapter } from "./providers/factory.js";
 import { cursorAdapter } from "./providers/cursor.js";
 import { openaiAdapter } from "./providers/openai.js";
@@ -150,6 +151,7 @@ const ADAPTERS = {
   zai: zaiAdapter,
   factory: factoryAdapter,
   cursor: cursorAdapter,
+  xai: xaiAdapter,
 } as const;
 
 const ALLOWED_PROVIDERS = new Set<string>([
@@ -162,6 +164,7 @@ const ALLOWED_PROVIDERS = new Set<string>([
   "codex",
   "opencode",
   "antigravity",
+  "xai",
 ]);
 
 const CONNECTION_SCHEMA_VERSION = 1;

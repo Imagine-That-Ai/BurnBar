@@ -12,6 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,12 +21,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Close
@@ -34,11 +45,15 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Check
+import com.openburnbar.irohrelay.HermesRealtimeRelayDisplayDescriptor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -52,12 +67,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,6 +92,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
  * Android Mercury screen-share viewer. 1:1 port of
@@ -85,14 +108,18 @@ import kotlinx.coroutines.runBlocking
 fun ScreenShareViewerScreen(
     pipeline: VideoReceivePipeline,
     modifier: Modifier = Modifier,
+    lastPeerHeartbeatAtMillis: Long = 0L,
+    availableDisplays: List<HermesRealtimeRelayDisplayDescriptor> = emptyList(),
+    selectedDisplayId: String? = null,
+    onSelectDisplay: (String) -> Unit = {},
     onClose: () -> Unit = {},
     onEnterPictureInPicture: () -> Unit = {},
     onReconnect: () -> Unit = {},
-    onTapNormalized: (Double, Double) -> Unit = { _, _ -> },
-    onDragStartNormalized: (Double, Double) -> Unit = { _, _ -> },
-    onDragMoveNormalized: (Double, Double) -> Unit = { _, _ -> },
-    onDragEndNormalized: (Double, Double) -> Unit = { _, _ -> },
-    onScrollNormalized: (Double) -> Unit = {},
+    onTapNormalized: (Double, Double, Int, String?) -> Unit = { _, _, _, _ -> },
+    onScrollDragNormalized: (Double, Double, Double, Double, String?) -> Unit = { _, _, _, _, _ -> },
+    onScrollNormalized: (Double, String?) -> Unit = { _, _ -> },
+    onPointerMove: (Double, Double) -> Unit = { _, _ -> },
+    onPointerClick: (Int) -> Unit = {},
     onTypeText: (String) -> Unit = {},
     onShortcut: (String, List<String>) -> Unit = { _, _ -> },
     onPanic: () -> Unit = {},
@@ -104,11 +131,14 @@ fun ScreenShareViewerScreen(
     var customizeOpen by rememberSaveable { mutableStateOf(false) }
     var fitName by rememberSaveable { mutableStateOf(ScreenMirrorFit.FIT.name) }
     var controlModeName by rememberSaveable { mutableStateOf(ScreenMirrorControlMode.VIEW.name) }
-    var typeDraft by rememberSaveable { mutableStateOf("") }
+    var typingOpen by rememberSaveable { mutableStateOf(false) }
+    var trayScale by rememberSaveable { mutableStateOf(1.0f) }
+    var activeDisplayId by remember(selectedDisplayId) { mutableStateOf(selectedDisplayId) }
     var tapCount by remember { mutableStateOf(0) }
     var lastTapAt by remember { mutableStateOf(0L) }
     var dragActive by remember { mutableStateOf(false) }
-    var lastDragNormalized by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var dragStartNormalized by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var pressStartedAt by remember { mutableStateOf(0L) }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     val stats by pipeline.stats.collectAsState()
     val phase by pipeline.phase.collectAsState()
@@ -119,19 +149,19 @@ fun ScreenShareViewerScreen(
     val aspect = (stats.widthPx.toFloat() / stats.heightPx.toFloat())
         .takeIf { it.isFinite() && it > 0.1f }
         ?: (16f / 9f)
-    val streamIsStale = stats.lastFrameAtMillis > 0 &&
-        nowMillis - stats.lastFrameAtMillis > STALE_STREAM_MILLIS
-    val statusText = when (val currentPhase = phase) {
-        VideoReceivePipeline.Phase.Idle -> "Preparing decoder..."
-        is VideoReceivePipeline.Phase.Running ->
-            when {
-                stats.queuedFrameCount == 0L -> "Waiting for Mac video..."
-                streamIsStale -> "Mac video stalled. Tap Retry."
-                else -> null
-            }
-        is VideoReceivePipeline.Phase.Failed -> "Decoder unavailable: ${currentPhase.reason}"
-        VideoReceivePipeline.Phase.Stopped -> "Screen share stopped"
-    }
+    val statusText = screenShareStatusText(
+        phase = phase,
+        stats = stats,
+        nowMillis = nowMillis,
+        lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
+    )
+    val streamNeedsRecovery = screenShareNeedsAutomaticRecovery(
+        phase = phase,
+        stats = stats,
+        nowMillis = nowMillis,
+        lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
+    )
+    var lastAutomaticReconnectAtMillis by remember { mutableStateOf(0L) }
 
     Box(
         modifier = modifier
@@ -144,6 +174,7 @@ fun ScreenShareViewerScreen(
                         val down = event.changes.firstOrNull { it.pressed && !it.previousPressed }
                         if (down != null) {
                             val now = System.currentTimeMillis()
+                            pressStartedAt = now
                             if (now - lastTapAt > 600) tapCount = 0
                             lastTapAt = now
                             tapCount += 1
@@ -151,20 +182,11 @@ fun ScreenShareViewerScreen(
                                 statsVisible = !statsVisible
                                 tapCount = 0
                             }
-                            if (controlMode == ScreenMirrorControlMode.DRAG) {
-                                mirrorNormalizedPoint(down.position, size, fit, aspect)?.let { point ->
+                            if (controlMode == ScreenMirrorControlMode.SCROLL) {
+                                ScreenMirrorInputPolicy.normalizedPoint(down.position, size, fit, aspect)?.let { point ->
                                     dragActive = true
-                                    lastDragNormalized = point
-                                    onDragStartNormalized(point.first, point.second)
+                                    dragStartNormalized = point
                                 }
-                            }
-                        }
-
-                        val move = event.changes.firstOrNull { it.pressed && it.previousPressed }
-                        if (move != null && dragActive && controlMode == ScreenMirrorControlMode.DRAG) {
-                            mirrorNormalizedPoint(move.position, size, fit, aspect)?.let { point ->
-                                lastDragNormalized = point
-                                onDragMoveNormalized(point.first, point.second)
                             }
                         }
 
@@ -172,19 +194,27 @@ fun ScreenShareViewerScreen(
                         if (up != null) {
                             when (controlMode) {
                                 ScreenMirrorControlMode.TOUCH -> {
-                                    mirrorNormalizedPoint(up.position, size, fit, aspect)?.let { point ->
-                                        onTapNormalized(point.first, point.second)
+                                    ScreenMirrorInputPolicy.normalizedPoint(up.position, size, fit, aspect)?.let { point ->
+                                        onTapNormalized(
+                                            point.first,
+                                            point.second,
+                                            ScreenMirrorInputPolicy.controlClickMouseButton(
+                                                heldMillis = System.currentTimeMillis() - pressStartedAt
+                                            ),
+                                            activeDisplayId,
+                                        )
                                     }
                                 }
-                                ScreenMirrorControlMode.DRAG -> {
-                                    val point = mirrorNormalizedPoint(up.position, size, fit, aspect)
-                                        ?: lastDragNormalized
-                                    if (dragActive && point != null) {
-                                        onDragEndNormalized(point.first, point.second)
+                                ScreenMirrorControlMode.SCROLL -> {
+                                    val start = dragStartNormalized
+                                    val end = ScreenMirrorInputPolicy.normalizedPoint(up.position, size, fit, aspect)
+                                    if (dragActive && start != null && end != null) {
+                                        onScrollDragNormalized(start.first, start.second, end.first, end.second, activeDisplayId)
                                     }
                                     dragActive = false
-                                    lastDragNormalized = null
+                                    dragStartNormalized = null
                                 }
+                                ScreenMirrorControlMode.TRACKPAD,
                                 ScreenMirrorControlMode.VIEW -> Unit
                             }
                         }
@@ -209,6 +239,29 @@ fun ScreenShareViewerScreen(
             if (controlMode != ScreenMirrorControlMode.VIEW) {
                 ScreenMirrorInputOverlay()
             }
+        }
+
+        if (controlMode == ScreenMirrorControlMode.TRACKPAD) {
+            ScreenMirrorTrackpadSurface(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 18.dp, bottom = 138.dp),
+                onMove = { delta ->
+                    onPointerMove(delta.x.toDouble(), delta.y.toDouble())
+                },
+                onClick = onPointerClick,
+            )
+        }
+
+        if (typingOpen) {
+            RemoteKeyboardCaptureField(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 1.dp, bottom = 1.dp),
+                onText = onTypeText,
+                onKey = { key -> onShortcut(key, emptyList()) },
+                onDismiss = { typingOpen = false },
+            )
         }
 
         // Frosted-glass loading/stopped panel with custom rotating golden loader
@@ -288,7 +341,7 @@ fun ScreenShareViewerScreen(
                         color = AuroraColors.hermesMercury,
                         style = AuroraType.monoTiny.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     )
-                    
+
                     Spacer(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -342,38 +395,56 @@ fun ScreenShareViewerScreen(
         ScreenMirrorToolsDock(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 14.dp, vertical = 18.dp),
+                .padding(horizontal = 14.dp, vertical = 18.dp)
+                .graphicsLayer {
+                    scaleX = trayScale
+                    scaleY = trayScale
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                },
             collapsed = toolsCollapsed,
             customizeOpen = customizeOpen,
             fit = fit,
             controlMode = controlMode,
+            typingOpen = typingOpen,
             statsVisible = statsVisible,
             phaseLabel = when (phase) {
                 VideoReceivePipeline.Phase.Idle -> "Preparing"
                 is VideoReceivePipeline.Phase.Running -> when {
                     stats.queuedFrameCount == 0L -> "Waiting"
-                    streamIsStale -> "Stalled"
+                    streamNeedsRecovery -> "Recovering"
                     else -> "Live"
                 }
                 is VideoReceivePipeline.Phase.Failed -> "Decoder"
                 VideoReceivePipeline.Phase.Stopped -> "Stopped"
             },
+            trayScale = trayScale,
+            stats = stats,
+            availableDisplays = availableDisplays,
+            activeDisplayId = activeDisplayId,
+            onSelectDisplay = { displayId ->
+                activeDisplayId = displayId
+                onSelectDisplay(displayId)
+            },
+            onTrayScaleChange = { trayScale = it },
             onToggleCollapsed = { toolsCollapsed = !toolsCollapsed },
             onToggleCustomize = { customizeOpen = !customizeOpen },
             onToggleStats = { statsVisible = !statsVisible },
             onCycleFit = { fitName = fit.next().name },
             onCycleControlMode = { controlModeName = controlMode.next().name },
-            typeDraft = typeDraft,
-            onTypeDraftChange = { typeDraft = it },
-            onSendText = {
-                val trimmed = typeDraft.take(512)
-                if (trimmed.isNotBlank()) {
-                    onTypeText(trimmed)
-                    typeDraft = ""
+            onSelectControlMode = { mode ->
+                controlModeName = mode.name
+                if (mode == ScreenMirrorControlMode.VIEW) {
+                    typingOpen = false
                 }
             },
-            onScrollUp = { onScrollNormalized(-0.16) },
-            onScrollDown = { onScrollNormalized(0.16) },
+            onToggleTyping = {
+                typingOpen = !typingOpen
+                if (typingOpen && controlMode == ScreenMirrorControlMode.VIEW) {
+                    controlModeName = ScreenMirrorControlMode.TOUCH.name
+                }
+            },
+            onScrollUp = { onScrollNormalized(-0.16, activeDisplayId) },
+            onScrollDown = { onScrollNormalized(0.16, activeDisplayId) },
             onEscape = { onShortcut("escape", emptyList()) },
             onCommandTab = { onShortcut("tab", listOf("command")) },
             onPanic = onPanic,
@@ -398,11 +469,56 @@ fun ScreenShareViewerScreen(
             delay(1_000)
         }
     }
+
+    LaunchedEffect(streamNeedsRecovery, nowMillis) {
+        if (!streamNeedsRecovery) return@LaunchedEffect
+        if (nowMillis - lastAutomaticReconnectAtMillis < AUTO_RECOVERY_RETRY_MILLIS) return@LaunchedEffect
+        lastAutomaticReconnectAtMillis = nowMillis
+        onReconnect()
+    }
 }
 
-private const val STALE_STREAM_MILLIS = 3_500L
+private const val STALE_STREAM_MILLIS = 12_000L
+private const val HEARTBEAT_FRESH_MILLIS = 7_500L
+private const val AUTO_RECOVERY_RETRY_MILLIS = 15_000L
 
-private enum class ScreenMirrorFit {
+internal fun screenShareStatusText(
+    phase: VideoReceivePipeline.Phase,
+    stats: VideoReceivePipeline.Stats,
+    nowMillis: Long,
+    lastPeerHeartbeatAtMillis: Long,
+): String? = when (phase) {
+    VideoReceivePipeline.Phase.Idle -> "Preparing decoder..."
+    is VideoReceivePipeline.Phase.Running -> when {
+        stats.queuedFrameCount == 0L -> "Waiting for Mac video..."
+        screenShareNeedsAutomaticRecovery(
+            phase = phase,
+            stats = stats,
+            nowMillis = nowMillis,
+            lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
+        ) -> "Mac video is recovering automatically..."
+        else -> null
+    }
+    is VideoReceivePipeline.Phase.Failed -> "Decoder unavailable: ${phase.reason}"
+    VideoReceivePipeline.Phase.Stopped -> "Screen share stopped"
+}
+
+internal fun screenShareNeedsAutomaticRecovery(
+    phase: VideoReceivePipeline.Phase,
+    stats: VideoReceivePipeline.Stats,
+    nowMillis: Long,
+    lastPeerHeartbeatAtMillis: Long,
+): Boolean {
+    if (phase !is VideoReceivePipeline.Phase.Running) return false
+    if (stats.lastFrameAtMillis <= 0L) return false
+
+    val lastSignalAtMillis = maxOf(stats.lastFrameAtMillis, lastPeerHeartbeatAtMillis)
+    val heartbeatIsFresh = lastPeerHeartbeatAtMillis > 0L &&
+        nowMillis - lastPeerHeartbeatAtMillis <= HEARTBEAT_FRESH_MILLIS
+    return !heartbeatIsFresh && nowMillis - lastSignalAtMillis > STALE_STREAM_MILLIS
+}
+
+internal enum class ScreenMirrorFit {
     FIT,
     FILL,
     FLOAT;
@@ -421,32 +537,37 @@ private enum class ScreenMirrorFit {
         }
 }
 
-private enum class ScreenMirrorControlMode {
+internal enum class ScreenMirrorControlMode {
     VIEW,
     TOUCH,
-    DRAG;
+    TRACKPAD,
+    SCROLL;
 
     fun next(): ScreenMirrorControlMode = when (this) {
         VIEW -> TOUCH
-        TOUCH -> DRAG
-        DRAG -> VIEW
+        TOUCH -> TRACKPAD
+        TRACKPAD -> SCROLL
+        SCROLL -> VIEW
     }
 
     val label: String
         get() = when (this) {
             VIEW -> "View"
             TOUCH -> "Touch"
-            DRAG -> "Drag"
+            TRACKPAD -> "Trackpad"
+            SCROLL -> "Scroll"
         }
 }
 
 private fun Modifier.screenMirrorSurface(fit: ScreenMirrorFit, aspect: Float): Modifier = when (fit) {
     ScreenMirrorFit.FIT -> this
-        .fillMaxWidth()
+        .fillMaxSize()
+        .wrapContentSize(Alignment.Center)
         .aspectRatio(aspect)
     ScreenMirrorFit.FILL -> this.fillMaxSize()
     ScreenMirrorFit.FLOAT -> this
-        .fillMaxWidth(0.92f)
+        .fillMaxSize(0.92f)
+        .wrapContentSize(Alignment.Center)
         .aspectRatio(aspect)
         .clip(RoundedCornerShape(18.dp))
         .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
@@ -465,48 +586,226 @@ private fun ScreenMirrorInputOverlay() {
     )
 }
 
-private fun mirrorNormalizedPoint(
-    position: Offset,
-    rootSize: IntSize,
-    fit: ScreenMirrorFit,
-    aspect: Float,
-): Pair<Double, Double>? {
-    if (rootSize.width <= 0 || rootSize.height <= 0 || aspect <= 0f) return null
-    val rootWidth = rootSize.width.toFloat()
-    val rootHeight = rootSize.height.toFloat()
-    val surfaceWidth: Float
-    val surfaceHeight: Float
-    val surfaceLeft: Float
-    val surfaceTop: Float
+@Composable
+private fun ScreenMirrorTrackpadSurface(
+    modifier: Modifier = Modifier,
+    onMove: (Offset) -> Unit,
+    onClick: (Int) -> Unit,
+) {
+    var touchLocation by remember { mutableStateOf<Offset?>(null) }
+    var touchHistory by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    var lastPosition by remember { mutableStateOf<Offset?>(null) }
+    var pressStartedAt by remember { mutableStateOf(0L) }
+    var travelDistance by remember { mutableStateOf(0f) }
 
-    when (fit) {
-        ScreenMirrorFit.FILL -> {
-            surfaceWidth = rootWidth
-            surfaceHeight = rootHeight
-            surfaceLeft = 0f
-            surfaceTop = 0f
+    Box(
+        modifier = modifier
+            .fillMaxWidth(0.48f)
+            .widthIn(min = 170.dp, max = 360.dp)
+            .heightIn(min = 130.dp, max = 260.dp)
+            .aspectRatio(1.45f)
+            .auroraGlass(cornerRadius = 24.dp, tintAlpha = 0.38f, shadow = AuroraShadows.large)
+            .border(
+                width = 1.dp,
+                color = if (touchLocation != null) AuroraColors.hermesMercury.copy(alpha = 0.84f) else Color.White.copy(alpha = 0.16f),
+                shape = RoundedCornerShape(24.dp),
+            )
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val down = event.changes.firstOrNull { it.pressed && !it.previousPressed }
+                        if (down != null) {
+                            pressStartedAt = System.currentTimeMillis()
+                            travelDistance = 0f
+                            lastPosition = down.position
+                            touchLocation = down.position
+                            touchHistory = listOf(down.position)
+                        }
+
+                        val move = event.changes.firstOrNull { it.pressed && it.previousPressed }
+                        if (move != null) {
+                            val last = lastPosition
+                            val current = move.position
+                            if (last != null) {
+                                val delta = current - last
+                                if (abs(delta.x) > 0.5f || abs(delta.y) > 0.5f) {
+                                    onMove(delta)
+                                    travelDistance += hypot(delta.x, delta.y)
+                                }
+                            }
+                            lastPosition = current
+                            touchLocation = current
+                            touchHistory = (touchHistory + current).takeLast(4)
+                        }
+
+                        val up = event.changes.firstOrNull { !it.pressed && it.previousPressed }
+                        if (up != null) {
+                            ScreenMirrorInputPolicy.trackpadClickMouseButton(
+                                heldMillis = System.currentTimeMillis() - pressStartedAt,
+                                travelDistancePx = travelDistance,
+                            )?.let(onClick)
+                            touchLocation = null
+                            touchHistory = emptyList()
+                            lastPosition = null
+                            travelDistance = 0f
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val lineColor = Color.White.copy(alpha = 0.05f)
+            repeat(5) { index ->
+                val y = size.height * (index + 1) / 6f
+                drawLine(lineColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                val x = size.width * (index + 1) / 6f
+                drawLine(lineColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.dp.toPx())
+            }
+            touchHistory.forEachIndexed { index, point ->
+                val age = touchHistory.lastIndex - index
+                val alpha = (0.72f - age * 0.16f).coerceAtLeast(0.12f)
+                drawCircle(
+                    color = AuroraColors.hermesMercury.copy(alpha = alpha),
+                    radius = (14f - age * 2.5f).coerceAtLeast(4f),
+                    center = point,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx()),
+                )
+            }
         }
-        ScreenMirrorFit.FIT -> {
-            surfaceWidth = rootWidth
-            surfaceHeight = rootWidth / aspect
-            surfaceLeft = 0f
-            surfaceTop = (rootHeight - surfaceHeight) / 2f
-        }
-        ScreenMirrorFit.FLOAT -> {
-            surfaceWidth = rootWidth * 0.92f
-            surfaceHeight = surfaceWidth / aspect
-            surfaceLeft = (rootWidth - surfaceWidth) / 2f
-            surfaceTop = (rootHeight - surfaceHeight) / 2f
-        }
+        Text(
+            text = "Glass Trackpad",
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(14.dp),
+            color = Color.White.copy(alpha = 0.76f),
+            style = AuroraType.monoTiny.copy(fontWeight = FontWeight.Bold),
+        )
+    }
+}
+
+internal data class ScreenMirrorSurfaceBounds(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+) {
+    val right: Float get() = left + width
+    val bottom: Float get() = top + height
+    val center: Offset get() = Offset(left + width / 2f, top + height / 2f)
+}
+
+internal object ScreenMirrorInputPolicy {
+    const val RIGHT_CLICK_HOLD_MILLIS: Long = 550L
+    const val TRACKPAD_TAP_TRAVEL_LIMIT_PX: Float = 8f
+
+    fun controlClickMouseButton(heldMillis: Long): Int =
+        if (heldMillis >= RIGHT_CLICK_HOLD_MILLIS) 1 else 0
+
+    fun trackpadClickMouseButton(heldMillis: Long, travelDistancePx: Float): Int? {
+        if (heldMillis >= RIGHT_CLICK_HOLD_MILLIS) return 1
+        return if (travelDistancePx < TRACKPAD_TAP_TRAVEL_LIMIT_PX) 0 else null
     }
 
-    val localX = position.x - surfaceLeft
-    val localY = position.y - surfaceTop
-    if (localX < 0f || localY < 0f || localX > surfaceWidth || localY > surfaceHeight) return null
-    return Pair(
-        (localX / surfaceWidth).coerceIn(0f, 1f).toDouble(),
-        (localY / surfaceHeight).coerceIn(0f, 1f).toDouble(),
-    )
+    fun surfaceBounds(rootSize: IntSize, fit: ScreenMirrorFit, aspect: Float): ScreenMirrorSurfaceBounds? {
+        if (rootSize.width <= 0 || rootSize.height <= 0 || aspect <= 0f) return null
+        val rootWidth = rootSize.width.toFloat()
+        val rootHeight = rootSize.height.toFloat()
+        val width: Float
+        val height: Float
+        val left: Float
+        val top: Float
+
+        when (fit) {
+            ScreenMirrorFit.FILL -> {
+                width = rootWidth
+                height = rootHeight
+                left = 0f
+                top = 0f
+            }
+            ScreenMirrorFit.FIT -> {
+                val containerAspect = rootWidth / rootHeight
+                if (containerAspect > aspect) {
+                    // Height is the bottleneck
+                    height = rootHeight
+                    width = rootHeight * aspect
+                    left = (rootWidth - width) / 2f
+                    top = 0f
+                } else {
+                    // Width is the bottleneck
+                    width = rootWidth
+                    height = rootWidth / aspect
+                    left = 0f
+                    top = (rootHeight - height) / 2f
+                }
+            }
+            ScreenMirrorFit.FLOAT -> {
+                val maxW = rootWidth * 0.92f
+                val maxH = rootHeight * 0.92f
+                val containerAspect = maxW / maxH
+                if (containerAspect > aspect) {
+                    // Height is the bottleneck
+                    height = maxH
+                    width = maxH * aspect
+                    left = (rootWidth - width) / 2f
+                    top = (rootHeight - height) / 2f
+                } else {
+                    // Width is the bottleneck
+                    width = maxW
+                    height = maxW / aspect
+                    left = (rootWidth - width) / 2f
+                    top = (rootHeight - height) / 2f
+                }
+            }
+        }
+
+        return ScreenMirrorSurfaceBounds(left = left, top = top, width = width, height = height)
+    }
+
+    fun normalizedPoint(
+        position: Offset,
+        rootSize: IntSize,
+        fit: ScreenMirrorFit,
+        aspect: Float,
+    ): Pair<Double, Double>? {
+        val bounds = surfaceBounds(rootSize, fit, aspect) ?: return null
+        val localX = position.x - bounds.left
+        val localY = position.y - bounds.top
+        if (localX < 0f || localY < 0f || localX > bounds.width || localY > bounds.height) {
+            return null
+        }
+        return Pair(
+            (localX / bounds.width).coerceIn(0f, 1f).toDouble(),
+            (localY / bounds.height).coerceIn(0f, 1f).toDouble(),
+        )
+    }
+
+    fun initialCursorPoint(rootSize: IntSize, fit: ScreenMirrorFit, aspect: Float): Offset? =
+        surfaceBounds(rootSize, fit, aspect)?.center
+
+    fun clampedCursorPoint(position: Offset, rootSize: IntSize, fit: ScreenMirrorFit, aspect: Float): Offset? {
+        val bounds = surfaceBounds(rootSize, fit, aspect) ?: return null
+        return Offset(
+            x = position.x.coerceIn(bounds.left, bounds.right),
+            y = position.y.coerceIn(bounds.top, bounds.bottom),
+        )
+    }
+
+    fun movedCursorPoint(
+        current: Offset?,
+        delta: Offset,
+        rootSize: IntSize,
+        fit: ScreenMirrorFit,
+        aspect: Float,
+    ): Offset? {
+        val bounds = surfaceBounds(rootSize, fit, aspect) ?: return null
+        val base = current ?: bounds.center
+        return Offset(
+            x = (base.x + delta.x).coerceIn(bounds.left, bounds.right),
+            y = (base.y + delta.y).coerceIn(bounds.top, bounds.bottom),
+        )
+    }
 }
 
 @Composable
@@ -516,16 +815,22 @@ private fun ScreenMirrorToolsDock(
     customizeOpen: Boolean,
     fit: ScreenMirrorFit,
     controlMode: ScreenMirrorControlMode,
+    typingOpen: Boolean,
     statsVisible: Boolean,
     phaseLabel: String,
-    typeDraft: String,
+    trayScale: Float,
+    stats: VideoReceivePipeline.Stats,
+    availableDisplays: List<HermesRealtimeRelayDisplayDescriptor>,
+    activeDisplayId: String?,
+    onSelectDisplay: (String) -> Unit,
+    onTrayScaleChange: (Float) -> Unit,
     onToggleCollapsed: () -> Unit,
     onToggleCustomize: () -> Unit,
     onToggleStats: () -> Unit,
     onCycleFit: () -> Unit,
     onCycleControlMode: () -> Unit,
-    onTypeDraftChange: (String) -> Unit,
-    onSendText: () -> Unit,
+    onSelectControlMode: (ScreenMirrorControlMode) -> Unit,
+    onToggleTyping: () -> Unit,
     onScrollUp: () -> Unit,
     onScrollDown: () -> Unit,
     onEscape: () -> Unit,
@@ -537,80 +842,267 @@ private fun ScreenMirrorToolsDock(
     onEnterPictureInPicture: () -> Unit,
     onClose: () -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .auroraGlass(cornerRadius = 18.dp, tintAlpha = 0.36f, shadow = AuroraShadows.large)
-            .animateContentSize()
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+    val scale = 1.0f
+    if (collapsed) {
+        Box(
+            modifier = modifier
+                .wrapContentWidth()
+                .auroraGlass(cornerRadius = 12.dp, tintAlpha = 0.45f, shadow = AuroraShadows.large)
+                .pointerInput(Unit) {} // Block overlay click-through
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
         ) {
-            StatusChip(phaseLabel)
-            Spacer(modifier = Modifier.weight(1f))
-            MirrorToolButton(
-                icon = if (collapsed) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                label = if (collapsed) "Expand" else "Collapse",
-                onClick = onToggleCollapsed,
-            )
-        }
-
-        if (!collapsed) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                MirrorToolButton(Icons.Filled.PanTool, controlMode.label, onCycleControlMode)
-                MirrorToolTextButton(fit.label, onCycleFit)
-                MirrorToolButton(Icons.Filled.Computer, "PiP", onEnterPictureInPicture)
-                MirrorToolButton(Icons.Filled.Refresh, "Retry", onReconnect)
-                MirrorToolButton(Icons.Filled.Settings, "Tune", onToggleCustomize)
-                MirrorToolButton(Icons.Filled.Close, "Close", onClose)
+                // Dot 1: Red (Close)
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFF5F56))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .clickable { onClose() }
+                )
+                // Dot 2: Yellow/Amber (Toggle Stats)
+                val dotColor = if (statsVisible) Color(0xFFFFBD2E) else Color(0xFFFFBD2E).copy(alpha = 0.6f)
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(dotColor)
+                        .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .clickable { onToggleStats() }
+                )
+                // Dot 3: Green (Expand)
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF27C93F))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .clickable { onToggleCollapsed() }
+                )
             }
+        }
+    } else {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .auroraGlass(cornerRadius = 24.dp, tintAlpha = 0.36f, shadow = AuroraShadows.large)
+                .animateContentSize()
+                .pointerInput(Unit) {} // Prevent touch events on the tools tray from triggering Mac input!
+                .padding(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            // Horizontally scrollable row of square glass keycaps exactly matching iOS!
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (statsVisible) {
+                    // Premium Compact Stats Capsule
+                    CompactStatsChip(
+                        roundTripMillis = stats.roundTripMillis,
+                        bitrateMbps = (stats.bitsPerSecond / 1_000_000.0).toFloat()
+                    )
+                }
+
+                // 1. View Mode Keycap (V)
+                KeycapTextButton(
+                    label = "V",
+                    selected = controlMode == ScreenMirrorControlMode.VIEW,
+                    onClick = { onSelectControlMode(ScreenMirrorControlMode.VIEW) }
+                )
+                // 2. Touch Mode Keycap (T)
+                KeycapTextButton(
+                    label = "T",
+                    selected = controlMode == ScreenMirrorControlMode.TOUCH,
+                    onClick = { onSelectControlMode(ScreenMirrorControlMode.TOUCH) }
+                )
+                // 3. Trackpad Mode Keycap (P)
+                KeycapTextButton(
+                    label = "P",
+                    selected = controlMode == ScreenMirrorControlMode.TRACKPAD,
+                    onClick = { onSelectControlMode(ScreenMirrorControlMode.TRACKPAD) }
+                )
+                // 4. Scroll Mode Keycap (S)
+                KeycapTextButton(
+                    label = "S",
+                    selected = controlMode == ScreenMirrorControlMode.SCROLL,
+                    onClick = { onSelectControlMode(ScreenMirrorControlMode.SCROLL) }
+                )
+
+                // 5. Display selector Menus / cycler
+                if (!availableDisplays.isNullOrEmpty() && availableDisplays.size > 1) {
+                    val currentIndex = availableDisplays.indexOfFirst { it.id == activeDisplayId }.coerceAtLeast(0)
+                    val nextIndex = (currentIndex + 1) % availableDisplays.size
+                    val nextDisplay = availableDisplays[nextIndex]
+                    KeycapButton(
+                        icon = Icons.Filled.Tv,
+                        selected = false,
+                        onClick = { onSelectDisplay(nextDisplay.id) }
+                    )
+                }
+
+                // 6. Zoom/Aspect ratio Fit Modes
+                KeycapButton(
+                    icon = Icons.Filled.AspectRatio,
+                    selected = false,
+                    onClick = onCycleFit
+                )
+
+                // 7. Scroll Up
+                KeycapTextButton(
+                    label = "▲",
+                    selected = false,
+                    onClick = onScrollUp
+                )
+                // 8. Scroll Down
+                KeycapTextButton(
+                    label = "▼",
+                    selected = false,
+                    onClick = onScrollDown
+                )
+
+                // 9. Type on Mac
+                KeycapButton(
+                    icon = Icons.Filled.Keyboard,
+                    selected = typingOpen,
+                    onClick = onToggleTyping
+                )
+
+                // 10. Reconnect
+                KeycapButton(
+                    icon = Icons.Filled.Refresh,
+                    selected = false,
+                    onClick = onReconnect
+                )
+
+                // 11. Customize Settings (Tune)
+                KeycapButton(
+                    icon = Icons.Filled.Settings,
+                    selected = customizeOpen,
+                    onClick = onToggleCustomize
+                )
+
+                // 12. PiP Mode
+                KeycapButton(
+                    icon = Icons.Filled.Computer,
+                    selected = false,
+                    onClick = onEnterPictureInPicture
+                )
+
+                // 13. Collapse
+                KeycapButton(
+                    icon = Icons.Filled.ExpandLess,
+                    selected = false,
+                    onClick = onToggleCollapsed
+                )
+
+                // 14. Close Mirror
+                KeycapButton(
+                    icon = Icons.Filled.Close,
+                    selected = false,
+                    onClick = onClose
+                )
+            }
+
             if (customizeOpen) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy((8 * scale).dp)
+                ) {
                     DockToggleRow(
                         label = "Stream stats",
                         checked = statsVisible,
+                        scale = scale,
                         onCheckedChange = { onToggleStats() },
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        MirrorToolTextButton("Trust", onTrustControlDevice)
-                        MirrorToolTextButton("Up", onScrollUp)
-                        MirrorToolTextButton("Down", onScrollDown)
-                        MirrorToolTextButton("Esc", onEscape)
-                        MirrorToolTextButton("CmdTab", onCommandTab)
-                    }
-                    MirrorToolTextButton("Panic", onPanic)
+
+                    // Resizable slide control inside customize settings (flicker-free!)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
                     ) {
-                        TextField(
-                            value = typeDraft,
-                            onValueChange = { onTypeDraftChange(it.take(512)) },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            textStyle = AuroraType.caption.copy(color = Color.White),
-                            placeholder = {
-                                Text("Type to Mac", style = AuroraType.caption, color = Color.White.copy(alpha = 0.48f))
-                            },
+                        Text(
+                            "Tray size",
+                            color = Color.White.copy(alpha = 0.76f),
+                            style = AuroraType.caption.copy(fontSize = (12 * scale).sp),
+                            modifier = Modifier.weight(1f)
                         )
-                        MirrorToolTextButton("Send", onSendText)
+                        androidx.compose.material3.Slider(
+                            value = trayScale,
+                            onValueChange = onTrayScaleChange,
+                            valueRange = 0.5f..1.2f,
+                            modifier = Modifier
+                                .weight(2f)
+                                .height((30 * scale).dp)
+                        )
                     }
-                    DockInfoRow("Fit mode", fit.label)
-                    DockInfoRow("Input mode", controlMode.label)
-                    controlStatus?.let { DockInfoRow("Mac control", it) }
-                    DockInfoRow("Tools", "Collapsible + signed")
+
+                    // Display selection list in Customize
+                    if (!availableDisplays.isNullOrEmpty()) {
+                        Text(
+                            "Select Display",
+                            color = Color.White.copy(alpha = 0.56f),
+                            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp),
+                            modifier = Modifier.padding(top = (8 * scale).dp)
+                        )
+                        availableDisplays.forEach { display ->
+                            val isSelected = display.id == activeDisplayId
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelectDisplay(display.id) }
+                                    .padding(vertical = (4 * scale).dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    display.name,
+                                    color = if (isSelected) AuroraColors.hermesMercury else Color.White.copy(alpha = 0.8f),
+                                    style = AuroraType.caption.copy(
+                                        fontSize = (12 * scale).sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                )
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = "Selected",
+                                        tint = AuroraColors.hermesMercury,
+                                        modifier = Modifier.size((14 * scale).dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
+                    ) {
+                        MirrorToolTextButton("Trust", scale = scale, onClick = onTrustControlDevice)
+                        MirrorToolTextButton("Up", scale = scale, onClick = onScrollUp)
+                        MirrorToolTextButton("Down", scale = scale, onClick = onScrollDown)
+                        MirrorToolTextButton("Esc", scale = scale, onClick = onEscape)
+                        MirrorToolTextButton("CmdTab", scale = scale, onClick = onCommandTab)
+                    }
+                    MirrorToolTextButton("Panic", scale = scale, onClick = onPanic)
+
+                    DockInfoRow("Fit mode", fit.label, scale = scale)
+                    DockInfoRow("Input mode", controlMode.label, scale = scale)
+                    controlStatus?.let { DockInfoRow("Mac control", it, scale = scale) }
+                    DockInfoRow("Tools", "Collapsible + signed", scale = scale)
                 }
             }
         }
@@ -618,7 +1110,170 @@ private fun ScreenMirrorToolsDock(
 }
 
 @Composable
-private fun StatusChip(label: String) {
+private fun MirrorModePicker(
+    controlMode: ScreenMirrorControlMode,
+    scale: Float,
+    onSelect: (ScreenMirrorControlMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy((6 * scale).dp),
+    ) {
+        listOf(
+            ScreenMirrorControlMode.VIEW,
+            ScreenMirrorControlMode.TOUCH,
+            ScreenMirrorControlMode.TRACKPAD,
+            ScreenMirrorControlMode.SCROLL,
+        ).forEach { mode ->
+            val selected = mode == controlMode
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape((10 * scale).dp))
+                    .background(if (selected) AuroraColors.hermesMercury.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.08f))
+                    .border(
+                        width = 1.dp,
+                        color = if (selected) AuroraColors.hermesMercury.copy(alpha = 0.62f) else Color.White.copy(alpha = 0.10f),
+                        shape = RoundedCornerShape((10 * scale).dp),
+                    )
+                    .clickable { onSelect(mode) }
+                    .padding(vertical = (9 * scale).dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = mode.label,
+                    color = Color.White.copy(alpha = if (selected) 0.98f else 0.68f),
+                    style = AuroraType.monoTiny.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = (9 * scale).sp
+                    ),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteKeyboardCaptureField(
+    modifier: Modifier = Modifier,
+    onText: (String) -> Unit,
+    onKey: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var capturedText by remember { mutableStateOf("") }
+    var hasFocused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    DisposableEffect(Unit) {
+        onDispose {
+            keyboardController?.hide()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        listOf(80L, 220L, 420L).forEach { delayMillis ->
+            delay(delayMillis)
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+
+    BasicTextField(
+        value = capturedText,
+        onValueChange = { newText ->
+            val diff = remoteKeyboardDiff(capturedText, newText)
+            repeat(diff.deletedCount.coerceAtMost(64)) {
+                onKey("delete")
+            }
+            dispatchRemoteKeyboardText(diff.insertedText, onText = onText, onKey = onKey)
+            capturedText = if (newText.length > 256) "" else newText
+        },
+        modifier = modifier
+            .size(1.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { state ->
+                if (state.isFocused) {
+                    hasFocused = true
+                } else if (hasFocused) {
+                    onDismiss()
+                }
+            },
+        textStyle = AuroraType.caption.copy(color = Color.Transparent, fontSize = 1.sp),
+        cursorBrush = SolidColor(Color.Transparent),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+        keyboardActions = KeyboardActions(onSend = { onKey("return") }),
+        decorationBox = { innerTextField ->
+            Box(modifier = Modifier.size(1.dp)) {
+                innerTextField()
+            }
+        },
+    )
+}
+
+internal data class RemoteKeyboardDiff(
+    val insertedText: String,
+    val deletedCount: Int,
+)
+
+internal fun remoteKeyboardDiff(oldText: String, newText: String): RemoteKeyboardDiff {
+    var prefix = 0
+    val commonPrefixLimit = minOf(oldText.length, newText.length)
+    while (prefix < commonPrefixLimit && oldText[prefix] == newText[prefix]) {
+        prefix += 1
+    }
+
+    var oldSuffix = oldText.length
+    var newSuffix = newText.length
+    while (
+        oldSuffix > prefix &&
+        newSuffix > prefix &&
+        oldText[oldSuffix - 1] == newText[newSuffix - 1]
+    ) {
+        oldSuffix -= 1
+        newSuffix -= 1
+    }
+
+    return RemoteKeyboardDiff(
+        insertedText = newText.substring(prefix, newSuffix),
+        deletedCount = oldSuffix - prefix,
+    )
+}
+
+internal fun dispatchRemoteKeyboardText(
+    text: String,
+    onText: (String) -> Unit,
+    onKey: (String) -> Unit,
+) {
+    if (text.isEmpty()) return
+    val buffer = StringBuilder()
+
+    fun flushText() {
+        if (buffer.isNotEmpty()) {
+            onText(buffer.toString())
+            buffer.clear()
+        }
+    }
+
+    text.forEach { char ->
+        when (char) {
+            '\n', '\r' -> {
+                flushText()
+                onKey("return")
+            }
+            '\t' -> {
+                flushText()
+                onKey("tab")
+            }
+            else -> buffer.append(char)
+        }
+    }
+    flushText()
+}
+
+@Composable
+private fun StatusChip(label: String, scale: Float) {
     Row(
         modifier = Modifier
             .clip(CircleShape)
@@ -626,20 +1281,23 @@ private fun StatusChip(label: String) {
                 if (label == "Live") AuroraColors.successDark.copy(alpha = 0.22f)
                 else Color.White.copy(alpha = 0.12f)
             )
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+            .padding(horizontal = (10 * scale).dp, vertical = (7 * scale).dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
     ) {
         Box(
             modifier = Modifier
-                .size(7.dp)
+                .size((7 * scale).dp)
                 .clip(CircleShape)
                 .background(if (label == "Live") AuroraColors.successDark else AuroraColors.amber)
         )
         Text(
             text = label,
             color = Color.White,
-            style = AuroraType.monoTiny.copy(fontWeight = FontWeight.Bold),
+            style = AuroraType.monoTiny.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = (9 * scale).sp
+            ),
         )
     }
 }
@@ -648,58 +1306,96 @@ private fun StatusChip(label: String) {
 private fun MirrorToolButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
+    scale: Float,
     onClick: () -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(
             onClick = onClick,
             modifier = Modifier
-                .size(42.dp)
+                .size((42 * scale).dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.10f))
         ) {
-            Icon(icon, contentDescription = label, tint = Color.White)
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = Color.White,
+                modifier = Modifier.size((24 * scale).dp)
+            )
         }
-        Text(label, color = Color.White.copy(alpha = 0.68f), style = AuroraType.monoTiny)
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.68f),
+            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp)
+        )
     }
 }
 
 @Composable
-private fun MirrorToolTextButton(label: String, onClick: () -> Unit) {
+private fun MirrorToolTextButton(label: String, scale: Float, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(
             onClick = onClick,
             modifier = Modifier
-                .size(42.dp)
+                .size((42 * scale).dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.10f))
         ) {
-            Text(label.take(1), color = Color.White, fontWeight = FontWeight.Bold)
+            Text(
+                label.take(1),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = (14 * scale).sp
+            )
         }
-        Text(label, color = Color.White.copy(alpha = 0.68f), style = AuroraType.monoTiny)
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.68f),
+            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp)
+        )
     }
 }
 
 @Composable
-private fun DockToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun DockToggleRow(label: String, checked: Boolean, scale: Float, onCheckedChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.76f), style = AuroraType.caption)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.76f),
+            style = AuroraType.caption.copy(fontSize = (12 * scale).sp)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
+        )
     }
 }
 
 @Composable
-private fun DockInfoRow(label: String, value: String) {
+private fun DockInfoRow(label: String, value: String, scale: Float) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.56f), style = AuroraType.monoTiny)
-        Text(value, color = Color.White, style = AuroraType.monoTiny.copy(fontWeight = FontWeight.Bold))
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.56f),
+            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp)
+        )
+        Text(
+            value,
+            color = Color.White,
+            style = AuroraType.monoTiny.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = (9 * scale).sp
+            )
+        )
     }
 }
 
@@ -715,5 +1411,94 @@ private class SurfaceCallback(
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         scope.launch { pipeline.stop() }
+    }
+}
+
+@Composable
+private fun CompactStatsChip(roundTripMillis: Int, bitrateMbps: Float) {
+    Row(
+        modifier = Modifier
+            .height(42.dp)
+            .background(Color.White.copy(alpha = 0.10f), CircleShape)
+            .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "%.2f Mbps".format(bitrateMbps),
+            color = Color.White.copy(alpha = 0.86f),
+            style = AuroraType.monoTiny.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        )
+        Text(
+            text = "RTT ${roundTripMillis} ms",
+            color = Color.White.copy(alpha = 0.86f),
+            style = AuroraType.monoTiny.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        )
+    }
+}
+
+@Composable
+private fun KeycapButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(42.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) Color.White.copy(alpha = 0.22f)
+                else Color.White.copy(alpha = 0.10f)
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (selected) Color.White else Color.White.copy(alpha = 0.85f),
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun KeycapTextButton(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(42.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) Color.White.copy(alpha = 0.22f)
+                else Color.White.copy(alpha = 0.10f)
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color.White else Color.White.copy(alpha = 0.85f),
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }

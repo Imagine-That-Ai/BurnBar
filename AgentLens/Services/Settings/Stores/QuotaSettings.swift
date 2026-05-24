@@ -1,6 +1,26 @@
 import Foundation
 import OpenBurnBarCore
 
+// MARK: - Quota Percentage Display Mode
+
+public enum QuotaPercentageDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case remainingPercent = "remainingPercent"
+    case usedPercent = "usedPercent"
+    case absoluteValues = "absoluteValues"
+    case fractional = "fractional"
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .remainingPercent: return "Remaining % (e.g., 20%)"
+        case .usedPercent: return "Used % (e.g., 80%)"
+        case .absoluteValues: return "Absolute values (e.g., 4.0M / 20.0M)"
+        case .fractional: return "Decimal fraction (e.g., 0.20)"
+        }
+    }
+}
+
 // MARK: - Quota Settings
 
 @Observable
@@ -8,12 +28,87 @@ import OpenBurnBarCore
 final class QuotaSettings {
     private let persistence: SettingsPersistenceCoordinator
 
+    var providerOrderCSV: String = "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai" {
+        didSet { persistence.set(providerOrderCSV, forKey: "providerOrderCSV") }
+    }
+
+    var visibleProvidersCSV: String = "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai" {
+        didSet { persistence.set(visibleProvidersCSV, forKey: "visibleProvidersCSV") }
+    }
+
+    var hiddenBuckets: Set<String> = [] {
+        didSet {
+            let array = Array(hiddenBuckets)
+            if let data = try? JSONEncoder().encode(array),
+               let raw = String(data: data, encoding: .utf8) {
+                persistence.set(raw, forKey: "hiddenBucketsJSON")
+            }
+        }
+    }
+
+    var bucketOrders: [String: [String]] = [:] {
+        didSet {
+            if let data = try? JSONEncoder().encode(bucketOrders),
+               let raw = String(data: data, encoding: .utf8) {
+                persistence.set(raw, forKey: "bucketOrdersJSON")
+            }
+        }
+    }
+
+    var percentageDisplayMode: QuotaPercentageDisplayMode = .remainingPercent {
+        didSet { persistence.set(percentageDisplayMode.rawValue, forKey: "percentageDisplayMode") }
+    }
+
+    var providerOrder: [AgentProvider] {
+        get {
+            let parsed = providerOrderCSV
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                .compactMap { AgentProvider.fromPersistedToken($0) }
+            if parsed.isEmpty {
+                return AgentProvider.quotaSignalProviders
+            }
+            var deduped: [AgentProvider] = []
+            for provider in parsed where !deduped.contains(provider) {
+                deduped.append(provider)
+            }
+            for provider in AgentProvider.quotaSignalProviders where !deduped.contains(provider) {
+                deduped.append(provider)
+            }
+            return deduped
+        }
+        set {
+            providerOrderCSV = newValue.map(\.persistedToken).joined(separator: ",")
+        }
+    }
+
+    var visibleProviders: Set<AgentProvider> {
+        get {
+            let parsed = visibleProvidersCSV
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                .compactMap { AgentProvider.fromPersistedToken($0) }
+            if parsed.isEmpty {
+                return Set(AgentProvider.quotaSignalProviders)
+            }
+            return Set(parsed)
+        }
+        set {
+            visibleProvidersCSV = newValue.map(\.persistedToken).joined(separator: ",")
+        }
+    }
+
+
     var miniMaxQuotaMode: MiniMaxQuotaMode = .tokenPlan {
         didSet { persistence.set(miniMaxQuotaMode, forKey: "miniMaxQuotaMode") }
     }
 
     var factoryQuotaPlanTier: FactoryQuotaPlanTier = .unknown {
         didSet { persistence.set(factoryQuotaPlanTier, forKey: "factoryQuotaPlanTier") }
+    }
+
+    var xaiQuotaPlanTier: XAIQuotaPlanTier = .unknown {
+        didSet { persistence.set(xaiQuotaPlanTier, forKey: "xaiQuotaPlanTier") }
     }
 
     var tokenizerAssistedFallbackEnabled: Bool = false {
@@ -128,6 +223,12 @@ final class QuotaSettings {
         } else {
             self.factoryQuotaPlanTier = .unknown
         }
+        if let xaiTierRaw = persistence.optionalString(forKey: "xaiQuotaPlanTier"),
+           let xaiTier = XAIQuotaPlanTier(rawValue: xaiTierRaw) {
+            self.xaiQuotaPlanTier = xaiTier
+        } else {
+            self.xaiQuotaPlanTier = .unknown
+        }
         if persistence.objectExists(forKey: "tokenizerAssistedFallbackEnabled") {
             self.tokenizerAssistedFallbackEnabled = persistence.bool(forKey: "tokenizerAssistedFallbackEnabled")
         } else {
@@ -137,6 +238,34 @@ final class QuotaSettings {
             self.cumulativeAcrossAccounts = persistence.bool(forKey: "cumulativeAcrossAccounts")
         } else {
             self.cumulativeAcrossAccounts = false
+        }
+        self.providerOrderCSV = persistence.string(
+            forKey: "providerOrderCSV",
+            defaultValue: "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai"
+        )
+        self.visibleProvidersCSV = persistence.string(
+            forKey: "visibleProvidersCSV",
+            defaultValue: "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai"
+        )
+        if let raw = persistence.optionalString(forKey: "hiddenBucketsJSON"),
+           let data = raw.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            self.hiddenBuckets = Set(decoded)
+        } else {
+            self.hiddenBuckets = []
+        }
+        if let raw = persistence.optionalString(forKey: "bucketOrdersJSON"),
+           let data = raw.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([String: [String]].self, from: data) {
+            self.bucketOrders = decoded
+        } else {
+            self.bucketOrders = [:]
+        }
+        if let raw = persistence.optionalString(forKey: "percentageDisplayMode"),
+           let mode = QuotaPercentageDisplayMode(rawValue: raw) {
+            self.percentageDisplayMode = mode
+        } else {
+            self.percentageDisplayMode = .remainingPercent
         }
         self.smartHubQuotaDisplayEnabled = persistence.bool(forKey: "smartHubQuotaDisplayEnabled")
         self.smartHubQuotaDashboardURL = persistence.string(

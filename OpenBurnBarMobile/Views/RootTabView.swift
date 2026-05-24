@@ -51,6 +51,7 @@ struct RootTabView: View {
     /// swaps via `@StateObject`. Observes the singleton's session-id on
     /// `.onAppear` and auto-opens to dock on session start.
     @StateObject private var liveStagePresenter = AgentLiveStagePresenter()
+    @StateObject private var skillRunPiPController = SkillRunTextPiPController()
 
     // Per-tab navigation paths
     @State private var pulsePath = NavigationPath()
@@ -131,6 +132,12 @@ struct RootTabView: View {
                 onTapHermesTab: { selection = .hermes }
             )
             .zIndex(20)
+
+            SkillRunLiveStage(
+                host: missionConsoleHost,
+                pipController: skillRunPiPController
+            )
+            .zIndex(19)
         }
         .environment(\.motionStore, motionStore)
         .environment(\.chartStudioPresenter, studioPresenter)
@@ -142,6 +149,13 @@ struct RootTabView: View {
         .task { missionActivityCenter.start() }
         .task { missionConsoleHost.start() }
         .task { liveStagePresenter.observe(liveStageSingleton.state) }
+        .task { liveStageSingleton.installLiveActivityIntentRouter() }
+        .task {
+            liveStageSingleton.configurePictureInPicture(
+                onDidStart: { liveStagePresenter.setPiPActive(true) },
+                onDidStop: { liveStagePresenter.enterMaximizeFromPiP() }
+            )
+        }
         .task(id: liveStageEvaluationKey) {
             liveStageSingleton.evaluate(
                 authUID: authStore.currentIdentity?.uid,
@@ -169,6 +183,9 @@ struct RootTabView: View {
             if runtime == nil || runtime == AssistantRuntimeID.hermes.rawValue {
                 selection = .hermes
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
+            openAgentWatchRoute()
         }
         .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
             isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
@@ -291,6 +308,12 @@ struct RootTabView: View {
             pulsePath.append(provider)
         }
         router.clear()
+    }
+
+    private func openAgentWatchRoute() {
+        selection = .you
+        youPath = NavigationPath()
+        youPath.append(YouRoute.computerUse)
     }
 
     private func applyScreenshotRouteIfNeeded() {

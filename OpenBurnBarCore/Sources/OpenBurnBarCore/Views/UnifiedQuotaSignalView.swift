@@ -6,20 +6,20 @@ public struct UnifiedQuotaSignalView: View {
     public let bucket: ProviderQuotaBucket
     public let provider: AgentProvider
     public var compact: Bool = false
+    public var displayMode: String = "remainingPercent"
 
-    public init(bucket: ProviderQuotaBucket, provider: AgentProvider, compact: Bool = false) {
+    public init(bucket: ProviderQuotaBucket, provider: AgentProvider, compact: Bool = false, displayMode: String = "remainingPercent") {
         self.bucket = bucket
         self.provider = provider
         self.compact = compact
+        self.displayMode = displayMode
     }
 
     @Environment(\.colorScheme) private var colorScheme
 
     private var theme: UnifiedProviderTheme { UnifiedProviderTheme.theme(for: provider) }
     private var remainingFraction: Double {
-        if bucketUnit == .unlimited { return 1 }
-        guard bucket.limit > 0 else { return 0 }
-        return max(0, bucket.remaining) / bucket.limit
+        bucket.displayRemainingFraction ?? 0
     }
     private var signalStatus: QuotaSignalStatus {
         QuotaSignalStatus.resolve(fraction: remainingFraction, theme: theme)
@@ -161,7 +161,7 @@ public struct UnifiedQuotaSignalView: View {
 
                 if !compact {
                     HStack {
-                        Text(remainingText + " remaining")
+                        Text(fullRemainingText)
                             .font(UnifiedDesignSystem.Typography.monoTiny)
                             .foregroundStyle(fillColor)
 
@@ -207,7 +207,7 @@ public struct UnifiedQuotaSignalView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(provider.displayName) quota: \(remainingText) remaining")
+        .accessibilityLabel("\(provider.displayName) quota: \(fullRemainingText)")
     }
 
     /// What kind of value this bucket carries — drives label formatting.
@@ -237,7 +237,60 @@ public struct UnifiedQuotaSignalView: View {
 
     private var remainingText: String {
         if bucketUnit == .unlimited { return "Unlimited" }
-        return formatValue(bucket.remaining)
+        switch displayMode {
+        case "usedPercent":
+            if bucketUnit == .percent {
+                let clamped = min(max(bucket.used, 0), 100)
+                return "\(Int(clamped.rounded()))% used"
+            }
+            let usedPct = bucket.displayRemainingPercent.map { 100 - $0 } ?? 0
+            return "\(Int(usedPct.rounded()))% used"
+        case "fractional":
+            let frac = bucket.displayRemainingFraction ?? 0
+            return String(format: "%.2f left", frac)
+        case "absoluteValues":
+            let used = formatValue(bucket.used)
+            let limit = formatValue(bucket.limit)
+            return "\(used) / \(limit)"
+        default: // remainingPercent
+            if bucketUnit == .percent {
+                let clamped = min(max(bucket.remaining, 0), 100)
+                return "\(Int(clamped.rounded()))% left"
+            }
+            if let pct = bucket.displayRemainingPercent {
+                return "\(Int(pct.rounded()))% left"
+            }
+            return "\(formatValue(bucket.remaining)) left"
+        }
+    }
+
+    var fullRemainingText: String {
+        if bucketUnit == .unlimited { return "Unlimited" }
+        switch displayMode {
+        case "usedPercent":
+            if bucketUnit == .percent {
+                let clamped = min(max(bucket.used, 0), 100)
+                return "\(Int(clamped.rounded()))% used"
+            }
+            let usedPct = bucket.displayRemainingPercent.map { 100 - $0 } ?? 0
+            return "\(Int(usedPct.rounded()))% used"
+        case "fractional":
+            let frac = bucket.displayRemainingFraction ?? 0
+            return String(format: "%.2f remaining", frac)
+        case "absoluteValues":
+            let used = formatValue(bucket.used)
+            let limit = formatValue(bucket.limit)
+            return "\(used) / \(limit) used"
+        default: // remainingPercent
+            if bucketUnit == .percent {
+                let clamped = min(max(bucket.remaining, 0), 100)
+                return "\(Int(clamped.rounded()))% remaining"
+            }
+            if let pct = bucket.displayRemainingPercent {
+                return "\(Int(pct.rounded()))% remaining"
+            }
+            return "\(formatValue(bucket.remaining)) remaining"
+        }
     }
 
     private var usageText: String {
@@ -277,8 +330,7 @@ public struct UnifiedQuotaSignalView: View {
 
     private var remainingPercentText: String {
         if bucketUnit == .unlimited { return "∞" }
-        guard bucket.limit > 0 else { return "—" }
-        let pct = remainingFraction * 100
+        guard let pct = bucket.displayRemainingPercent else { return "—" }
         if pct < 1 {
             return String(format: "%.1f%%", pct)
         }

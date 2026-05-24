@@ -506,7 +506,7 @@ internal fun HermesSquareSubscriptionsSheet(onDismiss: () -> Unit) {
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        "${topic.cadence.displayLabel}${if (topic.muted) " · muted" else ""}",
+                                        "${topic.cadence.displayLabel} · ${topic.deliveryMode.displayLabel.lowercase()}${if (topic.muted) " · muted" else ""}",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

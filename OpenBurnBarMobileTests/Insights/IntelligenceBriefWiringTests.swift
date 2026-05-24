@@ -2,6 +2,11 @@ import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
+#if canImport(UIKit) && canImport(AVFoundation)
+import AVFoundation
+import UIKit
+#endif
+
 /// Unit coverage for the non-visual contracts the Editorial Observatory
 /// relies on: citation→prompt mapping, pin wiring, and store mutation
 /// behavior. Snapshot/visual coverage lives in
@@ -209,9 +214,35 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertEqual(payload["commandsAllowed"] as? Bool, true)
         XCTAssertEqual(payload["fileEditsAllowed"] as? Bool, false)
         XCTAssertEqual(payload["source"] as? String, "ios-insights")
+        XCTAssertEqual(payload["sourceSurface"] as? String, "ios-insights")
+        XCTAssertEqual(payload["deliveryMode"] as? String, "action_only")
         XCTAssertEqual(payload["status"] as? String, "pending")
-        XCTAssertEqual(payload["schemaVersion"] as? Int, 2)
+        XCTAssertEqual(payload["schemaVersion"] as? Int, 3)
         XCTAssertNil(payload["events"])
+    }
+
+    func test_cliAgentMissionRequestPayloadIncludesSkillRunMetadata() throws {
+        let payload = CLIAgentMissionRequestPayloadFactory.build(
+            id: "mission-skill",
+            title: "Explain yesterday",
+            prompt: "What happened yesterday?",
+            missionKind: "chat",
+            requestedRuntime: "hermes",
+            targetProject: nil,
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            sourceSkillID: .whatHappened,
+            sourceSurface: "ipad-hermes-square",
+            deliveryMode: .fullStream,
+            parentHermesThreadID: "thread-1"
+        )
+
+        XCTAssertEqual(payload["sourceSkillID"] as? String, "what_happened")
+        XCTAssertEqual(payload["sourceSurface"] as? String, "ipad-hermes-square")
+        XCTAssertEqual(payload["deliveryMode"] as? String, "full_stream")
+        XCTAssertEqual(payload["parentHermesThreadID"] as? String, "thread-1")
     }
 
     func test_cliAgentMissionRequestPayloadIncludesRequestedModelID() throws {
@@ -242,6 +273,9 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertEqual(event["phase"] as? String, "queued")
         XCTAssertEqual(event["kind"] as? String, "status")
         XCTAssertEqual(event["source"] as? String, "ios")
+        XCTAssertEqual(event["deliveryMode"] as? String, "action_only")
+        XCTAssertEqual(event["eventImportance"] as? String, "normal")
+        XCTAssertEqual(event["skillStepID"] as? String, "queued")
         XCTAssertEqual(event["isError"] as? Bool, false)
     }
 
@@ -474,5 +508,158 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertEqual(snapshot.currentStepLabel, "Changed file")
         XCTAssertEqual(snapshot.activeToolName, "exec_command")
         XCTAssertEqual(snapshot.latestArtifactLabel, "OpenBurnBarMobile/Views/Insights/InsightsRootView.swift")
+    }
+
+#if canImport(UIKit) && canImport(AVFoundation)
+    @MainActor
+    func test_skillRunLiveStagePresenterAutoOpensFullStreamMission() throws {
+        let snapshot = try makeSkillRunSnapshot(
+            id: "skill-full-stream",
+            status: "running",
+            deliveryMode: .fullStream
+        )
+        let presenter = SkillRunLiveStagePresenter()
+
+        presenter.reconcile(missions: [snapshot])
+
+        XCTAssertTrue(presenter.isVisible)
+        XCTAssertEqual(presenter.focusedMissionID, snapshot.id)
+    }
+
+    @MainActor
+    func test_skillRunLiveStagePresenterKeepsMutedMissionQuiet() throws {
+        let snapshot = try makeSkillRunSnapshot(
+            id: "skill-muted",
+            status: "running",
+            deliveryMode: .muted
+        )
+        let presenter = SkillRunLiveStagePresenter()
+
+        presenter.reconcile(missions: [snapshot])
+
+        XCTAssertFalse(presenter.isVisible)
+        XCTAssertEqual(presenter.focusedMissionID, snapshot.id)
+    }
+
+    @MainActor
+    func test_skillRunLiveStagePresenterAutoOpensActionOnlyApproval() throws {
+        let snapshot = try makeSkillRunSnapshot(
+            id: "skill-approval",
+            status: "waiting_for_approval",
+            deliveryMode: .actionOnly,
+            approvalStatus: "pending",
+            eventImportance: .actionRequired
+        )
+        let presenter = SkillRunLiveStagePresenter()
+
+        presenter.reconcile(missions: [snapshot])
+
+        XCTAssertTrue(presenter.isVisible)
+        XCTAssertEqual(presenter.focusedMissionID, snapshot.id)
+    }
+
+    @MainActor
+    func test_skillRunLiveStagePresenterReopensDismissedMissionForNewApprovalEvent() throws {
+        let running = try makeSkillRunSnapshot(
+            id: "skill-reopen",
+            status: "running",
+            deliveryMode: .fullStream,
+            eventImportance: .normal,
+            eventSequence: 1
+        )
+        let stillRunning = try makeSkillRunSnapshot(
+            id: "skill-reopen",
+            status: "running",
+            deliveryMode: .fullStream,
+            eventImportance: .normal,
+            eventSequence: 2
+        )
+        let approval = try makeSkillRunSnapshot(
+            id: "skill-reopen",
+            status: "waiting_for_approval",
+            deliveryMode: .actionOnly,
+            approvalStatus: "pending",
+            eventImportance: .actionRequired,
+            eventSequence: 3
+        )
+        let presenter = SkillRunLiveStagePresenter()
+
+        presenter.reconcile(missions: [running])
+        XCTAssertTrue(presenter.isVisible)
+
+        presenter.dismiss(running)
+        XCTAssertFalse(presenter.isVisible)
+
+        presenter.reconcile(missions: [running])
+        XCTAssertFalse(presenter.isVisible)
+
+        presenter.reconcile(missions: [stillRunning])
+        XCTAssertFalse(presenter.isVisible)
+
+        presenter.reconcile(missions: [approval])
+        XCTAssertTrue(presenter.isVisible)
+        XCTAssertEqual(presenter.focusedMissionID, approval.id)
+    }
+
+    func test_skillRunPiPFrameRendererProducesSampleBufferForTextTimeline() throws {
+        let snapshot = try makeSkillRunSnapshot(
+            id: "skill-pip-frame",
+            status: "running",
+            deliveryMode: .fullStream,
+            liveSummary: "Codex is reading recent sessions."
+        )
+
+        XCTAssertNotNil(SkillRunPiPFrameRenderer.makeSampleBuffer(for: snapshot))
+    }
+#endif
+
+    private func makeSkillRunSnapshot(
+        id: String,
+        status: String,
+        deliveryMode: SkillRunDeliveryMode,
+        approvalStatus: String? = nil,
+        eventImportance: SkillRunEventImportance = .normal,
+        eventSequence: Int = 1,
+        liveSummary: String = "Skill Run is moving through the timeline."
+    ) throws -> CLIAgentMissionSnapshot {
+        var data: [String: Any] = [
+            "id": id,
+            "title": "Run Pulse follow-along",
+            "status": status,
+            "requestedRuntime": "codex",
+            "selectedRuntime": "codex",
+            "selectedRuntimeName": "Codex",
+            "sourceSkillID": HermesSkillRunID.runPulse.rawValue,
+            "sourceSurface": "ios-hermes-square",
+            "deliveryMode": deliveryMode.rawValue,
+            "liveSummary": liveSummary,
+            "createdAt": ISO8601DateFormatter().string(from: Date()),
+            "events": [
+                [
+                    "sequence": eventSequence,
+                    "timestamp": "2026-05-14T10:00:00Z",
+                    "kind": eventImportance == .actionRequired ? "approval_request" : "status",
+                    "phase": status,
+                    "title": eventImportance == .actionRequired ? "Approval needed" : "Running",
+                    "message": eventImportance == .actionRequired ? "Codex needs approval." : "Codex is reading recent sessions.",
+                    "runtime": "codex",
+                    "source": "mac",
+                    "sourceSkillID": HermesSkillRunID.runPulse.rawValue,
+                    "deliveryMode": deliveryMode.rawValue,
+                    "eventImportance": eventImportance.rawValue,
+                    "skillStepID": "follow_along",
+                    "isError": false
+                ]
+            ]
+        ]
+        if let approvalStatus {
+            data["approvalStatus"] = approvalStatus
+        }
+        if approvalStatus == "pending" {
+            data["approvalRequestId"] = "approval-\(id)"
+            data["approvalTitle"] = "Approve Skill Run"
+            data["approvalMessage"] = "Codex needs approval before continuing."
+        }
+        return try XCTUnwrap(CLIAgentMissionSnapshot(documentID: id, data: data))
     }
 }

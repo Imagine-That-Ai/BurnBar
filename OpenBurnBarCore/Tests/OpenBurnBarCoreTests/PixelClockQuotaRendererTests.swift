@@ -665,6 +665,33 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertEqual(openCode.colorHex(row: 3, column: 2), "#5A5858")
         XCTAssertNil(openCode.colorHex(row: 1, column: 1))
         XCTAssertNil(openCode.colorHex(row: 7, column: 0))
+
+        // xAI / Grok — bold stencil "X": near-black crossing diagonals
+        // (#0F0F0F) on top with a graphite shadow (#4A4A4A) on the
+        // lower-trailing edges. Resolves from both "xai" and "grok" tokens.
+        let grok = logo(for: .xAI)
+        XCTAssertEqual(grok.sourceName, "GrokLogo")
+        XCTAssertEqual(grok.rows, [
+            "#......#",
+            "##....##",
+            ".##..##.",
+            "..####..",
+            "..####..",
+            ".##..##.",
+            "##....##",
+            "#......#"
+        ])
+        XCTAssertEqual(grok.colorHex(row: 0, column: 0), "#0F0F0F") // top-left arm
+        XCTAssertEqual(grok.colorHex(row: 3, column: 3), "#0F0F0F") // crossing core
+        XCTAssertEqual(grok.colorHex(row: 4, column: 2), "#4A4A4A") // graphite shadow
+        XCTAssertEqual(grok.colorHex(row: 7, column: 7), "#4A4A4A") // bottom-right shadow
+        XCTAssertNil(grok.colorHex(row: 0, column: 1))
+
+        // Both "grok" and "xai" tokens resolve to the Grok stencil.
+        let grokByName = PixelClockQuotaRenderer.providerLogo(
+            for: PixelClockQuotaItem(providerID: "xai", providerName: "Grok", percentUsed: 50, usageText: "", windowLabel: "")
+        )
+        XCTAssertEqual(grokByName.sourceName, "GrokLogo")
     }
 
     func testCursorLogoIsThinAngularNorthEastFacetedMark() {
@@ -1212,6 +1239,7 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         case .deepSeek: return "DeepSeekLogo"
         case .openCode: return "OpenCodeLogo"
         case .antigravity: return "GeminiCLILogo"
+        case .xAI: return "GrokLogo"
         default: return "monogram"
         }
     }

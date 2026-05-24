@@ -280,6 +280,30 @@ LOGOS = [
         },
     ),
     LogoSource(
+        # xAI / Grok — bold stencil "X" mark inspired by the xAI brand
+        # treatment: two crossing diagonals using brand near-black
+        # (#0F0F0F) with a soft graphite shadow on the trailing edges.
+        # Reads as a clean angular "X" silhouette on the 8x8 grid even
+        # under the TC001 rainbow remap (two color zones, dominant ~35%).
+        "xAI",
+        "GrokLogo",
+        "GrokLogo",
+        pixel_rows=(
+            "X......X",
+            "XX....XX",
+            ".XX..XX.",
+            "..XXXX..",
+            "..SXXS..",
+            ".SS..SS.",
+            "SS....SS",
+            "S......S",
+        ),
+        pixel_colors={
+            "X": "#0F0F0F",
+            "S": "#4A4A4A",
+        },
+    ),
+    LogoSource(
         # Antigravity CLI — rainbow gradient mountain/A-shape matching
         # the CLI startup banner pixel art. The gradient flows through
         # the full spectrum: blue (bottom-left) → cyan → green (peak)

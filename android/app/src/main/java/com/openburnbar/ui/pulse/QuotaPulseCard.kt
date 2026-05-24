@@ -1,35 +1,51 @@
 package com.openburnbar.ui.pulse
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Percent
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.QuotaBucket
+import com.openburnbar.data.models.displayRemainingFraction
+import com.openburnbar.data.models.displayRemainingPercent
+import com.openburnbar.data.models.isDisplayableQuotaSignal
+import com.openburnbar.data.models.key
+import com.openburnbar.data.stores.QuotaPreferences
 import com.openburnbar.ui.burn.ProviderAuroraAvatar
 import com.openburnbar.ui.burn.buildQuotaRingItems
 import com.openburnbar.ui.components.AuroraGlassCard
@@ -42,9 +58,25 @@ fun QuotaPulseCard(
     onSelect: (String) -> Unit,
     onOpenBurn: () -> Unit
 ) {
-    val items = buildQuotaRingItems(snapshots)
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    val prefs = remember(context) { QuotaPreferences.get(context) }
+
+    val providerOrder by prefs.providerOrder.collectAsState()
+    val visibleProviders by prefs.visibleProviders.collectAsState()
+    val hiddenBuckets by prefs.hiddenBuckets.collectAsState()
+    val bucketOrders by prefs.bucketOrders.collectAsState()
+    val percentageDisplayMode by prefs.percentageDisplayMode.collectAsState()
+
+    var isJiggling by remember { mutableStateOf(false) }
+
+    val items = buildQuotaRingItems(snapshots).filter {
+        val p = AgentProvider.fromKey(it.providerKey)
+        p != null && visibleProviders.contains(p)
+    }
+
     val hasUrgent = snapshots.flatMap { it.buckets }.any { bucket ->
-        bucket.limit > 0 && maxOf(0.0, bucket.remaining) / bucket.limit < 0.25
+        (bucket.displayRemainingFraction ?: 1.0) < 0.25
     }
     val fleetHealth = if (items.isNotEmpty()) {
         items.map { it.pressureRemaining }.average()
@@ -64,10 +96,21 @@ fun QuotaPulseCard(
     }
 
     AuroraGlassCard(
-        modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
+        modifier = Modifier
+            .padding(horizontal = AuroraSpacing.lg.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onLongPress = {
+                        if (!isJiggling) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            isJiggling = true
+                        }
+                    }
+                )
+            },
         cornerRadius = AuroraRadius.xl
     ) {
-        Column() {
+        Column {
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -83,29 +126,73 @@ fun QuotaPulseCard(
                     )
                     Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
                     Text(
-                        text = "QUOTA",
+                        text = if (isJiggling) "CUSTOMIZE QUOTA" else "QUOTA",
                         fontSize = AuroraTypography.tiny.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         letterSpacing = 1.6.sp
                     )
                 }
-                Text(
-                    text = "Open ›",
-                    fontSize = AuroraTypography.tiny.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = AuroraColors.ember,
-                    modifier = Modifier.clickable { onOpenBurn() }
-                )
+
+                if (isJiggling) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                val modes = listOf("remainingPercent", "usedPercent", "absoluteValues", "fractional")
+                                val idx = modes.indexOf(percentageDisplayMode).takeIf { it >= 0 } ?: 0
+                                prefs.setPercentageDisplayMode(modes[(idx + 1) % modes.size])
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Filled.Percent, "Display Mode", tint = AuroraColors.ember, modifier = Modifier.size(16.dp))
+                        }
+                        IconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                isJiggling = false
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Filled.Check, "Done", tint = AuroraColors.success, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Open ›",
+                        fontSize = AuroraTypography.tiny.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AuroraColors.ember,
+                        modifier = Modifier.clickable { onOpenBurn() }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
 
-            if (items.isEmpty()) {
+            if (items.isEmpty() && !isJiggling) {
                 EmptyStateView(
                     title = "No quota signal yet",
                     message = "Connect a provider on your Mac to start tracking quota."
                 )
+            } else if (isJiggling) {
+                // Jiggling Customization List
+                val orderedProviders = providerOrder.filter { visibleProviders.contains(it) }
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    orderedProviders.forEachIndexed { pIdx, p ->
+                        JigglingProviderRow(
+                            provider = p,
+                            snapshots = snapshots.filter { AgentProvider.fromKey(it.providerId) == p || AgentProvider.fromKey(it.provider) == p },
+                            prefs = prefs,
+                            index = pIdx,
+                            total = orderedProviders.size,
+                            hiddenBuckets = hiddenBuckets,
+                            bucketOrders = bucketOrders,
+                            providerOrder = providerOrder,
+                            percentageDisplayMode = percentageDisplayMode
+                        )
+                    }
+                }
             } else {
                 // Fleet hero
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -154,6 +241,189 @@ fun QuotaPulseCard(
                             modifier = Modifier.clickable { onOpenBurn() }
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JigglingProviderRow(
+    provider: AgentProvider,
+    snapshots: List<ProviderQuotaSnapshot>,
+    prefs: QuotaPreferences,
+    index: Int,
+    total: Int,
+    hiddenBuckets: Set<String>,
+    bucketOrders: Map<String, List<String>>,
+    providerOrder: List<AgentProvider>,
+    percentageDisplayMode: String
+) {
+    val haptic = LocalHapticFeedback.current
+
+    // Shake animation
+    val infiniteTransition = rememberInfiniteTransition(label = "shake")
+    val shake by infiniteTransition.animateFloat(
+        initialValue = -1.5f,
+        targetValue = 1.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(120, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "shake"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f))
+            .rotate(shake)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            ProviderAuroraAvatar(providerKey = provider.key, size = 32, showHalo = false)
+            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Text(
+                text = provider.displayName,
+                fontSize = AuroraTypography.headline.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+
+            // Move up/down
+            IconButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val newOrder = providerOrder.toMutableList()
+                    val idx = newOrder.indexOf(provider)
+                    if (idx > 0) {
+                        newOrder[idx] = newOrder[idx - 1]
+                        newOrder[idx - 1] = provider
+                        prefs.setProviderOrder(newOrder)
+                    }
+                },
+                enabled = index > 0,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.Filled.ArrowUpward, "Move Up", tint = if (index > 0) AuroraColors.ember else Color.Gray)
+            }
+            IconButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val newOrder = providerOrder.toMutableList()
+                    val idx = newOrder.indexOf(provider)
+                    if (idx < newOrder.size - 1) {
+                        newOrder[idx] = newOrder[idx + 1]
+                        newOrder[idx + 1] = provider
+                        prefs.setProviderOrder(newOrder)
+                    }
+                },
+                enabled = index < total - 1,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.Filled.ArrowDownward, "Move Down", tint = if (index < total - 1) AuroraColors.ember else Color.Gray)
+            }
+        }
+
+        // Buckets
+        val allBuckets = snapshots.flatMap { it.buckets.filter { b -> b.isDisplayableQuotaSignal() } }.distinctBy { it.key }
+        val token = provider.key
+        val customOrder = bucketOrders[token]
+        val sortedBuckets = if (customOrder != null) {
+            allBuckets.sortedWith { lhs: QuotaBucket, rhs: QuotaBucket ->
+                val lhsIdx = customOrder.indexOf(lhs.key).takeIf { it >= 0 } ?: Int.MAX_VALUE
+                val rhsIdx = customOrder.indexOf(rhs.key).takeIf { it >= 0 } ?: Int.MAX_VALUE
+                if (lhsIdx != rhsIdx) {
+                    lhsIdx.compareTo(rhsIdx)
+                } else {
+                    val label1 = (lhs.meta?.get("label") as? String) ?: lhs.name
+                    val label2 = (rhs.meta?.get("label") as? String) ?: rhs.name
+                    label1.compareTo(label2)
+                }
+            }
+        } else {
+            allBuckets
+        }
+
+        val currentKeys = customOrder ?: sortedBuckets.map { it.key }
+
+        sortedBuckets.forEachIndexed { bIdx, bucket ->
+            val isHidden = hiddenBuckets.contains("${provider.key}:${bucket.key}")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val key = "${provider.key}:${bucket.key}"
+                        val newHidden = hiddenBuckets.toMutableSet()
+                        if (newHidden.contains(key)) newHidden.remove(key) else newHidden.add(key)
+                        prefs.setHiddenBuckets(newHidden)
+                    },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = "Toggle Visibility",
+                        tint = if (isHidden) Color.Gray else AuroraColors.ember,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = (bucket.meta?.get("label") as? String) ?: bucket.name,
+                        fontSize = 12.sp,
+                        color = if (isHidden) Color.Gray else MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "${bucket.displayRemainingPercent?.toInt() ?: 0}%",
+                        fontSize = 10.sp,
+                        color = if (isHidden) Color.Gray else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val newKeys = currentKeys.toMutableList()
+                        val idx = newKeys.indexOf(bucket.key)
+                        if (idx > 0) {
+                            newKeys[idx] = newKeys[idx - 1]
+                            newKeys[idx - 1] = bucket.key
+                            val map = bucketOrders.toMutableMap()
+                            map[token] = newKeys
+                            prefs.setBucketOrders(map)
+                        }
+                    },
+                    enabled = bIdx > 0,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(Icons.Filled.ArrowUpward, "Move Up", tint = if (bIdx > 0) AuroraColors.ember else Color.Gray, modifier = Modifier.size(16.dp))
+                }
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val newKeys = currentKeys.toMutableList()
+                        val idx = newKeys.indexOf(bucket.key)
+                        if (idx < newKeys.size - 1) {
+                            newKeys[idx] = newKeys[idx + 1]
+                            newKeys[idx + 1] = bucket.key
+                            val map = bucketOrders.toMutableMap()
+                            map[token] = newKeys
+                            prefs.setBucketOrders(map)
+                        }
+                    },
+                    enabled = bIdx < sortedBuckets.size - 1,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(Icons.Filled.ArrowDownward, "Move Down", tint = if (bIdx < sortedBuckets.size - 1) AuroraColors.ember else Color.Gray, modifier = Modifier.size(16.dp))
                 }
             }
         }

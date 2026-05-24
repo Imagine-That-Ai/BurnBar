@@ -2,6 +2,7 @@
 import Combine
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarMedia
 
 /// Process-scoped owner of the persistent Computer Use control stream.
 ///
@@ -31,6 +32,16 @@ final class AgentWatchOverlaySingleton: ObservableObject {
     /// Underlying coordinator owning the iroh stream + receiver + sender.
     let coordinator: AgentWatchOverlayCoordinator
 
+    /// Canonical video decode/display layer for the live stage and system PiP.
+    /// Only one SwiftUI surface mounts this layer at a time; the layer retains
+    /// its last frame between dock/split/maximize transitions.
+    let videoCoordinator: AgentWatchVideoCoordinator
+
+    /// System PiP bridge bound to `videoCoordinator.displayLayer`.
+    let pipController: ScreenSharePiPController
+
+    private let audioSession: AgentWatchAudioSession
+
     /// Live state mirrored from the coordinator. `AgentWatchState` is the
     /// store of record for `sessionId`, `currentFrame`, `actionTimeline`,
     /// `pendingApproval`, `liveTrustMode`.
@@ -47,14 +58,22 @@ final class AgentWatchOverlaySingleton: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var pairingKeyProvider: any IrohPairingPublicKeyProviding
     private var dialTask: Task<Void, Never>?
+    private var didAttachPiPController = false
 
     init(
         coordinator: AgentWatchOverlayCoordinator = AgentWatchOverlayCoordinator(),
-        pairingKeyProvider: any IrohPairingPublicKeyProviding = FirestoreIrohPairingPublicKeyProvider.shared
+        pairingKeyProvider: any IrohPairingPublicKeyProviding = FirestoreIrohPairingPublicKeyProvider.shared,
+        videoCoordinator: AgentWatchVideoCoordinator = AgentWatchVideoCoordinator(),
+        pipController: ScreenSharePiPController = ScreenSharePiPController(),
+        audioSession: AgentWatchAudioSession = AgentWatchAudioSession()
     ) {
         self.coordinator = coordinator
         self.pairingKeyProvider = pairingKeyProvider
+        self.videoCoordinator = videoCoordinator
+        self.pipController = pipController
+        self.audioSession = audioSession
         bindPhase()
+        bindState()
     }
 
     /// Drive the singleton from a SwiftUI surface (typically `RootTabView`).
@@ -109,7 +128,23 @@ final class AgentWatchOverlaySingleton: ObservableObject {
         dialTask = nil
         currentUID = nil
         currentConnectionID = nil
+        audioSession.deactivate()
+        pipController.stop()
         await coordinator.stop()
+    }
+
+    /// RootTabView installs the presenter callbacks once. The controller is
+    /// attached lazily on the first live frame so PiP always binds to a layer
+    /// that has actually received video.
+    func configurePictureInPicture(
+        onDidStart: @escaping () -> Void,
+        onDidStop: @escaping () -> Void
+    ) {
+        pipController.onDidStart = onDidStart
+        pipController.onDidStop = onDidStop
+        if state.currentFrame != nil {
+            attachPictureInPictureIfNeeded()
+        }
     }
 
     private func bindPhase() {
@@ -119,6 +154,99 @@ final class AgentWatchOverlaySingleton: ObservableObject {
                 self?.phase = phase
             }
             .store(in: &cancellables)
+    }
+
+    private func bindState() {
+        state.$currentFrame
+            .compactMap { $0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] frame in
+                guard let self else { return }
+                self.attachPictureInPictureIfNeeded()
+                Task { await self.videoCoordinator.ingest(frame: frame) }
+            }
+            .store(in: &cancellables)
+
+        state.$sessionId
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] sessionId in
+                guard let self else { return }
+                if sessionId == nil {
+                    self.audioSession.deactivate()
+                    self.pipController.stop()
+                    if #available(iOS 16.1, *) {
+                        AgentWatchLiveActivityManager.shared.end()
+                    }
+                } else {
+                    self.audioSession.activateForLiveWatchIfAllowed()
+                    self.refreshLiveActivity()
+                }
+            }
+            .store(in: &cancellables)
+
+        state.$currentFocus
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshLiveActivity() }
+            .store(in: &cancellables)
+
+        state.$actionTimeline
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshLiveActivity() }
+            .store(in: &cancellables)
+
+        state.$pendingApproval
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshLiveActivity() }
+            .store(in: &cancellables)
+    }
+
+    private func attachPictureInPictureIfNeeded() {
+        guard !didAttachPiPController else { return }
+        pipController.attach(displayLayer: videoCoordinator.displayLayer)
+        didAttachPiPController = true
+    }
+
+    private func refreshLiveActivity() {
+        guard let sessionId = state.sessionId else { return }
+        let startedAt = state.sessionStartedAt ?? Date()
+        if #available(iOS 16.1, *) {
+            let focusName = state.currentFocus?.appName ?? "Agent Live"
+            let lastAction = state.pendingApproval?.actionSummary
+                ?? state.actionTimeline.last?.summary
+                ?? "Watching Mac"
+            AgentWatchLiveActivityManager.shared.start(
+                sessionId: sessionId.rawValue,
+                startedAt: startedAt
+            )
+            AgentWatchLiveActivityManager.shared.update(
+                appName: focusName,
+                lastAction: lastAction,
+                actionsCount: state.actionsExecuted,
+                approvalPending: state.pendingApproval != nil,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+        }
+    }
+
+    func installLiveActivityIntentRouter() {
+        AgentWatchLiveActivityIntentRouter.install { command in
+            await AgentWatchOverlaySingleton.shared.handleLiveActivityCommand(command)
+        }
+    }
+
+    private func handleLiveActivityCommand(_ command: AgentWatchLiveActivityCommand) async {
+        guard let receiver = coordinator.receiver else { return }
+        switch command {
+        case .approve:
+            guard let request = state.pendingApproval else { return }
+            try? await receiver.approve(request)
+        case .reject:
+            guard let request = state.pendingApproval else { return }
+            try? await receiver.reject(request, halt: false)
+        case .halt:
+            try? await receiver.panicHalt()
+        }
     }
 }
 #endif

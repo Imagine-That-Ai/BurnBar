@@ -1,9 +1,24 @@
 import Foundation
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 
 protocol ChatSessionSearchProviding {
     func search(query: String) async -> [SearchResult]
+}
+
+private final class ChatSessionControllerGrantReference: @unchecked Sendable {
+    @MainActor weak var controller: ChatSessionController?
+
+    @MainActor
+    init(_ controller: ChatSessionController) {
+        self.controller = controller
+    }
+
+    @MainActor
+    func hasActiveGrant(id grantID: String) -> Bool {
+        controller?.activeDesktopControlGrant?.grantID == grantID
+    }
 }
 
 // MARK: - Chat Session Controller
@@ -28,6 +43,8 @@ final class ChatSessionController {
     var streamingTick: Int = 0
     var streamError: String?
     var chatBackend: ChatBackendID = .codex
+    var desktopControlGrant: AgentCapabilityGrant?
+    var desktopControlError: String?
     /// Per-backend `model` selection for the active chat. Empty means the
     /// active CLI profile or gateway-advertised default decides.
     var chatModelCodex: String = "" {
@@ -112,6 +129,9 @@ final class ChatSessionController {
     private let retrievalHealthService: RetrievalHealthService
     private let settingsManager: SettingsManager
     let cliBridge: CLIBridge
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    weak var computerUseRuntimeController: ComputerUseRuntimeController?
+    #endif
 
     private var streamTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
@@ -194,6 +214,90 @@ final class ChatSessionController {
         case .hermes: chatModelHermes = value
         case .openclaw: chatModelOpenClaw = value
         case .piAgent: chatModelPiAgent = value
+        }
+    }
+
+    var activeDesktopControlGrant: AgentCapabilityGrant? {
+        let runtimeID = assistantRuntimeID(for: chatBackend)
+        if let grant = desktopControlGrant,
+           grant.runtimeID == runtimeID,
+           grant.threadID == activeThreadID,
+           grant.isActive() {
+            return grant
+        }
+        return AgentCapabilityGrantStore.shared.activeGrant(
+            runtimeID: runtimeID,
+            threadID: activeThreadID
+        )
+    }
+
+    var desktopControlEnabled: Bool {
+        activeDesktopControlGrant != nil
+    }
+
+    func grantDesktopControl(
+        capabilities: Set<AgentDesktopCapability>,
+        trustMode: ComputerUseTrustMode,
+        duration: TimeInterval = 30 * 60
+    ) {
+        guard !capabilities.isEmpty else {
+            revokeDesktopControl()
+            return
+        }
+        desktopControlGrant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: assistantRuntimeID(for: chatBackend),
+            threadID: activeThreadID,
+            capabilities: capabilities,
+            trustMode: trustMode,
+            workspaceRootPath: chatWorkspaceURL.path,
+            now: Date(),
+            duration: duration
+        )
+        if let desktopControlGrant {
+            AgentCapabilityGrantStore.shared.activate(desktopControlGrant)
+        }
+        desktopControlError = nil
+    }
+
+    func revokeDesktopControl() {
+        AgentCapabilityGrantStore.shared.revoke(
+            runtimeID: assistantRuntimeID(for: chatBackend),
+            threadID: activeThreadID
+        )
+        desktopControlGrant = desktopControlGrant?.revoked()
+        desktopControlError = nil
+    }
+
+    func activeAgentToolBroker() -> AgentToolBroker? {
+        guard let grant = activeDesktopControlGrant else { return nil }
+        let grantReference = ChatSessionControllerGrantReference(self)
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        return AgentToolBroker(
+            grant: grant,
+            workspaceURL: chatWorkspaceURL,
+            computerUseRuntimeController: computerUseRuntimeController,
+            grantStillActive: { [grantReference, grantID = grant.grantID] in
+                await grantReference.hasActiveGrant(id: grantID)
+            }
+        )
+        #else
+        return AgentToolBroker(
+            grant: grant,
+            workspaceURL: chatWorkspaceURL,
+            grantStillActive: { [grantReference, grantID = grant.grantID] in
+                await grantReference.hasActiveGrant(id: grantID)
+            }
+        )
+        #endif
+    }
+
+    private func assistantRuntimeID(for backend: ChatBackendID) -> AssistantRuntimeID {
+        switch backend {
+        case .codex: return .codex
+        case .claude: return .claude
+        case .hermes: return .hermes
+        case .openclaw: return .openClaw
+        case .piAgent: return .pi
         }
     }
 
@@ -442,6 +546,7 @@ final class ChatSessionController {
         streamError = nil
         selectedContext = nil
         conversationJumpTargets = []
+        revokeDesktopControl()
 
         persistActiveThreadSlot()
 
@@ -649,6 +754,7 @@ final class ChatSessionController {
     }
 
     func startNewChatThread() {
+        revokeDesktopControl()
         let newID = UUID().uuidString
         do {
             activeThreadID = try dataStore.createChatThread(id: newID)
@@ -678,6 +784,7 @@ final class ChatSessionController {
         streamError = nil
         selectedContext = nil
         conversationJumpTargets = []
+        revokeDesktopControl()
 
         do {
             if try !dataStore.chatThreadExists(id: threadID) {
@@ -717,6 +824,7 @@ final class ChatSessionController {
         streamError = nil
         selectedContext = nil
         conversationJumpTargets = []
+        revokeDesktopControl()
 
         activeThreadID = threadID
         persistActiveThreadSlot()
@@ -1134,6 +1242,11 @@ final class ChatSessionController {
         ensureChatWorkspaceDirectoryExists()
         let workspacePath = chatWorkspaceURL.path
         augmentedSystem += Self.burnBarWorkspacePromptSection(path: workspacePath)
+        let activeDesktopGrant = activeDesktopControlGrant
+        let activeToolBroker = activeAgentToolBroker()
+        if let activeDesktopGrant {
+            augmentedSystem += Self.desktopControlPromptSection(for: activeDesktopGrant)
+        }
 
         isStreaming = true
         let assistantId = UUID().uuidString
@@ -1188,7 +1301,8 @@ final class ChatSessionController {
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
-                            workspaceURL: self.chatWorkspaceURL
+                            workspaceURL: self.chatWorkspaceURL,
+                            toolBroker: activeToolBroker
                         )
                     case .openclaw:
                         let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
@@ -1201,7 +1315,8 @@ final class ChatSessionController {
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
-                            workspaceURL: self.chatWorkspaceURL
+                            workspaceURL: self.chatWorkspaceURL,
+                            toolBroker: activeToolBroker
                         )
                     case .piAgent:
                         // Inject the selected Pi instance ID into the system
@@ -1220,21 +1335,24 @@ final class ChatSessionController {
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
-                            workspaceURL: self.chatWorkspaceURL
+                            workspaceURL: self.chatWorkspaceURL,
+                            toolBroker: activeToolBroker
                         )
                     case .codex:
                         return self.cliBridge.chatCodexStream(
                             systemPrompt: augmentedSystem,
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
                         )
                     case .claude:
                         return self.cliBridge.chatClaudeStream(
                             systemPrompt: augmentedSystem,
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
                         )
                     }
                 }
@@ -1391,6 +1509,24 @@ final class ChatSessionController {
 
         Change to this directory before running shell commands that write files. Write every new file under this path (subdirectories are allowed).
         A `openburnbar-mcp.config.json` may be present to wire OpenBurnBar’s local index into MCP-capable tools.
+        """
+    }
+
+    private static func desktopControlPromptSection(for grant: AgentCapabilityGrant) -> String {
+        let capabilities = grant.capabilities
+            .map(\.displayName)
+            .sorted()
+            .joined(separator: ", ")
+        let workspace = grant.workspaceRootPath?.nonEmpty ?? "the current OpenBurnBar chat workspace"
+        return """
+
+        ## User-approved desktop and tool access
+        The user granted this \(grant.runtimeID.displayName) chat temporary access to desktop/workspace tools for this thread only.
+        Active capabilities: \(capabilities)
+        Trust mode: \(grant.trustMode.rawValue)
+        Workspace root: \(workspace)
+
+        Use the provided tools when they are the direct way to complete the user's request. Do not claim that desktop, browser, file, or shell access is unavailable while this grant is active. Mac input and browser actions still pass through OpenBurnBar's approval, scope, and audit pipeline.
         """
     }
 

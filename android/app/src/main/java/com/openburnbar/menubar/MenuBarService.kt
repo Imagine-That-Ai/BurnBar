@@ -7,10 +7,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import com.openburnbar.MainActivity
 import com.openburnbar.R
@@ -23,10 +21,13 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
- * Foreground service that owns the persistent BurnBar notification — the
+ * Service that owns the persistent BurnBar quick-glance notification — the
  * Android-side stand-in for the iOS menu-bar label. The service collects
  * [MenuBarController.snapshot] and re-renders the notification each time a
  * new snapshot arrives.
+ *
+ * The notification does not perform data transfer, so this stays out of the
+ * foreground-service permission path required by Android 14+ and Google Play.
  *
  * Users can suppress this notification via `Settings → BurnBar → Quick glance
  * notification`; the controlling setting persists in [SuppressionStore] and
@@ -42,7 +43,7 @@ class MenuBarService : Service() {
     override fun onCreate() {
         super.onCreate()
         ensureChannel(this)
-        startForegroundWithSnapshot(MenuBarController.snapshot.value)
+        postSnapshotNotification(MenuBarController.snapshot.value)
         collectorJob = scope.launch {
             MenuBarController.snapshot.collectLatest { snap ->
                 val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -58,25 +59,15 @@ class MenuBarService : Service() {
     override fun onDestroy() {
         collectorJob?.cancel()
         scope.cancel()
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancel(NOTIFICATION_ID)
         super.onDestroy()
     }
 
-    private fun startForegroundWithSnapshot(snap: MenuBarSnapshot) {
+    private fun postSnapshotNotification(snap: MenuBarSnapshot) {
         val notification = buildNotification(this, snap)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForegroundDataSync(notification)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
-    }
-
-    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private fun startForegroundDataSync(notification: Notification) {
-        startForeground(
-            NOTIFICATION_ID,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        )
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, notification)
     }
 
     companion object {
@@ -87,13 +78,11 @@ class MenuBarService : Service() {
             if (!SuppressionStore.allowed(context)) return false
             val intent = Intent(context, MenuBarService::class.java)
             return try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
+                context.startService(intent)
                 true
             } catch (_: IllegalStateException) {
+                false
+            } catch (_: SecurityException) {
                 false
             }
         }

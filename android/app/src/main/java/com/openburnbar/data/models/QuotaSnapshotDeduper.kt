@@ -6,9 +6,12 @@ package com.openburnbar.data.models
  * source document.
  */
 fun List<ProviderQuotaSnapshot>.deduplicatedByProviderAccount(): List<ProviderQuotaSnapshot> {
-    return groupBy { it.providerAccountDedupKey() }
+    val merged = groupBy { it.providerAccountDedupKey() }
         .values
         .map { snapshots -> snapshots.mergeQuotaSnapshotGroup() }
+        .dropShadowedProviderLevelSnapshots()
+
+    return merged
         .sortedWith(
             compareBy<ProviderQuotaSnapshot> { it.providerDisplaySortKey() }
                 .thenBy { it.accountLabel.orEmpty().lowercase() }
@@ -36,8 +39,11 @@ private fun List<ProviderQuotaSnapshot>.mergeQuotaSnapshotGroup(): ProviderQuota
         return latest.copy(buckets = emptyList())
     }
 
-    val buckets = ordered
-        .filter { !it.isExplicitlyStale }
+    val nonExplicitSnapshots = ordered.filter { !it.isExplicitlyStale }
+    val freshSnapshots = nonExplicitSnapshots.filter { !it.isTimeStaleForDedupe() }
+    val bucketSourceSnapshots = freshSnapshots.ifEmpty { nonExplicitSnapshots }
+
+    val buckets = bucketSourceSnapshots
         .flatMap { snapshot ->
             snapshot.buckets.map { bucket -> bucket.bucketDedupKey() to bucket }
         }
@@ -62,6 +68,17 @@ private fun List<ProviderQuotaSnapshot>.mergeQuotaSnapshotGroup(): ProviderQuota
 
 private fun ProviderQuotaSnapshot.freshnessKey(): String = updatedAt ?: fetchedAt ?: ""
 
+private fun ProviderQuotaSnapshot.isTimeStaleForDedupe(now: java.time.Instant = java.time.Instant.now()): Boolean {
+    val fetched = listOfNotNull(updatedAt, fetchedAt)
+        .firstNotNullOfOrNull { iso ->
+            iso
+                .takeIf { it.isNotBlank() }
+                ?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+        }
+        ?: return true
+    return java.time.Duration.between(fetched, now) > java.time.Duration.ofHours(12)
+}
+
 private fun ProviderQuotaSnapshot.confidenceRank(): Int = when (confidence.lowercase()) {
     "high" -> 3
     "medium" -> 2
@@ -73,4 +90,25 @@ private fun ProviderQuotaSnapshot.providerDisplaySortKey(): String =
     (providerId?.takeIf { it.isNotBlank() } ?: provider).lowercase()
 
 private fun QuotaBucket.bucketDedupKey(): String =
-    "${name.trim().lowercase()}::${window?.trim()?.lowercase().orEmpty()}"
+    "${quotaBucketToken(name)}::${quotaBucketToken(window)}::${quotaBucketToken(meta?.get("unit")?.toString())}"
+
+private fun quotaBucketToken(value: String?): String =
+    value
+        ?.lowercase()
+        ?.filter { it.isLetterOrDigit() }
+        .orEmpty()
+
+private fun List<ProviderQuotaSnapshot>.dropShadowedProviderLevelSnapshots(): List<ProviderQuotaSnapshot> {
+    val providersWithAccountSnapshots = filter { snapshot ->
+        !snapshot.accountId.isNullOrBlank() || !snapshot.accountLabel.isNullOrBlank()
+    }
+        .map { it.providerDisplaySortKey() }
+        .toSet()
+
+    if (providersWithAccountSnapshots.isEmpty()) return this
+
+    return filter { snapshot ->
+        val isProviderLevel = snapshot.accountId.isNullOrBlank() && snapshot.accountLabel.isNullOrBlank()
+        !(isProviderLevel && snapshot.providerDisplaySortKey() in providersWithAccountSnapshots)
+    }
+}

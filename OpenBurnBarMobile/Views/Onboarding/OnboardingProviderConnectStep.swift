@@ -303,15 +303,31 @@ struct OnboardingProviderConnectStep: View {
                     if subscriptionStore.isPurchasing {
                         MiningPickLoader(.inline)
                     } else if !subscriptionStore.isActive {
-                        Button("Subscribe") {
+                        Button {
+                            Haptics.medium()
                             Task { await subscriptionStore.purchase() }
+                        } label: {
+                            Label("Subscribe with App Store", systemImage: "creditcard.fill")
+                                .font(MobileTheme.Typography.caption)
                         }
+                        .accessibilityIdentifier("onboarding.hostedQuota.subscribe")
                     }
                 }
                 if let product = subscriptionStore.product, !subscriptionStore.isActive {
                     Text("\(product.displayPrice) per month")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+                if let error = subscriptionStore.error, !subscriptionStore.isActive {
+                    Label {
+                        Text(error)
+                            .font(MobileTheme.Typography.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .foregroundStyle(MobileTheme.Colors.error)
+                    .accessibilityIdentifier("onboarding.hostedQuota.purchaseError")
                 }
                 Button {
                     Task { await subscriptionStore.restorePurchases() }

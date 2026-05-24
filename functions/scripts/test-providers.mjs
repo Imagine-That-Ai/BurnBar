@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import { minimaxAdapter, __testing__ as minimaxTesting } from "../lib/providers/minimax.js";
 import { zaiAdapter, __testing__ as zaiTesting } from "../lib/providers/zai.js";
 import { factoryAdapter, __testing__ as factoryTesting } from "../lib/providers/factory.js";
+import { xaiAdapter, __testing__ as xaiTesting } from "../lib/providers/xai.js";
 
 const realFetch = globalThis.fetch;
 const calls = [];
@@ -254,6 +255,64 @@ installFetch(() =>
   assert.equal(result.valid, false);
   assert.equal(result.errorCode, "auth_failed");
   assert.match(result.errorMessage, /Access token is invalid or expired/);
+}
+
+// ---------------------------------------------------------------------------
+// xAI / Grok — GrokBuild credit balance + 30-day usage rollup
+// ---------------------------------------------------------------------------
+
+installFetch(({ url, init }) => {
+  if (url === xaiTesting.TEAMS_URL) {
+    return jsonResponse({ teams: [{ id: "team_42", name: "Acme" }] });
+  }
+  if (url === `${xaiTesting.MANAGEMENT_BASE_URL}/v1/billing/teams/team_42/prepaid/balance`) {
+    // 1234 cents of unspent credit → xAI returns total.val = "-1234".
+    return jsonResponse({ total: { val: "-1234" } });
+  }
+  if (url === `${xaiTesting.MANAGEMENT_BASE_URL}/v1/billing/teams/team_42/usage`) {
+    assert.equal(init?.method, "POST", "xAI usage endpoint must be POSTed");
+    const nowISO = new Date().toISOString();
+    const twoDaysAgoISO = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    return jsonResponse({
+      timeSeries: [
+        {
+          dataPoints: [
+            { timestamp: nowISO, values: [{ name: "usd", value: 0.5 }] },
+            { timestamp: twoDaysAgoISO, values: [{ name: "usd", value: 2.0 }] },
+          ],
+        },
+      ],
+    });
+  }
+  return jsonResponse({}, { status: 404 });
+});
+{
+  const refresh = await xaiAdapter.fetchQuota("xai-mgmt-test", "default");
+  assert.equal(refresh.ok, true, "xAI GrokBuild refresh should succeed");
+  const balance = refresh.snapshot.buckets.find((b) => b.name === "Prepaid credit balance");
+  assert.ok(balance, "Missing prepaid credit balance bucket");
+  assert.equal(balance.remaining, 12.34, "Balance should invert negative cents to USD");
+
+  const usage24h = refresh.snapshot.buckets.find((b) => b.window === "rolling_24h");
+  assert.ok(usage24h, "Missing 24h usage bucket");
+  assert.equal(usage24h.used, 0.5);
+
+  const usage7d = refresh.snapshot.buckets.find((b) => b.window === "rolling_7d");
+  assert.ok(usage7d, "Missing 7d usage bucket");
+  assert.equal(usage7d.used, 2.5);
+}
+
+// ---------------------------------------------------------------------------
+// xAI / Grok — invalid management key surfaces auth_failed
+// ---------------------------------------------------------------------------
+
+installFetch(() =>
+  jsonResponse({ error: { message: "Invalid API key" } }, { status: 401 })
+);
+{
+  const result = await xaiAdapter.testCredential("xai-mgmt-bad");
+  assert.equal(result.valid, false);
+  assert.equal(result.errorCode, "auth_failed");
 }
 
 restoreFetch();

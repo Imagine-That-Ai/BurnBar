@@ -187,6 +187,55 @@ struct ProviderQuotaSnapshotStore {
         }
     }
 
+    // MARK: - Scratch state (adapter caches)
+
+    /// Reads a small scratch string previously saved by `saveScratchString`.
+    /// Used by adapters that need to remember opaque per-account state
+    /// (e.g. resolved team ids) across refreshes without inventing a new
+    /// persisted cache file per adapter.
+    func loadScratchString(forKey key: String) -> String? {
+        let url = scratchURL(forKey: key)
+        guard fileManager.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func saveScratchString(_ value: String, forKey key: String) {
+        do {
+            let url = scratchURL(forKey: key)
+            try ensureParentDirectory(for: url)
+            try Data(value.utf8).write(to: url, options: .atomic)
+        } catch {
+            AppLogger.dataStore.silentFailure("ProviderQuotaSnapshotStore: Failed to persist scratch string", error: error)
+        }
+    }
+
+    private func scratchURL(forKey key: String) -> URL {
+        // Sanitize key — only allow `[A-Za-z0-9_-]`, fold path separators
+        // into `_`. Two-level nesting via `/` in keys is allowed and maps
+        // to filesystem subdirectories so callers can group state.
+        let segments = key.split(separator: "/")
+        var url = appPaths.providerQuotaScratchDirectory
+        for (offset, segment) in segments.enumerated() {
+            let sanitized = String(segment).map { ch -> Character in
+                if ch.isLetter || ch.isNumber || ch == "_" || ch == "-" { return ch }
+                return "_"
+            }
+            let component = String(sanitized).trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+            let isLast = offset == segments.count - 1
+            if isLast {
+                url = url.appendingPathComponent(component.isEmpty ? "scratch" : component, isDirectory: false)
+            } else {
+                url = url.appendingPathComponent(component.isEmpty ? "scratch" : component, isDirectory: true)
+            }
+        }
+        return url
+    }
+
     func ensureParentDirectory(for url: URL) throws {
         let directory = url.deletingLastPathComponent()
         if !fileManager.fileExists(atPath: directory.path) {

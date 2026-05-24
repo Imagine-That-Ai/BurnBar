@@ -10,15 +10,46 @@ struct VelocityForecastCard: View {
     let todayTotals: RollupTotals?
     let trailingTotals: RollupTotals?
     let displayMode: UsageDisplayMode
+    /// Live usage events from the Pulse real-time listener. Used to compute
+    /// local-day totals that supplement the UTC-based rollup so the forecast
+    /// stays accurate across timezone boundaries and rebuild lag.
+    var liveUsages: [TokenUsage] = []
 
     @State private var nowTick: Date = Date()
     private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var forecast: VelocityForecast? {
-        guard let todayTotals else { return nil }
+        // Compute live-day totals from usage events. The rollup "today"
+        // document is keyed to the UTC date, which diverges from the user's
+        // local calendar day (e.g. at 7 PM CDT the UTC date rolls over,
+        // resetting the rollup to ~$0). We use the same rolling-24h window
+        // the hero card uses so the forecast stays consistent with the big
+        // burn number at the top of Pulse.
+        let dayStart = nowTick.addingTimeInterval(-86_400)
+        let localDayUsages = liveUsages.filter { usage in
+            let attributedAt = max(usage.startTime, usage.endTime)
+            return attributedAt >= dayStart && attributedAt <= nowTick
+        }
+        let liveCost = localDayUsages.reduce(0.0) { $0 + max(0, $1.costUSD) }
+        let liveTokens = localDayUsages.reduce(0) { $0 + max(0, $1.totalTokens) }
+
+        let rollupCost = todayTotals?.costUsd ?? 0
+        let rollupTokens = todayTotals?.tokens ?? 0
+
+        // Use whichever source has the higher value — the rollup may be
+        // ahead when the live query window doesn't cover the full day,
+        // and live data is ahead near UTC date boundaries or during
+        // rebuild lag.
+        let bestCost = max(rollupCost, liveCost)
+        let bestTokens = max(rollupTokens, liveTokens)
+
+        guard bestCost > 0 || bestTokens > 0 || (trailingTotals?.costUsd ?? 0) > 0 else {
+            return nil
+        }
+
         return VelocityForecaster.forecast(
-            todayCost: todayTotals.costUsd,
-            todayTokens: todayTotals.tokens,
+            todayCost: bestCost,
+            todayTokens: bestTokens,
             sevenDayCost: trailingTotals?.costUsd ?? 0,
             sevenDayTokens: trailingTotals?.tokens ?? 0,
             now: nowTick

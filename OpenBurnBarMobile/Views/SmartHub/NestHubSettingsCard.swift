@@ -552,6 +552,7 @@ struct NestHubSettingsCard: View {
         case .warp:       return "Warp"
         case .ollama:     return "Ollama"
         case .kimi:       return "Kimi"
+        case .xAI:        return "Grok"
         default:          return provider.rawValue
         }
     }
