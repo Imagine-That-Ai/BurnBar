@@ -7,10 +7,23 @@ struct OpenBurnBarMobileApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var customization = AppCustomization.shared
 
+    // Bound to ThemeSettingsView's "Appearance Mode" picker. Values match
+    // the picker tags: "system" (no override), "light", "dark".
+    @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
+
+    private var appearanceOverride: ColorScheme? {
+        switch preferredAppearance {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             AuthGateView()
                 .tint(customization.themePalette.tintColor)
+                .preferredColorScheme(appearanceOverride)
                 .onOpenURL { url in
                     handleDeepLink(url)
                 }

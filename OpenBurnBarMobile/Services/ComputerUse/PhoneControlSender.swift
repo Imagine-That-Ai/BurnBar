@@ -103,6 +103,59 @@ public final class PhoneControlSender: @unchecked Sendable {
         return authority
     }
 
+    /// Sign and write a mobile-issued agent permission request. This uses
+    /// the same Ed25519 authority and monotonic counter as phone-control
+    /// input intents so the Mac can reject replay across both channels.
+    @discardableResult
+    public func send(agentGrant request: AgentCapabilityGrantRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        guard let key = signingKeyProvider()?.privateKey else {
+            throw SendError.signingFailed("no signing key")
+        }
+        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: request.requestedAt,
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        let unsignedWire = request.wire(authority: placeholder)
+        let counter = nextCounter()
+        let timestamp = Date()
+        let signed: ComputerUsePhoneControlSigner.SignedAuthority
+        do {
+            signed = try signer.sign(
+                request: unsignedWire,
+                peerNodeId: peerNodeId,
+                counter: counter,
+                timestamp: timestamp,
+                privateKey: key
+            )
+        } catch {
+            throw SendError.signingFailed(error.localizedDescription)
+        }
+
+        let authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .controlAgentGrantRequest,
+            uid: uid,
+            connectionId: connectionId,
+            payload: nil,
+            media: nil,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.agent.grant",
+                agentGrantRequest: request.wire(authority: authority)
+            )
+        )
+        try await frameSink(frame)
+        return authority
+    }
+
     private func nextCounter() -> UInt64 {
         let key = counterKey()
         let raw = userDefaults.object(forKey: key) as? Int ?? 0

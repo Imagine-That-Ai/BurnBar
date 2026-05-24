@@ -311,15 +311,31 @@ struct MobileProviderWizardView: View {
                     if concreteStore?.isPurchasing == true {
                         MiningPickLoader(.inline)
                     } else if !model.subscriptionStore.isActive, let store = concreteStore {
-                        Button("Subscribe") {
+                        Button {
+                            Haptics.medium()
                             Task { await store.purchase() }
+                        } label: {
+                            Label("Subscribe with App Store", systemImage: "creditcard.fill")
+                                .font(MobileTheme.Typography.caption)
                         }
+                        .accessibilityIdentifier("providerWizard.hostedQuota.subscribe")
                     }
                 }
                 if let product = concreteStore?.product, !model.subscriptionStore.isActive {
                     Text("\(product.displayPrice) per month")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+                if let error = concreteStore?.error, !model.subscriptionStore.isActive {
+                    Label {
+                        Text(error)
+                            .font(MobileTheme.Typography.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .foregroundStyle(MobileTheme.Colors.error)
+                    .accessibilityIdentifier("providerWizard.hostedQuota.purchaseError")
                 }
                 if let store = concreteStore {
                     Button {

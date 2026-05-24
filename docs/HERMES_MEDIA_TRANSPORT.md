@@ -35,6 +35,28 @@ Live screen-share transport is dual-stack and intentionally conservative:
 
 Live status tracked in `docs/runbooks/media-rollout-status.md`.
 
+## Host permissions and lock lifecycle
+
+Mac-hosted Mercury Mirror depends on two macOS privacy gates:
+
+- **Local Network** must be allowed for `OpenBurnBar.app`; the shipped app declares
+  `NSLocalNetworkUsageDescription` and Bonjour services so macOS can prompt
+  instead of silently rejecting iroh/local-peer traffic.
+- **Screen Recording** must be allowed for `OpenBurnBar.app`; mirror startup
+  preflights ScreenCaptureKit access before asking for shareable displays and
+  reports `screenRecordingPermissionDenied` instead of surfacing an empty display
+  list as a transport failure.
+- Display mirrors exclude OpenBurnBar's own Mac application bundle from the
+  ScreenCaptureKit display filter. This keeps transient mirror startup UI, tray
+  popovers, and other OpenBurnBar chrome from replacing the user's intended Mac
+  desktop in the phone viewer.
+
+The Mac host treats lock, screen sleep, loginwindow, and SecurityAgent as an
+authorization gate closing. When that happens, `MercuryRouter` denies any pending
+mirror request, stops the active session coordinator, returns the live phase to
+idle, and sends a terminal ack to the phone so the mobile client does not keep
+redialing a session the Mac cannot legally capture.
+
 ## Stream classes
 
 All media rides the same iroh QUIC mesh and the same `openburnbar/1` ALPN as Hermes chat + Pi telemetry. Stream classes are negotiated **in band** via the first frame on each new bi-stream rather than via a new ALPN, so existing peers stay interoperable.
@@ -175,6 +197,13 @@ Decision enum: `accepted`, `denied`, `cooling_down`, `unsupported`, `busy`.
 - `detail` (string, optional): free-text surfaced in the iOS banner.
 
 On `.accepted`, the iOS `mirrorAckHandler` pushes to `ScreenShareViewerView`. Other decisions surface a toast in `MercuryLiveSheet`.
+
+Mirror tool actions are not routed through the app-wide Agent Watch stream.
+iOS and Android reuse the accepted Mercury `media.control` stream for signed
+tap, pointer, keyboard, scroll, and display-select frames. The Mac replies with
+Computer Use `control.denied` when the action cannot execute; mobile clients
+surface those denials directly, including the Accessibility-permission case for
+Mac input.
 
 ### `media.mirror.stop` (iOS/Android → Mac)
 

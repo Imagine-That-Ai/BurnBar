@@ -46,25 +46,43 @@ public struct UnifiedProviderLogoView: View {
     /// them in dark mode. We do not list every brand here — only the ones
     /// confirmed monochrome-dark in our asset catalog.
     private var needsBackdropTreatment: Bool {
-        guard colorScheme == .dark, bundledImage != nil else { return false }
-        switch provider {
-        case .openAI, .codex, .cursor, .forgeDev, .claudeCode,
-             .factory, .windsurf, .copilot, .aider, .ollama,
-             .openClaw, .geminiCLI, .antigravity, .goose, .augment, .cline,
-             .kiloCode, .rooCode, .hermes:
-            return true
-        default:
-            return false
+        guard bundledImage != nil else { return false }
+        if colorScheme == .dark {
+            switch provider {
+            case .openAI, .codex, .cursor, .forgeDev, .claudeCode,
+                 .factory, .windsurf, .copilot, .aider, .ollama,
+                 .openClaw, .geminiCLI, .antigravity, .goose, .augment, .cline,
+                 .kiloCode, .rooCode, .hermes:
+                return true
+            default:
+                return false
+            }
+        } else {
+            // Light mode: Kimi, Goose, and Augment have white/light silhouettes and need a backdrop
+            switch provider {
+            case .kimi, .goose, .augment:
+                return true
+            default:
+                return false
+            }
         }
     }
 
     @ViewBuilder
     private var logoBackdrop: some View {
+        let fillStyle: AnyShapeStyle = {
+            if colorScheme == .dark {
+                return AnyShapeStyle(.white.opacity(0.92))
+            } else {
+                return AnyShapeStyle(UnifiedDesignSystem.Colors.primary(for: provider))
+            }
+        }()
+
         RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
-            .fill(.white.opacity(0.92))
+            .fill(fillStyle)
             .overlay(
                 RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
-                    .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                    .stroke(colorScheme == .dark ? Color.black.opacity(0.06) : Color.white.opacity(0.12), lineWidth: 0.5)
             )
     }
 

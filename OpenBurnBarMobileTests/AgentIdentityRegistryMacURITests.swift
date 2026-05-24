@@ -1,5 +1,7 @@
 import XCTest
+import FirebaseFirestore
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBarMobile
@@ -67,6 +69,28 @@ final class AgentIdentityRegistryMacURITests: XCTestCase {
         XCTAssertEqual(builtIn?.runtimeID, .hermes)
     }
 
+    func testPhoneControlSetupMessagePromptsForTrustedDeviceWhenAuthorityWriteIsDenied() {
+        let error = NSError(
+            domain: FirestoreErrorDomain,
+            code: FirestoreErrorCode.permissionDenied.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: "Missing or insufficient permissions."]
+        )
+
+        XCTAssertEqual(
+            PhoneControlSetupMessage.message(for: error),
+            PhoneControlSetupMessage.trustedDeviceRequired
+        )
+    }
+
+    func testPhoneControlSetupMessagePreservesSpecificNetworkFailure() {
+        let error = CloudGatewayError.classified(.networkUnavailable)
+
+        XCTAssertEqual(
+            PhoneControlSetupMessage.message(for: error),
+            "You appear to be offline. Reconnect, then try Mac control again."
+        )
+    }
+
     func testIPadSplitPinnedRouteOpensMercuryLiveForPairedMacURI() {
         let registry = AgentIdentityRegistry(seed: [])
         registry.pairedMacPeer = MercuryPeer(
@@ -96,6 +120,68 @@ final class AgentIdentityRegistryMacURITests: XCTestCase {
         )
 
         XCTAssertEqual(route, .runtimeNative(.hermes))
+    }
+
+    func testIPadMercuryDetailRejectsStaleCoordinatorForDifferentRelay() {
+        XCTAssertFalse(MercuryLiveCoordinatorSelection.shouldUse(
+            activeConnectionID: "relay-old",
+            requestedConnectionID: "relay-new",
+            phase: .reconnecting(nextAttemptIn: 0.2)
+        ))
+    }
+
+    func testIPadMercuryDetailRebootsStoppedCoordinatorForSameRelay() {
+        XCTAssertFalse(MercuryLiveCoordinatorSelection.shouldUse(
+            activeConnectionID: "relay-live",
+            requestedConnectionID: "relay-live",
+            phase: .stopped
+        ))
+        XCTAssertFalse(MercuryLiveCoordinatorSelection.shouldUse(
+            activeConnectionID: "relay-live",
+            requestedConnectionID: "relay-live",
+            phase: .failed(reason: "Mac closed the control stream.")
+        ))
+    }
+
+    func testIPadMercuryDetailKeepsHydratedRelayForVirtualPairedMacRoute() {
+        XCTAssertTrue(MercuryLiveCoordinatorSelection.shouldUse(
+            activeConnectionID: "relay-live",
+            requestedConnectionID: "paired-mac:default",
+            phase: .live
+        ))
+    }
+
+    func testCompactNavigationRetargetUsesSingleStepForFreshRoute() {
+        let requested = HermesSquareRoot.NavTarget.runtimeNative(.hermes)
+        let sequence = HermesSquareNavigationRetarget.sequence(
+            current: nil,
+            requested: requested
+        )
+
+        XCTAssertEqual(sequence, [requested])
+    }
+
+    func testCompactNavigationRetargetClearsThenReappliesSameRoute() {
+        let requested = HermesSquareRoot.NavTarget.runtimeNative(.hermes)
+        let sequence = HermesSquareNavigationRetarget.sequence(
+            current: requested,
+            requested: requested
+        )
+
+        XCTAssertEqual(sequence.count, 2)
+        XCTAssertNil(sequence[0])
+        XCTAssertEqual(sequence[1], requested)
+    }
+
+    func testCompactNavigationRetargetReplacesDifferentRouteInSingleStep() {
+        let current = HermesSquareRoot.NavTarget.brandZone(AgentIdentity.builtInURI(.claude))
+        let requested = HermesSquareRoot.NavTarget.runtimeNative(.hermes)
+        let sequence = HermesSquareNavigationRetarget.sequence(
+            current: current,
+            requested: requested
+        )
+
+        XCTAssertEqual(sequence, [requested])
     }
 }
 
@@ -162,6 +248,161 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         ))
 
         await fulfillment(of: [received], timeout: 1.0)
+        XCTAssertNotNil(coordinator.lastInboundAt)
+        await coordinator.stop()
+    }
+
+    func testReadLoopForwardsControlDeniedToInstalledHandler() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        let received = expectation(description: "control denial forwarded")
+        coordinator.controlDeniedHandler = { denied in
+            XCTAssertEqual(denied.reason, .unknown)
+            XCTAssertEqual(denied.detail, ComputerUseDenyReason.accessibilityRevoked.rawValue)
+            received.fulfill()
+        }
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        await stream.pushInbound(HermesRealtimeRelayFrame(
+            type: .controlDenied,
+            uid: "user-1",
+            connectionId: "conn-1",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlInput.rawValue,
+                denied: HermesRealtimeRelayControlDenied(
+                    reason: .unknown,
+                    detail: ComputerUseDenyReason.accessibilityRevoked.rawValue
+                )
+            )
+        ))
+
+        await fulfillment(of: [received], timeout: 1.0)
+        XCTAssertNotNil(coordinator.lastInboundAt)
+        await coordinator.stop()
+    }
+
+    func testEnsureResponsiveReturnsForFreshInboundFrame() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+        await stream.pushInbound(macPresenceFrame(uid: "user-1", connectionID: "conn-1"))
+        try await waitForInbound(coordinator)
+
+        let sentBeforeProbe = await stream.sentFrames.count
+        try await coordinator.ensureResponsive(
+            uid: "user-1",
+            connectionID: "conn-1",
+            freshnessInterval: 10,
+            probeTimeout: 0.05,
+            restartTimeout: 0.5
+        )
+
+        let sentAfterProbe = await stream.sentFrames.count
+        XCTAssertEqual(sentAfterProbe, sentBeforeProbe, "fresh Mac traffic should avoid an unnecessary probe send")
+        await coordinator.stop()
+    }
+
+    func testEnsureResponsiveRestartsHalfStaleStreamBeforeMirrorTraffic() async throws {
+        let firstStream = MediaControlFakeStream()
+        let secondStream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        var dialCount = 0
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in
+                dialCount += 1
+                return dialCount == 1 ? firstStream : secondStream
+            },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        let ensureTask = Task {
+            try await coordinator.ensureResponsive(
+                uid: "user-1",
+                connectionID: "conn-1",
+                freshnessInterval: 0,
+                probeTimeout: 0.05,
+                restartTimeout: 1.0
+            )
+        }
+
+        try await waitUntil { dialCount >= 2 }
+        try await waitUntilHeartbeatCount(secondStream, count: 2)
+        await secondStream.pushInbound(macPresenceFrame(uid: "user-1", connectionID: "conn-1"))
+        try await ensureTask.value
+
+        let firstCloseCount = await firstStream.closeCount
+        XCTAssertEqual(firstCloseCount, 1, "the half-stale stream must be closed before redial")
+        XCTAssertEqual(coordinator.phase, .live)
+        XCTAssertNotNil(coordinator.lastInboundAt)
+        await coordinator.stop()
+    }
+
+    func testSendRetargetsStaleLiveStreamBeforePhoneControlTraffic() async throws {
+        let staleStream = MediaControlFakeStream()
+        let currentStream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        var dialedConnectionIDs: [String] = []
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, connectionID in
+                dialedConnectionIDs.append(connectionID)
+                return connectionID == "conn-current" ? currentStream : staleStream
+            },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-stale")
+        try await waitUntilLive(coordinator)
+
+        let phoneControlFrame = HermesRealtimeRelayFrame(
+            type: .controlInputIntent,
+            uid: "user-1",
+            connectionId: "conn-current",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlInput.rawValue
+            )
+        )
+        try await coordinator.send(frame: phoneControlFrame, timeout: 1.0)
+
+        let staleFrames = await staleStream.sentFrames
+        let currentFrames = await currentStream.sentFrames
+        let staleCloseCount = await staleStream.closeCount
+        XCTAssertEqual(dialedConnectionIDs, ["conn-stale", "conn-current"])
+        XCTAssertEqual(staleCloseCount, 1)
+        XCTAssertFalse(
+            staleFrames.contains { $0.type == .controlInputIntent },
+            "phone-control input must not ride a stale media-control stream"
+        )
+        XCTAssertTrue(
+            currentFrames.contains {
+                $0.type == .controlInputIntent
+                    && $0.connectionId == "conn-current"
+            },
+            "phone-control input must be sent after retargeting to the active Mac route"
+        )
         await coordinator.stop()
     }
 
@@ -241,6 +482,59 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testReadLoopReassemblesLargeLegacyScreenFramesToV1Handler() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        let expected = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 43,
+            frameIndex: 9,
+            presentationTimestampMillis: 1_779,
+            payload: Data(repeating: 0x7A, count: MediaPacketCodec.defaultMaxPayloadBytes + (64 * 1024))
+        )
+        let encoded = try MediaPacketCodec(maxPayloadBytes: MediaFrameV2Codec.defaultMaxPayloadBytes)
+            .encode(expected)
+        let chunkSize = 100_000
+        let chunks = stride(from: 0, to: encoded.count, by: chunkSize).map { start -> Data in
+            encoded.subdata(in: start..<min(start + chunkSize, encoded.count))
+        }
+
+        let received = expectation(description: "large v1 stream frame routed")
+        coordinator.mirrorFrameV2Handler = { _ in
+            XCTFail("legacy v1 envelope must not be routed to the MediaFrame v2 path")
+        }
+        coordinator.mirrorFrameHandler = { frame in
+            XCTAssertEqual(frame, expected)
+            received.fulfill()
+        }
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+        for (index, chunk) in chunks.enumerated() {
+            await stream.pushInbound(screenVideoFrame(
+                uid: "user-1",
+                connectionID: "conn-1",
+                encoded: chunk,
+                frameChunk: HermesRealtimeRelayMediaFrameChunk(
+                    chunkId: "large-v1-frame",
+                    chunkIndex: index,
+                    chunkCount: chunks.count,
+                    totalBytes: encoded.count
+                )
+            ))
+        }
+
+        await fulfillment(of: [received], timeout: 1.0)
+        await coordinator.stop()
+    }
+
     func testSendMirrorStopEmitsCorrelatedMacTeardownFrame() async throws {
         let stream = MediaControlFakeStream()
         let receiver = makeReceiver()
@@ -275,6 +569,39 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         while coordinator.phase != .live {
             if Date() > deadline {
                 XCTFail("media control stream did not become live")
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
+    private func waitForInbound(_ coordinator: MediaControlStreamCoordinator) async throws {
+        let deadline = Date().addingTimeInterval(1.0)
+        while coordinator.lastInboundAt == nil {
+            if Date() > deadline {
+                XCTFail("media control stream did not receive inbound traffic")
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
+    private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(1.0)
+        while !predicate() {
+            if Date() > deadline {
+                XCTFail("condition was not met before timeout")
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
+    private func waitUntilHeartbeatCount(_ stream: MediaControlFakeStream, count: Int) async throws {
+        let deadline = Date().addingTimeInterval(1.0)
+        while await stream.sentFrames.filter({ $0.type == .mediaPresenceHeartbeat }).count < count {
+            if Date() > deadline {
+                XCTFail("expected \(count) heartbeat frame(s)")
                 return
             }
             try await Task.sleep(nanoseconds: 10_000_000)
@@ -358,14 +685,38 @@ final class MediaControlStreamPresenceTests: XCTestCase {
                      "stop() must clear the last failure reason so the next start doesn't leak it")
     }
 
-    private func screenVideoFrame(uid: String, connectionID: String, encoded: Data) -> HermesRealtimeRelayFrame {
+    private func screenVideoFrame(
+        uid: String,
+        connectionID: String,
+        encoded: Data,
+        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil
+    ) -> HermesRealtimeRelayFrame {
         HermesRealtimeRelayFrame(
             type: .mediaStreamFrame,
             uid: uid,
             connectionId: connectionID,
             media: HermesRealtimeRelayMediaPayload(
                 streamClass: MediaStreamClass.screenVideo.rawValue,
-                encodedFrameBase64: encoded.base64EncodedString()
+                encodedFrameBase64: encoded.base64EncodedString(),
+                frameChunk: frameChunk
+            )
+        )
+    }
+
+    private func macPresenceFrame(uid: String, connectionID: String) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .mediaPresenceHeartbeat,
+            uid: uid,
+            connectionId: connectionID,
+            media: HermesRealtimeRelayMediaPayload(
+                presence: HermesRealtimeRelayPresenceHeartbeat(
+                    sentAt: Date(timeIntervalSince1970: 1_700_000_000),
+                    deviceDisplayName: "Alberto's Mac",
+                    capabilities: [
+                        MercuryPeer.Feature.mirrorHost.rawValue,
+                        MercuryPeer.Feature.fileReceive.rawValue
+                    ]
+                )
             )
         )
     }
@@ -390,8 +741,10 @@ private actor MediaControlFakeStream: IrohRelayStream {
     private var outboundFrames: [HermesRealtimeRelayFrame] = []
     private var receiveWaiter: CheckedContinuation<HermesRealtimeRelayFrame?, Error>?
     private var isClosed = false
+    private var closeCallCount = 0
 
     var sentFrames: [HermesRealtimeRelayFrame] { outboundFrames }
+    var closeCount: Int { closeCallCount }
 
     func send(_ frame: HermesRealtimeRelayFrame) async throws {
         outboundFrames.append(frame)
@@ -406,6 +759,7 @@ private actor MediaControlFakeStream: IrohRelayStream {
     }
 
     func close() async {
+        closeCallCount += 1
         isClosed = true
         receiveWaiter?.resume(returning: nil)
         receiveWaiter = nil

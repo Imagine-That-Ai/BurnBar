@@ -430,10 +430,12 @@ final class OpenBurnBarRuntimeContext {
             )
             computerUseRuntimeController = controller
         }
+        chatController.computerUseRuntimeController = controller
 
         if let relayHost = explicitRelayHostService ?? hermesRelayHostService {
             controller.attach(relayHostService: relayHost)
         }
+        AgentCapabilityGrantQueueListener.shared.start()
         #if DEBUG
         controller.startE2EProofSessionIfRequested()
         #endif
@@ -600,18 +602,16 @@ final class OpenBurnBarRuntimeContext {
             peerSource: peerSource,
             hudState: hud
         )
-        if let registry = hermesRelayHostService?.mercuryControlStreamRegistry {
-            router.setMirrorSinkFactory { request, frame in
-                try await MercuryControlStreamMediaSink.make(
-                    registry: registry,
-                    uid: frame.uid,
-                    connectionID: frame.connectionId,
-                    streamClass: MediaStreamClass(rawValue: request.streamClass),
-                    extraHeartbeatCapabilities: consent.alwaysAllow
-                        ? [MercuryPeer.Feature.mirrorAutoAccept.rawValue]
-                        : []
-                )
-            }
+        router.setMirrorSinkFactory { request, frame, replySender in
+            MercuryControlStreamMediaSink(
+                sender: replySender,
+                uid: frame.uid,
+                connectionID: frame.connectionId,
+                streamClass: MediaStreamClass(rawValue: request.streamClass),
+                extraHeartbeatCapabilities: consent.alwaysAllow
+                    ? [MercuryPeer.Feature.mirrorAutoAccept.rawValue]
+                    : []
+            )
         }
         self.voipCallTrigger = VoIPCallTrigger()
 

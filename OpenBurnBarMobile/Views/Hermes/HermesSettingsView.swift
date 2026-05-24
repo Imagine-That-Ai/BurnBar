@@ -24,7 +24,6 @@ struct HermesSettingsView: View {
 
     @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
     @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
-    @AppStorage(HermesMobileChatPreferences.agentsLiveBackgroundEnabledKey) private var agentsLiveBackgroundEnabled = false
     @State private var showPretextPlayground = false
 
     @Environment(\.dismiss) private var dismiss
@@ -405,12 +404,14 @@ struct HermesSettingsView: View {
 
                 Divider().background(MobileTheme.Colors.border.opacity(0.4))
 
-                Toggle(isOn: $agentsLiveBackgroundEnabled) {
+                NavigationLink {
+                    SwarmBackgroundSettingsView()
+                } label: {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Live background in Agents")
+                        Text("Live background swarms")
                             .font(MobileTheme.Typography.body)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text("Enables a real-time, interactive token-ember swarm background in the Agents tab.")
+                        Text("Customize which glyphs appear, where the swarm renders, and battery/Wi-Fi conditions.")
                             .font(MobileTheme.Typography.tiny)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .fixedSize(horizontal: false, vertical: true)

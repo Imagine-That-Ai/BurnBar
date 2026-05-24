@@ -1022,6 +1022,13 @@ final class HermesService {
         currentConversationTokenBurn = 0
     }
 
+    func ensureDesktopGrantThreadID() -> String {
+        if selectedSessionID == nil {
+            selectedSessionID = UUID().uuidString
+        }
+        return selectedSessionID ?? UUID().uuidString
+    }
+
     // MARK: - Mobile chat history bridge
 
     /// Restores a chat thread previously saved by the mobile history store.
@@ -1653,6 +1660,10 @@ final class HermesService {
 
     private func streamRelayCompletion(context: String?, iteration: Int = 0) async throws {
         await ensureRelayModelCatalogLoadedBeforeSend()
+        if iteration == 0, shouldUseDesktopAgentRelay() {
+            try await streamDesktopAgentRelayCompletion(context: context)
+            return
+        }
         let body = try completionRequestBody(context: context)
         #if DEBUG
         print("OpenBurnBarMobile Hermes E2E streamRelayCompletion start connection=\(selectedConnection.id) requestedModel=\(activeRequestedModelID ?? "nil") bodyBytes=\(body.count)")
@@ -1704,6 +1715,69 @@ final class HermesService {
             messages[index] = assistantMessage
         }
         try await runToolUseIterationIfNeeded(after: assistantMessage, context: context, iteration: iteration)
+    }
+
+    private func shouldUseDesktopAgentRelay() -> Bool {
+        guard selectedConnection.mode == .relayLink,
+              let threadID = selectedSessionID else { return false }
+        return MobileAgentPermissionGrantController.shared.optimisticGrant(
+            runtimeID: .hermes,
+            threadID: threadID
+        ) != nil
+    }
+
+    private func streamDesktopAgentRelayCompletion(context: String?) async throws {
+        guard let threadID = selectedSessionID else {
+            throw HermesServiceError.relayUnavailable("Create a chat thread before granting desktop permissions.")
+        }
+        let prompt = messages.last(where: { $0.role == .user })?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !prompt.isEmpty else {
+            throw HermesServiceError.relayUnavailable("Desktop agent relay needs a text prompt.")
+        }
+        let modelID = try activeModelIDForRequest()
+        var assistantMessage = HermesChatMessage(
+            role: .assistant,
+            text: "",
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            isStreaming: true,
+            responseStartedAt: Date()
+        )
+        messages.append(assistantMessage)
+
+        try await CLIAgentRelayChatTransport.shared.stream(
+            runtimeID: .hermes,
+            threadID: threadID,
+            prompt: prompt,
+            title: Self.derivedTitle(from: messages),
+            modelID: modelID,
+            parentSessionID: nil,
+            resumeAction: "continue",
+            onEvent: { event in
+                if let text = event.text {
+                    assistantMessage.text = text
+                }
+                if let modelID = event.modelID {
+                    assistantMessage.modelName = modelID
+                }
+                assistantMessage.isError = event.isError
+                if event.isTerminal {
+                    assistantMessage.isStreaming = false
+                }
+                if let index = self.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                    self.messages[index] = assistantMessage
+                }
+            }
+        )
+        assistantMessage.isStreaming = false
+        if assistantMessage.text.isEmpty {
+            assistantMessage.text = "The Mac relay completed without returning text."
+        }
+        assistantMessage.finalizeResponseMetrics()
+        if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+            messages[index] = assistantMessage
+        }
+        isStreaming = false
     }
 
     private func ensureRelayModelCatalogLoadedBeforeSend() async {
@@ -3323,7 +3397,9 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                 // appear on the WSS dialer's chat response stream.
                 break
             case .controlClassify, .controlActionLogEntry, .controlInputIntent,
-                 .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
+                 .controlApprovalRequest, .controlApprovalResponse,
+                 .controlAgentGrantRequest, .controlAgentGrantReceipt,
+                 .controlDenied:
                 // Computer Use control frames are handled by the control
                 // plane; chat relay responses ignore them.
                 break

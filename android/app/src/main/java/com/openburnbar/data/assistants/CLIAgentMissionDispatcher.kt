@@ -11,6 +11,45 @@ import kotlinx.coroutines.tasks.await
 import java.time.Instant
 import java.util.UUID
 
+enum class HermesSkillRunID(val wire: String, val displayLabel: String) {
+    WHAT_HAPPENED("what_happened", "What Happened?"),
+    BURN_FORENSICS("burn_forensics", "Burn Forensics"),
+    PATTERN_MINER("pattern_miner", "Pattern Miner"),
+    COMPARE_AGENTS("compare_agents", "Compare Agents"),
+    NEXT_ACTION_COACH("next_action_coach", "Next Action Coach"),
+    HANDOFF_BUILDER("handoff_builder", "Handoff Builder"),
+    REGRESSION_WATCH("regression_watch", "Regression Watch"),
+    RUN_PULSE("run_pulse", "Run Pulse");
+
+    companion object {
+        fun fromWire(value: String?): HermesSkillRunID? =
+            values().firstOrNull { it.wire == value }
+    }
+}
+
+enum class SkillRunDeliveryMode(val wire: String, val displayLabel: String) {
+    ACTION_ONLY("action_only", "Action alerts"),
+    FULL_STREAM("full_stream", "Full stream"),
+    MUTED("muted", "Muted");
+
+    companion object {
+        fun fromWire(value: String?): SkillRunDeliveryMode =
+            values().firstOrNull { it.wire == value } ?: ACTION_ONLY
+    }
+}
+
+enum class SkillRunEventImportance(val wire: String) {
+    QUIET("quiet"),
+    NORMAL("normal"),
+    ACTION_REQUIRED("action_required"),
+    TERMINAL("terminal");
+
+    companion object {
+        fun fromWire(value: String?): SkillRunEventImportance =
+            values().firstOrNull { it.wire == value } ?: NORMAL
+    }
+}
+
 class CLIAgentMissionDispatcher(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
@@ -34,6 +73,10 @@ class CLIAgentMissionDispatcher(
         parallelismLimit: Int? = null,
         mergeStrategy: String = "pick_one",
         requestedModelIDsByRuntime: Map<String, String> = emptyMap(),
+        sourceSkillID: String? = null,
+        sourceSurface: String? = null,
+        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+        parentHermesThreadID: String? = null,
     ): FanOutDispatchResult {
         val uid = auth.currentUser?.uid
             ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
@@ -92,6 +135,10 @@ class CLIAgentMissionDispatcher(
                 commandsAllowed = commandsAllowed,
                 fileEditsAllowed = fileEditsAllowed,
                 requestedModelID = requestedModelIDsByRuntime[runtimeToken]?.trim()?.takeIf { it.isNotEmpty() },
+                sourceSkillID = sourceSkillID,
+                sourceSurface = sourceSurface,
+                deliveryMode = deliveryMode,
+                parentHermesThreadID = parentHermesThreadID,
             ).toMutableMap().apply {
                 put("groupID", groupID)
                 put("siblingIndex", index)
@@ -103,7 +150,10 @@ class CLIAgentMissionDispatcher(
             batch.set(requestRef, childPayload.toMap())
             batch.set(
                 requestRef.collection("events").document("000001"),
-                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(),
+                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+                    sourceSkillID = sourceSkillID,
+                    deliveryMode = deliveryMode,
+                ),
             )
         }
 
@@ -130,6 +180,10 @@ class CLIAgentMissionDispatcher(
         clientThreadID: String? = null,
         parentSessionID: String? = null,
         resumeAction: String? = null,
+        sourceSkillID: String? = null,
+        sourceSurface: String? = null,
+        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+        parentHermesThreadID: String? = null,
     ): String {
         val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
         val trimmedPrompt = prompt.trim()
@@ -151,6 +205,10 @@ class CLIAgentMissionDispatcher(
             clientThreadID = clientThreadID,
             parentSessionID = parentSessionID,
             resumeAction = resumeAction,
+            sourceSkillID = sourceSkillID,
+            sourceSurface = sourceSurface,
+            deliveryMode = deliveryMode,
+            parentHermesThreadID = parentHermesThreadID,
         )
         val requestRef = firestore.collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(id)
@@ -161,6 +219,8 @@ class CLIAgentMissionDispatcher(
                 CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
                     label = if (missionKind.trim().equals("chat", ignoreCase = true)) "Chat" else "Mission",
                     source = if (missionKind.trim().equals("chat", ignoreCase = true)) "android-chat" else "android",
+                    sourceSkillID = sourceSkillID,
+                    deliveryMode = deliveryMode,
                 ),
             )
             .commit()
@@ -228,6 +288,21 @@ class CLIAgentMissionDispatcher(
                     } else {
                         "Approval rejected from mobile."
                     },
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                ),
+                com.google.firebase.firestore.SetOptions.merge(),
+            )
+            .await()
+    }
+
+    suspend fun cancelMission(requestID: String) {
+        val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before cancelling Mac agent missions.")
+        firestore.collection("users").document(uid)
+            .collection("cli_agent_mission_requests").document(requestID)
+            .set(
+                mapOf(
+                    "status" to "cancelled",
+                    "liveSummary" to "Mission cancelled by user.",
                     "updatedAt" to FieldValue.serverTimestamp(),
                 ),
                 com.google.firebase.firestore.SetOptions.merge(),
@@ -326,9 +401,14 @@ object CLIAgentMissionRequestPayloadFactory {
         clientThreadID: String? = null,
         parentSessionID: String? = null,
         resumeAction: String? = null,
+        sourceSkillID: String? = null,
+        sourceSurface: String? = null,
+        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+        parentHermesThreadID: String? = null,
         now: Instant = Instant.now(),
     ): Map<String, Any> {
         val isChat = missionKind.trim().equals("chat", ignoreCase = true)
+        val baseSource = if (isChat) "android-chat" else "android-insights"
         return buildMap {
             put("id", id)
             put("title", title.trim().ifBlank { if (isChat) "New chat" else "Insights mission" })
@@ -341,7 +421,9 @@ object CLIAgentMissionRequestPayloadFactory {
             put("approvalMode", approvalMode)
             put("commandsAllowed", commandsAllowed)
             put("fileEditsAllowed", fileEditsAllowed)
-            put("source", if (isChat) "android-chat" else "android-insights")
+            put("source", baseSource)
+            put("sourceSurface", sourceSurface?.trim()?.takeIf { it.isNotEmpty() } ?: baseSource)
+            put("deliveryMode", deliveryMode.wire)
             put("status", "pending")
             put(
                 "liveSummary",
@@ -353,8 +435,10 @@ object CLIAgentMissionRequestPayloadFactory {
             )
             put("createdAt", now.toString())
             put("updatedAt", FieldValue.serverTimestamp())
-            put("schemaVersion", 2)
+            put("schemaVersion", 3)
+            sourceSkillID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("sourceSkillID", it) }
             clientThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("clientThreadID", it) }
+            parentHermesThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("parentHermesThreadID", it) }
             parentSessionID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("parentSessionID", it) }
             resumeAction?.trim()?.takeIf { it.isNotEmpty() }?.let { put("resumeAction", it) }
         }
@@ -363,17 +447,25 @@ object CLIAgentMissionRequestPayloadFactory {
     fun initialQueuedEvent(
         label: String = "Mission",
         source: String = "android",
+        sourceSkillID: String? = null,
+        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+        eventImportance: SkillRunEventImportance = SkillRunEventImportance.NORMAL,
+        skillStepID: String = "queued",
         now: Instant = Instant.now()
-    ): Map<String, Any> = mapOf(
-        "sequence" to 1,
-        "timestamp" to now.toString(),
-        "kind" to "status",
-        "phase" to "queued",
-        "title" to "Queued",
-        "message" to "$label queued from this device.",
-        "source" to source,
-        "isError" to false,
-    )
+    ): Map<String, Any> = buildMap {
+        put("sequence", 1)
+        put("timestamp", now.toString())
+        put("kind", "status")
+        put("phase", "queued")
+        put("title", "Queued")
+        put("message", "$label queued from this device.")
+        put("source", source)
+        put("deliveryMode", deliveryMode.wire)
+        put("eventImportance", eventImportance.wire)
+        put("skillStepID", skillStepID)
+        put("isError", false)
+        sourceSkillID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("sourceSkillID", it) }
+    }
 }
 
 class DispatchException(message: String) : Exception(message)
@@ -387,6 +479,11 @@ data class CLIAgentMissionSnapshot(
     val selectedRuntime: String?,
     val selectedRuntimeName: String?,
     val selectedModelID: String?,
+    val targetProject: String? = null,
+    val sourceSkillID: String? = null,
+    val sourceSurface: String? = null,
+    val deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+    val parentHermesThreadID: String? = null,
     val liveSummary: String?,
     val resultPreview: String?,
     val errorMessage: String?,
@@ -447,6 +544,9 @@ data class CLIAgentMissionSnapshot(
                 event.changedFilePath?.takeIf { it.isNotBlank() }
                     ?: event.artifactPath?.takeIf { it.isNotBlank() }
             }
+
+    val skillRunID: HermesSkillRunID?
+        get() = HermesSkillRunID.fromWire(sourceSkillID)
 }
 
 data class CLIAgentMissionEvent(
@@ -464,6 +564,10 @@ data class CLIAgentMissionEvent(
     val toolName: String?,
     val artifactPath: String?,
     val changedFilePath: String?,
+    val sourceSkillID: String? = null,
+    val deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+    val eventImportance: SkillRunEventImportance = SkillRunEventImportance.NORMAL,
+    val skillStepID: String? = null,
     val isError: Boolean,
 )
 
@@ -493,6 +597,11 @@ private fun DocumentSnapshot.toMissionSnapshot(
         selectedRuntime = getString("selectedRuntime"),
         selectedRuntimeName = getString("selectedRuntimeName"),
         selectedModelID = getString("selectedModelID")?.trim()?.takeIf { it.isNotEmpty() },
+        targetProject = getString("targetProject")?.trim()?.takeIf { it.isNotEmpty() },
+        sourceSkillID = getString("sourceSkillID")?.trim()?.takeIf { it.isNotEmpty() },
+        sourceSurface = getString("sourceSurface")?.trim()?.takeIf { it.isNotEmpty() },
+        deliveryMode = SkillRunDeliveryMode.fromWire(getString("deliveryMode")),
+        parentHermesThreadID = getString("parentHermesThreadID")?.trim()?.takeIf { it.isNotEmpty() },
         liveSummary = getString("liveSummary"),
         resultPreview = getString("resultPreview"),
         errorMessage = getString("errorMessage"),
@@ -525,6 +634,10 @@ private fun Map<*, *>.toMissionEvent(): CLIAgentMissionEvent? {
         toolName = this["toolName"] as? String,
         artifactPath = this["artifactPath"] as? String,
         changedFilePath = this["changedFilePath"] as? String,
+        sourceSkillID = this["sourceSkillID"] as? String,
+        deliveryMode = SkillRunDeliveryMode.fromWire(this["deliveryMode"] as? String),
+        eventImportance = SkillRunEventImportance.fromWire(this["eventImportance"] as? String),
+        skillStepID = this["skillStepID"] as? String,
         isError = this["isError"] as? Boolean ?: (phase == "failed"),
     )
 }

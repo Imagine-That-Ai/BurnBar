@@ -60,13 +60,19 @@ struct ThemeSettingsView: View {
                     Toggle(isOn: $useWebsiteBackground) {
                         VStack(alignment: .leading, spacing: 4) {
                             SettingsLabel(icon: "grid.rectangles.three.row", color: MobileTheme.whimsy, title: "Website Background")
-                            Text("Technical convergent perspective 3D grid and ambient mesh glow backdrops")
+                            Text("Live swarm backdrop that follows the selected app palette and provider glyph filters")
                                 .font(MobileTheme.Typography.tiny)
                                 .foregroundStyle(MobileTheme.Colors.textSecondary)
                         }
                     }
                     .tint(MobileTheme.ember)
                     .settingsAnchor(SettingsAnchor.useWebsiteBackground)
+
+                    NavigationLink {
+                        SwarmBackgroundSettingsView()
+                    } label: {
+                        SettingsLabel(icon: "slider.horizontal.3", color: customization.themePalette.tintColor ?? MobileTheme.ember, title: "Customize Swarm Background")
+                    }
                 } header: {
                     Text("Backdrop style")
                 }

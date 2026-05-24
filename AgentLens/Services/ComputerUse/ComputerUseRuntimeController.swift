@@ -195,7 +195,10 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
     }
 
     @discardableResult
-    func startSystemSession(trustMode: ComputerUseTrustMode = .manual) async throws -> ComputerUseSessionStartResponse {
+    func startSession(
+        mode: ComputerUseMode,
+        trustMode: ComputerUseTrustMode = .manual
+    ) async throws -> ComputerUseSessionStartResponse {
         refreshEntitlement()
         #if DEBUG
         let proofActionCap = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_COMPUTER_USE_ACTION_CAP"]
@@ -205,7 +208,7 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         let proofActionCap: Int? = nil
         #endif
         let request = ComputerUseSessionStartRequest(
-            mode: ComputerUseMode.system.rawValue,
+            mode: mode.rawValue,
             trustMode: trustMode.rawValue,
             scopeRuleIds: panelModel.scopeRules.map { $0.id.rawValue },
             macHostNodeId: accountManager.deviceId,
@@ -219,13 +222,27 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
     }
 
     @discardableResult
-    func ensureSystemSession(trustMode: ComputerUseTrustMode = .manual) async throws -> ComputerUseSessionStartResponse? {
+    func startSystemSession(trustMode: ComputerUseTrustMode = .manual) async throws -> ComputerUseSessionStartResponse {
+        try await startSession(mode: .system, trustMode: trustMode)
+    }
+
+    @discardableResult
+    func ensureSession(
+        mode: ComputerUseMode,
+        trustMode: ComputerUseTrustMode = .manual
+    ) async throws -> ComputerUseSessionStartResponse? {
         if let state = coordinator.state,
            state.endedAt == nil,
-           state.endReason == nil {
+           state.endReason == nil,
+           state.manifest.mode == mode {
             return nil
         }
-        return try await startSystemSession(trustMode: trustMode)
+        return try await startSession(mode: mode, trustMode: trustMode)
+    }
+
+    @discardableResult
+    func ensureSystemSession(trustMode: ComputerUseTrustMode = .manual) async throws -> ComputerUseSessionStartResponse? {
+        try await ensureSession(mode: .system, trustMode: trustMode)
     }
 
     func endSession() async {

@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.DispatchException
@@ -169,8 +170,8 @@ fun AgentBrandZoneScreen(
             onAction = { action ->
                 statusMessage = when (action) {
                     is SubscribeAction.Subscribe -> {
-                        subscriptionStore.subscribe(identity, action.cadence)
-                        "Subscribed to ${identity.displayName} (${action.cadence.displayLabel.lowercase()})."
+                        subscriptionStore.subscribe(identity, action.cadence, action.deliveryMode)
+                        "Subscribed to ${identity.displayName} (${action.cadence.displayLabel.lowercase()}, ${action.deliveryMode.displayLabel.lowercase()})."
                     }
                     SubscribeAction.Unsubscribe -> {
                         subscriptionStore.unsubscribe(identity.id)
@@ -179,6 +180,10 @@ fun AgentBrandZoneScreen(
                     is SubscribeAction.SetMuted -> {
                         subscriptionStore.setMuted(identity.id, action.muted)
                         if (action.muted) "Muted ${identity.displayName}." else "Unmuted ${identity.displayName}."
+                    }
+                    is SubscribeAction.SetDeliveryMode -> {
+                        subscriptionStore.setDeliveryMode(identity.id, action.deliveryMode)
+                        "${identity.displayName} delivery set to ${action.deliveryMode.displayLabel.lowercase()}."
                     }
                 }
                 showSubscribe = false
@@ -573,7 +578,11 @@ private fun availabilityHexColor(availability: AgentAvailability): Color = when 
 // MARK: - Subscribe action shape (shared with AgentBrandSubscribeSheet)
 
 sealed class SubscribeAction {
-    data class Subscribe(val cadence: SubscriptionCadence) : SubscribeAction()
+    data class Subscribe(
+        val cadence: SubscriptionCadence,
+        val deliveryMode: SkillRunDeliveryMode,
+    ) : SubscribeAction()
     data class SetMuted(val muted: Boolean) : SubscribeAction()
+    data class SetDeliveryMode(val deliveryMode: SkillRunDeliveryMode) : SubscribeAction()
     object Unsubscribe : SubscribeAction()
 }

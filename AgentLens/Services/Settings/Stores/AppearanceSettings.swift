@@ -226,7 +226,10 @@ final class AppearanceSettings {
     }
 
     var useWebsiteBackground: Bool = false {
-        didSet { persistence.set(useWebsiteBackground, forKey: "useWebsiteBackground") }
+        didSet {
+            persistence.set(useWebsiteBackground, forKey: "useWebsiteBackground")
+            NotificationCenter.default.post(name: .useWebsiteBackgroundDidChange, object: nil)
+        }
     }
 
     var enableDesktopWallpaper: Bool = false {
@@ -253,7 +256,24 @@ final class AppearanceSettings {
     }
 
     var cycleShapesScreensaver: Bool = true {
-        didSet { persistence.set(cycleShapesScreensaver, forKey: "cycleShapesScreensaver") }
+        didSet {
+            persistence.set(cycleShapesScreensaver, forKey: "cycleShapesScreensaver")
+            NotificationCenter.default.post(name: .cycleShapesScreensaverDidChange, object: nil)
+        }
+    }
+
+    var enableSwarmSparkles: Bool = true {
+        didSet {
+            persistence.set(enableSwarmSparkles, forKey: "enableSwarmSparkles")
+            NotificationCenter.default.post(name: .enableSwarmSparklesDidChange, object: nil)
+        }
+    }
+
+    var excludeBrandShapesFromSwarm: Bool = false {
+        didSet {
+            persistence.set(excludeBrandShapesFromSwarm, forKey: "excludeBrandShapesFromSwarm")
+            NotificationCenter.default.post(name: .excludeBrandShapesFromSwarmDidChange, object: nil)
+        }
     }
 
     var clickDesktopToCycleSwarm: Bool = false {
@@ -325,6 +345,8 @@ final class AppearanceSettings {
         persistence.set(self.desktopWallpaperBackground.rawValue, forKey: "desktopWallpaperBackground")
         persistence.set(self.amoledDarkBackground, forKey: "amoledDarkBackground")
         self.cycleShapesScreensaver = persistence.bool(forKey: "cycleShapesScreensaver", defaultValue: true)
+        self.enableSwarmSparkles = persistence.bool(forKey: "enableSwarmSparkles", defaultValue: true)
+        self.excludeBrandShapesFromSwarm = persistence.bool(forKey: "excludeBrandShapesFromSwarm", defaultValue: false)
         self.clickDesktopToCycleSwarm = persistence.bool(forKey: "clickDesktopToCycleSwarm", defaultValue: false)
         self.desktopWallpaperSpeed = min(max(persistence.double(forKey: "desktopWallpaperSpeed", defaultValue: 1.0), 0.35), 2.5)
         self.desktopWallpaperProviderGlyphs = SwarmProviderGlyphSelection.decode(
@@ -359,9 +381,13 @@ final class AppearanceSettings {
 }
 
 extension Notification.Name {
+    static let useWebsiteBackgroundDidChange = Notification.Name("com.openburnbar.appearance.useWebsiteBackgroundDidChange")
     static let enableDesktopWallpaperDidChange = Notification.Name("com.openburnbar.appearance.enableDesktopWallpaperDidChange")
     static let amoledDarkBackgroundDidChange = Notification.Name("com.openburnbar.appearance.amoledDarkBackgroundDidChange")
     static let desktopWallpaperBackgroundDidChange = Notification.Name("com.openburnbar.appearance.desktopWallpaperBackgroundDidChange")
+    static let cycleShapesScreensaverDidChange = Notification.Name("com.openburnbar.appearance.cycleShapesScreensaverDidChange")
+    static let enableSwarmSparklesDidChange = Notification.Name("com.openburnbar.appearance.enableSwarmSparklesDidChange")
+    static let excludeBrandShapesFromSwarmDidChange = Notification.Name("com.openburnbar.appearance.excludeBrandShapesFromSwarmDidChange")
     static let clickDesktopToCycleSwarmDidChange = Notification.Name("com.openburnbar.appearance.clickDesktopToCycleSwarmDidChange")
     static let desktopWallpaperSpeedDidChange = Notification.Name("com.openburnbar.appearance.desktopWallpaperSpeedDidChange")
     static let desktopWallpaperProviderGlyphsDidChange = Notification.Name("com.openburnbar.appearance.desktopWallpaperProviderGlyphsDidChange")

@@ -490,8 +490,12 @@ struct AgentBrandZoneView: View {
     private func performSubscriptionAction(_ action: AgentBrandSubscribeSheet.Action) async -> String {
         do {
             switch action {
-            case .subscribe(let cadence):
-                let topic = try await subscriptionTopicStore.subscribe(agent: identity, cadence: cadence)
+            case .subscribe(let cadence, let deliveryMode):
+                let topic = try await subscriptionTopicStore.subscribe(
+                    agent: identity,
+                    cadence: cadence,
+                    deliveryMode: deliveryMode
+                )
                 return "Subscribed to \(topic.displayName)."
             case .unsubscribe:
                 try await subscriptionTopicStore.unsubscribe(agentURI: identity.id)
@@ -499,6 +503,9 @@ struct AgentBrandZoneView: View {
             case .setMuted(let muted):
                 try await subscriptionTopicStore.setMuted(agentURI: identity.id, muted: muted)
                 return muted ? "Muted \(identity.displayName) updates." : "Unmuted \(identity.displayName) updates."
+            case .setDeliveryMode(let deliveryMode):
+                try await subscriptionTopicStore.setDeliveryMode(agentURI: identity.id, deliveryMode: deliveryMode)
+                return "\(identity.displayName) delivery set to \(deliveryMode.displayName.lowercased())."
             }
         } catch {
             return error.localizedDescription
@@ -806,11 +813,13 @@ private struct AgentBrandSubscribeSheet: View {
     let onAction: (Action) -> Void
 
     @State private var cadence: AgentManifest.PushTopic.Cadence = .weekly
+    @State private var deliveryMode: SkillRunDeliveryMode = .actionOnly
 
     enum Action {
-        case subscribe(AgentManifest.PushTopic.Cadence)
+        case subscribe(AgentManifest.PushTopic.Cadence, SkillRunDeliveryMode)
         case unsubscribe
         case setMuted(Bool)
+        case setDeliveryMode(SkillRunDeliveryMode)
     }
 
     var body: some View {
@@ -823,6 +832,17 @@ private struct AgentBrandSubscribeSheet: View {
                         Text(existingTopic.description)
                             .font(.caption)
                             .foregroundStyle(DesignSystemColors.textMuted)
+                        Picker("Delivery", selection: Binding(
+                            get: { existingTopic.deliveryMode },
+                            set: { newMode in
+                                onAction(.setDeliveryMode(newMode))
+                                dismiss()
+                            }
+                        )) {
+                            ForEach(SkillRunDeliveryMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
                         Button(existingTopic.isMuted ? "Unmute updates" : "Mute updates") {
                             onAction(.setMuted(!existingTopic.isMuted))
                             dismiss()
@@ -841,6 +861,16 @@ private struct AgentBrandSubscribeSheet: View {
                             Text("Monthly").tag(AgentManifest.PushTopic.Cadence.monthly)
                         }
                     }
+                    Section(header: Text("Delivery")) {
+                        Picker("Skill Run updates", selection: $deliveryMode) {
+                            ForEach(SkillRunDeliveryMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        Text(deliveryMode.description)
+                            .font(.caption)
+                            .foregroundStyle(DesignSystemColors.textMuted)
+                    }
                     Section {
                         Text("Subscription topics are stored in your account and shared with your paired Mac.")
                             .font(.caption)
@@ -857,7 +887,7 @@ private struct AgentBrandSubscribeSheet: View {
                 if existingTopic == nil {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Subscribe") {
-                            onAction(.subscribe(cadence))
+                            onAction(.subscribe(cadence, deliveryMode))
                             dismiss()
                         }
                     }
@@ -1041,21 +1071,48 @@ final class AgentSubscriptionTopicStore {
 
     func subscribe(
         agent: AgentIdentity,
-        cadence: AgentManifest.PushTopic.Cadence
+        cadence: AgentManifest.PushTopic.Cadence,
+        deliveryMode: SkillRunDeliveryMode = .actionOnly
     ) async throws -> SubscriptionTopic {
         let topic = AgentBrandQuickActionComposer.defaultSubscriptionTopic(
             for: agent,
             cadence: cadence
-        )
+        ).withDeliveryMode(deliveryMode)
         try await upsert(topic)
         return topic
+    }
+
+    func setDeliveryMode(
+        agentURI: String,
+        topicID: String = AgentBrandQuickActionComposer.defaultSubscriptionTopicID,
+        deliveryMode: SkillRunDeliveryMode
+    ) async throws {
+        let uid = try currentUserID()
+        let id = "\(agentURI):\(topicID)"
+        try await collection(uid: uid)
+            .document(Self.documentID(agentURI: agentURI, topicID: topicID))
+            .setData([
+            "deliveryMode": deliveryMode.rawValue,
+            "minimumEventImportance": deliveryMode == .fullStream
+                ? SkillRunEventImportance.normal.rawValue
+                : SkillRunEventImportance.actionRequired.rawValue,
+            "isMuted": deliveryMode == .muted,
+            "updatedAt": FieldValue.serverTimestamp()
+        ], merge: true)
+
+        guard let existing = topics.first(where: { $0.id == id }) else { return }
+        let updated = existing.withDeliveryMode(deliveryMode)
+        mergeLocal(updated)
+        lastError = nil
     }
 
     func upsert(_ topic: SubscriptionTopic) async throws {
         let uid = try currentUserID()
         var payload = Self.encodeTopic(topic)
         payload["updatedAt"] = FieldValue.serverTimestamp()
-        try await collection(uid: uid).document(topic.id).setData(payload, merge: true)
+        try await collection(uid: uid)
+            .document(Self.documentID(agentURI: topic.agentURI, topicID: topic.topicID))
+            .setData(payload, merge: true)
         mergeLocal(topic)
         lastError = nil
     }
@@ -1066,7 +1123,9 @@ final class AgentSubscriptionTopicStore {
     ) async throws {
         let uid = try currentUserID()
         let id = "\(agentURI):\(topicID)"
-        try await collection(uid: uid).document(id).delete()
+        try await collection(uid: uid)
+            .document(Self.documentID(agentURI: agentURI, topicID: topicID))
+            .delete()
         topics.removeAll { $0.id == id }
         lastError = nil
     }
@@ -1078,12 +1137,22 @@ final class AgentSubscriptionTopicStore {
     ) async throws {
         let uid = try currentUserID()
         let id = "\(agentURI):\(topicID)"
-        try await collection(uid: uid).document(id).setData([
+        let existing = topics.first(where: { $0.id == id })
+        let deliveryMode: SkillRunDeliveryMode = muted
+            ? .muted
+            : ((existing?.deliveryMode == .muted) ? .actionOnly : (existing?.deliveryMode ?? .actionOnly))
+        try await collection(uid: uid)
+            .document(Self.documentID(agentURI: agentURI, topicID: topicID))
+            .setData([
             "isMuted": muted,
+            "deliveryMode": deliveryMode.rawValue,
+            "minimumEventImportance": deliveryMode == .fullStream
+                ? SkillRunEventImportance.normal.rawValue
+                : SkillRunEventImportance.actionRequired.rawValue,
             "updatedAt": FieldValue.serverTimestamp()
         ], merge: true)
 
-        guard let existing = topics.first(where: { $0.id == id }) else { return }
+        guard let existing else { return }
         let updated = SubscriptionTopic(
             agentURI: existing.agentURI,
             topicID: existing.topicID,
@@ -1092,6 +1161,8 @@ final class AgentSubscriptionTopicStore {
             cadence: existing.cadence,
             consentGivenAt: existing.consentGivenAt,
             isMuted: muted,
+            deliveryMode: deliveryMode,
+            minimumEventImportance: deliveryMode == .fullStream ? .normal : .actionRequired,
             deliveryCountThisMonth: existing.deliveryCountThisMonth,
             lastDeliveredAt: existing.lastDeliveredAt
         )
@@ -1164,9 +1235,17 @@ final class AgentSubscriptionTopicStore {
             "cadence": topic.cadence.rawValue,
             "consentGivenAt": topic.consentGivenAt ?? NSNull(),
             "isMuted": topic.isMuted,
+            "deliveryMode": topic.deliveryMode.rawValue,
+            "minimumEventImportance": topic.minimumEventImportance.rawValue,
             "deliveryCountThisMonth": topic.deliveryCountThisMonth,
             "lastDeliveredAt": topic.lastDeliveredAt ?? NSNull()
         ]
+    }
+
+    private static func documentID(agentURI: String, topicID: String) -> String {
+        "\(agentURI):\(topicID)"
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
     }
 
     private static func decodeTopic(documentID: String, data: [String: Any]) -> SubscriptionTopic? {
@@ -1180,6 +1259,13 @@ final class AgentSubscriptionTopicStore {
         let cadence = AgentManifest.PushTopic.Cadence(rawValue: cadenceRaw) ?? .weekly
         let consentGivenAt = decodeDate(data["consentGivenAt"])
         let isMuted = (data["isMuted"] as? Bool) ?? false
+        let deliveryModeRaw = (data["deliveryMode"] as? String) ?? SkillRunDeliveryMode.actionOnly.rawValue
+        let deliveryMode = SkillRunDeliveryMode(rawValue: deliveryModeRaw) ?? .actionOnly
+        let eventImportanceRaw = (data["minimumEventImportance"] as? String)
+            ?? (deliveryMode == .fullStream
+                ? SkillRunEventImportance.normal.rawValue
+                : SkillRunEventImportance.actionRequired.rawValue)
+        let minimumEventImportance = SkillRunEventImportance(rawValue: eventImportanceRaw) ?? .actionRequired
         let deliveryCount = (data["deliveryCountThisMonth"] as? Int) ?? 0
         let lastDeliveredAt = decodeDate(data["lastDeliveredAt"])
 
@@ -1191,6 +1277,8 @@ final class AgentSubscriptionTopicStore {
             cadence: cadence,
             consentGivenAt: consentGivenAt,
             isMuted: isMuted,
+            deliveryMode: isMuted ? .muted : deliveryMode,
+            minimumEventImportance: minimumEventImportance,
             deliveryCountThisMonth: deliveryCount,
             lastDeliveredAt: lastDeliveredAt
         )
@@ -1201,6 +1289,9 @@ final class AgentSubscriptionTopicStore {
         if raw is NSNull { return nil }
         if let ts = raw as? Timestamp { return ts.dateValue() }
         if let date = raw as? Date { return date }
+        if let number = raw as? NSNumber {
+            return Date(timeIntervalSince1970: number.doubleValue / 1000.0)
+        }
         if let str = raw as? String {
             return ISO8601DateFormatter().date(from: str)
         }

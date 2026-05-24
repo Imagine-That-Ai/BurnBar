@@ -47,7 +47,7 @@ final class ConversationIndexer {
             report.enqueuedProjectionJobCount += 1
 
             if index > 0, index.isMultiple(of: Self.writeYieldInterval) {
-                
+                await Task.yield()
             }
         }
 

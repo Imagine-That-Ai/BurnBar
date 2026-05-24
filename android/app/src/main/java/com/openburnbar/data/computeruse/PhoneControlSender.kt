@@ -1,6 +1,7 @@
 package com.openburnbar.data.computeruse
 
 import com.openburnbar.data.media.MediaStreamClass
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
@@ -49,6 +50,39 @@ class PhoneControlSender(
         )
         frameSink(frame)
         return authority
+    }
+
+    suspend fun send(agentGrant: AgentCapabilityGrantRequest): HermesRealtimeRelayAgentGrantRequest {
+        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val counter = counterStore.nextCounter(peerNodeId)
+        val timestampMillis = nowMillis()
+        val placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId = "",
+            counter = 0,
+            timestamp = agentGrant.requestedAtSwiftReferenceSeconds,
+            intentHashBlake3 = "",
+            signatureEd25519 = "",
+        )
+        val unsignedWire = agentGrant.toWire(placeholder)
+        val authority = PhoneControlSigner.signAgentGrantRequest(
+            request = unsignedWire,
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = timestampMillis,
+            privateKeySeed = privateKeySeed,
+        )
+        val signedWire = agentGrant.toWire(authority.toRelayAuthority())
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_REQUEST,
+            uid = uid,
+            connectionId = connectionId,
+            control = HermesRealtimeRelayControlPayload(
+                streamClass = "control.agent.grant",
+                agentGrantRequest = signedWire,
+            ),
+        )
+        frameSink(frame)
+        return signedWire
     }
 
     private fun PhoneControlAuthorityEnvelope.toRelayAuthority(): HermesRealtimeRelayAuthorityEnvelope =
@@ -102,6 +136,21 @@ class InMemoryPhoneControlCounterStore(
     override fun nextCounter(peerNodeId: String): Long {
         val next = (counters[peerNodeId] ?: 0L) + 1L
         counters[peerNodeId] = next
+        return next
+    }
+}
+
+class SharedPreferencesPhoneControlCounterStore(
+    context: android.content.Context,
+) : PhoneControlCounterStore {
+    private val prefs = context.applicationContext
+        .getSharedPreferences("computer_use_phone_control_counters", android.content.Context.MODE_PRIVATE)
+
+    @Synchronized
+    override fun nextCounter(peerNodeId: String): Long {
+        val key = "counter_$peerNodeId"
+        val next = (prefs.getLong(key, 0L) + 1L).coerceAtLeast(1L)
+        prefs.edit().putLong(key, next).apply()
         return next
     }
 }

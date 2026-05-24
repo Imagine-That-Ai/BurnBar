@@ -15,13 +15,29 @@ struct WebsiteBackgroundView: View {
     let accent: Color
     var colorDriver: SwarmColorDriver?
 
+    @AppStorage("appThemePalette") private var themePalette: AppThemePalette = .system
+    @AppStorage(SwarmBackgroundPreferences.userDefaultsKey) private var prefsJSON: String = SwarmBackgroundPreferences.defaultJSON
+    @StateObject private var envMonitor = SwarmEnvironmentMonitor.shared
+
     var body: some View {
-        SwarmCanvasView(
-            accent: accent,
-            pace: .cinematic,
-            colorDriver: colorDriver
-        )
-        .ignoresSafeArea()
+        let prefs = SwarmBackgroundPreferences.from(jsonString: prefsJSON)
+
+        if prefs.location != .disabled && envMonitor.meetsCondition(prefs.condition) {
+            SwarmCanvasView(
+                accent: accent,
+                pace: .cinematic,
+                colorDriver: colorDriver,
+                backdropColors: themePalette.backdropColors,
+                colorPalette: themePalette.swarmPalette,
+                enabledProviderGlyphs: prefs.selectedGlyphs,
+                isAvatarEnabled: prefs.isAvatarEnabled,
+                isBrandTextEnabled: prefs.isBrandTextEnabled,
+                excludeBrandShapesFromSwarm: prefs.excludeBrandShapes
+            )
+            .ignoresSafeArea()
+        } else {
+            AuroraBackdrop().ignoresSafeArea()
+        }
     }
 }
 

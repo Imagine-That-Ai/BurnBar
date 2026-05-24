@@ -3,6 +3,8 @@ package com.openburnbar.data.media
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaFrameChunk
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
@@ -103,6 +105,40 @@ class MediaControlStreamCoordinatorTest {
         }
         assertEquals(HermesRealtimeRelayMirrorAck.Decision.BUSY, coordinator.lastMirrorAck.value?.decision)
         assertEquals("Mac is busy", coordinator.lastMirrorAck.value?.detail)
+    }
+
+    @Test
+    fun readLoop_publishesControlDeniedForMirrorTools() = runTest {
+        val stream = RecordingStream()
+        val coordinator = MediaControlStreamCoordinator(
+            dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+            scope = backgroundScope,
+        )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        coordinator.requestMirror("Android")
+        stream.incoming.send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_DENIED,
+                uid = "uid-1",
+                connectionId = "conn-1",
+                control = HermesRealtimeRelayControlPayload(
+                    streamClass = MediaStreamClass.CONTROL_INPUT.raw,
+                    denied = HermesRealtimeRelayControlDenied(
+                        reason = HermesRealtimeRelayControlDenied.Reason.UNKNOWN,
+                        detail = "accessibility_revoked",
+                    )
+                ),
+            )
+        )
+
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (coordinator.lastControlDenied.value == null) {
+                kotlinx.coroutines.yield()
+            }
+        }
+        assertEquals(HermesRealtimeRelayControlDenied.Reason.UNKNOWN, coordinator.lastControlDenied.value?.reason)
+        assertEquals("accessibility_revoked", coordinator.lastControlDenied.value?.detail)
     }
 
     @Test
@@ -330,6 +366,56 @@ class MediaControlStreamCoordinatorTest {
 
         val decoded = kotlinx.coroutines.withTimeout(1_000) { received.await() }
         assertEquals(source, decoded)
+    }
+
+    @Test
+    fun readLoop_reassemblesLargeV1ScreenFramesToMirrorFrameHandler() = runTest {
+        val stream = RecordingStream()
+        val coordinator = MediaControlStreamCoordinator(
+            dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+            scope = backgroundScope,
+        )
+        val received = CompletableDeferred<MediaFrame>()
+        val v2Received = CompletableDeferred<MediaFrameV2>()
+        coordinator.mirrorFrameHandler = { frame -> received.complete(frame) }
+        coordinator.mirrorFrameV2Handler = { frame -> v2Received.complete(frame) }
+        val source = MediaFrame(
+            kind = MediaFrame.Kind.VIDEO_NAL,
+            flags = MediaFrame.Flags.KEYFRAME,
+            gopID = 8u,
+            frameIndex = 4u,
+            presentationTimestampMillis = 124uL,
+            payload = ByteArray(MediaPacketCodec.DEFAULT_MAX_PAYLOAD_BYTES + (64 * 1024)) { 0x61 },
+        )
+        val encoded = MediaPacketCodec(maxPayloadBytes = MediaFrameV2Codec.DEFAULT_MAX_PAYLOAD_BYTES)
+            .encode(source)
+        val chunkSize = 100_000
+        val chunks = encoded.asList().chunked(chunkSize).map { it.toByteArray() }
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        chunks.forEachIndexed { chunkIndex, bytes ->
+            stream.incoming.send(
+                HermesRealtimeRelayFrame(
+                    type = HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME,
+                    uid = "uid-1",
+                    connectionId = "conn-1",
+                    media = HermesRealtimeRelayMediaPayload(
+                        streamClass = MediaStreamClass.SCREEN_VIDEO.raw,
+                        encodedFrameBase64 = Base64.getEncoder().encodeToString(bytes),
+                        frameChunk = HermesRealtimeRelayMediaFrameChunk(
+                            chunkId = "large-v1-frame",
+                            chunkIndex = chunkIndex,
+                            chunkCount = chunks.size,
+                            totalBytes = encoded.size,
+                        ),
+                    ),
+                )
+            )
+        }
+
+        val decoded = kotlinx.coroutines.withTimeout(1_000) { received.await() }
+        assertEquals(source, decoded)
+        assertFalse(v2Received.isCompleted)
     }
 
     @Test

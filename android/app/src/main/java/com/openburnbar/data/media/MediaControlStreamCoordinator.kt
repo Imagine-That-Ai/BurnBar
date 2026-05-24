@@ -1,10 +1,13 @@
 package com.openburnbar.data.media
 
 import android.util.Log
+import com.openburnbar.data.computeruse.AgentCapabilityGrantState
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallInvite
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayLongTermReferenceAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
@@ -87,7 +90,7 @@ class MediaControlStreamCoordinator(
     private var activeUID: String? = null
     private var activeConnectionID: String? = null
     private var pendingLive: MutableList<CompletableDeferred<IrohRelayStream>> = mutableListOf()
-    private val mediaPacketCodec = MediaPacketCodec()
+    private val mediaPacketCodec = MediaPacketCodec(maxPayloadBytes = MediaFrameV2Codec.DEFAULT_MAX_PAYLOAD_BYTES)
     private val mediaFrameV2Codec = MediaFrameV2Codec()
     private val frameChunkAssembler = MediaFrameChunkAssembler()
 
@@ -108,6 +111,14 @@ class MediaControlStreamCoordinator(
 
     private val _lastCallAck = MutableStateFlow<HermesRealtimeRelayCallAck?>(null)
     val lastCallAck: StateFlow<HermesRealtimeRelayCallAck?> = _lastCallAck.asStateFlow()
+
+    private val _lastAgentGrantReceipt = MutableStateFlow<HermesRealtimeRelayAgentGrantReceipt?>(null)
+    val lastAgentGrantReceipt: StateFlow<HermesRealtimeRelayAgentGrantReceipt?> =
+        _lastAgentGrantReceipt.asStateFlow()
+
+    private val _lastControlDenied = MutableStateFlow<HermesRealtimeRelayControlDenied?>(null)
+    val lastControlDenied: StateFlow<HermesRealtimeRelayControlDenied?> =
+        _lastControlDenied.asStateFlow()
 
     private val _lastPeerHeartbeatAtMillis = MutableStateFlow(0L)
     val lastPeerHeartbeatAtMillis: StateFlow<Long> = _lastPeerHeartbeatAtMillis.asStateFlow()
@@ -354,6 +365,17 @@ class MediaControlStreamCoordinator(
                     HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT -> {
                         _lastPeerHeartbeatAtMillis.value = System.currentTimeMillis()
                         _lastPeerCapabilities.value = frame.media?.presence?.capabilities.orEmpty().toSet()
+                    }
+                    HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_RECEIPT -> {
+                        frame.control?.agentGrantReceipt?.let { receipt ->
+                            _lastAgentGrantReceipt.value = receipt
+                            AgentCapabilityGrantState.apply(receipt)
+                        }
+                    }
+                    HermesRealtimeRelayFrameType.CONTROL_DENIED -> {
+                        frame.control?.denied?.let { denied ->
+                            _lastControlDenied.value = denied
+                        }
                     }
                     HermesRealtimeRelayFrameType.MEDIA_CLASSIFY -> {
                         // Re-classification mid-stream — protocol noise.

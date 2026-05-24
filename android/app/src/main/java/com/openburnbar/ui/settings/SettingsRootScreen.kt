@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +63,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.openburnbar.data.models.AgentProvider
@@ -68,6 +73,7 @@ import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.components.WebsiteBackground
 import com.openburnbar.ui.smartdisplay.SmartDisplayView
 import com.openburnbar.ui.theme.AuroraColors
+import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
@@ -102,6 +108,9 @@ fun SettingsRootScreen(
             SettingsPageRoute.THEME_PREFS -> ThemePrefsScreen(
                 router = router,
                 onBack = { router.page = SettingsPageRoute.ROOT }
+            )
+            SettingsPageRoute.WALLPAPER_GENERATOR -> WallpaperGeneratorScreen(
+                onBack = { router.page = SettingsPageRoute.THEME_PREFS }
             )
             SettingsPageRoute.QUOTA_PREFS -> QuotaCustomizationScreen(
                 router = router,
@@ -215,22 +224,28 @@ private fun SettingsRootList(
 ) {
     val listState = rememberLazyListState()
 
-    // Map anchor ids to LazyColumn indexes so the router can scroll.
-    val rootRows = remember {
-        val providerRows = AgentProvider.entries
-            .sortedBy { it.displayName.lowercase() }
-            .map { provider ->
-                RootRow(
-                    anchor = SettingsAnchor.provider(provider.key),
-                    icon = Icons.Filled.Search,
-                    title = provider.displayName,
-                    subtitle = "Provider quota, usage, and connection signal",
-                    pageRoute = SettingsPageRoute.ROOT,
-                    logoProviderKeys = listOf(provider.key),
-                    onTap = {}
-                )
-            }
+    var providersExpanded by rememberSaveable { mutableStateOf(false) }
+    var hermesExpanded by rememberSaveable { mutableStateOf(false) }
+    var smartDisplaysExpanded by rememberSaveable { mutableStateOf(false) }
+    var notificationsExpanded by rememberSaveable { mutableStateOf(false) }
 
+    val pending = router.pendingAnchor
+    LaunchedEffect(pending) {
+        if (pending != null) {
+            if (pending.startsWith("root.provider.")) {
+                providersExpanded = true
+            } else if (pending.startsWith("hermes.")) {
+                hermesExpanded = true
+            } else if (pending == SettingsAnchor.GOOGLE_SMART_DISPLAY || pending == SettingsAnchor.PIXEL_CLOCK) {
+                smartDisplaysExpanded = true
+            } else if (pending == SettingsAnchor.PERSISTENT_NOTIFICATION) {
+                notificationsExpanded = true
+            }
+        }
+    }
+
+    // Define groups
+    val systemGroup = remember {
         listOf(
             RootRow(
                 anchor = SettingsAnchor.CLOUD_SYNC,
@@ -241,21 +256,6 @@ private fun SettingsRootList(
                 onTap = {}
             ),
             RootRow(
-                anchor = SettingsAnchor.PROVIDERS_ROW,
-                icon = Icons.Filled.Search,
-                title = "Provider connections",
-                subtitle = "Find OpenCode, Codex, Claude, and other quota providers",
-                pageRoute = SettingsPageRoute.ROOT,
-                logoProviderKeys = listOf(
-                    AgentProvider.CLAUDE_CODE.key,
-                    AgentProvider.OPENCODE.key,
-                    AgentProvider.FACTORY.key,
-                    AgentProvider.OPEN_AI.key,
-                ),
-                onTap = {}
-            ),
-        ) + providerRows + listOf(
-            RootRow(
                 anchor = SettingsAnchor.CONNECTED_DEVICES,
                 icon = Icons.Filled.Devices,
                 title = "Connected Devices",
@@ -263,6 +263,19 @@ private fun SettingsRootList(
                 pageRoute = SettingsPageRoute.ROOT,
                 onTap = {}
             ),
+            RootRow(
+                anchor = SettingsAnchor.COMPUTER_USE_ROW,
+                icon = Icons.Filled.Computer,
+                title = "Computer Use",
+                subtitle = "Agent Watch, phone takeover, approvals, and audit chain",
+                pageRoute = SettingsPageRoute.ROOT,
+                onTap = { onComputerUse?.invoke() }
+            )
+        )
+    }
+
+    val visualGroup = remember {
+        listOf(
             RootRow(
                 anchor = SettingsAnchor.THEME_ROW,
                 icon = Icons.Filled.AutoAwesome,
@@ -278,120 +291,238 @@ private fun SettingsRootList(
                 subtitle = "Rearrange providers, toggle visible buckets, and format percentage displays",
                 pageRoute = SettingsPageRoute.QUOTA_PREFS,
                 onTap = { router.page = SettingsPageRoute.QUOTA_PREFS }
-            ),
+            )
+        )
+    }
+
+    val integrationsGroup = remember(smartDisplaysExpanded, notificationsExpanded) {
+        val list = mutableListOf<RootRow>()
+        list.add(
             RootRow(
                 anchor = SettingsAnchor.SMART_DISPLAYS_ROW,
                 icon = Icons.Filled.Tv,
                 title = "Smart Displays",
                 subtitle = "Google Smart Display · Pixel Clock",
                 pageRoute = SettingsPageRoute.SMART_DISPLAYS,
-                onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
-            ),
-            RootRow(
-                anchor = SettingsAnchor.GOOGLE_SMART_DISPLAY,
-                icon = Icons.Filled.Tv,
-                title = "Google Smart Display",
-                subtitle = "Nest Hub and Pixel Tablet glance",
-                pageRoute = SettingsPageRoute.SMART_DISPLAYS,
-                onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
-            ),
-            RootRow(
-                anchor = SettingsAnchor.PIXEL_CLOCK,
-                icon = Icons.Filled.Tv,
-                title = "Pixel Clock",
-                subtitle = "Pixel Clock cost glance",
-                pageRoute = SettingsPageRoute.SMART_DISPLAYS,
-                onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
-            ),
+                isCollapsibleHeader = true,
+                isExpanded = smartDisplaysExpanded,
+                onTap = { smartDisplaysExpanded = !smartDisplaysExpanded }
+            )
+        )
+        if (smartDisplaysExpanded) {
+            list.add(
+                RootRow(
+                    anchor = SettingsAnchor.GOOGLE_SMART_DISPLAY,
+                    icon = Icons.Filled.Tv,
+                    title = "Google Smart Display",
+                    subtitle = "Nest Hub and Pixel Tablet glance",
+                    pageRoute = SettingsPageRoute.SMART_DISPLAYS,
+                    isNested = true,
+                    onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
+                )
+            )
+            list.add(
+                RootRow(
+                    anchor = SettingsAnchor.PIXEL_CLOCK,
+                    icon = Icons.Filled.Tv,
+                    title = "Pixel Clock",
+                    subtitle = "Pixel Clock cost glance",
+                    pageRoute = SettingsPageRoute.SMART_DISPLAYS,
+                    isNested = true,
+                    onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
+                )
+            )
+        }
+        list.add(
             RootRow(
                 anchor = SettingsAnchor.QUICK_GLANCE_ROW,
                 icon = Icons.Filled.Notifications,
                 title = "Quick-Glance Notification",
                 subtitle = "BurnBar persistent cost glance",
                 pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
-                onTap = { router.page = SettingsPageRoute.MENU_BAR_PREFS }
-            ),
-            RootRow(
-                anchor = SettingsAnchor.COMPUTER_USE_ROW,
-                icon = Icons.Filled.Computer,
-                title = "Computer Use",
-                subtitle = "Agent Watch, phone takeover, approvals, and audit chain",
-                pageRoute = SettingsPageRoute.ROOT,
-                onTap = { onComputerUse?.invoke() }
-            ),
-            RootRow(
-                anchor = SettingsAnchor.PERSISTENT_NOTIFICATION,
-                icon = Icons.Filled.Notifications,
-                title = "Show quick-glance notification",
-                subtitle = "Live cost glance in the notification shade",
-                pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
-                onTap = { router.page = SettingsPageRoute.MENU_BAR_PREFS }
-            ),
-            RootRow(
-                anchor = SettingsAnchor.HERMES_CONNECTIONS,
-                icon = Icons.Filled.Search,
-                title = "Hermes Connections",
-                subtitle = "Connected Hermes endpoints and tokens",
-                pageRoute = SettingsPageRoute.ROOT,
-                logoProviderKeys = listOf(
-                    AgentProvider.HERMES.key,
-                    AgentProvider.CLAUDE_CODE.key,
-                    AgentProvider.CODEX.key,
-                    AgentProvider.OPEN_CLAW.key,
-                ),
-                onTap = {}
-            ),
-            RootRow(
-                anchor = SettingsAnchor.HERMES_MODELS,
-                icon = Icons.Filled.Search,
-                title = "Hermes Models",
-                subtitle = "Default models exposed by Hermes",
-                pageRoute = SettingsPageRoute.ROOT,
-                logoProviderKeys = listOf(
-                    AgentProvider.HERMES.key,
-                    AgentProvider.CLAUDE_CODE.key,
-                    AgentProvider.OPEN_AI.key,
-                    AgentProvider.GEMINI_CLI.key,
-                ),
-                onTap = {}
-            ),
-            RootRow(
-                anchor = SettingsAnchor.HERMES_DISPLAY,
-                icon = Icons.Filled.Search,
-                title = "Hermes Display",
-                subtitle = "TPS overlay and pretext",
-                pageRoute = SettingsPageRoute.ROOT,
-                logoProviderKeys = listOf(AgentProvider.HERMES.key),
-                onTap = {}
-            ),
-            RootRow(
-                anchor = SettingsAnchor.HERMES_GATEWAY,
-                icon = Icons.Filled.Search,
-                title = "Hermes Gateway",
-                subtitle = "URL and token for the Hermes webapi gateway",
-                pageRoute = SettingsPageRoute.ROOT,
-                logoProviderKeys = listOf(AgentProvider.HERMES.key),
-                onTap = {}
-            ),
-            RootRow(
-                anchor = SettingsAnchor.HERMES_STATUS,
-                icon = Icons.Filled.Search,
-                title = "Hermes Status",
-                subtitle = "Live Hermes connection state",
-                pageRoute = SettingsPageRoute.ROOT,
-                logoProviderKeys = listOf(AgentProvider.HERMES.key),
-                onTap = {}
-            ),
+                isCollapsibleHeader = true,
+                isExpanded = notificationsExpanded,
+                onTap = { notificationsExpanded = !notificationsExpanded }
+            )
         )
+        if (notificationsExpanded) {
+            list.add(
+                RootRow(
+                    anchor = SettingsAnchor.PERSISTENT_NOTIFICATION,
+                    icon = Icons.Filled.Notifications,
+                    title = "Show quick-glance notification",
+                    subtitle = "Live cost glance in the notification shade",
+                    pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
+                    isNested = true,
+                    onTap = { router.page = SettingsPageRoute.MENU_BAR_PREFS }
+                )
+            )
+        }
+        list
     }
 
-    val anchorIndex = remember(rootRows) {
-        rootRows.withIndex().associate { (i, r) -> r.anchor to i }
+    val providersGroup = remember(providersExpanded) {
+        val list = mutableListOf<RootRow>()
+        list.add(
+            RootRow(
+                anchor = SettingsAnchor.PROVIDERS_ROW,
+                icon = Icons.Filled.Search,
+                title = "Provider connections",
+                subtitle = "Find OpenCode, Codex, Claude, and other quota providers",
+                pageRoute = SettingsPageRoute.ROOT,
+                logoProviderKeys = listOf(
+                    AgentProvider.CLAUDE_CODE.key,
+                    AgentProvider.OPENCODE.key,
+                    AgentProvider.FACTORY.key,
+                    AgentProvider.OPEN_AI.key,
+                ),
+                isCollapsibleHeader = true,
+                isExpanded = providersExpanded,
+                onTap = { providersExpanded = !providersExpanded }
+            )
+        )
+        if (providersExpanded) {
+            AgentProvider.entries
+                .sortedBy { it.displayName.lowercase() }
+                .forEach { provider ->
+                    list.add(
+                        RootRow(
+                            anchor = SettingsAnchor.provider(provider.key),
+                            icon = Icons.Filled.Search,
+                            title = provider.displayName,
+                            subtitle = "${provider.displayName} quota, usage, and signal",
+                            pageRoute = SettingsPageRoute.ROOT,
+                            logoProviderKeys = listOf(provider.key),
+                            isNested = true,
+                            onTap = {}
+                        )
+                    )
+                }
+        }
+        list
+    }
+
+    val hermesGroup = remember(hermesExpanded) {
+        val list = mutableListOf<RootRow>()
+        list.add(
+            RootRow(
+                anchor = "root.hermes_dev_suite",
+                icon = Icons.Filled.Search,
+                title = "Hermes Developer Suite",
+                subtitle = "Configure gateway, connections, and system pretext",
+                pageRoute = SettingsPageRoute.ROOT,
+                logoProviderKeys = listOf(AgentProvider.HERMES.key),
+                isCollapsibleHeader = true,
+                isExpanded = hermesExpanded,
+                onTap = { hermesExpanded = !hermesExpanded }
+            )
+        )
+        if (hermesExpanded) {
+            list.add(
+                RootRow(
+                    anchor = SettingsAnchor.HERMES_CONNECTIONS,
+                    icon = Icons.Filled.Search,
+                    title = "Hermes Connections",
+                    subtitle = "Connected Hermes endpoints and tokens",
+                    pageRoute = SettingsPageRoute.ROOT,
+                    logoProviderKeys = listOf(
+                        AgentProvider.HERMES.key,
+                        AgentProvider.CLAUDE_CODE.key,
+                        AgentProvider.CODEX.key,
+                        AgentProvider.OPEN_CLAW.key,
+                    ),
+                    isNested = true,
+                    onTap = {}
+                )
+            )
+            list.add(
+                RootRow(
+                    anchor = SettingsAnchor.HERMES_MODELS,
+                    icon = Icons.Filled.Search,
+                    title = "Hermes Models",
+                    subtitle = "Default models exposed by Hermes",
+                    pageRoute = SettingsPageRoute.ROOT,
+                    logoProviderKeys = listOf(
+                        AgentProvider.HERMES.key,
+                        AgentProvider.CLAUDE_CODE.key,
+                        AgentProvider.OPEN_AI.key,
+                        AgentProvider.GEMINI_CLI.key,
+                    ),
+                    isNested = true,
+                    onTap = {}
+                )
+            )
+            list.add(
+                RootRow(
+                    anchor = SettingsAnchor.HERMES_DISPLAY,
+                    icon = Icons.Filled.Search,
+                    title = "Hermes Display",
+                    subtitle = "TPS overlay and pretext",
+                    pageRoute = SettingsPageRoute.ROOT,
+                    logoProviderKeys = listOf(AgentProvider.HERMES.key),
+                    isNested = true,
+                    onTap = {}
+                )
+            )
+            list.add(
+                RootRow(
+                    anchor = SettingsAnchor.HERMES_GATEWAY,
+                    icon = Icons.Filled.Search,
+                    title = "Hermes Gateway",
+                    subtitle = "URL and token for the Hermes webapi gateway",
+                    pageRoute = SettingsPageRoute.ROOT,
+                    logoProviderKeys = listOf(AgentProvider.HERMES.key),
+                    isNested = true,
+                    onTap = {}
+                )
+            )
+            list.add(
+                RootRow(
+                    anchor = SettingsAnchor.HERMES_STATUS,
+                    icon = Icons.Filled.Search,
+                    title = "Hermes Status",
+                    subtitle = "Live Hermes connection state",
+                    pageRoute = SettingsPageRoute.ROOT,
+                    logoProviderKeys = listOf(AgentProvider.HERMES.key),
+                    isNested = true,
+                    onTap = {}
+                )
+            )
+        }
+        list
+    }
+
+    val visibleRows = remember(systemGroup, visualGroup, integrationsGroup, providersGroup, hermesGroup) {
+        val list = mutableListOf<RowWithGroupInfo>()
+
+        fun addGroup(title: String, items: List<RootRow>) {
+            items.forEachIndexed { index, row ->
+                list.add(
+                    RowWithGroupInfo(
+                        row = row,
+                        groupTitle = if (index == 0) title else null,
+                        itemIndex = index,
+                        groupCount = items.size
+                    )
+                )
+            }
+        }
+
+        addGroup("System & Security", systemGroup)
+        addGroup("Appearance & Quota", visualGroup)
+        addGroup("Integrations & Displays", integrationsGroup)
+        addGroup("AI Quota Providers", providersGroup)
+        addGroup("Developer Settings", hermesGroup)
+
+        list
+    }
+
+    val anchorIndex = remember(visibleRows) {
+        visibleRows.withIndex().associate { (i, r) -> r.row.anchor to i }
     }
 
     // Scroll to pending anchor on arrival.
-    val pending = router.pendingAnchor
-    LaunchedEffect(pending) {
+    LaunchedEffect(pending, visibleRows) {
         if (pending != null) {
             val idx = anchorIndex[pending]
             if (idx != null) {
@@ -406,19 +537,61 @@ private fun SettingsRootList(
 
     LazyColumn(
         state = listState,
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        itemsIndexed(rootRows) { _, row ->
-            SettingsRow(
-                icon = row.icon,
-                title = row.title,
-                subtitle = row.subtitle,
-                logoProviderKeys = row.logoProviderKeys,
-                onClick = row.onTap,
-                highlighted = router.highlightedAnchor == row.anchor
-            )
+        visibleRows.forEach { rowWithInfo ->
+            val groupTitle = rowWithInfo.groupTitle
+            if (groupTitle != null) {
+                item(key = "header_${groupTitle}") {
+                    SettingsSectionHeader(title = groupTitle)
+                }
+            }
+
+            item(key = "row_${rowWithInfo.row.anchor}_${rowWithInfo.row.title}") {
+                val shape = getGroupShape(rowWithInfo.itemIndex, rowWithInfo.groupCount)
+                val showDivider = rowWithInfo.itemIndex < rowWithInfo.groupCount - 1
+
+                SettingsRow(
+                    icon = rowWithInfo.row.icon,
+                    title = rowWithInfo.row.title,
+                    subtitle = rowWithInfo.row.subtitle,
+                    highlighted = router.highlightedAnchor == rowWithInfo.row.anchor,
+                    shape = shape,
+                    logoProviderKeys = rowWithInfo.row.logoProviderKeys,
+                    isCollapsibleHeader = rowWithInfo.row.isCollapsibleHeader,
+                    isExpanded = rowWithInfo.row.isExpanded,
+                    isNested = rowWithInfo.row.isNested,
+                    showDivider = showDivider,
+                    onClick = rowWithInfo.row.onTap
+                )
+            }
         }
+
+        // Add a beautiful footer spacer
+        item {
+            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionHeader(title: String) {
+    Text(
+        text = title.uppercase(),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        modifier = Modifier.padding(start = AuroraSpacing.md.dp, top = AuroraSpacing.md.dp, bottom = AuroraSpacing.xs.dp)
+    )
+}
+
+private fun getGroupShape(index: Int, count: Int): RoundedCornerShape {
+    return when {
+        count == 1 -> RoundedCornerShape(AuroraRadius.lg.dp)
+        index == 0 -> RoundedCornerShape(topStart = AuroraRadius.lg.dp, topEnd = AuroraRadius.lg.dp)
+        index == count - 1 -> RoundedCornerShape(bottomStart = AuroraRadius.lg.dp, bottomEnd = AuroraRadius.lg.dp)
+        else -> RoundedCornerShape(0.dp)
     }
 }
 
@@ -429,7 +602,17 @@ private data class RootRow(
     val subtitle: String,
     val pageRoute: SettingsPageRoute,
     val logoProviderKeys: List<String> = emptyList(),
+    val isCollapsibleHeader: Boolean = false,
+    val isExpanded: Boolean = false,
+    val isNested: Boolean = false,
     val onTap: () -> Unit,
+)
+
+private data class RowWithGroupInfo(
+    val row: RootRow,
+    val groupTitle: String?,
+    val itemIndex: Int,
+    val groupCount: Int,
 )
 
 @Composable
@@ -457,7 +640,12 @@ internal fun SettingsRow(
     title: String,
     subtitle: String,
     highlighted: Boolean,
+    shape: RoundedCornerShape = RoundedCornerShape(AuroraRadius.lg.dp),
     logoProviderKeys: List<String> = emptyList(),
+    isCollapsibleHeader: Boolean = false,
+    isExpanded: Boolean = false,
+    isNested: Boolean = false,
+    showDivider: Boolean = false,
     onClick: () -> Unit = {},
 ) {
     val haloColor by animateColorAsState(
@@ -470,48 +658,94 @@ internal fun SettingsRow(
         label = "settings-row-halo"
     )
 
+    val contentAlpha = if (isNested) 0.85f else 1f
+
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AuroraRadius.lg.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = if (isNested) 16.dp else 0.dp),
+        shape = shape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = if (isNested) 0.4f else 0.6f)
     ) {
         Surface(
             color = haloColor,
-            shape = RoundedCornerShape(AuroraRadius.lg.dp),
+            shape = shape,
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(AuroraSpacing.md.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val logoProviders = logoProviderKeys.mapNotNull { AgentProvider.fromKey(it) }
-                if (logoProviders.isNotEmpty()) {
-                    SettingsProviderLogoStack(providers = logoProviders)
-                } else {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = AuroraSpacing.md.dp,
+                            vertical = if (isNested) AuroraSpacing.sm.dp else AuroraSpacing.md.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val logoProviders = logoProviderKeys.mapNotNull { AgentProvider.fromKey(it) }
+                    if (logoProviders.isNotEmpty()) {
+                        SettingsProviderLogoStack(
+                            providers = logoProviders,
+                            maxVisible = if (isNested) 1 else 4
+                        )
+                    } else {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(if (isNested) 20.dp else 24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            title,
+                            fontSize = (if (isNested) AuroraTypography.caption else AuroraTypography.body).sp,
+                            fontWeight = if (isNested) FontWeight.Medium else FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+                        )
+                        if (subtitle.isNotEmpty()) {
+                            Text(
+                                subtitle,
+                                fontSize = (if (isNested) 11 else AuroraTypography.caption).sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha * 0.8f)
+                            )
+                        }
+                    }
+
+                    if (isCollapsibleHeader) {
+                        val rotation by androidx.compose.animation.core.animateFloatAsState(
+                            targetValue = if (isExpanded) 180f else 0f,
+                            animationSpec = tween(durationMillis = 200),
+                            label = "chevron-rotation"
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = if (isExpanded) "Collapse" else "Expand",
+                            modifier = Modifier
+                                .size(24.dp)
+                                .graphicsLayer(rotationZ = rotation),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.NavigateNext,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        )
+                    }
+                }
+
+                if (showDivider) {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .padding(horizontal = AuroraSpacing.md.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                     )
                 }
-                Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(title, fontSize = AuroraTypography.body.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        subtitle,
-                        fontSize = AuroraTypography.caption.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.NavigateNext,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                )
             }
         }
     }
@@ -538,11 +772,16 @@ fun ThemePrefsScreen(
     val haptic = LocalHapticFeedback.current
     val useWebsiteBackground by rememberWebsiteBackground()
     val usePremiumSOTAUX by rememberPremiumSOTAUX()
+    val enableSwarmSparkles by rememberSwarmSparkles()
+    val excludeBrandShapes by rememberExcludeBrandShapesFromSwarm()
+    var customizeProviderGlyphs by rememberSaveable { mutableStateOf(false) }
 
     // Retrieve pending anchor for halo highlight
     val pending = router.pendingAnchor
     LaunchedEffect(pending) {
-        if (pending != null && (pending == SettingsAnchor.USE_PREMIUM_SOTA_UX || pending == SettingsAnchor.USE_WEBSITE_BACKGROUND)) {
+        if (pending != null && (pending == SettingsAnchor.USE_PREMIUM_SOTA_UX ||
+            pending == SettingsAnchor.USE_WEBSITE_BACKGROUND ||
+            pending == SettingsAnchor.ENABLE_SWARM_SPARKLES)) {
             router.consumePendingAnchor(pending)
             kotlinx.coroutines.delay(1_400)
             router.clearHighlight(pending)
@@ -557,6 +796,7 @@ fun ThemePrefsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .background(
                     if (useWebsiteBackground) Color.Transparent
                     else if (isDark) AuroraColors.darkBackground
@@ -673,8 +913,118 @@ fun ThemePrefsScreen(
                             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     )
 
+                    // 3. Screensaver Sparkles Toggle
+                    val sparklesHaloColor by animateColorAsState(
+                        targetValue = if (router.highlightedAnchor == SettingsAnchor.ENABLE_SWARM_SPARKLES) {
+                            Color(0xFFFFA800).copy(alpha = 0.18f)
+                        } else {
+                            Color.Transparent
+                        },
+                        animationSpec = tween(durationMillis = 350),
+                        label = "sparkles-halo"
+                    )
+
+                    Surface(
+                        color = sparklesHaloColor,
+                        shape = RoundedCornerShape(AuroraRadius.md.dp)
+                    ) {
+                        AuroraSettingsToggle(
+                            icon = Icons.Filled.AutoAwesome,
+                            label = "Enable Screensaver Sparkles",
+                            subtitle = "Render an elegant, gentle twinkling shimmer on particles while they hold a reformed shape.",
+                            checked = enableSwarmSparkles,
+                            onCheckedChange = {
+                                GlobalVisualSettings.setSwarmSparkles(it)
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            tint = Color.White
+                        )
+                    }
+
+                    // Divider
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    )
+
+                    // Exclude Brand Shapes Toggle
+                    AuroraSettingsToggle(
+                        icon = Icons.Filled.AutoAwesome,
+                        label = "Exclude Brand Shapes",
+                        subtitle = "Skip BurnBar, money, code symbols, rings, and router flow cycles, leaving only AI providers",
+                        checked = excludeBrandShapes,
+                        onCheckedChange = {
+                            GlobalVisualSettings.setExcludeBrandShapesFromSwarm(it)
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
+                        tint = Color.White
+                    )
+
+                    // Divider
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    )
+
+                    Surface(
+                        onClick = { router.page = SettingsPageRoute.WALLPAPER_GENERATOR },
+                        shape = RoundedCornerShape(AuroraRadius.md.dp),
+                        color = Color.Transparent
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = AuroraColors.ember.copy(alpha = 0.15f)
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(42.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Wallpaper,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp),
+                                        tint = AuroraColors.ember
+                                    )
+                                }
+                            }
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Generate Wallpaper",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    "Create a swarm wallpaper colored by your AI usage",
+                                    fontSize = 13.sp,
+                                    color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Icon(
+                                Icons.AutoMirrored.Filled.NavigateNext,
+                                contentDescription = "Open",
+                                tint = if (useWebsiteBackground) Color.White.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+
+                    // Divider
+
                     // 3. Color Palette
                     val themePalette by rememberThemePalette()
+                    val providerGlyphs by rememberProviderGlyphs()
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Color Palette", fontWeight = FontWeight.Bold, color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface)
                         androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -703,7 +1053,96 @@ fun ThemePrefsScreen(
                             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     )
 
-                    // 4. Tab Layout Note
+                    // 4. Provider Glyphs
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(AuroraRadius.lg.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = if (useWebsiteBackground) 0.42f else 0.76f),
+                            onClick = { customizeProviderGlyphs = !customizeProviderGlyphs }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                SettingsProviderLogoStack(
+                                    providers = AgentProvider.swarmGlyphProviders.filter { providerGlyphs.contains(it) }.ifEmpty {
+                                        AgentProvider.swarmGlyphProviders.take(4)
+                                    },
+                                    maxVisible = 4
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Provider glyphs",
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        providerGlyphSummary(providerGlyphs),
+                                        fontSize = 12.sp,
+                                        color = if (useWebsiteBackground) Color.White.copy(alpha = 0.68f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                val rotation by androidx.compose.animation.core.animateFloatAsState(
+                                    targetValue = if (customizeProviderGlyphs) 180f else 0f,
+                                    animationSpec = tween(durationMillis = 200),
+                                    label = "provider-glyph-chevron"
+                                )
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowDown,
+                                    contentDescription = if (customizeProviderGlyphs) "Collapse" else "Expand",
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .graphicsLayer(rotationZ = rotation),
+                                    tint = if (useWebsiteBackground) Color.White.copy(alpha = 0.74f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (customizeProviderGlyphs) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ProviderGlyphQuickAction(
+                                    title = "All",
+                                    active = providerGlyphs.size == AgentProvider.swarmGlyphProviders.size,
+                                    onClick = { GlobalVisualSettings.setProviderGlyphs(AgentProvider.swarmGlyphProviders.toSet()) }
+                                )
+                                ProviderGlyphQuickAction(
+                                    title = "None",
+                                    active = providerGlyphs.isEmpty(),
+                                    onClick = { GlobalVisualSettings.setProviderGlyphs(emptySet()) }
+                                )
+                            }
+
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AgentProvider.swarmGlyphProviders.forEach { provider ->
+                                    val isSelected = providerGlyphs.contains(provider)
+                                    ProviderGlyphSelectionRow(
+                                        provider = provider,
+                                        selected = isSelected,
+                                        highContrastText = useWebsiteBackground,
+                                    ) {
+                                        val next = if (isSelected) {
+                                            providerGlyphs - provider
+                                        } else {
+                                            providerGlyphs + provider
+                                        }
+                                        GlobalVisualSettings.setProviderGlyphs(next)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    )
+
+                    // 5. Tab Layout Note
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Tab Layout", fontWeight = FontWeight.Bold, color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface)
                         Text("Android Tab arrangement customized via DataStore.", fontSize = 12.sp, color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -711,7 +1150,93 @@ fun ThemePrefsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            // Bottom padding for scroll overscroll
+            Spacer(modifier = Modifier.height(48.dp))
+        }
+    }
+}
+
+private fun providerGlyphSummary(providers: Set<AgentProvider>): String {
+    val total = AgentProvider.swarmGlyphProviders.size
+    val count = providers.size
+    return when (count) {
+        total -> "All providers selected"
+        0 -> "Provider logos hidden"
+        else -> "$count/$total providers selected"
+    }
+}
+
+@Composable
+private fun ProviderGlyphQuickAction(
+    title: String,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = if (active) AuroraColors.ember else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        onClick = onClick,
+    ) {
+        Text(
+            text = title,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ProviderGlyphSelectionRow(
+    provider: AgentProvider,
+    selected: Boolean,
+    highContrastText: Boolean,
+    onClick: () -> Unit,
+) {
+    val providerColor = Color(provider.brandColor)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (selected) providerColor.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
+        shape = RoundedCornerShape(16.dp),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .padding(6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ProviderLogo(provider = provider, size = 30.dp)
+                }
+            }
+            Text(
+                text = provider.displayName,
+                color = if (highContrastText) Color.White else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = if (selected) providerColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+            ) {
+                Text(
+                    text = if (selected) "On" else "Off",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

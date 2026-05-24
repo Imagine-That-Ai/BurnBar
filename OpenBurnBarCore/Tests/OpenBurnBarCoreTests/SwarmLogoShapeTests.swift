@@ -8,6 +8,36 @@ final class SwarmLogoShapeTests: XCTestCase {
         XCTAssertTrue(SwarmFormationMode.defaultCycle.contains(.shapeRouterFlow))
     }
 
+    func testDefaultCycleExcludesBrandShapesWhenRequested() {
+        let cycle = SwarmFormationMode.defaultCycle(for: SwarmFormationMode.showcaseProviders, excludeBrandShapes: true)
+        XCTAssertFalse(cycle.contains(.shapeBurnBarLogo))
+        XCTAssertFalse(cycle.contains(.shapeDollar))
+        XCTAssertFalse(cycle.contains(.shapeCode))
+        XCTAssertFalse(cycle.contains(.shapeRings))
+        XCTAssertFalse(cycle.contains(.shapeRouterFlow))
+
+        XCTAssertTrue(cycle.contains(.swarm))
+        XCTAssertTrue(cycle.contains(where: {
+            if case .shapeProviderLogo = $0 { return true }
+            return false
+        }))
+    }
+
+    func testInspectionCycleExcludesBrandShapesWhenRequested() {
+        let cycle = SwarmFormationMode.inspectionCycle(for: SwarmFormationMode.showcaseProviders, excludeBrandShapes: true)
+        XCTAssertFalse(cycle.contains(.shapeBurnBarLogo))
+        XCTAssertFalse(cycle.contains(.shapeDollar))
+        XCTAssertFalse(cycle.contains(.shapeCode))
+        XCTAssertFalse(cycle.contains(.shapeRings))
+        XCTAssertFalse(cycle.contains(.shapeRouterFlow))
+
+        XCTAssertTrue(cycle.contains(.swarm))
+        XCTAssertTrue(cycle.contains(where: {
+            if case .shapeProviderLogo = $0 { return true }
+            return false
+        }))
+    }
+
     func testInspectionCycleIncludesEveryProviderLogoGrokAndMultiProviderFormations() {
         XCTAssertEqual(Set(SwarmFormationMode.showcaseProviders), Set(AgentProvider.allCases))
 
@@ -23,7 +53,12 @@ final class SwarmLogoShapeTests: XCTestCase {
         XCTAssertTrue(SwarmFormationMode.inspectionCycle.contains(.shapeProviderLogo([.deepSeek])))
         XCTAssertTrue(SwarmFormationMode.inspectionCycle.contains(.shapeProviderLogo([.minimax])))
         XCTAssertTrue(SwarmFormationMode.inspectionCycle.contains(.shapeProviderLogo([.zai])))
-        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.factory, .claudeCode, .codex, .openCode, .openClaw, .hermes]))
+        // Multi-provider formations are now capped at pairs (group size 2)
+        // so the per-glyph particle budget stays readable on iPhone.
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.factory, .claudeCode]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.codex, .openCode]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.openClaw, .hermes]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.allSatisfy { $0.count <= 2 })
     }
 
     func testProviderGlyphSelectionFiltersInspectionAndDefaultCycles() {

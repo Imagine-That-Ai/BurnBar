@@ -44,6 +44,7 @@ struct RootNavigationView: View {
     /// can surface without first navigating to You -> Agent Watch.
     @ObservedObject private var liveStageSingleton = AgentWatchOverlaySingleton.shared
     @StateObject private var liveStagePresenter = AgentLiveStagePresenter()
+    @StateObject private var skillRunPiPController = SkillRunTextPiPController()
 
     // Sidebar destinations have been moved to AppDestination in AppCustomization.swift
 
@@ -63,6 +64,12 @@ struct RootNavigationView: View {
                 onTapHermesTab: { selection = .agents }
             )
             .zIndex(20)
+
+            SkillRunLiveStage(
+                host: missionConsoleHost,
+                pipController: skillRunPiPController
+            )
+            .zIndex(19)
         }
         .environment(\.motionStore, motionStore)
         .environment(\.cloudSubscriptionStore, subscriptionStore)

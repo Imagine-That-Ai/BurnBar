@@ -658,6 +658,13 @@ final class PiService {
         lastError = nil
     }
 
+    func ensureDesktopGrantThreadID() -> String {
+        if currentThreadID == nil {
+            currentThreadID = UUID().uuidString
+        }
+        return currentThreadID ?? UUID().uuidString
+    }
+
     /// Restores `messages` from a persisted thread. Used when the user taps a
     /// row in the chat history list.
     func loadThread(id: String) {

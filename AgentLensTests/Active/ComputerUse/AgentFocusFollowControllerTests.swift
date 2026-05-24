@@ -73,10 +73,64 @@ final class AgentFocusFollowControllerTests: XCTestCase {
         controller.stop()
     }
 
-    private func target(_ appName: String, windowID: CGWindowID) -> AgentFocusFollowTarget {
+    func testOpenBurnBarPopoverActivationDoesNotRetargetMirrorCapture() async throws {
+        let clock = TestAgentFocusFollowClock()
+        var switches: [CGWindowID?] = []
+        let controller = AgentFocusFollowController(
+            mode: .smart,
+            clock: clock,
+            targetResolver: { nil },
+            targetSwitcher: { _, windowID in switches.append(windowID) },
+            focusContextSink: { _ in }
+        )
+
+        controller.start(sessionId: "session-1")
+        controller.recordActivationForTesting(target("OpenBurnBar", bundleIdentifier: "com.openburnbar.app", windowID: 99))
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(switches, [])
+
+        controller.recordActivationForTesting(target("Chrome", windowID: 10))
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(switches, [10])
+
+        controller.recordActivationForTesting(target("Slack", windowID: 12))
+        await clock.waitForSleepers(2)
+        controller.recordActivationForTesting(target("OpenBurnBar", bundleIdentifier: "com.openburnbar.app", windowID: 99))
+        await clock.wakeAll()
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(switches, [10])
+        controller.stop()
+    }
+
+    func testOffModeDoesNotRetargetUntilReenabled() async throws {
+        var switches: [CGWindowID?] = []
+        let controller = AgentFocusFollowController(
+            mode: .off,
+            targetResolver: { nil },
+            targetSwitcher: { _, windowID in switches.append(windowID) },
+            focusContextSink: { _ in }
+        )
+
+        controller.start(sessionId: "session-1")
+        controller.recordActivationForTesting(target("Chrome", windowID: 10))
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(switches, [])
+
+        controller.setMode(.immediate)
+        controller.recordActivationForTesting(target("Xcode", windowID: 11))
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(switches, [11])
+        controller.stop()
+    }
+
+    private func target(
+        _ appName: String,
+        bundleIdentifier: String? = nil,
+        windowID: CGWindowID
+    ) -> AgentFocusFollowTarget {
         AgentFocusFollowTarget(
             appName: appName,
-            bundleIdentifier: "com.test.\(appName.lowercased())",
+            bundleIdentifier: bundleIdentifier ?? "com.test.\(appName.lowercased())",
             windowTitle: "\(appName) Window",
             windowID: windowID
         )

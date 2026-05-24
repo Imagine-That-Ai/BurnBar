@@ -371,7 +371,10 @@ actor QuotaRefreshActor {
         using context: ProviderQuotaAdapterContext,
         providers: Set<AgentProvider>
     ) async -> [String: ProviderQuotaSnapshot] {
-        let profiles = resolveSwitcherCLIQuotaProfiles(dataStoreActor: context.dataStoreActor)
+        let profiles = resolveSwitcherCLIQuotaProfiles(
+            dataStoreActor: context.dataStoreActor,
+            homeDirectoryURL: context.homeDirectoryURL
+        )
             .filter { providers.contains($0.provider) }
         guard !profiles.isEmpty else { return [:] }
 
@@ -587,7 +590,10 @@ private func resolveDaemonAccountCredentials(
     return credentials
 }
 
-private func resolveSwitcherCLIQuotaProfiles(dataStoreActor: DataStoreActor) -> [SwitcherCLIQuotaProfile] {
+private func resolveSwitcherCLIQuotaProfiles(
+    dataStoreActor: DataStoreActor,
+    homeDirectoryURL: URL
+) -> [SwitcherCLIQuotaProfile] {
     let profiles = (try? dataStoreActor.switcherStore.fetchAllProfiles()) ?? []
 
     return profiles.compactMap { profile in
@@ -597,6 +603,13 @@ private func resolveSwitcherCLIQuotaProfiles(dataStoreActor: DataStoreActor) -> 
               cliType == .codex || cliType == .claude,
               let provider = quotaProvider(for: cliType),
               let configDirectory = quotaNonEmpty(profile.cliMetadata?.configDirectory) else {
+            return nil
+        }
+        guard !isDefaultSwitcherCLIConfigDirectory(
+            configDirectory,
+            cliType: cliType,
+            homeDirectoryURL: homeDirectoryURL
+        ) else {
             return nil
         }
 
@@ -611,6 +624,58 @@ private func resolveSwitcherCLIQuotaProfiles(dataStoreActor: DataStoreActor) -> 
             configDirectory: configDirectory
         )
     }
+}
+
+func isDefaultSwitcherCLIConfigDirectory(
+    _ configDirectory: String,
+    cliType: SwitcherCLIProfileType,
+    homeDirectoryURL: URL
+) -> Bool {
+    guard let normalized = normalizedSwitcherConfigPath(configDirectory, homeDirectoryURL: homeDirectoryURL),
+          let defaultPath = normalizedSwitcherConfigPath(
+            defaultSwitcherConfigDirectory(for: cliType, homeDirectoryURL: homeDirectoryURL),
+            homeDirectoryURL: homeDirectoryURL
+          ) else {
+        return false
+    }
+    return normalized == defaultPath
+}
+
+private func defaultSwitcherConfigDirectory(
+    for cliType: SwitcherCLIProfileType,
+    homeDirectoryURL: URL
+) -> String {
+    switch cliType {
+    case .codex:
+        return homeDirectoryURL.appendingPathComponent(".codex", isDirectory: true).path
+    case .claude:
+        return homeDirectoryURL.appendingPathComponent(".claude", isDirectory: true).path
+    case .opencode:
+        return homeDirectoryURL.appendingPathComponent(".config/opencode", isDirectory: true).path
+    }
+}
+
+private func normalizedSwitcherConfigPath(
+    _ rawPath: String,
+    homeDirectoryURL: URL
+) -> String? {
+    let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    let expanded: String
+    if trimmed == "~" {
+        expanded = homeDirectoryURL.path
+    } else if trimmed.hasPrefix("~/") {
+        expanded = homeDirectoryURL
+            .appendingPathComponent(String(trimmed.dropFirst(2)), isDirectory: true)
+            .path
+    } else {
+        expanded = trimmed
+    }
+
+    return URL(fileURLWithPath: expanded, isDirectory: true)
+        .standardizedFileURL
+        .path
 }
 
 private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider? {

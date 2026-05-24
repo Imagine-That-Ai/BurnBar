@@ -80,6 +80,7 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("Task { await store.purchase() }"))
         XCTAssertTrue(source.contains(".disabled(store.isPurchasing)"))
         XCTAssertTrue(source.contains("Restore Purchases"))
+        XCTAssertTrue(source.contains("cloudStore.purchaseError"))
         XCTAssertTrue(source.contains("onSignInRequired: { showSignIn = true }"))
         XCTAssertTrue(source.contains(".sheet(isPresented: $showSignIn)"))
         XCTAssertTrue(source.contains("CloudStoreActionBar(\n                            store: store"))
@@ -195,10 +196,39 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertFalse(source.contains("appStoreReviewVisibleProductIDs = [\n        productID,\n        legacyHostedQuotaProductID,\n        hostedComputerUseProductID"))
         XCTAssertTrue(source.contains("fetchProducts(Self.appStoreReviewVisibleProductIDs)"))
         XCTAssertTrue(source.contains("let result = try await purchaseProduct(product, purchaseOptions)"))
+        XCTAssertTrue(source.contains("product.purchase(confirmIn: scene, options: options)"))
+        XCTAssertTrue(source.contains("activePurchaseScene()"))
+        XCTAssertTrue(source.contains("purchasePresentationUnavailable"))
         XCTAssertTrue(source.contains("purchaseOptions = [.appAccountToken(token)]"))
         XCTAssertTrue(source.contains("purchaseOptions = []"))
         XCTAssertFalse(source.contains("nativeStorePurchaseStarted"))
         XCTAssertFalse(source.contains("handleNativeStorePurchaseCompletion"))
+    }
+
+    func testHostedQuotaSubscribeButtonsExposeVisibleTapFeedbackAcrossReviewPaths() throws {
+        let reviewPathFiles = [
+            repoRoot()
+                .appendingPathComponent("OpenBurnBarMobile")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("Store")
+                .appendingPathComponent("CloudStoreView.swift"),
+            repoRoot()
+                .appendingPathComponent("OpenBurnBarMobile")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("MobileProviderWizardView.swift"),
+            repoRoot()
+                .appendingPathComponent("OpenBurnBarMobile")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("Onboarding")
+                .appendingPathComponent("OnboardingProviderConnectStep.swift")
+        ]
+
+        for url in reviewPathFiles {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            XCTAssertTrue(source.contains("Subscribe with App Store"), "\(url.lastPathComponent) must make the App Store action explicit")
+            XCTAssertTrue(source.contains("store.purchase()") || source.contains("subscriptionStore.purchase()"), "\(url.lastPathComponent) must call the StoreKit purchase path")
+            XCTAssertTrue(source.contains("purchaseError"), "\(url.lastPathComponent) must surface StoreKit failures near the tap path")
+        }
     }
 
     func testSharedTypographyMeetsReadableMobileFloorForAppReview() throws {

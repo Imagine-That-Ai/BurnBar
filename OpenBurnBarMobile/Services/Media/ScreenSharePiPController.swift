@@ -57,6 +57,19 @@ final class ScreenSharePiPController: NSObject {
         #endif
     }
 
+    @discardableResult
+    func start() -> Bool {
+        #if canImport(AVKit)
+        guard let pipController else { return false }
+        guard !pipController.isPictureInPictureActive else { return true }
+        guard pipController.isPictureInPicturePossible else { return false }
+        pipController.startPictureInPicture()
+        return true
+        #else
+        return false
+        #endif
+    }
+
     func handleDidStartPictureInPicture() {
         isPictureInPictureActive = true
         onDidStart?()

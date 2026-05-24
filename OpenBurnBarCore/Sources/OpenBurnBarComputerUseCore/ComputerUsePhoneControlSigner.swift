@@ -87,6 +87,42 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         ))
     }
 
+    /// Canonical hash for signed mobile grant requests. The authority
+    /// envelope is intentionally excluded because it is attached after
+    /// signing, matching the `control.input` intent flow.
+    public func canonicalAgentGrantRequestHashHex(request: HermesRealtimeRelayAgentGrantRequest) throws -> String {
+        struct SignableAgentGrantRequest: Encodable {
+            let requestId: String
+            let runtime: String
+            let threadId: String
+            let preset: String
+            let capabilities: [String]
+            let trustMode: String
+            let deliveryMode: String
+            let requestedAt: Date
+            let expiresAt: Date
+            let grantDurationSeconds: Double
+            let sourceDeviceId: String
+            let clientIntentId: String
+            let localAuthenticationSatisfied: Bool
+        }
+        return try canonicalIntentHashHex(intent: SignableAgentGrantRequest(
+            requestId: request.requestId,
+            runtime: request.runtime,
+            threadId: request.threadId,
+            preset: request.preset,
+            capabilities: request.capabilities.sorted(),
+            trustMode: request.trustMode,
+            deliveryMode: request.deliveryMode,
+            requestedAt: request.requestedAt,
+            expiresAt: request.expiresAt,
+            grantDurationSeconds: request.grantDurationSeconds,
+            sourceDeviceId: request.sourceDeviceId,
+            clientIntentId: request.clientIntentId,
+            localAuthenticationSatisfied: request.localAuthenticationSatisfied
+        ))
+    }
+
     public func sign<Intent: Encodable>(
         intent: Intent,
         peerNodeId: String,
@@ -114,6 +150,25 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         privateKey: Curve25519.Signing.PrivateKey
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalInputIntentHashHex(intent: intent)
+        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
+        let signature = try privateKey.signature(for: payload)
+        return SignedAuthority(
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: timestamp,
+            intentHashHex: intentHashHex,
+            signatureBase64: signature.base64EncodedString()
+        )
+    }
+
+    public func sign(
+        request: HermesRealtimeRelayAgentGrantRequest,
+        peerNodeId: String,
+        counter: UInt64,
+        timestamp: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> SignedAuthority {
+        let intentHashHex = try canonicalAgentGrantRequestHashHex(request: request)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
         let signature = try privateKey.signature(for: payload)
         return SignedAuthority(
@@ -192,6 +247,38 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
         }
         let observedHex = try canonicalInputIntentHashHex(intent: intent)
+        guard observedHex == authority.intentHashHex else {
+            throw VerifyError.intentHashMismatch
+        }
+        guard let signatureData = Data(base64Encoded: authority.signatureBase64) else {
+            throw VerifyError.invalidBase64Signature
+        }
+        let payload = signablePayload(
+            intentHashHex: authority.intentHashHex,
+            counter: authority.counter,
+            timestamp: authority.timestamp
+        )
+        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+            throw VerifyError.signatureFailed
+        }
+    }
+
+    public func verify(
+        request: HermesRealtimeRelayAgentGrantRequest,
+        authority: SignedAuthority,
+        peerPublicKey: Curve25519.Signing.PublicKey,
+        lastSeenCounter: UInt64,
+        now: Date,
+        freshnessSeconds: TimeInterval = 5.0
+    ) throws {
+        let skew = abs(now.timeIntervalSince(authority.timestamp))
+        guard skew <= freshnessSeconds else {
+            throw VerifyError.staleTimestamp(skewSeconds: skew)
+        }
+        guard authority.counter > lastSeenCounter else {
+            throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
+        }
+        let observedHex = try canonicalAgentGrantRequestHashHex(request: request)
         guard observedHex == authority.intentHashHex else {
             throw VerifyError.intentHashMismatch
         }

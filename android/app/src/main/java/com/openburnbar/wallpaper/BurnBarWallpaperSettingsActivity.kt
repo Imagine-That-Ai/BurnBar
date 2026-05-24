@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,10 +13,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.data.models.logoRes
 
 class BurnBarWallpaperSettingsActivity : ComponentActivity() {
 
@@ -128,13 +134,15 @@ class BurnBarWallpaperSettingsActivity : ComponentActivity() {
                                                 BurnBarWallpaperGlyphSettings.write(prefs, providerGlyphs)
                                             }
                                         )
-                                        Surface(
+                                        Image(
+                                            painter = painterResource(id = provider.logoRes),
+                                            contentDescription = provider.displayName,
                                             modifier = Modifier
-                                                .padding(top = 13.dp, end = 8.dp)
-                                                .size(8.dp),
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = Color(provider.brandColor)
-                                        ) {}
+                                                .padding(top = 10.dp, end = 8.dp)
+                                                .size(20.dp)
+                                                .clip(RoundedCornerShape(4.dp)),
+                                            contentScale = ContentScale.Fit
+                                        )
                                         Text(provider.displayName, modifier = Modifier.padding(top = 12.dp))
                                     }
                                 }

@@ -22,6 +22,57 @@ Activate for any question about:
 - **Workflow coaching** — "Where am I wasting tokens?" / "Which projects cost the most per session?"
 - **Debug investigations** — "Why did cost spike on Tuesday?" / "Show me the session where XYZ broke"
 
+## Mobile Skill Runs
+
+Hermes skills that can become long-running BurnBar work should dispatch as
+**Skill Runs** instead of plain chat. Skill Runs are preview-first, then the
+phone/tablet writes a `users/{uid}/cli_agent_mission_requests/{id}` document
+that the trusted Mac claims. iOS, iPadOS, and Android then follow the same live
+event timeline in Mission Console.
+
+### Skill IDs
+
+Use these stable `sourceSkillID` values when a run maps cleanly to a product
+skill:
+
+| Skill | `sourceSkillID` | User job |
+|---|---|---|
+| What Happened? | `what_happened` | Explain the last session or time window in plain English. |
+| Burn Forensics | `burn_forensics` | Find the spend spike, noisy model, or quota drain and cite evidence. |
+| Pattern Miner | `pattern_miner` | Detect repeated workflow/cost patterns across recent sessions. |
+| Compare Agents | `compare_agents` | Compare providers/runtimes on quality, spend, or latency for a job. |
+| Next Action Coach | `next_action_coach` | Turn messy session history into the next concrete action. |
+| Handoff Builder | `handoff_builder` | Build a resume-ready brief for another agent/runtime. |
+| Regression Watch | `regression_watch` | Watch for a recurring failure or behavior drift and report it. |
+| Run Pulse | `run_pulse` | Stream a concise live pulse while the Mac is executing a mission. |
+
+### Dispatch Contract
+
+Every mobile-originated Skill Run request should include:
+
+- `sourceSkillID`: one of the values above when applicable.
+- `sourceSurface`: `ios-insights`, `ios-hermes-square`, `ipad-hermes-square`,
+  `android-insights`, or `android-hermes-square`.
+- `deliveryMode`: `action_only`, `full_stream`, or `muted`.
+- `parentHermesThreadID`: optional thread/session ID when the run is a
+  continuation of a Hermes conversation.
+- `schemaVersion`: `3`.
+
+Every event can include:
+
+- `eventImportance`: `quiet`, `normal`, `action_required`, or `terminal`.
+- `skillStepID`: stable step token such as `queued`, `reading_ledger`,
+  `awaiting_approval`, `writing_artifact`, or `done`.
+- `deliveryMode`: copied from the request so companion surfaces can decide
+  whether to show every event or only action/final events.
+
+Delivery modes are user-customizable from the iOS/iPadOS and Android agent
+subscription sheets:
+
+- `action_only`: quiet default; interrupt only for approval prompts and final results.
+- `full_stream`: show the full live timeline as the Mac writes events.
+- `muted`: no alerts; the run remains available in Mission Console.
+
 ## Evidence Sources
 
 Two layers, used in order of specificity:

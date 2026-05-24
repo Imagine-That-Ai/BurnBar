@@ -27,7 +27,11 @@ final class CLIAgentMissionDispatcher {
         requestedModelID: String? = nil,
         clientThreadID: String? = nil,
         parentSessionID: String? = nil,
-        resumeAction: String? = nil
+        resumeAction: String? = nil,
+        sourceSkillID: HermesSkillRunID? = nil,
+        sourceSurface: String? = nil,
+        deliveryMode: SkillRunDeliveryMode = .actionOnly,
+        parentHermesThreadID: String? = nil
     ) async throws -> String {
         guard FirebaseApp.app() != nil else {
             throw DispatchError.firebaseUnavailable
@@ -60,7 +64,11 @@ final class CLIAgentMissionDispatcher {
             requestedModelID: effectiveRequestedModelID,
             clientThreadID: clientThreadID,
             parentSessionID: parentSessionID,
-            resumeAction: resumeAction
+            resumeAction: resumeAction,
+            sourceSkillID: sourceSkillID,
+            sourceSurface: sourceSurface,
+            deliveryMode: deliveryMode,
+            parentHermesThreadID: parentHermesThreadID
         )
         let db = firestoreProvider()
         let requestRef = db
@@ -72,6 +80,8 @@ final class CLIAgentMissionDispatcher {
             CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
                 label: isChatRequest ? "Chat" : "Mission",
                 source: isChatRequest ? "ios-chat" : "ios",
+                sourceSkillID: sourceSkillID,
+                deliveryMode: deliveryMode,
                 now: Date()
             ),
             forDocument: requestRef.collection("events").document("000001"),
@@ -163,7 +173,11 @@ final class CLIAgentMissionDispatcher {
         fileEditsAllowed: Bool = false,
         parallelismLimit: Int? = nil,
         mergeStrategy: MissionGroupMergeStrategy = .pickOne,
-        personaScopeByRuntime: [String: PersonaScopeEnvelope] = [:]
+        personaScopeByRuntime: [String: PersonaScopeEnvelope] = [:],
+        sourceSkillID: HermesSkillRunID? = nil,
+        sourceSurface: String? = nil,
+        deliveryMode: SkillRunDeliveryMode = .actionOnly,
+        parentHermesThreadID: String? = nil
     ) async throws -> FanOutDispatchResult {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
@@ -195,7 +209,11 @@ final class CLIAgentMissionDispatcher {
                 depth: consoleDepth,
                 approvalMode: consoleApproval,
                 commandsAllowed: commandsAllowed,
-                fileEditsAllowed: fileEditsAllowed
+                fileEditsAllowed: fileEditsAllowed,
+                sourceSkillID: sourceSkillID,
+                sourceSurface: sourceSurface,
+                deliveryMode: deliveryMode,
+                parentHermesThreadID: parentHermesThreadID
             )
             let runtime = MissionConsoleRuntime(
                 id: token,
@@ -246,7 +264,11 @@ final class CLIAgentMissionDispatcher {
                 approvalMode: approvalMode,
                 commandsAllowed: commandsAllowed,
                 fileEditsAllowed: fileEditsAllowed,
-                requestedModelID: try Self.selectedModelID(forRequestedRuntime: runtimeToken)
+                requestedModelID: try Self.selectedModelID(forRequestedRuntime: runtimeToken),
+                sourceSkillID: sourceSkillID,
+                sourceSurface: sourceSurface,
+                deliveryMode: deliveryMode,
+                parentHermesThreadID: parentHermesThreadID
             )
             let overlay = MissionGroupPayloadFactory.childPayloadOverlay(
                 groupID: groupID,
@@ -265,7 +287,11 @@ final class CLIAgentMissionDispatcher {
                 .collection("cli_agent_mission_requests").document(missionID)
             batch.setData(payload, forDocument: requestRef, merge: false)
             batch.setData(
-                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(now: Date()),
+                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+                    sourceSkillID: sourceSkillID,
+                    deliveryMode: deliveryMode,
+                    now: Date()
+                ),
                 forDocument: requestRef.collection("events").document("000001"),
                 merge: false
             )
@@ -534,10 +560,15 @@ enum CLIAgentMissionRequestPayloadFactory {
         clientThreadID: String? = nil,
         parentSessionID: String? = nil,
         resumeAction: String? = nil,
+        sourceSkillID: HermesSkillRunID? = nil,
+        sourceSurface: String? = nil,
+        deliveryMode: SkillRunDeliveryMode = .actionOnly,
+        parentHermesThreadID: String? = nil,
         now: Date = Date()
     ) -> [String: Any] {
         let timestamp = ISO8601DateFormatter().string(from: now)
         let isChatRequest = missionKind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "chat"
+        let baseSource = isChatRequest ? "ios-chat" : "ios-insights"
         var payload: [String: Any] = [
             "id": id,
             "title": title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -550,17 +581,25 @@ enum CLIAgentMissionRequestPayloadFactory {
             "approvalMode": approvalMode,
             "commandsAllowed": commandsAllowed,
             "fileEditsAllowed": fileEditsAllowed,
-            "source": isChatRequest ? "ios-chat" : "ios-insights",
+            "source": baseSource,
+            "sourceSurface": sourceSurface?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? baseSource,
+            "deliveryMode": deliveryMode.rawValue,
             "status": "pending",
             "liveSummary": isChatRequest
                 ? "Chat queued from this device. Waiting for the signed-in Mac agent listener to claim it."
                 : "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it.",
             "createdAt": timestamp,
             "updatedAt": FieldValue.serverTimestamp(),
-            "schemaVersion": 2
+            "schemaVersion": 3
         ]
+        if let sourceSkillID {
+            payload["sourceSkillID"] = sourceSkillID.rawValue
+        }
         if let clientThreadID = clientThreadID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
             payload["clientThreadID"] = clientThreadID
+        }
+        if let parentHermesThreadID = parentHermesThreadID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            payload["parentHermesThreadID"] = parentHermesThreadID
         }
         if let requestedModelID = requestedModelID?.nonEmpty {
             payload["requestedModelID"] = requestedModelID
@@ -577,9 +616,13 @@ enum CLIAgentMissionRequestPayloadFactory {
     static func initialQueuedEvent(
         label: String = "Mission",
         source: String = "ios",
+        sourceSkillID: HermesSkillRunID? = nil,
+        deliveryMode: SkillRunDeliveryMode = .actionOnly,
+        eventImportance: SkillRunEventImportance = .normal,
+        skillStepID: String = "queued",
         now: Date = Date()
     ) -> [String: Any] {
-        [
+        var event: [String: Any] = [
             "sequence": 1,
             "timestamp": ISO8601DateFormatter().string(from: now),
             "kind": "status",
@@ -587,8 +630,15 @@ enum CLIAgentMissionRequestPayloadFactory {
             "title": "Queued",
             "message": "\(label) queued from this device.",
             "source": source,
+            "deliveryMode": deliveryMode.rawValue,
+            "eventImportance": eventImportance.rawValue,
+            "skillStepID": skillStepID,
             "isError": false
         ]
+        if let sourceSkillID {
+            event["sourceSkillID"] = sourceSkillID.rawValue
+        }
+        return event
     }
 }
 
@@ -623,6 +673,10 @@ struct CLIAgentMissionEvent: Equatable, Sendable, Identifiable {
     let toolName: String?
     let artifactPath: String?
     let changedFilePath: String?
+    let sourceSkillID: String?
+    let deliveryMode: SkillRunDeliveryMode
+    let eventImportance: SkillRunEventImportance
+    let skillStepID: String?
     let isError: Bool
 
     var id: String { "\(sequence)-\(timestamp)-\(phase)-\(message)" }
@@ -648,6 +702,12 @@ struct CLIAgentMissionEvent: Equatable, Sendable, Identifiable {
         self.toolName = map["toolName"] as? String
         self.artifactPath = map["artifactPath"] as? String
         self.changedFilePath = map["changedFilePath"] as? String
+        self.sourceSkillID = map["sourceSkillID"] as? String
+        self.deliveryMode = (map["deliveryMode"] as? String)
+            .flatMap(SkillRunDeliveryMode.init(rawValue:)) ?? .actionOnly
+        self.eventImportance = (map["eventImportance"] as? String)
+            .flatMap(SkillRunEventImportance.init(rawValue:)) ?? .normal
+        self.skillStepID = map["skillStepID"] as? String
         self.isError = (map["isError"] as? Bool) ?? (phase == "failed")
     }
 }
@@ -662,6 +722,10 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
     let selectedRuntimeName: String?
     let selectedModelID: String?
     let targetProject: String?
+    let sourceSkillID: String?
+    let sourceSurface: String?
+    let deliveryMode: SkillRunDeliveryMode
+    let parentHermesThreadID: String?
     let liveSummary: String?
     let resultPreview: String?
     let errorMessage: String?
@@ -693,6 +757,17 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         self.targetProject = (data["targetProject"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
+        self.sourceSkillID = (data["sourceSkillID"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        self.sourceSurface = (data["sourceSurface"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        self.deliveryMode = (data["deliveryMode"] as? String)
+            .flatMap(SkillRunDeliveryMode.init(rawValue:)) ?? .actionOnly
+        self.parentHermesThreadID = (data["parentHermesThreadID"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
         self.liveSummary = data["liveSummary"] as? String
         self.resultPreview = data["resultPreview"] as? String
         self.errorMessage = data["errorMessage"] as? String
@@ -713,6 +788,10 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         selectedRuntimeName
             ?? selectedRuntime
             ?? (requestedRuntime == "auto" ? "Mac agent fleet" : requestedRuntime)
+    }
+
+    var skillRunID: HermesSkillRunID? {
+        sourceSkillID.flatMap(HermesSkillRunID.init(rawValue:))
     }
 
     var isTerminal: Bool {

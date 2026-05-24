@@ -161,7 +161,7 @@ public struct UnifiedQuotaSignalView: View {
 
                 if !compact {
                     HStack {
-                        Text(remainingText + " remaining")
+                        Text(fullRemainingText)
                             .font(UnifiedDesignSystem.Typography.monoTiny)
                             .foregroundStyle(fillColor)
 
@@ -207,7 +207,7 @@ public struct UnifiedQuotaSignalView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(provider.displayName) quota: \(remainingText) remaining")
+        .accessibilityLabel("\(provider.displayName) quota: \(fullRemainingText)")
     }
 
     /// What kind of value this bucket carries — drives label formatting.
@@ -261,6 +261,35 @@ public struct UnifiedQuotaSignalView: View {
                 return "\(Int(pct.rounded()))% left"
             }
             return "\(formatValue(bucket.remaining)) left"
+        }
+    }
+
+    var fullRemainingText: String {
+        if bucketUnit == .unlimited { return "Unlimited" }
+        switch displayMode {
+        case "usedPercent":
+            if bucketUnit == .percent {
+                let clamped = min(max(bucket.used, 0), 100)
+                return "\(Int(clamped.rounded()))% used"
+            }
+            let usedPct = bucket.displayRemainingPercent.map { 100 - $0 } ?? 0
+            return "\(Int(usedPct.rounded()))% used"
+        case "fractional":
+            let frac = bucket.displayRemainingFraction ?? 0
+            return String(format: "%.2f remaining", frac)
+        case "absoluteValues":
+            let used = formatValue(bucket.used)
+            let limit = formatValue(bucket.limit)
+            return "\(used) / \(limit) used"
+        default: // remainingPercent
+            if bucketUnit == .percent {
+                let clamped = min(max(bucket.remaining, 0), 100)
+                return "\(Int(clamped.rounded()))% remaining"
+            }
+            if let pct = bucket.displayRemainingPercent {
+                return "\(Int(pct.rounded()))% remaining"
+            }
+            return "\(formatValue(bucket.remaining)) remaining"
         }
     }
 

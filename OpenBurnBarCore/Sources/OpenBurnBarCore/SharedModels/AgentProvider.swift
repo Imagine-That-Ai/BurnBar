@@ -142,8 +142,16 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
 
     /// Resolves a provider from either its persisted token or display name.
     public static func fromPersistedToken(_ token: String) -> AgentProvider? {
-        let normalized = token.lowercased().replacingOccurrences(of: " ", with: "")
-        return AgentProvider.allCases.first { $0.persistedToken == normalized }
+        let normalized = token.lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+        return AgentProvider.allCases.first {
+            let canon = $0.persistedToken
+                .replacingOccurrences(of: "-", with: "")
+                .replacingOccurrences(of: "_", with: "")
+            return canon == normalized
+        }
     }
 
     /// Resolves display/log parser providers from canonical provider IDs.
@@ -275,7 +283,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .windsurf:   return "WindsurfLogo"
         case .warp:       return "WarpLogo"
         case .openCode:   return "OpenCodeLogo"
-        case .xAI:        return "xAILogo"
+        case .xAI:        return "GrokLogo"
         }
     }
 

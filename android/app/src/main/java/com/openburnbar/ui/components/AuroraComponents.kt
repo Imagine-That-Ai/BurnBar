@@ -30,6 +30,9 @@ import com.openburnbar.ui.theme.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.graphicsLayer
 import com.openburnbar.ui.settings.rememberWebsiteBackground
+import com.openburnbar.ui.settings.rememberProviderGlyphs
+import com.openburnbar.ui.settings.rememberThemePalette
+import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
 
 
 // ── Glass Card ──
@@ -162,9 +165,9 @@ fun AuroraBackdrop(
                                 )
                             } else {
                                 listOf(
-                                    Color(0xFFF4EFE7),
-                                    Color(0xFFEFE7DC),
-                                    Color(0xFFECE3D6)
+                                    AuroraColors.lightBackground,
+                                    AuroraColors.lightBackground,
+                                    AuroraColors.lightSurface
                                 )
                             }
                         )
@@ -227,10 +230,17 @@ fun WebsiteBackground(
     accentColor: Color = AuroraColors.ember,
     modifier: Modifier = Modifier
 ) {
+    val themePalette by rememberThemePalette()
+    val providerGlyphs by rememberProviderGlyphs()
+    val excludeBrandShapes by rememberExcludeBrandShapesFromSwarm()
+
     SwarmBackground(
         accentColor = accentColor,
         modifier = modifier,
-        pace = SwarmPace.ENERGETIC
+        pace = SwarmPace.ENERGETIC,
+        enabledProviderGlyphs = providerGlyphs,
+        paletteName = themePalette,
+        excludeBrandShapes = excludeBrandShapes
     )
 }
 

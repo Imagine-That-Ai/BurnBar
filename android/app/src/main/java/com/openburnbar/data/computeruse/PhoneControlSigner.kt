@@ -3,8 +3,11 @@ package com.openburnbar.data.computeruse
 import com.google.crypto.tink.subtle.Ed25519Sign
 import com.google.crypto.tink.subtle.Ed25519Sign.KeyPair
 import com.google.crypto.tink.subtle.Ed25519Verify
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
@@ -91,6 +94,9 @@ object PhoneControlSigner {
     fun canonicalIntentHashHex(intent: PhoneControlIntent): String =
         sha256Hex(canonicalIntentJson(intent).toByteArray(Charsets.UTF_8))
 
+    fun canonicalAgentGrantRequestHashHex(request: HermesRealtimeRelayAgentGrantRequest): String =
+        sha256Hex(canonicalAgentGrantRequestJson(request).toByteArray(Charsets.UTF_8))
+
     fun signablePayload(
         intentHashHex: String,
         counter: Long,
@@ -123,6 +129,27 @@ object PhoneControlSigner {
             counter = counter,
             timestampMillis = timestampMillis,
             intentHashBlake3 = intentHash,
+            signatureEd25519 = Base64.getEncoder().encodeToString(signature),
+        )
+    }
+
+    fun signAgentGrantRequest(
+        request: HermesRealtimeRelayAgentGrantRequest,
+        peerNodeId: String,
+        counter: Long,
+        timestampMillis: Long,
+        privateKeySeed: ByteArray,
+    ): PhoneControlAuthorityEnvelope {
+        require(counter >= 0) { "counter must be non-negative" }
+        require(privateKeySeed.size == 32) { "Ed25519 private key seed must be 32 bytes" }
+        val requestHash = canonicalAgentGrantRequestHashHex(request)
+        val payload = signablePayload(requestHash, counter, timestampMillis)
+        val signature = Ed25519Sign(privateKeySeed).sign(payload)
+        return PhoneControlAuthorityEnvelope(
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = timestampMillis,
+            intentHashBlake3 = requestHash,
             signatureEd25519 = Base64.getEncoder().encodeToString(signature),
         )
     }
@@ -180,9 +207,37 @@ object PhoneControlSigner {
             .joinToString(separator = ",", prefix = "{", postfix = "}") { (key, value) -> "${quote(key)}:$value" }
     }
 
+    fun canonicalAgentGrantRequestJson(request: HermesRealtimeRelayAgentGrantRequest): String {
+        val fields = linkedMapOf<String, String>()
+        fields["capabilities"] = request.capabilities.sorted()
+            .joinToString(separator = ",", prefix = "[", postfix = "]") { quote(it) }
+        fields["clientIntentId"] = quote(request.clientIntentId)
+        fields["deliveryMode"] = quote(request.deliveryMode)
+        fields["expiresAt"] = number(request.expiresAt)
+        fields["grantDurationSeconds"] = number(request.grantDurationSeconds)
+        fields["localAuthenticationSatisfied"] = request.localAuthenticationSatisfied.toString()
+        fields["preset"] = quote(request.preset)
+        fields["requestedAt"] = number(request.requestedAt)
+        fields["requestId"] = quote(request.requestId)
+        fields["runtime"] = quote(request.runtime)
+        fields["sourceDeviceId"] = quote(request.sourceDeviceId)
+        fields["threadId"] = quote(request.threadId)
+        fields["trustMode"] = quote(request.trustMode)
+        return fields.entries
+            .sortedBy { it.key }
+            .joinToString(separator = ",", prefix = "{", postfix = "}") { (key, value) -> "${quote(key)}:$value" }
+    }
+
     private fun number(value: Double): String {
         require(value.isFinite()) { "intent coordinates must be finite" }
-        return value.toString()
+        if (value <= Long.MAX_VALUE.toDouble() && value >= Long.MIN_VALUE.toDouble()) {
+            val asLong = value.toLong()
+            if (asLong.toDouble() == value) return asLong.toString()
+        }
+        return BigDecimal.valueOf(value)
+            .setScale(12, RoundingMode.HALF_UP)
+            .stripTrailingZeros()
+            .toPlainString()
     }
 
     private fun quote(value: String): String {

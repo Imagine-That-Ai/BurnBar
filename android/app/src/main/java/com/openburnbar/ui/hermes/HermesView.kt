@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.*
 import com.openburnbar.ui.components.*
+import com.openburnbar.ui.computeruse.AgentPermissionGrantSheet
 import com.openburnbar.ui.navigation.HermesPendingPrompt
 import com.openburnbar.ui.theme.*
 import com.openburnbar.util.Formatting
@@ -50,6 +51,7 @@ fun HermesView(
     var showSessionsLibrary by remember { mutableStateOf(false) }
     var showSetupWizard by remember { mutableStateOf(false) }
     var showHermesSettings by remember { mutableStateOf(false) }
+    var permissionThreadID by remember { mutableStateOf<String?>(null) }
     var conversationTitle by remember { mutableStateOf("New Chat") }
     var tilePrefs by remember { mutableStateOf(loadChatTilePreferences(context).sanitized()) }
     var stagedAttachments by remember { mutableStateOf<List<HermesAttachment>>(emptyList()) }
@@ -145,7 +147,18 @@ fun HermesView(
                 hermesService.sendMessage(msg, model, stagedAttachments)
                 stagedAttachments = emptyList()
             },
+            onAgentPermissions = {
+                permissionThreadID = hermesService.ensureDesktopGrantThreadID()
+            },
             onDisconnect = { hermesService.disconnect() }
+        )
+    }
+
+    permissionThreadID?.let { threadID ->
+        AgentPermissionGrantSheet(
+            runtime = AssistantRuntimeID.HERMES.token,
+            threadId = threadID,
+            onDismiss = { permissionThreadID = null },
         )
     }
 }
@@ -256,6 +269,7 @@ fun ChatView(
     onTilePreferencesChange: (ChatTilePreferences) -> Unit,
     onBack: () -> Unit,
     onSend: (String, String) -> Unit,
+    onAgentPermissions: () -> Unit,
     onDisconnect: () -> Unit,
     attachments: List<HermesAttachment> = emptyList(),
     onAddAttachment: (HermesAttachment) -> Unit = {},
@@ -324,6 +338,9 @@ fun ChatView(
                     }
                     IconButton(onClick = { showConnectionSettings = true }) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    }
+                    IconButton(onClick = onAgentPermissions) {
+                        Icon(Icons.Filled.Security, contentDescription = "Agent permissions")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)

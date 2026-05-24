@@ -1,6 +1,9 @@
 import SwiftUI
 @preconcurrency import AVKit
 @preconcurrency import MediaPlayer
+#if canImport(UIKit)
+import UIKit
+#endif
 import OpenBurnBarMedia
 import OpenBurnBarCore
 
@@ -21,6 +24,17 @@ enum ScreenSharePhoneControlStatus: Equatable {
         case .unavailable: return "Read only"
         }
     }
+
+    var detail: String? {
+        switch self {
+        case .live:
+            return nil
+        case .connecting:
+            return "Preparing Mac control"
+        case .unavailable(let reason):
+            return reason
+        }
+    }
 }
 
 /// iOS Mercury screen-share viewer. Full-bleed video, optional stats
@@ -32,6 +46,7 @@ struct ScreenShareViewerView: View {
     @ObservedObject var coordinator: ScreenShareViewerCoordinator
     let resetToken: String?
     let controlStatus: ScreenSharePhoneControlStatus
+    let controlInputEnabled: Bool
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let streamPhase: MediaControlStreamCoordinator.Phase
@@ -47,13 +62,13 @@ struct ScreenShareViewerView: View {
     let sendTextIntent: (String) -> Void
     let sendShortcutIntent: (String, [String]) -> Void
     let onSelectDisplay: (String) -> Void
+    let onTrustControlDevice: () -> Void
     let onClose: () -> Void
     let usePremiumSOTAUX: Bool
     @State private var statsVisible: Bool = false
     @State private var viewport = ScreenShareViewportState()
     @State private var interactionMode: ScreenShareInteractionMode = .view
     @State private var isTyping = false
-    @State private var textToType = ""
     @State private var panelOffset = CGSize(width: -18, height: 18)
     @State private var panelDragBase = CGSize(width: -18, height: 18)
     @State private var showingDisplayPicker = false
@@ -68,17 +83,17 @@ struct ScreenShareViewerView: View {
     @State private var controlPressStartedAt: Date?
     @State private var cursorPoint: CGPoint?
     @State private var cursorSize: CGFloat = 24
-    @State private var cursorStyle: MirrorCursorStyle = .mercury
+    @State private var cursorStyle: MirrorCursorStyle = .hidden
     @GestureState private var magnification: CGFloat = 1
     @GestureState private var controlMagnification: CGFloat = 1
     @GestureState private var dragTranslation: CGSize = .zero
-    @FocusState private var typingFocused: Bool
     @State private var typingFocusTask: Task<Void, Never>?
 
     init(
         coordinator: ScreenShareViewerCoordinator,
         resetToken: String?,
         controlStatus: ScreenSharePhoneControlStatus = .unavailable("Phone control is not connected."),
+        controlInputEnabled: Bool? = nil,
         displays: [HermesRealtimeRelayDisplayDescriptor] = [],
         selectedDisplayId: String? = nil,
         streamPhase: MediaControlStreamCoordinator.Phase = .live,
@@ -95,11 +110,13 @@ struct ScreenShareViewerView: View {
         sendTextIntent: @escaping (String) -> Void = { _ in },
         sendShortcutIntent: @escaping (String, [String]) -> Void = { _, _ in },
         onSelectDisplay: @escaping (String) -> Void = { _ in },
+        onTrustControlDevice: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
     ) {
         self.coordinator = coordinator
         self.resetToken = resetToken
         self.controlStatus = controlStatus
+        self.controlInputEnabled = controlInputEnabled ?? controlStatus.isLive
         self.displays = displays
         self.selectedDisplayId = selectedDisplayId
         self.streamPhase = streamPhase
@@ -116,6 +133,7 @@ struct ScreenShareViewerView: View {
         self.sendTextIntent = sendTextIntent
         self.sendShortcutIntent = sendShortcutIntent
         self.onSelectDisplay = onSelectDisplay
+        self.onTrustControlDevice = onTrustControlDevice
         self.onClose = onClose
     }
 
@@ -168,7 +186,7 @@ struct ScreenShareViewerView: View {
                     .transition(.opacity)
                 }
 
-                if interactionMode == .control, controlStatus.isLive {
+                if interactionMode == .control, controlInputEnabled {
                     Color.clear
                         .contentShape(Rectangle())
                         .gesture(controlSurfaceGesture(in: proxy.size, contentRect: contentRect, viewport: visibleViewport))
@@ -176,7 +194,7 @@ struct ScreenShareViewerView: View {
                         .accessibilityLabel("Mac screen control surface")
                 }
 
-                if interactionMode == .trackpad, controlStatus.isLive {
+                if interactionMode == .trackpad, controlInputEnabled {
                     TrackpadGlassSurface(
                         isVisible: true,
                         usePremiumSOTAUX: usePremiumSOTAUX,
@@ -201,7 +219,7 @@ struct ScreenShareViewerView: View {
                         .allowsHitTesting(false)
                 }
 
-                if controlStatus.isLive,
+                if controlInputEnabled,
                    interactionMode != .view,
                    let visibleCursorPoint = cursorPoint ?? ScreenShareControlInputPolicy.initialCursorPoint(in: contentRect),
                    cursorStyle != .hidden {
@@ -214,7 +232,7 @@ struct ScreenShareViewerView: View {
                     .allowsHitTesting(false)
                 }
 
-                if hardwareScrollEnabled, controlStatus.isLive {
+                if hardwareScrollEnabled, controlInputEnabled {
                     VolumeButtonScrollBridge { direction in
                         let endY = min(max(0.5 + direction, 0), 1)
                         sendScrollIntent(0.5, 0.5, 0.5, endY, selectedDisplayId)
@@ -236,9 +254,16 @@ struct ScreenShareViewerView: View {
                     cursorStyle: $cursorStyle,
                     stats: coordinator.lastStats,
                     controlStatus: controlStatus,
+                    controlInputEnabled: controlInputEnabled,
                     displays: displays,
                     selectedDisplayId: selectedDisplayId,
                     isZoomed: viewport.isZoomed,
+                    zoomIn: {
+                        withAnimation(.snappy) { viewport.zoom(by: 1.25, in: proxy.size) }
+                    },
+                    zoomOut: {
+                        withAnimation(.snappy) { viewport.zoom(by: 0.8, in: proxy.size) }
+                    },
                     resetZoom: {
                         withAnimation(.snappy) { viewport.reset() }
                     },
@@ -246,6 +271,7 @@ struct ScreenShareViewerView: View {
                         focusTypingBar()
                     },
                     selectDisplay: onSelectDisplay,
+                    onTrustControlDevice: onTrustControlDevice,
                     sendScrollButton: { direction in
                         let endY = min(max(0.5 + direction, 0), 1)
                         sendScrollIntent(0.5, 0.5, 0.5, endY, selectedDisplayId)
@@ -253,25 +279,19 @@ struct ScreenShareViewerView: View {
                     onClose: onClose
                 )
                 .padding(.horizontal, 12)
-                .padding(.bottom, isTyping ? 70 : 14)
+                .padding(.bottom, 14)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
             .ignoresSafeArea()
         }
-        .safeAreaInset(edge: .bottom) {
-            if interactionMode == .control, isTyping {
-                typingBar
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+        .overlay(alignment: .bottomLeading) {
+            remoteKeyboardCapture
         }
         .onChange(of: resetToken) { _, _ in
             withAnimation(.snappy) {
                 viewport.reset()
                 interactionMode = .view
                 isTyping = false
-                textToType = ""
                 controlPanTranslation = .zero
                 tapFeedbackPoint = nil
                 lastControlClickPoint = nil
@@ -281,7 +301,9 @@ struct ScreenShareViewerView: View {
             }
         }
         .onChange(of: controlStatus) { _, newValue in
-            guard newValue.isLive == false, interactionMode != .view else { return }
+            guard controlInputEnabled == false,
+                  newValue.isLive == false,
+                  interactionMode != .view else { return }
             withAnimation(.snappy) {
                 interactionMode = .view
                 isTyping = false
@@ -294,7 +316,6 @@ struct ScreenShareViewerView: View {
             } else {
                 typingFocusTask?.cancel()
                 typingFocusTask = nil
-                typingFocused = false
             }
         }
     }
@@ -474,15 +495,13 @@ struct ScreenShareViewerView: View {
     }
 
     private func focusTypingBar() {
+        guard controlInputEnabled else { return }
         typingFocusTask?.cancel()
         typingFocusTask = Task { @MainActor in
-            typingFocused = false
-            let delays: [UInt64] = [80_000_000, 220_000_000, 420_000_000]
-            for delay in delays {
-                try? await Task.sleep(nanoseconds: delay)
-                guard Task.isCancelled == false, isTyping else { return }
-                typingFocused = true
-            }
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard Task.isCancelled == false else { return }
+            interactionMode = .control
+            isTyping = true
         }
     }
 
@@ -525,74 +544,148 @@ struct ScreenShareViewerView: View {
         )
     }
 
-    private var typingBar: some View {
-        HStack(spacing: 8) {
-            TextField("Type on Mac", text: $textToType)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($typingFocused)
-                .textFieldStyle(.plain)
-                .foregroundStyle(.white)
-                .submitLabel(.send)
-                .onSubmit(sendTypedText)
-                .padding(.horizontal, 12)
-                .frame(height: 42)
-                .background(Color.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .toolbar {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Done") {
-                            typingFocused = false
-                        }
-                    }
-                }
-
-            Button(action: sendTypedText) {
-                Image(systemName: "paperplane.fill")
-                    .frame(width: 38, height: 38)
+    @ViewBuilder
+    private var remoteKeyboardCapture: some View {
+        #if canImport(UIKit)
+        RemoteKeyboardCaptureView(
+            isActive: $isTyping,
+            onText: sendTextIntent,
+            onKey: { key in
+                sendShortcutIntent(key, [])
             }
-            .disabled(textToType.isEmpty)
-            .accessibilityLabel("Send text")
-
-            Button {
-                sendShortcutIntent("Return", [])
-            } label: {
-                Image(systemName: "return")
-                    .frame(width: 38, height: 38)
-            }
-            .accessibilityLabel("Press Return on Mac")
-
-            Button {
-                sendShortcutIntent("Escape", [])
-            } label: {
-                Image(systemName: "escape")
-                    .frame(width: 38, height: 38)
-            }
-            .accessibilityLabel("Press Escape on Mac")
-
-            Button {
-                typingFocused = false
-            } label: {
-                Image(systemName: "keyboard.chevron.compact.down")
-                    .frame(width: 38, height: 38)
-            }
-            .accessibilityLabel("Dismiss iPhone keyboard")
-        }
-        .buttonStyle(.bordered)
-        .tint(.white)
-        .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .onAppear {
-            focusTypingBar()
-        }
-    }
-
-    private func sendTypedText() {
-        guard textToType.isEmpty == false else { return }
-        sendTextIntent(textToType)
-        textToType = ""
+        )
+        .frame(width: 1, height: 1)
+        .opacity(0.01)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        #else
+        EmptyView()
+        #endif
     }
 }
+
+#if canImport(UIKit)
+private struct RemoteKeyboardCaptureView: UIViewRepresentable {
+    @Binding var isActive: Bool
+    let onText: (String) -> Void
+    let onKey: (String) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> RemoteKeyboardTextView {
+        let textView = RemoteKeyboardTextView(frame: .zero)
+        textView.remoteKeyboardDelegate = context.coordinator
+        textView.backgroundColor = .clear
+        textView.textColor = .clear
+        textView.tintColor = .clear
+        textView.isScrollEnabled = false
+        textView.autocorrectionType = .no
+        textView.autocapitalizationType = .none
+        textView.smartDashesType = .no
+        textView.smartQuotesType = .no
+        textView.smartInsertDeleteType = .no
+        textView.spellCheckingType = .no
+        textView.keyboardDismissMode = .interactive
+        textView.inputAccessoryView = context.coordinator.makeAccessoryToolbar()
+        textView.delegate = context.coordinator
+        context.coordinator.textView = textView
+        return textView
+    }
+
+    func updateUIView(_ uiView: RemoteKeyboardTextView, context: Context) {
+        context.coordinator.parent = self
+        if isActive {
+            if uiView.isFirstResponder == false {
+                DispatchQueue.main.async {
+                    guard self.isActive else { return }
+                    uiView.becomeFirstResponder()
+                }
+            }
+        } else if uiView.isFirstResponder {
+            uiView.resignFirstResponder()
+            uiView.text = ""
+        }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UITextViewDelegate, RemoteKeyboardTextViewDelegate {
+        var parent: RemoteKeyboardCaptureView
+        weak var textView: RemoteKeyboardTextView?
+
+        init(parent: RemoteKeyboardCaptureView) {
+            self.parent = parent
+        }
+
+        func makeAccessoryToolbar() -> UIToolbar {
+            let toolbar = UIToolbar()
+            toolbar.items = [
+                UIBarButtonItem(systemItem: .flexibleSpace),
+                UIBarButtonItem(
+                    title: "Done",
+                    style: .done,
+                    target: self,
+                    action: #selector(donePressed)
+                )
+            ]
+            toolbar.sizeToFit()
+            return toolbar
+        }
+
+        @objc private func donePressed() {
+            parent.isActive = false
+            textView?.resignFirstResponder()
+            textView?.text = ""
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            textView.text = ""
+            if parent.isActive {
+                parent.isActive = false
+            }
+        }
+
+        func remoteKeyboardTextView(_ textView: RemoteKeyboardTextView, didInsert text: String) {
+            textView.text = ""
+            switch text {
+            case "\n", "\r":
+                parent.onKey("Return")
+            case "\t":
+                parent.onKey("Tab")
+            default:
+                parent.onText(text)
+            }
+        }
+
+        func remoteKeyboardTextViewDidDeleteBackward(_ textView: RemoteKeyboardTextView) {
+            textView.text = ""
+            parent.onKey("Delete")
+        }
+    }
+}
+
+@MainActor
+private protocol RemoteKeyboardTextViewDelegate: AnyObject {
+    func remoteKeyboardTextView(_ textView: RemoteKeyboardTextView, didInsert text: String)
+    func remoteKeyboardTextViewDidDeleteBackward(_ textView: RemoteKeyboardTextView)
+}
+
+@MainActor
+private final class RemoteKeyboardTextView: UITextView {
+    weak var remoteKeyboardDelegate: RemoteKeyboardTextViewDelegate?
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func insertText(_ text: String) {
+        remoteKeyboardDelegate?.remoteKeyboardTextView(self, didInsert: text)
+    }
+
+    override func deleteBackward() {
+        remoteKeyboardDelegate?.remoteKeyboardTextViewDidDeleteBackward(self)
+    }
+}
+#endif
 
 struct ScreenShareViewportState: Equatable {
     static let minimumScale: CGFloat = 1
@@ -608,6 +701,11 @@ struct ScreenShareViewportState: Equatable {
 
     mutating func applyMagnification(_ magnification: CGFloat, in size: CGSize) {
         scale = Self.clampScale(scale * magnification)
+        offset = Self.clamp(offset: offset, scale: scale, in: size)
+    }
+
+    mutating func zoom(by multiplier: CGFloat, in size: CGSize) {
+        scale = Self.clampScale(scale * multiplier)
         offset = Self.clamp(offset: offset, scale: scale, in: size)
     }
 
@@ -750,12 +848,16 @@ private struct MirrorControlPanel: View {
     @Binding var cursorStyle: MirrorCursorStyle
     let stats: ScreenShareViewerCoordinator.Stats
     let controlStatus: ScreenSharePhoneControlStatus
+    let controlInputEnabled: Bool
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let isZoomed: Bool
+    let zoomIn: () -> Void
+    let zoomOut: () -> Void
     let resetZoom: () -> Void
     let focusTyping: () -> Void
     let selectDisplay: (String) -> Void
+    let onTrustControlDevice: () -> Void
     let sendScrollButton: (Double) -> Void
     let onClose: () -> Void
 
@@ -765,34 +867,42 @@ private struct MirrorControlPanel: View {
                 if statsVisible {
                     compactStats
                 }
+                if let detail = controlStatus.detail {
+                    compactControlStatus(detail)
+                }
                 panelButton("hand.draw", selected: interactionMode == .view, label: "View mode") {
                     withAnimation(.snappy) {
                         interactionMode = .view
                         isTyping = false
                     }
                 }
-                panelButton(controlStatus.isLive ? "cursorarrow.click.2" : "lock", selected: interactionMode == .control, label: controlStatus.label, disabled: controlStatus.isLive == false) {
-                    guard controlStatus.isLive else { return }
+                if controlInputEnabled, controlStatus.isLive == false {
+                    panelButton("person.badge.key", selected: false, label: "Trust this iPhone for Mac control", action: onTrustControlDevice)
+                }
+                panelButton(controlInputEnabled ? "cursorarrow.click.2" : "lock", selected: interactionMode == .control, label: controlStatus.label, disabled: controlInputEnabled == false) {
+                    guard controlInputEnabled else { return }
                     withAnimation(.snappy) {
                         interactionMode = .control
                         isTyping = false
                     }
                 }
-                panelButton("rectangle.and.hand.point.up.left", selected: interactionMode == .trackpad, label: "Trackpad mode", disabled: controlStatus.isLive == false) {
-                    guard controlStatus.isLive else { return }
+                panelButton("rectangle.and.hand.point.up.left", selected: interactionMode == .trackpad, label: "Trackpad mode", disabled: controlInputEnabled == false) {
+                    guard controlInputEnabled else { return }
                     withAnimation(.snappy) {
                         interactionMode = .trackpad
                         isTyping = false
                     }
                 }
-                displayMenu
+                displayButton
                 cursorMenu
-                panelButton("chevron.up", selected: false, label: "Scroll up", disabled: controlStatus.isLive == false) { sendScrollButton(-0.22) }
-                panelButton("chevron.down", selected: false, label: "Scroll down", disabled: controlStatus.isLive == false) { sendScrollButton(0.22) }
-                panelButton("arrow.up.to.line", selected: false, label: "Page up", disabled: controlStatus.isLive == false) { sendScrollButton(-0.45) }
-                panelButton("arrow.down.to.line", selected: false, label: "Page down", disabled: controlStatus.isLive == false) { sendScrollButton(0.45) }
-                panelButton("keyboard", selected: isTyping, label: "Type on Mac", disabled: controlStatus.isLive == false) {
-                    guard controlStatus.isLive else { return }
+                panelButton("magnifyingglass.plus", selected: false, label: "Zoom in", action: zoomIn)
+                panelButton("magnifyingglass.minus", selected: false, label: "Zoom out", disabled: isZoomed == false, action: zoomOut)
+                panelButton("chevron.up", selected: false, label: "Scroll up", disabled: controlInputEnabled == false) { sendScrollButton(-0.22) }
+                panelButton("chevron.down", selected: false, label: "Scroll down", disabled: controlInputEnabled == false) { sendScrollButton(0.22) }
+                panelButton("arrow.up.to.line", selected: false, label: "Page up", disabled: controlInputEnabled == false) { sendScrollButton(-0.45) }
+                panelButton("arrow.down.to.line", selected: false, label: "Page down", disabled: controlInputEnabled == false) { sendScrollButton(0.45) }
+                panelButton("keyboard", selected: isTyping, label: "Type on Mac", disabled: controlInputEnabled == false) {
+                    guard controlInputEnabled else { return }
                     withAnimation(.snappy) {
                         interactionMode = .control
                         isTyping.toggle()
@@ -828,7 +938,7 @@ private struct MirrorControlPanel: View {
         case .view:
             return "hand.draw"
         case .control:
-            return controlStatus.isLive ? "cursorarrow.click.2" : "lock"
+            return controlInputEnabled ? "cursorarrow.click.2" : "lock"
         case .trackpad:
             return "rectangle.and.hand.point.up.left"
         }
@@ -848,21 +958,54 @@ private struct MirrorControlPanel: View {
         .accessibilityLabel("Performance \(String(format: "%.2f megabits per second", mbps)), round trip \(stats.roundTripMillis) milliseconds")
     }
 
-    private var displayMenu: some View {
-        Menu {
-            ForEach(displays.isEmpty ? fallbackDisplays : displays) { display in
+    private func compactControlStatus(_ message: String) -> some View {
+        Text(shortControlMessage(message))
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.86))
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .background(Color.white.opacity(0.10), in: Capsule())
+            .accessibilityLabel(message)
+    }
+
+    private func shortControlMessage(_ message: String) -> String {
+        guard message.count > 72 else { return message }
+        return String(message.prefix(69)) + "..."
+    }
+
+    private var displayOptions: [HermesRealtimeRelayDisplayDescriptor] {
+        displays.isEmpty ? fallbackDisplays : displays
+    }
+
+    private var selectedDisplayIndex: Int {
+        displayOptions.firstIndex {
+            $0.id == selectedDisplayId || (selectedDisplayId == nil && $0.isPrimary)
+        } ?? 0
+    }
+
+    private var displayButton: some View {
+        let isDisabled = displayOptions.count <= 1
+        return Button {
+            guard !isDisabled else { return }
+            let nextIndex = (selectedDisplayIndex + 1) % displayOptions.count
+            selectDisplay(displayOptions[nextIndex].id)
+        } label: {
+            railIcon("rectangle.connected.to.line.below", selected: displayOptions.count > 1, disabled: isDisabled)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .contextMenu {
+            ForEach(displayOptions) { display in
                 Button {
                     selectDisplay(display.id)
                 } label: {
                     Label(display.name, systemImage: display.id == selectedDisplayId || (selectedDisplayId == nil && display.isPrimary) ? "checkmark.display" : "display")
                 }
             }
-        } label: {
-            railIcon("rectangle.connected.to.line.below", selected: false, disabled: false)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .accessibilityLabel("Displays")
+        .accessibilityLabel(isDisabled ? "One display available" : "Switch display")
     }
 
     private var cursorMenu: some View {
@@ -1006,7 +1149,7 @@ struct CyberCursorArrow: Shape {
         var path = Path()
         let scaleX = rect.width / 24.0
         let scaleY = rect.height / 24.0
-        
+
         path.move(to: CGPoint(x: 0 * scaleX, y: 0 * scaleY))
         path.addLine(to: CGPoint(x: 18 * scaleX, y: 13 * scaleY))
         path.addLine(to: CGPoint(x: 10 * scaleX, y: 14 * scaleY))
@@ -1015,7 +1158,7 @@ struct CyberCursorArrow: Shape {
         path.addLine(to: CGPoint(x: 7 * scaleX, y: 15 * scaleY))
         path.addLine(to: CGPoint(x: 0 * scaleX, y: 19 * scaleY))
         path.closeSubpath()
-        
+
         return path
     }
 }
@@ -1037,12 +1180,12 @@ private struct MirrorPointerCursor: View {
                         .scaleEffect(haloScale)
                         .opacity(Double(2.0 - haloScale))
                         .offset(x: -4, y: -4)
-                    
+
                     Circle()
                         .fill(glowColor)
                         .frame(width: 3, height: 3)
                         .offset(x: -1.5, y: -1.5)
-                    
+
                     CyberCursorArrow()
                         .fill(
                             LinearGradient(
@@ -1147,7 +1290,7 @@ private struct TrackpadGlassSurface: View {
             ZStack {
                 // Fine grid crosshairs in background
                 trackpadGridPattern(width: width, height: height)
-                
+
                 // Trail ring representing current touch location
                 if usePremiumSOTAUX {
                     ForEach(Array(touchHistory.enumerated()), id: \.offset) { index, point in
@@ -1420,7 +1563,7 @@ private struct StreamStateOverlay: View {
                         )
                         .frame(width: 76, height: 76)
                         .rotationEffect(.degrees(spinAngle))
-                    
+
                     Circle()
                         .stroke(Color.white.opacity(0.05), lineWidth: 1.5)
                         .frame(width: 52, height: 52)
@@ -1435,7 +1578,7 @@ private struct StreamStateOverlay: View {
                         )
                         .frame(width: 52, height: 52)
                         .rotationEffect(.degrees(-spinAngle * 1.3))
-                    
+
                     Circle()
                         .fill(Color(red: 0.17, green: 0.79, blue: 0.75))
                         .frame(width: 14, height: 14)
@@ -1446,7 +1589,7 @@ private struct StreamStateOverlay: View {
                                 pulseScale = 1.6
                             }
                         }
-                    
+
                     Circle()
                         .fill(Color(red: 0.17, green: 0.79, blue: 0.75))
                         .frame(width: 10, height: 10)
@@ -1461,7 +1604,7 @@ private struct StreamStateOverlay: View {
                     Circle()
                         .stroke(Color.white.opacity(0.1), lineWidth: 4)
                         .frame(width: 64, height: 64)
-                    
+
                     Circle()
                         .stroke(
                             LinearGradient(
@@ -1530,7 +1673,7 @@ private struct StreamStateOverlay: View {
 
                 if let reason = lastFailureReason, !reason.isEmpty {
                     Text(reason)
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.5))
                         .multilineTextAlignment(.center)
                         .lineLimit(3)
@@ -1539,7 +1682,7 @@ private struct StreamStateOverlay: View {
 
                 if let secs = lastSeenSeconds, secs > 0 {
                     Text("Last seen \(formattedRelative(seconds: secs)) ago")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.4))
                         .padding(.top, 2)
                 }

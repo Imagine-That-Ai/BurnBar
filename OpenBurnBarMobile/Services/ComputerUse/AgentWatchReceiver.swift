@@ -54,6 +54,10 @@ public final class AgentWatchReceiver: ObservableObject {
                state.pendingApproval?.approvalId == response.approvalId {
                 state.setPendingApproval(nil)
             }
+        case .controlAgentGrantReceipt:
+            guard let wireReceipt = frame.control?.agentGrantReceipt,
+                  let receipt = try? AgentCapabilityGrantReceipt(wire: wireReceipt) else { return }
+            MobileAgentPermissionGrantController.shared.apply(receipt: receipt)
         case .controlDenied:
             state.setDeniedReason(denyReason(from: frame.control?.denied?.reason))
         default:

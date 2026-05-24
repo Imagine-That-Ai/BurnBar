@@ -4,6 +4,8 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.SetOptions
 import com.openburnbar.irohrelay.HermesRealtimeRelayProtocol
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -73,6 +75,25 @@ class PhoneControlAuthorityPublisher(
             .collection("iroh_pairing").document(authority.connectionId)
             .collection("controllers").document(authority.peerNodeId)
             .set(authority.asMap())
+            .await()
+    }
+
+    suspend fun publishAgentGrantAuthority(
+        uid: String,
+        sourceDeviceId: String,
+        authority: PhoneControlAuthorityDoc,
+    ) {
+        firestore.collection("users").document(uid)
+            .collection("agent_grant_authorities").document(sourceDeviceId)
+            .set(
+                mapOf(
+                    "sourceDeviceId" to sourceDeviceId,
+                    "peerNodeId" to authority.peerNodeId,
+                    "publicKeyBase64" to authority.publicKeyBase64,
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                ),
+                SetOptions.merge(),
+            )
             .await()
     }
 }

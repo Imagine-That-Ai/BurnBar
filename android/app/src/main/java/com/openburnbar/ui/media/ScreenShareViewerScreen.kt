@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -29,6 +31,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -39,11 +45,15 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Check
+import com.openburnbar.irohrelay.HermesRealtimeRelayDisplayDescriptor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,12 +69,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontWeight
@@ -99,12 +109,15 @@ fun ScreenShareViewerScreen(
     pipeline: VideoReceivePipeline,
     modifier: Modifier = Modifier,
     lastPeerHeartbeatAtMillis: Long = 0L,
+    availableDisplays: List<HermesRealtimeRelayDisplayDescriptor> = emptyList(),
+    selectedDisplayId: String? = null,
+    onSelectDisplay: (String) -> Unit = {},
     onClose: () -> Unit = {},
     onEnterPictureInPicture: () -> Unit = {},
     onReconnect: () -> Unit = {},
-    onTapNormalized: (Double, Double, Int) -> Unit = { _, _, _ -> },
-    onScrollDragNormalized: (Double, Double, Double, Double) -> Unit = { _, _, _, _ -> },
-    onScrollNormalized: (Double) -> Unit = {},
+    onTapNormalized: (Double, Double, Int, String?) -> Unit = { _, _, _, _ -> },
+    onScrollDragNormalized: (Double, Double, Double, Double, String?) -> Unit = { _, _, _, _, _ -> },
+    onScrollNormalized: (Double, String?) -> Unit = { _, _ -> },
     onPointerMove: (Double, Double) -> Unit = { _, _ -> },
     onPointerClick: (Int) -> Unit = {},
     onTypeText: (String) -> Unit = {},
@@ -119,14 +132,13 @@ fun ScreenShareViewerScreen(
     var fitName by rememberSaveable { mutableStateOf(ScreenMirrorFit.FIT.name) }
     var controlModeName by rememberSaveable { mutableStateOf(ScreenMirrorControlMode.VIEW.name) }
     var typingOpen by rememberSaveable { mutableStateOf(false) }
-    var typeDraft by rememberSaveable { mutableStateOf("") }
+    var trayScale by rememberSaveable { mutableStateOf(1.0f) }
+    var activeDisplayId by remember(selectedDisplayId) { mutableStateOf(selectedDisplayId) }
     var tapCount by remember { mutableStateOf(0) }
     var lastTapAt by remember { mutableStateOf(0L) }
     var dragActive by remember { mutableStateOf(false) }
     var dragStartNormalized by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var pressStartedAt by remember { mutableStateOf(0L) }
-    var cursorPoint by remember { mutableStateOf<Offset?>(null) }
-    var rootSize by remember { mutableStateOf(IntSize.Zero) }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     val stats by pipeline.stats.collectAsState()
     val phase by pipeline.phase.collectAsState()
@@ -155,7 +167,6 @@ fun ScreenShareViewerScreen(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .onSizeChanged { rootSize = it }
             .pointerInput(controlMode, fit, aspect) {
                 awaitPointerEventScope {
                     while (true) {
@@ -179,25 +190,18 @@ fun ScreenShareViewerScreen(
                             }
                         }
 
-                        val move = event.changes.firstOrNull { it.pressed && it.previousPressed }
-                        if (move != null && controlMode == ScreenMirrorControlMode.TOUCH) {
-                            ScreenMirrorInputPolicy.clampedCursorPoint(move.position, size, fit, aspect)?.let { point ->
-                                cursorPoint = point
-                            }
-                        }
-
                         val up = event.changes.firstOrNull { !it.pressed && it.previousPressed }
                         if (up != null) {
                             when (controlMode) {
                                 ScreenMirrorControlMode.TOUCH -> {
                                     ScreenMirrorInputPolicy.normalizedPoint(up.position, size, fit, aspect)?.let { point ->
-                                        cursorPoint = ScreenMirrorInputPolicy.clampedCursorPoint(up.position, size, fit, aspect)
                                         onTapNormalized(
                                             point.first,
                                             point.second,
                                             ScreenMirrorInputPolicy.controlClickMouseButton(
                                                 heldMillis = System.currentTimeMillis() - pressStartedAt
                                             ),
+                                            activeDisplayId,
                                         )
                                     }
                                 }
@@ -205,7 +209,7 @@ fun ScreenShareViewerScreen(
                                     val start = dragStartNormalized
                                     val end = ScreenMirrorInputPolicy.normalizedPoint(up.position, size, fit, aspect)
                                     if (dragActive && start != null && end != null) {
-                                        onScrollDragNormalized(start.first, start.second, end.first, end.second)
+                                        onScrollDragNormalized(start.first, start.second, end.first, end.second, activeDisplayId)
                                     }
                                     dragActive = false
                                     dragStartNormalized = null
@@ -237,23 +241,26 @@ fun ScreenShareViewerScreen(
             }
         }
 
-        if (controlMode != ScreenMirrorControlMode.VIEW) {
-            val visibleCursor = cursorPoint ?: ScreenMirrorInputPolicy.initialCursorPoint(rootSize, fit, aspect)
-            visibleCursor?.let {
-                ScreenMirrorCursorOverlay(point = it)
-            }
-        }
-
         if (controlMode == ScreenMirrorControlMode.TRACKPAD) {
             ScreenMirrorTrackpadSurface(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 18.dp, bottom = 138.dp),
                 onMove = { delta ->
-                    cursorPoint = ScreenMirrorInputPolicy.movedCursorPoint(cursorPoint, delta, rootSize, fit, aspect)
                     onPointerMove(delta.x.toDouble(), delta.y.toDouble())
                 },
                 onClick = onPointerClick,
+            )
+        }
+
+        if (typingOpen) {
+            RemoteKeyboardCaptureField(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 1.dp, bottom = 1.dp),
+                onText = onTypeText,
+                onKey = { key -> onShortcut(key, emptyList()) },
+                onDismiss = { typingOpen = false },
             )
         }
 
@@ -334,7 +341,7 @@ fun ScreenShareViewerScreen(
                         color = AuroraColors.hermesMercury,
                         style = AuroraType.monoTiny.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     )
-                    
+
                     Spacer(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -388,7 +395,12 @@ fun ScreenShareViewerScreen(
         ScreenMirrorToolsDock(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 14.dp, vertical = 18.dp),
+                .padding(horizontal = 14.dp, vertical = 18.dp)
+                .graphicsLayer {
+                    scaleX = trayScale
+                    scaleY = trayScale
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                },
             collapsed = toolsCollapsed,
             customizeOpen = customizeOpen,
             fit = fit,
@@ -405,6 +417,15 @@ fun ScreenShareViewerScreen(
                 is VideoReceivePipeline.Phase.Failed -> "Decoder"
                 VideoReceivePipeline.Phase.Stopped -> "Stopped"
             },
+            trayScale = trayScale,
+            stats = stats,
+            availableDisplays = availableDisplays,
+            activeDisplayId = activeDisplayId,
+            onSelectDisplay = { displayId ->
+                activeDisplayId = displayId
+                onSelectDisplay(displayId)
+            },
+            onTrayScaleChange = { trayScale = it },
             onToggleCollapsed = { toolsCollapsed = !toolsCollapsed },
             onToggleCustomize = { customizeOpen = !customizeOpen },
             onToggleStats = { statsVisible = !statsVisible },
@@ -422,17 +443,8 @@ fun ScreenShareViewerScreen(
                     controlModeName = ScreenMirrorControlMode.TOUCH.name
                 }
             },
-            typeDraft = typeDraft,
-            onTypeDraftChange = { typeDraft = it },
-            onSendText = {
-                val trimmed = typeDraft.take(512)
-                if (trimmed.isNotBlank()) {
-                    onTypeText(trimmed)
-                    typeDraft = ""
-                }
-            },
-            onScrollUp = { onScrollNormalized(-0.16) },
-            onScrollDown = { onScrollNormalized(0.16) },
+            onScrollUp = { onScrollNormalized(-0.16, activeDisplayId) },
+            onScrollDown = { onScrollNormalized(0.16, activeDisplayId) },
             onEscape = { onShortcut("escape", emptyList()) },
             onCommandTab = { onShortcut("tab", listOf("command")) },
             onPanic = onPanic,
@@ -549,11 +561,13 @@ internal enum class ScreenMirrorControlMode {
 
 private fun Modifier.screenMirrorSurface(fit: ScreenMirrorFit, aspect: Float): Modifier = when (fit) {
     ScreenMirrorFit.FIT -> this
-        .fillMaxWidth()
+        .fillMaxSize()
+        .wrapContentSize(Alignment.Center)
         .aspectRatio(aspect)
     ScreenMirrorFit.FILL -> this.fillMaxSize()
     ScreenMirrorFit.FLOAT -> this
-        .fillMaxWidth(0.92f)
+        .fillMaxSize(0.92f)
+        .wrapContentSize(Alignment.Center)
         .aspectRatio(aspect)
         .clip(RoundedCornerShape(18.dp))
         .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
@@ -570,40 +584,6 @@ private fun ScreenMirrorInputOverlay() {
                 shape = RoundedCornerShape(18.dp),
             ),
     )
-}
-
-@Composable
-private fun ScreenMirrorCursorOverlay(point: Offset) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val outer = 13.dp.toPx()
-        val inner = 4.dp.toPx()
-        val strokeWidth = 1.5.dp.toPx()
-        drawCircle(
-            color = AuroraColors.hermesMercury.copy(alpha = 0.72f),
-            radius = outer,
-            center = point,
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth),
-        )
-        drawCircle(
-            color = Color.White,
-            radius = inner,
-            center = point,
-        )
-        val arrow = Path().apply {
-            moveTo(point.x + 7.dp.toPx(), point.y + 8.dp.toPx())
-            lineTo(point.x + 17.dp.toPx(), point.y + 26.dp.toPx())
-            lineTo(point.x + 11.dp.toPx(), point.y + 25.dp.toPx())
-            lineTo(point.x + 7.dp.toPx(), point.y + 35.dp.toPx())
-            lineTo(point.x + 3.dp.toPx(), point.y + 33.dp.toPx())
-            lineTo(point.x + 7.dp.toPx(), point.y + 24.dp.toPx())
-            lineTo(point.x + 2.dp.toPx(), point.y + 28.dp.toPx())
-            close()
-        }
-        drawPath(
-            path = arrow,
-            color = Color.White.copy(alpha = 0.92f),
-        )
-    }
 }
 
 @Composable
@@ -745,16 +725,38 @@ internal object ScreenMirrorInputPolicy {
                 top = 0f
             }
             ScreenMirrorFit.FIT -> {
-                width = rootWidth
-                height = rootWidth / aspect
-                left = 0f
-                top = (rootHeight - height) / 2f
+                val containerAspect = rootWidth / rootHeight
+                if (containerAspect > aspect) {
+                    // Height is the bottleneck
+                    height = rootHeight
+                    width = rootHeight * aspect
+                    left = (rootWidth - width) / 2f
+                    top = 0f
+                } else {
+                    // Width is the bottleneck
+                    width = rootWidth
+                    height = rootWidth / aspect
+                    left = 0f
+                    top = (rootHeight - height) / 2f
+                }
             }
             ScreenMirrorFit.FLOAT -> {
-                width = rootWidth * 0.92f
-                height = width / aspect
-                left = (rootWidth - width) / 2f
-                top = (rootHeight - height) / 2f
+                val maxW = rootWidth * 0.92f
+                val maxH = rootHeight * 0.92f
+                val containerAspect = maxW / maxH
+                if (containerAspect > aspect) {
+                    // Height is the bottleneck
+                    height = maxH
+                    width = maxH * aspect
+                    left = (rootWidth - width) / 2f
+                    top = (rootHeight - height) / 2f
+                } else {
+                    // Width is the bottleneck
+                    width = maxW
+                    height = maxW / aspect
+                    left = (rootWidth - width) / 2f
+                    top = (rootHeight - height) / 2f
+                }
             }
         }
 
@@ -816,7 +818,12 @@ private fun ScreenMirrorToolsDock(
     typingOpen: Boolean,
     statsVisible: Boolean,
     phaseLabel: String,
-    typeDraft: String,
+    trayScale: Float,
+    stats: VideoReceivePipeline.Stats,
+    availableDisplays: List<HermesRealtimeRelayDisplayDescriptor>,
+    activeDisplayId: String?,
+    onSelectDisplay: (String) -> Unit,
+    onTrayScaleChange: (Float) -> Unit,
     onToggleCollapsed: () -> Unit,
     onToggleCustomize: () -> Unit,
     onToggleStats: () -> Unit,
@@ -824,8 +831,6 @@ private fun ScreenMirrorToolsDock(
     onCycleControlMode: () -> Unit,
     onSelectControlMode: (ScreenMirrorControlMode) -> Unit,
     onToggleTyping: () -> Unit,
-    onTypeDraftChange: (String) -> Unit,
-    onSendText: () -> Unit,
     onScrollUp: () -> Unit,
     onScrollDown: () -> Unit,
     onEscape: () -> Unit,
@@ -837,76 +842,267 @@ private fun ScreenMirrorToolsDock(
     onEnterPictureInPicture: () -> Unit,
     onClose: () -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .auroraGlass(cornerRadius = 18.dp, tintAlpha = 0.36f, shadow = AuroraShadows.large)
-            .animateContentSize()
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+    val scale = 1.0f
+    if (collapsed) {
+        Box(
+            modifier = modifier
+                .wrapContentWidth()
+                .auroraGlass(cornerRadius = 12.dp, tintAlpha = 0.45f, shadow = AuroraShadows.large)
+                .pointerInput(Unit) {} // Block overlay click-through
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
         ) {
-            StatusChip(phaseLabel)
-            Spacer(modifier = Modifier.weight(1f))
-            MirrorToolButton(
-                icon = if (collapsed) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                label = if (collapsed) "Expand" else "Collapse",
-                onClick = onToggleCollapsed,
-            )
-        }
-
-        if (!collapsed) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                MirrorToolButton(Icons.Filled.PanTool, controlMode.label, onCycleControlMode)
-                MirrorToolTextButton(fit.label, onCycleFit)
-                MirrorToolTextButton("Type", onToggleTyping)
-                MirrorToolButton(Icons.Filled.Computer, "PiP", onEnterPictureInPicture)
-                MirrorToolButton(Icons.Filled.Refresh, "Retry", onReconnect)
-                MirrorToolButton(Icons.Filled.Settings, "Tune", onToggleCustomize)
-                MirrorToolButton(Icons.Filled.Close, "Close", onClose)
-            }
-            MirrorModePicker(
-                controlMode = controlMode,
-                onSelect = onSelectControlMode,
-            )
-            if (typingOpen) {
-                TypingControlRow(
-                    typeDraft = typeDraft,
-                    onTypeDraftChange = onTypeDraftChange,
-                    onSendText = onSendText,
-                    onClose = onToggleTyping,
+                // Dot 1: Red (Close)
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFF5F56))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .clickable { onClose() }
+                )
+                // Dot 2: Yellow/Amber (Toggle Stats)
+                val dotColor = if (statsVisible) Color(0xFFFFBD2E) else Color(0xFFFFBD2E).copy(alpha = 0.6f)
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(dotColor)
+                        .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .clickable { onToggleStats() }
+                )
+                // Dot 3: Green (Expand)
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF27C93F))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .clickable { onToggleCollapsed() }
                 )
             }
+        }
+    } else {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .auroraGlass(cornerRadius = 24.dp, tintAlpha = 0.36f, shadow = AuroraShadows.large)
+                .animateContentSize()
+                .pointerInput(Unit) {} // Prevent touch events on the tools tray from triggering Mac input!
+                .padding(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            // Horizontally scrollable row of square glass keycaps exactly matching iOS!
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (statsVisible) {
+                    // Premium Compact Stats Capsule
+                    CompactStatsChip(
+                        roundTripMillis = stats.roundTripMillis,
+                        bitrateMbps = (stats.bitsPerSecond / 1_000_000.0).toFloat()
+                    )
+                }
+
+                // 1. View Mode Keycap (V)
+                KeycapTextButton(
+                    label = "V",
+                    selected = controlMode == ScreenMirrorControlMode.VIEW,
+                    onClick = { onSelectControlMode(ScreenMirrorControlMode.VIEW) }
+                )
+                // 2. Touch Mode Keycap (T)
+                KeycapTextButton(
+                    label = "T",
+                    selected = controlMode == ScreenMirrorControlMode.TOUCH,
+                    onClick = { onSelectControlMode(ScreenMirrorControlMode.TOUCH) }
+                )
+                // 3. Trackpad Mode Keycap (P)
+                KeycapTextButton(
+                    label = "P",
+                    selected = controlMode == ScreenMirrorControlMode.TRACKPAD,
+                    onClick = { onSelectControlMode(ScreenMirrorControlMode.TRACKPAD) }
+                )
+                // 4. Scroll Mode Keycap (S)
+                KeycapTextButton(
+                    label = "S",
+                    selected = controlMode == ScreenMirrorControlMode.SCROLL,
+                    onClick = { onSelectControlMode(ScreenMirrorControlMode.SCROLL) }
+                )
+
+                // 5. Display selector Menus / cycler
+                if (!availableDisplays.isNullOrEmpty() && availableDisplays.size > 1) {
+                    val currentIndex = availableDisplays.indexOfFirst { it.id == activeDisplayId }.coerceAtLeast(0)
+                    val nextIndex = (currentIndex + 1) % availableDisplays.size
+                    val nextDisplay = availableDisplays[nextIndex]
+                    KeycapButton(
+                        icon = Icons.Filled.Tv,
+                        selected = false,
+                        onClick = { onSelectDisplay(nextDisplay.id) }
+                    )
+                }
+
+                // 6. Zoom/Aspect ratio Fit Modes
+                KeycapButton(
+                    icon = Icons.Filled.AspectRatio,
+                    selected = false,
+                    onClick = onCycleFit
+                )
+
+                // 7. Scroll Up
+                KeycapTextButton(
+                    label = "▲",
+                    selected = false,
+                    onClick = onScrollUp
+                )
+                // 8. Scroll Down
+                KeycapTextButton(
+                    label = "▼",
+                    selected = false,
+                    onClick = onScrollDown
+                )
+
+                // 9. Type on Mac
+                KeycapButton(
+                    icon = Icons.Filled.Keyboard,
+                    selected = typingOpen,
+                    onClick = onToggleTyping
+                )
+
+                // 10. Reconnect
+                KeycapButton(
+                    icon = Icons.Filled.Refresh,
+                    selected = false,
+                    onClick = onReconnect
+                )
+
+                // 11. Customize Settings (Tune)
+                KeycapButton(
+                    icon = Icons.Filled.Settings,
+                    selected = customizeOpen,
+                    onClick = onToggleCustomize
+                )
+
+                // 12. PiP Mode
+                KeycapButton(
+                    icon = Icons.Filled.Computer,
+                    selected = false,
+                    onClick = onEnterPictureInPicture
+                )
+
+                // 13. Collapse
+                KeycapButton(
+                    icon = Icons.Filled.ExpandLess,
+                    selected = false,
+                    onClick = onToggleCollapsed
+                )
+
+                // 14. Close Mirror
+                KeycapButton(
+                    icon = Icons.Filled.Close,
+                    selected = false,
+                    onClick = onClose
+                )
+            }
+
             if (customizeOpen) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy((8 * scale).dp)
+                ) {
                     DockToggleRow(
                         label = "Stream stats",
                         checked = statsVisible,
+                        scale = scale,
                         onCheckedChange = { onToggleStats() },
                     )
+
+                    // Resizable slide control inside customize settings (flicker-free!)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
                     ) {
-                        MirrorToolTextButton("Trust", onTrustControlDevice)
-                        MirrorToolTextButton("Up", onScrollUp)
-                        MirrorToolTextButton("Down", onScrollDown)
-                        MirrorToolTextButton("Esc", onEscape)
-                        MirrorToolTextButton("CmdTab", onCommandTab)
+                        Text(
+                            "Tray size",
+                            color = Color.White.copy(alpha = 0.76f),
+                            style = AuroraType.caption.copy(fontSize = (12 * scale).sp),
+                            modifier = Modifier.weight(1f)
+                        )
+                        androidx.compose.material3.Slider(
+                            value = trayScale,
+                            onValueChange = onTrayScaleChange,
+                            valueRange = 0.5f..1.2f,
+                            modifier = Modifier
+                                .weight(2f)
+                                .height((30 * scale).dp)
+                        )
                     }
-                    MirrorToolTextButton("Panic", onPanic)
-                    DockInfoRow("Fit mode", fit.label)
-                    DockInfoRow("Input mode", controlMode.label)
-                    controlStatus?.let { DockInfoRow("Mac control", it) }
-                    DockInfoRow("Tools", "Collapsible + signed")
+
+                    // Display selection list in Customize
+                    if (!availableDisplays.isNullOrEmpty()) {
+                        Text(
+                            "Select Display",
+                            color = Color.White.copy(alpha = 0.56f),
+                            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp),
+                            modifier = Modifier.padding(top = (8 * scale).dp)
+                        )
+                        availableDisplays.forEach { display ->
+                            val isSelected = display.id == activeDisplayId
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelectDisplay(display.id) }
+                                    .padding(vertical = (4 * scale).dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    display.name,
+                                    color = if (isSelected) AuroraColors.hermesMercury else Color.White.copy(alpha = 0.8f),
+                                    style = AuroraType.caption.copy(
+                                        fontSize = (12 * scale).sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                )
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = "Selected",
+                                        tint = AuroraColors.hermesMercury,
+                                        modifier = Modifier.size((14 * scale).dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
+                    ) {
+                        MirrorToolTextButton("Trust", scale = scale, onClick = onTrustControlDevice)
+                        MirrorToolTextButton("Up", scale = scale, onClick = onScrollUp)
+                        MirrorToolTextButton("Down", scale = scale, onClick = onScrollDown)
+                        MirrorToolTextButton("Esc", scale = scale, onClick = onEscape)
+                        MirrorToolTextButton("CmdTab", scale = scale, onClick = onCommandTab)
+                    }
+                    MirrorToolTextButton("Panic", scale = scale, onClick = onPanic)
+
+                    DockInfoRow("Fit mode", fit.label, scale = scale)
+                    DockInfoRow("Input mode", controlMode.label, scale = scale)
+                    controlStatus?.let { DockInfoRow("Mac control", it, scale = scale) }
+                    DockInfoRow("Tools", "Collapsible + signed", scale = scale)
                 }
             }
         }
@@ -916,11 +1112,12 @@ private fun ScreenMirrorToolsDock(
 @Composable
 private fun MirrorModePicker(
     controlMode: ScreenMirrorControlMode,
+    scale: Float,
     onSelect: (ScreenMirrorControlMode) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy((6 * scale).dp),
     ) {
         listOf(
             ScreenMirrorControlMode.VIEW,
@@ -932,21 +1129,24 @@ private fun MirrorModePicker(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape((10 * scale).dp))
                     .background(if (selected) AuroraColors.hermesMercury.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.08f))
                     .border(
                         width = 1.dp,
                         color = if (selected) AuroraColors.hermesMercury.copy(alpha = 0.62f) else Color.White.copy(alpha = 0.10f),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape((10 * scale).dp),
                     )
                     .clickable { onSelect(mode) }
-                    .padding(vertical = 9.dp),
+                    .padding(vertical = (9 * scale).dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = mode.label,
                     color = Color.White.copy(alpha = if (selected) 0.98f else 0.68f),
-                    style = AuroraType.monoTiny.copy(fontWeight = FontWeight.Bold),
+                    style = AuroraType.monoTiny.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = (9 * scale).sp
+                    ),
                     textAlign = TextAlign.Center,
                 )
             }
@@ -955,14 +1155,22 @@ private fun MirrorModePicker(
 }
 
 @Composable
-private fun TypingControlRow(
-    typeDraft: String,
-    onTypeDraftChange: (String) -> Unit,
-    onSendText: () -> Unit,
-    onClose: () -> Unit,
+private fun RemoteKeyboardCaptureField(
+    modifier: Modifier = Modifier,
+    onText: (String) -> Unit,
+    onKey: (String) -> Unit,
+    onDismiss: () -> Unit,
 ) {
+    var capturedText by remember { mutableStateOf("") }
+    var hasFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    DisposableEffect(Unit) {
+        onDispose {
+            keyboardController?.hide()
+        }
+    }
 
     LaunchedEffect(Unit) {
         listOf(80L, 220L, 420L).forEach { delayMillis ->
@@ -972,32 +1180,100 @@ private fun TypingControlRow(
         }
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        TextField(
-            value = typeDraft,
-            onValueChange = { onTypeDraftChange(it.take(512)) },
-            modifier = Modifier
-                .weight(1f)
-                .focusRequester(focusRequester),
-            singleLine = true,
-            textStyle = AuroraType.caption.copy(color = Color.White),
-            placeholder = {
-                Text("Type to Mac", style = AuroraType.caption, color = Color.White.copy(alpha = 0.48f))
+    BasicTextField(
+        value = capturedText,
+        onValueChange = { newText ->
+            val diff = remoteKeyboardDiff(capturedText, newText)
+            repeat(diff.deletedCount.coerceAtMost(64)) {
+                onKey("delete")
+            }
+            dispatchRemoteKeyboardText(diff.insertedText, onText = onText, onKey = onKey)
+            capturedText = if (newText.length > 256) "" else newText
+        },
+        modifier = modifier
+            .size(1.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { state ->
+                if (state.isFocused) {
+                    hasFocused = true
+                } else if (hasFocused) {
+                    onDismiss()
+                }
             },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { onSendText() }),
-        )
-        MirrorToolTextButton("Send", onSendText)
-        MirrorToolTextButton("Hide", onClose)
+        textStyle = AuroraType.caption.copy(color = Color.Transparent, fontSize = 1.sp),
+        cursorBrush = SolidColor(Color.Transparent),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+        keyboardActions = KeyboardActions(onSend = { onKey("return") }),
+        decorationBox = { innerTextField ->
+            Box(modifier = Modifier.size(1.dp)) {
+                innerTextField()
+            }
+        },
+    )
+}
+
+internal data class RemoteKeyboardDiff(
+    val insertedText: String,
+    val deletedCount: Int,
+)
+
+internal fun remoteKeyboardDiff(oldText: String, newText: String): RemoteKeyboardDiff {
+    var prefix = 0
+    val commonPrefixLimit = minOf(oldText.length, newText.length)
+    while (prefix < commonPrefixLimit && oldText[prefix] == newText[prefix]) {
+        prefix += 1
     }
+
+    var oldSuffix = oldText.length
+    var newSuffix = newText.length
+    while (
+        oldSuffix > prefix &&
+        newSuffix > prefix &&
+        oldText[oldSuffix - 1] == newText[newSuffix - 1]
+    ) {
+        oldSuffix -= 1
+        newSuffix -= 1
+    }
+
+    return RemoteKeyboardDiff(
+        insertedText = newText.substring(prefix, newSuffix),
+        deletedCount = oldSuffix - prefix,
+    )
+}
+
+internal fun dispatchRemoteKeyboardText(
+    text: String,
+    onText: (String) -> Unit,
+    onKey: (String) -> Unit,
+) {
+    if (text.isEmpty()) return
+    val buffer = StringBuilder()
+
+    fun flushText() {
+        if (buffer.isNotEmpty()) {
+            onText(buffer.toString())
+            buffer.clear()
+        }
+    }
+
+    text.forEach { char ->
+        when (char) {
+            '\n', '\r' -> {
+                flushText()
+                onKey("return")
+            }
+            '\t' -> {
+                flushText()
+                onKey("tab")
+            }
+            else -> buffer.append(char)
+        }
+    }
+    flushText()
 }
 
 @Composable
-private fun StatusChip(label: String) {
+private fun StatusChip(label: String, scale: Float) {
     Row(
         modifier = Modifier
             .clip(CircleShape)
@@ -1005,20 +1281,23 @@ private fun StatusChip(label: String) {
                 if (label == "Live") AuroraColors.successDark.copy(alpha = 0.22f)
                 else Color.White.copy(alpha = 0.12f)
             )
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+            .padding(horizontal = (10 * scale).dp, vertical = (7 * scale).dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
     ) {
         Box(
             modifier = Modifier
-                .size(7.dp)
+                .size((7 * scale).dp)
                 .clip(CircleShape)
                 .background(if (label == "Live") AuroraColors.successDark else AuroraColors.amber)
         )
         Text(
             text = label,
             color = Color.White,
-            style = AuroraType.monoTiny.copy(fontWeight = FontWeight.Bold),
+            style = AuroraType.monoTiny.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = (9 * scale).sp
+            ),
         )
     }
 }
@@ -1027,58 +1306,96 @@ private fun StatusChip(label: String) {
 private fun MirrorToolButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
+    scale: Float,
     onClick: () -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(
             onClick = onClick,
             modifier = Modifier
-                .size(42.dp)
+                .size((42 * scale).dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.10f))
         ) {
-            Icon(icon, contentDescription = label, tint = Color.White)
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = Color.White,
+                modifier = Modifier.size((24 * scale).dp)
+            )
         }
-        Text(label, color = Color.White.copy(alpha = 0.68f), style = AuroraType.monoTiny)
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.68f),
+            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp)
+        )
     }
 }
 
 @Composable
-private fun MirrorToolTextButton(label: String, onClick: () -> Unit) {
+private fun MirrorToolTextButton(label: String, scale: Float, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(
             onClick = onClick,
             modifier = Modifier
-                .size(42.dp)
+                .size((42 * scale).dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.10f))
         ) {
-            Text(label.take(1), color = Color.White, fontWeight = FontWeight.Bold)
+            Text(
+                label.take(1),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = (14 * scale).sp
+            )
         }
-        Text(label, color = Color.White.copy(alpha = 0.68f), style = AuroraType.monoTiny)
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.68f),
+            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp)
+        )
     }
 }
 
 @Composable
-private fun DockToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun DockToggleRow(label: String, checked: Boolean, scale: Float, onCheckedChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.76f), style = AuroraType.caption)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.76f),
+            style = AuroraType.caption.copy(fontSize = (12 * scale).sp)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
+        )
     }
 }
 
 @Composable
-private fun DockInfoRow(label: String, value: String) {
+private fun DockInfoRow(label: String, value: String, scale: Float) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.56f), style = AuroraType.monoTiny)
-        Text(value, color = Color.White, style = AuroraType.monoTiny.copy(fontWeight = FontWeight.Bold))
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.56f),
+            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp)
+        )
+        Text(
+            value,
+            color = Color.White,
+            style = AuroraType.monoTiny.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = (9 * scale).sp
+            )
+        )
     }
 }
 
@@ -1094,5 +1411,94 @@ private class SurfaceCallback(
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         scope.launch { pipeline.stop() }
+    }
+}
+
+@Composable
+private fun CompactStatsChip(roundTripMillis: Int, bitrateMbps: Float) {
+    Row(
+        modifier = Modifier
+            .height(42.dp)
+            .background(Color.White.copy(alpha = 0.10f), CircleShape)
+            .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "%.2f Mbps".format(bitrateMbps),
+            color = Color.White.copy(alpha = 0.86f),
+            style = AuroraType.monoTiny.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        )
+        Text(
+            text = "RTT ${roundTripMillis} ms",
+            color = Color.White.copy(alpha = 0.86f),
+            style = AuroraType.monoTiny.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        )
+    }
+}
+
+@Composable
+private fun KeycapButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(42.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) Color.White.copy(alpha = 0.22f)
+                else Color.White.copy(alpha = 0.10f)
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (selected) Color.White else Color.White.copy(alpha = 0.85f),
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun KeycapTextButton(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(42.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) Color.White.copy(alpha = 0.22f)
+                else Color.White.copy(alpha = 0.10f)
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color.White else Color.White.copy(alpha = 0.85f),
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }

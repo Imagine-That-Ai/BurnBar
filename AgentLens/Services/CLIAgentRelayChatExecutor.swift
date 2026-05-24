@@ -129,6 +129,12 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
             return .codex
         case "claude", "claudecode", "claude-code":
             return .claude
+        case "hermes":
+            return .hermes
+        case "openclaw", "open-claw":
+            return .openclaw
+        case "pi", "piagent", "pi-agent":
+            return .piAgent
         default:
             return nil
         }

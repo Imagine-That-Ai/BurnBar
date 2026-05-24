@@ -40,6 +40,13 @@ public struct SubscriptionTopic: Codable, Sendable, Hashable, Identifiable {
     /// "unsubscribed" so re-enabling preserves history.
     public let isMuted: Bool
 
+    /// How much of the live Skill Run stream should be delivered to phones
+    /// and tablets after this subscription fires.
+    public let deliveryMode: SkillRunDeliveryMode
+
+    /// Minimum event importance that should interrupt this device.
+    public let minimumEventImportance: SkillRunEventImportance
+
     /// Count of deliveries in the current calendar month — used by the
     /// platform to enforce per-tier caps.
     public let deliveryCountThisMonth: Int
@@ -55,6 +62,8 @@ public struct SubscriptionTopic: Codable, Sendable, Hashable, Identifiable {
         cadence: AgentManifest.PushTopic.Cadence,
         consentGivenAt: Date? = nil,
         isMuted: Bool = false,
+        deliveryMode: SkillRunDeliveryMode = .actionOnly,
+        minimumEventImportance: SkillRunEventImportance = .actionRequired,
         deliveryCountThisMonth: Int = 0,
         lastDeliveredAt: Date? = nil
     ) {
@@ -66,6 +75,8 @@ public struct SubscriptionTopic: Codable, Sendable, Hashable, Identifiable {
         self.cadence = cadence
         self.consentGivenAt = consentGivenAt
         self.isMuted = isMuted
+        self.deliveryMode = deliveryMode
+        self.minimumEventImportance = minimumEventImportance
         self.deliveryCountThisMonth = deliveryCountThisMonth
         self.lastDeliveredAt = lastDeliveredAt
     }
@@ -74,6 +85,22 @@ public struct SubscriptionTopic: Codable, Sendable, Hashable, Identifiable {
 // MARK: - Budget gate
 
 extension SubscriptionTopic {
+    public func withDeliveryMode(_ deliveryMode: SkillRunDeliveryMode) -> SubscriptionTopic {
+        SubscriptionTopic(
+            agentURI: agentURI,
+            topicID: topicID,
+            displayName: displayName,
+            description: description,
+            cadence: cadence,
+            consentGivenAt: consentGivenAt,
+            isMuted: deliveryMode == .muted,
+            deliveryMode: deliveryMode,
+            minimumEventImportance: deliveryMode == .fullStream ? .normal : .actionRequired,
+            deliveryCountThisMonth: deliveryCountThisMonth,
+            lastDeliveredAt: lastDeliveredAt
+        )
+    }
+
     /// Returns true if the platform should accept another delivery for
     /// this topic in the current month. Enforces the cadence's
     /// `maxPerMonth` and the tier-wide hard cap.

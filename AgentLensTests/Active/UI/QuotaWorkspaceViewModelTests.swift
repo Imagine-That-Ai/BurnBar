@@ -373,6 +373,115 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(pendingEntry.remainingPercentText, "—")
     }
 
+    func test_filteredDisplaySnapshotsDropsProfilesPointingAtDefaultCLIConfig() {
+        let current = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "current-codex",
+            accountLabel: "Current Codex",
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 500),
+            source: .officialAPI,
+            sourceId: "switcher-cli-current:codex",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Current Codex quota.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-current-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 3,
+                    limitValue: 100,
+                    remainingValue: 97,
+                    usedPercent: 3,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+        let defaultProfileDuplicate = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "default-profile",
+            accountLabel: "Stale Default Profile",
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 510),
+            source: .officialAPI,
+            sourceId: "switcher-cli:codex:default-profile",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Duplicate default Codex profile quota.",
+            buckets: current.buckets
+        )
+
+        let filtered = QuotaWorkspaceViewModel.filteredDisplaySnapshots(
+            [current, defaultProfileDuplicate],
+            profileIndex: QuotaWorkspaceProfileIndex(defaultConfigAccountIDs: ["default-profile"])
+        )
+
+        XCTAssertEqual(filtered.map(\.accountID), ["current-codex"])
+    }
+
+    func test_filteredDisplaySnapshotsCoalescesCurrentCLIWithProfileForSameAccountIdentity() {
+        let current = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "current-codex",
+            accountLabel: "Alberto Nunez-Garcia • alberto@imagine-that.ai",
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 500),
+            source: .officialAPI,
+            sourceId: "switcher-cli-current:codex",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Current Codex quota.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-current-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 1,
+                    limitValue: 100,
+                    remainingValue: 99,
+                    usedPercent: 1,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+        let isolatedProfile = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "profile-imagine-that",
+            accountLabel: "Alberto Nunez-Garcia • alberto@imagine-that.ai",
+            accountStorageScope: .localOnly,
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 490),
+            source: .officialAPI,
+            sourceId: "switcher-cli:codex:profile-imagine-that",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Isolated profile quota.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-profile-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 25,
+                    limitValue: 100,
+                    remainingValue: 75,
+                    usedPercent: 25,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+
+        let filtered = QuotaWorkspaceViewModel.filteredDisplaySnapshots(
+            [current, isolatedProfile],
+            profileIndex: QuotaWorkspaceProfileIndex()
+        )
+
+        XCTAssertEqual(filtered.map(\.accountID), ["profile-imagine-that"])
+        XCTAssertEqual(filtered.first?.displayableQuotaBuckets.first?.remainingPercent, 75)
+    }
+
     // MARK: sort
 
     func test_sort_urgencyPutsHighestPressureFirst() {

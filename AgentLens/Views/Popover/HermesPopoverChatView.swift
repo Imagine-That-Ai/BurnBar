@@ -129,6 +129,8 @@ struct AssistantsPopoverChatView: View {
             .buttonStyle(.plain)
             .popoverTooltip("Show this chat’s workspace in Finder — each new chat uses its own folder under OpenBurnBar’s Application Support.")
 
+            ChatDesktopControlButton(controller: controller, tint: heroCardIconTint)
+
             // Mining animation or back button — top right corner
             if controller.isStreaming {
                 AnimatedMiningPickView()

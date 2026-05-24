@@ -30,6 +30,9 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Provider glyphs enabled in the desktop swarm wallpaper logo cycle.
     var desktopWallpaperProviderGlyphs: [AgentProvider] { get set }
 
+    /// Whether to exclude brand shapes from the swarm cycle.
+    var excludeBrandShapesFromSwarm: Bool { get set }
+
     // MARK: - Behavior
 
     /// Refresh interval in seconds for usage aggregation.

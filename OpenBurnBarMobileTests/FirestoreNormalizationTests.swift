@@ -765,6 +765,117 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertEqual(display.first?.buckets.first?.displayRemainingPercent ?? -1, 38, accuracy: 0.0001)
     }
 
+    func testQuotaStoreDisplaySnapshotsDropsTimeStaleBucketWhenFreshAccountSnapshotExists() {
+        let newer = Date()
+        let older = newer.addingTimeInterval(-13 * 60 * 60)
+        let staleZero = quotaSnapshot(
+            id: "claude-old-five-hour",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "Claude Five Hour",
+            used: 100,
+            remaining: 0,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let fresh = quotaSnapshot(
+            id: "claude-new-five-hour",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "claude-five_hour",
+            used: 62,
+            remaining: 38,
+            fetchedAt: newer,
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([staleZero, fresh])
+
+        XCTAssertEqual(display.count, 1)
+        XCTAssertEqual(display.first?.buckets.count, 1)
+        XCTAssertEqual(display.first?.buckets.first?.displayRemainingPercent ?? -1, 38, accuracy: 0.0001)
+    }
+
+    func testQuotaStoreDisplaySnapshotsDeduplicatesSameBucketAcrossPunctuationVariants() {
+        let older = Date()
+        let newer = older.addingTimeInterval(60)
+        let first = quotaSnapshot(
+            id: "claude-spaced-five-hour",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "Claude Five Hour",
+            used: 100,
+            remaining: 0,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let second = quotaSnapshot(
+            id: "claude-dashed-five-hour",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "claude-five_hour",
+            used: 62,
+            remaining: 38,
+            fetchedAt: newer,
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([first, second])
+
+        XCTAssertEqual(display.count, 1)
+        XCTAssertEqual(display.first?.buckets.count, 1)
+        XCTAssertEqual(display.first?.buckets.first?.displayRemainingPercent ?? -1, 38, accuracy: 0.0001)
+    }
+
+    func testQuotaStoreDisplaySnapshotsDropsOldBucketsBehindExplicitStaleMarker() {
+        let older = Date()
+        let newer = older.addingTimeInterval(60)
+        let oldBucketed = quotaSnapshot(
+            id: "claude-old-five-hour",
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            bucketName: "Claude Five Hour",
+            used: 62,
+            remaining: 38,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let staleMarker = ProviderQuotaSnapshot(
+            id: "claude-stale-marker",
+            provider: ProviderID.claudeCode.rawValue,
+            providerID: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            accountStorageScope: .serverPrivate,
+            sourceKind: .provider,
+            sourceId: "claude-stale-marker",
+            fetchedAt: newer,
+            source: "test",
+            confidence: .stale,
+            statusMessage: "stale credentials",
+            buckets: [
+                ProviderQuotaBucket(
+                    name: "Claude Five Hour",
+                    used: 100,
+                    limit: 100,
+                    remaining: 0,
+                    window: "rollingHours",
+                    meta: ["unit": "percent"]
+                )
+            ],
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([oldBucketed, staleMarker])
+
+        XCTAssertTrue(display.isEmpty)
+    }
+
     func testQuotaStoreDisplaySnapshotsDropsProviderLevelSnapshotWhenAccountSnapshotsExist() {
         let now = Date(timeIntervalSince1970: 1_779_000_000)
         let providerLevel = quotaSnapshot(

@@ -148,7 +148,9 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                      .mediaCallInvite, .mediaCallAck,
                      .mediaStreamFrame,
                      .controlClassify, .controlActionLogEntry, .controlInputIntent,
-                     .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
+                     .controlApprovalRequest, .controlApprovalResponse,
+                     .controlAgentGrantRequest, .controlAgentGrantReceipt,
+                     .controlDenied:
                     // Mercury media and computer-control frames ride the iroh
                     // transport, not WSS. If a peer sends one here it is
                     // either a misrouted frame or an old-format probe; ignore.

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
@@ -53,9 +54,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.assistants.PiPendingPrompt
+import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.PiChatMessage
 import com.openburnbar.data.hermes.PiService
 import com.openburnbar.data.hermes.PiToolCall
+import com.openburnbar.ui.computeruse.AgentPermissionGrantSheet
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 import kotlinx.coroutines.delay
@@ -72,6 +75,7 @@ fun PiAssistantView(piService: PiService) {
     val errorText by piService.runtimeErrorText.collectAsState()
 
     var input by remember { mutableStateOf("") }
+    var permissionThreadID by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) { piService.refreshRuntime() }
@@ -92,6 +96,22 @@ fun PiAssistantView(piService: PiService) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Pi",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = { permissionThreadID = piService.ensureDesktopGrantThreadID() }) {
+                Icon(Icons.Filled.Security, contentDescription = "Agent permissions")
+            }
+        }
         if (!isReachable) {
             Text(
                 text = errorText ?: "Pi gateway not reached yet.",
@@ -123,6 +143,14 @@ fun PiAssistantView(piService: PiService) {
                     input = ""
                 }
             }
+        )
+    }
+
+    permissionThreadID?.let { threadID ->
+        AgentPermissionGrantSheet(
+            runtime = AssistantRuntimeID.PI.token,
+            threadId = threadID,
+            onDismiss = { permissionThreadID = null },
         )
     }
 }

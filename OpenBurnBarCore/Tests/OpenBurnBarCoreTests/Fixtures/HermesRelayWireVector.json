@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "Oz4brhF31mxOqrtoz8VDXWHK8BZvspR5kLGofmT7+YCnOWfoFOeVr9geZm13uUY=",
+  "chunkCiphertext" : "KsnKukE4+X4iEVnsx9Xhj2kLQvRXW4EORIN3iODPEA1yfQoNW+Y0Jj9EODhi\/ks=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
+  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "xrT1E\/a8SS6GuT\/DDMsZsYkye\/jX93mdfKFs2o0CEuKd7UQQ8Gitq8oY0P8n1jKt2bDmsno8dUcUOSimBGBi5ofTtEOhd38j\/3WFYrKepjjwCSs1y8qsb+RWeDN\/oUE0EqmBpkd3BLNeO9WEoWAdeYo5ShXJ6LrGMyutDG3AlAbglgxD5MF7yh8KXMtGVnmNo6WCU0mC",
+  "payloadCiphertext" : "cwMUtPMoAyrcxOBlKND\/jvGGPnvw7h+9fXzU6iTaHsAn6ck\/e+hN8JMSEG0MONZH4CYPumvizndOn9Jq\/3X2nY6CJ7f5kFiMSVIffDug3w3VmzQyRPxSWTDE2XvtJx+3ur8ZH+XSzg8oXLjJCnpavo7ITqHY4VZOdxSaKASrUHgUZ\/hTp+8ZnKk5oYx4Ly6hoiONiyOV",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BFr4rVH3JZEjPvNecklh9CjrS0tAVC83+ZOwDrS3aGdHZEHUgsti8aWS3PRV4gw27amoQZpYDJ5TRmdkqm8hJTnYQR12OkUNNiaWwfGOp2Oam2iDdkp9KPozFxRufPvKa13VSzqNZOOm3hfcMHWe2iWFjDLu31bmUCIals8="
+  "wrappedKey" : "BA+z611uruEOjXtrSuzNVNiuRs36YGCZSobU4zMqowdvsG7UHo9rQbKVAPeauv18\/sG0uRRQbfIK6uJK2fJiHmGGkc\/n80Jn3ZMV10zyeGkhINqxtPGhYsB3W7Sul1dj+Fyit9SXeoxeC6+d7kgtFjzX0vuTJaO\/O1gQzGw="
 }

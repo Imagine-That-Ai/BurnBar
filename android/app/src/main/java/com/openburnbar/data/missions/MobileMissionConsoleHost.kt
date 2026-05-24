@@ -7,6 +7,7 @@ import com.google.firebase.firestore.Query
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.assistants.DispatchException
+import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.assistants.toMissionSnapshotOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,7 @@ class MobileMissionConsoleHost private constructor(
     private val perMissionObservers = ConcurrentHashMap<String, Job>()
     private val observedMissions = ConcurrentHashMap<String, CLIAgentMissionSnapshot>()
     @Volatile private var observedOrder: List<String> = emptyList()
+    private val dismissedTerminalIDs = ConcurrentHashMap.newKeySet<String>()
 
     fun start() {
         if (authListener != null) return
@@ -77,6 +79,10 @@ class MobileMissionConsoleHost private constructor(
         targetProject: String? = null,
         commandsAllowed: Boolean = false,
         fileEditsAllowed: Boolean = false,
+        sourceSkillID: String? = null,
+        sourceSurface: String? = null,
+        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+        parentHermesThreadID: String? = null,
     ): String? {
         _isDispatching.value = true
         return try {
@@ -88,6 +94,10 @@ class MobileMissionConsoleHost private constructor(
                 targetProject = targetProject,
                 commandsAllowed = commandsAllowed,
                 fileEditsAllowed = fileEditsAllowed,
+                sourceSkillID = sourceSkillID,
+                sourceSurface = sourceSurface,
+                deliveryMode = deliveryMode,
+                parentHermesThreadID = parentHermesThreadID,
             )
             beginObservingIfNeeded(id)
             id
@@ -110,6 +120,19 @@ class MobileMissionConsoleHost private constructor(
         }
     }
 
+    suspend fun cancelMission(id: String) {
+        try {
+            dispatcher.cancelMission(id)
+        } catch (e: Exception) {
+            _inlineError.value = e.localizedMessage ?: "Cancellation failed."
+        }
+    }
+
+    fun dismissMission(id: String) {
+        dismissedTerminalIDs.add(id)
+        rebuildSnapshot()
+    }
+
     fun clearInlineError() { _inlineError.value = null }
 
     private fun restartListListener(uid: String?) {
@@ -118,6 +141,7 @@ class MobileMissionConsoleHost private constructor(
         perMissionObservers.clear()
         observedMissions.clear()
         observedOrder = emptyList()
+        dismissedTerminalIDs.clear()
         if (uid == null) {
             rebuildSnapshot()
             return
@@ -174,6 +198,7 @@ class MobileMissionConsoleHost private constructor(
 
     private fun rebuildSnapshot() {
         val orderedMissions = observedOrder.mapNotNull { observedMissions[it] }
+            .filter { it.id !in dismissedTerminalIDs }
         val macOnline = orderedMissions.any { snap ->
             (snap.selectedRuntime ?: "").isNotBlank() || snap.status !in setOf("pending", "queued")
         }
@@ -247,7 +272,5 @@ class MobileMissionConsoleHost private constructor(
 }
 
 private fun CLIAgentMissionSnapshot.toProjectField(): String? {
-    // CLIAgentMissionSnapshot doesn't carry targetProject in its Kotlin
-    // shape — keep the hook here so future schema bumps land cleanly.
-    return null
+    return targetProject
 }

@@ -75,11 +75,14 @@ final class MacFileTransferService: ObservableObject {
     /// without coupling the file-transfer service to the router type.
     typealias MercuryControlFrameDispatcher = @Sendable (
         _ frame: HermesRealtimeRelayFrame,
+        _ controlStreamID: UUID,
         _ replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async -> Void
     typealias MercuryControlStreamCloseHandler = @Sendable (
         _ uid: String,
-        _ connectionID: String
+        _ connectionID: String,
+        _ controlStreamID: UUID,
+        _ removedLastStreamForConnection: Bool
     ) async -> Void
 
     private let service: MediaFileTransferService
@@ -242,7 +245,7 @@ final class MacFileTransferService: ObservableObject {
             await stream.close()
             return
         }
-        await registry.register(stream: stream, uid: uid, connectionID: connectionID)
+        let lease = await registry.register(stream: stream, uid: uid, connectionID: connectionID)
         Self.log.info("mac_control_stream_mounted connectionID=\(connectionID, privacy: .public)")
         Self.debugTrace("mac_control_stream_mounted connectionID=\(connectionID)")
         // Bind a Sendable ack-sender to the same stream so inbound
@@ -289,7 +292,7 @@ final class MacFileTransferService: ObservableObject {
                     if let mercuryDispatcher {
                         Self.log.info("mac_control_stream_dispatch_mercury type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")
                         Self.debugTrace("mac_control_stream_dispatch_mercury type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "")")
-                        await mercuryDispatcher(frame, ackSender)
+                        await mercuryDispatcher(frame, lease.id, ackSender)
                     } else {
                         Self.log.error("mac_control_stream_missing_mercury_dispatcher type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")
                         Self.debugTrace("mac_control_stream_missing_mercury_dispatcher type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "")")
@@ -317,9 +320,14 @@ final class MacFileTransferService: ObservableObject {
             Self.debugTrace("mac_control_stream_read_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
             lastError = .publishFailed("control stream read: \(error.localizedDescription)")
         }
-        await registry.invalidate(uid: uid, connectionID: connectionID)
-        if let mercuryControlStreamCloseHandler {
-            await mercuryControlStreamCloseHandler(uid, connectionID)
+        let invalidation = await registry.invalidateWithResult(lease)
+        if invalidation.didInvalidate, let mercuryControlStreamCloseHandler {
+            await mercuryControlStreamCloseHandler(
+                uid,
+                connectionID,
+                lease.id,
+                invalidation.removedLastStreamForConnection
+            )
         }
         Self.log.info("mac_control_stream_closed connectionID=\(connectionID, privacy: .public)")
         Self.debugTrace("mac_control_stream_closed connectionID=\(connectionID)")
@@ -404,7 +412,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
     private let streamClass: MediaStreamClass
     private let heartbeatInterval: TimeInterval
     private let extraHeartbeatCapabilities: [String]
-    private let codec = MediaPacketCodec()
+    private let codec = MediaPacketCodec(maxPayloadBytes: MediaFrameV2Codec.defaultMaxPayloadBytes)
     private let frameV2Codec = MediaFrameV2Codec()
     private var heartbeatTask: Task<Void, Never>?
 
@@ -417,6 +425,23 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
         extraHeartbeatCapabilities: [String] = []
     ) {
         self.sendGate = MercuryControlStreamSendGate(stream: stream)
+        self.uid = uid
+        self.connectionID = connectionID
+        self.streamClass = streamClass
+        self.heartbeatInterval = heartbeatInterval
+        self.extraHeartbeatCapabilities = extraHeartbeatCapabilities
+        startHeartbeatLoop()
+    }
+
+    init(
+        sender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void,
+        uid: String,
+        connectionID: String,
+        streamClass: MediaStreamClass,
+        heartbeatInterval: TimeInterval = 2.5,
+        extraHeartbeatCapabilities: [String] = []
+    ) {
+        self.sendGate = MercuryControlStreamSendGate(sender: sender)
         self.uid = uid
         self.connectionID = connectionID
         self.streamClass = streamClass
@@ -576,13 +601,19 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
 }
 
 private actor MercuryControlStreamSendGate {
-    private let stream: any IrohRelayStream
+    private let sender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void
 
     init(stream: any IrohRelayStream) {
-        self.stream = stream
+        self.sender = { [stream] frame in
+            try await stream.send(frame)
+        }
+    }
+
+    init(sender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void) {
+        self.sender = sender
     }
 
     func send(_ frame: HermesRealtimeRelayFrame) async throws {
-        try await stream.send(frame)
+        try await sender(frame)
     }
 }

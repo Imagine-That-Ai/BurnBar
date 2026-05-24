@@ -15,6 +15,9 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(provider.displayName, "MiniMax")
         XCTAssertEqual(provider.persistedToken, "minimax")
         XCTAssertEqual(AgentProvider.fromPersistedToken("minimax"), .minimax)
+        XCTAssertEqual(AgentProvider.fromPersistedToken("claude-code"), .claudeCode)
+        XCTAssertEqual(AgentProvider.fromPersistedToken("Claude Code"), .claudeCode)
+        XCTAssertEqual(AgentProvider.fromPersistedToken("open-code"), .openCode)
         XCTAssertNil(AgentProvider.fromPersistedToken("unknown"))
     }
 

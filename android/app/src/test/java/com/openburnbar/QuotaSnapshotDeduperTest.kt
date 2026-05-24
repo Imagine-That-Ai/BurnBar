@@ -3,9 +3,12 @@ package com.openburnbar
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.QuotaBucket
 import com.openburnbar.data.models.deduplicatedByProviderAccount
+import com.openburnbar.data.models.displayRemainingPercent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Duration
+import java.time.Instant
 
 class QuotaSnapshotDeduperTest {
     @Test
@@ -87,5 +90,127 @@ class QuotaSnapshotDeduperTest {
         assertEquals(1, deduped.size)
         assertEquals("claude_account_fresh", deduped.single().id)
         assertEquals("acct_1", deduped.single().accountId)
+    }
+
+    @Test
+    fun `time stale account bucket is dropped when fresh account snapshot exists`() {
+        val newer = Instant.now()
+        val older = newer.minus(Duration.ofHours(13))
+        val snapshots = listOf(
+            ProviderQuotaSnapshot(
+                id = "claude_old_zero",
+                provider = "claude_code",
+                providerId = "claude_code",
+                accountId = "acct_1",
+                accountLabel = "Claude Work",
+                sourceId = "old-cache",
+                updatedAt = older.toString(),
+                fetchedAt = older.toString(),
+                buckets = listOf(
+                    QuotaBucket(name = "Claude Five Hour", used = 100.0, limit = 100.0, remaining = 0.0, window = "rollingHours")
+                )
+            ),
+            ProviderQuotaSnapshot(
+                id = "claude_fresh",
+                provider = "claude_code",
+                providerId = "claude_code",
+                accountId = "acct_1",
+                accountLabel = "Claude Work",
+                sourceId = "fresh-cache",
+                updatedAt = newer.toString(),
+                fetchedAt = newer.toString(),
+                buckets = listOf(
+                    QuotaBucket(name = "claude-five_hour", used = 62.0, limit = 100.0, remaining = 38.0, window = "rollingHours")
+                )
+            )
+        )
+
+        val deduped = snapshots.deduplicatedByProviderAccount()
+
+        assertEquals(1, deduped.size)
+        assertEquals(1, deduped.single().buckets.size)
+        assertEquals(38.0, deduped.single().buckets.single().displayRemainingPercent ?: -1.0, 0.001)
+    }
+
+    @Test
+    fun `same bucket punctuation variants collapse to the freshest bucket`() {
+        val older = Instant.now()
+        val newer = older.plus(Duration.ofMinutes(1))
+        val snapshots = listOf(
+            ProviderQuotaSnapshot(
+                id = "claude_spaced",
+                provider = "claude_code",
+                providerId = "claude_code",
+                accountId = "acct_1",
+                accountLabel = "Claude Work",
+                sourceId = "spaced",
+                updatedAt = older.toString(),
+                fetchedAt = older.toString(),
+                buckets = listOf(
+                    QuotaBucket(name = "Claude Five Hour", used = 100.0, limit = 100.0, remaining = 0.0, window = "rollingHours")
+                )
+            ),
+            ProviderQuotaSnapshot(
+                id = "claude_dashed",
+                provider = "claude_code",
+                providerId = "claude_code",
+                accountId = "acct_1",
+                accountLabel = "Claude Work",
+                sourceId = "dashed",
+                updatedAt = newer.toString(),
+                fetchedAt = newer.toString(),
+                buckets = listOf(
+                    QuotaBucket(name = "claude-five_hour", used = 62.0, limit = 100.0, remaining = 38.0, window = "rollingHours")
+                )
+            )
+        )
+
+        val deduped = snapshots.deduplicatedByProviderAccount()
+
+        assertEquals(1, deduped.size)
+        assertEquals(1, deduped.single().buckets.size)
+        assertEquals(38.0, deduped.single().buckets.single().displayRemainingPercent ?: -1.0, 0.001)
+    }
+
+    @Test
+    fun `fresh explicit stale marker drops older bucketed quota`() {
+        val older = Instant.now()
+        val newer = older.plus(Duration.ofMinutes(1))
+        val snapshots = listOf(
+            ProviderQuotaSnapshot(
+                id = "claude_old",
+                provider = "claude_code",
+                providerId = "claude_code",
+                accountId = "acct_1",
+                accountLabel = "Claude Work",
+                sourceId = "old",
+                updatedAt = older.toString(),
+                fetchedAt = older.toString(),
+                buckets = listOf(
+                    QuotaBucket(name = "Claude Five Hour", used = 62.0, limit = 100.0, remaining = 38.0, window = "rollingHours")
+                )
+            ),
+            ProviderQuotaSnapshot(
+                id = "claude_stale_marker",
+                provider = "claude_code",
+                providerId = "claude_code",
+                accountId = "acct_1",
+                accountLabel = "Claude Work",
+                sourceId = "stale",
+                confidence = "stale",
+                statusMessage = "stale credentials",
+                updatedAt = newer.toString(),
+                fetchedAt = newer.toString(),
+                buckets = listOf(
+                    QuotaBucket(name = "Claude Five Hour", used = 100.0, limit = 100.0, remaining = 0.0, window = "rollingHours")
+                )
+            )
+        )
+
+        val deduped = snapshots.deduplicatedByProviderAccount()
+
+        assertEquals(1, deduped.size)
+        assertEquals("claude_stale_marker", deduped.single().id)
+        assertTrue(deduped.single().buckets.isEmpty())
     }
 }

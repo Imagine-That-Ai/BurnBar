@@ -24,6 +24,9 @@ struct HermesSquarePinnedGrid: View {
     var modelProvider: (AgentIdentity) -> AgentProvider? = { _ in nil }
     let onTap: (String) -> Void
     let onLongPress: (String) -> Void
+    var onMoveLeft: ((String) -> Void)? = nil
+    var onMoveRight: ((String) -> Void)? = nil
+    var onUnpin: ((String) -> Void)? = nil
 
     private let columns = 4
     private let cellHeight: CGFloat = 78
@@ -40,6 +43,29 @@ struct HermesSquarePinnedGrid: View {
                         onTap: { onTap(uri) },
                         onLongPress: { onLongPress(uri) }
                     )
+                    .contextMenu {
+                        if let onMoveLeft, let index = config.pinnedURIs.firstIndex(of: uri), index > 0 {
+                            Button {
+                                onMoveLeft(uri)
+                            } label: {
+                                Label("Move Left", systemImage: "arrow.left")
+                            }
+                        }
+                        if let onMoveRight, let index = config.pinnedURIs.firstIndex(of: uri), index < config.pinnedURIs.count - 1 {
+                            Button {
+                                onMoveRight(uri)
+                            } label: {
+                                Label("Move Right", systemImage: "arrow.right")
+                            }
+                        }
+                        if let onUnpin {
+                            Button(role: .destructive) {
+                                onUnpin(uri)
+                            } label: {
+                                Label("Unpin Agent", systemImage: "pin.slash")
+                            }
+                        }
+                    }
                 }
             }
         }

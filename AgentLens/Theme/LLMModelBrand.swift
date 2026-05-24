@@ -18,6 +18,8 @@ enum LLMModelBrand: Hashable {
     case amazon
     case alibaba
     case ollama     // Ollama local models
+    case openBurnBar // OpenBurnBar routed models
+    case zai         // Z.ai / GLM models
     case unknown
 
     /// Bundled asset catalog image name for every brand.
@@ -39,6 +41,8 @@ enum LLMModelBrand: Hashable {
         case .amazon:     return "AmazonLogo"
         case .alibaba:    return "AlibabaLogo"
         case .ollama:     return "OllamaLogo"
+        case .openBurnBar: return "AppLogo"
+        case .zai:        return "ZaiLogo"
         case .unknown:    return ""
         }
     }
@@ -66,14 +70,23 @@ enum LLMModelBrand: Hashable {
         case .amazon: return Color(hex: "FF9900")
         case .alibaba: return Color(hex: "FF6A00")
         case .ollama: return Color(hex: "8B8589")
+        case .openBurnBar: return Color(hex: "FA5053")
+        case .zai: return Color(hex: "8B5CF6")
         case .unknown: return DesignSystem.Colors.textSecondary
         }
     }
 
-    var sfSymbolFallback: String { "cube.transparent" }
+    var sfSymbolFallback: String {
+        switch self {
+        case .openBurnBar: return "flame.fill"
+        case .zai: return "bolt.fill"
+        default: return "cube.transparent"
+        }
+    }
 
     static func infer(fromModelKey key: String) -> LLMModelBrand {
         let key = key.lowercased()
+        if key.contains("openburnbar") || key.contains("burnbar") { return .openBurnBar }
         if key.contains("claude") || key.contains("anthropic") { return .anthropic }
         if key.contains("gpt")
             || key.contains("openai")
@@ -98,6 +111,7 @@ enum LLMModelBrand: Hashable {
         if key.contains("nova") || key.contains("amazon") { return .amazon }
         if key.contains("dashscope") || key.contains("alibaba") || key.contains("qwq") { return .alibaba }
         if key.contains("mlx-community") || key.contains("mlx_community") || key.hasPrefix("mlx") { return .apple }
+        if key.contains("zai") || key.contains("glm") { return .zai }
         return .unknown
     }
 }

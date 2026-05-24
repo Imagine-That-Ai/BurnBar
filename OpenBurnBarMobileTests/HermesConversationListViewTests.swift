@@ -228,6 +228,8 @@ final class HermesConversationListViewTests: XCTestCase {
         XCTAssertEqual(topic.agentURI, agent.id)
         XCTAssertEqual(topic.topicID, AgentBrandQuickActionComposer.defaultSubscriptionTopicID)
         XCTAssertEqual(topic.cadence, .weekly)
+        XCTAssertEqual(topic.deliveryMode, .actionOnly)
+        XCTAssertEqual(topic.minimumEventImportance, .actionRequired)
         XCTAssertEqual(topic.displayName, "\(agent.displayName) updates")
         XCTAssertNotNil(topic.consentGivenAt)
     }
