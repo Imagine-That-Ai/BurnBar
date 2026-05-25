@@ -19,7 +19,7 @@ let package = Package(
         .package(path: "../OpenBurnBarCore"),
         // Pinned to same revision as `project.yml` (OpenBurnBar app target).
         .package(url: "https://github.com/SahebRoy92/GRDB-SQLCipher.git", exact: "6.29.3"),
-        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.0.0")
+        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.14.0")
     ],
     targets: [
         .target(
