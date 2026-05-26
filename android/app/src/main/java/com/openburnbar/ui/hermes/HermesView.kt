@@ -41,6 +41,8 @@ import com.openburnbar.data.hermes.*
 import com.openburnbar.ui.components.*
 import com.openburnbar.ui.computeruse.AgentPermissionGrantSheet
 import com.openburnbar.ui.navigation.HermesPendingPrompt
+import com.openburnbar.ui.text.expandStaticTextSnippetDraft
+import com.openburnbar.ui.text.rememberTextExpansionSnippets
 import com.openburnbar.ui.theme.*
 import com.openburnbar.util.Formatting
 import kotlinx.coroutines.launch
@@ -52,6 +54,7 @@ fun HermesView(
     initialThreadId: String? = null
 ) {
     val context = LocalContext.current
+    val textExpansionSnippets by rememberTextExpansionSnippets()
     var showConversationList by remember { mutableStateOf(true) }
     var showSessionsLibrary by remember { mutableStateOf(false) }
     var showSetupWizard by remember { mutableStateOf(false) }
@@ -173,6 +176,7 @@ fun HermesView(
                 },
                 onDisconnect = { hermesService.disconnect() },
                 threadId = currentThreadID.orEmpty(),
+                textExpansionSnippets = textExpansionSnippets,
             )
         }
     }
@@ -299,6 +303,7 @@ fun ChatView(
     onRemoveAttachment: (String) -> Unit = {},
     isStreaming: Boolean = false,
     threadId: String = "",
+    textExpansionSnippets: List<com.openburnbar.data.text.TextExpansionSnippet> = emptyList(),
 ) {
     androidx.compose.runtime.LaunchedEffect(threadId) {
         if (threadId.isNotEmpty()) {
@@ -450,7 +455,7 @@ fun ChatView(
                     ) {
                         androidx.compose.foundation.text.BasicTextField(
                             value = inputText,
-                            onValueChange = { inputText = it },
+                            onValueChange = { inputText = expandStaticTextSnippetDraft(it, textExpansionSnippets) },
                             enabled = !isStreaming,
                             textStyle = LocalTextStyle.current.copy(
                                 color = MaterialTheme.colorScheme.onSurface,

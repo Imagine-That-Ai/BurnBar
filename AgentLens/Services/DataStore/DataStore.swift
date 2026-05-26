@@ -24,6 +24,7 @@ actor DataStoreActor {
     nonisolated let switcherStore: SwitcherProfileStore
     nonisolated let backfillCursorStore: BackfillCursorStore
     nonisolated let providerAccountStore: ProviderAccountStore
+    nonisolated let textExpansionSnippetStore: TextExpansionSnippetStore
 
     init(databaseQueue: any DatabaseWriter, runMigrations: Bool = true) throws {
         dbQueue = databaseQueue
@@ -40,6 +41,7 @@ actor DataStoreActor {
         switcherStore = SwitcherProfileStore(dbQueue: databaseQueue)
         backfillCursorStore = BackfillCursorStore(dbQueue: databaseQueue)
         providerAccountStore = ProviderAccountStore(dbQueue: databaseQueue)
+        textExpansionSnippetStore = TextExpansionSnippetStore(dbQueue: databaseQueue)
 
         if runMigrations {
             try database.runMigrationsSafely()

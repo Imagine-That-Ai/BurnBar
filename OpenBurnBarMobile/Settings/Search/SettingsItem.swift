@@ -123,6 +123,8 @@ enum SettingsPageRoute: Hashable, Codable {
     /// `MediaSettingsView` — Mercury per-partner save preferences,
     /// iPad multi-cam toggle, session stats overlay toggle.
     case media
+    /// `MobileTextExpansionSettingsView` — && snippets and keyboard snapshot.
+    case textExpansion
     /// `ThemeSettingsView` — Custom visual/appearance configurations sub-page
     case theme
     /// `QuotaCustomizationSettingsView` — Custom quota sorting, toggles, and percentage settings
@@ -154,6 +156,7 @@ enum SettingsAnchor {
     static let hermesRow = "hub.hermes.row"
     static let piRow = "hub.pi.row"
     static let mediaRow = "hub.media.row"
+    static let textExpansionRow = "hub.textExpansion.row"
     static let aboutVersion = "hub.about.version"
     static let aboutPrivacy = "hub.about.privacy"
     static let aboutTerms = "hub.about.terms"

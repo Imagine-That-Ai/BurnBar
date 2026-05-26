@@ -75,6 +75,12 @@ enum class HermesRealtimeRelayFrameType {
     @SerialName("control.system.permission.request") CONTROL_SYSTEM_PERMISSION_REQUEST,
     @SerialName("control.system.permission.status") CONTROL_SYSTEM_PERMISSION_STATUS,
     @SerialName("control.denied") CONTROL_DENIED,
+    @SerialName("remote_unlock.session") REMOTE_UNLOCK_SESSION,
+    @SerialName("remote_unlock.state") REMOTE_UNLOCK_STATE,
+    @SerialName("remote_unlock.input") REMOTE_UNLOCK_INPUT,
+    @SerialName("remote_unlock.credential") REMOTE_UNLOCK_CREDENTIAL,
+    @SerialName("remote_unlock.result") REMOTE_UNLOCK_RESULT,
+    @SerialName("remote_unlock.denied") REMOTE_UNLOCK_DENIED,
 }
 
 @Serializable
@@ -221,6 +227,7 @@ data class HermesRealtimeRelayMirrorRequest(
     val viewerId: String? = null,
     val viewerDeviceId: String? = null,
     val controlAuthorityPeerNodeId: String? = null,
+    val remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null,
 )
 
 @Serializable
@@ -246,6 +253,8 @@ data class HermesRealtimeRelayMirrorAck(
     val viewerCount: Int? = null,
     val maxViewers: Int? = null,
     val controlOwnerViewerId: String? = null,
+    val remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = null,
+    val remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = null,
 ) {
     @Serializable
     enum class Decision {
@@ -317,6 +326,7 @@ data class HermesRealtimeRelayPresenceHeartbeat(
     val capabilities: List<String> = emptyList(),
     val blurredWallpaperBase64: String? = null,
     val streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = null,
+    val remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = null,
     /** ISO-8601 string. Matches the Swift `Date` encoding via JSONEncoder default. */
     val sentAt: String,
 )
@@ -360,6 +370,155 @@ data class HermesRealtimeRelayStreamingCapabilities(
 )
 
 @Serializable
+enum class HermesRealtimeRelayMacLockState {
+    @SerialName("unlocked") UNLOCKED,
+    @SerialName("screen_saver") SCREEN_SAVER,
+    @SerialName("screen_locked") SCREEN_LOCKED,
+    @SerialName("display_sleeping") DISPLAY_SLEEPING,
+    @SerialName("login_window") LOGIN_WINDOW,
+    @SerialName("security_agent") SECURITY_AGENT,
+    @SerialName("fast_user_switching") FAST_USER_SWITCHING,
+    @SerialName("remote_desktop_curtain") REMOTE_DESKTOP_CURTAIN,
+    @SerialName("reboot_login_window") REBOOT_LOGIN_WINDOW,
+    @SerialName("filevault_preboot") FILEVAULT_PREBOOT,
+    @SerialName("unknown") UNKNOWN,
+}
+
+@Serializable
+enum class HermesRealtimeRelayRemoteUnlockBackend {
+    @SerialName("screen_capture_kit") SCREEN_CAPTURE_KIT,
+    @SerialName("persistent_screen_capture_kit") PERSISTENT_SCREEN_CAPTURE_KIT,
+    @SerialName("apple_screen_sharing_loopback") APPLE_SCREEN_SHARING_LOOPBACK,
+    @SerialName("filevault_ssh") FILEVAULT_SSH,
+    @SerialName("unavailable") UNAVAILABLE,
+}
+
+@Serializable
+enum class HermesRealtimeRelayRemoteUnlockCertificationStatus {
+    @SerialName("uncertified") UNCERTIFIED,
+    @SerialName("certified") CERTIFIED,
+    @SerialName("stale") STALE,
+    @SerialName("blocked") BLOCKED,
+    @SerialName("failed") FAILED,
+}
+
+@Serializable
+data class HermesRealtimeRelayRemoteUnlockCapabilities(
+    val enabled: Boolean,
+    val certificationStatus: HermesRealtimeRelayRemoteUnlockCertificationStatus,
+    val certifiedAt: String? = null,
+    val certifiedOSBuild: String? = null,
+    val activeBackend: HermesRealtimeRelayRemoteUnlockBackend,
+    val supportedBackends: List<HermesRealtimeRelayRemoteUnlockBackend> = emptyList(),
+    val supportedLockStates: List<HermesRealtimeRelayMacLockState> = emptyList(),
+    val blockers: List<String> = emptyList(),
+    val allowsCredentialPaste: Boolean = false,
+    val credentialRecipientKeyId: String? = null,
+    val credentialRecipientPublicKeyBase64: String? = null,
+    val credentialEnvelopeAlgorithm: String? = null,
+    val fileVaultSSHSupported: Boolean = false,
+)
+
+@Serializable
+data class HermesRealtimeRelayRemoteUnlockSession(
+    val requestId: String,
+    val sessionId: String? = null,
+    val intent: Intent,
+    val requesterDisplayName: String,
+    val viewerDeviceId: String? = null,
+    val requestedAt: String,
+    val expiresAt: String,
+    val localAuthenticationSatisfied: Boolean,
+    val requestedLockState: HermesRealtimeRelayMacLockState? = null,
+    val requestedBackend: HermesRealtimeRelayRemoteUnlockBackend? = null,
+    val authority: HermesRealtimeRelayAuthorityEnvelope,
+) {
+    @Serializable
+    enum class Intent {
+        @SerialName("request") REQUEST,
+        @SerialName("attach") ATTACH,
+        @SerialName("cancel") CANCEL,
+    }
+}
+
+@Serializable
+data class HermesRealtimeRelayRemoteUnlockState(
+    val sessionId: String? = null,
+    val lockState: HermesRealtimeRelayMacLockState,
+    val backend: HermesRealtimeRelayRemoteUnlockBackend,
+    val capabilities: HermesRealtimeRelayRemoteUnlockCapabilities,
+    val controlOwnerViewerId: String? = null,
+    val observedAt: String,
+)
+
+@Serializable
+enum class HermesRealtimeRelayRemoteUnlockInputAction {
+    @SerialName("focus_password_field") FOCUS_PASSWORD_FIELD,
+    @SerialName("submit") SUBMIT,
+    @SerialName("escape") ESCAPE,
+    @SerialName("disconnect") DISCONNECT,
+    @SerialName("key") KEY,
+    @SerialName("pointer_move") POINTER_MOVE,
+    @SerialName("pointer_click") POINTER_CLICK,
+}
+
+@Serializable
+data class HermesRealtimeRelayRemoteUnlockInput(
+    val requestId: String,
+    val sessionId: String,
+    val action: HermesRealtimeRelayRemoteUnlockInputAction,
+    val key: String? = null,
+    val normalizedX: Double? = null,
+    val normalizedY: Double? = null,
+    val clientIntentId: String,
+    val requestedAt: String,
+    val authority: HermesRealtimeRelayAuthorityEnvelope,
+)
+
+@Serializable
+data class HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+    val requestId: String,
+    val sessionId: String,
+    val clientIntentId: String,
+    val credentialKind: CredentialKind,
+    val recipientKeyId: String,
+    val algorithm: String,
+    val ciphertextBase64: String,
+    val aadBase64: String,
+    val redactedByteCount: Int,
+    val requestedAt: String,
+    val expiresAt: String,
+    val authority: HermesRealtimeRelayAuthorityEnvelope,
+) {
+    @Serializable
+    enum class CredentialKind {
+        @SerialName("typed_password") TYPED_PASSWORD,
+        @SerialName("clipboard_password") CLIPBOARD_PASSWORD,
+    }
+}
+
+@Serializable
+data class HermesRealtimeRelayRemoteUnlockResult(
+    val requestId: String,
+    val sessionId: String? = null,
+    val status: Status,
+    val lockState: HermesRealtimeRelayMacLockState? = null,
+    val backend: HermesRealtimeRelayRemoteUnlockBackend? = null,
+    val detail: String? = null,
+    val completedAt: String,
+) {
+    @Serializable
+    enum class Status {
+        @SerialName("accepted") ACCEPTED,
+        @SerialName("denied") DENIED,
+        @SerialName("failed") FAILED,
+        @SerialName("expired") EXPIRED,
+        @SerialName("unlocked") UNLOCKED,
+        @SerialName("disconnected") DISCONNECTED,
+    }
+}
+
+@Serializable
 data class HermesRealtimeRelayControlPayload(
     val streamClass: String? = null,
     val sessionId: String? = null,
@@ -373,6 +532,11 @@ data class HermesRealtimeRelayControlPayload(
     val clipboardRequest: HermesRealtimeRelayClipboardRequest? = null,
     val clipboardResponse: HermesRealtimeRelayClipboardResponse? = null,
     val agentContextTarget: HermesRealtimeRelayAgentContextTarget? = null,
+    val remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null,
+    val remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = null,
+    val remoteUnlockInput: HermesRealtimeRelayRemoteUnlockInput? = null,
+    val remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope? = null,
+    val remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult? = null,
     val systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest? = null,
     val systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = null,
     val denied: HermesRealtimeRelayControlDenied? = null,

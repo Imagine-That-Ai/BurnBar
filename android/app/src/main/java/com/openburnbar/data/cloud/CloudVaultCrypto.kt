@@ -55,6 +55,26 @@ object CloudVaultCrypto {
         "into", "onto", "can", "could", "should", "would"
     )
 
+    fun sealText(text: String, vaultKey: ByteArray): CloudVaultSealedText {
+        val plaintext = text.toByteArray(Charsets.UTF_8)
+        val nonce = ByteArray(12).apply {
+            java.security.SecureRandom().nextBytes(this)
+        }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE.let { Cipher.ENCRYPT_MODE }, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(128, nonce))
+        val ciphertextAndTag = cipher.doFinal(plaintext)
+        val tagSize = 16
+        val ciphertext = ciphertextAndTag.copyOfRange(0, ciphertextAndTag.size - tagSize)
+        val tag = ciphertextAndTag.copyOfRange(ciphertextAndTag.size - tagSize, ciphertextAndTag.size)
+        return CloudVaultSealedText(
+            algorithm = "AES-256-GCM",
+            keyVersion = 1,
+            nonce = Base64.encodeToString(nonce, Base64.NO_WRAP),
+            ciphertext = Base64.encodeToString(ciphertext, Base64.NO_WRAP),
+            tag = Base64.encodeToString(tag, Base64.NO_WRAP)
+        )
+    }
+
     fun openText(envelope: CloudVaultSealedText, vaultKey: ByteArray): String {
         require(envelope.algorithm == "AES-256-GCM") { "Unsupported envelope algorithm" }
         val nonce = Base64.decode(envelope.nonce, Base64.DEFAULT)

@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "jFu0GAe2Ih7gRmo5lQ4\/mciY+3txSiXURVf0HPe1K91WuSgB4U+5jqXNfANVgiA=",
+  "chunkCiphertext" : "k4JhVabF4o8hdbwTRUgtEJKdvxUNzivG4ohmexf5Iwt8h5kyTbgO+ocsoebI9i4=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
+  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "lmVSglYoAj2uSRe1AswqcPU+gakQjT2vlycVntHkTlHjYB5EzjQboIOZlK6s5Pi7eUAo5iGkz2+8nt89\/y7cvCxxmUZNbks7MpP7QPr\/6NtWwoGQQlESg33mDxC2JGSvXbMvZC6PAaRkplivw8fie7yuCgKw2onxnYhm+0S+OSOivLcsZouzJ0sya0GhHCnUZo4knnmf",
+  "payloadCiphertext" : "1kO8GNSFMjGc7\/AXs5pfOpzUtqQNlbKY1ToDSL6Gg7EQboF6HQqmPGphiESOfaubHAAclf2\/sHKjrVGWEoT6x+lcl6neKZnnugtGXfyKSOvXki6TCR8ZOVvBwZA9GX73L5mUfWdkMwW4OADex5osJWghshiFHZkYpD6Aa+taXtPaBKPjiaTIOawl7TWvwOKIbUio345c",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BGqzHl0\/a3Eys4g0TpkjdYMq0ZOsEZA3KueAEAsPRLOJD1GBtyYAPGbFM8wUCcrariQRCeF2h+SwYdVPFXwU\/OAMWJK2YG76CI74BFkjiWAxNpdHmTFNkMFCBiddnWreCE0MdX0KPko5DdSNATPOsEHlmQeHZ86fuaMqOao="
+  "wrappedKey" : "BBTN\/VXrYJFhA1U9mezMc+N7L4pxDjqMx\/HvWtw3LPBEClpp\/pIX3a+LTFhPGGOiFgPrixFA0+YYiCWBVgLqgK0IyhB\/myTBrXxbR1YyccXO9VO1ytl\/F7ZgDguVHu9OR1xw8A2GsKXxWqxu2mWezmiivjzfU3iR3TkOgVw="
 }

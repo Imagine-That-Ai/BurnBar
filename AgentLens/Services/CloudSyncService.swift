@@ -395,6 +395,27 @@ final class CloudSyncService {
         }
     }
 
+    func syncTextExpansionSnippets() async {
+        guard accountManager.isFirebaseAvailable,
+              accountManager.isSignedIn,
+              accountManager.isCloudSyncEnabled,
+              !syncIsSuppressed(),
+              !isSyncing else { return }
+
+        isSyncing = true
+        lastSyncError = nil
+        let context = CloudSyncContext(
+            dataStore: dataStore,
+            accountManager: accountManager,
+            settingsManager: settingsManager
+        )
+        let service = TextExpansionSyncService(context: context)
+        await service.sync()
+        lastSyncDate = service.lastSyncDate ?? lastSyncDate
+        lastSyncError = service.lastSyncError
+        isSyncing = false
+    }
+
     // MARK: - Cross-Device Download
 
     /// Downloads remote data from Firestore with durable, per-account, per-collection watermark tracking.

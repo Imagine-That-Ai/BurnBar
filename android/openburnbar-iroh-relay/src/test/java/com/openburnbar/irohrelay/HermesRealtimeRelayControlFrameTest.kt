@@ -70,6 +70,116 @@ class HermesRealtimeRelayControlFrameTest {
     }
 
     @Test
+    fun codecRoundTripsRemoteUnlockCredentialAndResultFrames() {
+        val authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId = "android-phone-1",
+            counter = 43,
+            timestamp = 721_692_800.123,
+            intentHashBlake3 = "a".repeat(64),
+            signatureEd25519 = "signature",
+        )
+        val credentialFrame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_CREDENTIAL,
+            uid = "uid-unlock",
+            connectionId = "conn-unlock",
+            requestId = "credential-1",
+            control = HermesRealtimeRelayControlPayload(
+                streamClass = "remote_unlock",
+                sessionId = "unlock-session-1",
+                remoteUnlockCredential = HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+                    requestId = "credential-1",
+                    sessionId = "unlock-session-1",
+                    clientIntentId = "client-credential-1",
+                    credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.CLIPBOARD_PASSWORD,
+                    recipientKeyId = "mac-remote-unlock-key",
+                    algorithm = "HPKE-X25519-SHA256-CHACHAPOLY",
+                    ciphertextBase64 = "Y2lwaGVydGV4dA==",
+                    aadBase64 = "YWFk",
+                    redactedByteCount = 16,
+                    requestedAt = "2026-03-22T10:26:42.000Z",
+                    expiresAt = "2026-03-22T10:27:12.000Z",
+                    authority = authority,
+                ),
+            ),
+        )
+        val stateFrame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_STATE,
+            uid = "uid-unlock",
+            connectionId = "conn-unlock",
+            requestId = "unlock-session-1",
+            control = HermesRealtimeRelayControlPayload(
+                streamClass = "remote_unlock",
+                sessionId = "unlock-session-1",
+                remoteUnlockState = HermesRealtimeRelayRemoteUnlockState(
+                    sessionId = "unlock-session-1",
+                    lockState = HermesRealtimeRelayMacLockState.LOGIN_WINDOW,
+                    backend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
+                    capabilities = HermesRealtimeRelayRemoteUnlockCapabilities(
+                        enabled = true,
+                        certificationStatus = HermesRealtimeRelayRemoteUnlockCertificationStatus.CERTIFIED,
+                        certifiedAt = "2026-03-22T10:26:40.000Z",
+                        certifiedOSBuild = "23G93",
+                        activeBackend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
+                        supportedBackends = listOf(HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK),
+                        supportedLockStates = listOf(HermesRealtimeRelayMacLockState.LOGIN_WINDOW),
+                        allowsCredentialPaste = true,
+                        credentialRecipientKeyId = "mac-remote-unlock-key",
+                        credentialRecipientPublicKeyBase64 = "cHVibGljLWtleQ==",
+                        credentialEnvelopeAlgorithm = "HPKE-X25519-SHA256-CHACHAPOLY",
+                    ),
+                    controlOwnerViewerId = "viewer-1",
+                    observedAt = "2026-03-22T10:26:41.000Z",
+                ),
+            ),
+        )
+        val resultFrame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_RESULT,
+            uid = "uid-unlock",
+            connectionId = "conn-unlock",
+            requestId = "credential-1",
+            control = HermesRealtimeRelayControlPayload(
+                streamClass = "remote_unlock",
+                sessionId = "unlock-session-1",
+                remoteUnlockResult = HermesRealtimeRelayRemoteUnlockResult(
+                    requestId = "credential-1",
+                    sessionId = "unlock-session-1",
+                    status = HermesRealtimeRelayRemoteUnlockResult.Status.UNLOCKED,
+                    lockState = HermesRealtimeRelayMacLockState.UNLOCKED,
+                    backend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
+                    detail = "unlocked",
+                    completedAt = "2026-03-22T10:26:50.000Z",
+                ),
+            ),
+        )
+
+        val codec = IrohRelayFrameCodec()
+        val decodedCredential = codec.decode(codec.encode(credentialFrame)).frame
+        val decodedState = codec.decode(codec.encode(stateFrame)).frame
+        val decodedResult = codec.decode(codec.encode(resultFrame)).frame
+
+        assertEquals(HermesRealtimeRelayFrameType.REMOTE_UNLOCK_CREDENTIAL, decodedCredential.type)
+        assertEquals("remote_unlock", decodedCredential.control?.streamClass)
+        assertEquals(
+            HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.CLIPBOARD_PASSWORD,
+            decodedCredential.control?.remoteUnlockCredential?.credentialKind,
+        )
+        assertEquals(16, decodedCredential.control?.remoteUnlockCredential?.redactedByteCount)
+        assertEquals("HPKE-X25519-SHA256-CHACHAPOLY", decodedCredential.control?.remoteUnlockCredential?.algorithm)
+        assertEquals(HermesRealtimeRelayFrameType.REMOTE_UNLOCK_STATE, decodedState.type)
+        assertEquals(
+            "mac-remote-unlock-key",
+            decodedState.control?.remoteUnlockState?.capabilities?.credentialRecipientKeyId,
+        )
+        assertEquals(
+            "HPKE-X25519-SHA256-CHACHAPOLY",
+            decodedState.control?.remoteUnlockState?.capabilities?.credentialEnvelopeAlgorithm,
+        )
+        assertEquals(HermesRealtimeRelayFrameType.REMOTE_UNLOCK_RESULT, decodedResult.type)
+        assertEquals(HermesRealtimeRelayRemoteUnlockResult.Status.UNLOCKED, decodedResult.control?.remoteUnlockResult?.status)
+        assertEquals(HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK, decodedResult.control?.remoteUnlockResult?.backend)
+    }
+
+    @Test
     fun codecRoundTripsControlApprovalRequestAndResponseFrames() {
         val requestFrame = HermesRealtimeRelayFrame(
             type = HermesRealtimeRelayFrameType.CONTROL_APPROVAL_REQUEST,

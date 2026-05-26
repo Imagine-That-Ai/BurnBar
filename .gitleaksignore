@@ -7,3 +7,7 @@ docs/HOSTED_QUOTA_SYNC.md:curl-auth-header:404
 functions/scripts/test-appstore.mjs:generic-api-key:217
 functions/scripts/test-appstore.mjs:generic-api-key:234
 functions/scripts/test-appstore.mjs:generic-api-key:367
+AgentLens/Services/Media/MacMediaCapabilityGate.swift:generic-api-key:444
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUsePhoneControlSigner.swift:generic-api-key:348
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUsePhoneControlSigner.swift:generic-api-key:367
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/RemoteUnlockCredentialEnvelopeCrypto.swift:generic-api-key:86

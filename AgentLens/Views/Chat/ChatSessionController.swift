@@ -9,6 +9,54 @@ protocol ChatSessionSearchProviding {
     func search(query: String) async -> [SearchResult]
 }
 
+struct ChatTextExpansionPreviewState: Identifiable, Equatable {
+    let id: String
+    let snippetID: String
+    let title: String
+    let token: String
+    var generatedText: String
+    var isLoading: Bool
+    var errorMessage: String?
+
+    init(
+        id: String = UUID().uuidString,
+        snippetID: String,
+        title: String,
+        token: String,
+        generatedText: String = "",
+        isLoading: Bool = true,
+        errorMessage: String? = nil
+    ) {
+        self.id = id
+        self.snippetID = snippetID
+        self.title = title
+        self.token = token
+        self.generatedText = generatedText
+        self.isLoading = isLoading
+        self.errorMessage = errorMessage
+    }
+}
+
+enum TextExpansionRewriteError: LocalizedError {
+    case unsupportedBackend(String)
+    case invalidGatewayURL
+    case missingModel
+    case emptyResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedBackend(let backend):
+            return "LLM snippet previews require Hermes, OpenClaw, or Pi. Current backend: \(backend)."
+        case .invalidGatewayURL:
+            return "The selected chat gateway URL is invalid."
+        case .missingModel:
+            return "Select a model before using LLM snippet previews."
+        case .emptyResponse:
+            return "The model returned an empty preview."
+        }
+    }
+}
+
 private final class ChatSessionControllerGrantReference: @unchecked Sendable {
     @MainActor weak var controller: ChatSessionController?
 
@@ -36,6 +84,8 @@ final class ChatSessionController {
 
     var messages: [ChatMessageRecord] = []
     var inputText = ""
+    var pendingTextExpansionPreview: ChatTextExpansionPreviewState?
+    var textExpansionStatusMessage: String?
     var isStreaming = false
     /// Monotonic counter bumped every time a streaming text chunk lands in
     /// the active assistant placeholder. UI surfaces (Project Memory
@@ -160,6 +210,8 @@ final class ChatSessionController {
 
     private var streamTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
+    private var textExpansionPreviewTask: Task<Void, Never>?
+    private var suppressedTextExpansionDraft: String?
     private var searchQueryRevision = 0
     private var activeSearchRequestID = 0
     private var activeSearchQuery: String?
@@ -556,6 +608,159 @@ final class ChatSessionController {
     private var openClawBearerToken: String? {
         let t = settingsManager.openClawBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? nil : t
+    }
+
+    func handleTextExpansionDraftChange() {
+        guard settingsManager.textExpansion.inAppExpansionEnabled else { return }
+        if let suppressedTextExpansionDraft, suppressedTextExpansionDraft == inputText {
+            self.suppressedTextExpansionDraft = nil
+            return
+        }
+
+        if let pendingTextExpansionPreview, !inputText.contains(pendingTextExpansionPreview.token) {
+            cancelTextExpansionPreview()
+        }
+
+        let snippets: [TextExpansionSnippet]
+        do {
+            snippets = try dataStore.fetchEnabledTextExpansionSnippets(
+                surface: .inAppThread,
+                threadID: activeThreadID
+            )
+        } catch {
+            textExpansionStatusMessage = "Text expansion unavailable: \(error.localizedDescription)"
+            return
+        }
+
+        guard let match = TextExpansionMatcher.match(
+            in: inputText,
+            snippets: snippets,
+            surface: .inAppThread,
+            threadID: activeThreadID
+        ) else {
+            return
+        }
+
+        if match.requiresPreview {
+            guard settingsManager.textExpansion.llmRewritePreviewEnabled else { return }
+            if pendingTextExpansionPreview?.snippetID == match.snippet.id,
+               pendingTextExpansionPreview?.token == match.token {
+                return
+            }
+            beginTextExpansionPreview(snippet: match.snippet, token: match.token)
+        } else {
+            let expanded = TextExpansionMatcher.replacingMatch(in: inputText, match: match)
+            suppressedTextExpansionDraft = expanded
+            inputText = expanded
+            textExpansionStatusMessage = "Expanded \(match.token)"
+        }
+    }
+
+    func insertPendingTextExpansionPreview() {
+        guard let preview = pendingTextExpansionPreview,
+              !preview.generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let tokenRange = inputText.range(of: preview.token, options: .backwards) else {
+            return
+        }
+        var copy = inputText
+        copy.replaceSubrange(tokenRange, with: preview.generatedText)
+        suppressedTextExpansionDraft = copy
+        inputText = copy
+        pendingTextExpansionPreview = nil
+        textExpansionPreviewTask?.cancel()
+        textExpansionPreviewTask = nil
+        textExpansionStatusMessage = "Inserted \(preview.token)"
+    }
+
+    func cancelTextExpansionPreview() {
+        pendingTextExpansionPreview = nil
+        textExpansionPreviewTask?.cancel()
+        textExpansionPreviewTask = nil
+    }
+
+    private func beginTextExpansionPreview(snippet: TextExpansionSnippet, token: String) {
+        textExpansionPreviewTask?.cancel()
+        pendingTextExpansionPreview = ChatTextExpansionPreviewState(
+            snippetID: snippet.id,
+            title: snippet.title,
+            token: token
+        )
+        textExpansionPreviewTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let generated = try await self.rewriteTextExpansionSnippet(snippet)
+                guard !Task.isCancelled else { return }
+                self.pendingTextExpansionPreview = ChatTextExpansionPreviewState(
+                    snippetID: snippet.id,
+                    title: snippet.title,
+                    token: token,
+                    generatedText: generated,
+                    isLoading: false
+                )
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.pendingTextExpansionPreview = ChatTextExpansionPreviewState(
+                    snippetID: snippet.id,
+                    title: snippet.title,
+                    token: token,
+                    isLoading: false,
+                    errorMessage: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    private func rewriteTextExpansionSnippet(_ snippet: TextExpansionSnippet) async throws -> String {
+        let context = TextExpansionContextPack(
+            surface: .inAppThread,
+            threadID: activeThreadID,
+            title: historyThreads.first(where: { $0.id == activeThreadID })?.title,
+            messages: messages.suffix(12).compactMap { message in
+                guard message.role != .system else { return nil }
+                return TextExpansionContextMessage(role: message.role.rawValue, content: message.content)
+            },
+            maxCharacters: 2_000
+        )
+        let system = TextExpansionPromptBuilder.buildSystemPrompt(maxCharacters: context.maxCharacters)
+        let user = TextExpansionPromptBuilder.buildUserPrompt(snippetBody: snippet.body, context: context)
+        let messages: [[String: Any]] = [
+            ["role": "system", "content": system],
+            ["role": "user", "content": user]
+        ]
+
+        let baseURL: URL
+        let bearerToken: String?
+        switch chatBackend {
+        case .hermes:
+            baseURL = hermesGatewayBaseURL
+            bearerToken = hermesBearerToken
+        case .openclaw:
+            baseURL = URL(string: settingsManager.openClawGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+                ?? URL(string: "http://127.0.0.1:18789")!
+            bearerToken = openClawBearerToken
+        case .piAgent:
+            baseURL = piAgentGatewayBaseURL
+            bearerToken = piAgentBearerToken
+        case .codex, .claude, .droid, .forge, .antigravity:
+            throw TextExpansionRewriteError.unsupportedBackend(chatBackend.displayName)
+        }
+
+        guard let url = URL(string: "v1/chat/completions", relativeTo: baseURL)?.absoluteURL else {
+            throw TextExpansionRewriteError.invalidGatewayURL
+        }
+        let model = effectiveChatModel(for: chatBackend).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else { throw TextExpansionRewriteError.missingModel }
+
+        let (content, _) = try await OpenAICompatibleChatGatewayClient.nonStreamingFallback(
+            url: url,
+            messages: messages,
+            model: model,
+            session: URLSession(configuration: .default),
+            bearerToken: bearerToken
+        )
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw TextExpansionRewriteError.emptyResponse }
+        return String(trimmed.prefix(context.maxCharacters))
     }
 
     /// On-disk folder for the active chat thread (shared across backends).

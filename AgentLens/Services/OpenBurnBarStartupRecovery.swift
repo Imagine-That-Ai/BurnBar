@@ -201,6 +201,7 @@ final class OpenBurnBarRuntimeContext {
     var routedClientWiringSentry: RoutedClientWiringSentry?
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     var computerUseRuntimeController: ComputerUseRuntimeController?
+    var textExpansionRuntimeController: TextExpansionRuntimeController?
     #endif
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
@@ -402,6 +403,7 @@ final class OpenBurnBarRuntimeContext {
             await sync.uploadPending()
             await sync.uploadPendingConversations()
             await sync.uploadPendingChatThreads()
+            await sync.syncTextExpansionSnippets()
             if self.settingsManager.dailyDigestEnabled {
                 await DailyDigestManager.shared.requestAuthorization()
                 DailyDigestManager.shared.scheduleDigest(
@@ -587,6 +589,7 @@ final class OpenBurnBarRuntimeContext {
         let peerSource = makeMercuryPeerSource()
         let session = MediaSessionCoordinator(capabilityGate: MacMediaCapabilityGate.shared)
         let hud = CallHUDState()
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
         let router = MercuryRouter(
             sessionCoordinator: session,
             peerSource: peerSource,
@@ -604,6 +607,13 @@ final class OpenBurnBarRuntimeContext {
                 self?.computerUseRuntimeController?.setFocusFollowMode(mode)
             }
         )
+        #else
+        let router = MercuryRouter(
+            sessionCoordinator: session,
+            peerSource: peerSource,
+            consentStore: consent
+        )
+        #endif
 
         self.mercuryConsentStore = consent
         self.mercuryPeerSource = peerSource

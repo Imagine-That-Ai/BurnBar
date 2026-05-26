@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Remote Unlock certification
+- Added a machine-bound Remote Unlock certification report so Macs advertise
+  locked-screen unlock only after a fresh hardware proof matches the current
+  macOS build, HPKE recipient key, Screen Sharing backend, daemon install, and
+  successful lock-screen capture / credential-input / unlock probes.
+- Added `openburnbar-cli remote-unlock-certification` status/reset/record
+  tooling plus `scripts/e2e/remote-unlock-hardware-smoke.sh` for iOS, iPadOS,
+  and Android locked-Mac certification without collecting or logging the Mac
+  password.
+
+## [1.0] — 2026-05-26
+
+### Added — macOS release channels
+- Prepared the macOS `1.0` release for both channels: a sandboxed Mac App Store
+  build with `DISTRIBUTION_MAS=1`, and a Developer ID signed/notarized direct
+  download build for the website and GitHub Releases.
+- Added explicit local release scripts for Mac App Store archive/export/upload
+  and website DMG/ZIP/checksum/SBOM artifact generation.
+- Updated website and release documentation so macOS no longer points at the
+  old public beta artifact.
+
+### Added — Text expansion snippets
+- Added `&&trigger` text expansion across macOS OpenBurnBar chat, opt-in macOS
+  global fields, iOS/iPadOS Hermes composer plus keyboard extension, and
+  Android Hermes/CLI composers plus IME.
+- Added user-managed snippet settings, static snippet insertion, Mac in-app LLM
+  rewrite previews, shared trigger matching tests, macOS/iOS encrypted Firestore sync
+  with tombstones, and rules coverage that accepts sealed snippet documents
+  while rejecting plaintext snippet fields.
+- Documented the surface matrix, trigger grammar, privacy model, and validation
+  commands in `docs/TEXT_EXPANSION.md`.
+
 ### Fixed — CLI agent model pickers on mobile
 - **Allowed `cliAgentModelCatalog` through Firestore relay rules.** iOS and
   Android Droid, Forge, Codex, Claude Code, and Antigravity model pickers were
