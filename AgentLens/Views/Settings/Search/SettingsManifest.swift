@@ -705,6 +705,8 @@ enum SettingsManifest {
         SettingsAnchor.cloudSyncToggle,
         SettingsAnchor.trustedDevices,
         SettingsAnchor.smartDisplays,
+        SettingsAnchor.textExpansionSnippets,
+        SettingsAnchor.textExpansionRuntime,
         SettingsAnchor.mediaPermissions,
         SettingsAnchor.computerUseReadiness,
         SettingsAnchor.computerUsePermissionsSetup,
