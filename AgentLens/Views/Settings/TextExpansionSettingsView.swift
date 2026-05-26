@@ -49,13 +49,15 @@ struct TextExpansionSettingsView: View {
 
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                    runtimeSection
-                    editorSection
+            SettingsDeepLinkScrollContainer(route: .textExpansionRoot) { _ in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                        runtimeSection
+                        editorSection
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                    .frame(maxWidth: 760, alignment: .leading)
                 }
-                .padding(DesignSystem.Spacing.lg)
-                .frame(maxWidth: 760, alignment: .leading)
             }
         }
         .task { reloadSnippets(selectFirst: true) }
@@ -171,7 +173,7 @@ struct TextExpansionSettingsView: View {
                 isOn: binding(\.cloudSyncEnabled)
             )
         }
-        .id(SettingsAnchor.textExpansionRuntime)
+        .settingsAnchor(SettingsAnchor.textExpansionRuntime)
     }
 
     // MARK: - Editor
@@ -335,7 +337,7 @@ struct TextExpansionSettingsView: View {
                     .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.75)
             )
         }
-        .id(SettingsAnchor.textExpansionSnippets)
+        .settingsAnchor(SettingsAnchor.textExpansionSnippets)
     }
 
     // MARK: - Mode Badge
