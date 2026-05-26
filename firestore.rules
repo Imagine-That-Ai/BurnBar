@@ -1,6 +1,6 @@
 rules_version = '2';
 // OpenBurnBar currently syncs explicit owner-scoped collections:
-// - users/{uid}/usage, conversations, chat_threads, session_logs (+ chunks), devices
+// - users/{uid}/usage, conversations, chat_threads, text_snippets, session_logs (+ chunks), devices
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
 // - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
@@ -319,6 +319,44 @@ service cloud.firestore {
         && value.tag is string
         && value.tag.size() <= 128
         && value.tag.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validTextSnippetDoc(userId, snippetId) {
+      return ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "uid",
+          "sourceDeviceID",
+          "triggerHash",
+          "sealedTitle",
+          "sealedTrigger",
+          "sealedBody",
+          "sealedScope",
+          "mode",
+          "isEnabled",
+          "revision",
+          "createdAt",
+          "updatedAt",
+          "deletedAt",
+          "schemaVersion",
+          "encryption"
+        ])
+        && request.resource.data.id == snippetId
+        && request.resource.data.uid == userId
+        && request.resource.data.sourceDeviceID is string
+        && request.resource.data.sourceDeviceID.size() <= 160
+        && request.resource.data.triggerHash is string
+        && request.resource.data.triggerHash.size() <= 128
+        && validCloudSealedText(request.resource.data.sealedTitle)
+        && validCloudSealedText(request.resource.data.sealedTrigger)
+        && validCloudSealedText(request.resource.data.sealedBody)
+        && validCloudSealedText(request.resource.data.sealedScope)
+        && request.resource.data.mode in ["static", "llm_rewrite"]
+        && request.resource.data.isEnabled is bool
+        && request.resource.data.revision is int
+        && request.resource.data.revision >= 1
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1;
     }
 
     function validCloudSessionStoragePath(userId, documentId, bodyHash, storagePath) {
@@ -687,6 +725,12 @@ service cloud.firestore {
     match /users/{userId}/chat_threads/{threadId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableChatThread(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/text_snippets/{snippetId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if validTextSnippetDoc(userId, snippetId);
       allow delete: if ownsUserNamespace(userId);
     }
 

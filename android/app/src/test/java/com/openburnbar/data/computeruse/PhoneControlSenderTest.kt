@@ -2,9 +2,11 @@ package com.openburnbar.data.computeruse
 
 import com.openburnbar.data.media.MediaStreamClass
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
+import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayInputIntentKind
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -212,6 +214,59 @@ class PhoneControlSenderTest {
             lastSeenCounter = 0,
             nowMillis = 1_700_000_000_123L,
         )
+    }
+
+    @Test
+    fun sendWritesSignedRemoteUnlockCredentialFrame() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val sender = PhoneControlSender(
+            uid = "uid-1",
+            connectionId = "conn-1",
+            peerNodeId = "android-phone-1",
+            privateKeySeedProvider = { privateSeed },
+            counterStore = InMemoryPhoneControlCounterStore(),
+            nowMillis = { 1_700_000_000_123L },
+            frameSink = { frames += it },
+        )
+        val placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId = "",
+            counter = 0,
+            timestamp = 0.0,
+            intentHashBlake3 = "",
+            signatureEd25519 = "",
+        )
+        val envelope = HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+            requestId = "remote-unlock-credential",
+            sessionId = "remote-unlock-session",
+            clientIntentId = "client-intent",
+            credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.TYPED_PASSWORD,
+            recipientKeyId = "hpke-key",
+            algorithm = RemoteUnlockCredentialEnvelopeCrypto.ALGORITHM,
+            ciphertextBase64 = "Y2lwaGVy",
+            aadBase64 = "YWFk",
+            redactedByteCount = 6,
+            requestedAt = "2026-05-26T20:00:00.000Z",
+            expiresAt = "2026-05-26T20:00:30.000Z",
+            authority = placeholder,
+        )
+
+        val signedWire = sender.send(envelope)
+
+        assertEquals(1, frames.size)
+        val frame = frames.single()
+        assertEquals(HermesRealtimeRelayFrameType.REMOTE_UNLOCK_CREDENTIAL, frame.type)
+        assertEquals("remote-unlock-credential", frame.requestId)
+        assertEquals("remote_unlock", frame.control?.streamClass)
+        assertEquals("remote-unlock-session", frame.control?.sessionId)
+        val credential = frame.control?.remoteUnlockCredential
+        assertNotNull(credential)
+        assertEquals("android-phone-1", credential?.authority?.peerNodeId)
+        assertEquals(1L, credential?.authority?.counter)
+        assertEquals(
+            PhoneControlSigner.canonicalRemoteUnlockCredentialHashHex(envelope),
+            credential?.authority?.intentHashBlake3,
+        )
+        assertEquals(signedWire.authority.signatureEd25519, credential?.authority?.signatureEd25519)
     }
 
     @Test

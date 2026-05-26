@@ -5,7 +5,7 @@ import { SITE } from "@data/site";
 
 <BaseLayout
   title="Download"
-  description="Download OpenBurnBar. macOS public beta available now, iOS in App Store review, Cursor and VS Code extensions source-only."
+  description="Download OpenBurnBar. macOS app available by direct download and submitted to Mac App Store review, iOS in App Store review, Cursor and VS Code extensions source-only."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -13,8 +13,9 @@ import { SITE } from "@data/site";
       <h1 class="pagehead__h">Get OpenBurnBar.</h1>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
-          macOS is shipping as a public beta. iOS is in Apple review. The editor extension is
-          source-only for now — build locally and load unpacked.
+          macOS ships as a notarized direct download and is submitted to Mac App Store review. iOS
+          is in Apple review. The editor extension is source-only for now — build locally and load
+          unpacked.
         </p>
       </div>
     </div>
@@ -25,16 +26,16 @@ import { SITE } from "@data/site";
     <div class="container container--wide">
       <div class="dlsec__head">
         <div>
-          <span class="tag tag--beta tag--plain mono">Public beta · {SITE.macReleaseLatest}</span>
+          <span class="tag tag--exact tag--plain mono">Release · {SITE.macReleaseLatest}</span>
           <h2>macOS app</h2>
           <p class="lead">
-            Native Swift app. Runs as a menu-bar utility. macOS {SITE.macMin} or later. Apple Silicon
-            and Intel both supported.
+            Native Swift app. Runs as a menu-bar utility. macOS {SITE.macMin} or later. Apple
+            Silicon supported.
           </p>
         </div>
         <a
           class="btn btn--ember dlsec__primary"
-          href={`${SITE.github}/releases/download/v${SITE.macReleaseLatest}/${SITE.macReleaseFile}`}
+          href={`/downloads/${SITE.macReleaseFile}`}
         >
           Download DMG · {SITE.macReleaseLatest}
           <span class="btn-arrow" aria-hidden="true">↓</span>
@@ -47,11 +48,9 @@ import { SITE } from "@data/site";
           <div class="step__body">
             <h3>Download &amp; open the DMG</h3>
             <p>
-              Latest beta lives on
-              <a href={SITE.releasesUrl} target="_blank" rel="noopener noreferrer"
-                >GitHub Releases</a
-              >. Each release ships signed, notarized, with SHA-256 and SHA-512 checksums next to
-              it.
+              Latest direct-download release is served from this site. Each direct-download release
+              ships Developer ID signed, notarized, stapled, with SHA-256 and SHA-512 checksums next
+              to it.
             </p>
           </div>
         </li>
@@ -210,7 +209,7 @@ npm run build</code></pre>
           <h4>macOS</h4>
           <ul>
             <li>{SITE.macMin} or later</li>
-            <li>Apple Silicon or Intel</li>
+            <li>Apple Silicon Mac</li>
             <li>~120 MB on disk</li>
             <li>Signed with Developer ID + notarized + stapled</li>
             <li>SHA-256 / SHA-512 checksums published per release</li>

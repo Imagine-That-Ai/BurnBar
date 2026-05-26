@@ -221,6 +221,99 @@ public final class PhoneControlSender: @unchecked Sendable {
         return authority
     }
 
+    @discardableResult
+    public func sign(remoteUnlockSession rawSession: HermesRealtimeRelayRemoteUnlockSession) throws -> HermesRealtimeRelayRemoteUnlockSession {
+        guard let key = signingKeyProvider()?.privateKey else {
+            throw SendError.signingFailed("no signing key")
+        }
+        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        var unsignedSession = rawSession
+        unsignedSession.authority = placeholder
+        let counter = nextCounter()
+        let timestamp = Date()
+        let signed: ComputerUsePhoneControlSigner.SignedAuthority
+        do {
+            signed = try signer.sign(
+                remoteUnlockSession: unsignedSession,
+                peerNodeId: peerNodeId,
+                counter: counter,
+                timestamp: timestamp,
+                privateKey: key
+            )
+        } catch {
+            throw SendError.signingFailed(error.localizedDescription)
+        }
+        unsignedSession.authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+        return unsignedSession
+    }
+
+    @discardableResult
+    public func send(
+        remoteUnlockCredential rawCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope
+    ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        guard let key = signingKeyProvider()?.privateKey else {
+            throw SendError.signingFailed("no signing key")
+        }
+        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        var unsignedCredential = rawCredential
+        unsignedCredential.authority = placeholder
+        let counter = nextCounter()
+        let timestamp = Date()
+        let signed: ComputerUsePhoneControlSigner.SignedAuthority
+        do {
+            signed = try signer.sign(
+                remoteUnlockCredential: unsignedCredential,
+                peerNodeId: peerNodeId,
+                counter: counter,
+                timestamp: timestamp,
+                privateKey: key
+            )
+        } catch {
+            throw SendError.signingFailed(error.localizedDescription)
+        }
+        let authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+        unsignedCredential.authority = authority
+        let frame = HermesRealtimeRelayFrame(
+            type: .remoteUnlockCredential,
+            uid: uid,
+            connectionId: connectionId,
+            requestId: unsignedCredential.requestId,
+            payload: nil,
+            media: nil,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "remote_unlock",
+                sessionId: unsignedCredential.sessionId,
+                remoteUnlockCredential: unsignedCredential
+            )
+        )
+        try await frameSink(frame)
+        return authority
+    }
+
     /// Sign and write a Phase 14 system-permission request. Used by
     /// `SystemPermissionGrantSender` when the user taps "Grant on this
     /// Mac" in the iOS grant sheet. Shares the same counter namespace
@@ -352,16 +445,16 @@ public final class PhoneControlSender: @unchecked Sendable {
 
 
     private func nextCounter() -> UInt64 {
-        let key = counterKey()
+        Self.nextCounter(peerNodeId: peerNodeId, userDefaults: userDefaults)
+    }
+
+    public static func nextCounter(peerNodeId: String, userDefaults: UserDefaults = .standard) -> UInt64 {
+        let key = "openburnbar.phoneControl.counter.\(peerNodeId)"
         let raw = userDefaults.object(forKey: key) as? Int ?? 0
         let next = UInt64(max(raw, 0)) &+ 1
         // `Int` clamp keeps Int64 max in range on 64-bit platforms.
         userDefaults.set(Int(min(next, UInt64(Int.max))), forKey: key)
         return next
-    }
-
-    private func counterKey() -> String {
-        "openburnbar.phoneControl.counter.\(peerNodeId)"
     }
 }
 

@@ -1,7 +1,52 @@
 # macOS Release
 
-OpenBurnBar's release pipeline is automated via `.github/workflows/release.yml`.
+OpenBurnBar's direct-download release pipeline is automated via `.github/workflows/release.yml`.
 Pushing a `v*` tag builds, signs, notarizes, staples, and publishes a GitHub **prerelease** with DMG, ZIP, checksums, SBOM, and provenance metadata.
+
+## Distribution channels
+
+OpenBurnBar should ship through both channels, but not as the exact same binary.
+
+| Channel | Use it for | Constraints |
+|---|---|---|
+| Mac App Store | Discovery, Apple-hosted updates, App Store trust, Apple billing, simpler install for conservative users | App Sandbox is required; system-level Computer Use, broad filesystem access, direct LaunchAgent installation, and other unsandboxed helper behavior must be disabled or redesigned behind MAS-safe APIs |
+| Direct download | Power-user build with full local daemon, faster hotfixes, system Computer Use, notarized DMG/ZIP, website-driven onboarding | We own hosting, updater, billing/support, and trust messaging; must keep Developer ID signing, hardened runtime, notarization, stapling, checksums, and smoke tests green |
+
+The product policy is:
+
+- **Mac App Store build:** sandboxed, `DISTRIBUTION_MAS=1`, no Mac System Computer Use, no unsandboxed daemon install path.
+- **Direct-download build:** Developer ID signed and notarized, `DISTRIBUTION_MAS` unset, full local power-user surface.
+- **Architecture:** current release artifacts are Apple Silicon (`arm64`) because the vendored Iroh XCFramework does not include a release-ready Intel slice.
+- Both builds should share the same marketing version. Build numbers may differ if App Store Connect or notarization recovery requires it.
+
+Run the current Mac App Store readiness compile gate with:
+
+```bash
+scripts/verify-macos-app-store-readiness.sh
+```
+
+That script verifies the MAS entitlements in `AgentLens/Resources/OpenBurnBarMAS.entitlements`, preserves the direct-download release entitlements, and compiles the Mac app with `DISTRIBUTION_MAS=1`.
+
+Build the actual release artifacts with:
+
+```bash
+# Sandboxed Mac App Store archive/export. Add OPENBURNBAR_UPLOAD_MAC_APP_STORE=1
+# to validate/upload the exported package with App Store Connect credentials.
+scripts/build-macos-app-store-release.sh
+
+# Developer ID direct-download artifacts. This signs, notarizes, staples, checksums,
+# and emits DMG, ZIP, SBOM, and release metadata under build/macos-website-<version>-<build>/.
+scripts/build-macos-website-release.sh
+```
+
+The direct-download path is the currently customer-downloadable Mac channel. The MAS build has passed
+these release gates and is pending Apple review:
+
+1. Sandboxed app and embedded helpers are signed with App Store distribution entitlements.
+2. The app launches and core read-only dashboard/Hermes/quota flows work without writing LaunchAgents.
+3. System Computer Use is hidden or disabled in the binary, not only in copy.
+4. App Store Connect has macOS screenshots, metadata, privacy answers, review notes, and a reviewer-safe walkthrough.
+5. A Mac App Store archive/export validates locally and uploads to App Store Connect.
 
 ## How to cut a release
 

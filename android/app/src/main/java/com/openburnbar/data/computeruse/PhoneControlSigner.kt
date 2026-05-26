@@ -5,14 +5,19 @@ import com.google.crypto.tink.subtle.Ed25519Sign.KeyPair
 import com.google.crypto.tink.subtle.Ed25519Verify
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
-import com.openburnbar.irohrelay.HermesRealtimeRelayNormalizedRect
 import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
+import com.openburnbar.irohrelay.HermesRealtimeRelayMacLockState
+import com.openburnbar.irohrelay.HermesRealtimeRelayNormalizedRect
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockBackend
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.time.Instant
 import java.util.Base64
 
 enum class PhoneControlIntentKind(val wireValue: String) {
@@ -191,6 +196,12 @@ object PhoneControlSigner {
     fun canonicalClipboardRequestHashHex(request: PhoneControlClipboardRequest): String =
         sha256Hex(canonicalClipboardRequestJson(request).toByteArray(Charsets.UTF_8))
 
+    fun canonicalRemoteUnlockSessionHashHex(session: HermesRealtimeRelayRemoteUnlockSession): String =
+        sha256Hex(canonicalRemoteUnlockSessionJson(session).toByteArray(Charsets.UTF_8))
+
+    fun canonicalRemoteUnlockCredentialHashHex(credential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope): String =
+        sha256Hex(canonicalRemoteUnlockCredentialJson(credential).toByteArray(Charsets.UTF_8))
+
     fun canonicalAgentContextTargetHashHex(target: PhoneControlAgentContextTarget): String =
         sha256Hex(canonicalAgentContextTargetJson(target).toByteArray(Charsets.UTF_8))
 
@@ -271,6 +282,48 @@ object PhoneControlSigner {
             counter = counter,
             timestampMillis = timestampMillis,
             intentHashBlake3 = requestHash,
+            signatureEd25519 = Base64.getEncoder().encodeToString(signature),
+        )
+    }
+
+    fun signRemoteUnlockSession(
+        session: HermesRealtimeRelayRemoteUnlockSession,
+        peerNodeId: String,
+        counter: Long,
+        timestampMillis: Long,
+        privateKeySeed: ByteArray,
+    ): PhoneControlAuthorityEnvelope {
+        require(counter >= 0) { "counter must be non-negative" }
+        require(privateKeySeed.size == 32) { "Ed25519 private key seed must be 32 bytes" }
+        val sessionHash = canonicalRemoteUnlockSessionHashHex(session)
+        val payload = signablePayload(sessionHash, counter, timestampMillis)
+        val signature = Ed25519Sign(privateKeySeed).sign(payload)
+        return PhoneControlAuthorityEnvelope(
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = timestampMillis,
+            intentHashBlake3 = sessionHash,
+            signatureEd25519 = Base64.getEncoder().encodeToString(signature),
+        )
+    }
+
+    fun signRemoteUnlockCredential(
+        credential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
+        peerNodeId: String,
+        counter: Long,
+        timestampMillis: Long,
+        privateKeySeed: ByteArray,
+    ): PhoneControlAuthorityEnvelope {
+        require(counter >= 0) { "counter must be non-negative" }
+        require(privateKeySeed.size == 32) { "Ed25519 private key seed must be 32 bytes" }
+        val credentialHash = canonicalRemoteUnlockCredentialHashHex(credential)
+        val payload = signablePayload(credentialHash, counter, timestampMillis)
+        val signature = Ed25519Sign(privateKeySeed).sign(payload)
+        return PhoneControlAuthorityEnvelope(
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = timestampMillis,
+            intentHashBlake3 = credentialHash,
             signatureEd25519 = Base64.getEncoder().encodeToString(signature),
         )
     }
@@ -474,6 +527,41 @@ object PhoneControlSigner {
             .joinToString(separator = ",", prefix = "{", postfix = "}") { (key, value) -> "${quote(key)}:$value" }
     }
 
+    fun canonicalRemoteUnlockSessionJson(session: HermesRealtimeRelayRemoteUnlockSession): String {
+        val fields = linkedMapOf<String, String>()
+        fields["expiresAt"] = number(swiftReferenceSecondsFromIso8601(session.expiresAt))
+        fields["intent"] = quote(session.intent.wireValue())
+        fields["localAuthenticationSatisfied"] = session.localAuthenticationSatisfied.toString()
+        session.requestedBackend?.let { fields["requestedBackend"] = quote(it.wireValue()) }
+        fields["requestedAt"] = number(swiftReferenceSecondsFromIso8601(session.requestedAt))
+        session.requestedLockState?.let { fields["requestedLockState"] = quote(it.wireValue()) }
+        fields["requesterDisplayName"] = quote(session.requesterDisplayName)
+        fields["requestId"] = quote(session.requestId)
+        session.sessionId?.let { fields["sessionId"] = quote(it) }
+        session.viewerDeviceId?.let { fields["viewerDeviceId"] = quote(it) }
+        return fields.entries
+            .sortedBy { it.key }
+            .joinToString(separator = ",", prefix = "{", postfix = "}") { (key, value) -> "${quote(key)}:$value" }
+    }
+
+    fun canonicalRemoteUnlockCredentialJson(credential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope): String {
+        val fields = linkedMapOf<String, String>()
+        fields["aadBase64"] = quote(credential.aadBase64)
+        fields["algorithm"] = quote(credential.algorithm)
+        fields["ciphertextBase64"] = quote(credential.ciphertextBase64)
+        fields["clientIntentId"] = quote(credential.clientIntentId)
+        fields["credentialKind"] = quote(credential.credentialKind.wireValue())
+        fields["expiresAt"] = number(swiftReferenceSecondsFromIso8601(credential.expiresAt))
+        fields["recipientKeyId"] = quote(credential.recipientKeyId)
+        fields["redactedByteCount"] = credential.redactedByteCount.toString()
+        fields["requestedAt"] = number(swiftReferenceSecondsFromIso8601(credential.requestedAt))
+        fields["requestId"] = quote(credential.requestId)
+        fields["sessionId"] = quote(credential.sessionId)
+        return fields.entries
+            .sortedBy { it.key }
+            .joinToString(separator = ",", prefix = "{", postfix = "}") { (key, value) -> "${quote(key)}:$value" }
+    }
+
     fun canonicalAgentContextTargetJson(target: PhoneControlAgentContextTarget): String {
         val fields = linkedMapOf<String, String>()
         fields["clientIntentId"] = quote(target.clientIntentId)
@@ -517,6 +605,44 @@ object PhoneControlSigner {
             .stripTrailingZeros()
             .toPlainString()
     }
+
+    private fun swiftReferenceSecondsFromIso8601(value: String): Double {
+        val instant = Instant.parse(value)
+        return instant.epochSecond.toDouble() +
+            (instant.nano.toDouble() / 1_000_000_000.0) -
+            978_307_200.0
+    }
+
+    private fun HermesRealtimeRelayRemoteUnlockSession.Intent.wireValue(): String =
+        when (this) {
+            HermesRealtimeRelayRemoteUnlockSession.Intent.REQUEST -> "request"
+            HermesRealtimeRelayRemoteUnlockSession.Intent.ATTACH -> "attach"
+            HermesRealtimeRelayRemoteUnlockSession.Intent.CANCEL -> "cancel"
+        }
+
+    private fun HermesRealtimeRelayRemoteUnlockBackend.wireValue(): String =
+        when (this) {
+            HermesRealtimeRelayRemoteUnlockBackend.SCREEN_CAPTURE_KIT -> "screen_capture_kit"
+            HermesRealtimeRelayRemoteUnlockBackend.PERSISTENT_SCREEN_CAPTURE_KIT -> "persistent_screen_capture_kit"
+            HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK -> "apple_screen_sharing_loopback"
+            HermesRealtimeRelayRemoteUnlockBackend.FILEVAULT_SSH -> "filevault_ssh"
+            HermesRealtimeRelayRemoteUnlockBackend.UNAVAILABLE -> "unavailable"
+        }
+
+    private fun HermesRealtimeRelayMacLockState.wireValue(): String =
+        when (this) {
+            HermesRealtimeRelayMacLockState.UNLOCKED -> "unlocked"
+            HermesRealtimeRelayMacLockState.SCREEN_SAVER -> "screen_saver"
+            HermesRealtimeRelayMacLockState.SCREEN_LOCKED -> "screen_locked"
+            HermesRealtimeRelayMacLockState.DISPLAY_SLEEPING -> "display_sleeping"
+            HermesRealtimeRelayMacLockState.LOGIN_WINDOW -> "login_window"
+            HermesRealtimeRelayMacLockState.SECURITY_AGENT -> "security_agent"
+            HermesRealtimeRelayMacLockState.FAST_USER_SWITCHING -> "fast_user_switching"
+            HermesRealtimeRelayMacLockState.REMOTE_DESKTOP_CURTAIN -> "remote_desktop_curtain"
+            HermesRealtimeRelayMacLockState.REBOOT_LOGIN_WINDOW -> "reboot_login_window"
+            HermesRealtimeRelayMacLockState.FILEVAULT_PREBOOT -> "filevault_preboot"
+            HermesRealtimeRelayMacLockState.UNKNOWN -> "unknown"
+        }
 
     private fun quote(value: String): String {
         val out = StringBuilder(value.length + 2)

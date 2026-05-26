@@ -3512,7 +3512,13 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                  .controlAgentContextTarget,
                  .controlDenied,
                  .controlSystemPermissionRequest,
-                 .controlSystemPermissionStatus:
+                 .controlSystemPermissionStatus,
+                 .remoteUnlockSession,
+                 .remoteUnlockState,
+                 .remoteUnlockInput,
+                 .remoteUnlockCredential,
+                 .remoteUnlockResult,
+                 .remoteUnlockDenied:
                 // Computer Use control frames are handled by the control
                 // plane; chat relay responses ignore them.
                 break

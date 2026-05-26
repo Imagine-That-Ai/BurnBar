@@ -52,10 +52,20 @@ Mac-hosted Mercury Mirror depends on two macOS privacy gates:
   desktop in the phone viewer.
 
 The Mac host treats lock, screen sleep, loginwindow, and SecurityAgent as an
-authorization gate closing. When that happens, `MercuryRouter` denies any pending
-mirror request, stops the active session coordinator, returns the live phase to
-idle, and sends a terminal ack to the phone so the mobile client does not keep
-redialing a session the Mac cannot legally capture.
+authorization gate closing for normal mirror and all agent/Computer Use sessions.
+When that happens, `MercuryRouter` denies any pending normal mirror request,
+stops the active session coordinator, returns the live phase to idle, and sends a
+terminal ack to the phone so the mobile client does not keep redialing a session
+the Mac cannot legally capture.
+
+Remote Unlock is the only exception, and it is human-only. A locked-screen mirror
+may remain alive only when the request carries `remoteUnlockSession`, the Mac's
+`RemoteUnlockPolicy` reports certified capabilities, and the mobile device has
+already satisfied local authentication. Certified capabilities must include the
+HPKE recipient key metadata the mobile client needs before it can offer password
+entry. The lock-screen backend and credential lane are documented in
+[`REMOTE_UNLOCK.md`](REMOTE_UNLOCK.md). Agents still halt at
+lock/loginwindow/SecurityAgent and never receive remote-unlock frames.
 
 ## Stream classes
 

@@ -1,4 +1,4 @@
-#if canImport(SwiftUI) && canImport(AppKit)
+#if canImport(SwiftUI) && canImport(AppKit) && !DISTRIBUTION_MAS
 import Foundation
 import SwiftUI
 import OpenBurnBarComputerUseCore

@@ -30,7 +30,7 @@ DAEMON_CORE_DYLIB := libOpenBurnBarCore.dylib
 # Built .app location inside DerivedData
 APP_BUNDLE = $(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)
 
-.PHONY: preflight build build-signed install uninstall clean test test-full lint ci release-checksums sbom
+.PHONY: preflight build build-signed release-mas release-website install uninstall clean test test-full lint ci release-checksums sbom
 
 preflight:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "ERROR: xcodebuild not found. Install Xcode 16+ command line tools first."; exit 1; }
@@ -127,6 +127,12 @@ build-signed: preflight
 	@echo "==> Signing $(APP_BUNDLE) for local install…"
 	OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS=1 scripts/sign-openburnbar-local.sh "$(APP_BUNDLE)" "AgentLens/Resources/OpenBurnBar.entitlements"
 	@echo "==> Built signed: $(APP_BUNDLE)"
+
+release-mas: preflight ## Build/export the sandboxed Mac App Store package
+	@scripts/build-macos-app-store-release.sh
+
+release-website: preflight ## Build/sign/notarize direct-download DMG/ZIP artifacts
+	@scripts/build-macos-website-release.sh
 
 install: build-signed
 	@echo "==> Installing to $(INSTALL_DIR)/$(APP_NAME)…"

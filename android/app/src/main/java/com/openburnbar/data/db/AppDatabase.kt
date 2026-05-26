@@ -2,6 +2,8 @@ package com.openburnbar.data.db
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.openburnbar.data.models.*
 
 @Entity(tableName = "budget_rules", indices = [
@@ -184,6 +186,27 @@ fun TokenUsage.toEntity(sourceDeviceName: String? = null): TokenUsageEntity = To
     schemaVersion = schemaVersion
 )
 
+@Entity(tableName = "text_expansion_snippets", indices = [
+    Index(value = ["trigger"]),
+    Index(value = ["isEnabled", "deletedAtMillis"]),
+    Index(value = ["syncedAtMillis"])
+])
+data class TextExpansionSnippetEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val trigger: String,
+    val body: String,
+    val mode: String,
+    val isEnabled: Boolean = true,
+    val scopeJson: String = "{}",
+    val revision: Int = 1,
+    val createdAtMillis: Long,
+    val updatedAtMillis: Long,
+    val deletedAtMillis: Long? = null,
+    val syncedAtMillis: Long? = null,
+    val sourceDeviceID: String? = null,
+)
+
 @Dao
 interface BudgetDao {
     @Query("SELECT * FROM budget_rules WHERE isEnabled = 1 ORDER BY createdAt DESC")
@@ -293,17 +316,43 @@ interface BudgetDao {
     fun insertTokenUsages(usages: List<TokenUsageEntity>)
 }
 
+@Dao
+interface TextExpansionDao {
+    @Query("SELECT * FROM text_expansion_snippets WHERE deletedAtMillis IS NULL ORDER BY updatedAtMillis DESC, title ASC")
+    fun getAllActive(): List<TextExpansionSnippetEntity>
+
+    @Query("SELECT * FROM text_expansion_snippets ORDER BY updatedAtMillis DESC")
+    fun getAllIncludingDeleted(): List<TextExpansionSnippetEntity>
+
+    @Query("SELECT * FROM text_expansion_snippets WHERE isEnabled = 1 AND deletedAtMillis IS NULL ORDER BY title ASC")
+    fun getEnabled(): List<TextExpansionSnippetEntity>
+
+    @Query("SELECT * FROM text_expansion_snippets WHERE syncedAtMillis IS NULL OR syncedAtMillis < updatedAtMillis ORDER BY updatedAtMillis DESC LIMIT :limit")
+    fun getUnsynced(limit: Int = 200): List<TextExpansionSnippetEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsert(snippet: TextExpansionSnippetEntity)
+
+    @Query("UPDATE text_expansion_snippets SET syncedAtMillis = :syncedAt WHERE id IN (:ids)")
+    fun markSynced(ids: List<String>, syncedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE text_expansion_snippets SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :deletedAtMillis, syncedAtMillis = NULL, isEnabled = 0, revision = revision + 1 WHERE id = :id")
+    fun softDelete(id: String, deletedAtMillis: Long = System.currentTimeMillis())
+}
+
 @Database(
     entities = [
         BudgetRuleEntity::class,
         BudgetEventEntity::class,
-        TokenUsageEntity::class
+        TokenUsageEntity::class,
+        TextExpansionSnippetEntity::class
     ],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun budgetDao(): BudgetDao
+    abstract fun textExpansionDao(): TextExpansionDao
 
     companion object {
         @Volatile
@@ -316,10 +365,45 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "burnbar_database"
                 )
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS text_expansion_snippets (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        trigger TEXT NOT NULL,
+                        body TEXT NOT NULL,
+                        mode TEXT NOT NULL,
+                        isEnabled INTEGER NOT NULL DEFAULT 1,
+                        scopeJson TEXT NOT NULL DEFAULT '{}',
+                        revision INTEGER NOT NULL DEFAULT 1,
+                        createdAtMillis INTEGER NOT NULL,
+                        updatedAtMillis INTEGER NOT NULL,
+                        deletedAtMillis INTEGER,
+                        syncedAtMillis INTEGER,
+                        sourceDeviceID TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_text_expansion_snippets_trigger ON text_expansion_snippets(trigger)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_text_expansion_snippets_isEnabled_deletedAtMillis ON text_expansion_snippets(isEnabled, deletedAtMillis)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_text_expansion_snippets_syncedAtMillis ON text_expansion_snippets(syncedAtMillis)")
+            }
+        }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP INDEX IF EXISTS index_text_expansion_snippets_trigger")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_text_expansion_snippets_trigger ON text_expansion_snippets(trigger)")
             }
         }
     }

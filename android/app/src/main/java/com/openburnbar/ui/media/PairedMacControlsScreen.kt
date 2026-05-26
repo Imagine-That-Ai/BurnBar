@@ -3,8 +3,12 @@ package com.openburnbar.ui.media
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -79,9 +83,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.openburnbar.BurnBarApplication
+import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
+import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
+import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
+import com.openburnbar.data.computeruse.PhoneControlSigner
+import com.openburnbar.data.computeruse.PhoneControlSigningKeyStore
+import com.openburnbar.data.computeruse.SharedPreferencesPhoneControlCounterStore
 import com.openburnbar.data.media.MediaControlStreamCoordinator
+import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockBackend
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.AuroraRadius
@@ -94,7 +107,15 @@ import com.openburnbar.ui.settings.rememberWebsiteBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.time.Instant
+import java.util.UUID
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+private const val REMOTE_UNLOCK_SESSION_TTL_SECONDS = 600L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -137,6 +158,112 @@ fun PairedMacControlsScreen(
             ?.trim()
             ?.takeIf { it.isNotBlank() && !it.startsWith("paired-mac:") }
             ?: activePair?.connectionID
+
+    suspend fun authenticateForRemoteUnlock(activity: FragmentActivity) {
+        withContext(kotlinx.coroutines.Dispatchers.Main) {
+            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            val manager = BiometricManager.from(activity)
+            if (manager.canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
+                throw IllegalStateException("Device credential is required for Remote Unlock.")
+            }
+            suspendCancellableCoroutine { continuation ->
+                val prompt = BiometricPrompt(
+                    activity,
+                    ContextCompat.getMainExecutor(activity),
+                    object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            if (continuation.isActive) continuation.resume(Unit)
+                        }
+
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            if (continuation.isActive) {
+                                continuation.resumeWithException(
+                                    IllegalStateException("Remote Unlock needs device authentication."),
+                                )
+                            }
+                        }
+
+                        override fun onAuthenticationFailed() = Unit
+                    },
+                )
+                val info = BiometricPrompt.PromptInfo.Builder()
+                    .setTitle("Allow Remote Unlock")
+                    .setSubtitle("Confirm this Android before requesting a locked Mac mirror.")
+                    .setAllowedAuthenticators(authenticators)
+                    .build()
+                continuation.invokeOnCancellation { prompt.cancelAuthentication() }
+                prompt.authenticate(info)
+            }
+        }
+    }
+
+    suspend fun buildRemoteUnlockSession(
+        targetCoordinator: MediaControlStreamCoordinator,
+        requesterDisplayName: String,
+    ): HermesRealtimeRelayRemoteUnlockSession? {
+        if (!peerCapabilities.contains("remote_unlock.host")) return null
+        val activity = context as? FragmentActivity
+            ?: throw IllegalStateException("Remote Unlock requires an activity-backed Android session.")
+        authenticateForRemoteUnlock(activity)
+        val pair = targetCoordinator.activePair.value
+            ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val keyStore = PhoneControlSigningKeyStore(context.applicationContext)
+        val publicKey = keyStore.publicKey()
+        val privateKeySeed = keyStore.privateKeySeed()
+        val peerNodeId = keyStore.peerNodeId()
+        var device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
+        if (device.trustState != AndroidEscrowDeviceRegistry.TRUSTED) {
+            AndroidEscrowDeviceRegistry().trustSelf(uid = pair.uid)
+            device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
+        }
+        val authority = PhoneControlAuthorityDocumentFactory.document(
+            connectionId = pair.connectionID,
+            deviceId = device.deviceId,
+            publicKey = publicKey,
+            publishedAtMillis = System.currentTimeMillis(),
+        )
+        PhoneControlAuthorityPublisher().publish(uid = pair.uid, authority = authority)
+
+        val requestedAt = Instant.now()
+        val expiresAt = requestedAt.plusSeconds(REMOTE_UNLOCK_SESSION_TTL_SECONDS)
+        val placeholderAuthority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId = "",
+            counter = 0,
+            timestamp = 0.0,
+            intentHashBlake3 = "",
+            signatureEd25519 = "",
+        )
+        val unsigned = HermesRealtimeRelayRemoteUnlockSession(
+            requestId = "remote-unlock-${UUID.randomUUID()}",
+            sessionId = UUID.randomUUID().toString(),
+            intent = HermesRealtimeRelayRemoteUnlockSession.Intent.REQUEST,
+            requesterDisplayName = requesterDisplayName,
+            viewerDeviceId = android.os.Build.MODEL.orEmpty().ifBlank { "android" },
+            requestedAt = requestedAt.toString(),
+            expiresAt = expiresAt.toString(),
+            localAuthenticationSatisfied = true,
+            requestedBackend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
+            authority = placeholderAuthority,
+        )
+        val timestampMillis = System.currentTimeMillis()
+        val signed = PhoneControlSigner.signRemoteUnlockSession(
+            session = unsigned,
+            peerNodeId = peerNodeId,
+            counter = SharedPreferencesPhoneControlCounterStore(context).nextCounter(peerNodeId),
+            timestampMillis = timestampMillis,
+            privateKeySeed = privateKeySeed,
+        )
+        return unsigned.copy(
+            authority = HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId = signed.peerNodeId,
+                counter = signed.counter,
+                timestamp = signed.swiftDateReferenceSeconds,
+                intentHashBlake3 = signed.intentHashBlake3,
+                signatureEd25519 = signed.signatureEd25519,
+            ),
+        )
+    }
 
     LaunchedEffect(connectionID) {
         val id = connectionID?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -455,10 +582,13 @@ fun PairedMacControlsScreen(
                                             )
                                             BurnBarApplication.mediaControlCoordinator
                                                 ?: throw IllegalStateException("Mercury did not create a control coordinator.")
-                                        }
+                                    }
                                     coordinator = targetCoordinator
                                     withTimeout(20_000L) {
-                                        targetCoordinator.requestMirror(name)
+                                        targetCoordinator.requestMirror(
+                                            requesterDisplayName = name,
+                                            remoteUnlockSession = buildRemoteUnlockSession(targetCoordinator, name),
+                                        )
                                     }
                                 }
                                     .onSuccess { requestID ->

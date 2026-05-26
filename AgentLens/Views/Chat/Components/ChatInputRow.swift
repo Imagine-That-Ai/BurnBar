@@ -52,6 +52,16 @@ struct ChatInputRow: View {
                     onReveal: { revealAttachment($0) }
                 )
             }
+            Group {
+                if let preview = controller.pendingTextExpansionPreview {
+                    textExpansionPreview(preview)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                }
+            }
+            .animation(DesignSystem.Animation.standard, value: controller.pendingTextExpansionPreview != nil)
             HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
                 attachmentMenu
                 TextField(inputPlaceholder, text: $controller.inputText, axis: .vertical)
@@ -70,6 +80,9 @@ struct ChatInputRow: View {
                     .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous).strokeBorder(inputStrokeGradient, lineWidth: 0.75))
                     .animation(DesignSystem.Animation.snappy, value: chatBackend)
+                    .onChange(of: controller.inputText) { _, _ in
+                        controller.handleTextExpansionDraftChange()
+                    }
                     .onPasteCommand(of: pasteAcceptedTypes) { providers in
                         handlePaste(providers: providers)
                     }
@@ -123,6 +136,93 @@ struct ChatInputRow: View {
     }
 
     // MARK: - Attachment menu
+
+    @ViewBuilder
+    private func textExpansionPreview(_ preview: ChatTextExpansionPreviewState) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: preview.isLoading ? "sparkles" : "text.badge.checkmark")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                .frame(width: 20, height: 20)
+                .opacity(preview.isLoading ? 0.6 : 1.0)
+                .animation(preview.isLoading ? DesignSystem.Animation.mercuryPulse : .default, value: preview.isLoading)
+                .symbolEffect(.pulse, isActive: preview.isLoading)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Text(preview.title)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    Text(preview.token)
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule()
+                                .fill(DesignSystem.Colors.hermesAureate.opacity(0.12))
+                        )
+                }
+                if preview.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if let error = preview.errorMessage {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        Text(error)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.error)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 10))
+                            Text("Retype trigger to retry")
+                                .font(DesignSystem.Typography.tiny)
+                        }
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                } else {
+                    Text(preview.generatedText)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(4)
+                }
+            }
+
+            Spacer(minLength: DesignSystem.Spacing.sm)
+
+            if !preview.isLoading, preview.errorMessage == nil {
+                Button {
+                    controller.insertPendingTextExpansionPreview()
+                } label: {
+                    Label("Insert", systemImage: "return")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+            Button {
+                controller.cancelTextExpansionPreview()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("Dismiss snippet preview")
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.surfaceElevated.opacity(0.85))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.75)
+        )
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(DesignSystem.Colors.mercuryGradient)
+                .frame(width: 2.5)
+                .padding(.vertical, 4)
+                .padding(.leading, 1)
+        }
+    }
 
     @ViewBuilder
     private var attachmentMenu: some View {

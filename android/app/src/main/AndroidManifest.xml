@@ -137,6 +137,19 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name=".text.TextExpansionImeService"
+            android:exported="true"
+            android:label="OpenBurnBar Snippets"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/text_expansion_ime" />
+        </service>
+
         <!-- BurnBar Live Wallpaper — data-driven swarm behind the home screen.
              Particles colored by provider usage from BurnBarWidgetSnapshotStore. -->
         <service
