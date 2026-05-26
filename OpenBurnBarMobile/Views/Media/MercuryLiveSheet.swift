@@ -4,6 +4,7 @@ import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
+import LocalAuthentication
 import OSLog
 #if canImport(UIKit)
 import UIKit
@@ -103,6 +104,8 @@ struct MercuryLiveSheet: View {
     @State private var phoneControlError: String?
     @State private var clipboardStatusMessage: String?
     @State private var pendingClipboardRequests: [String: HermesRealtimeRelayClipboardAction] = [:]
+    @State private var remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
+    @State private var remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult?
     @State private var selectedMirrorDisplayId: String?
     @State private var activeMirrorSessionId: String?
     @State private var activeMirrorViewerId: String?
@@ -277,6 +280,8 @@ struct MercuryLiveSheet: View {
             controlStreamCoordinator.focusContextHandler = nil
             controlStreamCoordinator.controlDeniedHandler = nil
             controlStreamCoordinator.clipboardResponseHandler = nil
+            controlStreamCoordinator.remoteUnlockStateHandler = nil
+            controlStreamCoordinator.remoteUnlockResultHandler = nil
             screenShareViewer.longTermReferenceTokenHandler = nil
             // Do NOT stop the phone control coordinator here — it is the
             // app-scope singleton; tearing it down would close the
@@ -296,6 +301,7 @@ struct MercuryLiveSheet: View {
                 controlRoundTripMillis: controlStreamCoordinator.lastRoundTripMillis,
                 displays: lastAck?.availableDisplays ?? [],
                 selectedDisplayId: selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
+                remoteUnlockState: remoteUnlockState ?? lastAck?.remoteUnlockState,
                 usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false,
                 sendTapIntent: { x, y, mouseButton in
                     let displayId = selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
@@ -341,6 +347,9 @@ struct MercuryLiveSheet: View {
                 },
                 grabClipboardFromMac: {
                     Task { await sendClipboardRequest(action: .grabFromMac) }
+                },
+                sendRemoteUnlockCredential: { password in
+                    Task { await sendRemoteUnlockCredential(password: password) }
                 },
                 onSelectDisplay: selectMirrorDisplay,
                 onTrustControlDevice: {
@@ -820,6 +829,7 @@ struct MercuryLiveSheet: View {
             await MainActor.run {
                 self.lastAck = ack
                 self.lastAckReceivedAt = Date()
+                self.remoteUnlockState = ack.remoteUnlockState ?? self.remoteUnlockState
                 self.cooldownClock = Date()
                 if ack.requestId == self.awaitingRequestID {
                     self.mirrorTimeoutTask?.cancel()
@@ -899,6 +909,25 @@ struct MercuryLiveSheet: View {
                 self.handleClipboardResponse(response)
             }
         }
+        controlStreamCoordinator.remoteUnlockStateHandler = { state in
+            await MainActor.run {
+                self.remoteUnlockState = state
+            }
+        }
+        controlStreamCoordinator.remoteUnlockResultHandler = { result in
+            await MainActor.run {
+                self.remoteUnlockResult = result
+                switch result.status {
+                case .unlocked:
+                    self.remoteUnlockState = nil
+                    self.phoneControlError = nil
+                case .denied, .failed, .expired:
+                    self.phoneControlError = result.detail ?? "Remote Unlock was denied."
+                case .accepted, .disconnected:
+                    break
+                }
+            }
+        }
         screenShareViewer.longTermReferenceTokenHandler = { token in
             try? await controlStreamCoordinator.sendLongTermReferenceAcknowledgement(
                 token: token,
@@ -923,6 +952,51 @@ struct MercuryLiveSheet: View {
         let controlAuthorityPeerNodeId = signingKey.map {
             PhoneControlSigningKeyStore.shared.peerNodeId(for: $0)
         }
+        let remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession?
+        if peer.capabilities.contains(.remoteUnlockHost) {
+            guard let signingKey, let controlAuthorityPeerNodeId else {
+                lastError = "Trust this iPhone for Mac control before requesting a locked Mac mirror."
+                return
+            }
+            do {
+                try await confirmLocalAuthentication(reason: "Allow Remote Unlock for this Mac.")
+                try await PhoneControlAuthorityPublisher.shared.publish(
+                    uid: uid,
+                    connectionId: connectionID,
+                    deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
+                    peerNodeId: controlAuthorityPeerNodeId,
+                    publicKey: signingKey.privateKey.publicKey
+                )
+                let sessionSigner = PhoneControlSender(
+                    peerNodeId: controlAuthorityPeerNodeId,
+                    uid: uid,
+                    connectionId: connectionID,
+                    signingKeyProvider: { signingKey },
+                    frameSink: { _ in }
+                )
+                let issuedAt = Date()
+                let unsignedSession = HermesRealtimeRelayRemoteUnlockSession(
+                    requestId: "remote-unlock-\(requestID)",
+                    sessionId: UUID().uuidString,
+                    intent: .request,
+                    requesterDisplayName: deviceDisplayName(),
+                    viewerDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
+                    requestedAt: issuedAt,
+                    expiresAt: issuedAt.addingTimeInterval(RemoteUnlockPolicy.default.sessionTTLSeconds),
+                    localAuthenticationSatisfied: true,
+                    requestedLockState: nil,
+                    requestedBackend: .appleScreenSharingLoopback,
+                    authority: Self.emptyAuthorityEnvelope
+                )
+                remoteUnlockSession = try sessionSigner.sign(remoteUnlockSession: unsignedSession)
+            } catch {
+                lastError = "Remote Unlock needs Face ID, Touch ID, or passcode confirmation."
+                awaitingRequestID = nil
+                return
+            }
+        } else {
+            remoteUnlockSession = nil
+        }
         awaitingRequestID = requestID
         activeMirrorRequestID = nil
         activeMirrorSessionId = nil
@@ -933,6 +1007,8 @@ struct MercuryLiveSheet: View {
         lastError = nil
         lastAck = nil
         lastAckReceivedAt = nil
+        remoteUnlockState = nil
+        remoteUnlockResult = nil
         do {
             try await controlStreamCoordinator.ensureResponsive(uid: uid, connectionID: connectionID)
         } catch {
@@ -958,7 +1034,8 @@ struct MercuryLiveSheet: View {
             focusFollowMode: AgentFocusFollowMode.off.rawValue,
             viewerId: viewerID,
             viewerDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
-            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
+            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId,
+            remoteUnlockSession: remoteUnlockSession
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -1142,6 +1219,31 @@ struct MercuryLiveSheet: View {
         #else
         return "iPhone"
         #endif
+    }
+
+    private static let emptyAuthorityEnvelope = HermesRealtimeRelayAuthorityEnvelope(
+        peerNodeId: "",
+        counter: 0,
+        timestamp: Date(timeIntervalSince1970: 0),
+        intentHashBlake3: "",
+        signatureEd25519: ""
+    )
+
+    private func confirmLocalAuthentication(reason: String) async throws {
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            throw error ?? LAError(.passcodeNotSet)
+        }
+        try await withCheckedThrowingContinuation { continuation in
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, error in
+                if success {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: error ?? LAError(.authenticationFailed))
+                }
+            }
+        }
     }
 
     private var mirrorControlStatus: ScreenSharePhoneControlStatus {
@@ -1414,6 +1516,96 @@ struct MercuryLiveSheet: View {
         phoneControlError = nil
     }
 
+    private func sendRemoteUnlockCredential(password: String) async {
+        let trimmedPassword = password.trimmingCharacters(in: .newlines)
+        guard !trimmedPassword.isEmpty else {
+            phoneControlError = "Enter your Mac password."
+            return
+        }
+        guard activeMirrorViewerRole == "controller" else {
+            phoneControlError = "Watching only. Take control from this device to unlock the Mac."
+            return
+        }
+        guard let uid = uidProvider(), !uid.isEmpty else {
+            phoneControlError = "Sign in to unlock your Mac."
+            return
+        }
+        let state = remoteUnlockState ?? lastAck?.remoteUnlockState
+        guard let state, state.lockState != .unlocked else {
+            phoneControlError = "The Mac is already unlocked."
+            return
+        }
+        let capabilities = state.capabilities
+        guard capabilities.enabled,
+              capabilities.certificationStatus == .certified,
+              let sessionId = state.sessionId,
+              let recipientKeyId = capabilities.credentialRecipientKeyId,
+              let recipientPublicKey = capabilities.credentialRecipientPublicKeyBase64,
+              let algorithm = capabilities.credentialEnvelopeAlgorithm else {
+            phoneControlError = "Remote Unlock is not certified on this Mac."
+            return
+        }
+        guard algorithm == RemoteUnlockCredentialEnvelopeCrypto.algorithm else {
+            phoneControlError = "Remote Unlock needs an app update on this device."
+            return
+        }
+
+        do {
+            try await confirmLocalAuthentication(reason: "Send your Mac password to this locked Mac.")
+            try await ensurePhoneControlStreamResponsive(uid: uid, connectionID: connectionID)
+        } catch {
+            phoneControlError = "Remote Unlock needs Face ID, Touch ID, or passcode confirmation."
+            return
+        }
+        if phoneControlSender == nil {
+            await startPhoneControlIfPossible()
+        }
+        guard let phoneControlSender else { return }
+
+        do {
+            try await sendPhoneControlClassify(
+                uid: uid,
+                connectionID: connectionID,
+                peerNodeId: phoneControlSender.peerNodeId
+            )
+
+            let requestId = UUID().uuidString
+            let clientIntentId = UUID().uuidString
+            let requestedAt = Date()
+            let expiresAt = requestedAt.addingTimeInterval(RemoteUnlockPolicy.default.credentialTTLSeconds)
+            let sealed = try RemoteUnlockCredentialEnvelopeCrypto.seal(
+                credential: trimmedPassword,
+                requestId: requestId,
+                sessionId: sessionId,
+                clientIntentId: clientIntentId,
+                credentialKind: .typedPassword,
+                recipientKeyId: recipientKeyId,
+                recipientPublicKeyBase64: recipientPublicKey,
+                algorithm: algorithm
+            )
+            let envelope = HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+                requestId: requestId,
+                sessionId: sessionId,
+                clientIntentId: clientIntentId,
+                credentialKind: .typedPassword,
+                recipientKeyId: recipientKeyId,
+                algorithm: algorithm,
+                ciphertextBase64: sealed.ciphertextBase64,
+                aadBase64: sealed.aadBase64,
+                redactedByteCount: sealed.redactedByteCount,
+                requestedAt: requestedAt,
+                expiresAt: expiresAt,
+                authority: Self.emptyAuthorityEnvelope
+            )
+            _ = try await phoneControlSender.send(remoteUnlockCredential: envelope)
+            phoneControlError = "Password sent to Mac login window."
+        } catch {
+            self.phoneControlSender = nil
+            phoneControlConnectionID = nil
+            phoneControlError = error.localizedDescription
+        }
+    }
+
     private func sendPhoneControlIntent(
         kind: HermesRealtimeRelayInputIntent.Kind,
         displayId: String? = nil,
@@ -1585,6 +1777,7 @@ private struct MercuryMirrorViewerFullScreen: View {
     let controlRoundTripMillis: Int?
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
+    let remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
     let usePremiumSOTAUX: Bool
     let sendTapIntent: (Double, Double, Int) -> Void
     let sendScrollIntent: (Double, Double, Double, Double, String?) -> Void
@@ -1595,6 +1788,7 @@ private struct MercuryMirrorViewerFullScreen: View {
     let sendAgentContextTargetIntent: (Double, Double, String, String, String?) -> Void
     let pasteClipboardToMac: () -> Void
     let grabClipboardFromMac: () -> Void
+    let sendRemoteUnlockCredential: (String) -> Void
     let onSelectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let onForceReconnect: () -> Void
@@ -1614,6 +1808,7 @@ private struct MercuryMirrorViewerFullScreen: View {
             reconnectAttemptStartedAt: reconnectAttemptStartedAt,
             lastFailureReason: lastFailureReason,
             lastLiveAt: lastLiveAt,
+            remoteUnlockState: remoteUnlockState,
             usePremiumSOTAUX: usePremiumSOTAUX,
             onForceReconnect: onForceReconnect,
             onRetryRequest: onRetryRequest,
@@ -1626,6 +1821,7 @@ private struct MercuryMirrorViewerFullScreen: View {
             sendAgentContextTargetIntent: sendAgentContextTargetIntent,
             pasteClipboardToMac: pasteClipboardToMac,
             grabClipboardFromMac: grabClipboardFromMac,
+            sendRemoteUnlockCredential: sendRemoteUnlockCredential,
             onSelectDisplay: onSelectDisplay,
             onTrustControlDevice: onTrustControlDevice,
             onClose: onClose

@@ -395,6 +395,63 @@ test("chat metadata stays free, but chat content backup requires entitlement", a
   );
 });
 
+test("owners can sync encrypted text expansion snippets without plaintext fields", async () => {
+  const db = authedDb("alice");
+  const snippetPath = "users/alice/text_snippets/snippet-1";
+  const sealedText = {
+    algorithm: "AES-256-GCM",
+    nonce: "base64nonce",
+    ciphertext: "base64ciphertext",
+    tag: "base64tag",
+    keyVersion: 1,
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, snippetPath), {
+      id: "snippet-1",
+      uid: "alice",
+      sourceDeviceID: "mac-1",
+      triggerHash: "a".repeat(32),
+      sealedTitle: sealedText,
+      sealedTrigger: sealedText,
+      sealedBody: sealedText,
+      sealedScope: sealedText,
+      mode: "llm_rewrite",
+      isEnabled: true,
+      revision: 1,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      deletedAt: null,
+      schemaVersion: 1,
+      encryption: {
+        algorithm: "AES-256-GCM",
+        keyVersion: 1,
+        tokenHashVersion: 1,
+      },
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/alice/text_snippets/plaintext"), {
+      id: "plaintext",
+      uid: "alice",
+      sourceDeviceID: "mac-1",
+      triggerHash: "b".repeat(32),
+      sealedTitle: sealedText,
+      sealedTrigger: sealedText,
+      sealedBody: sealedText,
+      sealedScope: sealedText,
+      body: "plaintext snippet",
+      mode: "static",
+      isEnabled: true,
+      revision: 1,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+});
+
 test("non-paying users can remove previously backed-up chat content", async () => {
   const db = authedDb("bob");
   const threadPath = "users/bob/chat_threads/device_thread";

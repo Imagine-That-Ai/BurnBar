@@ -20,6 +20,7 @@ public struct MercuryPeer: Hashable, Sendable, Codable {
         case mirrorViewer = "mirror.viewer"       // can show a remote screen
         case mirrorHost = "mirror.host"           // can host its own screen
         case mirrorAutoAccept = "mirror.auto_accept" // mirror requests auto-start
+        case remoteUnlockHost = "remote_unlock.host"
         case fileSend = "file.send"
         case fileReceive = "file.receive"
         case callReceive = "call.receive"

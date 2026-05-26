@@ -249,7 +249,7 @@ struct SettingsView: View {
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .switcherRoot, .hermesRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot,
-             .computerUseRoot:
+             .textExpansionRoot, .computerUseRoot:
             // Roots are reachable via the sidebar tab selection — the path
             // stays empty for these. Legacy roots (`connectionsRoot`,
             // `providersRoot`, `routingPoolsRoot`, `switcherRoot`,
@@ -341,6 +341,12 @@ struct SettingsView: View {
                 runtimeContext: runtimeContext
             )
                 .navigationTitle(MacCopy.devicesAndSyncTitle)
+        case .textExpansion:
+            TextExpansionSettingsView(
+                settingsManager: settingsManager,
+                dataStore: dataStore
+            )
+                .navigationTitle("Text Expansion")
         case .media:
             MediaPermissionsView()
                 .navigationTitle("Media & Sharing")

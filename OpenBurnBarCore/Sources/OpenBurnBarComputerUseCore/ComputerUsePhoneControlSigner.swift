@@ -147,6 +147,64 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         ))
     }
 
+    public func canonicalRemoteUnlockSessionHashHex(session: HermesRealtimeRelayRemoteUnlockSession) throws -> String {
+        struct SignableRemoteUnlockSession: Encodable {
+            let requestId: String
+            let sessionId: String?
+            let intent: HermesRealtimeRelayRemoteUnlockSession.Intent
+            let requesterDisplayName: String
+            let viewerDeviceId: String?
+            let requestedAt: Date
+            let expiresAt: Date
+            let localAuthenticationSatisfied: Bool
+            let requestedLockState: HermesRealtimeRelayMacLockState?
+            let requestedBackend: HermesRealtimeRelayRemoteUnlockBackend?
+        }
+        return try canonicalIntentHashHex(intent: SignableRemoteUnlockSession(
+            requestId: session.requestId,
+            sessionId: session.sessionId,
+            intent: session.intent,
+            requesterDisplayName: session.requesterDisplayName,
+            viewerDeviceId: session.viewerDeviceId,
+            requestedAt: session.requestedAt,
+            expiresAt: session.expiresAt,
+            localAuthenticationSatisfied: session.localAuthenticationSatisfied,
+            requestedLockState: session.requestedLockState,
+            requestedBackend: session.requestedBackend
+        ))
+    }
+
+    public func canonicalRemoteUnlockCredentialHashHex(
+        credential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope
+    ) throws -> String {
+        struct SignableRemoteUnlockCredential: Encodable {
+            let requestId: String
+            let sessionId: String
+            let clientIntentId: String
+            let credentialKind: HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind
+            let recipientKeyId: String
+            let algorithm: String
+            let ciphertextBase64: String
+            let aadBase64: String
+            let redactedByteCount: Int
+            let requestedAt: Date
+            let expiresAt: Date
+        }
+        return try canonicalIntentHashHex(intent: SignableRemoteUnlockCredential(
+            requestId: credential.requestId,
+            sessionId: credential.sessionId,
+            clientIntentId: credential.clientIntentId,
+            credentialKind: credential.credentialKind,
+            recipientKeyId: credential.recipientKeyId,
+            algorithm: credential.algorithm,
+            ciphertextBase64: credential.ciphertextBase64,
+            aadBase64: credential.aadBase64,
+            redactedByteCount: credential.redactedByteCount,
+            requestedAt: credential.requestedAt,
+            expiresAt: credential.expiresAt
+        ))
+    }
+
     /// Canonical hash for signed system permission requests. The authority
     /// envelope is omitted from the canonical form because the phone
     /// attaches it after signing, matching every other Phase 12+ wire
@@ -271,6 +329,44 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         privateKey: Curve25519.Signing.PrivateKey
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalClipboardRequestHashHex(request: request)
+        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
+        let signature = try privateKey.signature(for: payload)
+        return SignedAuthority(
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: timestamp,
+            intentHashHex: intentHashHex,
+            signatureBase64: signature.base64EncodedString()
+        )
+    }
+
+    public func sign(
+        remoteUnlockSession session: HermesRealtimeRelayRemoteUnlockSession,
+        peerNodeId: String,
+        counter: UInt64,
+        timestamp: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> SignedAuthority {
+        let intentHashHex = try canonicalRemoteUnlockSessionHashHex(session: session)
+        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
+        let signature = try privateKey.signature(for: payload)
+        return SignedAuthority(
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: timestamp,
+            intentHashHex: intentHashHex,
+            signatureBase64: signature.base64EncodedString()
+        )
+    }
+
+    public func sign(
+        remoteUnlockCredential credential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
+        peerNodeId: String,
+        counter: UInt64,
+        timestamp: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> SignedAuthority {
+        let intentHashHex = try canonicalRemoteUnlockCredentialHashHex(credential: credential)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
         let signature = try privateKey.signature(for: payload)
         return SignedAuthority(
@@ -516,6 +612,38 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
         }
         let observedHex = try canonicalSystemPermissionRequestHashHex(request: request)
+        guard observedHex == authority.intentHashHex else {
+            throw VerifyError.intentHashMismatch
+        }
+        guard let signatureData = Data(base64Encoded: authority.signatureBase64) else {
+            throw VerifyError.invalidBase64Signature
+        }
+        let payload = signablePayload(
+            intentHashHex: authority.intentHashHex,
+            counter: authority.counter,
+            timestamp: authority.timestamp
+        )
+        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+            throw VerifyError.signatureFailed
+        }
+    }
+
+    public func verify(
+        remoteUnlockCredential credential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
+        authority: SignedAuthority,
+        peerPublicKey: Curve25519.Signing.PublicKey,
+        lastSeenCounter: UInt64,
+        now: Date,
+        freshnessSeconds: TimeInterval = 5.0
+    ) throws {
+        let skew = abs(now.timeIntervalSince(authority.timestamp))
+        guard skew <= freshnessSeconds else {
+            throw VerifyError.staleTimestamp(skewSeconds: skew)
+        }
+        guard authority.counter > lastSeenCounter else {
+            throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
+        }
+        let observedHex = try canonicalRemoteUnlockCredentialHashHex(credential: credential)
         guard observedHex == authority.intentHashHex else {
             throw VerifyError.intentHashMismatch
         }

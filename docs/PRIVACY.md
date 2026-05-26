@@ -30,11 +30,18 @@ If you choose to sign in with Google or Apple and enable cloud sync, OpenBurnBar
 - Provider account metadata and quota snapshots (redacted labels, provider IDs, refresh status, limits, remaining quota)
 - In-app chat thread metadata (thread IDs, titles/previews when enabled, timestamps, counts)
 - Conversation/session metadata and sync watermarks
+- Encrypted text-expansion snippets, including sealed titles, triggers, bodies, scopes, and keyed trigger hashes
 - Encrypted BurnBar Pro session-log search metadata, including sealed titles/snippets and keyed token/semantic hashes
 - Shared artifact metadata and revisions for collaboration features
 - Sync state metadata
 
 Cloud sync is **disabled by default**. You can disable it at any time in Settings. Disabling sync does not affect local data.
+
+### Optional Text Expansion Snippets
+
+Text expansion snippets are user-authored phrases that expand from `&&name` triggers. Static snippets can contain whatever you type into them, so treat them like local notes. When cloud sync is enabled, OpenBurnBar stores snippet title, trigger, body, and scope as Cloud Vault encrypted fields in Firestore, plus a keyed trigger hash used for duplicate matching. Firestore rules reject plaintext snippet fields.
+
+LLM rewrite snippets are previewed before insertion and use only OpenBurnBar-owned thread context. Global macOS expansion, iOS keyboard expansion, and Android IME expansion insert static snippets only.
 
 ### Optional Chat and Session Backup (paid entitlement)
 

@@ -330,6 +330,15 @@ enum SettingsManifest {
             keywords: ["model", "pi", "raspberry"],
             logoProviders: [.piAgent]
         ),
+        SettingsItem(
+            id: "hub.textExpansion",
+            section: .hermesAI,
+            pageRoute: .textExpansion,
+            anchorID: SettingsAnchor.textExpansionRow,
+            title: "Text Expansion",
+            subtitle: "Manage && snippets and the iOS keyboard snapshot",
+            keywords: ["snippet", "snippets", "keyboard", "text expander", "expansion", "shortcut", "template"]
+        ),
 
         // MARK: About
 
@@ -404,6 +413,7 @@ enum SettingsManifest {
         SettingsAnchor.piRow,
         SettingsAnchor.piHosts,
         SettingsAnchor.piModels,
+        SettingsAnchor.textExpansionRow,
         SettingsAnchor.aboutVersion,
         SettingsAnchor.aboutPrivacy,
         SettingsAnchor.aboutTerms,

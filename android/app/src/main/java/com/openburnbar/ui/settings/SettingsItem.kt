@@ -59,6 +59,7 @@ enum class SettingsSection(val displayTitle: String) {
     NOTIFICATIONS("Notifications"),
     HERMES("Hermes"),
     COMPUTER_USE("Computer Use"),
+    TEXT_EXPANSION("Text Expansion"),
     THEME("Theme"),
     BUDGET("Budgeting & Rules"),
 }
@@ -76,6 +77,7 @@ enum class SettingsPageRoute {
     QUOTA_PREFS,
     WALLPAPER_GENERATOR,
     BUDGET_PREFS,
+    TEXT_EXPANSION,
 }
 
 /**
@@ -93,6 +95,7 @@ object SettingsAnchor {
     const val SMART_DISPLAYS_ROW = "root.smartDisplays"
     const val QUICK_GLANCE_ROW = "root.quickGlance"
     const val COMPUTER_USE_ROW = "root.computerUse"
+    const val TEXT_EXPANSION_ROW = "root.textExpansion"
     const val THEME_ROW = "root.theme"
     const val QUOTA_CUSTOMIZATION_ROW = "root.quotaCustomization"
     const val BUDGET_ROW = "root.budgeting"

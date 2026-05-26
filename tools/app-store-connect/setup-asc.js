@@ -56,7 +56,11 @@ SUPPORTED AGENTS
 Claude Code · Codex · Factory Droid · Kimi · Cursor · Windsurf · Goose · Aider · Cline · RooCode · Kilo Code · OpenClaw · Forge · Augment · Copilot · GitHub Copilot · Gemini CLI · Warp AI · Hermes
 
 PRIVACY
-All processing is local. No data leaves your machine unless you explicitly enable optional cloud sync. OpenBurnBar does not collect analytics or telemetry by default.`,
+All processing is local. No data leaves your machine unless you explicitly enable optional cloud sync. OpenBurnBar does not collect analytics or telemetry by default.
+
+TERMS OF USE (EULA)
+Standard Apple Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Privacy Policy: https://burnbar.ai/legal/privacy-policy`,
 
   keywords: 'AI,agents,Claude,Cursor,Codex,token,cost,budget,developer,menu bar,burn rate,LLM,tracking',
 

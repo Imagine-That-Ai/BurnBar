@@ -154,6 +154,143 @@ final class Plan2SharedModelsTests: XCTestCase {
         XCTAssertEqual(decodedResponse.control?.clipboardResponse?.status.rawValue, "accepted")
     }
 
+    func test_realtimeRelayRemoteUnlockFramesRoundTrip() throws {
+        let authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "ios-phone-node",
+            counter: 44,
+            timestamp: Date(timeIntervalSince1970: 1_774_000_000),
+            intentHashBlake3: "unlock-hash",
+            signatureEd25519: "signature"
+        )
+        let capabilities = HermesRealtimeRelayRemoteUnlockCapabilities(
+            enabled: true,
+            certificationStatus: .certified,
+            certifiedAt: Date(timeIntervalSince1970: 1_774_000_000),
+            certifiedOSBuild: "23G93",
+            activeBackend: .appleScreenSharingLoopback,
+            supportedBackends: [.appleScreenSharingLoopback],
+            supportedLockStates: [.screenLocked, .loginWindow, .rebootLoginWindow],
+            blockers: [],
+            allowsCredentialPaste: true,
+            credentialRecipientKeyId: "mac-remote-unlock-key",
+            credentialRecipientPublicKeyBase64: "cHVibGljLWtleQ==",
+            credentialEnvelopeAlgorithm: "HPKE-X25519-SHA256-CHACHAPOLY",
+            fileVaultSSHSupported: false
+        )
+        let session = HermesRealtimeRelayRemoteUnlockSession(
+            requestId: "unlock-req-1",
+            sessionId: "unlock-session-1",
+            intent: .request,
+            requesterDisplayName: "Alberto's iPad",
+            viewerDeviceId: "ipad-1",
+            requestedAt: Date(timeIntervalSince1970: 1_774_000_000),
+            expiresAt: Date(timeIntervalSince1970: 1_774_000_600),
+            localAuthenticationSatisfied: true,
+            requestedLockState: .loginWindow,
+            requestedBackend: .appleScreenSharingLoopback,
+            authority: authority
+        )
+        let state = HermesRealtimeRelayRemoteUnlockState(
+            sessionId: "unlock-session-1",
+            lockState: .loginWindow,
+            backend: .appleScreenSharingLoopback,
+            capabilities: capabilities,
+            controlOwnerViewerId: "viewer-1",
+            observedAt: Date(timeIntervalSince1970: 1_774_000_001)
+        )
+        let credential = HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+            requestId: "credential-1",
+            sessionId: "unlock-session-1",
+            clientIntentId: "client-credential-1",
+            credentialKind: .clipboardPassword,
+            recipientKeyId: "mac-remote-unlock-key",
+            algorithm: "HPKE-X25519-SHA256-CHACHAPOLY",
+            ciphertextBase64: "Y2lwaGVydGV4dA==",
+            aadBase64: "YWFk",
+            redactedByteCount: 16,
+            requestedAt: Date(timeIntervalSince1970: 1_774_000_002),
+            expiresAt: Date(timeIntervalSince1970: 1_774_000_032),
+            authority: authority
+        )
+        let result = HermesRealtimeRelayRemoteUnlockResult(
+            requestId: "credential-1",
+            sessionId: "unlock-session-1",
+            status: .unlocked,
+            lockState: .unlocked,
+            backend: .appleScreenSharingLoopback,
+            detail: "unlocked",
+            completedAt: Date(timeIntervalSince1970: 1_774_000_010)
+        )
+
+        let sessionFrame = HermesRealtimeRelayFrame(
+            type: .remoteUnlockSession,
+            uid: "user-1",
+            connectionId: "mac-conn-1",
+            requestId: session.requestId,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "remote_unlock",
+                sessionId: session.sessionId,
+                remoteUnlockSession: session
+            )
+        )
+        let stateFrame = HermesRealtimeRelayFrame(
+            type: .remoteUnlockState,
+            uid: "user-1",
+            connectionId: "mac-conn-1",
+            requestId: session.requestId,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "remote_unlock",
+                sessionId: state.sessionId,
+                remoteUnlockState: state
+            )
+        )
+        let credentialFrame = HermesRealtimeRelayFrame(
+            type: .remoteUnlockCredential,
+            uid: "user-1",
+            connectionId: "mac-conn-1",
+            requestId: credential.requestId,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "remote_unlock",
+                sessionId: credential.sessionId,
+                remoteUnlockCredential: credential
+            )
+        )
+        let resultFrame = HermesRealtimeRelayFrame(
+            type: .remoteUnlockResult,
+            uid: "user-1",
+            connectionId: "mac-conn-1",
+            requestId: result.requestId,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "remote_unlock",
+                sessionId: result.sessionId,
+                remoteUnlockResult: result
+            )
+        )
+
+        let decoder = JSONDecoder()
+        let decodedSession = try decoder.decode(HermesRealtimeRelayFrame.self, from: JSONEncoder().encode(sessionFrame))
+        let decodedState = try decoder.decode(HermesRealtimeRelayFrame.self, from: JSONEncoder().encode(stateFrame))
+        let decodedCredential = try decoder.decode(HermesRealtimeRelayFrame.self, from: JSONEncoder().encode(credentialFrame))
+        let decodedResult = try decoder.decode(HermesRealtimeRelayFrame.self, from: JSONEncoder().encode(resultFrame))
+
+        XCTAssertEqual(decodedSession.type, .remoteUnlockSession)
+        XCTAssertEqual(decodedSession.control?.remoteUnlockSession, session)
+        XCTAssertEqual(decodedState.control?.remoteUnlockState, state)
+        XCTAssertEqual(
+            decodedState.control?.remoteUnlockState?.capabilities.credentialRecipientKeyId,
+            "mac-remote-unlock-key"
+        )
+        XCTAssertEqual(
+            decodedState.control?.remoteUnlockState?.capabilities.credentialEnvelopeAlgorithm,
+            "HPKE-X25519-SHA256-CHACHAPOLY"
+        )
+        XCTAssertEqual(decodedCredential.control?.remoteUnlockCredential, credential)
+        XCTAssertEqual(decodedCredential.control?.remoteUnlockCredential?.credentialKind, .clipboardPassword)
+        XCTAssertEqual(decodedCredential.control?.remoteUnlockCredential?.redactedByteCount, 16)
+        XCTAssertEqual(decodedResult.control?.remoteUnlockResult, result)
+        XCTAssertEqual(decodedResult.control?.remoteUnlockResult?.status, .unlocked)
+    }
+
     // MARK: PiConnectionMode/Status
 
     func test_piConnectionMode_rawValuesStable() {

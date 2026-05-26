@@ -10,8 +10,9 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Rational
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,6 +20,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.openburnbar.data.computeruse.InMemoryPhoneControlCounterStore
 import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
 import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
@@ -26,6 +29,7 @@ import com.openburnbar.data.computeruse.PhoneControlClipboardAction
 import com.openburnbar.data.computeruse.PhoneControlClipboardRequest
 import com.openburnbar.data.computeruse.PhoneControlIntent
 import com.openburnbar.data.computeruse.PhoneControlIntentKind
+import com.openburnbar.data.computeruse.RemoteUnlockCredentialEnvelopeCrypto
 import com.openburnbar.data.computeruse.PhoneControlSender
 import com.openburnbar.data.computeruse.PhoneControlSigningKeyStore
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
@@ -43,12 +47,22 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorDisplaySelection
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
+import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCertificationStatus
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.time.Instant
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Host activity for `ScreenShareViewerScreen`. Stays alive in
@@ -57,7 +71,7 @@ import kotlinx.coroutines.sync.withLock
  * activity scope; surface lifecycle is driven by the embedded
  * `SurfaceView`.
  */
-class ScreenShareViewerActivity : ComponentActivity() {
+class ScreenShareViewerActivity : FragmentActivity() {
 
     private val controlScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val controlMutex = Mutex()
@@ -112,6 +126,16 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 clipboardResponseFlow?.collectAsState()
                     ?: remember { mutableStateOf<HermesRealtimeRelayClipboardResponse?>(null) }
                 )
+            val remoteUnlockStateFlow = BurnBarApplication.mediaControlCoordinator?.lastRemoteUnlockState
+            val lastRemoteUnlockState by (
+                remoteUnlockStateFlow?.collectAsState()
+                    ?: remember { mutableStateOf<HermesRealtimeRelayRemoteUnlockState?>(null) }
+                )
+            val remoteUnlockResultFlow = BurnBarApplication.mediaControlCoordinator?.lastRemoteUnlockResult
+            val lastRemoteUnlockResult by (
+                remoteUnlockResultFlow?.collectAsState()
+                    ?: remember { mutableStateOf<HermesRealtimeRelayRemoteUnlockResult?>(null) }
+                )
             var selectedDisplayId by remember { mutableStateOf<String?>(null) }
             var smartZoomContext by remember { mutableStateOf<ScreenShareSmartZoomContext?>(null) }
             DisposableEffect(Unit) {
@@ -152,6 +176,19 @@ class ScreenShareViewerActivity : ComponentActivity() {
                     handleClipboardResponse(response)
                 }
             }
+            LaunchedEffect(lastRemoteUnlockResult) {
+                lastRemoteUnlockResult?.let { result ->
+                    when (result.status) {
+                        HermesRealtimeRelayRemoteUnlockResult.Status.DENIED,
+                        HermesRealtimeRelayRemoteUnlockResult.Status.FAILED,
+                        HermesRealtimeRelayRemoteUnlockResult.Status.EXPIRED ->
+                            controlStatus.value = result.detail ?: "Remote Unlock was denied."
+                        HermesRealtimeRelayRemoteUnlockResult.Status.UNLOCKED ->
+                            controlStatus.value = "Mac unlocked"
+                        else -> Unit
+                    }
+                }
+            }
             LaunchedEffect(lastRoundTripMillis) {
                 lastRoundTripMillis?.let { pipeline.updateRoundTripMillis(it) }
             }
@@ -163,6 +200,7 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 availableDisplays = lastMirrorAck?.availableDisplays ?: emptyList(),
                 selectedDisplayId = activeDisplayId,
                 latestFocusContext = smartZoomContext,
+                remoteUnlockState = lastRemoteUnlockState ?: lastMirrorAck?.remoteUnlockState,
                 onSelectDisplay = { displayId ->
                     selectedDisplayId = displayId
                     sendMirrorDisplaySelect(displayId)
@@ -251,6 +289,9 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 },
                 onGrabClipboardFromMac = {
                     sendClipboardRequest(HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC)
+                },
+                onSendRemoteUnlockPassword = { password ->
+                    sendRemoteUnlockPassword(password)
                 },
                 controlStatus = controlStatus.value,
                 onTrustControlDevice = { trustThisAndroidForControl() },
@@ -476,6 +517,128 @@ class ScreenShareViewerActivity : ComponentActivity() {
         }
     }
 
+    private fun sendRemoteUnlockPassword(password: String) {
+        val credential = password.trimEnd('\n', '\r')
+        if (credential.isEmpty()) {
+            controlStatus.value = "Enter your Mac password."
+            return
+        }
+        if (mirrorViewerRole == "watcher") {
+            controlStatus.value = "Watching only. Take control from this Android to unlock the Mac."
+            return
+        }
+        controlScope.launch {
+            runCatching {
+                authenticateForRemoteUnlock()
+                val state = BurnBarApplication.mediaControlCoordinator
+                    ?.lastRemoteUnlockState
+                    ?.value
+                    ?: BurnBarApplication.mediaControlCoordinator
+                        ?.lastMirrorAck
+                        ?.value
+                        ?.remoteUnlockState
+                    ?: throw IllegalStateException("Remote Unlock state is not available yet.")
+                val capabilities = state.capabilities
+                val sessionId = state.sessionId
+                    ?: throw IllegalStateException("Remote Unlock session is not available yet.")
+                val recipientKeyId = capabilities.credentialRecipientKeyId
+                    ?: throw IllegalStateException("Remote Unlock recipient key is missing.")
+                val recipientPublicKey = capabilities.credentialRecipientPublicKeyBase64
+                    ?: throw IllegalStateException("Remote Unlock recipient key is missing.")
+                val algorithm = capabilities.credentialEnvelopeAlgorithm
+                    ?: throw IllegalStateException("Remote Unlock envelope algorithm is missing.")
+                if (!capabilities.enabled ||
+                    capabilities.certificationStatus != HermesRealtimeRelayRemoteUnlockCertificationStatus.CERTIFIED
+                ) {
+                    throw IllegalStateException("Remote Unlock is not certified on this Mac.")
+                }
+                if (algorithm != RemoteUnlockCredentialEnvelopeCrypto.ALGORITHM) {
+                    throw IllegalStateException("Remote Unlock needs an app update on this Android.")
+                }
+                val sender = ensurePhoneControlSender()
+                val requestId = java.util.UUID.randomUUID().toString()
+                val clientIntentId = java.util.UUID.randomUUID().toString()
+                val requestedAt = Instant.now()
+                val expiresAt = requestedAt.plusSeconds(REMOTE_UNLOCK_CREDENTIAL_TTL_SECONDS)
+                val sealed = RemoteUnlockCredentialEnvelopeCrypto.seal(
+                    credential = credential,
+                    requestId = requestId,
+                    sessionId = sessionId,
+                    clientIntentId = clientIntentId,
+                    credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.TYPED_PASSWORD,
+                    recipientKeyId = recipientKeyId,
+                    recipientPublicKeyBase64 = recipientPublicKey,
+                    algorithm = algorithm,
+                )
+                val envelope = HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+                    requestId = requestId,
+                    sessionId = sessionId,
+                    clientIntentId = clientIntentId,
+                    credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.TYPED_PASSWORD,
+                    recipientKeyId = recipientKeyId,
+                    algorithm = algorithm,
+                    ciphertextBase64 = sealed.ciphertextBase64,
+                    aadBase64 = sealed.aadBase64,
+                    redactedByteCount = sealed.redactedByteCount,
+                    requestedAt = requestedAt.toString(),
+                    expiresAt = expiresAt.toString(),
+                    authority = HermesRealtimeRelayAuthorityEnvelope(
+                        peerNodeId = "",
+                        counter = 0,
+                        timestamp = 0.0,
+                        intentHashBlake3 = "",
+                        signatureEd25519 = "",
+                    ),
+                )
+                sender.send(envelope)
+                controlStatus.value = "Password sent to Mac login window"
+                Log.i(TAG, "Android Remote Unlock credential sent requestId=$requestId sessionId=$sessionId")
+            }.onFailure { error ->
+                controlStatus.value = error.message?.take(90) ?: "Remote Unlock failed"
+                Log.w(TAG, "Android Remote Unlock credential failed error=${error.message}", error)
+            }
+        }
+    }
+
+    private suspend fun authenticateForRemoteUnlock() {
+        withContext(Dispatchers.Main) {
+            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            val manager = BiometricManager.from(this@ScreenShareViewerActivity)
+            if (manager.canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
+                throw IllegalStateException("Device credential is required for Remote Unlock.")
+            }
+            suspendCancellableCoroutine { continuation ->
+                val prompt = BiometricPrompt(
+                    this@ScreenShareViewerActivity,
+                    ContextCompat.getMainExecutor(this@ScreenShareViewerActivity),
+                    object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            if (continuation.isActive) continuation.resume(Unit)
+                        }
+
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            if (continuation.isActive) {
+                                continuation.resumeWithException(
+                                    IllegalStateException("Remote Unlock needs device authentication."),
+                                )
+                            }
+                        }
+
+                        override fun onAuthenticationFailed() = Unit
+                    },
+                )
+                val info = BiometricPrompt.PromptInfo.Builder()
+                    .setTitle("Send Mac password")
+                    .setSubtitle("Confirm this Android before Remote Unlock submits the credential.")
+                    .setAllowedAuthenticators(authenticators)
+                    .build()
+                continuation.invokeOnCancellation { prompt.cancelAuthentication() }
+                prompt.authenticate(info)
+            }
+        }
+    }
+
     private fun handleClipboardResponse(response: HermesRealtimeRelayClipboardResponse) {
         val matched = synchronized(pendingClipboardLock) {
             val expected = pendingClipboardRequests[response.requestId]
@@ -660,6 +823,7 @@ class ScreenShareViewerActivity : ComponentActivity() {
         private const val TAG = "BurnBar"
         private const val REMOTE_CLIPBOARD_CONTENT_TYPE = "text/plain"
         private const val REMOTE_CLIPBOARD_MAX_BYTES = 65_536
+        private const val REMOTE_UNLOCK_CREDENTIAL_TTL_SECONDS = 30L
     }
 }
 

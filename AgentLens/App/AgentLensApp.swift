@@ -802,6 +802,14 @@ struct OpenBurnBarApp: App {
             chatController: controller,
             operatingLayer: layer
         )
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        let textExpansionRuntime = TextExpansionRuntimeController(
+            dataStore: initializedStore,
+            settingsManager: settings
+        )
+        context.textExpansionRuntimeController = textExpansionRuntime
+        textExpansionRuntime.start()
+        #endif
         context.startRelayServices()
         context.startSmartDisplayServices()
         return context
@@ -1158,6 +1166,7 @@ struct OpenBurnBarApp: App {
                 await aggregator.refreshAll()
                 await sync.uploadPendingConversations()
                 await sync.uploadPendingChatThreads()
+                await sync.syncTextExpansionSnippets()
                 if context.settingsManager.dailyDigestEnabled {
                     await DailyDigestManager.shared.requestAuthorization()
                     DailyDigestManager.shared.scheduleDigest(

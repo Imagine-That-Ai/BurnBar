@@ -1396,6 +1396,34 @@ final class OpenBurnBarDatabase: Sendable {
             try db.execute(sql: "CREATE INDEX IF NOT EXISTS budget_events_synced_idx ON budget_events(syncedAt)")
         }
 
+        migrator.registerMigration("v43_text_expansion_snippets") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS text_expansion_snippets (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    trigger TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    isEnabled INTEGER NOT NULL DEFAULT 1,
+                    scopeJSON TEXT NOT NULL,
+                    revision INTEGER NOT NULL DEFAULT 1,
+                    createdAt DATETIME NOT NULL,
+                    updatedAt DATETIME NOT NULL,
+                    deletedAt DATETIME,
+                    syncedAt DATETIME,
+                    sourceDeviceID TEXT
+                )
+                """)
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS text_expansion_snippets_enabled_idx ON text_expansion_snippets(isEnabled, deletedAt)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS text_expansion_snippets_synced_idx ON text_expansion_snippets(syncedAt)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS text_expansion_snippets_updated_idx ON text_expansion_snippets(updatedAt)")
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX IF NOT EXISTS text_expansion_snippets_trigger_active_idx
+                ON text_expansion_snippets(trigger)
+                WHERE deletedAt IS NULL
+                """)
+        }
+
         return migrator
     }
 

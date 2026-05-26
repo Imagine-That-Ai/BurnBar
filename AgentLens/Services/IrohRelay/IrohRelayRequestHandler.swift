@@ -212,6 +212,12 @@ final class IrohRelayRequestHandler: Sendable {
                  .controlAgentContextTarget,
                  .controlSystemPermissionRequest,
                  .controlSystemPermissionStatus,
+                 .remoteUnlockSession,
+                 .remoteUnlockState,
+                 .remoteUnlockInput,
+                 .remoteUnlockCredential,
+                 .remoteUnlockResult,
+                 .remoteUnlockDenied,
                  .controlDenied:
                 guard let controlDispatcher else { continue }
                 let replySender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
@@ -219,6 +225,8 @@ final class IrohRelayRequestHandler: Sendable {
                     try await stream.send(outboundFrame)
                 }
                 await controlDispatcher(frame, replySender)
+                continue
+            @unknown default:
                 continue
             }
         }

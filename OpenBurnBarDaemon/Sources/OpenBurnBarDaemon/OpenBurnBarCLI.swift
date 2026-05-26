@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import Darwin
 import Foundation
 
@@ -286,14 +287,17 @@ public struct BurnBarCLIRunner {
     public let client: any BurnBarCLIClient
     public let shellExecutor: any BurnBarCLIShellExecuting
     public let shellShimInstaller: any BurnBarCLIShellShimInstalling
+    public let remoteUnlockCertificationStore: RemoteUnlockCertificationReportStore
     private let logger = BurnBarDaemonLogger(category: "cli-runner")
 
     public init(
         client: any BurnBarCLIClient,
         shellExecutor: (any BurnBarCLIShellExecuting)? = nil,
-        shellShimInstaller: (any BurnBarCLIShellShimInstalling)? = nil
+        shellShimInstaller: (any BurnBarCLIShellShimInstalling)? = nil,
+        remoteUnlockCertificationStore: RemoteUnlockCertificationReportStore = RemoteUnlockCertificationReportStore()
     ) {
         self.client = client
+        self.remoteUnlockCertificationStore = remoteUnlockCertificationStore
         let profileStore: any BurnBarSwitcherProfileStoreProviding
         do {
             let sqliteStore = try BurnBarSwitcherSQLiteProfileStore()
@@ -342,6 +346,8 @@ public struct BurnBarCLIRunner {
             }
             let run = try client.simulatorReplay(runID: BurnBarSimulatorRunID(rawValue: effectiveArguments[1]))
             return "Replayed \(run.scenarioName) (\(run.id.rawValue)) with \(run.emittedEvents.count) event(s)."
+        case "remote-unlock-certification":
+            return try handleRemoteUnlockCertification(Array(effectiveArguments.dropFirst()))
         default:
             throw BurnBarCLIError.invalidCommand(command)
         }
@@ -386,6 +392,7 @@ public struct BurnBarCLIRunner {
       mission-approve <missionID> [note]
       simulator-runs [projectSlug]
       simulator-replay <runID>
+      remote-unlock-certification <status|record-hardware-proof|reset>
       exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
       install-shell-shims
     """
@@ -402,6 +409,7 @@ public struct BurnBarCLIRunner {
         "mission-approve",
         "simulator-runs",
         "simulator-replay",
+        "remote-unlock-certification",
         "exec",
         "install-shell-shims"
     ]
@@ -502,6 +510,122 @@ public struct BurnBarCLIRunner {
         return runs.map { run in
             "\(run.id.rawValue) [\(run.status.rawValue)] \(run.scenarioName)"
         }.joined(separator: "\n")
+    }
+
+    private func handleRemoteUnlockCertification(_ arguments: [String]) throws -> String {
+        guard let subcommand = arguments.first else {
+            throw BurnBarCLIError.missingArgument(Self.remoteUnlockCertificationUsageText)
+        }
+        let options = Array(arguments.dropFirst())
+        switch subcommand {
+        case "status":
+            guard let report = try remoteUnlockCertificationStore.load() else {
+                return "Remote Unlock certification: missing\nPath: \(remoteUnlockCertificationStore.fileURL.path)"
+            }
+            return [
+                "Remote Unlock certification: present",
+                "Report: \(report.reportId)",
+                "Backend: \(report.backend.rawValue)",
+                "OS build: \(report.currentOSBuild)",
+                "Recipient key: \(report.credentialRecipientKeyId)",
+                "Generated: \(Self.formatDate(report.generatedAt))",
+                "Expires: \(Self.formatDate(report.expiresAt))",
+                "Path: \(remoteUnlockCertificationStore.fileURL.path)"
+            ].joined(separator: "\n")
+        case "record-hardware-proof":
+            let keyId = try requiredOption("--key-id", in: options)
+            let publicKey = try requiredOption("--public-key-base64", in: options)
+            let fileVaultSSHSupported = boolOption("--filevault-ssh-supported", in: options) ?? false
+            let viewerDeviceKind = optionValue("--viewer-device-kind", in: options)
+            let notes = optionValue("--notes", in: options)
+            let outputPath = optionValue("--output", in: options)
+            let now = Date()
+            let report = RemoteUnlockCertificationReport.certifiedHardware(
+                currentOSBuild: RemoteUnlockCertificationReport.currentHostOSBuild(),
+                credentialRecipientKeyId: keyId,
+                credentialRecipientPublicKeyBase64: publicKey,
+                fileVaultSSHSupported: fileVaultSSHSupported,
+                generatedAt: now,
+                redactedViewerDeviceKind: viewerDeviceKind,
+                notes: notes
+            )
+            let blockers = report.validationBlockers(
+                now: now,
+                currentOSBuild: RemoteUnlockCertificationReport.currentHostOSBuild(),
+                credentialRecipientKeyId: keyId,
+                credentialRecipientPublicKeyBase64: publicKey,
+                directDownloadBuild: true,
+                daemonInstalled: Self.remoteAccessDaemonInstalled,
+                systemScreenSharingAvailable: Self.systemScreenSharingAvailable
+            )
+            guard blockers.isEmpty else {
+                throw BurnBarCLIError.missingArgument(
+                    "Remote Unlock proof is not installable: \(blockers.joined(separator: ", "))"
+                )
+            }
+            try remoteUnlockCertificationStore.save(report)
+            if let outputPath {
+                let outputURL = URL(fileURLWithPath: outputPath)
+                try FileManager.default.createDirectory(
+                    at: outputURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try RemoteUnlockCertificationReportStore.makeEncoder()
+                    .encode(report)
+                    .write(to: outputURL, options: [.atomic])
+            }
+            return "Remote Unlock certification recorded: \(report.reportId)\nPath: \(remoteUnlockCertificationStore.fileURL.path)"
+        case "reset":
+            try remoteUnlockCertificationStore.remove()
+            return "Remote Unlock certification removed.\nPath: \(remoteUnlockCertificationStore.fileURL.path)"
+        default:
+            throw BurnBarCLIError.invalidCommand("remote-unlock-certification \(subcommand)")
+        }
+    }
+
+    private static let remoteUnlockCertificationUsageText = """
+    Usage:
+      openburnbar-cli remote-unlock-certification status
+      openburnbar-cli remote-unlock-certification record-hardware-proof --key-id <hpke-key-id> --public-key-base64 <base64> [--viewer-device-kind ios|ipad|android] [--filevault-ssh-supported true|false] [--notes text] [--output path]
+      openburnbar-cli remote-unlock-certification reset
+    """
+
+    private static var remoteAccessDaemonInstalled: Bool {
+        FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.openburnbar.remote-access-agent.plist")
+    }
+
+    private static var systemScreenSharingAvailable: Bool {
+        FileManager.default.fileExists(atPath: "/System/Library/CoreServices/RemoteManagement/ARDAgent.app")
+            || FileManager.default.fileExists(atPath: "/System/Library/CoreServices/Applications/Screen Sharing.app")
+    }
+
+    private static func formatDate(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
+    }
+
+    private func requiredOption(_ name: String, in arguments: [String]) throws -> String {
+        guard let value = optionValue(name, in: arguments),
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw BurnBarCLIError.missingArgument(Self.remoteUnlockCertificationUsageText)
+        }
+        return value
+    }
+
+    private func optionValue(_ name: String, in arguments: [String]) -> String? {
+        guard let index = arguments.firstIndex(of: name),
+              arguments.indices.contains(index + 1) else {
+            return nil
+        }
+        return arguments[index + 1]
+    }
+
+    private func boolOption(_ name: String, in arguments: [String]) -> Bool? {
+        guard let value = optionValue(name, in: arguments)?.lowercased() else { return nil }
+        switch value {
+        case "1", "true", "yes": return true
+        case "0", "false", "no": return false
+        default: return nil
+        }
     }
 
     private func wrappedCLIRequest(
