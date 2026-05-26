@@ -325,6 +325,24 @@ data class AgentIdentity(
                     AgentCapabilities.FULL_CLI.union(AgentCapabilities.MEMORY).union(AgentCapabilities.MCP_UI),
                     AgentDispatchTransport.MacRelay("openclaw")
                 )
+                AssistantRuntimeID.DROID -> Quad(
+                    "8B5CF6",
+                    "Factory Droid via your Mac.",
+                    AgentCapabilities.FULL_CLI.union(AgentCapabilities.CODE_EXECUTION).union(AgentCapabilities.MCP_UI),
+                    AgentDispatchTransport.MacRelay("droid")
+                )
+                AssistantRuntimeID.FORGE -> Quad(
+                    "F97316",
+                    "Forge coding agent via your Mac.",
+                    AgentCapabilities.FULL_CLI.union(AgentCapabilities.CODE_EXECUTION).union(AgentCapabilities.MCP_UI),
+                    AgentDispatchTransport.MacRelay("forge")
+                )
+                AssistantRuntimeID.ANTIGRAVITY -> Quad(
+                    "6C63FF",
+                    "Google Antigravity via your Mac.",
+                    AgentCapabilities.FULL_CLI.union(AgentCapabilities.CODE_EXECUTION).union(AgentCapabilities.MCP_UI),
+                    AgentDispatchTransport.MacRelay("antigravity")
+                )
             }
             return AgentIdentity(
                 id = builtInURI(runtime),

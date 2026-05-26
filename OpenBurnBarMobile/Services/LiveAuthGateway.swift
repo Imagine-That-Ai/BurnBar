@@ -133,8 +133,22 @@ final class LiveAuthGateway: NSObject, AuthGateway {
     private var rootVC: UIViewController? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
-        return activeScene?.windows.first { $0.isKeyWindow }?.rootViewController
+        let root = activeScene?.windows.first { $0.isKeyWindow }?.rootViewController
             ?? activeScene?.windows.first?.rootViewController
+        return Self.topMostViewController(from: root)
+    }
+
+    private static func topMostViewController(from viewController: UIViewController?) -> UIViewController? {
+        if let navigationController = viewController as? UINavigationController {
+            return topMostViewController(from: navigationController.visibleViewController ?? navigationController.topViewController)
+        }
+        if let tabController = viewController as? UITabBarController {
+            return topMostViewController(from: tabController.selectedViewController)
+        }
+        if let presented = viewController?.presentedViewController, !presented.isBeingDismissed {
+            return topMostViewController(from: presented)
+        }
+        return viewController
     }
 
     private var googleClientID: String? {

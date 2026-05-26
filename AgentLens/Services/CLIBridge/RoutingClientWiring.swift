@@ -24,12 +24,17 @@ import Foundation
 ///   - `.droid` — Factory Droid custom-model overrides in
 ///     `~/.factory/settings.local.json`, `~/.factory/settings.json`, and
 ///     `~/.factory/config.json` (`customModels` / `custom_models` entries).
+///   - `.antigravity` — Google Antigravity profile switching. The CLI is
+///     launched through profile-scoped config directories; it does not expose
+///     a file-based OpenAI-compatible routing config that OpenBurnBar can
+///     safely rewrite yet.
 enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     case claudeCode
     case codex
     case opencode
     case forge
     case droid
+    case antigravity
 
     var id: String { rawValue }
 
@@ -40,6 +45,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         case .opencode: return "OpenCode CLI"
         case .forge: return "Forge CLI"
         case .droid: return "Droid CLI"
+        case .antigravity: return "Antigravity CLI"
         }
     }
 
@@ -48,6 +54,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .claudeCode: return "Anthropic Messages"
         case .codex, .opencode, .forge, .droid: return "OpenAI-style gateway"
+        case .antigravity: return "Profile-scoped Antigravity"
         }
     }
 }
@@ -303,6 +310,10 @@ struct RoutingClientWiring {
             return try wireForge(gateway: gateway)
         case .droid:
             return try wireDroid(gateway: gateway, advertisedModels: advertisedModels)
+        case .antigravity:
+            throw RoutingClientWiringError.gatewayMisconfigured(
+                detail: "Antigravity profile switching is supported, but Antigravity does not expose a file-based OpenAI-compatible routing config for OpenBurnBar to rewrite yet."
+            )
         }
     }
 
@@ -318,6 +329,8 @@ struct RoutingClientWiring {
             try unwireForge()
         case .droid:
             try unwireDroid()
+        case .antigravity:
+            throw RoutingClientWiringError.notEnabled
         }
     }
 
@@ -335,6 +348,8 @@ struct RoutingClientWiring {
             return home.appendingPathComponent("forge/.forge.toml")
         case .droid:
             return home.appendingPathComponent(".factory/settings.local.json")
+        case .antigravity:
+            return home.appendingPathComponent(".gemini/antigravity-cli/settings.json")
         }
     }
 
@@ -403,6 +418,8 @@ struct RoutingClientWiring {
             return text.contains(Self.sentinelStart)
                 || (text.contains(#"id = "openburnbar""#) && text.contains(":8317"))
                 || text.range(of: #"url\s*=\s*"https?://(127\.0\.0\.1|localhost):8317(/v1)?/chat/completions""#, options: .regularExpression) != nil
+        case .antigravity:
+            return false
         }
     }
 
@@ -426,6 +443,8 @@ struct RoutingClientWiring {
             return .current(modelIDs: installed)
         case .claudeCode, .codex, .opencode, .forge:
             return isWired(target: target) ? .current(modelIDs: []) : .notWired
+        case .antigravity:
+            return .notWired
         }
     }
 
@@ -491,6 +510,15 @@ struct RoutingClientWiring {
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
             export OPENAI_BASE_URL=\(openAIBaseURL)
             export OPENAI_API_KEY=\(token)
+            """
+        case .antigravity:
+            return """
+            # OpenBurnBar — Antigravity currently uses profile-scoped config
+            # directories rather than a file-based OpenAI-compatible gateway
+            # setting that BurnBar can safely rewrite. Use OpenBurnBar's
+            # Antigravity profile launcher for account-scoped sessions.
+            export AGY_CONFIG_HOME=$HOME/.gemini/antigravity-cli
+            export ANTIGRAVITY_HOME=$HOME/.gemini/antigravity-cli
             """
         }
     }
@@ -644,6 +672,8 @@ struct RoutingClientWiring {
         let body: [String: Any]
         let probeModel: String
         switch target {
+        case .antigravity:
+            return .skipped(reason: "Antigravity is launched through profile switching, not routed client wiring.")
         case .claudeCode:
             probeModel = Self.anthropicProbeModel
             // Anthropic Messages uses `max_tokens`. Older versions of the
@@ -732,6 +762,8 @@ struct RoutingClientWiring {
     private func probeURL(target: RoutingClientWiringTarget, gateway: RoutingClientGateway) -> URL? {
         let base = URL(string: gateway.baseURL)
         switch target {
+        case .antigravity:
+            return nil
         case .claudeCode:
             return base?.appending(path: "v1/messages")
         case .codex:

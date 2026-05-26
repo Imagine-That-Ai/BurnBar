@@ -29,53 +29,64 @@ struct AgentWatchScreen: View {
     }
 
     var body: some View {
-        AgentWatchView(
-            state: singleton.state,
-            downgradeTrustMode: { mode in
-                singleton.state.setTrustMode(mode)
-            },
-            approveAction: { request in
-                Task { try? await singleton.coordinator.receiver?.approve(request) }
-            },
-            rejectAction: { request, halt in
-                Task { try? await singleton.coordinator.receiver?.reject(request, halt: halt) }
-            },
-            panicHalt: {
-                Task {
-                    try? await singleton.coordinator.receiver?.panicHalt()
-                    await singleton.stop()
-                }
-            },
-            sendTapIntent: { x, y in
-                Task { try? await singleton.coordinator.receiver?.tap(normalizedX: x, normalizedY: y) }
-            },
-            sendScrollIntent: { x1, y1, x2, y2 in
-                Task {
-                    try? await singleton.coordinator.receiver?.scrollDrag(
-                        startNormalizedX: x1,
-                        startNormalizedY: y1,
-                        endNormalizedX: x2,
-                        endNormalizedY: y2
-                    )
-                }
-            },
-            sendTextIntent: { text in
-                Task { try? await singleton.coordinator.receiver?.type(text) }
-            },
-            sendShortcutIntent: { key, modifiers in
-                Task { try? await singleton.coordinator.receiver?.shortcut(key: key, modifiers: modifiers) }
-            }
-        )
-        .overlay(alignment: .top) {
-            if let connectionError = singleton.connectionMessage {
-                Text(connectionError)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.red.opacity(0.82), in: Capsule())
-                    .padding(.top, 54)
-                    .padding(.horizontal, 16)
+        Group {
+            if shouldShowMirror {
+                AgentWatchView(
+                    state: singleton.state,
+                    downgradeTrustMode: { mode in
+                        singleton.state.setTrustMode(mode)
+                    },
+                    approveAction: { request in
+                        Task { try? await singleton.coordinator.receiver?.approve(request) }
+                    },
+                    rejectAction: { request, halt in
+                        Task { try? await singleton.coordinator.receiver?.reject(request, halt: halt) }
+                    },
+                    panicHalt: {
+                        Task {
+                            try? await singleton.coordinator.receiver?.panicHalt()
+                            await singleton.stop()
+                        }
+                    },
+                    sendTapIntent: { x, y in
+                        Task { try? await singleton.coordinator.receiver?.tap(normalizedX: x, normalizedY: y) }
+                    },
+                    sendScrollIntent: { x1, y1, x2, y2 in
+                        Task {
+                            try? await singleton.coordinator.receiver?.scrollDrag(
+                                startNormalizedX: x1,
+                                startNormalizedY: y1,
+                                endNormalizedX: x2,
+                                endNormalizedY: y2
+                            )
+                        }
+                    },
+                    sendTextIntent: { text in
+                        Task { try? await singleton.coordinator.receiver?.type(text) }
+                    },
+                    sendShortcutIntent: { key, modifiers in
+                        Task { try? await singleton.coordinator.receiver?.shortcut(key: key, modifiers: modifiers) }
+                    }
+                )
+            } else {
+                AgentWatchEmptyStateView(
+                    isSignedIn: (authUID ?? "").isEmpty == false,
+                    selectedConnection: hermesService.selectedConnection,
+                    suggestedRelay: hermesService.suggestedRelayConnection,
+                    sessionId: singleton.state.sessionId?.rawValue,
+                    connectionMessage: singleton.connectionMessage,
+                    phase: singleton.phase,
+                    onOpenHermes: {
+                        NotificationCenter.default.post(name: .init("ShowHermesChat"), object: nil)
+                    },
+                    onUseSuggestedRelay: {
+                        _ = hermesService.connectToSuggestedRelay(refresh: true)
+                        singleton.evaluate(authUID: authUID, hermesService: hermesService)
+                    },
+                    onOpenSettings: {
+                        NotificationCenter.default.post(name: .init("ShowSettings"), object: nil)
+                    }
+                )
             }
         }
         .navigationTitle("Agent Watch")
@@ -85,6 +96,16 @@ struct AgentWatchScreen: View {
         }
         .onChange(of: singleton.phase) { _, phase in
             runComputerUseE2EProofIfNeeded(phase: phase)
+        }
+    }
+
+    private var shouldShowMirror: Bool {
+        if singleton.state.currentFrame != nil { return true }
+        switch singleton.phase {
+        case .live, .reconnecting, .dialing:
+            return singleton.state.sessionId != nil
+        case .idle, .stopped, .failed:
+            return false
         }
     }
 

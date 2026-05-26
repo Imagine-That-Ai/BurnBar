@@ -90,6 +90,11 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.match(block, /allow create, update: if relayRequestWrite\(userId, requestId\);/);
   assert.match(rules, /function relayRequestWrite\(userId, requestId\) \{[\s\S]*hasActiveHostedQuotaEntitlement\(userId\)/);
   assert.match(rules, /request\.resource\.data\.id == requestId/);
+  assert.match(
+    rules,
+    /request\.resource\.data\.operation in \["chatCompletions", "cliAgentChat", "cliAgentModelCatalog", "models", "sessions", "sessionDetail", "profiles", "jobs"\]/,
+    "Hermes relay requests must allow cliAgentModelCatalog for Mac CLI model pickers",
+  );
   assert.match(rules, /match \/chunks\/\{chunkId\}/);
   assert.match(rules, /allow create, update: if relayChunkWrite\(userId, requestId, chunkId\);/);
   assert.match(rules, /request\.resource\.data\.id == chunkId/);

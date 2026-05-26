@@ -138,6 +138,20 @@ struct DashboardOverviewView: View {
                     overviewAppeared: overviewAppeared,
                     onNavigateToModel: { onNavigate(.model($0)) }
                 )
+                DashboardCredentialLaneView(
+                    summaries: usageWindow.credentialSummaries,
+                    overviewAppeared: overviewAppeared,
+                    onNavigateToCredential: { summary in
+                        onNavigate(.provider(summary.provider))
+                    }
+                )
+                DashboardProjectSpendLaneView(
+                    summaries: usageWindow.projectSpendSummaries,
+                    overviewAppeared: overviewAppeared,
+                    onNavigateToProject: { _ in
+                        onNavigate(.sessionLogs)
+                    }
+                )
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
 

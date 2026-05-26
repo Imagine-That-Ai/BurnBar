@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "KsnKukE4+X4iEVnsx9Xhj2kLQvRXW4EORIN3iODPEA1yfQoNW+Y0Jj9EODhi\/ks=",
+  "chunkCiphertext" : "jFu0GAe2Ih7gRmo5lQ4\/mciY+3txSiXURVf0HPe1K91WuSgB4U+5jqXNfANVgiA=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "cwMUtPMoAyrcxOBlKND\/jvGGPnvw7h+9fXzU6iTaHsAn6ck\/e+hN8JMSEG0MONZH4CYPumvizndOn9Jq\/3X2nY6CJ7f5kFiMSVIffDug3w3VmzQyRPxSWTDE2XvtJx+3ur8ZH+XSzg8oXLjJCnpavo7ITqHY4VZOdxSaKASrUHgUZ\/hTp+8ZnKk5oYx4Ly6hoiONiyOV",
+  "payloadCiphertext" : "lmVSglYoAj2uSRe1AswqcPU+gakQjT2vlycVntHkTlHjYB5EzjQboIOZlK6s5Pi7eUAo5iGkz2+8nt89\/y7cvCxxmUZNbks7MpP7QPr\/6NtWwoGQQlESg33mDxC2JGSvXbMvZC6PAaRkplivw8fie7yuCgKw2onxnYhm+0S+OSOivLcsZouzJ0sya0GhHCnUZo4knnmf",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BA+z611uruEOjXtrSuzNVNiuRs36YGCZSobU4zMqowdvsG7UHo9rQbKVAPeauv18\/sG0uRRQbfIK6uJK2fJiHmGGkc\/n80Jn3ZMV10zyeGkhINqxtPGhYsB3W7Sul1dj+Fyit9SXeoxeC6+d7kgtFjzX0vuTJaO\/O1gQzGw="
+  "wrappedKey" : "BGqzHl0\/a3Eys4g0TpkjdYMq0ZOsEZA3KueAEAsPRLOJD1GBtyYAPGbFM8wUCcrariQRCeF2h+SwYdVPFXwU\/OAMWJK2YG76CI74BFkjiWAxNpdHmTFNkMFCBiddnWreCE0MdX0KPko5DdSNATPOsEHlmQeHZ86fuaMqOao="
 }

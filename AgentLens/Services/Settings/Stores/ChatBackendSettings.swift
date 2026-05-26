@@ -157,6 +157,14 @@ final class ChatBackendSettings {
         didSet { persistence.set(chatBackendOnboardingCompleted, forKey: "chatBackendOnboardingCompleted") }
     }
 
+    var systemPermissionsOnboardingCompleted: Bool = false {
+        didSet { persistence.set(systemPermissionsOnboardingCompleted, forKey: "systemPermissionsOnboardingCompleted") }
+    }
+
+    var systemPermissionsDeferredKindsCSV: String = "" {
+        didSet { persistence.set(systemPermissionsDeferredKindsCSV, forKey: "systemPermissionsDeferredKindsCSV") }
+    }
+
     var hermesSetupWizardCompleted: Bool = false {
         didSet { persistence.set(hermesSetupWizardCompleted, forKey: "hermesSetupWizardCompleted") }
     }
@@ -268,6 +276,8 @@ final class ChatBackendSettings {
             defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
         )
         self.chatBackendOnboardingCompleted = persistence.bool(forKey: "chatBackendOnboardingCompleted")
+        self.systemPermissionsOnboardingCompleted = persistence.bool(forKey: "systemPermissionsOnboardingCompleted")
+        self.systemPermissionsDeferredKindsCSV = persistence.string(forKey: "systemPermissionsDeferredKindsCSV")
         self.hermesSetupWizardCompleted = persistence.bool(forKey: "hermesSetupWizardCompleted")
         self.switcherOnboardingCompleted = persistence.bool(forKey: "switcherOnboardingCompleted")
         self.selectedOnboardingProvidersCSV = persistence.string(forKey: "selectedOnboardingProvidersCSV")

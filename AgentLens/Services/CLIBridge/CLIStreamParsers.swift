@@ -264,6 +264,99 @@ struct CodexExecJSONLParser {
     }
 }
 
+struct GenericCLIJSONOrTextParser {
+    private var emittedText = ""
+
+    mutating func events(fromLine line: String) -> [CLIChatStreamEvent] {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        guard let data = trimmed.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return [.text(line + "\n")]
+        }
+
+        var events: [CLIChatStreamEvent] = []
+        if let usage = OpenAICompatibleUsageParser.usage(from: obj) {
+            events.append(.usage(usage))
+        }
+        if let tool = Self.toolEvent(from: obj) {
+            events.append(tool)
+        }
+        guard let text = Self.extractText(from: obj)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
+            return events
+        }
+        if text.hasPrefix(emittedText), text.count > emittedText.count {
+            let start = text.index(text.startIndex, offsetBy: emittedText.count)
+            let delta = String(text[start...])
+            emittedText = text
+            events.append(.text(delta))
+        } else if text != emittedText {
+            emittedText = text
+            events.append(contentsOf: CodexExecJSONLParser.chunkedText(text).map(CLIChatStreamEvent.text))
+        }
+        return events
+    }
+
+    private static func extractText(from obj: [String: Any]) -> String? {
+        for key in ["text", "response", "output", "result", "content", "answer"] {
+            if let text = obj[key] as? String, !text.isEmpty {
+                return text
+            }
+        }
+        if let message = obj["message"] as? String, !message.isEmpty {
+            return message
+        }
+        if let message = obj["message"] as? [String: Any] {
+            if let text = message["text"] as? String, !text.isEmpty { return text }
+            if let content = message["content"] as? String, !content.isEmpty { return content }
+            if let content = message["content"] as? [[String: Any]] {
+                let joined = content.compactMap { block in
+                    (block["text"] as? String) ?? (block["content"] as? String)
+                }
+                .joined(separator: "\n")
+                if !joined.isEmpty { return joined }
+            }
+        }
+        if let delta = obj["delta"] as? [String: Any] {
+            if let text = delta["text"] as? String, !text.isEmpty { return text }
+            if let content = delta["content"] as? String, !content.isEmpty { return content }
+        }
+        if let choices = obj["choices"] as? [[String: Any]] {
+            let joined = choices.compactMap { choice in
+                if let text = choice["text"] as? String { return text }
+                if let delta = choice["delta"] as? [String: Any] {
+                    return (delta["content"] as? String) ?? (delta["text"] as? String)
+                }
+                if let message = choice["message"] as? [String: Any] {
+                    return (message["content"] as? String) ?? (message["text"] as? String)
+                }
+                return nil
+            }
+            .joined()
+            if !joined.isEmpty { return joined }
+        }
+        return nil
+    }
+
+    private static func toolEvent(from obj: [String: Any]) -> CLIChatStreamEvent? {
+        let name = (obj["tool"] as? String)
+            ?? (obj["tool_name"] as? String)
+            ?? (obj["name"] as? String)
+        guard let name, !name.isEmpty else { return nil }
+        let kind = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
+        let detail = (obj["detail"] as? String)
+            ?? (obj["command"] as? String)
+            ?? (obj["path"] as? String)
+            ?? (obj["output"] as? String).map { String($0.prefix(400)) }
+        if kind.contains("result") || kind.contains("complete") || kind.contains("output") {
+            return .toolResult(name: name, detail: detail)
+        }
+        return .toolUse(name: name, detail: detail)
+    }
+}
+
 enum OpenAICompatibleUsageParser {
     static func usage(from obj: [String: Any]) -> CLIUsageSnapshot? {
         let usage = (obj["usage"] as? [String: Any]) ?? obj
@@ -544,9 +637,23 @@ enum OpenAICompatibleModelListParser {
                 displayName: displayName,
                 providerID: providerID.isEmpty ? nil : providerID,
                 providerName: providerName.isEmpty ? nil : providerName,
-                routeEligible: routeEligible
+                routeEligible: routeEligible,
+                modelCapabilities: modelCapabilities(
+                    from: raw["model_capabilities"] ?? raw["modelCapabilities"]
+                )
             )
         }
+    }
+
+    private static func modelCapabilities(from value: Any?) -> ModelIOCapabilities? {
+        guard let value,
+              JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value) else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(ModelIOCapabilities.self, from: data)
     }
 
     private static func hermesFamily(

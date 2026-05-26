@@ -34,7 +34,11 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
   - iPhone, iPad, and Android now expose the same Agent Permissions control in
     Hermes, Pi, Codex, Claude, and OpenClaw chat surfaces. High-trust presets
     (Desktop, All, YOLO) require Face ID/Touch ID or Android BiometricPrompt
-    before a signed grant is issued.
+    before a signed grant is issued. iOS declares the Face ID purpose string,
+    iOS/Android preflight the trusted-device record before local auth, and
+    surface the Devices & Sync recovery path instead of a generic Firestore
+    denial. Android keeps the biometric sheet retryable after non-terminal
+    failed attempts.
   - Mobile grants use live-first delivery over the paired Mac iroh control
     stream (`control.agent_grant.request` / `control.agent_grant.receipt`) and
     fall back to a signed Firestore queue when the stream is unavailable. The
@@ -63,6 +67,26 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
     Android, grant Desktop or YOLO to Hermes, create a small SVG on the Mac,
     export it to the Desktop drops folder, request a screenshot, revoke the
     grant, and confirm the next desktop tool call is denied in-stream.
+- **Audit hardening (2026-05-25):**
+  - Added `NSFaceIDUsageDescription` to the iOS app bundle.
+  - Added iPhone/iPad and Android trusted-device preflight in
+    `MobileAgentPermissionGrantController` before LocalAuthentication and grant
+    publishing, and in `AgentCapabilityGrantController` before Android
+    BiometricPrompt.
+  - Reopened existing receipts when the iOS Agent Permissions sheet appears, so
+    the selected preset mirrors the active grant instead of resetting visually
+    to Desktop.
+  - Kept Android BiometricPrompt retryable after non-terminal failed attempts
+    and prevented preset taps while another grant request is active.
+  - Audit verification: `plutil -lint OpenBurnBarMobile/Info.plist`;
+    `xcodebuild build -quiet -project OpenBurnBar.xcodeproj -scheme
+    OpenBurnBarMobile -destination 'generic/platform=iOS' -derivedDataPath
+    /tmp/DerivedData-agent-mobile-grants-audit -skipPackagePluginValidation
+    -skipMacroValidation`; `swift test --package-path OpenBurnBarCore --filter
+    AgentCapabilityGrantTests`; `swift test --package-path OpenBurnBarCore
+    --filter ComputerUsePhoneControlSignerTests`; `cd android && ./gradlew
+    :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon`; `npm --prefix
+    functions run test:firestore-rules`.
 
 ---
 

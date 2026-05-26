@@ -47,7 +47,43 @@ protocol KeychainStoreBackend: Sendable {
     func delete(service: String, account: String) throws
 }
 
+protocol SecurityKeychainOperations: Sendable {
+    func runWithDisabledInteraction(_ operation: () -> OSStatus) -> OSStatus
+    func update(query: CFDictionary, attributes: CFDictionary) -> OSStatus
+    func add(query: CFDictionary) -> OSStatus
+    func copyMatching(query: CFDictionary, item: UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus
+    func delete(query: CFDictionary) -> OSStatus
+}
+
+struct LiveSecurityKeychainOperations: SecurityKeychainOperations {
+    func runWithDisabledInteraction(_ operation: () -> OSStatus) -> OSStatus {
+        withKeychainInteractionDisabled(operation)
+    }
+
+    func update(query: CFDictionary, attributes: CFDictionary) -> OSStatus {
+        SecItemUpdate(query, attributes)
+    }
+
+    func add(query: CFDictionary) -> OSStatus {
+        SecItemAdd(query, nil)
+    }
+
+    func copyMatching(query: CFDictionary, item: UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus {
+        SecItemCopyMatching(query, item)
+    }
+
+    func delete(query: CFDictionary) -> OSStatus {
+        SecItemDelete(query)
+    }
+}
+
 struct SecurityKeychainStoreBackend: KeychainStoreBackend {
+    private let security: any SecurityKeychainOperations
+
+    init(security: any SecurityKeychainOperations = LiveSecurityKeychainOperations()) {
+        self.security = security
+    }
+
     func set(_ value: Data, service: String, account: String) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -59,8 +95,8 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
             kSecValueData as String: value,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
-        let updateStatus = withKeychainInteractionDisabled {
-            SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        let updateStatus = security.runWithDisabledInteraction {
+            security.update(query: query as CFDictionary, attributes: attributes as CFDictionary)
         }
         if updateStatus == errSecSuccess { return }
         if updateStatus != errSecItemNotFound {
@@ -70,8 +106,8 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
         var createQuery = query
         createQuery[kSecValueData as String] = value
         createQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        let addStatus = withKeychainInteractionDisabled {
-            SecItemAdd(createQuery as CFDictionary, nil)
+        let addStatus = security.runWithDisabledInteraction {
+            security.add(query: createQuery as CFDictionary)
         }
         guard addStatus == errSecSuccess else {
             throw KeychainStoreError.unhandled(addStatus)
@@ -98,10 +134,10 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
         var item: CFTypeRef?
         let status: OSStatus
         if allowUserInteraction {
-            status = SecItemCopyMatching(query as CFDictionary, &item)
+            status = security.copyMatching(query: query as CFDictionary, item: &item)
         } else {
-            status = withKeychainInteractionDisabled {
-                SecItemCopyMatching(query as CFDictionary, &item)
+            status = security.runWithDisabledInteraction {
+                security.copyMatching(query: query as CFDictionary, item: &item)
             }
         }
         if status == errSecItemNotFound
@@ -125,8 +161,8 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        let status = withKeychainInteractionDisabled {
-            SecItemDelete(query as CFDictionary)
+        let status = security.runWithDisabledInteraction {
+            security.delete(query: query as CFDictionary)
         }
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainStoreError.unhandled(status)

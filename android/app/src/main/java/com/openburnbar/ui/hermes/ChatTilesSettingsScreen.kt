@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.ChatTilePreferences
 import com.openburnbar.data.hermes.HermesSubProvider
+import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.theme.AuroraSpacing
 
 @Composable
@@ -63,7 +64,13 @@ fun ChatTilesSettingsScreen(onBack: () -> Unit) {
             TileToggleRow(
                 title = runtime.displayName,
                 subtitle = tileSubtitle(runtime),
-                glyph = runtime.glyph,
+                icon = {
+                    ProviderLogo(
+                        runtime = runtime,
+                        size = 28.dp,
+                        circular = false
+                    )
+                },
                 checked = prefs.enabledTiles.contains(runtime),
                 onCheckedChange = { enabled ->
                     val next = prefs.withTile(runtime, enabled)
@@ -83,7 +90,13 @@ fun ChatTilesSettingsScreen(onBack: () -> Unit) {
             TileToggleRow(
                 title = sub.displayName,
                 subtitle = "Routes Hermes traffic through ${sub.displayName}.",
-                glyph = sub.glyph,
+                icon = {
+                    ProviderLogo(
+                        subProvider = sub,
+                        size = 28.dp,
+                        circular = false
+                    )
+                },
                 checked = prefs.enabledHermesSubProviders.contains(sub),
                 onCheckedChange = { enabled ->
                     val next = prefs.withHermesSubProvider(sub, enabled)
@@ -157,7 +170,7 @@ private fun SectionHeader(title: String, subtitle: String) {
 private fun TileToggleRow(
     title: String,
     subtitle: String,
-    glyph: String,
+    icon: @Composable () -> Unit,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
@@ -169,13 +182,10 @@ private fun TileToggleRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(RoundedCornerShape(7.dp))
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)),
+            modifier = Modifier.size(28.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = glyph, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            icon()
         }
         Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -233,6 +243,9 @@ private fun tileSubtitle(runtime: AssistantRuntimeID): String = when (runtime) {
     AssistantRuntimeID.CODEX -> "Codex chat bridged from your Mac."
     AssistantRuntimeID.CLAUDE -> "Claude Code chat bridged from your Mac."
     AssistantRuntimeID.OPEN_CLAW -> "OpenClaw local agent bridged from your Mac."
+    AssistantRuntimeID.DROID -> "Droid chat bridged from your Mac."
+    AssistantRuntimeID.FORGE -> "Forge chat bridged from your Mac."
+    AssistantRuntimeID.ANTIGRAVITY -> "Antigravity chat bridged from your Mac."
 }
 
 private fun loadPrefs(context: Context): ChatTilePreferences {

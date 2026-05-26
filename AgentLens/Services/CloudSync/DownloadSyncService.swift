@@ -14,6 +14,7 @@ final class DownloadSyncService: CloudSyncDomain {
     private(set) var isSyncing = false
     private(set) var lastSyncError: String?
     private(set) var lastSyncDate: Date?
+    private(set) var cloudTotalCost: Double?
 
     init(context: CloudSyncContext) {
         self.context = context
@@ -41,7 +42,38 @@ final class DownloadSyncService: CloudSyncDomain {
         enqueueProjectionForRemoteConversations(newConversationIds)
 
         lastSyncDate = Date()
+        await fetchCloudTotal()
         await context.dataStore.refresh()
+    }
+
+    /// Fetch sum of cost across all devices for this user (last 90 days).
+    func fetchCloudTotal(uid: String? = nil) async {
+        guard context.accountManager.isFirebaseAvailable else { return }
+        let resolvedUid = uid ?? context.currentUID
+        guard let resolvedUid else { return }
+
+        let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+
+        do {
+            let snapshot = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.usageAggregate"
+            ) {
+                try await context.firestoreGateway
+                    .collection("users")
+                    .document(resolvedUid)
+                    .collection("usage")
+                    .whereField("startTime", isGreaterThan: Timestamp(date: cutoff))
+                    .getDocuments()
+            }
+
+            cloudTotalCost = snapshot.documents.compactMap { doc -> Double? in
+                doc.data()["cost"] as? Double
+            }.reduce(0, +)
+        } catch {
+            // Non-fatal: aggregate failing doesn't break local experience
+        }
     }
 
     /// Updates the local device name in Firestore (called from Settings).

@@ -443,6 +443,21 @@ extension AgentIdentity {
             tagline = "Local-first agent runtime. Yours by default."
             capabilities = [.fullCLI, .memory, .mcpUI]
             dispatchTransport = .macRelay(runtime: "openclaw")
+        case .droid:
+            paletteHex = "8B5CF6"
+            tagline = "Factory Droid via your Mac."
+            capabilities = [.fullCLI, .codeExecution, .mcpUI]
+            dispatchTransport = .macRelay(runtime: "droid")
+        case .forge:
+            paletteHex = "F97316"
+            tagline = "Forge coding agent via your Mac."
+            capabilities = [.fullCLI, .codeExecution, .mcpUI]
+            dispatchTransport = .macRelay(runtime: "forge")
+        case .antigravity:
+            paletteHex = "6C63FF"
+            tagline = "Google Antigravity via your Mac."
+            capabilities = [.fullCLI, .codeExecution, .mcpUI]
+            dispatchTransport = .macRelay(runtime: "antigravity")
         }
 
         return AgentIdentity(

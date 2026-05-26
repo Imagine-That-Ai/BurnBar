@@ -62,7 +62,7 @@ sealed class BurnBarTab(
 ) {
     object PULSE    : BurnBarTab("pulse",    "Pulse",    AuroraNavDestination.PULSE)
     object BURN     : BurnBarTab("burn",     "Burn",     AuroraNavDestination.BURN)
-    object INSIGHTS : BurnBarTab("insights", "Insights", AuroraNavDestination.INSIGHTS)
+    object INSIGHTS : BurnBarTab("insights", "Budget & Insights", AuroraNavDestination.INSIGHTS)
     object STREAMS  : BurnBarTab("streams",  "Streams",  AuroraNavDestination.STREAMS)
     // Plan 2: tab renamed to "Assistants" — the route stays `hermes` so deep
     // links (`burnbar://hermes`, `burnbar://chat`) and bookmarks continue to
@@ -315,7 +315,7 @@ private fun BurnBarContent(
             BurnBarTab.INSIGHTS.route,
             deepLinks = listOf(navDeepLink { uriPattern = "burnbar://insights" })
         ) {
-            com.openburnbar.ui.insights.AgentInsightsRosterScreen(
+            com.openburnbar.ui.insights.BifurcatedInsightsScreen(
                 onSelectProvider = { provider ->
                     navController.navigate("agent_insights/${provider.key}")
                 },
@@ -379,12 +379,17 @@ private fun BurnBarContent(
                     val encoded = java.net.URLEncoder.encode(uri, Charsets.UTF_8.name())
                     navController.navigate("agent/$encoded")
                 },
-                onOpenLegacyRuntime = { runtime ->
+                onOpenLegacyRuntime = { runtime, threadId ->
                     // Pinned agent tap → push the AssistantsScreen
                     // chat surface with the right runtime preselected.
                     // The same route also serves long-press "Open chat"
                     // affordances from `AgentBrandZoneScreen`.
-                    navController.navigate("assistants/${runtime.token}")
+                    val route = if (threadId != null) {
+                        "assistants/${runtime.token}?threadId=$threadId"
+                    } else {
+                        "assistants/${runtime.token}"
+                    }
+                    navController.navigate(route)
                 },
                 onOpenPairedMac = { connectionID ->
                     val encoded = android.util.Base64.encodeToString(
@@ -398,15 +403,23 @@ private fun BurnBarContent(
             )
         }
         composable(
-            "assistants/{runtime}",
-            arguments = listOf(navArgument("runtime") { type = NavType.StringType }),
+            "assistants/{runtime}?threadId={threadId}",
+            arguments = listOf(
+                navArgument("runtime") { type = NavType.StringType },
+                navArgument("threadId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            ),
             deepLinks = listOf(
-                navDeepLink { uriPattern = "burnbar://assistants/{runtime}" }
+                navDeepLink { uriPattern = "burnbar://assistants/{runtime}?threadId={threadId}" }
             )
         ) { entry ->
             val token = entry.arguments?.getString("runtime").orEmpty()
             val runtime = AssistantRuntimeID.fromToken(token)
-            AssistantsScreen(initialRuntime = runtime)
+            val threadId = entry.arguments?.getString("threadId")
+            AssistantsScreen(initialRuntime = runtime, initialThreadId = threadId)
         }
         composable(
             "agent/{uri}",
@@ -466,7 +479,16 @@ private fun BurnBarContent(
             "computer_use",
             deepLinks = listOf(navDeepLink { uriPattern = "burnbar://computer-use" })
         ) {
-            ComputerUseAgentWatchScreen(modifier = Modifier.fillMaxSize())
+            ComputerUseAgentWatchScreen(
+                modifier = Modifier.fillMaxSize(),
+                onOpenHermes = navigateToHermes,
+                onOpenSettings = {
+                    navController.navigate(BurnBarTab.YOU.route) {
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+            )
         }
         composable(
             "paired_mac",

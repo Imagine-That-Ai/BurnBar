@@ -7,6 +7,7 @@ enum OnboardingWizardStep: Int, CaseIterable {
     case connect
     case scan
     case tour
+    case systemPermissions
     case chatEngine
     case complete
 
@@ -33,6 +34,9 @@ struct OnboardingWizardView: View {
     @State private var defaultEngine: ChatBackendID = .codex
     @State private var tourPage: Int = 0
     @State private var navigationDirection: Edge = .trailing
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    @StateObject private var permissionsCoordinator = PermissionsOnboardingCoordinator()
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -101,6 +105,12 @@ struct OnboardingWizardView: View {
                 )
             case .tour:
                 OnboardingTourView(currentPage: $tourPage)
+            case .systemPermissions:
+                #if canImport(AppKit) && !DISTRIBUTION_MAS
+                OnboardingSystemPermissionsView(coordinator: permissionsCoordinator)
+                #else
+                EmptyView()
+                #endif
             case .chatEngine:
                 OnboardingChatEngineView(
                     enabledBackends: $enabledBackends,
@@ -174,6 +184,12 @@ struct OnboardingWizardView: View {
         case .connect: return "Scan"
         case .scan: return aggregator?.isRefreshing == true ? "Scanning\u{2026}" : "Continue"
         case .tour: return tourPage < 3 ? "Next" : "Continue"
+        case .systemPermissions:
+            #if canImport(AppKit) && !DISTRIBUTION_MAS
+            return permissionsCoordinator.allResolved ? "Continue" : "Continue (set up later)"
+            #else
+            return "Continue"
+            #endif
         case .chatEngine: return "Finish"
         case .complete: return ""
         }
@@ -184,6 +200,7 @@ struct OnboardingWizardView: View {
         case .providers: return !selectedProviders.isEmpty
         case .scan: return aggregator?.isRefreshing != true
         case .tour: return true
+        case .systemPermissions: return true
         case .chatEngine: return true
         case .connect: return true
         case .complete: return true
@@ -236,6 +253,12 @@ struct OnboardingWizardView: View {
             chatController?.chatBackend = start
         }
         settingsManager.chatBackendOnboardingCompleted = true
+
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        settingsManager.systemPermissionsOnboardingCompleted = true
+        settingsManager.systemPermissionsDeferredKinds = permissionsCoordinator.deferredKinds()
+        #endif
+
         hasOnboarded = true
     }
 }

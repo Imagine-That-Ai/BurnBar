@@ -61,6 +61,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
     public let sourceID: String
     public let sourceKind: String
     public let capabilities: [String]
+    public let modelCapabilities: ModelIOCapabilities?
     public let quotaState: BurnBarLiveModelQuotaState
     public let enabled: Bool
     public let advertisementEnabled: Bool
@@ -85,6 +86,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         sourceID: String,
         sourceKind: String,
         capabilities: [String],
+        modelCapabilities: ModelIOCapabilities? = nil,
         quotaState: BurnBarLiveModelQuotaState,
         enabled: Bool,
         advertisementEnabled: Bool = true,
@@ -103,6 +105,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         self.sourceID = sourceID
         self.sourceKind = sourceKind
         self.capabilities = capabilities
+        self.modelCapabilities = modelCapabilities
         self.quotaState = quotaState
         self.enabled = enabled
         self.advertisementEnabled = advertisementEnabled
@@ -115,7 +118,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, displayName, providerID, providerName, accountID, accountLabel
-        case sourceID, sourceKind, capabilities, quotaState, enabled
+        case sourceID, sourceKind, capabilities, modelCapabilities, quotaState, enabled
         case advertisementEnabled, routeEligible, lastRefreshAt, lastError
         case baseModelID, thinkingLevel
     }
@@ -131,6 +134,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         sourceID = try container.decode(String.self, forKey: .sourceID)
         sourceKind = try container.decode(String.self, forKey: .sourceKind)
         capabilities = try container.decode([String].self, forKey: .capabilities)
+        modelCapabilities = try container.decodeIfPresent(ModelIOCapabilities.self, forKey: .modelCapabilities)
         quotaState = try container.decode(BurnBarLiveModelQuotaState.self, forKey: .quotaState)
         enabled = try container.decode(Bool.self, forKey: .enabled)
         advertisementEnabled = try container.decodeIfPresent(Bool.self, forKey: .advertisementEnabled) ?? true
@@ -316,6 +320,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 sourceID: "\(configuration.provider.id)#\(account.accountID)",
                 sourceKind: liveRefresh?.sourceKind ?? configuredModelSourceKind(for: configuration.provider.id),
                 capabilities: capabilities,
+                modelCapabilities: model.modelCapabilities,
                 quotaState: account.quotaState,
                 enabled: account.enabled,
                 advertisementEnabled: advertisementEnabled,
@@ -354,6 +359,10 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 sourceID: "\(configuration.provider.id)#\(account.accountID)",
                 sourceKind: liveRefresh?.sourceKind ?? "upstream_models_endpoint",
                 capabilities: capabilities,
+                modelCapabilities: configuredModelCapabilities(
+                    for: liveModel.id,
+                    in: configuration.preferredModels
+                ),
                 quotaState: account.quotaState,
                 enabled: account.enabled,
                 advertisementEnabled: advertisementEnabled,
@@ -402,6 +411,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 sourceID: "\(baseRow.sourceID)::variant::\(variantID)",
                 sourceKind: "thinking_level_variant",
                 capabilities: baseRow.capabilities,
+                modelCapabilities: baseRow.modelCapabilities,
                 quotaState: baseRow.quotaState,
                 enabled: baseRow.enabled,
                 advertisementEnabled: advertisementEnabled,
@@ -680,6 +690,13 @@ public struct BurnBarLiveModelCatalog: Sendable {
         var values = provider.capabilities.map(\.rawValue)
         values.append(provider.formatFamily.rawValue)
         return Array(Set(values)).sorted()
+    }
+
+    private func configuredModelCapabilities(
+        for modelID: String,
+        in models: [BurnBarCatalogModel]
+    ) -> ModelIOCapabilities? {
+        models.first { $0.matches(modelName: modelID) }?.modelCapabilities
     }
 
     private func modelSort(_ lhs: BurnBarLiveAdvertisedModel, _ rhs: BurnBarLiveAdvertisedModel) -> Bool {

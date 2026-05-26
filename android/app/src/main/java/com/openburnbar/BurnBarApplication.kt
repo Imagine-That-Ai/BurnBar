@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.google.firebase.FirebaseApp
+import com.openburnbar.data.budget.BudgetNotificationCenter
 import com.google.firebase.appcheck.AppCheckProviderFactory
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
@@ -89,6 +90,9 @@ class BurnBarApplication : Application() {
 
         @Volatile internal var fileTransferService: AndroidFileTransferService? = null
             private set
+
+        @Volatile var agentCapabilityGrantController:
+            com.openburnbar.data.computeruse.AgentCapabilityGrantController? = null
     }
 
     private var pairingListener: ListenerRegistration? = null
@@ -121,10 +125,13 @@ class BurnBarApplication : Application() {
         OpenBurnBarIrohNativeContext.install(applicationContext)
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
-        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
+        val crashlyticsEnabled = getSharedPreferences("burnbar.diagnostics", MODE_PRIVATE)
+            .getBoolean("crashlytics_enabled", false)
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(crashlyticsEnabled)
         // Widget snapshot: hydrate from disk + schedule the 15-min refresh.
         BurnBarWidgetSnapshotStore.bind(this)
         BurnBarWidgetSyncWorker.enqueuePeriodic(this)
+        BudgetNotificationCenter.ensureChannel(this)
 
         // Phase 6: Hermes iroh transport bootstraps lazily — first send on
         // `HermesIrohRelayTransport.transport()` brings the endpoint up.
@@ -261,6 +268,12 @@ class BurnBarApplication : Application() {
             val coordinator = MediaControlStreamCoordinator(
                 dialer = dialer,
                 receiver = fileTransferService,
+                controlAuthorityPeerNodeIdProvider = {
+                    runCatching {
+                        com.openburnbar.data.computeruse.PhoneControlSigningKeyStore(this@BurnBarApplication)
+                            .peerNodeId()
+                    }.getOrNull()
+                },
             )
             mediaControlCoordinator = coordinator
             activeCoordinatorConnection = connectionId

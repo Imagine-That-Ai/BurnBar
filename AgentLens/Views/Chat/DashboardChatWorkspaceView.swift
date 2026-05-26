@@ -284,6 +284,9 @@ struct DashboardChatWorkspaceView: View {
         case .codex: return "Talk to Codex with your indexed history as grounding."
         case .claude: return "Talk to Claude Code with your indexed history as grounding."
         case .piAgent: return "Talk to Pi with your indexed history as grounding."
+        case .droid: return "Talk to Droid with your indexed history as grounding."
+        case .forge: return "Talk to Forge with your indexed history as grounding."
+        case .antigravity: return "Talk to Antigravity with your indexed history as grounding."
         }
     }
 

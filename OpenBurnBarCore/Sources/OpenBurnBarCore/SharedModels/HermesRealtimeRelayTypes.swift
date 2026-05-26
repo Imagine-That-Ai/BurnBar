@@ -55,7 +55,17 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case controlApprovalResponse = "control.approval.response"
     case controlAgentGrantRequest = "control.agent.grant.request"
     case controlAgentGrantReceipt = "control.agent.grant.receipt"
+    case controlClipboardRequest = "control.clipboard.request"
+    case controlClipboardResponse = "control.clipboard.response"
     case controlDenied = "control.denied"
+    case controlAgentContextTarget = "control.agent.context.target"
+    // System Permission Concierge — Phase 14. Mac emits status frames when a
+    // tool failure is classified as a TCC denial; the phone replies with a
+    // signed request asking the Mac to surface the right native prompt /
+    // System Settings deep link. Both frames are forward-compatible —
+    // older peers skip unknown control frame types.
+    case controlSystemPermissionRequest = "control.system.permission.request"
+    case controlSystemPermissionStatus = "control.system.permission.status"
 }
 
 public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
@@ -114,9 +124,14 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
     public var approvalResponse: HermesRealtimeRelayApprovalResponse?
     public var agentGrantRequest: HermesRealtimeRelayAgentGrantRequest?
     public var agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt?
+    public var clipboardRequest: HermesRealtimeRelayClipboardRequest?
+    public var clipboardResponse: HermesRealtimeRelayClipboardResponse?
     public var denied: HermesRealtimeRelayControlDenied?
     public var authorityPeerNodeId: String?
     public var authorityPublicKeyBase64: String?
+    public var agentContextTarget: HermesRealtimeRelayAgentContextTarget?
+    public var systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest?
+    public var systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus?
 
     public init(
         streamClass: String? = nil,
@@ -127,9 +142,14 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         approvalResponse: HermesRealtimeRelayApprovalResponse? = nil,
         agentGrantRequest: HermesRealtimeRelayAgentGrantRequest? = nil,
         agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt? = nil,
+        clipboardRequest: HermesRealtimeRelayClipboardRequest? = nil,
+        clipboardResponse: HermesRealtimeRelayClipboardResponse? = nil,
         denied: HermesRealtimeRelayControlDenied? = nil,
         authorityPeerNodeId: String? = nil,
-        authorityPublicKeyBase64: String? = nil
+        authorityPublicKeyBase64: String? = nil,
+        agentContextTarget: HermesRealtimeRelayAgentContextTarget? = nil,
+        systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest? = nil,
+        systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = nil
     ) {
         self.streamClass = streamClass
         self.sessionId = sessionId
@@ -139,9 +159,14 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         self.approvalResponse = approvalResponse
         self.agentGrantRequest = agentGrantRequest
         self.agentGrantReceipt = agentGrantReceipt
+        self.clipboardRequest = clipboardRequest
+        self.clipboardResponse = clipboardResponse
         self.denied = denied
         self.authorityPeerNodeId = authorityPeerNodeId
         self.authorityPublicKeyBase64 = authorityPublicKeyBase64
+        self.agentContextTarget = agentContextTarget
+        self.systemPermissionRequest = systemPermissionRequest
+        self.systemPermissionStatus = systemPermissionStatus
     }
 }
 
@@ -264,6 +289,76 @@ public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable
         self.timestamp = timestamp
         self.intentHashBlake3 = intentHashBlake3
         self.signatureEd25519 = signatureEd25519
+    }
+}
+
+public enum HermesRealtimeRelayClipboardAction: String, Codable, Sendable, Equatable {
+    case pasteToMac = "paste_to_mac"
+    case grabFromMac = "grab_from_mac"
+}
+
+public enum HermesRealtimeRelayClipboardStatus: String, Codable, Sendable, Equatable {
+    case accepted
+    case denied
+    case empty
+    case tooLarge = "too_large"
+    case unsupported
+    case error
+}
+
+public struct HermesRealtimeRelayClipboardRequest: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var action: HermesRealtimeRelayClipboardAction
+    public var contentType: String
+    public var text: String?
+    public var maxBytes: Int
+    public var clientIntentId: String
+    public var authority: HermesRealtimeRelayAuthorityEnvelope
+
+    public init(
+        requestId: String,
+        action: HermesRealtimeRelayClipboardAction,
+        contentType: String,
+        text: String? = nil,
+        maxBytes: Int,
+        clientIntentId: String,
+        authority: HermesRealtimeRelayAuthorityEnvelope
+    ) {
+        self.requestId = requestId
+        self.action = action
+        self.contentType = contentType
+        self.text = text
+        self.maxBytes = maxBytes
+        self.clientIntentId = clientIntentId
+        self.authority = authority
+    }
+}
+
+public struct HermesRealtimeRelayClipboardResponse: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var action: HermesRealtimeRelayClipboardAction
+    public var status: HermesRealtimeRelayClipboardStatus
+    public var contentType: String?
+    public var text: String?
+    public var byteCount: Int?
+    public var detail: String?
+
+    public init(
+        requestId: String,
+        action: HermesRealtimeRelayClipboardAction,
+        status: HermesRealtimeRelayClipboardStatus,
+        contentType: String? = nil,
+        text: String? = nil,
+        byteCount: Int? = nil,
+        detail: String? = nil
+    ) {
+        self.requestId = requestId
+        self.action = action
+        self.status = status
+        self.contentType = contentType
+        self.text = text
+        self.byteCount = byteCount
+        self.detail = detail
     }
 }
 
@@ -456,6 +551,7 @@ public struct HermesRealtimeRelayControlDenied: Codable, Sendable, Equatable {
         case signatureFailure = "signature_failure"
         case counterReplay = "counter_replay"
         case staleTimestamp = "stale_timestamp"
+        case agentUnavailable = "agent_unavailable"
         case unknown
     }
 
@@ -465,6 +561,215 @@ public struct HermesRealtimeRelayControlDenied: Codable, Sendable, Equatable {
     public init(reason: Reason, detail: String? = nil) {
         self.reason = reason
         self.detail = detail
+    }
+}
+
+// MARK: - System Permission Concierge — Phase 14
+
+/// macOS Transparency, Consent, and Control (TCC) buckets the System
+/// Permission Concierge knows how to grant remotely. Carried over the
+/// existing Computer Use control stream; older peers ignore the new
+/// frame types because the outer envelope is forward-compatible.
+public enum HermesRealtimeRelaySystemPermissionKind: String, Codable, CaseIterable, Sendable, Equatable {
+    case screenRecording = "screen_recording"
+    case accessibility
+    case camera
+    case microphone
+    case fullDiskAccess = "full_disk_access"
+    case automation
+}
+
+/// Live status of a single TCC bucket as observed by the Mac. The Mac
+/// emits one frame per (kind, bundleId) change and one optimistic frame
+/// when it starts servicing a request.
+public enum HermesRealtimeRelaySystemPermissionStatusKind: String, Codable, CaseIterable, Sendable, Equatable {
+    case needsAccess = "needs_access"
+    case requesting
+    case granted
+    case denied
+    case timeout
+    case unknown
+}
+
+/// Mac-side action the phone wants run for a permission kind. The Mac
+/// receiver gates the action against the bundled `kind`.
+public enum HermesRealtimeRelaySystemPermissionAction: String, Codable, CaseIterable, Sendable, Equatable {
+    /// Trigger the macOS native prompt (CGRequestScreenCaptureAccess,
+    /// AXIsProcessTrustedWithOptions(prompt: true), AVCaptureDevice
+    /// requestAccess) when one exists. No-op for FDA.
+    case prompt
+    /// Open the matching System Settings deep link via NSWorkspace.
+    case openSettings = "open_settings"
+    /// Native prompt + deep link in one shot. Default behaviour for kinds
+    /// that benefit from both (Screen Recording is the canonical case —
+    /// the prompt seeds the TCC entry, the deep link finishes the job).
+    case promptAndOpenSettings = "prompt_and_open_settings"
+    /// Run a polling probe-read only; no UI side effects. Used by the
+    /// monitor at startup to populate the latest status without touching
+    /// System Settings.
+    case probeOnly = "probe_only"
+    /// Once the related TCC bucket flips to granted, re-dispatch the
+    /// original failed tool call. The Mac honors this only when the
+    /// originating tool call is still inflight.
+    case retryFailedTool = "retry_failed_tool"
+}
+
+public struct HermesRealtimeRelaySystemPermissionRequest: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var clientIntentId: String
+    public var kind: HermesRealtimeRelaySystemPermissionKind
+    /// Required for `kind == .automation` (target bundle id, e.g.
+    /// `com.apple.Notes`). Optional for all other kinds.
+    public var bundleId: String?
+    /// Tool call id this request is trying to unblock. Carried verbatim
+    /// in the resulting status frames so the iOS retry dispatcher and
+    /// the Mac retry hook can pair the request with the original
+    /// inflight tool invocation.
+    public var originatingToolCallId: String?
+    public var originatingToolName: String?
+    public var action: HermesRealtimeRelaySystemPermissionAction
+    public var requestedAt: Date
+    public var authority: HermesRealtimeRelayAuthorityEnvelope
+
+    public init(
+        requestId: String,
+        clientIntentId: String,
+        kind: HermesRealtimeRelaySystemPermissionKind,
+        bundleId: String? = nil,
+        originatingToolCallId: String? = nil,
+        originatingToolName: String? = nil,
+        action: HermesRealtimeRelaySystemPermissionAction,
+        requestedAt: Date,
+        authority: HermesRealtimeRelayAuthorityEnvelope
+    ) {
+        self.requestId = requestId
+        self.clientIntentId = clientIntentId
+        self.kind = kind
+        self.bundleId = bundleId
+        self.originatingToolCallId = originatingToolCallId
+        self.originatingToolName = originatingToolName
+        self.action = action
+        self.requestedAt = requestedAt
+        self.authority = authority
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case clientIntentId
+        case kind
+        case bundleId
+        case originatingToolCallId
+        case originatingToolName
+        case action
+        case requestedAt
+        case authority
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.clientIntentId = try container.decode(String.self, forKey: .clientIntentId)
+        self.kind = try container.decode(HermesRealtimeRelaySystemPermissionKind.self, forKey: .kind)
+        self.bundleId = try container.decodeIfPresent(String.self, forKey: .bundleId)
+        self.originatingToolCallId = try container.decodeIfPresent(String.self, forKey: .originatingToolCallId)
+        self.originatingToolName = try container.decodeIfPresent(String.self, forKey: .originatingToolName)
+        self.action = try container.decode(HermesRealtimeRelaySystemPermissionAction.self, forKey: .action)
+        self.requestedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .requestedAt)
+        self.authority = try container.decode(HermesRealtimeRelayAuthorityEnvelope.self, forKey: .authority)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(clientIntentId, forKey: .clientIntentId)
+        try container.encode(kind, forKey: .kind)
+        try container.encodeIfPresent(bundleId, forKey: .bundleId)
+        try container.encodeIfPresent(originatingToolCallId, forKey: .originatingToolCallId)
+        try container.encodeIfPresent(originatingToolName, forKey: .originatingToolName)
+        try container.encode(action, forKey: .action)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(requestedAt), forKey: .requestedAt)
+        try container.encode(authority, forKey: .authority)
+    }
+}
+
+public struct HermesRealtimeRelaySystemPermissionStatus: Codable, Sendable, Equatable {
+    public var kind: HermesRealtimeRelaySystemPermissionKind
+    public var bundleId: String?
+    public var status: HermesRealtimeRelaySystemPermissionStatusKind
+    public var originatingToolCallId: String?
+    public var originatingToolName: String?
+    /// System Settings deep link — `x-apple.systempreferences:` URL the
+    /// phone displays as a fallback and that the Mac can re-open on its
+    /// own when handling a request.
+    public var deepLink: String?
+    /// Human-readable steps to render in the iOS sheet ("Open System
+    /// Settings → Privacy & Security → Screen Recording → toggle
+    /// OpenBurnBar"). Optional — iOS has shipped defaults per kind.
+    public var instructions: String?
+    /// Compact category tag for the classifier or the failing tool
+    /// (e.g. `"tccd"`, `"AXIsProcessTrusted"`, `"AppleEvents"`). Used by
+    /// telemetry and the Mac audit chain — not surfaced in the iOS sheet.
+    public var failureCategory: String?
+    public var lastChangedAt: Date
+
+    public init(
+        kind: HermesRealtimeRelaySystemPermissionKind,
+        bundleId: String? = nil,
+        status: HermesRealtimeRelaySystemPermissionStatusKind,
+        originatingToolCallId: String? = nil,
+        originatingToolName: String? = nil,
+        deepLink: String? = nil,
+        instructions: String? = nil,
+        failureCategory: String? = nil,
+        lastChangedAt: Date = Date()
+    ) {
+        self.kind = kind
+        self.bundleId = bundleId
+        self.status = status
+        self.originatingToolCallId = originatingToolCallId
+        self.originatingToolName = originatingToolName
+        self.deepLink = deepLink
+        self.instructions = instructions
+        self.failureCategory = failureCategory
+        self.lastChangedAt = lastChangedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case bundleId
+        case status
+        case originatingToolCallId
+        case originatingToolName
+        case deepLink
+        case instructions
+        case failureCategory
+        case lastChangedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.kind = try container.decode(HermesRealtimeRelaySystemPermissionKind.self, forKey: .kind)
+        self.bundleId = try container.decodeIfPresent(String.self, forKey: .bundleId)
+        self.status = try container.decode(HermesRealtimeRelaySystemPermissionStatusKind.self, forKey: .status)
+        self.originatingToolCallId = try container.decodeIfPresent(String.self, forKey: .originatingToolCallId)
+        self.originatingToolName = try container.decodeIfPresent(String.self, forKey: .originatingToolName)
+        self.deepLink = try container.decodeIfPresent(String.self, forKey: .deepLink)
+        self.instructions = try container.decodeIfPresent(String.self, forKey: .instructions)
+        self.failureCategory = try container.decodeIfPresent(String.self, forKey: .failureCategory)
+        self.lastChangedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .lastChangedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encodeIfPresent(bundleId, forKey: .bundleId)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(originatingToolCallId, forKey: .originatingToolCallId)
+        try container.encodeIfPresent(originatingToolName, forKey: .originatingToolName)
+        try container.encodeIfPresent(deepLink, forKey: .deepLink)
+        try container.encodeIfPresent(instructions, forKey: .instructions)
+        try container.encodeIfPresent(failureCategory, forKey: .failureCategory)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(lastChangedAt), forKey: .lastChangedAt)
     }
 }
 
@@ -494,22 +799,86 @@ public enum AgentFocusFollowMode: String, Codable, CaseIterable, Sendable, Equat
     case immediate
 }
 
+public enum HermesRealtimeRelayFocusTargetKind: String, Codable, Sendable, Equatable {
+    case cursor
+    case focusedElement = "focused_element"
+    case focusedWindow = "focused_window"
+    case agentWorkspace = "agent_workspace"
+}
+
+public struct HermesRealtimeRelayNormalizedRect: Codable, Sendable, Equatable {
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+}
+
+public struct HermesRealtimeRelayNormalizedPoint: Codable, Sendable, Equatable {
+    public var x: Double
+    public var y: Double
+
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+    }
+}
+
 public struct HermesRealtimeRelayFocusContext: Codable, Sendable, Equatable {
     public var appName: String
     public var bundleId: String
     public var windowTitle: String?
     public var windowId: UInt32?
+    /// Smart Zoom target type. Optional so older peers without
+    /// Smart Zoom continue to decode the existing focus payload.
+    public var targetKind: HermesRealtimeRelayFocusTargetKind?
+    /// Display the rect/point belong to. Matches
+    /// `HermesRealtimeRelayDisplayDescriptor.id` so the phone can ignore
+    /// context that targets a display it is not currently mirroring.
+    public var displayId: String?
+    /// Target rectangle expressed in display-relative normalized
+    /// coordinates `[0...1]`. Used for text-field, window, and agent
+    /// workspace targets.
+    public var normalizedRect: HermesRealtimeRelayNormalizedRect?
+    /// Target point expressed in display-relative normalized
+    /// coordinates `[0...1]`. Used for cursor targets where a rect
+    /// would be Mac-side guesswork.
+    public var normalizedPoint: HermesRealtimeRelayNormalizedPoint?
+    /// Provider's confidence in the target. `1.0` for direct AX hits,
+    /// lower values for fallbacks like window-from-cursor.
+    public var confidence: Double?
+    /// Wall-clock timestamp the provider sampled the target. Used by
+    /// the phone to age out stale Smart Zoom context.
+    public var updatedAt: Date?
 
     public init(
         appName: String,
         bundleId: String,
         windowTitle: String? = nil,
-        windowId: UInt32? = nil
+        windowId: UInt32? = nil,
+        targetKind: HermesRealtimeRelayFocusTargetKind? = nil,
+        displayId: String? = nil,
+        normalizedRect: HermesRealtimeRelayNormalizedRect? = nil,
+        normalizedPoint: HermesRealtimeRelayNormalizedPoint? = nil,
+        confidence: Double? = nil,
+        updatedAt: Date? = nil
     ) {
         self.appName = appName
         self.bundleId = bundleId
         self.windowTitle = windowTitle
         self.windowId = windowId
+        self.targetKind = targetKind
+        self.displayId = displayId
+        self.normalizedRect = normalizedRect
+        self.normalizedPoint = normalizedPoint
+        self.confidence = confidence
+        self.updatedAt = updatedAt
     }
 }
 
@@ -668,6 +1037,9 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
     /// Optional Phase 5 focus-follow preference from the phone. Mac peers
     /// that do not know it keep their existing full-display mirror behavior.
     public var focusFollowMode: String?
+    public var viewerId: String?
+    public var viewerDeviceId: String?
+    public var controlAuthorityPeerNodeId: String?
 
     public init(
         requestId: String,
@@ -675,7 +1047,10 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         requesterDisplayName: String,
         streamClass: String,
         streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil,
-        focusFollowMode: String? = nil
+        focusFollowMode: String? = nil,
+        viewerId: String? = nil,
+        viewerDeviceId: String? = nil,
+        controlAuthorityPeerNodeId: String? = nil
     ) {
         self.requestId = requestId
         self.requestedAt = requestedAt
@@ -683,6 +1058,9 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         self.streamClass = streamClass
         self.streamingCapabilities = streamingCapabilities
         self.focusFollowMode = focusFollowMode
+        self.viewerId = viewerId
+        self.viewerDeviceId = viewerDeviceId
+        self.controlAuthorityPeerNodeId = controlAuthorityPeerNodeId
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -692,6 +1070,9 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         case streamClass
         case streamingCapabilities
         case focusFollowMode
+        case viewerId
+        case viewerDeviceId
+        case controlAuthorityPeerNodeId
     }
 
     public init(from decoder: Decoder) throws {
@@ -705,6 +1086,9 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
             forKey: .streamingCapabilities
         )
         self.focusFollowMode = try container.decodeIfPresent(String.self, forKey: .focusFollowMode)
+        self.viewerId = try container.decodeIfPresent(String.self, forKey: .viewerId)
+        self.viewerDeviceId = try container.decodeIfPresent(String.self, forKey: .viewerDeviceId)
+        self.controlAuthorityPeerNodeId = try container.decodeIfPresent(String.self, forKey: .controlAuthorityPeerNodeId)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -715,6 +1099,9 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         try container.encode(streamClass, forKey: .streamClass)
         try container.encodeIfPresent(streamingCapabilities, forKey: .streamingCapabilities)
         try container.encodeIfPresent(focusFollowMode, forKey: .focusFollowMode)
+        try container.encodeIfPresent(viewerId, forKey: .viewerId)
+        try container.encodeIfPresent(viewerDeviceId, forKey: .viewerDeviceId)
+        try container.encodeIfPresent(controlAuthorityPeerNodeId, forKey: .controlAuthorityPeerNodeId)
     }
 }
 
@@ -754,6 +1141,12 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
     public var cooldownSecondsRemaining: Int?
     public var availableDisplays: [HermesRealtimeRelayDisplayDescriptor]?
     public var selectedDisplayId: String?
+    public var sessionId: String?
+    public var viewerId: String?
+    public var viewerRole: String?
+    public var viewerCount: Int?
+    public var maxViewers: Int?
+    public var controlOwnerViewerId: String?
 
     public init(
         requestId: String,
@@ -761,7 +1154,13 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         detail: String? = nil,
         cooldownSecondsRemaining: Int? = nil,
         availableDisplays: [HermesRealtimeRelayDisplayDescriptor]? = nil,
-        selectedDisplayId: String? = nil
+        selectedDisplayId: String? = nil,
+        sessionId: String? = nil,
+        viewerId: String? = nil,
+        viewerRole: String? = nil,
+        viewerCount: Int? = nil,
+        maxViewers: Int? = nil,
+        controlOwnerViewerId: String? = nil
     ) {
         self.requestId = requestId
         self.decision = decision
@@ -769,22 +1168,31 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         self.cooldownSecondsRemaining = cooldownSecondsRemaining
         self.availableDisplays = availableDisplays
         self.selectedDisplayId = selectedDisplayId
+        self.sessionId = sessionId
+        self.viewerId = viewerId
+        self.viewerRole = viewerRole
+        self.viewerCount = viewerCount
+        self.maxViewers = maxViewers
+        self.controlOwnerViewerId = controlOwnerViewerId
     }
 }
 
 public struct HermesRealtimeRelayMirrorDisplaySelection: Codable, Sendable, Equatable {
     public var requestId: String
+    public var sessionId: String?
     public var displayId: String
     public var selectedAt: Date
 
-    public init(requestId: String, displayId: String, selectedAt: Date = Date()) {
+    public init(requestId: String, sessionId: String? = nil, displayId: String, selectedAt: Date = Date()) {
         self.requestId = requestId
+        self.sessionId = sessionId
         self.displayId = displayId
         self.selectedAt = selectedAt
     }
 
     private enum CodingKeys: String, CodingKey {
         case requestId
+        case sessionId
         case displayId
         case selectedAt
     }
@@ -792,6 +1200,7 @@ public struct HermesRealtimeRelayMirrorDisplaySelection: Codable, Sendable, Equa
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
         self.displayId = try container.decode(String.self, forKey: .displayId)
         self.selectedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .selectedAt)
     }
@@ -799,6 +1208,7 @@ public struct HermesRealtimeRelayMirrorDisplaySelection: Codable, Sendable, Equa
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(requestId, forKey: .requestId)
+        try container.encodeIfPresent(sessionId, forKey: .sessionId)
         try container.encode(displayId, forKey: .displayId)
         try container.encode(selectedAt, forKey: .selectedAt)
     }
@@ -807,21 +1217,25 @@ public struct HermesRealtimeRelayMirrorDisplaySelection: Codable, Sendable, Equa
 /// Mercury Phase 8 — requester-side end signal for an accepted mirror session.
 public struct HermesRealtimeRelayMirrorStop: Codable, Sendable, Equatable {
     public var requestId: String
+    public var sessionId: String?
     public var stoppedAt: Date
     public var reason: String?
 
     public init(
         requestId: String,
+        sessionId: String? = nil,
         stoppedAt: Date = Date(),
         reason: String? = nil
     ) {
         self.requestId = requestId
+        self.sessionId = sessionId
         self.stoppedAt = stoppedAt
         self.reason = reason
     }
 
     private enum CodingKeys: String, CodingKey {
         case requestId
+        case sessionId
         case stoppedAt
         case reason
     }
@@ -829,6 +1243,7 @@ public struct HermesRealtimeRelayMirrorStop: Codable, Sendable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
         self.stoppedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .stoppedAt)
         self.reason = try container.decodeIfPresent(String.self, forKey: .reason)
     }
@@ -836,6 +1251,7 @@ public struct HermesRealtimeRelayMirrorStop: Codable, Sendable, Equatable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(requestId, forKey: .requestId)
+        try container.encodeIfPresent(sessionId, forKey: .sessionId)
         try container.encode(stoppedAt, forKey: .stoppedAt)
         try container.encodeIfPresent(reason, forKey: .reason)
     }
@@ -1222,5 +1638,51 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
         self.error = error
         self.chunkCount = chunkCount
         self.capabilities = capabilities
+    }
+}
+
+public struct HermesRealtimeRelayAgentContextTarget: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var sessionId: String?
+    public var runtime: String
+    public var threadId: String?
+    public var displayId: String?
+    public var normalizedX: Double
+    public var normalizedY: Double
+    public var normalizedRect: HermesRealtimeRelayNormalizedRect?
+    public var instruction: String
+    public var focusContext: HermesRealtimeRelayFocusContext?
+    public var clientIntentId: String
+    public var requestedAt: Date
+    public var authority: HermesRealtimeRelayAuthorityEnvelope
+
+    public init(
+        requestId: String,
+        sessionId: String? = nil,
+        runtime: String,
+        threadId: String? = nil,
+        displayId: String? = nil,
+        normalizedX: Double,
+        normalizedY: Double,
+        normalizedRect: HermesRealtimeRelayNormalizedRect? = nil,
+        instruction: String,
+        focusContext: HermesRealtimeRelayFocusContext? = nil,
+        clientIntentId: String,
+        requestedAt: Date,
+        authority: HermesRealtimeRelayAuthorityEnvelope
+    ) {
+        self.requestId = requestId
+        self.sessionId = sessionId
+        self.runtime = runtime
+        self.threadId = threadId
+        self.displayId = displayId
+        self.normalizedX = normalizedX
+        self.normalizedY = normalizedY
+        self.normalizedRect = normalizedRect
+        self.instruction = instruction
+        self.focusContext = focusContext
+        self.clientIntentId = clientIntentId
+        self.requestedAt = requestedAt
+        self.authority = authority
     }
 }

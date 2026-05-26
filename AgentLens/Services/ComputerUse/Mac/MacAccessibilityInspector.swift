@@ -76,6 +76,36 @@ public final class MacAccessibilityInspector: @unchecked Sendable {
         )
     }
 
+    /// Read the currently focused AX element. Remote clipboard actions
+    /// have no screen coordinate, so this is the deny-region source of
+    /// truth for secure text fields and auth sheets.
+    public func focusedSnapshot() -> Snapshot? {
+        guard AXIsProcessTrusted() else { return nil }
+        let systemWide = AXUIElementCreateSystemWide()
+        var rawFocused: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(
+            systemWide,
+            kAXFocusedUIElementAttribute as CFString,
+            &rawFocused
+        )
+        guard err == .success, let focused = rawFocused else { return nil }
+        let element = focused as! AXUIElement
+        let role = attributeString(element, kAXRoleAttribute as CFString)
+        let subrole = attributeString(element, kAXSubroleAttribute as CFString)
+        let roleDescription = attributeString(element, kAXRoleDescriptionAttribute as CFString)
+        let label = attributeString(element, kAXDescriptionAttribute as CFString)
+        let title = attributeString(element, kAXTitleAttribute as CFString)
+        let bundleId = frontmostBundleIdentifier()
+        return Snapshot(
+            role: role,
+            subrole: subrole,
+            roleDescription: roleDescription,
+            label: label,
+            title: title,
+            bundleId: bundleId
+        )
+    }
+
     /// Map an AX snapshot to a deny reason, if any.
     public func denyReason(for snapshot: Snapshot?) -> ComputerUseAccessibilityDenyReason? {
         denyRegions.denyReason(for: snapshot.map {

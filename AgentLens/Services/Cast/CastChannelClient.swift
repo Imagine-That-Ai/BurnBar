@@ -1,6 +1,20 @@
 import Foundation
 import os
 
+@MainActor
+protocol CastReceiverClientLifecycle: AnyObject {
+    func stop() async
+    func disconnect()
+}
+
+@MainActor
+enum CastReceiverClientCleanup {
+    /// Close the Mac-side sender socket while leaving the receiver app running.
+    static func disconnectOnly(_ client: CastReceiverClientLifecycle) {
+        client.disconnect()
+    }
+}
+
 // MARK: - Cast Channel Client
 //
 // High-level Cast V2 driver. Owns the TLS connection + the protocol
@@ -513,3 +527,5 @@ final class CastChannelClient {
         }
     }
 }
+
+extension CastChannelClient: CastReceiverClientLifecycle {}

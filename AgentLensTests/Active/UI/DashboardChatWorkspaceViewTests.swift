@@ -16,7 +16,7 @@ final class DashboardChatWorkspaceViewTests: XCTestCase {
         onClose: (() -> Void)? = nil
     ) -> DashboardChatWorkspaceView {
         let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
-        let settingsManager = SettingsManager(defaults: UserDefaults(suiteName: #file)!)
+        let settingsManager = makeSettingsManager()
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         return DashboardChatWorkspaceView(
             controller: controller,

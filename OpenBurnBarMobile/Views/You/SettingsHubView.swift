@@ -181,40 +181,30 @@ struct SettingsHubView: View {
                 .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
-                    HStack {
-                        SettingsLabel(icon: "dollarsign.circle.fill", color: MobileTheme.amber, title: "Daily budget")
-                        Spacer()
-                        Text("$\(dailyBudget, specifier: "%.2f")")
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    Button {
+                        // Navigate to Insights tab → Budgets section
+                        NotificationCenter.default.post(
+                            name: .init("ShowInsightsTab"),
+                            object: nil,
+                            userInfo: ["section": "budgets"]
+                        )
+                    } label: {
+                        HStack {
+                            SettingsLabel(icon: "dollarsign.circle.fill", color: MobileTheme.amber, title: "Budget Center")
+                            Spacer()
+                            Text("Manage rules")
+                                .font(MobileTheme.Typography.caption)
+                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                        }
                     }
+                    .buttonStyle(.plain)
                     .settingsAnchor(SettingsAnchor.dailyBudget)
-                    Slider(value: $dailyBudget, in: 1...500, step: 5) {
-                        Text("Daily budget")
-                    } minimumValueLabel: {
-                        Text("$1").font(MobileTheme.Typography.tiny).foregroundStyle(MobileTheme.Colors.textMuted)
-                    } maximumValueLabel: {
-                        Text("$500").font(MobileTheme.Typography.tiny).foregroundStyle(MobileTheme.Colors.textMuted)
-                    }
-                    .tint(MobileTheme.ember)
-                    Toggle(isOn: $costAlertEnabled) {
-                        SettingsLabel(icon: "bell.badge.fill", color: MobileTheme.warning, title: "Cost alerts")
-                    }
-                    .tint(MobileTheme.ember)
-                    .settingsAnchor(SettingsAnchor.costAlerts)
-                    if costAlertEnabled {
-                        Stepper("Threshold: $\(costAlertThreshold, specifier: "%.2f")", value: $costAlertThreshold, step: 1)
-                    }
-                    Toggle(isOn: $tokenAlertEnabled) {
-                        SettingsLabel(icon: "number.circle.fill", color: MobileTheme.amber, title: "Token alerts")
-                    }
-                    .tint(MobileTheme.ember)
-                    .settingsAnchor(SettingsAnchor.tokenAlerts)
-                    if tokenAlertEnabled {
-                        Stepper("Threshold: \(tokenAlertThreshold.formatted()) tokens", value: $tokenAlertThreshold, step: 10_000)
-                    }
                 } header: { groupHeader("Budget") }
                 .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
+
 
                 Section {
                     Toggle(isOn: $dailyDigestEnabled) {

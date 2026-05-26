@@ -7,16 +7,16 @@ import com.openburnbar.irohrelay.IrohTransportSelection
 import com.openburnbar.irohrelay.NoopIrohTransportAuditLogging
 
 /**
- * Cascading relay that prefers iroh and falls back to Firestore on
- * timeout / dial failure. Matches the iOS `HermesCompositeRelayTransport`
- * behavior:
+ * Cascading relay that prefers iroh and can fall back to Firestore on
+ * timeout / dial failure. Matches the Android relay contract:
  *
  *   1. If the kill switch is set (`hermes_iroh_transport_enabled`
  *      remote-config flag returns false), skip iroh entirely.
- *   2. Otherwise attempt iroh. Unary control-plane calls may fall back
- *      to Firestore, but streaming chat surfaces direct iroh failures
- *      instead of silently rerouting the selected model through a
- *      different relay path.
+ *   2. Otherwise attempt iroh. Unary control-plane calls fall back to
+ *      Firestore. Streaming `/v1/chat/completions` surfaces direct iroh
+ *      failures instead of silently rerouting the selected model through a
+ *      different relay path. Streaming `/v1/cli-agent/chat` falls back to
+ *      Firestore because it still targets the same selected Mac executor.
  */
 class HermesCompositeRelayTransport(
     private val iroh: HermesRelayTransporting,
@@ -48,6 +48,9 @@ class HermesCompositeRelayTransport(
             iroh.sendStreaming(payload, timeoutMillis, onSseEvent)
         } catch (err: IrohRelayTransportError) {
             auditFallback(payload, err)
+            if (payload.operation == HermesRelayOperationName.CLI_AGENT_CHAT) {
+                return firestoreFallback.sendStreaming(payload, timeoutMillis, onSseEvent)
+            }
             throw HermesRelayException(
                 "Iroh direct Hermes relay failed before the selected Mac harness completed: " +
                     "${err.message ?: err.javaClass.simpleName}. No Firestore fallback was attempted, " +
@@ -60,12 +63,13 @@ class HermesCompositeRelayTransport(
     private suspend fun auditFallback(payload: HermesRelayPayload, err: IrohRelayTransportError) {
         auditLogger.record(
             event = IrohTransportAuditEvent.FALLBACK_TO_WSS,
-            uid = "", // composite doesn't know uid — leave blank; the inner transport already recorded the SREAM_FAILED for full attribution.
+            uid = "", // composite doesn't know uid; the inner transport already recorded STREAM_FAILED for full attribution.
             connectionId = payload.connectionID,
             transport = IrohTransportSelection.FIRESTORE,
             rttMillis = null,
             detail = mapOf(
                 "reason" to (err.message ?: err.javaClass.simpleName).take(256),
+                "target" to "firestore",
             ),
         )
     }
@@ -89,6 +93,7 @@ class FirestoreRelayShim(
             path = payload.path,
             body = payload.body ?: ByteArray(0),
             sessionId = payload.sessionID,
+            timeoutMillis = timeoutMillis,
         )
     }
 
@@ -105,6 +110,7 @@ class FirestoreRelayShim(
             path = payload.path,
             body = payload.body ?: ByteArray(0),
             sessionId = payload.sessionID,
+            timeoutMillis = timeoutMillis,
             onChunk = { _, text -> onSseEvent(text) },
         )
     }

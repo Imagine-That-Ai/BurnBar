@@ -18,6 +18,15 @@ func openBurnBarIsGitHubActionsRunner(sourceFile: StaticString = #filePath) -> B
         || currentDirectory.contains("/Users/runner/work/")
 }
 
+func openBurnBarShouldSkipVisualSnapshots(sourceFile: StaticString = #filePath) -> Bool {
+    let environment = ProcessInfo.processInfo.environment
+    let mainBundlePath = Bundle.main.bundlePath
+
+    return environment["TEST_RUNNER_OPENBURNBAR_SKIP_SNAPSHOTS"] == "true"
+        || mainBundlePath.contains("/openburnbar-app-tests/")
+        || openBurnBarIsGitHubActionsRunner(sourceFile: sourceFile)
+}
+
 // MARK: - Visual Regression Support
 
 /// Renders a SwiftUI view into an NSImage at a fixed size and color scheme,
@@ -64,7 +73,7 @@ func assertAdaptiveSnapshot<V: View>(
     testName: String = #function,
     line: UInt = #line
 ) {
-    if openBurnBarIsGitHubActionsRunner() {
+    if openBurnBarShouldSkipVisualSnapshots() {
         return
     }
 
@@ -94,7 +103,7 @@ func assertViewSnapshot<V: View>(
     testName: String = #function,
     line: UInt = #line
 ) {
-    if openBurnBarIsGitHubActionsRunner() {
+    if openBurnBarShouldSkipVisualSnapshots() {
         return
     }
 

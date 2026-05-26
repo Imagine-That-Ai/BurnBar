@@ -178,14 +178,14 @@ public enum HermesAttachmentEncoder {
         for attachment in message.attachments {
             switch attachment.kind {
             case .image:
-                if capabilities.vision,
+                if canInlineImage(attachment, capabilities: capabilities),
                    let part = imageURLPart(for: attachment, bytes: message.attachmentBytes[attachment.id]) {
                     parts.append(part)
                 } else {
                     pendingTextSuffix.append(workspaceReference(for: attachment, workspaceAbsolutePath: workspaceAbsolutePath))
                 }
             case .pdf:
-                if capabilities.vision,
+                if canInlinePDF(attachment, capabilities: capabilities),
                    let pdfBytes = message.attachmentBytes[attachment.id],
                    let part = imagePart(name: attachment.displayName, mime: attachment.mimeType, bytes: pdfBytes) {
                     parts.append(part)
@@ -205,7 +205,7 @@ public enum HermesAttachmentEncoder {
                 }
                 pendingTextSuffix.append(textInlineBlock(name: attachment.displayName, body: inline, truncated: false))
             case .audio:
-                if capabilities.audio,
+                if canInlineAudio(attachment, capabilities: capabilities),
                    let bytes = message.attachmentBytes[attachment.id],
                    let part = inputAudioPart(bytes: bytes, mime: attachment.mimeType, name: attachment.displayName) {
                     parts.append(part)
@@ -233,6 +233,24 @@ public enum HermesAttachmentEncoder {
             parts.insert(["type": "text", "text": fullText], at: 0)
         }
         return parts
+    }
+
+    private static func canInlineImage(_ attachment: HermesAttachment, capabilities: HermesBackendCapabilities) -> Bool {
+        guard capabilities.vision else { return false }
+        guard let modelIO = capabilities.modelIO else { return true }
+        return modelIO.supportsImageInput && modelIO.acceptsInputMimeType(attachment.mimeType)
+    }
+
+    private static func canInlinePDF(_ attachment: HermesAttachment, capabilities: HermesBackendCapabilities) -> Bool {
+        guard capabilities.vision else { return false }
+        guard let modelIO = capabilities.modelIO else { return true }
+        return modelIO.supportsPDFInput && modelIO.acceptsInputMimeType(attachment.mimeType)
+    }
+
+    private static func canInlineAudio(_ attachment: HermesAttachment, capabilities: HermesBackendCapabilities) -> Bool {
+        guard capabilities.audio else { return false }
+        guard let modelIO = capabilities.modelIO else { return true }
+        return modelIO.supportsAudioInput && modelIO.acceptsInputMimeType(attachment.mimeType)
     }
 
     // MARK: - Part builders

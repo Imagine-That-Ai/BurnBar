@@ -195,7 +195,10 @@ enum class AssistantRuntimeID(val token: String, val displayName: String, val gl
     PI("pi", "Pi", "\u03C0"),
     CODEX("codex", "Codex", "\u21BB"),
     CLAUDE("claude", "Claude", "\u2726"),
-    OPEN_CLAW("openclaw", "OpenClaw", "\u26A1");
+    OPEN_CLAW("openclaw", "OpenClaw", "\u26A1"),
+    DROID("droid", "Droid", "\u25C6"),
+    FORGE("forge", "Forge", "\u25B0"),
+    ANTIGRAVITY("antigravity", "Antigravity", "\u2727");
 
     /** True for runtimes that have a first-class Android surface today. */
     val hasMobileChatSurface: Boolean get() = true

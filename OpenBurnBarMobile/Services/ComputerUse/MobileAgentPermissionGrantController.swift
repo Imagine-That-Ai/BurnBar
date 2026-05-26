@@ -13,6 +13,7 @@ final class MobileAgentPermissionGrantController {
 
     enum GrantError: LocalizedError {
         case notSignedIn
+        case deviceNotTrusted
         case localAuthenticationFailed
         case signingFailed(String)
 
@@ -20,6 +21,8 @@ final class MobileAgentPermissionGrantController {
             switch self {
             case .notSignedIn:
                 return "Sign in before granting desktop permissions."
+            case .deviceNotTrusted:
+                return "Approve this iPhone or iPad in Devices & Sync before granting Mac permissions."
             case .localAuthenticationFailed:
                 return "Device authentication did not complete."
             case .signingFailed(let message):
@@ -50,8 +53,10 @@ final class MobileAgentPermissionGrantController {
         preset: AgentPermissionPreset,
         deliveryMode: AgentGrantDeliveryMode = .liveThenQueued
     ) async throws -> AgentCapabilityGrantReceipt {
-        let authenticated = try await authenticateIfNeeded(for: preset)
+        guard let uid = Auth.auth().currentUser?.uid else { throw GrantError.notSignedIn }
         let deviceID = MobileDeviceIdentity.loadOrCreateDeviceId()
+        try await ensureTrustedDevice(uid: uid, sourceDeviceID: deviceID)
+        let authenticated = try await authenticateIfNeeded(for: preset)
         let request = AgentCapabilityGrantRequest(
             runtimeID: runtimeID,
             threadID: threadID,
@@ -141,6 +146,19 @@ final class MobileAgentPermissionGrantController {
 
     private func receiptKey(runtimeID: AssistantRuntimeID, threadID: String) -> String {
         "\(runtimeID.rawValue)|\(threadID)"
+    }
+
+    private func ensureTrustedDevice(uid: String, sourceDeviceID: String) async throws {
+        await LiveDeviceTrustGateway().registerSelfIfNeeded()
+        let snapshot = try await firestoreProvider()
+            .collection("users")
+            .document(uid)
+            .collection("escrow_devices")
+            .document(sourceDeviceID)
+            .getDocument()
+        guard (snapshot.data()?["trustState"] as? String) == EscrowDeviceTrustState.trusted.rawValue else {
+            throw GrantError.deviceNotTrusted
+        }
     }
 
     private func queue(_ request: AgentCapabilityGrantRequest) async throws {

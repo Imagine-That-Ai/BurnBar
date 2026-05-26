@@ -289,7 +289,7 @@ final class SmartHubBridgeController {
         let recastBaseline = SmartHubBridgeServer.shared.lastClientPollAt
         let recastClient = CastChannelClient(device: device)
         let recast = await recastClient.forceRecast(url: url)
-        recastClient.disconnect()
+        CastReceiverClientCleanup.disconnectOnly(recastClient)
         switch recast {
         case .success:
             if await waitForClientPoll(after: recastBaseline, timeout: 24) {
@@ -343,7 +343,7 @@ final class SmartHubBridgeController {
         if let cached = cachedCastDevice() {
             let client = CastChannelClient(device: cached)
             let state = await client.queryReceiverState()
-            client.disconnect()
+            CastReceiverClientCleanup.disconnectOnly(client)
             if state != nil {
                 return cached
             }
@@ -1125,7 +1125,7 @@ final class SmartHubBridgeController {
         let probeClient = CastChannelClient(device: device)
         guard let state = await probeClient.queryReceiverState() else {
             Self.log.error("watchdog: probe could not reach \(device.host, privacy: .public)")
-            probeClient.disconnect()
+            CastReceiverClientCleanup.disconnectOnly(probeClient)
             return
         }
         Self.log.info("watchdog state appId=\(state.appId, privacy: .public) isDashCast=\(state.isDashCast)")
@@ -1136,7 +1136,7 @@ final class SmartHubBridgeController {
         // the existing DashCast session as stale and do a STOP -> LAUNCH
         // -> LOAD recovery on the watchdog cadence.
         if state.isDashCast {
-            probeClient.disconnect()
+            CastReceiverClientCleanup.disconnectOnly(probeClient)
 
             // Proof-of-life: if the Nest Hub's embedded page has polled
             // `/state.json` recently, DashCast is not stuck — it's
@@ -1168,7 +1168,7 @@ final class SmartHubBridgeController {
             if case .failure(let reason) = outcome {
                 Self.log.error("watchdog: DashCast hard refresh failed: \(reason, privacy: .public)")
             }
-            refreshClient.disconnect()
+            CastReceiverClientCleanup.disconnectOnly(refreshClient)
             return
         }
 
@@ -1176,7 +1176,7 @@ final class SmartHubBridgeController {
         // shortcut, etc.) or nothing is running. Either way the Hub
         // isn't showing us — do a hard kick: STOP whatever's there and
         // launch DashCast fresh with force:true.
-        probeClient.disconnect()
+        CastReceiverClientCleanup.disconnectOnly(probeClient)
         lastCastReassertedAt = Date()
 
         Self.log.info("watchdog: hard kick (forceRecast) — current app is not DashCast")
@@ -1186,11 +1186,11 @@ final class SmartHubBridgeController {
             Self.log.error("watchdog: forceRecast failed: \(reason, privacy: .public). Falling back to reconnect strategy.")
             // If STOP→LAUNCH itself failed, fall through to the full
             // recovery strategy (4-attempt backoff + Home Assistant).
-            kickClient.disconnect()
+            CastReceiverClientCleanup.disconnectOnly(kickClient)
             _ = await CastReconnectStrategy(device: device).castWithRecovery(url: url)
         } else {
             Self.log.info("watchdog: forceRecast ok")
-            kickClient.disconnect()
+            CastReceiverClientCleanup.disconnectOnly(kickClient)
         }
     }
 

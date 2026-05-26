@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.openburnbar.ui.settings
 
 import android.app.WallpaperManager
@@ -17,6 +19,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -78,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.logoRes
+import com.openburnbar.ui.components.AuroraBottomSheet
 import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.components.SwarmBackground
 import com.openburnbar.ui.components.SwarmPace
@@ -141,7 +145,6 @@ fun WallpaperGeneratorScreen(
     val density = LocalDensity.current
 
     var selectedStyle by remember { mutableStateOf(WallpaperStyle.DARK) }
-    var showStyleMenu by remember { mutableStateOf(false) }
     var showGlyphCustomizer by remember { mutableStateOf(false) }
     var isSavingStill by remember { mutableStateOf(false) }
     var showTapHint by remember { mutableStateOf(true) }
@@ -213,32 +216,35 @@ fun WallpaperGeneratorScreen(
                                 tapHintAlpha = 0f
                             }
 
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val anyActive = event.changes.any { it.pressed }
-                                if (!anyActive) {
-                                    // Released!
-                                    val duration = System.currentTimeMillis() - holdStartMs
-                                    if (isTap && duration < 350) {
-                                        simulation.forceCycleShape(forward = !isLeft)
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val anyActive = event.changes.any { it.pressed }
+                                    if (!anyActive) {
+                                        // Released!
+                                        val duration = System.currentTimeMillis() - holdStartMs
+                                        if (isTap && duration < 350) {
+                                            simulation.forceCycleShape(forward = !isLeft)
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        }
+                                        break
                                     }
-                                    pointer = null
-                                    isHolding = false
-                                    isRewinding = false
-                                    if (showTapHint) showTapHint = false
-                                    break
-                                }
 
-                                val change = event.changes.firstOrNull { it.pressed }
-                                if (change != null) {
-                                    pointer = change.position
-                                    val dist = (change.position - down.position).getDistance()
-                                    if (dist > tapThreshold) {
-                                        isTap = false
+                                    val change = event.changes.firstOrNull { it.pressed }
+                                    if (change != null) {
+                                        pointer = change.position
+                                        val dist = (change.position - down.position).getDistance()
+                                        if (dist > tapThreshold) {
+                                            isTap = false
+                                        }
+                                        change.consume()
                                     }
-                                    change.consume()
                                 }
+                            } finally {
+                                pointer = null
+                                isHolding = false
+                                isRewinding = false
+                                if (showTapHint) showTapHint = false
                             }
                         }
                     }
@@ -306,7 +312,7 @@ fun WallpaperGeneratorScreen(
             // Style picker
             Box {
                 Surface(
-                    onClick = { showStyleMenu = true },
+                    onClick = { showGlyphCustomizer = true },
                     shape = RoundedCornerShape(999.dp),
                     color = Color.White.copy(alpha = 0.12f)
                 ) {
@@ -326,26 +332,6 @@ fun WallpaperGeneratorScreen(
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (selectedStyle.isDark) Color.White else Color.Black
-                        )
-                    }
-                }
-
-                DropdownMenu(
-                    expanded = showStyleMenu,
-                    onDismissRequest = { showStyleMenu = false }
-                ) {
-                    WallpaperStyle.entries.forEach { style ->
-                        DropdownMenuItem(
-                            text = { Text(style.displayName) },
-                            onClick = {
-                                selectedStyle = style
-                                showStyleMenu = false
-                            },
-                            trailingIcon = {
-                                if (style == selectedStyle) {
-                                    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                }
-                            }
                         )
                     }
                 }
@@ -378,13 +364,7 @@ fun WallpaperGeneratorScreen(
                 }
             }
 
-            // Provider glyph customizer toggle
-            AnimatedVisibility(visible = showGlyphCustomizer) {
-                GlyphCustomizerPanel(
-                    providerGlyphs = providerGlyphs,
-                    isDark = selectedStyle.isDark
-                )
-            }
+
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -498,114 +478,234 @@ fun WallpaperGeneratorScreen(
                 }
             }
         }
+
+        if (showGlyphCustomizer) {
+            WallpaperSettingsSheet(
+                selectedStyle = selectedStyle,
+                onStyleSelected = { selectedStyle = it },
+                providerGlyphs = providerGlyphs,
+                onDismiss = { showGlyphCustomizer = false }
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun GlyphCustomizerPanel(
+private fun WallpaperSettingsSheet(
+    selectedStyle: WallpaperStyle,
+    onStyleSelected: (WallpaperStyle) -> Unit,
     providerGlyphs: Set<AgentProvider>,
-    isDark: Boolean
+    onDismiss: () -> Unit
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = Color.White.copy(alpha = if (isDark) 0.08f else 0.5f)
+    val isDark = selectedStyle.isDark
+    AuroraBottomSheet(
+        onDismissRequest = onDismiss
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp)
+                .padding(bottom = 16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val total = AgentProvider.swarmGlyphProviders.size
-                val count = providerGlyphs.size
                 Text(
-                    when (count) {
-                        total -> "All providers"
-                        0 -> "Provider logos hidden"
-                        else -> "$count/$total providers"
-                    },
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (isDark) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.6f)
+                    text = "Wallpaper Options",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White else Color.Black
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(
-                        onClick = { GlobalVisualSettings.setProviderGlyphs(AgentProvider.swarmGlyphProviders.toSet()) },
-                        shape = RoundedCornerShape(999.dp),
-                        color = if (providerGlyphs.size == AgentProvider.swarmGlyphProviders.size)
-                            AuroraColors.ember else Color.White.copy(alpha = 0.1f)
-                    ) {
-                        Text(
-                            "All",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (providerGlyphs.size == AgentProvider.swarmGlyphProviders.size)
-                                Color.White else if (isDark) Color.White.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.5f)
-                        )
-                    }
-                    Surface(
-                        onClick = { GlobalVisualSettings.setProviderGlyphs(emptySet()) },
-                        shape = RoundedCornerShape(999.dp),
-                        color = if (providerGlyphs.isEmpty()) AuroraColors.ember else Color.White.copy(alpha = 0.1f)
-                    ) {
-                        Text(
-                            "None",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (providerGlyphs.isEmpty())
-                                Color.White else if (isDark) Color.White.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.5f)
-                        )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = "Done",
+                        tint = if (isDark) Color.White else Color.Black
+                    )
+                }
+            }
+
+            // Section 1: Background Style Picker
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Background Style",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    WallpaperStyle.entries.forEach { style ->
+                        val isSelected = style == selectedStyle
+                        Surface(
+                            onClick = { onStyleSelected(style) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) {
+                                if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f)
+                            } else Color.Transparent,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) AuroraColors.ember else (if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.1f))
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                // Color dot preview
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(
+                                            color = when (style) {
+                                                WallpaperStyle.DARK -> Color(0xFF22201C)
+                                                WallpaperStyle.LIGHT -> Color(0xFFEDF0E6)
+                                                WallpaperStyle.AMOLED -> Color.Black
+                                                WallpaperStyle.EMBER -> AuroraColors.ember
+                                            },
+                                            shape = RoundedCornerShape(999.dp)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (style == WallpaperStyle.LIGHT) Color.Black.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(999.dp)
+                                        )
+                                )
+                                Text(
+                                    text = style.displayName,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isDark) Color.White else Color.Black
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            // Provider chips in a flow layout
-            androidx.compose.foundation.layout.FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                AgentProvider.swarmGlyphProviders.forEach { provider ->
-                    val isSelected = providerGlyphs.contains(provider)
-                    Surface(
-                        onClick = {
-                            val next = if (isSelected) providerGlyphs - provider else providerGlyphs + provider
-                            GlobalVisualSettings.setProviderGlyphs(next)
-                        },
-                        shape = RoundedCornerShape(999.dp),
-                        color = if (isSelected)
-                            Color.White.copy(alpha = if (isDark) 0.18f else 0.4f)
-                        else
-                            Color.White.copy(alpha = if (isDark) 0.06f else 0.2f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+            // Divider
+            Spacer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.1f))
+            )
+
+            // Section 2: Provider Selection
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Provider Glyphs",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f)
+                        )
+                        val total = AgentProvider.swarmGlyphProviders.size
+                        val count = providerGlyphs.size
+                        Text(
+                            text = when (count) {
+                                total -> "All active"
+                                0 -> "All hidden"
+                                else -> "$count/$total active"
+                            },
+                            fontSize = 11.sp,
+                            color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.4f)
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Surface(
+                            onClick = { GlobalVisualSettings.setProviderGlyphs(AgentProvider.swarmGlyphProviders.toSet()) },
+                            shape = RoundedCornerShape(999.dp),
+                            color = if (providerGlyphs.size == AgentProvider.swarmGlyphProviders.size)
+                                AuroraColors.ember else (if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f))
                         ) {
-                            ProviderLogo(provider = provider, size = 16.dp)
                             Text(
-                                provider.displayName,
+                                text = "All",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (isDark) Color.White else Color.Black
+                                fontWeight = FontWeight.Bold,
+                                color = if (providerGlyphs.size == AgentProvider.swarmGlyphProviders.size)
+                                    Color.White else (if (isDark) Color.White.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.6f))
                             )
-                            if (isSelected) {
-                                Icon(
-                                    Icons.Filled.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
-                                    tint = if (isDark) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.5f)
+                        }
+                        Surface(
+                            onClick = { GlobalVisualSettings.setProviderGlyphs(emptySet()) },
+                            shape = RoundedCornerShape(999.dp),
+                            color = if (providerGlyphs.isEmpty()) AuroraColors.ember else (if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f))
+                        ) {
+                            Text(
+                                text = "None",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (providerGlyphs.isEmpty())
+                                    Color.White else (if (isDark) Color.White.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.6f))
+                            )
+                        }
+                    }
+                }
+
+                // Provider chips in a flow layout
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AgentProvider.swarmGlyphProviders.forEach { provider ->
+                        val isSelected = providerGlyphs.contains(provider)
+                        Surface(
+                            onClick = {
+                                val next = if (isSelected) providerGlyphs - provider else providerGlyphs + provider
+                                GlobalVisualSettings.setProviderGlyphs(next)
+                            },
+                            shape = RoundedCornerShape(999.dp),
+                            color = if (isSelected) {
+                                if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.08f)
+                            } else {
+                                if (isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.03f)
+                            },
+                            border = androidx.compose.foundation.BorderStroke(
+                                0.75.dp,
+                                if (isSelected) AuroraColors.ember else Color.Transparent
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                ProviderLogo(provider = provider, size = 16.dp)
+                                Text(
+                                    text = provider.displayName,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isDark) Color.White else Color.Black
                                 )
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(11.dp),
+                                        tint = if (isDark) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.5f)
+                                    )
+                                }
                             }
                         }
                     }

@@ -125,6 +125,12 @@ final class AgentIdentityRegistry {
                 availability = runtimeAvailabilityByID["codex"] ?? existing.availability
             case .openClaw:
                 availability = runtimeAvailabilityByID["openclaw"] ?? existing.availability
+            case .droid:
+                availability = runtimeAvailabilityByID["droid"] ?? existing.availability
+            case .forge:
+                availability = runtimeAvailabilityByID["forge"] ?? existing.availability
+            case .antigravity:
+                availability = runtimeAvailabilityByID["antigravity"] ?? existing.availability
             case .none:
                 availability = existing.availability
             }

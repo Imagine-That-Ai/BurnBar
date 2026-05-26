@@ -448,60 +448,19 @@ extension OpenBurnBarDaemonManager {
                 try OpenBurnBarDaemonSocketClient.config(at: socketURL)
             }
 
-            var didMutate = false
-            for providerIndex in snapshot.providers.indices {
-                var settings = snapshot.providers[providerIndex]
-                if let providerID, settings.providerID != providerID {
-                    continue
+            let didMutate = try await applyProviderCredentialSlotQuotaRefresh(
+                to: &snapshot,
+                providerID: providerID,
+                secretLookup: { account in
+                    try Self.providerRuntimeSecrets.string(for: account)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                },
+                fetchSnapshot: { quotaProvider, apiKey in
+                    try await ProviderQuotaService.shared.fetchSnapshot(
+                        for: quotaProvider,
+                        apiKeyOverride: apiKey
+                    )
                 }
-                guard let quotaProvider = quotaCapableProvider(for: settings.providerID) else {
-                    continue
-                }
-
-                for slotIndex in settings.credentialSlots.indices {
-                    var slot = settings.credentialSlots[slotIndex]
-                    let account = slotSecretAccount(providerID: settings.providerID, slotID: slot.slotID)
-                    let apiKey = try Self.providerRuntimeSecrets.string(for: account)?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                    if let apiKey, !apiKey.isEmpty {
-                        do {
-                            let quotaSnapshot = try await ProviderQuotaService.shared.fetchSnapshot(
-                                for: quotaProvider,
-                                apiKeyOverride: apiKey
-                            )
-                            let bucket = quotaSnapshot.primaryDisplayableBucket
-                            slot.lastQuotaRemainingPercent = bucket?.remainingPercent
-                            slot.lastQuotaResetsAt = bucket?.resetsAt
-                            slot.lastStatusMessage = quotaSnapshot.statusMessage
-                            if slot.isEnabled {
-                                if let remaining = bucket?.remainingPercent, remaining <= 0 {
-                                    slot.status = .exhausted
-                                } else {
-                                    slot.status = .ready
-                                }
-                                slot.cooldownUntil = nil
-                            }
-                        } catch {
-                            slot.lastStatusMessage = error.localizedDescription
-                            if slot.isEnabled {
-                                slot.status = .coolingDown
-                                slot.cooldownUntil = Calendar.current.date(byAdding: .minute, value: 5, to: Date())
-                            }
-                        }
-                    } else {
-                        // New provider slots are daemon-owned. The app process cannot read
-                        // those secrets, so a miss in the old app-side keychain namespace
-                        // must not be treated as a missing daemon credential.
-                        continue
-                    }
-
-                    slot.updatedAt = Date()
-                    settings.credentialSlots[slotIndex] = slot
-                    didMutate = true
-                }
-
-                snapshot.providers[providerIndex] = settings
-            }
+            )
 
             if didMutate {
                 let snapshotToWrite = snapshot
@@ -510,6 +469,68 @@ extension OpenBurnBarDaemonManager {
                 }
             }
         }
+    }
+
+    func applyProviderCredentialSlotQuotaRefresh(
+        to snapshot: inout BurnBarProviderConfigurationSnapshot,
+        providerID: String? = nil,
+        secretLookup: (String) throws -> String?,
+        fetchSnapshot: (AgentProvider, String) async throws -> ProviderQuotaSnapshot,
+        now: () -> Date = Date.init
+    ) async throws -> Bool {
+        var didMutate = false
+        for providerIndex in snapshot.providers.indices {
+            var settings = snapshot.providers[providerIndex]
+            if let providerID, settings.providerID != providerID {
+                continue
+            }
+            guard let quotaProvider = quotaCapableProvider(for: settings.providerID) else {
+                continue
+            }
+
+            for slotIndex in settings.credentialSlots.indices {
+                var slot = settings.credentialSlots[slotIndex]
+                let account = slotSecretAccount(providerID: settings.providerID, slotID: slot.slotID)
+                let apiKey = try secretLookup(account)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                if let apiKey, !apiKey.isEmpty {
+                    do {
+                        let quotaSnapshot = try await fetchSnapshot(quotaProvider, apiKey)
+                        let bucket = quotaSnapshot.primaryDisplayableBucket
+                        slot.lastQuotaRemainingPercent = bucket?.remainingPercent
+                        slot.lastQuotaResetsAt = bucket?.resetsAt
+                        slot.lastStatusMessage = quotaSnapshot.statusMessage
+                        if slot.isEnabled {
+                            if let remaining = bucket?.remainingPercent, remaining <= 0 {
+                                slot.status = .exhausted
+                            } else {
+                                slot.status = .ready
+                            }
+                            slot.cooldownUntil = nil
+                        }
+                    } catch {
+                        slot.lastStatusMessage = error.localizedDescription
+                        if slot.isEnabled {
+                            slot.status = .coolingDown
+                            slot.cooldownUntil = Calendar.current.date(byAdding: .minute, value: 5, to: now())
+                        }
+                    }
+                } else {
+                    // New provider slots are daemon-owned. The app process cannot read
+                    // those secrets, so a miss in the old app-side keychain namespace
+                    // must not be treated as a missing daemon credential.
+                    continue
+                }
+
+                slot.updatedAt = now()
+                settings.credentialSlots[slotIndex] = slot
+                didMutate = true
+            }
+
+            snapshot.providers[providerIndex] = settings
+        }
+
+        return didMutate
     }
 
     func mutateProviderSettingsSnapshot(

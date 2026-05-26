@@ -159,6 +159,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 XCTAssertEqual(relayPublicKey, Data(repeating: 7, count: 32))
                 return stream
             },
+            signingKeyStore: AgentWatchFakeSigningKeyStore(),
             authorityPublisher: authorityPublisher,
             initialBackoff: 0.01,
             maxBackoff: 0.01
@@ -237,6 +238,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let stream = AgentWatchFakeStream()
         let coordinator = AgentWatchOverlayCoordinator(
             dialer: { _, _, _ in stream },
+            signingKeyStore: AgentWatchFakeSigningKeyStore(),
             authorityPublisher: AgentWatchFakeAuthorityPublisher(),
             initialBackoff: 0.01,
             maxBackoff: 0.01
@@ -295,6 +297,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let stream = AgentWatchFakeStream()
         let coordinator = AgentWatchOverlayCoordinator(
             dialer: { _, _, _ in stream },
+            signingKeyStore: AgentWatchFakeSigningKeyStore(),
             authorityPublisher: AgentWatchFakeAuthorityPublisher(),
             initialBackoff: 0.01,
             maxBackoff: 0.01
@@ -415,14 +418,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
     // MARK: - Self-hosted Runner Delete Cleanup
 
     func testSelfHostedRunnerStoreDeleteRemovesURLAndSecret() throws {
-        let store = SelfHostedQuotaRunnerStore()
+        let suiteName = "OpenBurnBarMobileTests.selfHosted.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let secrets = MobileFakeSelfHostedQuotaRunnerSecrets()
+        let store = SelfHostedQuotaRunnerStore(defaults: defaults, secrets: secrets)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
         try store.save(accountID: "cleanup-test", runnerURL: "https://runner.example.com", accessSecret: "secret123")
         XCTAssertNotNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("https://runner.example.com"))
+        XCTAssertEqual(secrets.savedByAccount["cleanup-test"], "secret123")
 
         store.delete(accountID: "cleanup-test")
-        // After deletion, reloading the URL should fail
-        let defaults = UserDefaults.standard
         XCTAssertNil(defaults.string(forKey: "selfHostedQuotaRunnerURL.cleanup-test"))
+        XCTAssertNil(secrets.savedByAccount["cleanup-test"])
     }
 
     // MARK: - Self-hosted Runner URL Validation
@@ -570,6 +578,51 @@ final class ScreenShareControlInputPolicyTests: XCTestCase {
             ),
             CGPoint(x: 100, y: 250)
         )
+    }
+}
+
+final class ScreenShareViewerStatsMeterTests: XCTestCase {
+    func testRecordsInboundBitrateOverRollingWindow() {
+        var meter = ScreenShareViewerStatsMeter(minimumSampleInterval: 0.5)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let first = meter.recordFrame(
+            byteCount: 500_000,
+            now: start,
+            codec: "HEVC",
+            resolution: "1920x1080"
+        )
+        XCTAssertEqual(first.bitsPerSecond, 0, "bitrate should wait for enough elapsed sample time")
+        XCTAssertEqual(first.codec, "HEVC")
+        XCTAssertEqual(first.resolution, "1920x1080")
+
+        let second = meter.recordFrame(
+            byteCount: 500_000,
+            now: start.addingTimeInterval(1),
+            codec: "HEVC",
+            resolution: "1920x1080"
+        )
+
+        XCTAssertEqual(second.bitsPerSecond, 8_000_000)
+        XCTAssertEqual(second.codec, "HEVC")
+        XCTAssertEqual(second.resolution, "1920x1080")
+    }
+
+    func testRoundTripMillisIsClampedAndPreservesFrameStats() {
+        var meter = ScreenShareViewerStatsMeter(minimumSampleInterval: 0.5)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+        _ = meter.recordFrame(byteCount: 250_000, now: start, codec: "H.264", resolution: "1280x720")
+        _ = meter.recordFrame(byteCount: 250_000, now: start.addingTimeInterval(0.5), codec: "H.264", resolution: "1280x720")
+
+        let clamped = meter.updateRoundTripMillis(-12)
+        XCTAssertEqual(clamped.roundTripMillis, 0)
+        XCTAssertEqual(clamped.bitsPerSecond, 8_000_000)
+
+        let updated = meter.updateRoundTripMillis(37)
+        XCTAssertEqual(updated.roundTripMillis, 37)
+        XCTAssertEqual(updated.codec, "H.264")
+        XCTAssertEqual(updated.resolution, "1280x720")
     }
 }
 
@@ -790,5 +843,34 @@ private actor AgentWatchFakeAuthorityPublisher: PhoneControlAuthorityPublishing 
 
     func published() -> [Published] {
         values
+    }
+}
+
+private final class AgentWatchFakeSigningKeyStore: PhoneControlSigningKeyProviding {
+    private let key = Curve25519SigningKey(privateKey: Curve25519.Signing.PrivateKey())
+
+    func signingKey() throws -> Curve25519SigningKey {
+        key
+    }
+
+    func peerNodeId(for key: Curve25519SigningKey) -> String {
+        "ios-phone-test-\(key.privateKey.publicKey.rawRepresentation.prefix(4).map { String(format: "%02x", $0) }.joined())"
+    }
+}
+
+@MainActor
+private final class MobileFakeSelfHostedQuotaRunnerSecrets: SelfHostedQuotaRunnerSecretStoring {
+    var savedByAccount: [String: String] = [:]
+
+    func save(_ value: String, accountID: String) throws {
+        savedByAccount[accountID] = value
+    }
+
+    func load(accountID: String) throws -> String? {
+        savedByAccount[accountID]
+    }
+
+    func delete(accountID: String) throws {
+        savedByAccount.removeValue(forKey: accountID)
     }
 }

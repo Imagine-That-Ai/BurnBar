@@ -325,6 +325,9 @@ struct ChatEnginesDetailView: View {
         case .openclaw: return "OpenClaw OpenAI-compatible gateway"
         case .codex: return "Local Codex CLI session"
         case .claude: return "Local Claude Code CLI session"
+        case .droid: return "Local Droid CLI session"
+        case .forge: return "Local Forge CLI session"
+        case .antigravity: return "Local Antigravity CLI session"
         }
     }
 }

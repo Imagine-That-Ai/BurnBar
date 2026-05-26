@@ -9,9 +9,9 @@ import Foundation
 /// - **Extracted domain services** (`UsageSyncService`, `ConversationSyncService`,
 ///   `ChatThreadSyncService`, `SessionLogSyncService`): handle focused, single-responsibility
 ///   sync with clean test surfaces and clear failure boundaries.
-/// - **Legacy CloudSyncService**: retained as-is for collaboration (`syncSharedArtifacts`)
-///   and download (`syncRemoteReplicas`) — these are complex flows with deep coupling
-///   to DataStore internals that are not yet extracted.
+/// - **Legacy CloudSyncService**: retained for collaboration (`syncSharedArtifacts`)
+///   only — the 3-way merge, optimistic concurrency, and projection enqueue remain
+///   coupled to Datastore internals until CollaborationSyncService is lifted out.
 ///
 /// ## Public API (replaces CloudSyncService methods)
 ///
@@ -30,8 +30,7 @@ final class CloudSyncCoordinator {
 
     private let context: CloudSyncContext
 
-    /// Reference to the original CloudSyncService for collaboration and download sync.
-    /// These flows are still coupled to DataStore internals and are not yet extracted.
+    /// Reference to the original CloudSyncService for collaboration sync only.
     private weak var legacyCloudSync: CloudSyncService?
 
     // MARK: - Domain Services
@@ -42,6 +41,7 @@ final class CloudSyncCoordinator {
     private let sessionLogSync: SessionLogSyncService
     private let providerAccountSync: ProviderAccountSyncService
     private let quotaSnapshotSync: QuotaSnapshotSyncService
+    private let downloadSync: DownloadSyncService
 
     // MARK: - Shared State
 
@@ -56,7 +56,7 @@ final class CloudSyncCoordinator {
 
     /// - Parameters:
     ///   - legacyCloudSync: The original CloudSyncService instance, used for collaboration
-    ///     and download sync. May be nil if those features are not needed.
+    ///     artifact sync. May be nil if that feature is not needed.
     init(
         dataStore: DataStore,
         accountManager: any AccountManaging,
@@ -75,6 +75,7 @@ final class CloudSyncCoordinator {
         self.sessionLogSync = SessionLogSyncService(context: context)
         self.providerAccountSync = ProviderAccountSyncService(context: context)
         self.quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
+        self.downloadSync = DownloadSyncService(context: context)
     }
 
     // MARK: - Public API: Upload (Local → Cloud)
@@ -138,37 +139,38 @@ final class CloudSyncCoordinator {
     // MARK: - Public API: Download (Cloud → Local)
 
     /// Download remote data from Firestore with durable watermark tracking.
-    ///
-    /// VAL-PERSIST-010: Watermark advances only after successful sync commit.
-    /// VAL-PERSIST-011: Watermark scope is account-aware and collection-safe.
-    ///
-    /// Delegates to the legacy CloudSyncService which owns the full download pipeline.
     func syncRemoteReplicas() async {
-        await legacyCloudSync?.downloadRemoteData()
-        cloudTotalCost = legacyCloudSync?.cloudTotalCost
+        guard !isSyncing else { return }
+        isSyncing = true
+        lastSyncError = nil
+        await downloadSync.sync()
+        lastSyncDate = downloadSync.lastSyncDate
+        lastSyncError = downloadSync.lastSyncError
+        cloudTotalCost = downloadSync.cloudTotalCost
+        isSyncing = false
     }
 
     /// Fetch sum of cost across all devices for this user (last 90 days).
     func fetchCloudTotal() async {
-        await legacyCloudSync?.fetchCloudTotal()
-        cloudTotalCost = legacyCloudSync?.cloudTotalCost
+        await downloadSync.fetchCloudTotal()
+        cloudTotalCost = downloadSync.cloudTotalCost
     }
 
     // MARK: - Session Log Read
 
     /// Fetches session log manifests from Firestore for the signed-in user.
     func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
-        try await legacyCloudSync?.fetchCloudSessionLogs(limit: limit) ?? []
+        try await sessionLogSync.fetchCloudSessionLogs(limit: limit)
     }
 
     /// Reassembles chunk sub-documents into the full Markdown body for a session log.
     func fetchCloudSessionLogBody(docId: String) async throws -> String {
-        try await legacyCloudSync?.fetchCloudSessionLogBody(docId: docId) ?? ""
+        try await downloadSync.fetchCloudSessionLogBody(docId: docId)
     }
 
     /// Update local device name in Firestore (called from Settings).
     func updateLocalDeviceName(_ name: String) async {
-        await legacyCloudSync?.updateLocalDeviceName(name)
+        await downloadSync.updateLocalDeviceName(name)
     }
 
     // MARK: - Memory Boundary
@@ -291,12 +293,11 @@ final class CloudSyncCoordinator {
         lastSyncError = legacy.lastSyncError
     }
 
-    /// Delegates download sync to the legacy CloudSyncService's `downloadRemoteData()` method.
-    /// This call is only used when the coordinator is the entry point (not via CloudSyncService).
+    /// Delegates download sync to DownloadSyncService.
     func delegateDownloadSync() async {
-        guard let legacy = legacyCloudSync else { return }
-        await legacy.downloadRemoteData()
-        cloudTotalCost = legacy.cloudTotalCost
-        lastSyncError = legacy.lastSyncError
+        await downloadSync.sync()
+        lastSyncDate = downloadSync.lastSyncDate
+        lastSyncError = downloadSync.lastSyncError
+        await fetchCloudTotal()
     }
 }

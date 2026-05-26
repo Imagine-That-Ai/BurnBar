@@ -34,7 +34,7 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
     private(set) var phoneControlSender: PhoneControlSender?
 
     private let dialer: StreamDialer
-    private let signingKeyStore: PhoneControlSigningKeyStore
+    private let signingKeyStore: any PhoneControlSigningKeyProviding
     private let authorityPublisher: PhoneControlAuthorityPublishing
     private let initialBackoff: TimeInterval
     private let maxBackoff: TimeInterval
@@ -56,7 +56,7 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                 relayPublicKey: relayPublicKey
             )
         },
-        signingKeyStore: PhoneControlSigningKeyStore = .shared,
+        signingKeyStore: any PhoneControlSigningKeyProviding = PhoneControlSigningKeyStore.shared,
         authorityPublisher: PhoneControlAuthorityPublishing = PhoneControlAuthorityPublisher.shared,
         initialBackoff: TimeInterval = 1,
         maxBackoff: TimeInterval = 8

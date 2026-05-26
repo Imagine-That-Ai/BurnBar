@@ -126,6 +126,9 @@ final class ThreadInboxStore {
             case .claude:   runtime = .claude
             case .codex:    runtime = .codex
             case .openClaw: runtime = .openClaw
+            case .droid:    runtime = .droid
+            case .forge:    runtime = .forge
+            case .antigravity: runtime = .antigravity
             }
             return ThreadInboxItem(
                 id: "cli:\(record.id)",
@@ -166,6 +169,9 @@ final class ThreadInboxStore {
         case "codex": return .codex
         case "claude": return .claude
         case "openclaw": return .openClaw
+        case "droid", "factory", "factory-droid", "factorydroid": return .droid
+        case "forge", "forge-dev", "forgedev": return .forge
+        case "antigravity", "agy", "google-antigravity", "googleantigravity": return .antigravity
         default: return nil
         }
     }

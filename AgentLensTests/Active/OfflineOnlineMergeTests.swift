@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -68,9 +69,112 @@ final class OfflineOnlineMergeTests: XCTestCase {
 
     // MARK: - Backoff Suppression
 
+    func test_backoff_suppression_onPermissionDenied() async throws {
+        fakeGateway.nextError = NSError(
+            domain: FirestoreErrorDomain,
+            code: FirestoreErrorCode.permissionDenied.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: "Permission denied"]
+        )
+
+        let usage = AppTokenUsage(
+            provider: AppAgentProvider.claudeCode,
+            sessionId: "session-1",
+            projectName: "TestProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        try dataStore.insert(usage)
+
+        await usageSync.sync()
+
+        XCTAssertTrue(context.syncIsSuppressed())
+        XCTAssertNotNil(context.suppressedSyncUntil)
+
+        context.suppressedSyncUntil = nil
+        XCTAssertFalse(context.syncIsSuppressed())
+
+        fakeGateway.nextError = nil
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertEqual(docs.count, 1)
+    }
+
     // MARK: - Watermark Durability on Failure
 
+    func test_watermark_doesNotAdvanceOnFailure() async throws {
+        let remoteDeviceId = "remote-device"
+        let remoteUsageId = UUID().uuidString
+        let remoteTimestamp = Date().addingTimeInterval(-3600)
+        let start = remoteTimestamp
+        let end = remoteTimestamp.addingTimeInterval(100)
+
+        fakeGateway.setDocumentData([
+            "id": remoteUsageId,
+            "deviceId": remoteDeviceId,
+            "provider": AppAgentProvider.claudeCode.rawValue,
+            "sessionId": "session-1",
+            "projectName": "RemoteProject",
+            "model": "claude-3-5-sonnet",
+            "inputTokens": 100,
+            "outputTokens": 50,
+            "usageSource": AppUsageSource.providerLog.rawValue,
+            "totalTokens": 150,
+            "cost": 0.005,
+            "startTime": Timestamp(date: start),
+            "endTime": Timestamp(date: end),
+            "updatedAt": Timestamp(date: remoteTimestamp)
+        ], at: "users/test-uid-1/usage/\(remoteDeviceId)_\(remoteUsageId)")
+
+        fakeGateway.setDocumentData([
+            "deviceName": "Remote Mac",
+            "platform": "macOS",
+            "lastActiveAt": Timestamp(date: remoteTimestamp)
+        ], at: "users/test-uid-1/devices/\(remoteDeviceId)")
+
+        let initialWatermark = try dataStore.remoteSyncWatermarkStore.fetchWatermark(
+            accountUid: "test-uid-1",
+            collectionKind: .usage
+        )
+
+        fakeGateway.nextError = NSError(
+            domain: "FakeFirestore",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Network error"]
+        )
+
+        await downloadSync.sync()
+
+        let watermarkAfterFailure = try dataStore.remoteSyncWatermarkStore.fetchWatermark(
+            accountUid: "test-uid-1",
+            collectionKind: .usage
+        )
+        XCTAssertEqual(initialWatermark?.lastProcessedRemoteUpdateAt, watermarkAfterFailure?.lastProcessedRemoteUpdateAt)
+        XCTAssertEqual(initialWatermark?.lastSyncedAt, watermarkAfterFailure?.lastSyncedAt)
+
+        fakeGateway.nextError = nil
+        await downloadSync.sync()
+
+        let watermarkAfterSuccess = try dataStore.remoteSyncWatermarkStore.fetchWatermark(
+            accountUid: "test-uid-1",
+            collectionKind: .usage
+        )
+        XCTAssertNotNil(watermarkAfterSuccess)
+        XCTAssertEqual(
+            watermarkAfterSuccess?.lastProcessedRemoteUpdateAt?.timeIntervalSince1970 ?? 0,
+            remoteTimestamp.timeIntervalSince1970,
+            accuracy: 1.0
+        )
+    }
+
     // MARK: - Circuit Breaker Recovery
+
+    func test_circuitBreaker_halfOpenToClosed_recovery() async throws {
+        try XCTSkip("FakeFirestore errors do not trip CloudSyncCircuitBreaker through UsageSyncService yet; revive after retry harness exposes failure counts.")
+    }
 
     // MARK: - Buffered Local Upload on Reconnect
 

@@ -148,11 +148,14 @@ class ThreadInboxStore private constructor(
                             agentURI = AgentIdentity.builtInURI(AssistantRuntimeID.PI)
                             source = ThreadInboxItem.Source.PI
                         }
-                        "codex", "claude", "openclaw" -> {
+                        "codex", "claude", "openclaw", "droid", "forge", "antigravity" -> {
                             val runtime = when (runtimeLower) {
                                 "codex" -> AssistantRuntimeID.CODEX
                                 "claude" -> AssistantRuntimeID.CLAUDE
                                 "openclaw" -> AssistantRuntimeID.OPEN_CLAW
+                                "droid" -> AssistantRuntimeID.DROID
+                                "forge" -> AssistantRuntimeID.FORGE
+                                "antigravity" -> AssistantRuntimeID.ANTIGRAVITY
                                 else -> return@mapNotNull null
                             }
                             agentURI = AgentIdentity.builtInURI(runtime)
@@ -326,6 +329,9 @@ class ThreadInboxStore private constructor(
             "codex" -> AssistantRuntimeID.CODEX
             "claude" -> AssistantRuntimeID.CLAUDE
             "openclaw", "open_claw", "open-claw" -> AssistantRuntimeID.OPEN_CLAW
+            "droid", "factory", "factory_droid", "factory-droid" -> AssistantRuntimeID.DROID
+            "forge", "forge_dev", "forge-dev" -> AssistantRuntimeID.FORGE
+            "antigravity", "agy", "google_antigravity", "google-antigravity" -> AssistantRuntimeID.ANTIGRAVITY
             else -> null
         }
 

@@ -302,6 +302,11 @@ final class MacFileTransferService: ObservableObject {
                      .controlInputIntent,
                      .controlApprovalRequest,
                      .controlApprovalResponse,
+                     .controlAgentGrantRequest,
+                     .controlAgentGrantReceipt,
+                     .controlClipboardRequest,
+                     .controlClipboardResponse,
+                     .controlAgentContextTarget,
                      .controlDenied:
                     if let computerUseControlDispatcher {
                         Self.log.info("mac_control_stream_dispatch_computer_use type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")

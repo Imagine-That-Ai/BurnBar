@@ -169,6 +169,9 @@ final class CLIAgentSessionMirror {
         case .codex:    return .codex
         case .claude:   return .claude
         case .openclaw: return .openClaw
+        case .droid:    return .droid
+        case .forge:    return .forge
+        case .antigravity: return .antigravity
         case .hermes, .piAgent: return nil
         }
     }
@@ -265,6 +268,9 @@ final class CLIAgentSessionMirror {
         case .codex: return .codex
         case .claudeCode: return .claude
         case .openClaw: return .openClaw
+        case .factory: return .droid
+        case .forgeDev: return .forge
+        case .antigravity: return .antigravity
         default: return nil
         }
     }
@@ -300,6 +306,12 @@ final class CLIAgentSessionMirror {
         case .claude:
             return "claude --resume \"\(safe)\""
         case .openClaw:
+            return nil
+        case .droid:
+            return nil
+        case .forge:
+            return nil
+        case .antigravity:
             return nil
         }
     }

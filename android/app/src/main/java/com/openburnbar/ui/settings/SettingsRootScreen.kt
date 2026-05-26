@@ -24,6 +24,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.res.painterResource
+import com.openburnbar.R
+import com.openburnbar.ui.theme.UIMode
+import com.openburnbar.ui.settings.rememberUIMode
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -35,6 +40,7 @@ import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.Icon
@@ -114,6 +120,9 @@ fun SettingsRootScreen(
             )
             SettingsPageRoute.QUOTA_PREFS -> QuotaCustomizationScreen(
                 router = router,
+                onBack = { router.page = SettingsPageRoute.ROOT }
+            )
+            SettingsPageRoute.BUDGET_PREFS -> BudgetSettingsScreen(
                 onBack = { router.page = SettingsPageRoute.ROOT }
             )
         }
@@ -270,6 +279,14 @@ private fun SettingsRootList(
                 subtitle = "Agent Watch, phone takeover, approvals, and audit chain",
                 pageRoute = SettingsPageRoute.ROOT,
                 onTap = { onComputerUse?.invoke() }
+            ),
+            RootRow(
+                anchor = SettingsAnchor.BUDGET_ROW,
+                icon = Icons.Filled.Tune,
+                title = "Budgeting & Rules",
+                subtitle = "Set hard limits and warnings on usage spends",
+                pageRoute = SettingsPageRoute.BUDGET_PREFS,
+                onTap = { router.page = SettingsPageRoute.BUDGET_PREFS }
             )
         )
     }
@@ -1021,6 +1038,106 @@ fun ThemePrefsScreen(
                     }
 
                     // Divider
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    )
+
+                    // UI Mode Selector (Standard vs Cooking)
+                    val activeUiMode by rememberUIMode()
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "UI Mode",
+                            fontWeight = FontWeight.Bold,
+                            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            UIMode.entries.forEach { mode ->
+                                val isSelected = activeUiMode == mode
+                                val primaryColor = MaterialTheme.colorScheme.primary
+
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(115.dp),
+                                    shape = RoundedCornerShape(AuroraRadius.md.dp),
+                                    color = if (isSelected) primaryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
+                                    border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, primaryColor) else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                    onClick = {
+                                        GlobalVisualSettings.setUIMode(mode)
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(12.dp),
+                                        verticalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (mode == UIMode.COOKING) {
+                                                Icon(
+                                                    painter = painterResource(id = R.drawable.ic_cooking_skillet),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(24.dp),
+                                                    tint = Color.Unspecified
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Filled.AutoAwesome,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(20.dp),
+                                                    tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+
+                                            // Selection indicator dot
+                                            if (isSelected) {
+                                                Surface(
+                                                    modifier = Modifier.size(8.dp),
+                                                    shape = CircleShape,
+                                                    color = primaryColor
+                                                ) {}
+                                            }
+                                        }
+
+                                        Column {
+                                            Text(
+                                                text = mode.displayName,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = mode.description,
+                                                fontSize = 11.sp,
+                                                lineHeight = 13.sp,
+                                                color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    )
 
                     // 3. Color Palette
                     val themePalette by rememberThemePalette()

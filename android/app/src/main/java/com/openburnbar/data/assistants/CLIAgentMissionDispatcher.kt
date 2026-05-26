@@ -38,6 +38,16 @@ enum class SkillRunDeliveryMode(val wire: String, val displayLabel: String) {
     }
 }
 
+enum class CLIAgentChatPresentationMode(val wire: String, val displayLabel: String) {
+    NATIVE_CHAT("native_chat", "Chat"),
+    MAC_VISIBLE_CLI("mac_visible_cli", "Mac CLI");
+
+    companion object {
+        fun fromWire(value: String?): CLIAgentChatPresentationMode =
+            values().firstOrNull { it.wire == value } ?: NATIVE_CHAT
+    }
+}
+
 enum class SkillRunEventImportance(val wire: String) {
     QUIET("quiet"),
     NORMAL("normal"),
@@ -184,6 +194,7 @@ class CLIAgentMissionDispatcher(
         sourceSurface: String? = null,
         deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
         parentHermesThreadID: String? = null,
+        presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
     ): String {
         val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
         val trimmedPrompt = prompt.trim()
@@ -209,6 +220,7 @@ class CLIAgentMissionDispatcher(
             sourceSurface = sourceSurface,
             deliveryMode = deliveryMode,
             parentHermesThreadID = parentHermesThreadID,
+            presentationMode = presentationMode,
         )
         val requestRef = firestore.collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(id)
@@ -218,7 +230,8 @@ class CLIAgentMissionDispatcher(
                 requestRef.collection("events").document("000001"),
                 CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
                     label = if (missionKind.trim().equals("chat", ignoreCase = true)) "Chat" else "Mission",
-                    source = if (missionKind.trim().equals("chat", ignoreCase = true)) "android-chat" else "android",
+                    source = sourceSurface?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: if (missionKind.trim().equals("chat", ignoreCase = true)) "android-chat" else "android",
                     sourceSkillID = sourceSkillID,
                     deliveryMode = deliveryMode,
                 ),
@@ -405,6 +418,7 @@ object CLIAgentMissionRequestPayloadFactory {
         sourceSurface: String? = null,
         deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
         parentHermesThreadID: String? = null,
+        presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
         now: Instant = Instant.now(),
     ): Map<String, Any> {
         val isChat = missionKind.trim().equals("chat", ignoreCase = true)
@@ -424,6 +438,7 @@ object CLIAgentMissionRequestPayloadFactory {
             put("source", baseSource)
             put("sourceSurface", sourceSurface?.trim()?.takeIf { it.isNotEmpty() } ?: baseSource)
             put("deliveryMode", deliveryMode.wire)
+            put("presentationMode", presentationMode.wire)
             put("status", "pending")
             put(
                 "liveSummary",

@@ -101,7 +101,12 @@ struct MercuryLiveSheet: View {
     @State private var phoneControlConnectionID: String?
     @State private var phoneControlStarting = false
     @State private var phoneControlError: String?
+    @State private var clipboardStatusMessage: String?
+    @State private var pendingClipboardRequests: [String: HermesRealtimeRelayClipboardAction] = [:]
     @State private var selectedMirrorDisplayId: String?
+    @State private var activeMirrorSessionId: String?
+    @State private var activeMirrorViewerId: String?
+    @State private var activeMirrorViewerRole: String?
     @State private var backgroundImage: UIImage? = nil
     @ObservedObject private var personalizationStore = MercuryPersonalizationStore.shared
     @ObservedObject private var transferHistoryStore = MercuryTransferHistoryStore.shared
@@ -263,9 +268,15 @@ struct MercuryLiveSheet: View {
             ackDismissTask?.cancel()
             ackDismissTask = nil
             awaitingRequestID = nil
+            activeMirrorSessionId = nil
+            activeMirrorViewerId = nil
+            activeMirrorViewerRole = nil
+            pendingClipboardRequests.removeAll()
             controlStreamCoordinator.mirrorFrameHandler = nil
             controlStreamCoordinator.mirrorFrameV2Handler = nil
+            controlStreamCoordinator.focusContextHandler = nil
             controlStreamCoordinator.controlDeniedHandler = nil
+            controlStreamCoordinator.clipboardResponseHandler = nil
             screenShareViewer.longTermReferenceTokenHandler = nil
             // Do NOT stop the phone control coordinator here — it is the
             // app-scope singleton; tearing it down would close the
@@ -277,11 +288,12 @@ struct MercuryLiveSheet: View {
                 coordinator: screenShareViewer,
                 resetToken: activeMirrorRequestID,
                 controlStatus: mirrorControlStatus,
-                controlInputEnabled: activeMirrorRequestID != nil,
+                controlInputEnabled: activeMirrorRequestID != nil && activeMirrorViewerRole == "controller",
                 streamPhase: controlStreamCoordinator.phase,
                 reconnectAttemptStartedAt: controlStreamCoordinator.reconnectAttemptStartedAt,
                 lastFailureReason: controlStreamCoordinator.lastFailureReason,
                 lastLiveAt: controlStreamCoordinator.lastLiveAt,
+                controlRoundTripMillis: controlStreamCoordinator.lastRoundTripMillis,
                 displays: lastAck?.availableDisplays ?? [],
                 selectedDisplayId: selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
                 usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false,
@@ -312,6 +324,23 @@ struct MercuryLiveSheet: View {
                 },
                 sendShortcutIntent: { key, modifiers in
                     Task { await sendPhoneControlIntent(kind: .shortcut, key: key, modifiers: modifiers) }
+                },
+                sendAgentContextTargetIntent: { x, y, instruction, runtime, clientIntentId in
+                    Task {
+                        await sendPhoneControlContextTarget(
+                            normalizedX: x,
+                            normalizedY: y,
+                            instruction: instruction,
+                            runtime: runtime,
+                            threadId: nil
+                        )
+                    }
+                },
+                pasteClipboardToMac: {
+                    Task { await sendClipboardRequest(action: .pasteToMac) }
+                },
+                grabClipboardFromMac: {
+                    Task { await sendClipboardRequest(action: .grabFromMac) }
                 },
                 onSelectDisplay: selectMirrorDisplay,
                 onTrustControlDevice: {
@@ -797,17 +826,28 @@ struct MercuryLiveSheet: View {
                     self.mirrorTimeoutTask = nil
                     self.awaitingRequestID = nil
                 }
+                if ack.requestId == self.activeMirrorRequestID || ack.requestId == self.awaitingRequestID {
+                    self.activeMirrorSessionId = ack.sessionId ?? self.activeMirrorSessionId
+                    self.activeMirrorViewerId = ack.viewerId ?? self.activeMirrorViewerId
+                    self.activeMirrorViewerRole = ack.viewerRole ?? self.activeMirrorViewerRole
+                }
                 let isActiveDisplaySelectionAck = ack.requestId == self.activeMirrorRequestID
                     && (ack.availableDisplays != nil || ack.selectedDisplayId != nil)
 
                 if ack.decision == .accepted {
                     if isActiveDisplaySelectionAck {
                         self.selectedMirrorDisplayId = ack.selectedDisplayId ?? self.selectedMirrorDisplayId
+                        self.activeMirrorSessionId = ack.sessionId ?? self.activeMirrorSessionId
+                        self.activeMirrorViewerId = ack.viewerId ?? self.activeMirrorViewerId
+                        self.activeMirrorViewerRole = ack.viewerRole ?? self.activeMirrorViewerRole
                         self.lastError = nil
                         self.refreshCooldownTicker(for: ack)
                         return
                     }
                     self.activeMirrorRequestID = ack.requestId
+                    self.activeMirrorSessionId = ack.sessionId
+                    self.activeMirrorViewerId = ack.viewerId
+                    self.activeMirrorViewerRole = ack.viewerRole ?? "controller"
                     self.selectedMirrorDisplayId = ack.selectedDisplayId ?? ack.availableDisplays?.first?.id ?? self.selectedMirrorDisplayId
                     self.isShowingMirrorViewer = true
                     Task { await self.startPhoneControlIfPossible(surfaceError: false) }
@@ -819,6 +859,9 @@ struct MercuryLiveSheet: View {
                         return
                     }
                     self.activeMirrorRequestID = nil
+                    self.activeMirrorSessionId = nil
+                    self.activeMirrorViewerId = nil
+                    self.activeMirrorViewerRole = nil
                     self.selectedMirrorDisplayId = nil
                     self.isShowingMirrorViewer = false
                     // Mirror rejected — keep the singleton's Computer
@@ -834,6 +877,11 @@ struct MercuryLiveSheet: View {
         controlStreamCoordinator.mirrorFrameV2Handler = { frame in
             await screenShareViewer.ingest(frameV2: frame)
         }
+        controlStreamCoordinator.focusContextHandler = { context in
+            await MainActor.run {
+                screenShareViewer.ingest(focusContext: context)
+            }
+        }
         controlStreamCoordinator.controlDeniedHandler = { denied in
             await MainActor.run {
                 self.phoneControlError = self.phoneControlDeniedMessage(for: denied)
@@ -844,6 +892,11 @@ struct MercuryLiveSheet: View {
                 default:
                     break
                 }
+            }
+        }
+        controlStreamCoordinator.clipboardResponseHandler = { response in
+            await MainActor.run {
+                self.handleClipboardResponse(response)
             }
         }
         screenShareViewer.longTermReferenceTokenHandler = { token in
@@ -865,8 +918,16 @@ struct MercuryLiveSheet: View {
         }
         personalization.haptics.play()
         let requestID = UUID().uuidString
+        let viewerID = UUID().uuidString
+        let signingKey = try? PhoneControlSigningKeyStore.shared.signingKey()
+        let controlAuthorityPeerNodeId = signingKey.map {
+            PhoneControlSigningKeyStore.shared.peerNodeId(for: $0)
+        }
         awaitingRequestID = requestID
         activeMirrorRequestID = nil
+        activeMirrorSessionId = nil
+        activeMirrorViewerId = viewerID
+        activeMirrorViewerRole = nil
         selectedMirrorDisplayId = nil
         phoneControlError = nil
         lastError = nil
@@ -894,7 +955,10 @@ struct MercuryLiveSheet: View {
             streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
                 mediaFrameVersions: .v1AndV2
             ).wireValue,
-            focusFollowMode: AgentFocusFollowMode.off.rawValue
+            focusFollowMode: AgentFocusFollowMode.off.rawValue,
+            viewerId: viewerID,
+            viewerDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
+            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -931,13 +995,20 @@ struct MercuryLiveSheet: View {
     private func stopActiveMirror(reason: String) async {
         guard uidProvider()?.isEmpty == false else {
             activeMirrorRequestID = nil
+            activeMirrorSessionId = nil
+            activeMirrorViewerId = nil
+            activeMirrorViewerRole = nil
             selectedMirrorDisplayId = nil
             isShowingMirrorViewer = false
             // Phone control coordinator is app-scope; do not stop it.
             return
         }
         guard let requestID = activeMirrorRequestID else { return }
+        let sessionID = activeMirrorSessionId
         activeMirrorRequestID = nil
+        activeMirrorSessionId = nil
+        activeMirrorViewerId = nil
+        activeMirrorViewerRole = nil
         selectedMirrorDisplayId = nil
         isShowingMirrorViewer = false
         lastAck = nil
@@ -948,6 +1019,7 @@ struct MercuryLiveSheet: View {
         do {
             try await controlStreamCoordinator.sendMirrorStop(
                 requestId: requestID,
+                sessionId: sessionID,
                 reason: reason,
                 timeout: 2
             )
@@ -961,13 +1033,16 @@ struct MercuryLiveSheet: View {
         let previousDisplayId = selectedMirrorDisplayId
         selectedMirrorDisplayId = displayId
         guard let uid = uidProvider(), !uid.isEmpty,
-              let requestID = activeMirrorRequestID else {
+              let requestID = activeMirrorRequestID,
+              activeMirrorViewerRole == "controller" else {
             selectedMirrorDisplayId = previousDisplayId
+            lastError = "Another device controls display switching."
             return
         }
         lastError = nil
         let selection = HermesRealtimeRelayMirrorDisplaySelection(
             requestId: requestID,
+            sessionId: activeMirrorSessionId,
             displayId: displayId
         )
         let frame = HermesRealtimeRelayFrame(
@@ -1070,10 +1145,16 @@ struct MercuryLiveSheet: View {
     }
 
     private var mirrorControlStatus: ScreenSharePhoneControlStatus {
+        if activeMirrorRequestID != nil && activeMirrorViewerRole == "watcher" {
+            return .unavailable("Watching only. Another device controls the Mac.")
+        }
         if let phoneControlError {
             return .unavailable(phoneControlError)
         }
         if phoneControlSender != nil {
+            if let clipboardStatusMessage {
+                return .liveNotice(clipboardStatusMessage)
+            }
             return .live
         }
         if phoneControlStarting {
@@ -1212,9 +1293,125 @@ struct MercuryLiveSheet: View {
             return "Mac control is temporarily disabled."
         case .signatureFailure, .counterReplay, .staleTimestamp:
             return "Mac rejected the control signature. Try the action again."
+        case .agentUnavailable:
+            return denied.detail ?? "The Mac agent is not available for that control action."
         case .unknown:
             return denied.detail ?? "The Mac rejected that control action."
         }
+    }
+
+    private func sendClipboardRequest(action: HermesRealtimeRelayClipboardAction) async {
+        guard activeMirrorViewerRole == "controller" else {
+            setClipboardStatus("Watching only. Take control to use Mac clipboard.")
+            return
+        }
+        guard let uid = uidProvider(), !uid.isEmpty else {
+            setClipboardStatus("Sign in to control your Mac.")
+            return
+        }
+        let requestId = UUID().uuidString
+        let maxBytes = 65_536
+        let text: String?
+        switch action {
+        case .pasteToMac:
+            #if canImport(UIKit)
+            let phoneText = UIPasteboard.general.string
+            #else
+            let phoneText: String? = nil
+            #endif
+            guard let phoneText, !phoneText.isEmpty else {
+                setClipboardStatus("Clipboard empty")
+                return
+            }
+            let byteCount = phoneText.utf8.count
+            guard byteCount <= maxBytes else {
+                setClipboardStatus("Clipboard too large")
+                return
+            }
+            text = phoneText
+        case .grabFromMac:
+            text = nil
+        }
+
+        do {
+            try await ensurePhoneControlStreamResponsive(uid: uid, connectionID: connectionID)
+        } catch {
+            phoneControlSender = nil
+            phoneControlConnectionID = nil
+            setClipboardStatus(error.localizedDescription)
+            return
+        }
+        if phoneControlSender == nil {
+            await startPhoneControlIfPossible()
+        }
+        guard let phoneControlSender else { return }
+        do {
+            try await sendPhoneControlClassify(
+                uid: uid,
+                connectionID: connectionID,
+                peerNodeId: phoneControlSender.peerNodeId
+            )
+            let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: "",
+                counter: 0,
+                timestamp: Date(timeIntervalSince1970: 0),
+                intentHashBlake3: "",
+                signatureEd25519: ""
+            )
+            let request = HermesRealtimeRelayClipboardRequest(
+                requestId: requestId,
+                action: action,
+                contentType: "text/plain",
+                text: text,
+                maxBytes: maxBytes,
+                clientIntentId: UUID().uuidString,
+                authority: placeholder
+            )
+            pendingClipboardRequests[requestId] = action
+            _ = try await phoneControlSender.send(clipboardRequest: request)
+        } catch {
+            pendingClipboardRequests.removeValue(forKey: requestId)
+            self.phoneControlSender = nil
+            phoneControlConnectionID = nil
+            setClipboardStatus(error.localizedDescription)
+        }
+    }
+
+    private func handleClipboardResponse(_ response: HermesRealtimeRelayClipboardResponse) {
+        guard let pendingAction = pendingClipboardRequests.removeValue(forKey: response.requestId),
+              pendingAction == response.action else {
+            return
+        }
+        switch response.status {
+        case .accepted:
+            switch response.action {
+            case .pasteToMac:
+                setClipboardStatus("Pasted to Mac")
+            case .grabFromMac:
+                guard response.contentType == "text/plain",
+                      let text = response.text else {
+                    setClipboardStatus("Mac denied clipboard")
+                    return
+                }
+                #if canImport(UIKit)
+                UIPasteboard.general.string = text
+                #endif
+                setClipboardStatus("Mac clipboard copied")
+            }
+        case .empty:
+            setClipboardStatus("Clipboard empty")
+        case .denied:
+            setClipboardStatus("Mac denied clipboard")
+        case .tooLarge:
+            setClipboardStatus("Clipboard too large")
+        case .unsupported, .error:
+            setClipboardStatus(response.detail == "too_large" ? "Clipboard too large" : "Mac denied clipboard")
+        }
+    }
+
+    private func setClipboardStatus(_ message: String) {
+        clipboardStatusMessage = message
+        phoneControlError = nil
     }
 
     private func sendPhoneControlIntent(
@@ -1229,6 +1426,10 @@ struct MercuryLiveSheet: View {
         modifiers: [String]? = nil,
         mouseButton: Int? = nil
     ) async {
+        guard activeMirrorViewerRole == "controller" else {
+            phoneControlError = "Watching only. Take control from this device to click or type."
+            return
+        }
         guard let uid = uidProvider(), !uid.isEmpty else {
             phoneControlError = "Sign in to control your Mac."
             return
@@ -1293,6 +1494,83 @@ struct MercuryLiveSheet: View {
             Self.debugTrace("phone_control_send_failed kind=\(kind.rawValue) connectionID=\(connectionID) error=\(error.localizedDescription)")
         }
     }
+
+    private func sendPhoneControlContextTarget(
+        normalizedX: Double,
+        normalizedY: Double,
+        instruction: String,
+        runtime: String,
+        threadId: String?
+    ) async {
+        guard activeMirrorViewerRole == "controller" else {
+            phoneControlError = "Watching only. Take control to hand this target to an agent."
+            return
+        }
+        guard let uid = uidProvider(), !uid.isEmpty else {
+            phoneControlError = "Sign in to control your Mac."
+            return
+        }
+        do {
+            try await ensurePhoneControlStreamResponsive(uid: uid, connectionID: connectionID)
+        } catch {
+            self.phoneControlSender = nil
+            self.phoneControlConnectionID = nil
+            phoneControlError = error.localizedDescription
+            return
+        }
+        if phoneControlSender == nil {
+            await startPhoneControlIfPossible()
+        }
+        guard let phoneControlSender else {
+            return
+        }
+        do {
+            try await sendPhoneControlClassify(
+                uid: uid,
+                connectionID: connectionID,
+                peerNodeId: phoneControlSender.peerNodeId
+            )
+        } catch {
+            self.phoneControlSender = nil
+            self.phoneControlConnectionID = nil
+            phoneControlError = error.localizedDescription
+            return
+        }
+
+        let emptyAuthority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+
+        let displayId = selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
+        let target = HermesRealtimeRelayAgentContextTarget(
+            requestId: UUID().uuidString,
+            sessionId: nil,
+            runtime: runtime,
+            threadId: threadId,
+            displayId: displayId,
+            normalizedX: normalizedX,
+            normalizedY: normalizedY,
+            normalizedRect: nil,
+            instruction: instruction,
+            focusContext: nil,
+            clientIntentId: UUID().uuidString,
+            requestedAt: Date(),
+            authority: emptyAuthority
+        )
+
+        do {
+            _ = try await phoneControlSender.send(contextTarget: target)
+            phoneControlError = nil
+        } catch {
+            self.phoneControlSender = nil
+            self.phoneControlConnectionID = nil
+            phoneControlError = error.localizedDescription
+        }
+    }
 }
 
 private struct MercuryMirrorViewerFullScreen: View {
@@ -1304,6 +1582,7 @@ private struct MercuryMirrorViewerFullScreen: View {
     let reconnectAttemptStartedAt: Date?
     let lastFailureReason: String?
     let lastLiveAt: Date?
+    let controlRoundTripMillis: Int?
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let usePremiumSOTAUX: Bool
@@ -1313,6 +1592,9 @@ private struct MercuryMirrorViewerFullScreen: View {
     let sendPointerClickIntent: (Int) -> Void
     let sendTextIntent: (String) -> Void
     let sendShortcutIntent: (String, [String]) -> Void
+    let sendAgentContextTargetIntent: (Double, Double, String, String, String?) -> Void
+    let pasteClipboardToMac: () -> Void
+    let grabClipboardFromMac: () -> Void
     let onSelectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let onForceReconnect: () -> Void
@@ -1325,6 +1607,7 @@ private struct MercuryMirrorViewerFullScreen: View {
             resetToken: resetToken,
             controlStatus: controlStatus,
             controlInputEnabled: controlInputEnabled,
+            controlRoundTripMillis: controlRoundTripMillis,
             displays: displays,
             selectedDisplayId: selectedDisplayId,
             streamPhase: streamPhase,
@@ -1340,6 +1623,9 @@ private struct MercuryMirrorViewerFullScreen: View {
             sendPointerClickIntent: sendPointerClickIntent,
             sendTextIntent: sendTextIntent,
             sendShortcutIntent: sendShortcutIntent,
+            sendAgentContextTargetIntent: sendAgentContextTargetIntent,
+            pasteClipboardToMac: pasteClipboardToMac,
+            grabClipboardFromMac: grabClipboardFromMac,
             onSelectDisplay: onSelectDisplay,
             onTrustControlDevice: onTrustControlDevice,
             onClose: onClose

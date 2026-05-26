@@ -432,7 +432,14 @@ struct ChatPanel: View {
                 HermesModelStrip(controller: controller, settingsManager: settingsManager)
             }
 
+            ChatViewModePicker(controller: controller)
+
             ChatEngineModelMenu(controller: controller)
+
+            if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
+                quotaChip
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
 
             Button {
                 controller.revealChatWorkspaceInFinder()
@@ -516,6 +523,7 @@ struct ChatPanel: View {
             }
             .buttonStyle(.plain)
         }
+        .animation(DesignSystem.Animation.gentle, value: controller.chatBackend)
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
         .background(Color.white.opacity(0.02))
@@ -766,6 +774,9 @@ struct ChatPanel: View {
         case .hermes: return "Ask Hermes\u{2026}"
         case .openclaw: return "Ask OpenClaw\u{2026}"
         case .piAgent: return "Ask Pi\u{2026}"
+        case .droid: return "Ask Droid\u{2026}"
+        case .forge: return "Ask Forge\u{2026}"
+        case .antigravity: return "Ask Antigravity\u{2026}"
         }
     }
 

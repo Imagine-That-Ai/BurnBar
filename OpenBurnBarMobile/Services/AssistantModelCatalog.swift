@@ -4,11 +4,12 @@ import OpenBurnBarCore
 // MARK: - Assistant Model Catalog
 //
 // EVERY harness in OpenBurnBar is an *agent harness* that routes prompts
-// to a real frontier LLM. Hermes, Pi, OpenClaw (and the CLI bridges
-// Codex / Claude Code) all expose the same underlying choice: which
-// model should run under the hood.
+// to a real frontier LLM or a local CLI agent. Hermes and Pi expose the
+// live relay-advertised model list. Codex, Claude Code, Droid, and Forge
+// expose CLI-native catalogs so the picker never offers a model the
+// underlying binary cannot serve.
 //
-// The list of models is **not** hardcoded into mobile. The source of
+// The relay model list is **not** hardcoded into mobile. The source of
 // truth lives in `website/scripts/rundown-seed/models.json` — the same
 // file the router rundown pages read so the website and the app stay
 // in lockstep. A trimmed copy is bundled at
@@ -17,10 +18,9 @@ import OpenBurnBarCore
 // copy by calling `AssistantModelCatalog.refreshRemote(...)` — that hits
 // the website-hosted JSON, parses it, and replaces the in-memory list.
 //
-// This replaces the previous hardcoded catalog (which invented
-// half-real names like "MiniMax M2" instead of the actual "MiniMax
-// M2.7"). Anything the user sees here now matches what the relay
-// catalog actually advertises.
+// CLI model lists are fetched from the paired Mac at picker/send time via
+// `HermesService.fetchCLIRuntimeModelCatalog`. `CLIRuntimeModelCatalog` only
+// carries the wire shape and parsers; it is not a bundled source of truth.
 
 /// One row in the catalog. Mirrors `HermesRuntimeModelOption` in shape so
 /// the same UI rows can render either source.
@@ -31,17 +31,31 @@ public struct AssistantModelOption: Hashable, Identifiable, Sendable {
     public let modelID: String
     public let displayName: String
     public let tier: String
+    public let cliSource: CLIRuntimeModelSource?
 
     public init(providerID: String,
                 providerName: String,
                 modelID: String,
                 displayName: String,
-                tier: String = "mid") {
+                tier: String = "mid",
+                cliSource: CLIRuntimeModelSource? = nil) {
         self.providerID = providerID
         self.providerName = providerName
         self.modelID = modelID
         self.displayName = displayName
         self.tier = tier
+        self.cliSource = cliSource
+    }
+
+    public init(cliOption: CLIRuntimeModelOption) {
+        self.init(
+            providerID: cliOption.providerID,
+            providerName: cliOption.providerName,
+            modelID: cliOption.modelID,
+            displayName: cliOption.displayName,
+            tier: cliOption.tier,
+            cliSource: cliOption.source
+        )
     }
 }
 
@@ -67,6 +81,8 @@ enum AssistantModelIDCanonicalizer {
             return "gpt-5.3-codex"
         case "minimax-m2-7":
             return "minimax-m2.7-highspeed"
+        case "kimi-k2-6":
+            return "kimi-k2.6"
         case "kimi-k2-5":
             return "kimi-k2.5"
         case "glm-5":
@@ -79,7 +95,7 @@ enum AssistantModelIDCanonicalizer {
     static func canonicalizedPersistedSelection(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         switch trimmed.lowercased() {
-        case "gpt-5-5", "gpt-5-4", "gpt-5-4-mini", "gpt-5-3-codex", "minimax-m2-7", "kimi-k2-5":
+        case "gpt-5-5", "gpt-5-4", "gpt-5-4-mini", "gpt-5-3-codex", "minimax-m2-7", "kimi-k2-6", "kimi-k2-5":
             return canonicalized(trimmed)
         default:
             return trimmed
@@ -214,9 +230,12 @@ public enum AssistantModelCatalog {
     /// cached in `AssistantModelCatalogStore`. The first call from any
     /// thread triggers a bundle load.
     public static func options(for runtime: AssistantRuntimeID) -> [AssistantModelOption] {
-        // Same catalog applies to every harness — Hermes / Pi / Codex /
-        // Claude / OpenClaw are all agent harnesses that can run on any
-        // model the relay supports.
+        if runtime.usesDynamicMacCLICatalog {
+            return []
+        }
+        if runtime == .openClaw {
+            return []
+        }
         return Self.cachedOptions()
     }
 
@@ -234,7 +253,7 @@ public enum AssistantModelCatalog {
     public static func appliesNextSession(_ runtime: AssistantRuntimeID) -> Bool {
         switch runtime {
         case .hermes, .pi: return false
-        case .codex, .claude, .openClaw: return true
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity: return true
         }
     }
 
@@ -301,7 +320,15 @@ public enum CLIAgentModelPreferences {
     public static func preferredModelID(for runtime: AssistantRuntimeID,
                                         defaults: UserDefaults = .standard) -> String? {
         guard let stored = defaults.string(forKey: key(for: runtime)) else { return nil }
-        let canonical = AssistantModelIDCanonicalizer.canonicalized(stored)
+        let trimmed = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if runtime.usesDynamicMacCLICatalog {
+            if trimmed != stored {
+                defaults.set(trimmed, forKey: key(for: runtime))
+            }
+            return trimmed
+        }
+        let canonical = AssistantModelIDCanonicalizer.canonicalized(trimmed)
         if canonical != stored {
             defaults.set(canonical, forKey: key(for: runtime))
         }
@@ -311,8 +338,12 @@ public enum CLIAgentModelPreferences {
     public static func setPreferredModelID(_ modelID: String?,
                                            for runtime: AssistantRuntimeID,
                                            defaults: UserDefaults = .standard) {
-        if let modelID, !modelID.isEmpty {
-            defaults.set(AssistantModelIDCanonicalizer.canonicalized(modelID), forKey: key(for: runtime))
+        let trimmed = modelID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty {
+            let stored = runtime.usesDynamicMacCLICatalog
+                ? trimmed
+                : AssistantModelIDCanonicalizer.canonicalized(trimmed)
+            defaults.set(stored, forKey: key(for: runtime))
         } else {
             defaults.removeObject(forKey: key(for: runtime))
         }
@@ -320,12 +351,19 @@ public enum CLIAgentModelPreferences {
 
     public static func preferredOption(for runtime: AssistantRuntimeID,
                                        defaults: UserDefaults = .standard) -> AssistantModelOption? {
+        if runtime.usesDynamicMacCLICatalog {
+            return nil
+        }
         let options = AssistantModelCatalog.options(for: runtime)
-        if let preferredID = preferredModelID(for: runtime, defaults: defaults),
-           let match = options.first(where: { $0.modelID == preferredID }) {
+        guard let preferredID = preferredModelID(for: runtime, defaults: defaults) else {
+            return options.first
+        }
+        if let match = options.first(where: {
+            AssistantModelIDCanonicalizer.lookupKey($0.modelID) == AssistantModelIDCanonicalizer.lookupKey(preferredID)
+        }) {
             return match
         }
-        return options.first
+        return nil
     }
 
     public static func validatedPreferredModelID(
@@ -335,6 +373,27 @@ public enum CLIAgentModelPreferences {
     ) throws -> String? {
         guard let preferredID = preferredModelID(for: runtime, defaults: defaults)?.nonEmpty else {
             return nil
+        }
+        if runtime.usesDynamicMacCLICatalog {
+            let options = explicitOptions ?? []
+            guard !options.isEmpty else {
+                throw CLIAgentModelPreferenceError.catalogUnverified(runtime: runtime, modelID: preferredID)
+            }
+            if let exact = options.first(where: {
+                $0.modelID.caseInsensitiveCompare(preferredID) == .orderedSame
+            }) {
+                if exact.modelID != preferredID {
+                    defaults.set(exact.modelID, forKey: key(for: runtime))
+                }
+                return exact.modelID
+            }
+            if let migrated = options.first(where: {
+                AssistantModelIDCanonicalizer.lookupKey($0.modelID) == AssistantModelIDCanonicalizer.lookupKey(preferredID)
+            }) {
+                defaults.set(migrated.modelID, forKey: key(for: runtime))
+                return migrated.modelID
+            }
+            throw CLIAgentModelPreferenceError.selectedModelUnavailable(runtime: runtime, modelID: preferredID)
         }
         let options = explicitOptions ?? AssistantModelCatalog.options(for: runtime)
         guard !options.isEmpty else {
@@ -346,6 +405,17 @@ public enum CLIAgentModelPreferences {
             throw CLIAgentModelPreferenceError.selectedModelUnavailable(runtime: runtime, modelID: preferredID)
         }
         return preferredID
+    }
+}
+
+private extension AssistantRuntimeID {
+    var usesDynamicMacCLICatalog: Bool {
+        switch self {
+        case .codex, .claude, .droid, .forge, .antigravity:
+            return true
+        case .hermes, .pi, .openClaw:
+            return false
+        }
     }
 }
 

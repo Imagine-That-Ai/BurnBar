@@ -1,6 +1,7 @@
 package com.openburnbar.ui.square
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.test.assertIsDisplayed
@@ -16,6 +17,7 @@ import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.AgentRecentStats
 import com.openburnbar.data.square.AgentTier
+import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -57,13 +59,15 @@ class AgentBrandZoneScreenTest {
             it.refreshAvailability(emptyMap())
         }
         composeRule.setContent {
-            MaterialTheme {
-                Surface {
-                    AgentBrandZoneScreen(
-                        identity = identity,
-                        registry = registry,
-                        missionHost = MobileMissionConsoleHost.shared(),
-                    )
+            CompositionLocalProvider(LocalAuroraReduceMotion provides true) {
+                MaterialTheme {
+                    Surface {
+                        AgentBrandZoneScreen(
+                            identity = identity,
+                            registry = registry,
+                            missionHost = MobileMissionConsoleHost.shared(),
+                        )
+                    }
                 }
             }
         }

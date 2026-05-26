@@ -112,7 +112,10 @@ final class MediaFrameProtocolTests: XCTestCase {
             requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
             requesterDisplayName: "Alberto's iPhone",
             streamClass: MediaStreamClass.screenVideo.rawValue,
-            focusFollowMode: AgentFocusFollowMode.smart.rawValue
+            focusFollowMode: AgentFocusFollowMode.smart.rawValue,
+            viewerId: "viewer-ios-1",
+            viewerDeviceId: "device-ios-1",
+            controlAuthorityPeerNodeId: "peer-ios-1"
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -130,6 +133,9 @@ final class MediaFrameProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.media?.mirrorRequest?.streamClass,
                        MediaStreamClass.screenVideo.rawValue)
         XCTAssertEqual(decoded.media?.mirrorRequest?.focusFollowMode, AgentFocusFollowMode.smart.rawValue)
+        XCTAssertEqual(decoded.media?.mirrorRequest?.viewerId, "viewer-ios-1")
+        XCTAssertEqual(decoded.media?.mirrorRequest?.viewerDeviceId, "device-ios-1")
+        XCTAssertEqual(decoded.media?.mirrorRequest?.controlAuthorityPeerNodeId, "peer-ios-1")
     }
 
     func testMirrorRequestDecodesAndroidISODateAndStreamingCapabilities() throws {
@@ -139,6 +145,9 @@ final class MediaFrameProtocolTests: XCTestCase {
           "requestedAt": "2026-05-18T09:30:00Z",
           "requesterDisplayName": "Alberto's Android",
           "streamClass": "media.screen.video",
+          "viewerId": "viewer-android-1",
+          "viewerDeviceId": "device-android-1",
+          "controlAuthorityPeerNodeId": "peer-android-1",
           "streamingCapabilities": {
             "codecCapabilities": [
               {
@@ -162,6 +171,9 @@ final class MediaFrameProtocolTests: XCTestCase {
 
         XCTAssertEqual(decoded.requestId, "mirror_android")
         XCTAssertEqual(decoded.requesterDisplayName, "Alberto's Android")
+        XCTAssertEqual(decoded.viewerId, "viewer-android-1")
+        XCTAssertEqual(decoded.viewerDeviceId, "device-android-1")
+        XCTAssertEqual(decoded.controlAuthorityPeerNodeId, "peer-android-1")
         XCTAssertEqual(decoded.streamingCapabilities?.source, "MediaCodec")
     }
 
@@ -210,7 +222,13 @@ final class MediaFrameProtocolTests: XCTestCase {
     func testMirrorAckOmitsNilCooldownFromJSON() throws {
         let acceptedAck = HermesRealtimeRelayMirrorAck(
             requestId: "req_abc",
-            decision: .accepted
+            decision: .accepted,
+            sessionId: "session-1",
+            viewerId: "viewer-ios-1",
+            viewerRole: "controller",
+            viewerCount: 2,
+            maxViewers: 3,
+            controlOwnerViewerId: "viewer-ios-1"
         )
         let acceptedFrame = HermesRealtimeRelayFrame(
             type: .mediaMirrorAck,
@@ -229,6 +247,16 @@ final class MediaFrameProtocolTests: XCTestCase {
             "nil cooldown must be omitted from the wire form to keep older decoders byte-identical"
         )
         XCTAssertTrue(acceptedJSON.contains("\"decision\":\"accepted\""))
+        let acceptedDecoded = try JSONDecoder().decode(
+            HermesRealtimeRelayFrame.self,
+            from: Data(acceptedJSON.utf8)
+        )
+        XCTAssertEqual(acceptedDecoded.media?.mirrorAck?.sessionId, "session-1")
+        XCTAssertEqual(acceptedDecoded.media?.mirrorAck?.viewerId, "viewer-ios-1")
+        XCTAssertEqual(acceptedDecoded.media?.mirrorAck?.viewerRole, "controller")
+        XCTAssertEqual(acceptedDecoded.media?.mirrorAck?.viewerCount, 2)
+        XCTAssertEqual(acceptedDecoded.media?.mirrorAck?.maxViewers, 3)
+        XCTAssertEqual(acceptedDecoded.media?.mirrorAck?.controlOwnerViewerId, "viewer-ios-1")
 
         let coolingAck = HermesRealtimeRelayMirrorAck(
             requestId: "req_xyz",
@@ -454,6 +482,7 @@ final class MediaFrameProtocolTests: XCTestCase {
     func testMirrorStopFrameRoundTrips() throws {
         let stop = HermesRealtimeRelayMirrorStop(
             requestId: "req_stop",
+            sessionId: "session-1",
             stoppedAt: Date(timeIntervalSince1970: 1_700_000_010),
             reason: "viewer_closed"
         )
@@ -470,7 +499,31 @@ final class MediaFrameProtocolTests: XCTestCase {
 
         XCTAssertEqual(decoded.type, .mediaMirrorStop)
         XCTAssertEqual(decoded.requestId, "req_stop")
+        XCTAssertEqual(decoded.media?.mirrorStop?.sessionId, "session-1")
         XCTAssertEqual(decoded.media?.mirrorStop, stop)
+    }
+
+    func testMirrorDisplaySelectionFrameRoundTripsWithSessionId() throws {
+        let selection = HermesRealtimeRelayMirrorDisplaySelection(
+            requestId: "req_display",
+            sessionId: "session-1",
+            displayId: "display-2",
+            selectedAt: Date(timeIntervalSince1970: 1_700_000_012)
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaMirrorDisplaySelect,
+            uid: "u1",
+            connectionId: "c1",
+            requestId: selection.requestId,
+            media: HermesRealtimeRelayMediaPayload(mirrorDisplaySelection: selection)
+        )
+
+        let encoded = try JSONEncoder().encode(frame)
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayFrame.self, from: encoded)
+
+        XCTAssertEqual(decoded.type, .mediaMirrorDisplaySelect)
+        XCTAssertEqual(decoded.media?.mirrorDisplaySelection, selection)
+        XCTAssertEqual(decoded.media?.mirrorDisplaySelection?.sessionId, "session-1")
     }
 
     func testMirrorStopFrameDecodesIsoDateForAndroidTolerance() throws {
@@ -484,6 +537,7 @@ final class MediaFrameProtocolTests: XCTestCase {
           "media": {
             "mirrorStop": {
               "requestId": "req_stop",
+              "sessionId": "session-1",
               "stoppedAt": "2026-05-21T12:00:00.000Z",
               "reason": "activity_destroyed"
             }
@@ -498,6 +552,7 @@ final class MediaFrameProtocolTests: XCTestCase {
 
         XCTAssertEqual(decoded.type, .mediaMirrorStop)
         XCTAssertEqual(decoded.media?.mirrorStop?.requestId, "req_stop")
+        XCTAssertEqual(decoded.media?.mirrorStop?.sessionId, "session-1")
         XCTAssertEqual(decoded.media?.mirrorStop?.reason, "activity_destroyed")
         XCTAssertNotNil(decoded.media?.mirrorStop?.stoppedAt)
     }

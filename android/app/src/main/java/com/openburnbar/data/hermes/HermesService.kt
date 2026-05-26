@@ -7,9 +7,9 @@ import com.openburnbar.data.assistants.AssistantChatMessage
 import com.openburnbar.data.assistants.AssistantChatThread
 import com.openburnbar.data.assistants.AssistantChatTokenUsage
 import com.openburnbar.data.assistants.AssistantChatToolCall
-import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
+import com.openburnbar.data.assistants.CLIAgentChatPresentationMode
+import com.openburnbar.data.assistants.CLIAgentRelayChatTransport
 import com.openburnbar.data.computeruse.AgentCapabilityGrantState
-import com.openburnbar.data.computeruse.AgentDesktopCapability
 import com.openburnbar.data.hermes.relay.HermesRelayClient
 import com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor
 import com.openburnbar.data.hermes.relay.HermesRelayCrypto
@@ -28,7 +28,6 @@ import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -51,6 +50,7 @@ enum class HermesRelayCapability {
 class HermesUnauthorizedException(message: String) : RuntimeException(message)
 
 private const val RELAY_CHAT_COMPLETION_TIMEOUT_MILLIS = 600_000L
+private const val RELAY_CONTROL_TIMEOUT_MILLIS = 20_000L
 
 data class HermesMessage(
     val id: String = "",
@@ -159,6 +159,29 @@ class HermesService(
     private val _selectedConnection = MutableStateFlow<HermesConnectionRecord>(HermesConnectionRecord.localDefault)
     val selectedConnection: StateFlow<HermesConnectionRecord> = _selectedConnection
 
+    val suggestedRelayConnection: HermesConnectionRecord?
+        get() {
+            val list = _connections.value.filter {
+                it.mode == HermesConnectionMode.RELAY_LINK &&
+                    it.status == HermesConnectionStatus.ONLINE &&
+                    !it.relayPublicKey.isNullOrBlank()
+            }
+            return list.sortedWith(compareByDescending<HermesConnectionRecord> {
+                it.lastSeenAt ?: it.updatedAt
+            }).firstOrNull()
+        }
+
+    fun connectToSuggestedRelay(refresh: Boolean = true): Boolean {
+        val relay = suggestedRelayConnection ?: return false
+        selectConnection(relay)
+        if (refresh) {
+            scope.launch {
+                refreshRuntime()
+            }
+        }
+        return true
+    }
+
     private val _modelOptions = MutableStateFlow<List<HermesRuntimeModelOption>>(emptyList())
     val modelOptions: StateFlow<List<HermesRuntimeModelOption>> = _modelOptions
 
@@ -250,6 +273,10 @@ class HermesService(
     fun connect(connection: HermesConnection = HermesConnection()) {
         this.connection = connection
         scope.launch {
+            refreshRelayConnections()
+            if (_selectedConnection.value.id == HermesConnectionRecord.localDefault.id) {
+                connectToSuggestedRelay(refresh = false)
+            }
             probeSelectedRuntime(legacyEndpointURL(connection))
         }
     }
@@ -421,8 +448,9 @@ class HermesService(
     }
 
     fun loadThread(id: String) {
+        val cleanId = id.removePrefix("hermes:")
         val store = historyStore ?: return
-        val thread = store.thread(id) ?: return
+        val thread = store.thread(cleanId) ?: return
         if (thread.runtime != "hermes") return
         _currentThreadID.value = thread.id
         _messages.value = thread.messages.map { stored ->
@@ -447,8 +475,9 @@ class HermesService(
     }
 
     fun deleteThread(id: String) {
-        historyStore?.delete(id)
-        if (_currentThreadID.value == id) startNewThread()
+        val cleanId = id.removePrefix("hermes:")
+        historyStore?.delete(cleanId)
+        if (_currentThreadID.value == cleanId) startNewThread()
     }
 
     internal fun persistCurrentThread() {
@@ -622,10 +651,48 @@ class HermesService(
                     providerID = owner,
                     providerName = owner.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
                     modelID = id,
-                    displayName = id
+                    displayName = item.optString("display_name", id).takeIf { it.isNotBlank() } ?: id,
+                    modelCapabilities = parseModelCapabilities(item)
                 )
             }
         }
+    }
+
+    private fun parseModelCapabilities(item: JSONObject): ModelIOCapabilities? {
+        val capabilities = item.optJSONObject("model_capabilities")
+            ?: item.optJSONObject("modelCapabilities")
+            ?: return null
+        return ModelIOCapabilities(
+            schemaVersion = capabilities.optInt("schemaVersion", 1).coerceAtLeast(1),
+            inputModalities = capabilities.optStringArray("inputModalities").ifEmpty { listOf("text") },
+            outputModalities = capabilities.optStringArray("outputModalities").ifEmpty { listOf("text") },
+            supportedParameters = capabilities.optStringArray("supportedParameters"),
+            contextWindowTokens = capabilities.optPositiveInt("contextWindowTokens"),
+            maxOutputTokens = capabilities.optPositiveInt("maxOutputTokens"),
+            acceptedInputMimeTypes = capabilities.optStringArray("acceptedInputMimeTypes"),
+            imageMaxBytes = capabilities.optPositiveInt("imageMaxBytes"),
+            audioMaxBytes = capabilities.optPositiveInt("audioMaxBytes"),
+            videoMaxBytes = capabilities.optPositiveInt("videoMaxBytes")
+        )
+    }
+
+    private fun JSONObject.optStringArray(name: String): List<String> {
+        val array = optJSONArray(name) ?: return emptyList()
+        return (0 until array.length()).mapNotNull { index ->
+            array.optString(index).trim().takeIf { it.isNotBlank() }
+        }
+    }
+
+    private fun JSONObject.optPositiveInt(name: String): Int? {
+        if (!has(name)) return null
+        val value = optInt(name, 0)
+        return value.takeIf { it > 0 }
+    }
+
+    private fun modelCapabilitiesFor(modelID: String): ModelIOCapabilities? {
+        return _modelOptions.value.firstOrNull {
+            it.modelID.equals(modelID, ignoreCase = true)
+        }?.modelCapabilities
     }
 
     private fun streamChatCompletion(
@@ -725,7 +792,14 @@ class HermesService(
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "user")
-                    put("content", HermesAttachmentEncoder.encodeUserTurn(content, attachments))
+                    put(
+                        "content",
+                        HermesAttachmentEncoder.encodeUserTurn(
+                            content,
+                            attachments,
+                            modelCapabilitiesFor(modelName)
+                        )
+                    )
                 })
             })
             conversationId?.let { put("conversation_id", it) }
@@ -809,7 +883,14 @@ class HermesService(
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "user")
-                    put("content", HermesAttachmentEncoder.encodeUserTurn(prompt, attachments))
+                    put(
+                        "content",
+                        HermesAttachmentEncoder.encodeUserTurn(
+                            prompt,
+                            attachments,
+                            modelCapabilitiesFor(modelName)
+                        )
+                    )
                 })
             })
             conversationId?.let { put("conversation_id", it) }
@@ -1155,47 +1236,66 @@ class HermesService(
         modelName: String,
         conversationId: String,
     ) {
-        val grant = AgentCapabilityGrantState.optimisticGrant(AssistantRuntimeID.HERMES.token, conversationId)
+        AgentCapabilityGrantState.optimisticGrant(AssistantRuntimeID.HERMES.token, conversationId)
             ?: throw IllegalStateException("Hermes desktop permissions are not active.")
         val assistantID = UUID.randomUUID().toString()
         upsertStreamingAssistant(
             id = assistantID,
-            content = "Queued on your Mac...",
+            content = "",
             modelName = modelName,
             isStreaming = true,
         )
-        val dispatcher = CLIAgentMissionDispatcher()
-        val requestID = dispatcher.dispatch(
-            title = derivedTitleForDesktopRelay(),
+        CLIAgentRelayChatTransport(this).stream(
+            runtime = AssistantRuntimeID.HERMES,
+            threadID = conversationId,
             prompt = prompt,
-            missionKind = "chat",
-            requestedRuntime = AssistantRuntimeID.HERMES.token,
-            approvalMode = "existing_policy",
-            commandsAllowed = grant.capabilities.any {
-                it == AgentDesktopCapability.SHELL.wireValue ||
-                    it == AgentDesktopCapability.SHELL_UNRESTRICTED.wireValue
-            },
-            fileEditsAllowed = grant.capabilities.contains(AgentDesktopCapability.WORKSPACE_WRITE.wireValue),
-            requestedModelID = modelName,
-            clientThreadID = conversationId,
+            title = derivedTitleForDesktopRelay(),
+            modelID = modelName,
+            parentSessionID = null,
             resumeAction = "continue",
-        )
-        dispatcher.observe(requestID).first { snapshot ->
-            val text = snapshot.errorMessage
-                ?: snapshot.resultPreview
-                ?: snapshot.displayLiveSummary
-                ?: snapshot.events.lastOrNull()?.message
-                ?: "Waiting for your Mac..."
+            presentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+        ) { event ->
+            val text = event.text?.trim()?.takeIf { it.isNotEmpty() }
+                ?: event.errorMessage?.trim()?.takeIf { it.isNotEmpty() }?.let { "Error: $it" }
+                ?: ""
             upsertStreamingAssistant(
                 id = assistantID,
                 content = text,
-                modelName = snapshot.selectedModelID ?: modelName,
-                isStreaming = !snapshot.isTerminal,
-                isError = snapshot.errorMessage != null,
+                modelName = event.modelID ?: modelName,
+                isStreaming = !event.isTerminal,
+                isError = event.isError,
             )
-            if (snapshot.isTerminal) persistCurrentThread()
-            snapshot.isTerminal
+            if (text.isNotEmpty()) {
+                com.openburnbar.data.computeruse.SystemPermissionTextClassifier
+                    .classifyAssistantText(text)?.let { match ->
+                        com.openburnbar.data.computeruse.SystemPermissionInboxStoreHolder.ingestHeuristic(
+                            kind = match.kind,
+                            bundleId = match.bundleId,
+                            threadId = conversationId,
+                            originatingToolCallId = assistantID,
+                            originatingToolName = null,
+                        )
+                    }
+            }
         }
+        val finalMessage = _messages.value.firstOrNull { it.id == assistantID }
+        if (finalMessage != null && finalMessage.content.isBlank()) {
+            upsertStreamingAssistant(
+                id = assistantID,
+                content = "The Mac relay completed without returning text.",
+                modelName = modelName,
+                isStreaming = false,
+            )
+        } else if (finalMessage != null && finalMessage.isStreaming) {
+            upsertStreamingAssistant(
+                id = assistantID,
+                content = finalMessage.content,
+                modelName = finalMessage.modelName,
+                isStreaming = false,
+                isError = finalMessage.isError,
+            )
+        }
+        persistCurrentThread()
     }
 
     private fun derivedTitleForDesktopRelay(): String {
@@ -1336,6 +1436,130 @@ class HermesService(
         }
     }
 
+    suspend fun streamCLIAgentChatPayload(
+        body: ByteArray,
+        sessionID: String,
+        onRawEvent: suspend (String) -> Unit,
+    ) {
+        val relay = relayTransport ?: throw HermesRelayException("Relay transport unavailable.")
+        relay.sendStreaming(
+            payload = macRelayPayloadForCLIAgentChat(
+                body = body,
+                sessionID = sessionID,
+            ),
+            timeoutMillis = RELAY_CHAT_COMPLETION_TIMEOUT_MILLIS,
+            onSseEvent = onRawEvent,
+        )
+    }
+
+    suspend fun macRelayPayloadForCLIAgentChat(
+        body: ByteArray,
+        sessionID: String,
+    ): HermesRelayPayload {
+        val connection = resolveCLIAgentChatRelayConnection()
+        val descriptor = descriptorFor(connection)
+            ?: throw HermesRelayException("This Mac relay has not published a usable encrypted relay key yet.")
+        return HermesRelayPayload(
+            operation = HermesRelayOperationName.CLI_AGENT_CHAT,
+            method = "POST",
+            path = "/v1/cli-agent/chat",
+            body = body,
+            sessionID = sessionID,
+            connectionID = descriptor.id,
+            relayPublicKey = descriptor.relayPublicKey,
+            relayEncryption = descriptor.relayEncryption,
+            relayKeyVersion = descriptor.relayKeyVersion,
+        )
+    }
+
+    suspend fun fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID): CliRuntimeModelCatalogResponse {
+        val relay = relayTransport ?: throw HermesRelayException("Relay transport unavailable.")
+        val body = JSONObject()
+            .put("runtime", runtime.token)
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+        val raw = relay.sendUnary(
+            payload = macRelayPayloadForCLIRuntimeModelCatalog(
+                body = body,
+                sessionID = "cli-model-catalog-${runtime.token}",
+            ),
+            timeoutMillis = RELAY_CONTROL_TIMEOUT_MILLIS,
+        )
+        return CliRuntimeModelCatalogResponse.decode(raw)
+    }
+
+    private suspend fun macRelayPayloadForCLIRuntimeModelCatalog(
+        body: ByteArray,
+        sessionID: String,
+    ): HermesRelayPayload {
+        val connection = resolveCLIAgentModelCatalogRelayConnection()
+        val descriptor = descriptorFor(connection)
+            ?: throw HermesRelayException("This Mac relay has not published a usable encrypted relay key yet.")
+        return HermesRelayPayload(
+            operation = HermesRelayOperationName.CLI_AGENT_MODEL_CATALOG,
+            method = "POST",
+            path = "/v1/cli-agent/model-catalog",
+            body = body,
+            sessionID = sessionID,
+            connectionID = descriptor.id,
+            relayPublicKey = descriptor.relayPublicKey,
+            relayEncryption = descriptor.relayEncryption,
+            relayKeyVersion = descriptor.relayKeyVersion,
+        )
+    }
+
+    private suspend fun resolveCLIAgentChatRelayConnection(): HermesConnectionRecord {
+        if (_selectedConnection.value.mode != HermesConnectionMode.RELAY_LINK) {
+            refreshRelayConnections()
+            connectToSuggestedRelay(refresh = false)
+        }
+        val selected = _selectedConnection.value
+        if (selected.isCLIAgentChatRelay()) return selected
+
+        refreshRelayConnections()
+
+        val selectedAfterRefresh = _selectedConnection.value
+        if (selectedAfterRefresh.isCLIAgentChatRelay()) return selectedAfterRefresh
+
+        val relayConnections = _connections.value.filter { it.mode == HermesConnectionMode.RELAY_LINK }
+        relayConnections.firstOrNull { it.isCLIAgentChatRelay() }?.let { return it }
+
+        if (relayConnections.isNotEmpty()) {
+            throw HermesRelayException(
+                "Your Mac relay is online but does not advertise CLI agent chat yet. Update or restart OpenBurnBar on the Mac."
+            )
+        }
+        throw HermesRelayException(
+            "No paired Mac relay is available for CLI agent chat. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay."
+        )
+    }
+
+    private suspend fun resolveCLIAgentModelCatalogRelayConnection(): HermesConnectionRecord {
+        if (_selectedConnection.value.mode != HermesConnectionMode.RELAY_LINK) {
+            refreshRelayConnections()
+            connectToSuggestedRelay(refresh = false)
+        }
+        val selected = _selectedConnection.value
+        if (selected.isCLIAgentModelCatalogRelay()) return selected
+
+        refreshRelayConnections()
+
+        val selectedAfterRefresh = _selectedConnection.value
+        if (selectedAfterRefresh.isCLIAgentModelCatalogRelay()) return selectedAfterRefresh
+
+        val relayConnections = _connections.value.filter { it.mode == HermesConnectionMode.RELAY_LINK }
+        relayConnections.firstOrNull { it.isCLIAgentModelCatalogRelay() }?.let { return it }
+
+        if (relayConnections.isNotEmpty()) {
+            throw HermesRelayException(
+                "Your Mac relay is online but does not advertise live CLI model discovery yet. Update or restart OpenBurnBar on the Mac."
+            )
+        }
+        throw HermesRelayException(
+            "No paired Mac relay is available for CLI model discovery. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay."
+        )
+    }
+
     private fun descriptorFor(connection: HermesConnectionRecord): HermesRelayConnectionDescriptor? {
         val publicKey = connection.relayPublicKey ?: return null
         return HermesRelayConnectionDescriptor(
@@ -1350,6 +1574,18 @@ class HermesService(
             updatedAt = null
         )
     }
+
+    private fun HermesConnectionRecord.isCLIAgentChatRelay(): Boolean =
+        mode == HermesConnectionMode.RELAY_LINK &&
+            !relayPublicKey.isNullOrBlank() &&
+            capabilities.any { it == "cli_agent_chat" || it == HermesRelayOperationName.CLI_AGENT_CHAT }
+
+    private fun HermesConnectionRecord.isCLIAgentModelCatalogRelay(): Boolean =
+        mode == HermesConnectionMode.RELAY_LINK &&
+            !relayPublicKey.isNullOrBlank() &&
+            capabilities.any {
+                it == "cli_agent_model_catalog" || it == HermesRelayOperationName.CLI_AGENT_MODEL_CATALOG
+            }
 
     // ── Sessions browser / library import ──────────────────────────────
 

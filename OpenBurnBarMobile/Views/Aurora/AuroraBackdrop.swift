@@ -24,6 +24,7 @@ struct AuroraBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.motionStore) private var motion
+    @Environment(\.uiMode) private var uiMode
 
     @State private var phase: CGFloat = 0
     @State private var ribbonPhase: CGFloat = 0
@@ -38,7 +39,9 @@ struct AuroraBackdrop: View {
 
     var body: some View {
         ZStack {
-            if useWebsiteBackground {
+            if uiMode == .cooking {
+                EmberSurfaceBackground()
+            } else if useWebsiteBackground {
                 WebsiteBackgroundView(accent: MobileTheme.ember, colorDriver: colorDriver)
             } else {
                 baseGradient
@@ -62,11 +65,11 @@ struct AuroraBackdrop: View {
                             .allowsHitTesting(false)
                     }
                 }
-            }
 
-            vignette
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
+                vignette
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)

@@ -717,6 +717,41 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
             workspaceURL: workspaceURL
         )
 
+        // Phase 4 — AgentLens-plane budget gate. Subscription credentials short-circuit
+        // inside BudgetGate so flat-rate plans never get blocked here. Gate runs before
+        // the URLRequest leaves the host so a blocked call never reaches the upstream.
+        let credential = AgentLensCredentialIdentity.make(
+            providerHint: baseURL.host?.lowercased() ?? "agentlens_gateway",
+            bearerToken: bearerToken,
+            displayLabel: baseURL.host ?? selectedModel
+        )
+        let estimatedInputChars = messages.reduce(0) { acc, msg in
+            acc + (msg["content"] as? String ?? "").count
+        }
+        let estimatedCost = await MainActor.run {
+            BudgetEnforcement.estimateCost(
+                model: selectedModel,
+                inputCharacters: estimatedInputChars + systemPrompt.count
+            )
+        }
+        let decision = await BudgetEnforcement.shared.evaluate(
+            credential: credential,
+            estimatedCost: estimatedCost
+        )
+        switch decision {
+        case .block(let rule, let used, let limit, let fallback):
+            continuation.finish(throwing: BudgetBlockedError(
+                rule: rule,
+                used: used,
+                limit: limit,
+                fallback: fallback,
+                resetAt: rule.period.nextReset()
+            ))
+            return
+        case .allow, .warn, .paused:
+            break
+        }
+
         if let toolBroker, toolBroker.isActive, !toolBroker.openAITools.isEmpty {
             await Self.runToolEnabledLoop(
                 url: url,

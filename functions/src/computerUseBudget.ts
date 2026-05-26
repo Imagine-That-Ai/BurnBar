@@ -21,6 +21,7 @@ import type {
   ComputerUseBudgetStatusDoc,
   ComputerUseSessionDailyRollupDoc,
 } from "./types.js";
+import { syncKillSwitchForBudgetLevel } from "./computerUseRemoteConfig.js";
 
 const SOFT_CAP_USD = 1500;
 const HARD_CAP_USD = 2500;
@@ -150,5 +151,6 @@ export const evaluateComputerUseBudget = onSchedule(
     await getFirestore()
       .doc("ops/computer_use_budget_status/state/current")
       .set(doc, { merge: true });
+    await syncKillSwitchForBudgetLevel(level);
   },
 );

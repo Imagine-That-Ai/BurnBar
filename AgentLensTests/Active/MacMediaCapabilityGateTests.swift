@@ -103,6 +103,21 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertEqual(reason, .concurrentSessionCapReached)
     }
 
+    func testScreenShareAllowsThreeConcurrentMirrorViewers() async {
+        let gate = makeGate(entitlement: happyEntitlement, usage: zeroUsage, budget: normalBudget, concurrent: 2)
+        let result = await gate.check(feature: .screenShare, sessionDurationLimitSeconds: nil, sessionByteBudget: nil)
+        XCTAssertTrue(result.isAllowed)
+    }
+
+    func testScreenShareDeniesFourthConcurrentMirrorViewer() async {
+        let gate = makeGate(entitlement: happyEntitlement, usage: zeroUsage, budget: normalBudget, concurrent: 3)
+        let result = await gate.check(feature: .screenShare, sessionDurationLimitSeconds: nil, sessionByteBudget: nil)
+        guard case .denied(let reason) = result else {
+            return XCTFail("expected denied")
+        }
+        XCTAssertEqual(reason, .concurrentSessionCapReached)
+    }
+
     func testPerSessionByteBudgetDenialOnFileTransfer() async {
         let nearCap = MediaQuotaUsageSnapshot(
             bytesUploadedFile: 4_500_000_000, // ~4.5 GB of 5 GB

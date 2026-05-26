@@ -386,7 +386,7 @@ public struct BurnBarCLIRunner {
       mission-approve <missionID> [note]
       simulator-runs [projectSlug]
       simulator-replay <runID>
-      exec <codex|claude|opencode> [--profile-id <id>] [args...]
+      exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
       install-shell-shims
     """
 

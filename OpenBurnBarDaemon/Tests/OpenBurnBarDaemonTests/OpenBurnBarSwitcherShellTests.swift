@@ -193,11 +193,15 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         let result = try installer.installShims(invokedExecutablePath: "/tmp/OpenBurnBarCLI")
 
         XCTAssertEqual(result.installDirectory, tempDirectory)
-        XCTAssertEqual(Set(result.installedCommands), Set(["codex", "claude", "opencode"]))
+        let expectedCommands = Set(SwitcherCLIProfileType.allCases.map(\.executableName))
+        XCTAssertEqual(Set(result.installedCommands), expectedCommands)
 
-        let codexShim = tempDirectory.appendingPathComponent("codex")
-        let contents = try String(contentsOf: codexShim, encoding: .utf8)
-        XCTAssertTrue(contents.contains("exec \"/tmp/OpenBurnBarCLI\" exec codex \"$@\""))
+        for command in expectedCommands {
+            let shim = tempDirectory.appendingPathComponent(command)
+            let contents = try String(contentsOf: shim, encoding: .utf8)
+            XCTAssertTrue(contents.contains("exec \"/tmp/OpenBurnBarCLI\" exec \(command) \"$@\""))
+            XCTAssertTrue(FileManager.default.isExecutableFile(atPath: shim.path))
+        }
     }
 
     func testShellExecutorRapidSwitchDoesNotCorruptExhaustionState() async throws {

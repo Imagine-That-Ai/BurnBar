@@ -74,9 +74,10 @@ final class BurnBarModelVariantExecutorTests: XCTestCase {
         XCTAssertEqual(chatBody["max_tokens"] as? Int, 4_096)
     }
 
-    func testApplyAnthropicVariantSetsThinkingAndEffort() {
+    func testApplyAnthropicVariantSetsThinkingWithoutEffort() {
         var body: [String: Any] = [
             "model": "claude-opus-4-7",
+            "effort": "adaptive",
             "max_tokens": 4_096,
             "messages": []
         ]
@@ -87,7 +88,7 @@ final class BurnBarModelVariantExecutorTests: XCTestCase {
         let thinking = body["thinking"] as? [String: Any]
         XCTAssertEqual(thinking?["type"] as? String, "enabled")
         XCTAssertEqual(thinking?["budget_tokens"] as? Int, 16_384)
-        XCTAssertEqual(body["effort"] as? String, "xhigh")
+        XCTAssertNil(body["effort"])
         let chosenMax = (body["max_tokens"] as? Int) ?? 0
         XCTAssertGreaterThanOrEqual(chosenMax, 16_384 + 4_096, "max_tokens must clear budget_tokens + 4096 floor")
     }

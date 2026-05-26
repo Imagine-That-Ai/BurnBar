@@ -468,7 +468,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
                 normalized["content"] = ""
             } else if let content = normalized["content"],
                       !(content is String) {
-                normalized["content"] = responsesContentText(content)
+                normalized["content"] = chatCompletionsContent(from: content)
+                    ?? responsesContentText(content)
             }
             return normalized
         }
@@ -631,8 +632,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     }
 
     private static func sanitizedChatMessage(_ message: [String: Any]) -> [String: Any]? {
-        let content = responsesContentText(message["content"] ?? message["text"])
-        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard let content = chatCompletionsContent(from: message["content"] ?? message["text"]),
+              !chatCompletionsContentIsEmpty(content) else {
             return nil
         }
 
@@ -675,12 +676,90 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
 
         return items.compactMap { item in
-            let content = responsesContentText(item["content"] ?? item["text"])
-            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard let content = chatCompletionsContent(from: item["content"] ?? item["text"]),
+                  !chatCompletionsContentIsEmpty(content) else {
                 return nil
             }
             return ["role": chatCompletionsRole(item["role"] as? String), "content": content]
         }
+    }
+
+    private static func chatCompletionsContent(from value: Any?) -> Any? {
+        if let string = value as? String {
+            return string
+        }
+        guard let parts = value as? [[String: Any]] else {
+            return nil
+        }
+        let convertedParts = parts.compactMap(chatCompletionsContentPart)
+        if !convertedParts.isEmpty {
+            return convertedParts
+        }
+        let text = responsesContentText(value)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+    }
+
+    private static func chatCompletionsContentPart(_ part: [String: Any]) -> [String: Any]? {
+        let type = (part["type"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        switch type {
+        case "text":
+            guard let text = part["text"] as? String else { return nil }
+            return ["type": "text", "text": text]
+        case "input_text", "output_text":
+            guard let text = (part["text"] as? String)
+                ?? (part["input_text"] as? String)
+                ?? (part["output_text"] as? String) else { return nil }
+            return ["type": "text", "text": text]
+        case "image_url":
+            if let imageURL = part["image_url"] as? [String: Any] {
+                return ["type": "image_url", "image_url": imageURL]
+            }
+            if let imageURL = part["image_url"] as? String {
+                return ["type": "image_url", "image_url": ["url": imageURL]]
+            }
+            return nil
+        case "input_image":
+            if let imageURL = (part["image_url"] as? String) ?? (part["url"] as? String) {
+                return ["type": "image_url", "image_url": ["url": imageURL]]
+            }
+            if let imageURL = part["image_url"] as? [String: Any] {
+                return ["type": "image_url", "image_url": imageURL]
+            }
+            return nil
+        case "input_audio":
+            guard part["input_audio"] != nil else { return nil }
+            return part
+        case "file":
+            return part
+        default:
+            if part["image_url"] != nil {
+                var normalized = part
+                normalized["type"] = "image_url"
+                return normalized
+            }
+            if part["input_audio"] != nil {
+                var normalized = part
+                normalized["type"] = "input_audio"
+                return normalized
+            }
+            if let text = part["text"] as? String {
+                return ["type": "text", "text": text]
+            }
+            return nil
+        }
+    }
+
+    private static func chatCompletionsContentIsEmpty(_ value: Any) -> Bool {
+        if let string = value as? String {
+            return string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if let parts = value as? [[String: Any]] {
+            return parts.isEmpty
+        }
+        return false
     }
 
     private static func responsesContentText(_ value: Any?) -> String {

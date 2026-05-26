@@ -29,13 +29,13 @@ struct CLIAssistantConsentSheet: View {
                 }
 
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text("Use Claude Code or Codex on this Mac?")
+                    Text("Use Mac CLI agents on this Mac?")
                         .font(DesignSystem.Typography.title)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(
-                        "The assistant panel can run your installed `claude` or `codex` CLI to answer using your usage context. Commands execute locally; OpenBurnBar does not send prompts to our servers."
+                        "The assistant panel can run installed CLI agents like `claude`, `codex`, `droid`, `forge`, or `agy` to answer using your usage context. Commands execute locally; OpenBurnBar does not send prompts to our servers."
                     )
                     .font(DesignSystem.Typography.body)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)

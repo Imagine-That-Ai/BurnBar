@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
@@ -1168,6 +1169,7 @@ struct HermesChatView: View {
     @State private var didAutoPresentSetupWizard = false
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
     @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
+    @AppStorage("chatViewMode") private var chatViewMode: ChatViewMode = .agent
     @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
     @State private var showPretextPlayground = false
     @State private var atomRouter = HermesAtomRouter()
@@ -1201,6 +1203,65 @@ struct HermesChatView: View {
         service.messages.filter { $0.role != .tool }
     }
 
+    @ViewBuilder
+    private var chatContent: some View {
+        if chatViewMode == .cli {
+            InlineAgentMirrorView(
+                singleton: AgentWatchOverlaySingleton.shared,
+                hermesService: service
+            )
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        if visibleMessages.isEmpty {
+                            welcomeBlock
+                        } else {
+                            ForEach(visibleMessages) { message in
+                                HermesMessageBubble(
+                                    message: message,
+                                    showTPS: showMessageTPS,
+                                    usePretextRendering: usePretextRendering,
+                                    viewMode: chatViewMode,
+                                    onRetry: canRetry(message) ? { service.retryLastUserTurn(context: dashboardContextPrompt) } : nil
+                                )
+                                    .id(message.id)
+                            }
+                            if service.isStreaming {
+                                HStack {
+                                    MercuryThinkingIndicator()
+                                        .padding(.leading, 8)
+                                    Spacer()
+                                }
+                                .id("thinking")
+                            }
+                        }
+                    }
+                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                    .padding(.bottom, 12)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollDismissesKeyboard(.interactively)
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
+                .onChange(of: service.messages.count) { _, _ in
+                    if let last = service.messages.last {
+                        withAnimation(AuroraDesign.Motion.auroraSpring) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
+                .onChange(of: service.isStreaming) { _, streaming in
+                    if streaming {
+                        withAnimation(AuroraDesign.Motion.auroraSpring) {
+                            proxy.scrollTo("thinking", anchor: .bottom)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     var body: some View {
         ZStack {
             AuroraBackdrop()
@@ -1212,53 +1273,7 @@ struct HermesChatView: View {
                 runtimeRail
                     .padding(.bottom, 8)
 
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
-                            if visibleMessages.isEmpty {
-                                welcomeBlock
-                            } else {
-                                ForEach(visibleMessages) { message in
-                                    HermesMessageBubble(
-                                        message: message,
-                                        showTPS: showMessageTPS,
-                                        usePretextRendering: usePretextRendering,
-                                        onRetry: canRetry(message) ? { service.retryLastUserTurn(context: dashboardContextPrompt) } : nil
-                                    )
-                                        .id(message.id)
-                                }
-                                if service.isStreaming {
-                                    HStack {
-                                        MercuryThinkingIndicator()
-                                            .padding(.leading, 8)
-                                        Spacer()
-                                    }
-                                    .id("thinking")
-                                }
-                            }
-                        }
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .padding(.bottom, 12)
-                    }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .scrollDismissesKeyboard(.interactively)
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
-                    .onChange(of: service.messages.count) { _, _ in
-                        if let last = service.messages.last {
-                            withAnimation(AuroraDesign.Motion.auroraSpring) {
-                                proxy.scrollTo(last.id, anchor: .bottom)
-                            }
-                        }
-                    }
-                    .onChange(of: service.isStreaming) { _, streaming in
-                        if streaming {
-                            withAnimation(AuroraDesign.Motion.auroraSpring) {
-                                proxy.scrollTo("thinking", anchor: .bottom)
-                            }
-                        }
-                    }
-                }
+                chatContent
 
                 if service.messages.isEmpty || input.isEmpty {
                     promptCarousel
@@ -1310,7 +1325,9 @@ struct HermesChatView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
+                HStack(spacing: 8) {
+                    MobileChatViewModePicker(chatViewMode: $chatViewMode)
+                    Menu {
                     Section {
                         Button {
                             showConnectionSheet = true
@@ -1375,6 +1392,7 @@ struct HermesChatView: View {
                 } label: {
                     ProviderStatusGlobeView(provider: activeProvider, isReachable: service.isReachable)
                 }
+                }
             }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -1387,7 +1405,7 @@ struct HermesChatView: View {
                 withAnimation(AuroraDesign.Motion.auroraSpring) { service.clearChat() }
             }
         } message: {
-            Text("This removes the entire conversation history.")
+            Text("This starts a new chat. Previous Hermes chats stay in History.")
         }
         .sheet(isPresented: $showConnectionSheet) {
             HermesConnectionSheet(service: service)
@@ -2742,15 +2760,58 @@ struct HermesMessageBubble: View {
     /// `@mentions` and `` `code spans` `` get inline chips and pretext line
     /// breaking. Falls back to native `Text` if the engine isn't ready.
     var usePretextRendering: Bool = true
+    /// Display mode: rich agent bubbles or raw CLI output.
+    var viewMode: ChatViewMode = .agent
     /// Optional retry callback. The container passes a non-nil value
     /// only for the most recent assistant turn whose outcome supports
     /// retry — the bubble renders the inline "Try again" pill in that
     /// case. Earlier turns and successful replies pass nil (no pill).
     var onRetry: (() -> Void)? = nil
 
+    @State private var permissionSheetItem: SystemPermissionItem?
+    @State private var permissionStore = SystemPermissionInboxStore.shared
+
     var isUser: Bool { message.role == .user }
 
+    @ViewBuilder
+    fileprivate var systemPermissionPillIfNeeded: some View {
+        let threadID = HermesService.shared.selectedSessionID ?? ""
+        if !threadID.isEmpty,
+           let item = permissionStore.latestItem(forThread: threadID),
+           item.originatingToolCallId == message.id
+            || message.toolCalls.contains(where: { $0.id == item.originatingToolCallId }) {
+            SystemPermissionInlinePill(item: item) {
+                permissionSheetItem = item
+            }
+            .padding(.leading, 6)
+            .padding(.top, 4)
+            .sheet(item: $permissionSheetItem) { sheetItem in
+                if let sender = makeSystemPermissionGrantSender() {
+                    SystemPermissionGrantSheet(item: sheetItem, sender: sender)
+                } else {
+                    SystemPermissionGrantSheet(
+                        item: sheetItem,
+                        sender: SystemPermissionGrantSender(senderFactory: { nil })
+                    )
+                }
+            }
+        }
+    }
+
+    private func makeSystemPermissionGrantSender() -> SystemPermissionGrantSender? {
+        // Resolve via the live AgentWatchOverlaySingleton so the sender
+        // shares the same Computer Use control stream + signing key that
+        // every other phone-control surface uses.
+        let factory: SystemPermissionGrantSender.SenderFactory = {
+            AgentWatchOverlaySingleton.shared.activePhoneControlSender()
+        }
+        return SystemPermissionGrantSender(senderFactory: factory)
+    }
+
     var body: some View {
+        if viewMode == .cli {
+            iosCLIMessageRow
+        } else {
         HStack(alignment: .bottom, spacing: 8) {
             if isUser {
                 Spacer(minLength: 48)
@@ -2772,6 +2833,49 @@ struct HermesMessageBubble: View {
             insertion: .move(edge: .bottom).combined(with: .opacity),
             removal: .opacity
         ))
+        }
+    }
+
+    // MARK: - CLI View
+
+    @ViewBuilder
+    private var iosCLIMessageRow: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if isUser {
+                HStack(alignment: .top, spacing: 4) {
+                    Text(">")
+                        .font(MobileTheme.Typography.mono)
+                        .foregroundStyle(MobileTheme.Colors.success)
+                        .frame(width: 14, alignment: .trailing)
+                    Text(message.text)
+                        .font(MobileTheme.Typography.monoSmall)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 4) {
+                    Text("☿")
+                        .font(MobileTheme.Typography.mono)
+                        .foregroundStyle(MobileTheme.hermesAureate)
+                        .frame(width: 14, alignment: .trailing)
+                    Text(iosCLITranscriptText)
+                        .font(MobileTheme.Typography.monoSmall)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.vertical, 1)
+    }
+
+    private var iosCLITranscriptText: String {
+        let toolLines = message.toolCalls.map { tc in
+            "⟨\(tc.name)\(tc.detail != nil ? ": \(tc.detail!)" : "")⟩"
+        }
+        if toolLines.isEmpty { return message.text }
+        return ([message.text] + toolLines).filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
     private var userBubble: some View {
@@ -2831,6 +2935,8 @@ struct HermesMessageBubble: View {
             if !message.toolCalls.isEmpty {
                 toolCallsStrip
             }
+
+            systemPermissionPillIfNeeded
 
             // Hermes Square §6.6 — typed UI cards the agent emitted on
             // this turn render inline above the tpsFooter. Host-drawn:

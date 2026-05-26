@@ -446,6 +446,97 @@ final class CLIBridge: ObservableObject {
         }
     }
 
+    /// Streams using Factory Droid CLI only.
+    func chatDroidStream(
+        systemPrompt: String,
+        userMessage: String,
+        workspaceDirectory: URL? = nil,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task.detached { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard let executable = await self.resolveExecutable(named: "droid") else {
+                    continuation.finish(throwing: CLIBridgeError.noCLI)
+                    return
+                }
+                let fullPrompt = CLIArgumentBuilder.combinedPrompt(systemPrompt: systemPrompt, userMessage: userMessage)
+                await CLIProcessStreamRunner(runtime: self.streamRuntime).runDroid(
+                    executable: executable,
+                    prompt: fullPrompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
+    /// Streams using Forge CLI only.
+    func chatForgeStream(
+        systemPrompt: String,
+        userMessage: String,
+        workspaceDirectory: URL? = nil,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task.detached { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard let executable = await self.resolveExecutable(named: "forge") else {
+                    continuation.finish(throwing: CLIBridgeError.noCLI)
+                    return
+                }
+                let fullPrompt = CLIArgumentBuilder.combinedPrompt(systemPrompt: systemPrompt, userMessage: userMessage)
+                await CLIProcessStreamRunner(runtime: self.streamRuntime).runForge(
+                    executable: executable,
+                    prompt: fullPrompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
+    /// Streams using Google Antigravity CLI only.
+    func chatAntigravityStream(
+        systemPrompt: String,
+        userMessage: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task.detached { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard let executable = await self.resolveExecutable(named: "agy") else {
+                    continuation.finish(throwing: CLIBridgeError.noCLI)
+                    return
+                }
+                let fullPrompt = CLIArgumentBuilder.combinedPrompt(systemPrompt: systemPrompt, userMessage: userMessage)
+                await CLIProcessStreamRunner(runtime: self.streamRuntime).runAntigravity(
+                    executable: executable,
+                    prompt: fullPrompt,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
     private func resolveExecutable(named name: String) async -> String? {
         await resolver.resolveExecutable(named: name)
     }

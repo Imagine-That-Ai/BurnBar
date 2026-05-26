@@ -1,56 +1,12 @@
 import Foundation
+import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
 enum CodexModelCatalog {
-    static let chatModelIDs: [String] = [
-        "gpt-5.5",
-        "gpt-5.5-mini",
-        "gpt-5.5-nano",
-        "gpt-5.5-pro",
-        "gpt-5.4",
-        "gpt-5.4-mini",
-        "gpt-5.4-nano",
-        "gpt-5.4-pro",
-        "gpt-5.3-codex",
-        "gpt-5.2-codex",
-        "gpt-5.2-pro",
-        "gpt-5.1-codex",
-        "gpt-5.1-codex-mini",
-        "gpt-5.1-codex-max"
-    ]
-
-    private static let slugAliases: [String: String] = [
-        "gpt-5-5": "gpt-5.5",
-        "gpt-5-5-mini": "gpt-5.5-mini",
-        "gpt-5-5-nano": "gpt-5.5-nano",
-        "gpt-5-5-pro": "gpt-5.5-pro",
-        "gpt-5-4": "gpt-5.4",
-        "gpt-5-4-mini": "gpt-5.4-mini",
-        "gpt-5-4-nano": "gpt-5.4-nano",
-        "gpt-5-4-pro": "gpt-5.4-pro",
-        "gpt-5-3-codex": "gpt-5.3-codex",
-        "gpt-5-2-codex": "gpt-5.2-codex",
-        "gpt-5-2-pro": "gpt-5.2-pro",
-        "gpt-5-1-codex": "gpt-5.1-codex",
-        "gpt-5-1-codex-mini": "gpt-5.1-codex-mini",
-        "gpt-5-1-codex-max": "gpt-5.1-codex-max"
-    ]
+    static let chatModelIDs: [String] = []
 
     static func normalizedModel(_ model: String, fallback: String = "") -> String {
-        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedModel.isEmpty == false else { return fallback }
-
-        if let canonical = slugAliases[trimmedModel.lowercased()] {
-            return canonical
-        }
-
-        if let canonical = chatModelIDs.first(where: {
-            $0.caseInsensitiveCompare(trimmedModel) == .orderedSame
-        }) {
-            return canonical
-        }
-
-        return trimmedModel
+        CLIRuntimeModelCatalog.normalizedCodexModel(model, fallback: fallback)
     }
 }
 
@@ -133,6 +89,80 @@ enum CLIArgumentBuilder {
         return arguments
     }
 
+    static func droidArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        var arguments = [
+            "exec",
+            "--output-format",
+            "json"
+        ]
+        if let workspaceDirectory {
+            arguments.append(contentsOf: ["--cwd", workspaceDirectory.path])
+        }
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedModel.isEmpty {
+            arguments.append(contentsOf: ["--model", trimmedModel])
+        }
+        if let capabilityGrant, capabilityGrant.isActive() {
+            if capabilityGrant.capabilities.contains(.shell) {
+                arguments.append(contentsOf: ["--auto", "medium"])
+            } else if capabilityGrant.capabilities.contains(.workspaceWrite) {
+                arguments.append(contentsOf: ["--auto", "low", "--disabled-tools", "execute-cli"])
+            }
+        }
+        arguments.append(sanitizedPrompt(prompt))
+        return arguments
+    }
+
+    static func forgeArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        var arguments: [String] = []
+        if let workspaceDirectory {
+            arguments.append(contentsOf: ["-C", workspaceDirectory.path])
+        }
+        let trimmedAgent = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if ["forge", "muse", "sage"].contains(trimmedAgent.lowercased()) {
+            arguments.append(contentsOf: ["--agent", trimmedAgent])
+        }
+        arguments.append(contentsOf: [
+            "--prompt",
+            forgePrompt(
+                prompt,
+                capabilityGrant: capabilityGrant
+            )
+        ])
+        return arguments
+    }
+
+    static func antigravityArguments(
+        prompt: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        var arguments: [String] = []
+        if let workspaceDirectory {
+            arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
+        }
+        if let capabilityGrant, capabilityGrant.isActive(), isYOLOGrant(capabilityGrant) {
+            arguments.append("--dangerously-skip-permissions")
+        } else {
+            arguments.append("--sandbox")
+        }
+        arguments.append(contentsOf: [
+            "--print",
+            sanitizedPrompt(prompt)
+        ])
+        return arguments
+    }
+
     private static func claudeAllowedTools(for grant: AgentCapabilityGrant) -> [String] {
         var tools: [String] = []
         if grant.capabilities.contains(.workspaceRead) {
@@ -149,6 +179,35 @@ enum CLIArgumentBuilder {
 
     private static func isYOLOGrant(_ grant: AgentCapabilityGrant) -> Bool {
         grant.trustMode == .trusted && Set(AgentDesktopCapability.allCases).isSubset(of: grant.capabilities)
+    }
+
+    private static func forgePrompt(
+        _ prompt: String,
+        capabilityGrant: AgentCapabilityGrant?
+    ) -> String {
+        guard capabilityGrant?.isActive() == true else {
+            return sanitizedPrompt("""
+            \(prompt)
+
+            OpenBurnBar remote safety: answer in read-only mode. Do not edit files and do not execute shell commands unless the user grants those capabilities in this thread.
+            """)
+        }
+        let capabilities = capabilityGrant?.capabilities ?? []
+        var constraints: [String] = []
+        if !capabilities.contains(.workspaceWrite) {
+            constraints.append("Do not edit files.")
+        }
+        if !capabilities.contains(.shell) {
+            constraints.append("Do not execute shell commands.")
+        }
+        guard !constraints.isEmpty else {
+            return sanitizedPrompt(prompt)
+        }
+        return sanitizedPrompt("""
+        \(prompt)
+
+        OpenBurnBar remote safety: \(constraints.joined(separator: " "))
+        """)
     }
 
     static func combinedPrompt(systemPrompt: String, userMessage: String) -> String {
@@ -188,5 +247,45 @@ extension CLIBridge {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> [String] {
         CLIArgumentBuilder.codexArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant)
+    }
+
+    nonisolated static func droidArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.droidArguments(
+            prompt: prompt,
+            model: model,
+            workspaceDirectory: workspaceDirectory,
+            capabilityGrant: capabilityGrant
+        )
+    }
+
+    nonisolated static func forgeArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.forgeArguments(
+            prompt: prompt,
+            model: model,
+            workspaceDirectory: workspaceDirectory,
+            capabilityGrant: capabilityGrant
+        )
+    }
+
+    nonisolated static func antigravityArguments(
+        prompt: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.antigravityArguments(
+            prompt: prompt,
+            workspaceDirectory: workspaceDirectory,
+            capabilityGrant: capabilityGrant
+        )
     }
 }
