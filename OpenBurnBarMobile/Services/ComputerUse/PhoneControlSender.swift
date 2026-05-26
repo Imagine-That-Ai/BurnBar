@@ -156,6 +156,201 @@ public final class PhoneControlSender: @unchecked Sendable {
         return authority
     }
 
+    /// Sign and write an explicit remote-clipboard request. Clipboard
+    /// requests share the same counter namespace as input intents and
+    /// agent grants so replay protection remains one monotonic stream per
+    /// phone-control peer.
+    @discardableResult
+    public func send(clipboardRequest rawRequest: HermesRealtimeRelayClipboardRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        guard let key = signingKeyProvider()?.privateKey else {
+            throw SendError.signingFailed("no signing key")
+        }
+        let requestId = rawRequest.requestId.isEmpty ? UUID().uuidString : rawRequest.requestId
+        let clientIntentId = rawRequest.clientIntentId.isEmpty ? UUID().uuidString : rawRequest.clientIntentId
+        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        var unsignedRequest = rawRequest
+        unsignedRequest.requestId = requestId
+        unsignedRequest.clientIntentId = clientIntentId
+        unsignedRequest.authority = placeholder
+
+        let counter = nextCounter()
+        let timestamp = Date()
+        let signed: ComputerUsePhoneControlSigner.SignedAuthority
+        do {
+            signed = try signer.sign(
+                clipboardRequest: unsignedRequest,
+                peerNodeId: peerNodeId,
+                counter: counter,
+                timestamp: timestamp,
+                privateKey: key
+            )
+        } catch {
+            throw SendError.signingFailed(error.localizedDescription)
+        }
+
+        let authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+
+        var signedRequest = unsignedRequest
+        signedRequest.authority = authority
+
+        let frame = HermesRealtimeRelayFrame(
+            type: .controlClipboardRequest,
+            uid: uid,
+            connectionId: connectionId,
+            requestId: requestId,
+            payload: nil,
+            media: nil,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.clipboard",
+                clipboardRequest: signedRequest
+            )
+        )
+        try await frameSink(frame)
+        return authority
+    }
+
+    /// Sign and write a Phase 14 system-permission request. Used by
+    /// `SystemPermissionGrantSender` when the user taps "Grant on this
+    /// Mac" in the iOS grant sheet. Shares the same counter namespace
+    /// and authority envelope shape as input intents / grants /
+    /// clipboard / context targets so a single monotonic stream guards
+    /// replay across every control surface.
+    @discardableResult
+    public func send(systemPermissionRequest rawRequest: HermesRealtimeRelaySystemPermissionRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        guard let key = signingKeyProvider()?.privateKey else {
+            throw SendError.signingFailed("no signing key")
+        }
+        let requestId = rawRequest.requestId.isEmpty ? UUID().uuidString : rawRequest.requestId
+        let clientIntentId = rawRequest.clientIntentId.isEmpty ? UUID().uuidString : rawRequest.clientIntentId
+        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        var unsignedRequest = rawRequest
+        unsignedRequest.requestId = requestId
+        unsignedRequest.clientIntentId = clientIntentId
+        unsignedRequest.authority = placeholder
+        // Canonical signing must omit the authority so the rehash on
+        // the receiver matches the bytes the phone signed. We restore
+        // it after signing.
+        var signableRequest = unsignedRequest
+        signableRequest.authority = placeholder
+
+        let counter = nextCounter()
+        let timestamp = Date()
+        let signed: ComputerUsePhoneControlSigner.SignedAuthority
+        do {
+            signed = try signer.sign(
+                systemPermissionRequest: signableRequest,
+                peerNodeId: peerNodeId,
+                counter: counter,
+                timestamp: timestamp,
+                privateKey: key
+            )
+        } catch {
+            throw SendError.signingFailed(error.localizedDescription)
+        }
+
+        let authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+        var signedRequest = unsignedRequest
+        signedRequest.authority = authority
+
+        let frame = HermesRealtimeRelayFrame(
+            type: .controlSystemPermissionRequest,
+            uid: uid,
+            connectionId: connectionId,
+            requestId: requestId,
+            payload: nil,
+            media: nil,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.system.permission",
+                systemPermissionRequest: signedRequest
+            )
+        )
+        try await frameSink(frame)
+        return authority
+    }
+
+    @discardableResult
+    public func send(contextTarget rawTarget: HermesRealtimeRelayAgentContextTarget) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        guard let key = signingKeyProvider()?.privateKey else {
+            throw SendError.signingFailed("no signing key")
+        }
+        var target = rawTarget
+        if target.clientIntentId.isEmpty {
+            target.clientIntentId = UUID().uuidString
+        }
+        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: target.requestedAt,
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        target.authority = placeholder
+        let counter = nextCounter()
+        let timestamp = Date()
+        let signed: ComputerUsePhoneControlSigner.SignedAuthority
+        do {
+            signed = try signer.sign(
+                target: target,
+                peerNodeId: peerNodeId,
+                counter: counter,
+                timestamp: timestamp,
+                privateKey: key
+            )
+        } catch {
+            throw SendError.signingFailed(error.localizedDescription)
+        }
+
+        let authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+
+        var targetWithAuthority = target
+        targetWithAuthority.authority = authority
+
+        let frame = HermesRealtimeRelayFrame(
+            type: .controlAgentContextTarget,
+            uid: uid,
+            connectionId: connectionId,
+            payload: nil,
+            media: nil,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.input",
+                agentContextTarget: targetWithAuthority
+            )
+        )
+        try await frameSink(frame)
+        return authority
+    }
+
+
     private func nextCounter() -> UInt64 {
         let key = counterKey()
         let raw = userDefaults.object(forKey: key) as? Int ?? 0
@@ -178,6 +373,11 @@ public struct Curve25519SigningKey: Sendable {
     public let privateKey: Curve25519SigningKey.Wrapped
     public typealias Wrapped = Curve25519.Signing.PrivateKey
     public init(privateKey: Wrapped) { self.privateKey = privateKey }
+}
+
+protocol PhoneControlSigningKeyProviding: AnyObject {
+    func signingKey() throws -> Curve25519SigningKey
+    func peerNodeId(for key: Curve25519SigningKey) -> String
 }
 
 /// Persistent iOS signing identity for Phase 12 phone-control intents.
@@ -257,4 +457,6 @@ public final class PhoneControlSigningKeyStore: @unchecked Sendable {
         case keychainStatus(OSStatus)
     }
 }
+
+extension PhoneControlSigningKeyStore: PhoneControlSigningKeyProviding {}
 #endif

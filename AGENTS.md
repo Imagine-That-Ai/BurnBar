@@ -43,10 +43,15 @@ The Android app reaches **full iOS parity** as of 2026-05-16 — Hermes Square, 
 | `cd android && ./gradlew clean assembleDebug --no-daemon 2>&1 \| grep "^e:\\|BUILD"` | Clean build, errors only |
 | `cd android && ./gradlew :app:testDebugUnitTest --no-daemon` | Run the JVM unit suite (relay + media + missions + atom parser, ~253 tests) |
 | `cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon` | iroh-relay library unit tests (codec + pairing + loopback transport) |
+| `./scripts/test-openburnbar-mobile.sh` | iOS Simulator unit tests (`OpenBurnBarMobileTests`) — CI-gated |
+| `./scripts/test-openburnbar-android.sh` | Android JVM unit tests (app + iroh-relay modules) — CI-gated |
+| `make ci` | Full local CI parity (Functions, evals, Firestore rules, supply chain, all test surfaces) |
 | `scripts/build-iroh-android-aar.sh` | Build `Vendor/openburnbar-iroh.aar` (auto-installs NDK + cargo-ndk + Rust targets) |
 | `scripts/build_opus_android.sh` | Build `Vendor/opus-android.aar` from libopus 1.5 (4 ABIs) |
 | `scripts/e2e/android-iroh-chat.sh` | Install debug APK + run the iroh chat instrumented suite via `adb` |
 | `scripts/e2e/android-mercury-call.sh` | Install debug APK + run the Mercury call instrumented suite via `adb` |
+
+**Schema sync:** canonical Firestore contracts live in [`tools/schema-sync/`](tools/schema-sync/) (TypeSpec → TS/Swift/Kotlin). Run `./tools/schema-sync/check-drift.sh` before changing shared models. Legacy hand-maintained types remain in `functions/src/types.ts` during migration.
 
 ### Firebase config
 
@@ -56,7 +61,7 @@ The Android app reaches **full iOS parity** as of 2026-05-16 — Hermes Square, 
 
 ### Data layer: schema alignment
 
-**`functions/src/types.ts` IS THE CANONICAL SCHEMA.** Every Android model, parser, and store MUST match it. When the TypeScript interfaces change, the Android data layer MUST be updated in lockstep.
+**`functions/src/types.ts` IS THE CANONICAL SCHEMA** (migrating to [`tools/schema-sync/`](tools/schema-sync/) TypeSpec emitters). Every Android model, parser, and store MUST match it.
 
 The key interfaces and their Android counterparts:
 

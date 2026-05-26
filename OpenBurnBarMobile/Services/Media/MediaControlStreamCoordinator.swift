@@ -85,7 +85,11 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// success; mirror requests require this to be fresh so `.live`
     /// means bidirectional, not merely dialed.
     @Published private(set) var lastInboundAt: Date?
+    /// Most recent iOS heartbeat -> Mac reply -> iOS round-trip. The mirror
+    /// HUD uses this instead of displaying a permanent zero while frames flow.
+    @Published private(set) var lastRoundTripMillis: Int?
     var connectionID: String? { activeConnectionID }
+    var sessionId: String? { activeConnectionID }
 
     private let dialer: StreamDialer
     private let receiver: iOSFileTransferService
@@ -96,6 +100,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private var currentSendGate: IrohRelayStreamSendGate?
     private var supervisorTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
+    private var pendingHeartbeatSentAt: Date?
     private var streamReadyContinuations: [UUID: CheckedContinuation<any IrohRelayStream, Error>] = [:]
     private var activeUID: String?
     private var activeConnectionID: String?
@@ -119,6 +124,12 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// path.
     var mirrorFrameV2Handler: ((MediaFrameV2) async -> Void)?
 
+    /// Mercury Smart Zoom — focus-context updates arrive on
+    /// `.mediaStreamFrame` envelopes carrying no encoded video bytes,
+    /// just the `media.focusContext` field. Mirror surfaces install
+    /// this handler to drive the local Smart Zoom reducer.
+    var focusContextHandler: ((HermesRealtimeRelayFocusContext) async -> Void)?
+
     /// Mercury Phase 8 — Mac → iOS presence updates. The Hermes Square
     /// root installs `MercuryPeerSource.ingestHeartbeat(_:)` here so the
     /// paired-Mac tile and Live sheet reflect the Mac's current name and
@@ -129,6 +140,10 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// mirror acks. Mirror surfaces install this so failed taps/scrolls
     /// produce an actionable status instead of looking like dead tools.
     var controlDeniedHandler: ((HermesRealtimeRelayControlDenied) async -> Void)?
+
+    /// Explicit remote-clipboard responses from the Mac. Mirror surfaces
+    /// match request IDs here before reading or writing the phone pasteboard.
+    var clipboardResponseHandler: ((HermesRealtimeRelayClipboardResponse) async -> Void)?
 
     /// Mercury Phase 8 — opt-in display name that piggybacks on the
     /// presence heartbeat so the Mac can render it in the popover.
@@ -184,6 +199,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
         reconnectAttemptStartedAt = nil
         lastFailureReason = nil
         lastInboundAt = nil
+        lastRoundTripMillis = nil
+        pendingHeartbeatSentAt = nil
     }
 
     /// Outbound send entry point. Blocks until the stream is live (or
@@ -232,6 +249,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
     func sendMirrorStop(
         requestId: String,
+        sessionId: String? = nil,
         reason: String? = nil,
         timeout: TimeInterval = 8
     ) async throws {
@@ -240,6 +258,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
         }
         let stop = HermesRealtimeRelayMirrorStop(
             requestId: requestId,
+            sessionId: sessionId,
             stoppedAt: Date(),
             reason: reason
         )
@@ -427,6 +446,10 @@ final class MediaControlStreamCoordinator: ObservableObject {
                         await handler(ack)
                     }
                 case .mediaStreamFrame:
+                    if let focus = frame.media?.focusContext,
+                       let handler = focusContextHandler {
+                        await handler(focus)
+                    }
                     guard frame.media?.streamClass == MediaStreamClass.screenVideo.rawValue,
                           let encoded = frame.media?.encodedFrameBase64,
                           let chunkData = Data(base64Encoded: encoded),
@@ -452,6 +475,10 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     // iOS is the requester, not the receiver.
                     continue
                 case .mediaPresenceHeartbeat:
+                    if let pendingHeartbeatSentAt {
+                        lastRoundTripMillis = max(0, Int(Date().timeIntervalSince(pendingHeartbeatSentAt) * 1_000))
+                        self.pendingHeartbeatSentAt = nil
+                    }
                     if let heartbeat = frame.media?.presence,
                        let handler = presenceHeartbeatHandler {
                         await handler(heartbeat)
@@ -461,6 +488,12 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     if let denied = frame.control?.denied,
                        let handler = controlDeniedHandler {
                         await handler(denied)
+                    }
+                    continue
+                case .controlClipboardResponse:
+                    if let response = frame.control?.clipboardResponse,
+                       let handler = clipboardResponseHandler {
+                        await handler(response)
                     }
                     continue
                 case .mediaClassify:
@@ -515,7 +548,14 @@ final class MediaControlStreamCoordinator: ObservableObject {
             connectionId: connectionID,
             media: HermesRealtimeRelayMediaPayload(presence: beat)
         )
-        try? await send(frame: frame)
+        let sentAt = Date()
+        do {
+            try await send(frame: frame)
+            pendingHeartbeatSentAt = sentAt
+        } catch {
+            // The supervisor owns reconnects; heartbeat failure only means no
+            // fresh RTT sample for the HUD.
+        }
     }
 
     private func probeMac(uid: String, connectionID: String, timeout: TimeInterval) async -> Bool {

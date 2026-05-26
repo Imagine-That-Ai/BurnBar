@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OSLog
 
@@ -62,15 +63,26 @@ enum CLIAgentMissionRuntimePlanner {
     ) -> CLIAgentMissionBackend {
         if let requestedRuntime,
            requestedRuntime != "auto" {
-            switch requestedRuntime {
-            case "pi":
+            let normalizedRuntime = requestedRuntime.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            switch normalizedRuntime {
+            case "pi", "piagent", "pi-agent":
                 return CLIAgentMissionBackend(chatBackend: .piAgent)
+            case "claude-code", "claudecode":
+                return CLIAgentMissionBackend(chatBackend: .claude)
+            case "open-claw":
+                return CLIAgentMissionBackend(chatBackend: .openclaw)
+            case "droid", "factory", "factory-droid", "factorydroid":
+                return CLIAgentMissionBackend(chatBackend: .droid)
+            case "forge", "forge-dev", "forgedev":
+                return CLIAgentMissionBackend(chatBackend: .forge)
+            case "antigravity", "agy", "google-antigravity", "googleantigravity":
+                return CLIAgentMissionBackend(chatBackend: .antigravity)
             case "opencode":
                 return CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode")
             case "ollama":
                 return CLIAgentMissionBackend(rawValue: "ollama", displayName: "Ollama")
             default:
-                if let direct = ChatBackendID(rawValue: requestedRuntime) {
+                if let direct = ChatBackendID(rawValue: normalizedRuntime) {
                     return CLIAgentMissionBackend(chatBackend: direct)
                 }
             }
@@ -82,11 +94,11 @@ enum CLIAgentMissionRuntimePlanner {
 
         switch missionKind {
         case "diligence", "security":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity]) ?? .codex)
         case "creative", "accretive", "ui_improvement", "custom":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .codex, .hermes, .piAgent, .claude]) ?? .hermes)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .codex, .hermes, .piAgent, .claude, .forge, .droid]) ?? .hermes)
         case "debt", "modernization", "provider_routing", "cost_efficiency", "project_focus":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity]) ?? .codex)
         default:
             return CLIAgentMissionBackend(chatBackend: enabledBackends.first ?? .codex)
         }
@@ -117,7 +129,7 @@ enum CLIAgentMissionRuntimePlanner {
             Commands allowed: \(commandsAllowed ? "yes" : "no")
             File edits allowed: \(fileEditsAllowed ? "yes" : "no")
 
-            Reply directly to the user's message. If you need local project context and commands are not allowed, say what you need instead of inventing details. If file edits are not allowed, do not modify files.
+            Reply directly to the user's message. Use available local context when the granted permissions allow it; ask for the specific missing context when they do not. Keep the filesystem unchanged unless file edits are granted.
 
             \(prompt)
             """
@@ -137,6 +149,13 @@ enum CLIAgentMissionRuntimePlanner {
 
         \(prompt)
         """
+    }
+
+    static func presentationMode(from data: [String: Any]) -> CLIAgentChatPresentationMode {
+        let raw = (data["presentationMode"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        return raw.flatMap(CLIAgentChatPresentationMode.init(rawValue:)) ?? .nativeChat
     }
 
     static func mobileChatClientThreadID(from data: [String: Any]) -> String? {
@@ -226,6 +245,45 @@ enum CLIAgentMissionRuntimePlanner {
                 arguments: arguments,
                 extraEnvironment: [:]
             )
+        case ChatBackendID.droid.rawValue:
+            let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+            let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+            var arguments = [
+                "exec",
+                "--output-format",
+                "json"
+            ]
+            if let requestedModelID {
+                arguments += ["--model", requestedModelID]
+            }
+            if commandsAllowed {
+                arguments += ["--auto", "medium"]
+            } else if fileEditsAllowed {
+                arguments += ["--auto", "low", "--disabled-tools", "execute-cli"]
+            }
+            arguments.append(hostPrompt)
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "droid",
+                arguments: arguments,
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.forge.rawValue:
+            var arguments = ["--prompt", hostPrompt]
+            if let requestedModelID,
+               ["forge", "muse", "sage"].contains(requestedModelID.lowercased()) {
+                arguments = ["--agent", requestedModelID] + arguments
+            }
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "forge",
+                arguments: arguments,
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.antigravity.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "agy",
+                arguments: CLIArgumentBuilder.antigravityArguments(prompt: hostPrompt),
+                extraEnvironment: [:]
+            )
         case "opencode":
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "zsh",
@@ -256,6 +314,134 @@ enum CLIAgentMissionRuntimePlanner {
         default:
             return nil
         }
+    }
+
+    static func visibleTerminalLaunchPlan(
+        title: String,
+        prompt: String,
+        backend: CLIAgentMissionBackend,
+        data: [String: Any]
+    ) -> CLIAgentMissionDirectLaunchPlan? {
+        let hostPrompt = Self.prompt(title: title, prompt: prompt, backend: backend, data: data)
+        let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let grant = capabilityGrant(for: backend, data: data)
+        let workingDirectory = workingDirectoryPath(from: data).map { URL(fileURLWithPath: $0, isDirectory: true) }
+
+        switch backend.rawValue {
+        case ChatBackendID.codex.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "codex",
+                arguments: CLIArgumentBuilder.codexArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.claude.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "claude",
+                arguments: CLIArgumentBuilder.claudeArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.droid.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "droid",
+                arguments: CLIArgumentBuilder.droidArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.forge.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "forge",
+                arguments: CLIArgumentBuilder.forgeArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.antigravity.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "agy",
+                arguments: CLIArgumentBuilder.antigravityArguments(
+                    prompt: hostPrompt,
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.openclaw.rawValue,
+            ChatBackendID.piAgent.rawValue,
+            "opencode",
+            "ollama":
+            return directLaunchPlan(title: title, prompt: prompt, backend: backend, data: data)
+        default:
+            return nil
+        }
+    }
+
+    private static func capabilityGrant(
+        for backend: CLIAgentMissionBackend,
+        data: [String: Any]
+    ) -> AgentCapabilityGrant {
+        let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+        let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+        var capabilities: Set<AgentDesktopCapability> = [.workspaceRead]
+        if commandsAllowed {
+            capabilities.insert(.shell)
+        }
+        if fileEditsAllowed {
+            capabilities.insert(.workspaceWrite)
+        }
+        return AgentCapabilityGrant.sessionGrant(
+            runtimeID: assistantRuntimeID(for: backend),
+            threadID: (data["clientThreadID"] as? String)?.nilIfEmpty ?? "visible-terminal-\(UUID().uuidString)",
+            capabilities: capabilities,
+            trustMode: .manual,
+            workspaceRootPath: workingDirectoryPath(from: data),
+            duration: 60 * 60
+        )
+    }
+
+    private static func assistantRuntimeID(for backend: CLIAgentMissionBackend) -> AssistantRuntimeID {
+        if let chatBackend = backend.chatBackend {
+            switch chatBackend {
+            case .codex: return .codex
+            case .claude: return .claude
+            case .openclaw: return .openClaw
+            case .droid: return .droid
+            case .forge: return .forge
+            case .antigravity: return .antigravity
+            case .hermes: return .hermes
+            case .piAgent: return .pi
+            }
+        }
+        switch backend.rawValue {
+        case "openclaw", "open-claw": return .openClaw
+        case "droid", "factory": return .droid
+        case "forge": return .forge
+        case "antigravity", "agy", "google-antigravity": return .antigravity
+        case "pi", "piagent", "pi-agent": return .pi
+        default: return .codex
+        }
+    }
+
+    private static func workingDirectoryPath(from data: [String: Any]) -> String? {
+        guard let rawPath = (data["targetProject"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        else { return nil }
+        return NSString(string: rawPath).expandingTildeInPath
     }
 }
 
@@ -1066,6 +1252,34 @@ final class CLIAgentMissionRequestListener {
         // scope keep using the plan's env verbatim.
         let personaOverrides = (try? CLIAgentMissionPersonaScopeApplier.overrides(from: data))
             ?? .empty
+        if CLIAgentMissionRuntimePlanner.presentationMode(from: data) == .macVisibleCLI {
+            guard let plan = CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+                title: title,
+                prompt: prompt,
+                backend: backend,
+                data: data
+            ) else {
+                return DirectCLIMissionResult(
+                    status: "failed",
+                    output: "",
+                    errorMessage: "\(backend.displayName) does not expose a visible Mac CLI launch path yet.",
+                    sessionID: "visible-\(backend.rawValue)-\(UUID().uuidString)"
+                )
+            }
+            var env = plan.extraEnvironment
+            for (k, v) in personaOverrides.extraEnvironment { env[k] = v }
+            return await runVisibleTerminalMission(
+                executableName: plan.executableName,
+                arguments: plan.arguments,
+                backend: backend,
+                extraEnvironment: env,
+                workingDirectoryURL: workingDirectoryURL,
+                reference: reference,
+                requestID: requestID,
+                cancellationTracker: cancellationTracker
+            )
+        }
+
         if let plan = CLIAgentMissionRuntimePlanner.directLaunchPlan(title: title, prompt: prompt, backend: backend, data: data) {
             var env = plan.extraEnvironment
             for (k, v) in personaOverrides.extraEnvironment { env[k] = v }
@@ -1206,6 +1420,209 @@ final class CLIAgentMissionRequestListener {
                 )
             }
         }
+    }
+
+    private func runVisibleTerminalMission(
+        executableName: String,
+        arguments: [String],
+        backend: CLIAgentMissionBackend,
+        extraEnvironment: [String: String],
+        workingDirectoryURL: URL?,
+        reference: DocumentReference,
+        requestID: String,
+        cancellationTracker: MissionCancellationTracker
+    ) async -> DirectCLIMissionResult {
+        guard let executable = await CLIExecutableResolver().resolveExecutable(named: executableName) else {
+            return DirectCLIMissionResult(
+                status: "failed",
+                output: "",
+                errorMessage: "\(backend.displayName) CLI executable '\(executableName)' was not found on the Mac PATH.",
+                sessionID: "visible-\(backend.rawValue)-\(UUID().uuidString)"
+            )
+        }
+
+        let sessionID = "visible-\(backend.rawValue)-\(UUID().uuidString)"
+        do {
+            await recordEvent(
+                reference: reference,
+                requestID: requestID,
+                phase: "terminal_started",
+                kind: "tool_call",
+                title: "Terminal session",
+                message: "Opening \(backend.displayName) in a visible Mac Terminal session.",
+                backend: backend
+            )
+            let output = try await runVisibleTerminalProcess(
+                sessionID: sessionID,
+                executable: executable,
+                executableName: executableName,
+                arguments: arguments,
+                backendDisplayName: backend.displayName,
+                timeoutSeconds: 60 * 60,
+                extraEnvironment: extraEnvironment,
+                workingDirectoryURL: workingDirectoryURL,
+                cancellationTracker: cancellationTracker,
+                eventSink: { [weak self] event in
+                    Task { @MainActor [weak self] in
+                        await self?.recordEvent(
+                            reference: reference,
+                            requestID: requestID,
+                            phase: event.phase,
+                            kind: event.kind,
+                            title: event.title,
+                            message: event.message,
+                            backend: backend,
+                            toolName: event.toolName,
+                            isError: event.isError
+                        )
+                    }
+                }
+            )
+            return DirectCLIMissionResult(
+                status: "completed",
+                output: output.trimmingCharacters(in: .whitespacesAndNewlines),
+                errorMessage: nil,
+                sessionID: sessionID
+            )
+        } catch {
+            return DirectCLIMissionResult(
+                status: "failed",
+                output: "",
+                errorMessage: error.localizedDescription,
+                sessionID: sessionID
+            )
+        }
+    }
+
+    private func runVisibleTerminalProcess(
+        sessionID: String,
+        executable: String,
+        executableName: String,
+        arguments: [String],
+        backendDisplayName: String,
+        timeoutSeconds: TimeInterval,
+        extraEnvironment: [String: String],
+        workingDirectoryURL: URL?,
+        cancellationTracker: MissionCancellationTracker,
+        eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
+    ) async throws -> String {
+        try await Task.detached(priority: .userInitiated) {
+            let fileManager = FileManager.default
+            let rootURL = fileManager.temporaryDirectory
+                .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
+            let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
+            try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
+
+            let scriptURL = sessionURL.appendingPathComponent("run.command")
+            let logURL = sessionURL.appendingPathComponent("terminal.log")
+            let exitURL = sessionURL.appendingPathComponent("exit.status")
+            let pidURL = sessionURL.appendingPathComponent("terminal.pid")
+            let command = ([executable] + arguments)
+                .map(Self.shellQuoted)
+                .joined(separator: " ")
+
+            var scriptEnvironment = ["PATH": CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)["PATH"] ?? ""]
+            scriptEnvironment.merge(extraEnvironment) { _, new in new }
+            let exportLines = scriptEnvironment
+                .filter { Self.isValidEnvironmentKey($0.key) }
+                .sorted { $0.key < $1.key }
+                .map { "export \($0.key)=\(Self.shellQuoted($0.value))" }
+                .joined(separator: "\n")
+            let cdLine = workingDirectoryURL.map { "cd \(Self.shellQuoted($0.path))" } ?? ""
+            let script = """
+            #!/bin/zsh
+            set +e
+            setopt pipefail
+            echo $$ > \(Self.shellQuoted(pidURL.path))
+            \(exportLines)
+            \(cdLine)
+            echo "OpenBurnBar visible CLI session"
+            echo "Runtime: \(backendDisplayName)"
+            echo "Executable: \(executableName)"
+            echo ""
+            ( \(command) ) 2>&1 | tee \(Self.shellQuoted(logURL.path))
+            status=${pipestatus[1]}
+            echo "$status" > \(Self.shellQuoted(exitURL.path))
+            echo ""
+            echo "OpenBurnBar visible CLI session finished with exit $status"
+            exit "$status"
+            """
+            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+
+            let opener = Process()
+            opener.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            opener.arguments = ["-a", "Terminal", scriptURL.path]
+            try opener.run()
+            opener.waitUntilExit()
+            guard opener.terminationStatus == 0 else {
+                throw NSError(
+                    domain: "OpenBurnBar.VisibleTerminalMission",
+                    code: Int(opener.terminationStatus),
+                    userInfo: [NSLocalizedDescriptionKey: "macOS could not open Terminal for the visible CLI session."]
+                )
+            }
+
+            eventSink(.toolCall("Terminal opened a visible \(backendDisplayName) CLI session.", title: "Terminal session", toolName: "Terminal"))
+
+            let streamMirror = DirectCLIStreamMirror()
+            let deadline = Date().addingTimeInterval(timeoutSeconds)
+            var offset: UInt64 = 0
+            var output = ""
+            var lastEventAt = Date.distantPast
+
+            while Date() < deadline {
+                if cancellationTracker.isCancelled {
+                    Self.killVisibleTerminalSession(pidURL: pidURL)
+                    throw NSError(
+                        domain: "OpenBurnBar.VisibleTerminalMission",
+                        code: 299,
+                        userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
+                    )
+                }
+
+                let chunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
+                if !chunk.isEmpty {
+                    output += chunk
+                    let emittedStructuredEvents = streamMirror.consumeStdout(chunk, eventSink: eventSink)
+                    if !emittedStructuredEvents,
+                       Date().timeIntervalSince(lastEventAt) >= 1,
+                       let message = chunk.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                        lastEventAt = Date()
+                        eventSink(.assistant(message, title: "Terminal output"))
+                    }
+                }
+
+                if fileManager.fileExists(atPath: exitURL.path) {
+                    let finalChunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
+                    if !finalChunk.isEmpty {
+                        output += finalChunk
+                        _ = streamMirror.consumeStdout(finalChunk, eventSink: eventSink)
+                    }
+                    let rawStatus = (try? String(contentsOf: exitURL, encoding: .utf8))
+                        ?? "1"
+                    let status = Int(rawStatus.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+                    let finalOutput = streamMirror.finalOutputSnapshot(fallback: output.nilIfEmpty ?? rawStatus)
+                    guard status == 0 else {
+                        throw NSError(
+                            domain: "OpenBurnBar.VisibleTerminalMission",
+                            code: status,
+                            userInfo: [NSLocalizedDescriptionKey: finalOutput.nilIfEmpty ?? "Visible \(backendDisplayName) CLI session failed with exit \(status)."]
+                        )
+                    }
+                    return finalOutput
+                }
+
+                try await Task.sleep(nanoseconds: 250_000_000)
+            }
+
+            Self.killVisibleTerminalSession(pidURL: pidURL)
+            throw NSError(
+                domain: "OpenBurnBar.VisibleTerminalMission",
+                code: 124,
+                userInfo: [NSLocalizedDescriptionKey: "Visible \(backendDisplayName) CLI session timed out after \(Int(timeoutSeconds)) seconds."]
+            )
+        }.value
     }
 
     private func runDirectCLIMission(
@@ -1456,6 +1873,59 @@ final class CLIAgentMissionRequestListener {
         } catch {
             logger.warning("mission event update failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private nonisolated static func shellQuoted(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
+    private nonisolated static func isValidEnvironmentKey(_ key: String) -> Bool {
+        guard let first = key.unicodeScalars.first,
+              CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_").contains(first)
+        else { return false }
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
+        return key.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+
+    private nonisolated static func readVisibleTerminalLogChunk(
+        logURL: URL,
+        offset: inout UInt64
+    ) -> String {
+        guard FileManager.default.fileExists(atPath: logURL.path),
+              let handle = try? FileHandle(forReadingFrom: logURL)
+        else { return "" }
+        defer { try? handle.close() }
+        do {
+            try handle.seek(toOffset: offset)
+            let data = try handle.readToEnd() ?? Data()
+            offset += UInt64(data.count)
+            return String(data: data, encoding: .utf8) ?? ""
+        } catch {
+            return ""
+        }
+    }
+
+    private nonisolated static func killVisibleTerminalSession(pidURL: URL) {
+        guard let rawPID = try? String(contentsOf: pidURL, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              let pid = Int32(rawPID),
+              pid > 0
+        else { return }
+        let killScript = """
+        kill_tree() {
+            local _pid=$1
+            for _child in $(pgrep -P $_pid); do
+                kill_tree $_child
+            done
+            kill -TERM $_pid 2>/dev/null
+        }
+        kill_tree \(pid)
+        """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-c", killScript]
+        try? process.run()
+        process.waitUntilExit()
     }
 
     private func deriveStreamingStatusMessage(

@@ -1,10 +1,23 @@
-# CLI Agent Chat Mirror (Mac → iOS)
+# CLI Agent Chat Mirror (Mac → Mobile)
 
-When the user chats with **Codex**, **Claude Code**, or **OpenClaw**
-on their Mac, OpenBurnBar mirrors the full transcript — text *and*
-tool-use pills — to Firestore so the iOS Assistants tab can render the
-same conversation. Read-only on iOS today; future waves can layer a
-bi-directional transport on top.
+When the user chats with **Codex**, **Claude Code**, **OpenClaw**, **Droid**,
+**Forge**, or **Antigravity** on their Mac, OpenBurnBar mirrors the full
+transcript — text *and* tool-use pills — to Firestore so mobile Assistants tabs
+can render the same conversation. Mobile chat can also send new turns back
+through the trusted Mac relay for these Mac-backed runtimes.
+
+## Mobile session interface modes
+
+iOS, iPadOS, and Android expose a per-runtime session interface toggle in the
+CLI agent composer:
+
+| Mode | Wire value | Behavior |
+| --- | --- | --- |
+| Chat | `native_chat` | Uses the native mobile chat surface. iOS, iPadOS, and Android send the turn through the encrypted `/v1/cli-agent/chat` Mac relay first. Android falls back from iroh to encrypted Firestore relay before considering any mission fallback. |
+| Mac CLI | `mac_visible_cli` | Sends the turn through the mission queue with `deliveryMode = full_stream`, opens the selected agent in a visible macOS Terminal window, and streams that same Terminal output back into the mobile thread. The phone/tablet can use Mercury screen sharing as the main interface while the Mac CLI is running. |
+
+The request field is `presentationMode`. Older clients and older relay payloads
+that omit the field decode as `native_chat`.
 
 ## Wire format
 
@@ -17,7 +30,7 @@ Important fields:
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | string | Thread id; matches the macOS `activeThreadID`. |
-| `agent` | string | One of `codex` / `claude` / `openclaw`. |
+| `agent` | string | One of `codex` / `claude` / `openclaw` / `droid` / `forge` / `antigravity`. |
 | `title` | string | Derived from the first user message (≤ 64 chars). |
 | `preview` | string | Last non-empty body (≤ 160 chars). |
 | `modelName` | string? | Model the Mac requested. |
@@ -62,7 +75,7 @@ Authorization gate:
 3. `UserDefaults.standard.bool(forKey: CLIAgentSessionMirror.preferenceKey)`
    is true (default: yes). Power users can disable transcript
    mirroring without disabling the broader cloud sync toggle.
-4. The chat backend is one of the three CLI runtimes.
+4. The chat backend is one of the Mac-backed CLI runtimes.
 
 Call site:
 [`ChatSessionController`](../AgentLens/Views/Chat/ChatSessionController.swift)
@@ -74,7 +87,7 @@ To add a new runtime, extend `CLIAgentRuntime`, map the new
 `CLIAgentSessionRecord.currentSchemaVersion` if the on-wire shape
 changes.
 
-## iOS reader
+## Mobile readers
 
 [`CLIAgentChatReader`](../OpenBurnBarMobile/Services/CLIAgentChatReader.swift)
 is a `@MainActor @Observable` singleton. Its `refresh()` is idempotent
@@ -89,9 +102,16 @@ Views:
 - [`CLIAgentTranscriptView`](../OpenBurnBarMobile/Views/CLIAgents/CLIAgentTranscriptView.swift)
   — read-only message list, reuses the same tool-pill vocabulary
   Hermes / Pi already ship.
+- [`CliAgentChatView`](../android/app/src/main/java/com/openburnbar/ui/hermes/CliAgentChatView.kt)
+  — Android native composer for Codex, Claude Code, OpenClaw, Droid, Forge, and
+  Antigravity.
+  Native Chat mode uses [`CLIAgentRelayChatTransport`](../android/app/src/main/java/com/openburnbar/data/assistants/CLIAgentRelayChatTransport.kt)
+  and the encrypted Mac relay; the mission dispatcher is reserved for explicit
+  Mac CLI mode or old relay-incompatible Macs.
 
 These are mounted from
 [`AssistantsTabRoot`](../OpenBurnBarMobile/Views/Hermes/AssistantsTabRoot.swift)
+and Android [`AssistantsScreen`](../android/app/src/main/java/com/openburnbar/ui/hermes/AssistantsScreen.kt)
 in place of the previous "Connect your Mac" placeholder.
 
 ## Firestore security

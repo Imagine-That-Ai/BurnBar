@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ app: UIApplication,
                      open url: URL,
                      options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        GIDSignIn.sharedInstance.handle(url)
+        return GIDSignIn.sharedInstance.handle(url)
     }
 
     /// Configures Firebase + App Check.
@@ -125,9 +125,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         AppCheck.setAppCheckProviderFactory(factory)
 
         FirebaseApp.configure()
+        Self.configureGoogleSignIn()
         #if DEBUG
         Self.signInWithE2ECustomTokenIfNeeded()
         #endif
+    }
+
+    private static func configureGoogleSignIn() {
+        guard let clientID = FirebaseApp.app()?.options.clientID
+            ?? googleServiceInfoValue("CLIENT_ID")
+        else {
+            print("warning: Google sign-in client ID is missing; Google auth remains disabled.")
+            return
+        }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
     }
 
     private static func googleServiceInfoLooksConfigured(at path: String) -> Bool {
@@ -145,6 +156,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             of: #"^1:[0-9]+:ios:[A-Za-z0-9]+$"#,
             options: .regularExpression
         ) != nil
+    }
+
+    private static func googleServiceInfoValue(_ key: String) -> String? {
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let plist = NSDictionary(contentsOfFile: path) as? [String: Any] else {
+            return nil
+        }
+        return plist[key] as? String
     }
 
     private static func useDebugAppCheckProvider(

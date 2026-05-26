@@ -811,6 +811,12 @@ struct ConnectionsSettingsView: View {
             return .anthropic
         case .opencode:
             return .openCode
+        case .droid:
+            return .factory
+        case .forge:
+            return ProviderID(rawValue: "forge")
+        case .antigravity:
+            return .antigravity
         }
     }
 
@@ -1092,6 +1098,12 @@ struct ConnectionsSettingsView: View {
             return .anthropic
         case .opencode:
             return .openCode
+        case .droid:
+            return .factory
+        case .forge:
+            return ProviderID(rawValue: "forge")
+        case .antigravity:
+            return .antigravity
         }
     }
 
@@ -1701,6 +1713,7 @@ private struct AppConnectRow: View {
         case .opencode: return .openCode
         case .forge: return .forgeDev
         case .droid: return .factory
+        case .antigravity: return .antigravity
         }
     }
 
@@ -1726,6 +1739,9 @@ private struct AppConnectRow: View {
                 }
             }
             Spacer()
+            if let provider {
+                ProviderQuotaChip(provider: provider)
+            }
             primaryAction
             if isConnected {
                 Menu {
@@ -1812,6 +1828,8 @@ private struct AppConnectRow: View {
             return "No route-ready Anthropic account is enabled. Add an Anthropic Console API key or Claude OAuth credential before using Claude Code."
         case .codex, .opencode, .forge, .droid:
             return "No route-ready OpenAI-compatible account is enabled. Add or enable a provider account before using \(target.displayName)."
+        case .antigravity:
+            return "No route-ready Google Antigravity profile is enabled. Add or enable an Antigravity account before using \(target.displayName)."
         }
     }
 

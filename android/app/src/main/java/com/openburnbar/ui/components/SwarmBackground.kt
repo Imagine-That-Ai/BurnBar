@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.logoRes
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
+import com.openburnbar.ui.theme.LocalUIMode
+import com.openburnbar.ui.theme.UIMode
 import com.openburnbar.ui.settings.rememberSwarmSparkles
 import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
 import kotlinx.coroutines.android.awaitFrame
@@ -75,14 +77,16 @@ fun SwarmBackground(
 
     val actualExcludeBrandShapes = excludeBrandShapes || excludeBrandShapesSetting
 
+    val uiMode = LocalUIMode.current
     val selectedProviderGlyphs = enabledProviderGlyphs ?: AgentProvider.swarmGlyphProviders.toSet()
-    val simulation = remember(particleCount, pace, selectedProviderGlyphs, actualExcludeBrandShapes) {
+    val simulation = remember(particleCount, pace, selectedProviderGlyphs, actualExcludeBrandShapes, uiMode) {
         SwarmSimulation(
             particleCount = particleCount,
             pace = pace,
             context = context.applicationContext,
             enabledProviderGlyphs = selectedProviderGlyphs,
-            excludeBrandShapes = actualExcludeBrandShapes
+            excludeBrandShapes = actualExcludeBrandShapes,
+            uiMode = uiMode
         )
     }.apply {
         this.isAvatarEnabled = isAvatarEnabled
@@ -212,6 +216,7 @@ internal class SwarmSimulation(
     context: Context? = null,
     enabledProviderGlyphs: Set<AgentProvider> = AgentProvider.swarmGlyphProviders.toSet(),
     val excludeBrandShapes: Boolean = false,
+    val uiMode: UIMode = UIMode.STANDARD,
     private val clockNanos: () -> Long = System::nanoTime
 ) {
     private val appContext = context?.applicationContext
@@ -222,6 +227,7 @@ internal class SwarmSimulation(
         SHAPE_CODE,
         SHAPE_RINGS,
         SHAPE_ROUTER_FLOW,
+        SHAPE_COOKING_5,
         SHAPE_XAI_LOGO,
         SHAPE_GROK_LOGO,
         SHAPE_PROVIDER_LOGOS
@@ -275,6 +281,9 @@ internal class SwarmSimulation(
     private var mouseForceMultiplier: Double = 0.0
     private var isEnergetic: Boolean = false
 
+    private val speedMultiplier: Double
+        get() = if (isEnergetic) 1.0 else 0.35
+
     private val providerLogoShowcase = AgentProvider.swarmGlyphProviders
     private var enabledProviderLogos = normalizeProviderGlyphs(enabledProviderGlyphs)
     private var providerLogoBatches = enabledProviderLogos.chunked(6)
@@ -321,6 +330,15 @@ internal class SwarmSimulation(
     private val codePoints by lazy { sampleTextPoints("</>", 220f) }
     private val ringPoints by lazy { generateRingPoints() }
     private val routerFlowPoints by lazy { generateRouterFlowPoints() }
+    private val skilletPoints by lazy { sampleTextPoints("🍳", 220f) }
+    private val applePoints by lazy { sampleTextPoints("🍎", 220f) }
+    private val chefHatPoints by lazy { sampleTextPoints("👨‍🍳", 220f) }
+    private val chiliPoints by lazy { sampleTextPoints("🌶️", 220f) }
+    private val appleSplinePoints by lazy { generateApplePoints() }
+    private val cherrySplinePoints by lazy { generateCherryPoints() }
+    private val bananaSplinePoints by lazy { generateBananaPoints() }
+    private val cookieSplinePoints by lazy { generateCookiePoints() }
+    private val cupcakeSplinePoints by lazy { generateCupcakePoints() }
     private val providerLogoPointCache by lazy {
         providerLogoShowcase.associateWith { provider ->
             logoPoints(provider, fallbackLogoPoints(provider))
@@ -522,7 +540,7 @@ internal class SwarmSimulation(
                 if (p.y > height) p.y = 0.0
             }
             else -> {
-                if (mode == Mode.SHAPE_ROUTER_FLOW && p.role != null) {
+                if (mode == Mode.SHAPE_ROUTER_FLOW && uiMode != UIMode.COOKING && p.role != null) {
                     val role = p.role!!
                     val centerX = width * 0.5
                     val centerY = height * 0.48
@@ -569,8 +587,9 @@ internal class SwarmSimulation(
                     val dy = ty - p.y
                     val dist = sqrt(dx * dx + dy * dy)
                     if (dist > 1) {
-                        p.vx += (dx / dist) * morphAttract
-                        p.vy += (dy / dist) * morphAttract
+                        val attract = if (isRewinding) -morphAttract * 1.5 else morphAttract
+                        p.vx += (dx / dist) * attract
+                        p.vy += (dy / dist) * attract
                     }
                     p.vx += noiseX * morphNoise + pushX
                     p.vy += noiseY * morphNoise + pushY
@@ -578,6 +597,10 @@ internal class SwarmSimulation(
                     p.vy *= morphDrag
                     p.x += p.vx
                     p.y += p.vy
+                    if (p.x < 0) p.x = width
+                    if (p.x > width) p.x = 0.0
+                    if (p.y < 0) p.y = height
+                    if (p.y > height) p.y = 0.0
                 } else {
                     p.vx += noiseX * swarmNoise * 0.75 + pushX
                     p.vy += noiseY * swarmNoise * 0.75 + pushY
@@ -635,12 +658,23 @@ internal class SwarmSimulation(
             else -> Unit
         }
 
-        val pts: List<ShapePoint> = when (next) {
-            Mode.SHAPE_DOLLAR -> dollarPoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
-            Mode.SHAPE_CODE -> codePoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
-            Mode.SHAPE_RINGS -> ringPoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
-            Mode.SHAPE_ROUTER_FLOW -> routerFlowPoints.map { ShapePoint(it.x, it.y, it.role, it.progress) }
-            else -> emptyList()
+        val pts: List<ShapePoint> = if (uiMode == UIMode.COOKING) {
+            when (next) {
+                Mode.SHAPE_DOLLAR -> appleSplinePoints
+                Mode.SHAPE_CODE -> cherrySplinePoints
+                Mode.SHAPE_RINGS -> bananaSplinePoints
+                Mode.SHAPE_ROUTER_FLOW -> cookieSplinePoints
+                Mode.SHAPE_COOKING_5 -> cupcakeSplinePoints
+                else -> emptyList()
+            }
+        } else {
+            when (next) {
+                Mode.SHAPE_DOLLAR -> dollarPoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
+                Mode.SHAPE_CODE -> codePoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
+                Mode.SHAPE_RINGS -> ringPoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
+                Mode.SHAPE_ROUTER_FLOW -> routerFlowPoints.map { ShapePoint(it.x, it.y, it.role, it.progress) }
+                else -> emptyList()
+            }
         }
 
         val width = bounds.width.toDouble()
@@ -673,7 +707,7 @@ internal class SwarmSimulation(
                 particles[particleIdx].tx = centerX + pt.x * scale
                 particles[particleIdx].ty = centerY + pt.y * scale
                 particles[particleIdx].role = pt.role
-                particles[particleIdx].logoColor = null
+                particles[particleIdx].logoColor = pt.color
                 particles[particleIdx].flowProgress = pt.progress
             } else {
                 particles[particleIdx].tx = null
@@ -807,13 +841,16 @@ internal class SwarmSimulation(
         }
     }
 
+    private val effectiveShapeSettleFallbackNanos: Long
+        get() = (SHAPE_SETTLE_FALLBACK_NANOS / speedMultiplier).toLong()
+
     private fun shouldDelayCycleForAdmireHold(nowNanos: Long): Boolean {
         if (!mode.requiresSettledAdmireHold()) return false
 
         if (shapeSettledAtNanos == null) {
             if (
                 currentShapeIsSettled() ||
-                nowNanos - modeAssignedAtNanos >= cycleIntervalNanos + SHAPE_SETTLE_FALLBACK_NANOS
+                nowNanos - modeAssignedAtNanos >= cycleIntervalNanos + effectiveShapeSettleFallbackNanos
             ) {
                 shapeSettledAtNanos = nowNanos
             } else {
@@ -829,7 +866,11 @@ internal class SwarmSimulation(
         this != Mode.SWARM && this != Mode.SHAPE_ROUTER_FLOW
 
     private fun currentShapeIsSettled(): Boolean {
-        val threshold = maxOf(22.0, min(bounds.width, bounds.height).toDouble() * 0.022)
+        // Tighten the threshold at slower speeds so particles must form a sharper,
+        // fully-settled shape before starting the hold/admire timer.
+        val baseThreshold = maxOf(22.0, min(bounds.width, bounds.height).toDouble() * 0.022)
+        val threshold = baseThreshold * speedMultiplier.coerceIn(0.5, 1.0)
+
         var targeted = 0
         var close = 0
         var totalDistance = 0.0
@@ -860,6 +901,26 @@ internal class SwarmSimulation(
         val raw = p.opacity.toFloat().coerceIn(0f, 1f)
         // Lift the floor slightly in light mode so the deeper palette reads.
         val opacity = if (isDark) raw else (raw + 0.08f).coerceAtMost(1f)
+
+        p.logoColor?.let { source ->
+            return source.copy(alpha = (opacity * 1.62f).coerceAtMost(1f))
+        }
+
+        if (uiMode == UIMode.COOKING) {
+            val fruityColors = listOf(
+                Color(0xFFFF2A6D), // Dragonfruit Pink
+                Color(0xFFFF5E3A), // Tangerine Orange
+                Color(0xFFFFD700), // Honey Mango Yellow
+                Color(0xFF2ECC71), // Mint Basil Green
+                Color(0xFF00F5FF), // Electric Blueberry Blue
+                Color(0xFF9B59B6), // Fig Plum Purple
+                Color(0xFFFF1493), // Strawberry Pink
+                Color(0xFF7FFF00)  // Lime Kiwi Green
+            )
+            val idx = (p.colorIndex * fruityColors.size).toInt().coerceIn(0, fruityColors.size - 1)
+            val baseColor = fruityColors[idx]
+            return baseColor.copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
+        }
 
         parseRoleAndProvider(p.role)?.let { (role, provider) ->
             p.logoColor?.let { source ->
@@ -980,7 +1041,18 @@ internal class SwarmSimulation(
     // MARK: shape helpers
 
     private fun defaultModes(): List<Mode> = buildList {
-        if (excludeBrandShapes) {
+        if (uiMode == UIMode.COOKING) {
+            add(Mode.SWARM)
+            add(Mode.SHAPE_DOLLAR)       // Apple
+            add(Mode.SWARM)
+            add(Mode.SHAPE_CODE)         // Cherry
+            add(Mode.SWARM)
+            add(Mode.SHAPE_RINGS)        // Banana
+            add(Mode.SWARM)
+            add(Mode.SHAPE_ROUTER_FLOW)  // Cookie
+            add(Mode.SWARM)
+            add(Mode.SHAPE_COOKING_5)    // Cupcake
+        } else if (excludeBrandShapes) {
             add(Mode.SWARM)
             if (enabledProviderLogos.contains(AgentProvider.XAI)) {
                 add(Mode.SHAPE_GROK_LOGO)
@@ -1118,6 +1190,287 @@ internal class SwarmSimulation(
                 pts.add(ShapePoint(x, y, role, (i * stepsPerSegment + j).toDouble() / (n * stepsPerSegment).toDouble()))
             }
         }
+        return pts
+    }
+
+    private fun generateSpline(
+        controlPoints: List<Pair<Double, Double>>,
+        stepsPerSegment: Int,
+        colorStart: Color,
+        colorEnd: Color = colorStart,
+        isClosed: Boolean = true,
+        role: String = "cooking"
+    ): List<ShapePoint> {
+        if (controlPoints.isEmpty()) return emptyList()
+        val pts = ArrayList<ShapePoint>()
+        val n = controlPoints.size
+
+        if (isClosed) {
+            if (n < 3) return emptyList()
+            for (i in 0 until n) {
+                val p0 = controlPoints[(i - 1 + n) % n]
+                val p1 = controlPoints[i]
+                val p2 = controlPoints[(i + 1) % n]
+                val p3 = controlPoints[(i + 2) % n]
+                for (j in 0 until stepsPerSegment) {
+                    val t = j.toDouble() / stepsPerSegment.toDouble()
+                    val t2 = t * t
+                    val t3 = t2 * t
+                    val x = 0.5 * (
+                        2.0 * p1.first +
+                        (-p0.first + p2.first) * t +
+                        (2.0 * p0.first - 5.0 * p1.first + 4.0 * p2.first - p3.first) * t2 +
+                        (-p0.first + 3.0 * p1.first - 3.0 * p2.first + p3.first) * t3
+                    )
+                    val y = 0.5 * (
+                        2.0 * p1.second +
+                        (-p0.second + p2.second) * t +
+                        (2.0 * p0.second - 5.0 * p1.second + 4.0 * p2.second - p3.second) * t2 +
+                        (-p0.second + 3.0 * p1.second - 3.0 * p2.second + p3.second) * t3
+                    )
+                    val progress = (i * stepsPerSegment + j).toDouble() / (n * stepsPerSegment).toDouble()
+                    val color = blend(colorStart, colorEnd, progress.toFloat())
+                    pts.add(ShapePoint(x, y, role, progress, color))
+                }
+            }
+        } else {
+            if (n < 2) return emptyList()
+            val padded = ArrayList<Pair<Double, Double>>()
+            padded.add(controlPoints.first())
+            padded.addAll(controlPoints)
+            padded.add(controlPoints.last())
+
+            val pn = padded.size
+            val segments = pn - 3
+            for (i in 0 until segments) {
+                val p0 = padded[i]
+                val p1 = padded[i + 1]
+                val p2 = padded[i + 2]
+                val p3 = padded[i + 3]
+                for (j in 0 until stepsPerSegment) {
+                    val t = j.toDouble() / stepsPerSegment.toDouble()
+                    val t2 = t * t
+                    val t3 = t2 * t
+                    val x = 0.5 * (
+                        2.0 * p1.first +
+                        (-p0.first + p2.first) * t +
+                        (2.0 * p0.first - 5.0 * p1.first + 4.0 * p2.first - p3.first) * t2 +
+                        (-p0.first + 3.0 * p1.first - 3.0 * p2.first + p3.first) * t3
+                    )
+                    val y = 0.5 * (
+                        2.0 * p1.second +
+                        (-p0.second + p2.second) * t +
+                        (2.0 * p0.second - 5.0 * p1.second + 4.0 * p2.second - p3.second) * t2 +
+                        (-p0.second + 3.0 * p1.second - 3.0 * p2.second + p3.second) * t3
+                    )
+                    val progress = (i * stepsPerSegment + j).toDouble() / (segments * stepsPerSegment).toDouble()
+                    val color = blend(colorStart, colorEnd, progress.toFloat())
+                    pts.add(ShapePoint(x, y, role, progress, color))
+                }
+            }
+        }
+        return pts
+    }
+
+    private fun generateApplePoints(): List<ShapePoint> {
+        val pts = ArrayList<ShapePoint>()
+        val bodyCtrls = listOf(
+            0.0 to -0.22,
+            0.18 to -0.42,
+            0.46 to -0.32,
+            0.56 to -0.06,
+            0.42 to 0.28,
+            0.16 to 0.44,
+            0.0 to 0.36,
+            -0.16 to 0.44,
+            -0.42 to 0.28,
+            -0.56 to -0.06,
+            -0.46 to -0.32,
+            -0.18 to -0.42
+        )
+        pts.addAll(generateSpline(bodyCtrls, 30, Color(0xFFFF2A6D), Color(0xFFFF5E3A), isClosed = true))
+
+        val stemCtrls = listOf(
+            0.0 to -0.25,
+            0.02 to -0.38,
+            0.08 to -0.50,
+            0.15 to -0.58
+        )
+        pts.addAll(generateSpline(stemCtrls, 15, Color(0xFF8E5A32), Color(0xFF5C4033), isClosed = false))
+
+        val leafCtrls = listOf(
+            0.06 to -0.46,
+            0.18 to -0.58,
+            0.32 to -0.58,
+            0.18 to -0.42
+        )
+        pts.addAll(generateSpline(leafCtrls, 20, Color(0xFF2ECC71), Color(0xFF7FFF00), isClosed = true))
+        return pts
+    }
+
+    private fun generateCherryPoints(): List<ShapePoint> {
+        val pts = ArrayList<ShapePoint>()
+        val leftCherryCtrls = listOf(
+            -0.25 to 0.06,
+            -0.13 to 0.12,
+            -0.08 to 0.22,
+            -0.14 to 0.32,
+            -0.25 to 0.38,
+            -0.36 to 0.32,
+            -0.42 to 0.22,
+            -0.36 to 0.12
+        )
+        pts.addAll(generateSpline(leftCherryCtrls, 25, Color(0xFFFF1493), Color(0xFFFF2A6D), isClosed = true))
+
+        val rightCherryCtrls = listOf(
+            0.22 to 0.14,
+            0.33 to 0.20,
+            0.38 to 0.30,
+            0.32 to 0.40,
+            0.22 to 0.46,
+            0.12 to 0.40,
+            0.06 to 0.30,
+            0.12 to 0.20
+        )
+        pts.addAll(generateSpline(rightCherryCtrls, 25, Color(0xFFFF2A6D), Color(0xFF9B59B6), isClosed = true))
+
+        val leftStemCtrls = listOf(
+            0.0 to -0.32,
+            -0.05 to -0.18,
+            -0.15 to -0.05,
+            -0.25 to 0.08
+        )
+        pts.addAll(generateSpline(leftStemCtrls, 15, Color(0xFF2ECC71), Color(0xFF27AE60), isClosed = false))
+
+        val rightStemCtrls = listOf(
+            0.0 to -0.32,
+            0.08 to -0.15,
+            0.16 to 0.0,
+            0.22 to 0.16
+        )
+        pts.addAll(generateSpline(rightStemCtrls, 15, Color(0xFF2ECC71), Color(0xFF27AE60), isClosed = false))
+
+        val leafCtrls = listOf(
+            0.0 to -0.32,
+            0.12 to -0.45,
+            0.28 to -0.48,
+            0.15 to -0.30
+        )
+        pts.addAll(generateSpline(leafCtrls, 20, Color(0xFF7FFF00), Color(0xFF2ECC71), isClosed = true))
+        return pts
+    }
+
+    private fun generateBananaPoints(): List<ShapePoint> {
+        val pts = ArrayList<ShapePoint>()
+        val bananaCtrls = listOf(
+            0.15 to -0.48,
+            0.18 to -0.38,
+            0.05 to -0.15,
+            -0.12 to 0.08,
+            -0.22 to 0.30,
+            -0.24 to 0.40,
+            -0.16 to 0.34,
+            0.02 to 0.12,
+            0.16 to -0.15,
+            0.08 to -0.42
+        )
+        val splinePoints = generateSpline(bananaCtrls, 45, Color(0xFFFFD700), Color(0xFFFF5E3A), isClosed = true)
+        val texturedPoints = splinePoints.map { pt ->
+            val color = when {
+                pt.progress < 0.18 -> Color(0xFF5C4033)
+                pt.progress < 0.28 -> Color(0xFF7FFF00)
+                pt.progress < 0.85 -> Color(0xFFFFD700)
+                else -> Color(0xFF2C3E50)
+            }
+            pt.copy(color = color)
+        }
+        pts.addAll(texturedPoints)
+        return pts
+    }
+
+    private fun generateCookiePoints(): List<ShapePoint> {
+        val pts = ArrayList<ShapePoint>()
+        val baseCtrls = ArrayList<Pair<Double, Double>>()
+        val segments = 12
+        for (i in 0 until segments) {
+            val angle = PI * 2.0 * i.toDouble() / segments.toDouble()
+            val bump = 0.03 * sin(angle * 3.5)
+            val r = 0.45 + bump
+            baseCtrls.add(cos(angle) * r to sin(angle) * r)
+        }
+        pts.addAll(generateSpline(baseCtrls, 30, Color(0xFFE5A96A), Color(0xFFC68B59), isClosed = true))
+
+        val chipCenters = listOf(
+            -0.15 to -0.15,
+            0.18 to -0.10,
+            0.05 to 0.18,
+            -0.18 to 0.12,
+            0.0 to -0.28
+        )
+        for ((cx, cy) in chipCenters) {
+            val chipCtrls = listOf(
+                cx - 0.04 to cy,
+                cx to cy - 0.03,
+                cx + 0.05 to cy,
+                cx to cy + 0.04
+            )
+            pts.addAll(generateSpline(chipCtrls, 8, Color(0xFF3D2723), Color(0xFF1E1610), isClosed = true))
+        }
+        return pts
+    }
+
+    private fun generateCupcakePoints(): List<ShapePoint> {
+        val pts = ArrayList<ShapePoint>()
+        val linerCtrls = listOf(
+            -0.30 to 0.35,
+            0.30 to 0.35,
+            0.36 to 0.05,
+            -0.36 to 0.05
+        )
+        pts.addAll(generateSpline(linerCtrls, 40, Color(0xFF5DADE2), Color(0xFF3498DB), isClosed = true))
+
+        val pleatsX = listOf(-0.2, -0.1, 0.0, 0.1, 0.2)
+        for (px in pleatsX) {
+            val startX = px * 0.9
+            val endX = px * 1.05
+            val pleatCtrls = listOf(
+                startX to 0.35,
+                (startX + endX) * 0.5 to 0.20,
+                endX to 0.05
+            )
+            pts.addAll(generateSpline(pleatCtrls, 12, Color(0xFF2E86C1), Color(0xFF5DADE2), isClosed = false))
+        }
+
+        val frostingCtrls = listOf(
+            -0.38 to 0.05,
+            -0.36 to -0.10,
+            -0.28 to -0.15,
+            -0.25 to -0.28,
+            -0.14 to -0.32,
+            0.0 to -0.45,
+            0.14 to -0.32,
+            0.25 to -0.28,
+            0.28 to -0.15,
+            0.36 to -0.10,
+            0.38 to 0.05,
+            0.0 to 0.08
+        )
+        pts.addAll(generateSpline(frostingCtrls, 25, Color(0xFF8E44AD), Color(0xFFFFB7B2), isClosed = true))
+
+        val cherryCtrls = listOf(
+            0.0 to -0.46,
+            0.05 to -0.51,
+            0.0 to -0.56,
+            -0.05 to -0.51
+        )
+        pts.addAll(generateSpline(cherryCtrls, 12, Color(0xFFFF2A6D), Color(0xFFFF1493), isClosed = true))
+
+        val stemCtrls = listOf(
+            0.0 to -0.54,
+            0.04 to -0.62,
+            0.12 to -0.68
+        )
+        pts.addAll(generateSpline(stemCtrls, 10, Color(0xFF8E5A32), Color(0xFF5C4033), isClosed = false))
         return pts
     }
 
@@ -1561,26 +1914,773 @@ internal class SwarmSimulation(
         return pts
     }
 
-    private fun generateHermesLogoPoints(): List<ShapePoint> {
-        val coords = doubleArrayOf(
-            -0.30448000000000003, 0.06732, -0.18700000000000003, -0.09614000000000002, -0.18722, -0.09581, -0.18744000000000002, -0.09548000000000001, -0.18755000000000002, -0.09515, -0.18425000000000002, -0.09405000000000001, -0.17567000000000002, -0.09185000000000001, -0.16885, -0.09020000000000002, -0.16192, -0.08844, -0.1606, -0.08723, -0.16104000000000002, -0.08624000000000001, -0.16159, -0.08514000000000001, -0.16203, -0.08415, -0.16159, -0.08327000000000001, -0.16093000000000002, -0.08239, -0.15994000000000003, -0.08129, -0.15928000000000003, -0.08041000000000001, -0.16071000000000002, -0.07931, -0.16214, -0.07832, -0.16357000000000002, -0.07722000000000001, -0.165, -0.07623, -0.16467, -0.07524000000000002, -0.16434, -0.07414000000000001, -0.16401000000000002, -0.07315, -0.16434, -0.07205, -0.16665000000000002, -0.07150000000000001, -0.16896, -0.07106000000000001, -0.17138, -0.07051000000000002, -0.17292000000000002, -0.06974000000000001, -0.17204000000000003, -0.06831000000000001, -0.17116, -0.06677, -0.17039, -0.06534000000000001, -0.17127, -0.06424, -0.17424000000000003, -0.06424, -0.17721, -0.06424, -0.18018, -0.06424, -0.18172000000000002, -0.06336, -0.18183000000000002, -0.06171, -0.18194000000000002, -0.06017, -0.18194000000000002, -0.05852, -0.18238000000000001, -0.05698, -0.18315000000000003, -0.055110000000000006, -0.18381, -0.053680000000000005, -0.18436000000000002, -0.05214, -0.18568, -0.051480000000000005, -0.18733000000000002, -0.05115, -0.18887, -0.050710000000000005, -0.19041000000000002, -0.05027, -0.19195, -0.05016, -0.19338000000000002, -0.05016, -0.19525, -0.05016, -0.19679000000000002, -0.05016, -0.19613, -0.052250000000000005, -0.19547, -0.054340000000000006, -0.19492, -0.05643, -0.19426000000000002, -0.058410000000000004, -0.19294000000000003, -0.06182000000000001, -0.19162, -0.06523000000000001, -0.1903, -0.06864, -0.18887, -0.07348, -0.18843000000000001, -0.07953, -0.18788000000000002, -0.08558, -0.18744000000000002, -0.09163, -0.20306, -0.03047, -0.01573, -0.5453800000000001, -0.01727, -0.54351, -0.018920000000000003, -0.54164, -0.02046, -0.5397700000000001, -0.022000000000000002, -0.53801, -0.021780000000000004, -0.53768, -0.02145, -0.53724, -0.02112, -0.53691, -0.02486, -0.53691, -0.02849, -0.53691, -0.03223, -0.53691, -0.03597, -0.53691, -0.03586, -0.53625, -0.03564, -0.5357000000000001, -0.035530000000000006, -0.53493, -0.03542, -0.53427, -0.03509, -0.53339, -0.034760000000000006, -0.5324, -0.03443, -0.5315200000000001, -0.03564, -0.53086, -0.041580000000000006, -0.53086, -0.04741, -0.53086, -0.05335000000000001, -0.53086, -0.05786000000000001, -0.53097, -0.05808000000000001, -0.5313, -0.058410000000000004, -0.53174, -0.05863, -0.53207, -0.06028000000000001, -0.5315200000000001, -0.06182000000000001, -0.53108, -0.06347000000000001, -0.5305300000000001, -0.06512000000000001, -0.5300900000000001, -0.09119000000000001, -0.5300900000000001, -0.11726, -0.5300900000000001, -0.14344, -0.5300900000000001, -0.16951, -0.5300900000000001, -0.17072, -0.5300900000000001, -0.17182000000000003, -0.5300900000000001, -0.17292000000000002, -0.5300900000000001, -0.17402000000000004, -0.5300900000000001, -0.21538000000000002, -0.5300900000000001, -0.25685, -0.5300900000000001, -0.30855000000000005, -0.5300900000000001, -0.33957, -0.5313, -0.33913000000000004, -0.53625, -0.33869000000000005, -0.5413100000000001, -0.33825, -0.5462600000000001, -0.31229, -0.5424100000000001, -0.23441000000000004, -0.52283, -0.18689, -0.5166700000000001, -0.15862, -0.51865, -0.13541, -0.5237100000000001, -0.10351000000000002, -0.5294300000000001, -0.07161000000000001, -0.5352600000000001, -0.03971, -0.5410900000000001, -0.10406000000000001, 0.54483, -0.10428, 0.54549, -0.10450000000000001, 0.54615, -0.10483, 0.54681, -0.10505, 0.54747, -0.10527, 0.5480200000000001, -0.10560000000000001, 0.5486800000000001, -0.10582, 0.54934, -0.10615000000000001, 0.55, -0.10626000000000002, 0.5498900000000001, -0.10648, 0.54978, -0.10659, 0.54967, -0.10681000000000002, 0.54956, -0.10703, 0.54934, -0.10714000000000001, 0.5492300000000001, -0.10736000000000001, 0.54912, -0.10714000000000001, 0.54879, -0.10681000000000002, 0.5482400000000001, -0.10637, 0.54769, -0.10593000000000001, 0.54725, -0.10549000000000001, 0.5467000000000001, -0.10505, 0.54615, -0.10461000000000001, 0.5456000000000001, -0.10417000000000001, 0.54505, -0.02519, 0.36828, -0.026290000000000004, 0.36949, -0.02849, 0.3718000000000001, -0.02959, 0.37290000000000006, -0.03179, 0.37521000000000004, -0.03289, 0.37642000000000003, -0.033990000000000006, 0.37752, -0.03619, 0.37983, -0.037290000000000004, 0.38104, -0.03839, 0.38214000000000004, -0.0407, 0.38445, -0.041800000000000004, 0.38555, -0.0429, 0.38676000000000005, -0.0407, 0.38445, -0.039490000000000004, 0.38324, -0.037290000000000004, 0.38104, -0.03619, 0.37983, -0.03509, 0.37873, -0.03289, 0.37642000000000003, -0.03179, 0.37521000000000004, -0.02959, 0.37290000000000006, -0.02849, 0.3718000000000001, -0.02739, 0.37059000000000003, -0.02519, 0.36828, -0.30448000000000003, 0.38093000000000005, 0.40953000000000006, 0.16181, 0.40942, 0.16192, 0.4092, 0.16203, 0.40909000000000006, 0.16203, 0.40898000000000007, 0.16214, 0.40887, 0.16225, 0.40865, 0.16236000000000003, 0.40854, 0.16247, 0.40843000000000007, 0.16258, 0.40821, 0.16269000000000003, 0.4081, 0.16269000000000003, 0.40799, 0.1628, 0.40799, 0.1628, 0.4081, 0.16269000000000003, 0.40821, 0.16269000000000003, 0.40832, 0.16258, 0.40854, 0.16247, 0.40865, 0.16236000000000003, 0.40876, 0.16225, 0.40898000000000007, 0.16214, 0.40909000000000006, 0.16203, 0.4092, 0.16203, 0.40931, 0.16192, 0.40953000000000006, 0.16181, -0.31119, -0.14982, -0.31141, -0.14740000000000003, -0.31163, -0.14509, -0.31196000000000007, -0.14190000000000003, -0.31218, -0.13948000000000002, -0.3124, -0.13717000000000001, -0.31251000000000007, -0.13739, -0.31273, -0.13761, -0.31295, -0.13805, -0.31372000000000005, -0.13816, -0.31548000000000004, -0.13783, -0.31735, -0.1375, -0.31911000000000006, -0.13717000000000001, -0.32153000000000004, -0.13673, -0.3229600000000001, -0.13684000000000002, -0.32384, -0.13805, -0.32472000000000006, -0.13926, -0.32582000000000005, -0.1408, -0.32659000000000005, -0.14201, -0.32615, -0.14322000000000001, -0.32318, -0.14454, -0.32021000000000005, -0.14586000000000002, -0.31625, -0.14762000000000003, -0.31317000000000006, -0.14894000000000002, 0.09933000000000002, 0.27841, 0.09889, 0.27874000000000004, 0.09801, 0.27929000000000004, 0.09757, 0.27951000000000004, 0.09669000000000001, 0.28006000000000003, 0.09625, 0.28028000000000003, 0.09581, 0.28061, 0.09493000000000001, 0.28116, 0.09449000000000002, 0.2813800000000001, 0.09405000000000001, 0.28171, 0.09317, 0.28215, 0.09273, 0.28248, 0.09229000000000001, 0.2827, 0.09317, 0.28215, 0.09361, 0.28193, 0.09449000000000002, 0.2813800000000001, 0.09493000000000001, 0.28116, 0.09537000000000001, 0.2808300000000001, 0.09625, 0.28028000000000003, 0.09669000000000001, 0.28006000000000003, 0.09757, 0.27951000000000004, 0.09801, 0.27929000000000004, 0.09845000000000001, 0.27896000000000004, 0.09933000000000002, 0.27841, 0.08701000000000002, 0.16335, 0.08679, 0.16071000000000002, 0.08635000000000001, 0.15543, 0.08624000000000001, 0.15279, 0.0858, 0.14751, 0.08558, 0.14487000000000003, 0.08536, 0.14223000000000002, 0.08492000000000001, 0.13684000000000002, 0.08481000000000001, 0.1342, 0.08459, 0.13156, 0.08415, 0.12628, 0.08393000000000002, 0.12364000000000001, 0.08371, 0.12100000000000001, 0.08415, 0.12628, 0.08437000000000001, 0.12892, 0.08481000000000001, 0.1342, 0.08492000000000001, 0.13684000000000002, 0.08514000000000001, 0.13959000000000002, 0.08558, 0.14487000000000003, 0.0858, 0.14751, 0.08624000000000001, 0.15279, 0.08635000000000001, 0.15543, 0.08657000000000001, 0.15807000000000002, 0.08701000000000002, 0.16335, 0.23419000000000004, -0.22506, 0.23540000000000003, -0.22165000000000004, 0.23661000000000004, -0.21824000000000002, 0.23771, -0.21483000000000002, 0.23859000000000002, -0.21230000000000002, 0.24409, -0.19393000000000002, 0.25102, -0.17061, 0.25795, -0.14729, 0.26488, -0.12408000000000001, 0.26686000000000004, -0.11825000000000001, 0.26730000000000004, -0.11836, 0.26774000000000003, -0.11847000000000002, 0.26719000000000004, -0.12177000000000002, 0.26642000000000005, -0.12606, 0.26565, -0.13035, 0.26477, -0.13475, 0.26389, -0.13783, 0.26246, -0.14179, 0.26114000000000004, -0.14586000000000002, 0.25971000000000005, -0.14982, 0.25586000000000003, -0.16104000000000002, 0.25124, -0.17468, 0.24508000000000002, -0.19305, 0.23881, -0.21131, -0.29073, 0.1375, -0.33825, 0.026510000000000002, -0.33539, -0.030250000000000003, -0.33539, -0.030030000000000005, -0.33539, -0.02959, -0.33539, -0.02926, -0.33539, -0.028820000000000002, -0.33539, -0.0286, -0.33539, -0.028270000000000003, -0.33539, -0.02783, -0.33539, -0.027610000000000003, -0.33539, -0.027280000000000002, -0.33539, -0.026840000000000003, -0.33539, -0.02662, -0.33539, -0.026290000000000004, -0.33539, -0.026840000000000003, -0.33539, -0.027060000000000004, -0.33539, -0.027610000000000003, -0.33539, -0.02783, -0.33539, -0.028050000000000002, -0.33539, -0.0286, -0.33539, -0.028820000000000002, -0.33539, -0.02926, -0.33539, -0.02959, -0.33539, -0.02981, -0.33539, -0.030250000000000003, -0.33616, -0.07656, -0.33561, -0.07612000000000001, -0.33506, -0.07557, -0.33451000000000003, -0.07513, -0.33396, -0.07469, -0.33341, -0.07425000000000001, -0.33286, -0.07381000000000001, -0.33231, -0.07337, -0.33176, -0.07282, -0.33319000000000004, -0.07293000000000001, -0.33462000000000003, -0.07293000000000001, -0.33605, -0.07293000000000001, -0.33748000000000006, -0.07293000000000001, -0.33968000000000004, -0.07304000000000001, -0.34111, -0.07304000000000001, -0.34254, -0.07304000000000001, -0.34276, -0.07326000000000002, -0.3418800000000001, -0.07370000000000002, -0.341, -0.07414000000000001, -0.34012, -0.07458000000000001, -0.33924000000000004, -0.07502, -0.33836, -0.07546, -0.33748000000000006, -0.07590000000000001, -0.3366, -0.07634, 0.15279, -0.06105000000000001, -0.20647000000000001, -0.23606000000000002, -0.20790000000000003, -0.23859000000000002, -0.21065000000000003, -0.24365000000000003, -0.21208000000000002, -0.24618, -0.21494000000000002, -0.25113, -0.21626, -0.25366, -0.21769000000000002, -0.25619000000000003, -0.22055000000000002, -0.26114000000000004, -0.22198000000000004, -0.26367, -0.22330000000000003, -0.2662, -0.22616000000000003, -0.27126000000000006, -0.22759000000000001, -0.27368000000000003, -0.22902, -0.27621, -0.22616000000000003, -0.27126000000000006, -0.22473000000000004, -0.26873, -0.22198000000000004, -0.26367, -0.22055000000000002, -0.26114000000000004, -0.21912, -0.25872, -0.21626, -0.25366, -0.21494000000000002, -0.25113, -0.21208000000000002, -0.24618, -0.21065000000000003, -0.24365000000000003, -0.20922000000000002, -0.24112000000000003, -0.20647000000000001, -0.23606000000000002, -0.09141, -0.5220600000000001, -0.08536, -0.5192, -0.0814, -0.5173300000000001, -0.07535000000000001, -0.5144700000000001, -0.07139000000000001, -0.51249, -0.06534000000000001, -0.50963, -0.05929000000000001, -0.50677, -0.05918, -0.50699, -0.058960000000000005, -0.50732, -0.05874000000000001, -0.50754, -0.05863, -0.5077600000000001, -0.05852, -0.50798, -0.05808000000000001, -0.5082000000000001, -0.05775, -0.50831, -0.0572, -0.50853, -0.05687000000000001, -0.50875, -0.05632000000000001, -0.50897, -0.05577000000000001, -0.50919, -0.05786000000000001, -0.51007, -0.06457, -0.51249, -0.06908, -0.51403, -0.07579000000000001, -0.51645, -0.0825, -0.51887, -0.08701000000000002, -0.5205200000000001, 0.22957000000000002, -0.2376, 0.22946000000000003, -0.23782000000000003, 0.22935, -0.23815000000000003, 0.22924000000000003, -0.23826, 0.22913000000000003, -0.23848, 0.22902, -0.23881, 0.2288, -0.23903000000000002, 0.22869000000000003, -0.23925000000000002, 0.22869000000000003, -0.23947000000000002, 0.22847, -0.23969000000000004, 0.22836000000000004, -0.23958000000000002, 0.22825, -0.23947000000000002, 0.22803000000000004, -0.23947000000000002, 0.22803000000000004, -0.23936000000000002, 0.22781, -0.23925000000000002, 0.22781, -0.23914000000000002, 0.22814, -0.23892000000000002, 0.22825, -0.23881, 0.22847, -0.23859000000000002, 0.22869000000000003, -0.23837000000000003, 0.22891000000000003, -0.23815000000000003, 0.22913000000000003, -0.23804000000000003, 0.22924000000000003, -0.23793, 0.22946000000000003, -0.23771, -0.39215, -0.35871000000000003, -0.39435000000000003, -0.35662, -0.39754, -0.35343, -0.39974000000000004, -0.35134000000000004, -0.40304, -0.34815, -0.40513000000000005, -0.34606000000000003, -0.40733, -0.34386, -0.40931, -0.34166, -0.40887, -0.34155, -0.40821, -0.34133, -0.40777, -0.34122, -0.40711, -0.34089, -0.40667, -0.34078, -0.40623000000000004, -0.34067, -0.40590000000000004, -0.34078, -0.40579000000000004, -0.34089, -0.40568000000000004, -0.34122, -0.40557000000000004, -0.34133, -0.40304, -0.34463000000000005, -0.40139, -0.3468300000000001, -0.39974000000000004, -0.34892, -0.39721, -0.35222000000000003, -0.39545, -0.35442, -0.39303000000000005, -0.35761000000000004, 0.22781, -0.24365000000000003, 0.22781, -0.24354000000000003, 0.22792, -0.24354000000000003, 0.22792, -0.24343, 0.22803000000000004, -0.24343, 0.22814, -0.24321, 0.22825, -0.2431, 0.22836000000000004, -0.24299000000000004, 0.22847, -0.24288, 0.22847, -0.24277000000000004, 0.22858000000000003, -0.24277000000000004, 0.22858000000000003, -0.24266000000000001, 0.22858000000000003, -0.24266000000000001, 0.22858000000000003, -0.24277000000000004, 0.22847, -0.24277000000000004, 0.22847, -0.24288, 0.22836000000000004, -0.24299000000000004, 0.22825, -0.2431, 0.22814, -0.24321, 0.22803000000000004, -0.24332000000000004, 0.22803000000000004, -0.24343, 0.22792, -0.24354000000000003, 0.22781, -0.24354000000000003, 0.22781, -0.24365000000000003, -0.38753000000000004, -0.33176, -0.38555, -0.33176, -0.3834600000000001, -0.33176, -0.38148000000000004, -0.33176, -0.37939, -0.33176, -0.3773000000000001, -0.33176, -0.37653000000000003, -0.33176, -0.37620000000000003, -0.33176, -0.37587000000000004, -0.33165, -0.37576000000000004, -0.33044, -0.37576000000000004, -0.32857000000000003, -0.37576000000000004, -0.3267, -0.37576000000000004, -0.32483, -0.37576000000000004, -0.32307, -0.37565000000000004, -0.32186000000000003, -0.37532000000000004, -0.32175, -0.37510000000000004, -0.32175, -0.37356000000000006, -0.32494, -0.36971000000000004, -0.33440000000000003, -0.3657500000000001, -0.34386, -0.36179000000000006, -0.35332, -0.35783, -0.36278, -0.35398, -0.37235000000000007, -0.35387, -0.37257, -0.35376, -0.37290000000000006, -0.35365, -0.37323, -0.35783, -0.36806000000000005, -0.36421000000000003, -0.36036, -0.37059000000000003, -0.35255000000000003, -0.37697, -0.34474000000000005, -0.38324, -0.33704, -0.28853, -0.36377000000000004, -0.28853, -0.36399000000000004, -0.28864000000000006, -0.36432000000000003, -0.28875000000000006, -0.36443000000000003, -0.28886, -0.36476000000000003, -0.28776, -0.3652, -0.28622000000000003, -0.36586, -0.28523, -0.36619, -0.28358, -0.36685000000000006, -0.28259000000000006, -0.36729, -0.28105, -0.36795000000000005, -0.2805, -0.36784, -0.2805, -0.36707, -0.2805, -0.36652, -0.2805, -0.36597, -0.2805, -0.3652, -0.2805, -0.36465000000000003, -0.2805, -0.36377000000000004, -0.28149, -0.36377000000000004, -0.28303, -0.36377000000000004, -0.28402, -0.36377000000000004, -0.28556000000000004, -0.36377000000000004, -0.28655, -0.36377000000000004, -0.28798, -0.36377000000000004, -0.09801, -0.38005, -0.09911, -0.38005, -0.09988000000000001, -0.38005, -0.10098000000000001, -0.38005, -0.10219, -0.38005, -0.10285000000000001, -0.38005, -0.10406000000000001, -0.38005, -0.10439000000000001, -0.38082000000000005, -0.10472000000000002, -0.38137000000000004, -0.10516000000000002, -0.38214000000000004, -0.10549000000000001, -0.38291000000000003, -0.10582, -0.3834600000000001, -0.10626000000000002, -0.38423, -0.10593000000000001, -0.38423, -0.10571000000000001, -0.38423, -0.10549000000000001, -0.38434, -0.10516000000000002, -0.38434, -0.10494, -0.38434, -0.10428, -0.38412, -0.10307000000000001, -0.38324, -0.10219, -0.38280000000000003, -0.10098000000000001, -0.38192000000000004, -0.09966000000000001, -0.38115, -0.09889, -0.3806, -0.2255, -0.3468300000000001, -0.22462000000000001, -0.34540000000000004, -0.22374000000000002, -0.34397, -0.22297, -0.34254, -0.22209, -0.341, -0.22132000000000002, -0.33957, -0.22044000000000002, -0.33814000000000005, -0.21956, -0.33671, -0.21879, -0.33528, -0.21901, -0.34397, -0.21923000000000004, -0.35277000000000003, -0.21956, -0.36146000000000006, -0.21978000000000003, -0.37015000000000003, -0.22011000000000003, -0.38324, -0.22044000000000002, -0.39193000000000006, -0.22066000000000002, -0.40073000000000003, -0.22110000000000002, -0.40139, -0.22165000000000004, -0.39413000000000004, -0.22220000000000004, -0.38687000000000005, -0.22286000000000003, -0.37961000000000006, -0.22341000000000003, -0.37224, -0.22396000000000002, -0.36498, -0.22462000000000001, -0.35772000000000004, -0.22517, -0.35046000000000005, -0.21219000000000002, -0.3296700000000001, -0.21175000000000002, -0.33, -0.21120000000000003, -0.33033, -0.21076, -0.33055, -0.21032000000000003, -0.33088000000000006, -0.20988, -0.33121, -0.20933000000000002, -0.33154, -0.20889000000000002, -0.33176, -0.20845000000000002, -0.33209000000000005, -0.20889000000000002, -0.33440000000000003, -0.20944000000000004, -0.33682000000000006, -0.20988, -0.33913000000000004, -0.21032000000000003, -0.34155, -0.21109, -0.34507, -0.21153000000000002, -0.3473800000000001, -0.21208000000000002, -0.34969000000000006, -0.21230000000000002, -0.34958000000000006, -0.21230000000000002, -0.34694, -0.21219000000000002, -0.34430000000000005, -0.21219000000000002, -0.34166, -0.21219000000000002, -0.33902, -0.21219000000000002, -0.33638000000000007, -0.21219000000000002, -0.33363000000000004, -0.21219000000000002, -0.33099, 0.27775000000000005, -0.41217, 0.27643000000000006, -0.4136, 0.27555, -0.41459000000000007, 0.27434000000000003, -0.41591, 0.27302000000000004, -0.41723000000000005, 0.27324000000000004, -0.41635000000000005, 0.27423000000000003, -0.4139300000000001, 0.27522, -0.41140000000000004, 0.27588000000000007, -0.40953000000000006, 0.27676, -0.40766, 0.27709000000000006, -0.40777, 0.27731, -0.4078800000000001, 0.27797, -0.40711, 0.27907, -0.40535000000000004, 0.27984000000000003, -0.40414000000000005, 0.28094, -0.40249, 0.28182, -0.4011700000000001, 0.28215, -0.40139, 0.28248, -0.40161, 0.28292, -0.40183, 0.28479000000000004, -0.39809000000000005, 0.28622000000000003, -0.39534, 0.28809000000000007, -0.39171000000000006, 0.28996000000000005, -0.38797000000000004, 0.29073, -0.3872, 0.29117000000000004, -0.38742000000000004, 0.29161000000000004, -0.38753000000000004, 0.29205000000000003, -0.3872, 0.29271, -0.38632000000000005, 0.29337, -0.38544, 0.29392, -0.38478, 0.29447, -0.38412, 0.29480000000000006, -0.38434, 0.29502, -0.38445, 0.29557, -0.38445, 0.29689, -0.38368, 0.29788000000000003, -0.38324, 0.2992, -0.38247000000000003, 0.30041, -0.38181000000000004, 0.30019, -0.38368, 0.29997, -0.3861, 0.29964, -0.38863000000000003, 0.29942, -0.3905, 0.29942, -0.39182000000000006, 0.29986, -0.39215, 0.30008, -0.39226, 0.30052, -0.39248000000000005, 0.30239, -0.39116000000000006, 0.30426000000000003, -0.38984, 0.30558, -0.38885000000000003, 0.30745000000000006, -0.38742000000000004, 0.30833, -0.38654, 0.30866000000000005, -0.38599, 0.30910000000000004, -0.38522000000000006, 0.30954, -0.38445, 0.30998000000000003, -0.38423, 0.31031000000000003, -0.38445, 0.31064, -0.38478, 0.30657, -0.38830000000000003, 0.29832000000000003, -0.39512, 0.29007, -0.40194, 0.28391, -0.40711, -0.03619, -0.39655, -0.04059000000000001, -0.39556, -0.04499, -0.39446, -0.05049000000000001, -0.39325, -0.05324, -0.3916, -0.05137, -0.38830000000000003, -0.0495, -0.385, -0.04752000000000001, -0.38181000000000004, -0.04587000000000001, -0.37906000000000006, -0.04488000000000001, -0.37818, -0.044000000000000004, -0.3773000000000001, -0.043120000000000006, -0.37653000000000003, -0.04191, -0.37598000000000004, -0.04048, -0.37543000000000004, -0.038610000000000005, -0.37488000000000005, -0.037070000000000006, -0.37444, -0.04015, -0.37169, -0.04488000000000001, -0.36828, -0.0495, -0.36487, -0.055330000000000004, -0.36069000000000007, -0.057420000000000006, -0.36311000000000004, -0.0594, -0.36564, -0.06138000000000001, -0.36806000000000005, -0.06347000000000001, -0.37059000000000003, -0.05665, -0.37708, -0.04807000000000001, -0.38522000000000006, -0.04125, -0.39171000000000006
+            private fun generateHermesLogoPoints(): List<ShapePoint> {
+        return listOf(
+            ShapePoint(x = -0.2187, y = -0.0278, role = "logo-flame-spark", progress = 0.000000),
+            ShapePoint(x = -0.2072, y = -0.0314, role = "logo-flame-inner", progress = 0.001311),
+            ShapePoint(x = -0.1368, y = 0.0863, role = "logo-flame-inner", progress = 0.002621),
+            ShapePoint(x = -0.1251, y = 0.0878, role = "logo-flame-inner", progress = 0.003932),
+            ShapePoint(x = -0.1139, y = 0.0874, role = "logo-flame-spark", progress = 0.005242),
+            ShapePoint(x = -0.1022, y = 0.0834, role = "logo-flame-inner", progress = 0.006553),
+            ShapePoint(x = -0.0917, y = 0.0793, role = "logo-flame-inner", progress = 0.007864),
+            ShapePoint(x = -0.0834, y = 0.0705, role = "logo-flame-inner", progress = 0.009174),
+            ShapePoint(x = -0.0725, y = 0.0649, role = "logo-flame-spark", progress = 0.010485),
+            ShapePoint(x = -0.0623, y = 0.0595, role = "logo-flame-inner", progress = 0.011796),
+            ShapePoint(x = -0.0521, y = 0.0551, role = "logo-flame-inner", progress = 0.013106),
+            ShapePoint(x = -0.0632, y = 0.0485, role = "logo-flame-inner", progress = 0.014417),
+            ShapePoint(x = -0.0679, y = 0.0379, role = "logo-flame-spark", progress = 0.015727),
+            ShapePoint(x = -0.0778, y = 0.0315, role = "logo-flame-inner", progress = 0.017038),
+            ShapePoint(x = -0.0871, y = 0.0251, role = "logo-flame-inner", progress = 0.018349),
+            ShapePoint(x = -0.0969, y = 0.0196, role = "logo-flame-inner", progress = 0.019659),
+            ShapePoint(x = -0.1078, y = 0.0190, role = "logo-flame-spark", progress = 0.020970),
+            ShapePoint(x = -0.1190, y = 0.0200, role = "logo-flame-inner", progress = 0.022280),
+            ShapePoint(x = -0.1300, y = 0.0206, role = "logo-flame-inner", progress = 0.023591),
+            ShapePoint(x = -0.1402, y = 0.0255, role = "logo-flame-inner", progress = 0.024902),
+            ShapePoint(x = -0.1506, y = 0.0292, role = "logo-flame-spark", progress = 0.026212),
+            ShapePoint(x = -0.0796, y = 0.0428, role = "logo-flame-inner", progress = 0.027523),
+            ShapePoint(x = -0.0852, y = 0.0530, role = "logo-flame-inner", progress = 0.028834),
+            ShapePoint(x = -0.0954, y = 0.0489, role = "logo-flame-inner", progress = 0.030144),
+            ShapePoint(x = -0.0981, y = 0.0370, role = "logo-flame-spark", progress = 0.031455),
+            ShapePoint(x = -0.1100, y = 0.0329, role = "logo-flame-inner", progress = 0.032765),
+            ShapePoint(x = -0.1243, y = 0.0340, role = "logo-flame-inner", progress = 0.034076),
+            ShapePoint(x = -0.1308, y = 0.0434, role = "logo-flame-inner", progress = 0.035387),
+            ShapePoint(x = -0.1339, y = 0.0549, role = "logo-flame-spark", progress = 0.036697),
+            ShapePoint(x = -0.1451, y = 0.0515, role = "logo-flame-inner", progress = 0.038008),
+            ShapePoint(x = -0.1531, y = 0.0596, role = "logo-flame-inner", progress = 0.039318),
+            ShapePoint(x = -0.1567, y = 0.0702, role = "logo-flame-inner", progress = 0.040629),
+            ShapePoint(x = -0.1484, y = 0.0805, role = "logo-flame-spark", progress = 0.041940),
+            ShapePoint(x = -0.1480, y = 0.0404, role = "logo-flame-inner", progress = 0.043250),
+            ShapePoint(x = -0.0173, y = 0.3997, role = "logo-flame-inner", progress = 0.044561),
+            ShapePoint(x = -0.0060, y = 0.4000, role = "logo-flame-inner", progress = 0.045872),
+            ShapePoint(x = 0.0054, y = 0.3997, role = "logo-flame-spark", progress = 0.047182),
+            ShapePoint(x = 0.0177, y = 0.3990, role = "logo-flame-inner", progress = 0.048493),
+            ShapePoint(x = 0.0300, y = 0.3976, role = "logo-flame-inner", progress = 0.049803),
+            ShapePoint(x = 0.0420, y = 0.3955, role = "logo-flame-inner", progress = 0.051114),
+            ShapePoint(x = 0.0539, y = 0.3928, role = "logo-flame-spark", progress = 0.052425),
+            ShapePoint(x = 0.0658, y = 0.3897, role = "logo-flame-inner", progress = 0.053735),
+            ShapePoint(x = 0.0789, y = 0.3857, role = "logo-flame-inner", progress = 0.055046),
+            ShapePoint(x = 0.0926, y = 0.3810, role = "logo-flame-inner", progress = 0.056356),
+            ShapePoint(x = 0.1061, y = 0.3756, role = "logo-flame-spark", progress = 0.057667),
+            ShapePoint(x = 0.1313, y = 0.3568, role = "logo-flame-inner", progress = 0.058978),
+            ShapePoint(x = 0.1476, y = 0.3422, role = "logo-flame-inner", progress = 0.060288),
+            ShapePoint(x = 0.1640, y = 0.3275, role = "logo-flame-inner", progress = 0.061599),
+            ShapePoint(x = 0.1804, y = 0.3128, role = "logo-flame-spark", progress = 0.062910),
+            ShapePoint(x = 0.1968, y = 0.2981, role = "logo-flame-inner", progress = 0.064220),
+            ShapePoint(x = 0.2132, y = 0.2834, role = "logo-flame-inner", progress = 0.065531),
+            ShapePoint(x = 0.2188, y = 0.2740, role = "logo-flame-inner", progress = 0.066841),
+            ShapePoint(x = 0.2241, y = 0.2643, role = "logo-flame-spark", progress = 0.068152),
+            ShapePoint(x = 0.2290, y = 0.2544, role = "logo-flame-inner", progress = 0.069463),
+            ShapePoint(x = 0.2336, y = 0.2444, role = "logo-flame-inner", progress = 0.070773),
+            ShapePoint(x = 0.2378, y = 0.2341, role = "logo-flame-inner", progress = 0.072084),
+            ShapePoint(x = 0.2422, y = 0.2230, role = "logo-flame-spark", progress = 0.073394),
+            ShapePoint(x = 0.2466, y = 0.2119, role = "logo-flame-inner", progress = 0.074705),
+            ShapePoint(x = 0.2508, y = 0.2007, role = "logo-flame-inner", progress = 0.076016),
+            ShapePoint(x = 0.2548, y = 0.1894, role = "logo-flame-inner", progress = 0.077326),
+            ShapePoint(x = 0.2586, y = 0.1780, role = "logo-flame-spark", progress = 0.078637),
+            ShapePoint(x = 0.2623, y = 0.1649, role = "logo-flame-inner", progress = 0.079948),
+            ShapePoint(x = 0.2656, y = 0.1516, role = "logo-flame-inner", progress = 0.081258),
+            ShapePoint(x = 0.2685, y = 0.1383, role = "logo-flame-inner", progress = 0.082569),
+            ShapePoint(x = 0.2712, y = 0.1249, role = "logo-flame-spark", progress = 0.083879),
+            ShapePoint(x = 0.2738, y = 0.1115, role = "logo-flame-inner", progress = 0.085190),
+            ShapePoint(x = 0.2767, y = 0.0963, role = "logo-flame-inner", progress = 0.086501),
+            ShapePoint(x = 0.2795, y = 0.0812, role = "logo-flame-inner", progress = 0.087811),
+            ShapePoint(x = 0.2824, y = 0.0661, role = "logo-flame-spark", progress = 0.089122),
+            ShapePoint(x = 0.2851, y = 0.0539, role = "logo-flame-inner", progress = 0.090433),
+            ShapePoint(x = 0.2883, y = 0.0395, role = "logo-flame-inner", progress = 0.091743),
+            ShapePoint(x = 0.2916, y = 0.0251, role = "logo-flame-inner", progress = 0.093054),
+            ShapePoint(x = 0.2950, y = 0.0107, role = "logo-flame-spark", progress = 0.094364),
+            ShapePoint(x = 0.2983, y = -0.0037, role = "logo-flame-inner", progress = 0.095675),
+            ShapePoint(x = 0.3018, y = -0.0190, role = "logo-flame-inner", progress = 0.096986),
+            ShapePoint(x = 0.3058, y = -0.0352, role = "logo-flame-inner", progress = 0.098296),
+            ShapePoint(x = 0.3099, y = -0.0513, role = "logo-flame-spark", progress = 0.099607),
+            ShapePoint(x = 0.3142, y = -0.0674, role = "logo-flame-inner", progress = 0.100917),
+            ShapePoint(x = 0.3187, y = -0.0834, role = "logo-flame-inner", progress = 0.102228),
+            ShapePoint(x = 0.3220, y = -0.0949, role = "logo-flame-inner", progress = 0.103539),
+            ShapePoint(x = 0.3249, y = -0.1056, role = "logo-flame-spark", progress = 0.104849),
+            ShapePoint(x = 0.3277, y = -0.1164, role = "logo-flame-inner", progress = 0.106160),
+            ShapePoint(x = 0.3304, y = -0.1271, role = "logo-flame-inner", progress = 0.107471),
+            ShapePoint(x = 0.3335, y = -0.1402, role = "logo-flame-inner", progress = 0.108781),
+            ShapePoint(x = 0.3361, y = -0.1535, role = "logo-flame-spark", progress = 0.110092),
+            ShapePoint(x = 0.3383, y = -0.1668, role = "logo-flame-inner", progress = 0.111402),
+            ShapePoint(x = 0.3398, y = -0.1796, role = "logo-flame-inner", progress = 0.112713),
+            ShapePoint(x = 0.3408, y = -0.1907, role = "logo-flame-inner", progress = 0.114024),
+            ShapePoint(x = 0.3412, y = -0.2040, role = "logo-flame-spark", progress = 0.115334),
+            ShapePoint(x = 0.3409, y = -0.2187, role = "logo-flame-inner", progress = 0.116645),
+            ShapePoint(x = 0.3403, y = -0.2326, role = "logo-flame-inner", progress = 0.117955),
+            ShapePoint(x = 0.3387, y = -0.2448, role = "logo-flame-inner", progress = 0.119266),
+            ShapePoint(x = 0.3364, y = -0.2569, role = "logo-flame-spark", progress = 0.120577),
+            ShapePoint(x = 0.3332, y = -0.2689, role = "logo-flame-inner", progress = 0.121887),
+            ShapePoint(x = 0.3230, y = -0.2872, role = "logo-flame-inner", progress = 0.123198),
+            ShapePoint(x = 0.3128, y = -0.3055, role = "logo-flame-inner", progress = 0.124509),
+            ShapePoint(x = 0.3027, y = -0.3238, role = "logo-flame-spark", progress = 0.125819),
+            ShapePoint(x = 0.3143, y = -0.3183, role = "logo-flame-inner", progress = 0.127130),
+            ShapePoint(x = 0.3248, y = -0.3065, role = "logo-flame-inner", progress = 0.128440),
+            ShapePoint(x = 0.3322, y = -0.2969, role = "logo-flame-inner", progress = 0.129751),
+            ShapePoint(x = 0.3389, y = -0.2869, role = "logo-flame-spark", progress = 0.131062),
+            ShapePoint(x = 0.3451, y = -0.2765, role = "logo-flame-inner", progress = 0.132372),
+            ShapePoint(x = 0.3507, y = -0.2657, role = "logo-flame-inner", progress = 0.133683),
+            ShapePoint(x = 0.3552, y = -0.2507, role = "logo-flame-inner", progress = 0.134993),
+            ShapePoint(x = 0.3588, y = -0.2316, role = "logo-flame-spark", progress = 0.136304),
+            ShapePoint(x = 0.3624, y = -0.2125, role = "logo-flame-inner", progress = 0.137615),
+            ShapePoint(x = 0.3639, y = -0.1987, role = "logo-flame-inner", progress = 0.138925),
+            ShapePoint(x = 0.3623, y = -0.1862, role = "logo-flame-inner", progress = 0.140236),
+            ShapePoint(x = 0.3592, y = -0.1741, role = "logo-flame-spark", progress = 0.141547),
+            ShapePoint(x = 0.3542, y = -0.1625, role = "logo-flame-inner", progress = 0.142857),
+            ShapePoint(x = 0.3752, y = -0.1895, role = "logo-flame-inner", progress = 0.144168),
+            ShapePoint(x = 0.3790, y = -0.2003, role = "logo-flame-inner", progress = 0.145478),
+            ShapePoint(x = 0.3815, y = -0.2114, role = "logo-flame-spark", progress = 0.146789),
+            ShapePoint(x = 0.3829, y = -0.2229, role = "logo-flame-inner", progress = 0.148100),
+            ShapePoint(x = 0.3806, y = -0.2397, role = "logo-flame-inner", progress = 0.149410),
+            ShapePoint(x = 0.3780, y = -0.2507, role = "logo-flame-inner", progress = 0.150721),
+            ShapePoint(x = 0.3754, y = -0.2616, role = "logo-flame-spark", progress = 0.152031),
+            ShapePoint(x = 0.3728, y = -0.2725, role = "logo-flame-inner", progress = 0.153342),
+            ShapePoint(x = 0.3702, y = -0.2835, role = "logo-flame-inner", progress = 0.154653),
+            ShapePoint(x = 0.3676, y = -0.2944, role = "logo-flame-inner", progress = 0.155963),
+            ShapePoint(x = 0.3597, y = -0.3069, role = "logo-flame-spark", progress = 0.157274),
+            ShapePoint(x = 0.3506, y = -0.3180, role = "logo-flame-inner", progress = 0.158585),
+            ShapePoint(x = 0.3404, y = -0.3280, role = "logo-flame-inner", progress = 0.159895),
+            ShapePoint(x = 0.3290, y = -0.3368, role = "logo-flame-inner", progress = 0.161206),
+            ShapePoint(x = 0.3167, y = -0.3446, role = "logo-flame-spark", progress = 0.162516),
+            ShapePoint(x = 0.3069, y = -0.3499, role = "logo-flame-inner", progress = 0.163827),
+            ShapePoint(x = 0.2969, y = -0.3549, role = "logo-flame-inner", progress = 0.165138),
+            ShapePoint(x = 0.2886, y = -0.3627, role = "logo-flame-inner", progress = 0.166448),
+            ShapePoint(x = 0.2857, y = -0.3738, role = "logo-flame-spark", progress = 0.167759),
+            ShapePoint(x = 0.2856, y = -0.3852, role = "logo-flame-inner", progress = 0.169069),
+            ShapePoint(x = 0.2746, y = -0.3816, role = "logo-flame-inner", progress = 0.170380),
+            ShapePoint(x = 0.2721, y = -0.3698, role = "logo-flame-inner", progress = 0.171691),
+            ShapePoint(x = 0.2679, y = -0.3583, role = "logo-flame-spark", progress = 0.173001),
+            ShapePoint(x = 0.2596, y = -0.3449, role = "logo-flame-inner", progress = 0.174312),
+            ShapePoint(x = 0.2515, y = -0.3348, role = "logo-flame-inner", progress = 0.175623),
+            ShapePoint(x = 0.2434, y = -0.3247, role = "logo-flame-inner", progress = 0.176933),
+            ShapePoint(x = 0.2344, y = -0.3168, role = "logo-flame-spark", progress = 0.178244),
+            ShapePoint(x = 0.2244, y = -0.3109, role = "logo-flame-inner", progress = 0.179554),
+            ShapePoint(x = 0.2144, y = -0.3051, role = "logo-flame-inner", progress = 0.180865),
+            ShapePoint(x = 0.2018, y = -0.3007, role = "logo-flame-inner", progress = 0.182176),
+            ShapePoint(x = 0.1902, y = -0.2986, role = "logo-flame-spark", progress = 0.183486),
+            ShapePoint(x = 0.1791, y = -0.2982, role = "logo-flame-inner", progress = 0.184797),
+            ShapePoint(x = 0.2703, y = -0.3920, role = "logo-flame-inner", progress = 0.186107),
+            ShapePoint(x = 0.2620, y = -0.3845, role = "logo-flame-inner", progress = 0.187418),
+            ShapePoint(x = 0.2522, y = -0.3700, role = "logo-flame-spark", progress = 0.188729),
+            ShapePoint(x = 0.2443, y = -0.3607, role = "logo-flame-inner", progress = 0.190039),
+            ShapePoint(x = 0.2364, y = -0.3515, role = "logo-flame-inner", progress = 0.191350),
+            ShapePoint(x = 0.2285, y = -0.3423, role = "logo-flame-inner", progress = 0.192661),
+            ShapePoint(x = 0.2206, y = -0.3330, role = "logo-flame-spark", progress = 0.193971),
+            ShapePoint(x = 0.2127, y = -0.3238, role = "logo-flame-inner", progress = 0.195282),
+            ShapePoint(x = 0.2025, y = -0.3164, role = "logo-flame-inner", progress = 0.196592),
+            ShapePoint(x = 0.1910, y = -0.3119, role = "logo-flame-inner", progress = 0.197903),
+            ShapePoint(x = 0.1721, y = -0.3079, role = "logo-flame-spark", progress = 0.199214),
+            ShapePoint(x = 0.1604, y = -0.3075, role = "logo-flame-inner", progress = 0.200524),
+            ShapePoint(x = 0.1479, y = -0.3086, role = "logo-flame-inner", progress = 0.201835),
+            ShapePoint(x = 0.1351, y = -0.3096, role = "logo-flame-inner", progress = 0.203145),
+            ShapePoint(x = 0.1229, y = -0.3143, role = "logo-flame-spark", progress = 0.204456),
+            ShapePoint(x = 0.1106, y = -0.3189, role = "logo-flame-inner", progress = 0.205767),
+            ShapePoint(x = 0.1013, y = -0.3269, role = "logo-flame-inner", progress = 0.207077),
+            ShapePoint(x = 0.0921, y = -0.3349, role = "logo-flame-inner", progress = 0.208388),
+            ShapePoint(x = 0.0828, y = -0.3429, role = "logo-flame-spark", progress = 0.209699),
+            ShapePoint(x = 0.0730, y = -0.3533, role = "logo-flame-inner", progress = 0.211009),
+            ShapePoint(x = 0.0635, y = -0.3638, role = "logo-flame-inner", progress = 0.212320),
+            ShapePoint(x = 0.0541, y = -0.3745, role = "logo-flame-inner", progress = 0.213630),
+            ShapePoint(x = 0.0458, y = -0.3845, role = "logo-flame-spark", progress = 0.214941),
+            ShapePoint(x = 0.0405, y = -0.3958, role = "logo-flame-inner", progress = 0.216252),
+            ShapePoint(x = 0.0302, y = -0.4000, role = "logo-flame-inner", progress = 0.217562),
+            ShapePoint(x = 0.0260, y = -0.3893, role = "logo-flame-inner", progress = 0.218873),
+            ShapePoint(x = 0.0293, y = -0.3765, role = "logo-flame-spark", progress = 0.220183),
+            ShapePoint(x = 0.0342, y = -0.3642, role = "logo-flame-inner", progress = 0.221494),
+            ShapePoint(x = 0.0396, y = -0.3543, role = "logo-flame-inner", progress = 0.222805),
+            ShapePoint(x = 0.0493, y = -0.3485, role = "logo-flame-inner", progress = 0.224115),
+            ShapePoint(x = 0.0584, y = -0.3364, role = "logo-flame-spark", progress = 0.225426),
+            ShapePoint(x = 0.0689, y = -0.3256, role = "logo-flame-inner", progress = 0.226737),
+            ShapePoint(x = 0.0797, y = -0.3172, role = "logo-flame-inner", progress = 0.228047),
+            ShapePoint(x = 0.0914, y = -0.3096, role = "logo-flame-inner", progress = 0.229358),
+            ShapePoint(x = 0.1035, y = -0.3026, role = "logo-flame-spark", progress = 0.230668),
+            ShapePoint(x = 0.0679, y = -0.3133, role = "logo-flame-inner", progress = 0.231979),
+            ShapePoint(x = 0.0571, y = -0.3195, role = "logo-flame-inner", progress = 0.233290),
+            ShapePoint(x = 0.0471, y = -0.3261, role = "logo-flame-inner", progress = 0.234600),
+            ShapePoint(x = 0.0375, y = -0.3339, role = "logo-flame-spark", progress = 0.235911),
+            ShapePoint(x = 0.0303, y = -0.3450, role = "logo-flame-inner", progress = 0.237221),
+            ShapePoint(x = 0.0244, y = -0.3549, role = "logo-flame-inner", progress = 0.238532),
+            ShapePoint(x = 0.0185, y = -0.3647, role = "logo-flame-inner", progress = 0.239843),
+            ShapePoint(x = 0.0125, y = -0.3745, role = "logo-flame-spark", progress = 0.241153),
+            ShapePoint(x = 0.0066, y = -0.3843, role = "logo-flame-inner", progress = 0.242464),
+            ShapePoint(x = 0.0006, y = -0.3941, role = "logo-flame-inner", progress = 0.243775),
+            ShapePoint(x = -0.0114, y = -0.4000, role = "logo-flame-inner", progress = 0.245085),
+            ShapePoint(x = -0.0133, y = -0.3889, role = "logo-flame-spark", progress = 0.246396),
+            ShapePoint(x = -0.0054, y = -0.3806, role = "logo-flame-inner", progress = 0.247706),
+            ShapePoint(x = 0.0581, y = -0.3080, role = "logo-flame-inner", progress = 0.249017),
+            ShapePoint(x = 0.0460, y = -0.3137, role = "logo-flame-inner", progress = 0.250328),
+            ShapePoint(x = 0.0361, y = -0.3195, role = "logo-flame-spark", progress = 0.251638),
+            ShapePoint(x = 0.0262, y = -0.3252, role = "logo-flame-inner", progress = 0.252949),
+            ShapePoint(x = 0.0139, y = -0.3320, role = "logo-flame-inner", progress = 0.254260),
+            ShapePoint(x = 0.0016, y = -0.3388, role = "logo-flame-inner", progress = 0.255570),
+            ShapePoint(x = -0.0103, y = -0.3462, role = "logo-flame-spark", progress = 0.256881),
+            ShapePoint(x = -0.0199, y = -0.3527, role = "logo-flame-inner", progress = 0.258191),
+            ShapePoint(x = -0.0318, y = -0.3598, role = "logo-flame-inner", progress = 0.259502),
+            ShapePoint(x = -0.0438, y = -0.3667, role = "logo-flame-inner", progress = 0.260813),
+            ShapePoint(x = -0.0556, y = -0.3665, role = "logo-flame-spark", progress = 0.262123),
+            ShapePoint(x = -0.0638, y = -0.3756, role = "logo-flame-inner", progress = 0.263434),
+            ShapePoint(x = -0.0720, y = -0.3852, role = "logo-flame-inner", progress = 0.264744),
+            ShapePoint(x = -0.0795, y = -0.3938, role = "logo-flame-inner", progress = 0.266055),
+            ShapePoint(x = -0.0933, y = -0.4000, role = "logo-flame-spark", progress = 0.267366),
+            ShapePoint(x = -0.1058, y = -0.4000, role = "logo-flame-inner", progress = 0.268676),
+            ShapePoint(x = -0.1183, y = -0.4000, role = "logo-flame-inner", progress = 0.269987),
+            ShapePoint(x = -0.1213, y = -0.3893, role = "logo-flame-inner", progress = 0.271298),
+            ShapePoint(x = -0.1306, y = -0.3954, role = "logo-flame-spark", progress = 0.272608),
+            ShapePoint(x = -0.1417, y = -0.3940, role = "logo-flame-inner", progress = 0.273919),
+            ShapePoint(x = -0.1523, y = -0.3991, role = "logo-flame-inner", progress = 0.275229),
+            ShapePoint(x = -0.1706, y = -0.4000, role = "logo-flame-inner", progress = 0.276540),
+            ShapePoint(x = -0.1851, y = -0.4000, role = "logo-flame-spark", progress = 0.277851),
+            ShapePoint(x = -0.1997, y = -0.4000, role = "logo-flame-inner", progress = 0.279161),
+            ShapePoint(x = -0.2142, y = -0.4000, role = "logo-flame-inner", progress = 0.280472),
+            ShapePoint(x = -0.2287, y = -0.4000, role = "logo-flame-inner", progress = 0.281782),
+            ShapePoint(x = -0.2433, y = -0.4000, role = "logo-flame-spark", progress = 0.283093),
+            ShapePoint(x = -0.2358, y = -0.3908, role = "logo-flame-inner", progress = 0.284404),
+            ShapePoint(x = -0.2269, y = -0.3803, role = "logo-flame-inner", progress = 0.285714),
+            ShapePoint(x = -0.2191, y = -0.3679, role = "logo-flame-inner", progress = 0.287025),
+            ShapePoint(x = -0.2139, y = -0.3574, role = "logo-flame-spark", progress = 0.288336),
+            ShapePoint(x = -0.2095, y = -0.3465, role = "logo-flame-inner", progress = 0.289646),
+            ShapePoint(x = -0.2059, y = -0.3353, role = "logo-flame-inner", progress = 0.290957),
+            ShapePoint(x = -0.2031, y = -0.3238, role = "logo-flame-inner", progress = 0.292267),
+            ShapePoint(x = -0.2169, y = -0.3379, role = "logo-flame-spark", progress = 0.293578),
+            ShapePoint(x = -0.2256, y = -0.3449, role = "logo-flame-inner", progress = 0.294889),
+            ShapePoint(x = -0.2386, y = -0.3514, role = "logo-flame-inner", progress = 0.296199),
+            ShapePoint(x = -0.2497, y = -0.3534, role = "logo-flame-inner", progress = 0.297510),
+            ShapePoint(x = -0.2615, y = -0.3533, role = "logo-flame-spark", progress = 0.298820),
+            ShapePoint(x = -0.2729, y = -0.3512, role = "logo-flame-inner", progress = 0.300131),
+            ShapePoint(x = -0.2869, y = -0.3443, role = "logo-flame-inner", progress = 0.301442),
+            ShapePoint(x = -0.2966, y = -0.3349, role = "logo-flame-inner", progress = 0.302752),
+            ShapePoint(x = -0.3028, y = -0.3229, role = "logo-flame-spark", progress = 0.304063),
+            ShapePoint(x = -0.3052, y = -0.3119, role = "logo-flame-inner", progress = 0.305374),
+            ShapePoint(x = -0.3177, y = -0.3029, role = "logo-flame-inner", progress = 0.306684),
+            ShapePoint(x = -0.3310, y = -0.2964, role = "logo-flame-inner", progress = 0.307995),
+            ShapePoint(x = -0.3443, y = -0.2899, role = "logo-flame-spark", progress = 0.309305),
+            ShapePoint(x = -0.3555, y = -0.2804, role = "logo-flame-inner", progress = 0.310616),
+            ShapePoint(x = -0.3645, y = -0.2678, role = "logo-flame-inner", progress = 0.311927),
+            ShapePoint(x = -0.3734, y = -0.2553, role = "logo-flame-inner", progress = 0.313237),
+            ShapePoint(x = -0.3788, y = -0.2421, role = "logo-flame-spark", progress = 0.314548),
+            ShapePoint(x = -0.3806, y = -0.2282, role = "logo-flame-inner", progress = 0.315858),
+            ShapePoint(x = -0.3824, y = -0.2144, role = "logo-flame-inner", progress = 0.317169),
+            ShapePoint(x = -0.3674, y = -0.2442, role = "logo-flame-inner", progress = 0.318480),
+            ShapePoint(x = -0.3578, y = -0.2548, role = "logo-flame-spark", progress = 0.319790),
+            ShapePoint(x = -0.3462, y = -0.2630, role = "logo-flame-inner", progress = 0.321101),
+            ShapePoint(x = -0.3334, y = -0.2689, role = "logo-flame-inner", progress = 0.322412),
+            ShapePoint(x = -0.3193, y = -0.2727, role = "logo-flame-inner", progress = 0.323722),
+            ShapePoint(x = -0.3050, y = -0.2727, role = "logo-flame-spark", progress = 0.325033),
+            ShapePoint(x = -0.2944, y = -0.2696, role = "logo-flame-inner", progress = 0.326343),
+            ShapePoint(x = -0.2840, y = -0.2620, role = "logo-flame-inner", progress = 0.327654),
+            ShapePoint(x = -0.2737, y = -0.2545, role = "logo-flame-inner", progress = 0.328965),
+            ShapePoint(x = -0.2649, y = -0.2435, role = "logo-flame-spark", progress = 0.330275),
+            ShapePoint(x = -0.2582, y = -0.2314, role = "logo-flame-inner", progress = 0.331586),
+            ShapePoint(x = -0.2533, y = -0.2183, role = "logo-flame-inner", progress = 0.332896),
+            ShapePoint(x = -0.2771, y = -0.2413, role = "logo-flame-inner", progress = 0.334207),
+            ShapePoint(x = -0.2860, y = -0.2478, role = "logo-flame-spark", progress = 0.335518),
+            ShapePoint(x = -0.2958, y = -0.2533, role = "logo-flame-inner", progress = 0.336828),
+            ShapePoint(x = -0.3065, y = -0.2576, role = "logo-flame-inner", progress = 0.338139),
+            ShapePoint(x = -0.3175, y = -0.2598, role = "logo-flame-inner", progress = 0.339450),
+            ShapePoint(x = -0.3382, y = -0.2551, role = "logo-flame-spark", progress = 0.340760),
+            ShapePoint(x = -0.3490, y = -0.2480, role = "logo-flame-inner", progress = 0.342071),
+            ShapePoint(x = -0.3672, y = -0.2322, role = "logo-flame-inner", progress = 0.343381),
+            ShapePoint(x = -0.3713, y = -0.2219, role = "logo-flame-inner", progress = 0.344692),
+            ShapePoint(x = -0.3773, y = -0.2016, role = "logo-flame-spark", progress = 0.346003),
+            ShapePoint(x = -0.3770, y = -0.1868, role = "logo-flame-inner", progress = 0.347313),
+            ShapePoint(x = -0.3759, y = -0.1723, role = "logo-flame-inner", progress = 0.348624),
+            ShapePoint(x = -0.3700, y = -0.1567, role = "logo-flame-inner", progress = 0.349934),
+            ShapePoint(x = -0.3643, y = -0.1467, role = "logo-flame-spark", progress = 0.351245),
+            ShapePoint(x = -0.3549, y = -0.1362, role = "logo-flame-inner", progress = 0.352556),
+            ShapePoint(x = -0.3587, y = -0.1605, role = "logo-flame-inner", progress = 0.353866),
+            ShapePoint(x = -0.3595, y = -0.1742, role = "logo-flame-inner", progress = 0.355177),
+            ShapePoint(x = -0.3580, y = -0.1871, role = "logo-flame-spark", progress = 0.356488),
+            ShapePoint(x = -0.3530, y = -0.1988, role = "logo-flame-inner", progress = 0.357798),
+            ShapePoint(x = -0.3443, y = -0.2087, role = "logo-flame-inner", progress = 0.359109),
+            ShapePoint(x = -0.3324, y = -0.2143, role = "logo-flame-inner", progress = 0.360419),
+            ShapePoint(x = -0.3211, y = -0.2149, role = "logo-flame-spark", progress = 0.361730),
+            ShapePoint(x = -0.3104, y = -0.2112, role = "logo-flame-inner", progress = 0.363041),
+            ShapePoint(x = -0.3011, y = -0.2032, role = "logo-flame-inner", progress = 0.364351),
+            ShapePoint(x = -0.2944, y = -0.1907, role = "logo-flame-inner", progress = 0.365662),
+            ShapePoint(x = -0.2906, y = -0.1791, role = "logo-flame-spark", progress = 0.366972),
+            ShapePoint(x = -0.2879, y = -0.1672, role = "logo-flame-inner", progress = 0.368283),
+            ShapePoint(x = -0.2857, y = -0.1552, role = "logo-flame-inner", progress = 0.369594),
+            ShapePoint(x = -0.2838, y = -0.1433, role = "logo-flame-inner", progress = 0.370904),
+            ShapePoint(x = -0.2821, y = -0.1314, role = "logo-flame-spark", progress = 0.372215),
+            ShapePoint(x = -0.2805, y = -0.1198, role = "logo-flame-inner", progress = 0.373526),
+            ShapePoint(x = -0.2791, y = -0.1085, role = "logo-flame-inner", progress = 0.374836),
+            ShapePoint(x = -0.2778, y = -0.0972, role = "logo-flame-inner", progress = 0.376147),
+            ShapePoint(x = -0.2766, y = -0.0856, role = "logo-flame-spark", progress = 0.377457),
+            ShapePoint(x = -0.2754, y = -0.0740, role = "logo-flame-inner", progress = 0.378768),
+            ShapePoint(x = -0.2741, y = -0.0626, role = "logo-flame-inner", progress = 0.380079),
+            ShapePoint(x = -0.2728, y = -0.0513, role = "logo-flame-inner", progress = 0.381389),
+            ShapePoint(x = -0.2716, y = -0.0399, role = "logo-flame-spark", progress = 0.382700),
+            ShapePoint(x = -0.2705, y = -0.0285, role = "logo-flame-inner", progress = 0.384010),
+            ShapePoint(x = -0.2696, y = -0.0173, role = "logo-flame-inner", progress = 0.385321),
+            ShapePoint(x = -0.2686, y = -0.0052, role = "logo-flame-inner", progress = 0.386632),
+            ShapePoint(x = -0.2675, y = 0.0069, role = "logo-flame-spark", progress = 0.387942),
+            ShapePoint(x = -0.2664, y = 0.0194, role = "logo-flame-inner", progress = 0.389253),
+            ShapePoint(x = -0.2690, y = 0.0302, role = "logo-flame-inner", progress = 0.390564),
+            ShapePoint(x = -0.2799, y = 0.0395, role = "logo-flame-inner", progress = 0.391874),
+            ShapePoint(x = -0.2883, y = 0.0475, role = "logo-flame-spark", progress = 0.393185),
+            ShapePoint(x = -0.2954, y = 0.0565, role = "logo-flame-inner", progress = 0.394495),
+            ShapePoint(x = -0.2798, y = 0.0279, role = "logo-flame-inner", progress = 0.395806),
+            ShapePoint(x = -0.2916, y = 0.0295, role = "logo-flame-inner", progress = 0.397117),
+            ShapePoint(x = -0.3059, y = 0.0386, role = "logo-flame-spark", progress = 0.398427),
+            ShapePoint(x = -0.3202, y = 0.0477, role = "logo-flame-inner", progress = 0.399738),
+            ShapePoint(x = -0.3315, y = 0.0572, role = "logo-flame-inner", progress = 0.401048),
+            ShapePoint(x = -0.3386, y = 0.0677, role = "logo-flame-inner", progress = 0.402359),
+            ShapePoint(x = -0.3440, y = 0.0790, role = "logo-flame-spark", progress = 0.403670),
+            ShapePoint(x = -0.3479, y = 0.0908, role = "logo-flame-inner", progress = 0.404980),
+            ShapePoint(x = -0.3503, y = 0.1033, role = "logo-flame-inner", progress = 0.406291),
+            ShapePoint(x = -0.3510, y = 0.1156, role = "logo-flame-inner", progress = 0.407602),
+            ShapePoint(x = -0.3508, y = 0.1273, role = "logo-flame-spark", progress = 0.408912),
+            ShapePoint(x = -0.3507, y = 0.1391, role = "logo-flame-inner", progress = 0.410223),
+            ShapePoint(x = -0.3498, y = 0.1510, role = "logo-flame-inner", progress = 0.411533),
+            ShapePoint(x = -0.3477, y = 0.1629, role = "logo-flame-inner", progress = 0.412844),
+            ShapePoint(x = -0.3451, y = 0.1746, role = "logo-flame-spark", progress = 0.414155),
+            ShapePoint(x = -0.3418, y = 0.1862, role = "logo-flame-inner", progress = 0.415465),
+            ShapePoint(x = -0.3378, y = 0.1976, role = "logo-flame-inner", progress = 0.416776),
+            ShapePoint(x = -0.3324, y = 0.2107, role = "logo-flame-inner", progress = 0.418087),
+            ShapePoint(x = -0.3272, y = 0.2217, role = "logo-flame-spark", progress = 0.419397),
+            ShapePoint(x = -0.3218, y = 0.2327, role = "logo-flame-inner", progress = 0.420708),
+            ShapePoint(x = -0.3159, y = 0.2438, role = "logo-flame-inner", progress = 0.422018),
+            ShapePoint(x = -0.3090, y = 0.2551, role = "logo-flame-inner", progress = 0.423329),
+            ShapePoint(x = -0.3012, y = 0.2657, role = "logo-flame-spark", progress = 0.424640),
+            ShapePoint(x = -0.2926, y = 0.2758, role = "logo-flame-inner", progress = 0.425950),
+            ShapePoint(x = -0.2820, y = 0.2866, role = "logo-flame-inner", progress = 0.427261),
+            ShapePoint(x = -0.2709, y = 0.2967, role = "logo-flame-inner", progress = 0.428571),
+            ShapePoint(x = -0.2593, y = 0.3063, role = "logo-flame-spark", progress = 0.429882),
+            ShapePoint(x = -0.2473, y = 0.3154, role = "logo-flame-inner", progress = 0.431193),
+            ShapePoint(x = -0.2350, y = 0.3240, role = "logo-flame-inner", progress = 0.432503),
+            ShapePoint(x = -0.2205, y = 0.3335, role = "logo-flame-inner", progress = 0.433814),
+            ShapePoint(x = -0.2056, y = 0.3424, role = "logo-flame-spark", progress = 0.435125),
+            ShapePoint(x = -0.1905, y = 0.3506, role = "logo-flame-inner", progress = 0.436435),
+            ShapePoint(x = -0.1749, y = 0.3582, role = "logo-flame-inner", progress = 0.437746),
+            ShapePoint(x = -0.1591, y = 0.3651, role = "logo-flame-inner", progress = 0.439056),
+            ShapePoint(x = -0.1487, y = 0.3694, role = "logo-flame-spark", progress = 0.440367),
+            ShapePoint(x = -0.1383, y = 0.3734, role = "logo-flame-inner", progress = 0.441678),
+            ShapePoint(x = -0.1278, y = 0.3772, role = "logo-flame-inner", progress = 0.442988),
+            ShapePoint(x = -0.1171, y = 0.3806, role = "logo-flame-inner", progress = 0.444299),
+            ShapePoint(x = -0.1063, y = 0.3835, role = "logo-flame-spark", progress = 0.445609),
+            ShapePoint(x = -0.0932, y = 0.3868, role = "logo-flame-inner", progress = 0.446920),
+            ShapePoint(x = -0.0801, y = 0.3900, role = "logo-flame-inner", progress = 0.448231),
+            ShapePoint(x = -0.0669, y = 0.3929, role = "logo-flame-inner", progress = 0.449541),
+            ShapePoint(x = -0.0536, y = 0.3954, role = "logo-flame-spark", progress = 0.450852),
+            ShapePoint(x = -0.0403, y = 0.3974, role = "logo-flame-inner", progress = 0.452163),
+            ShapePoint(x = -0.0288, y = 0.3988, role = "logo-flame-inner", progress = 0.453473),
+            ShapePoint(x = -0.0789, y = -0.3610, role = "logo-flame-inner", progress = 0.454784),
+            ShapePoint(x = -0.0881, y = -0.3697, role = "logo-flame-spark", progress = 0.456094),
+            ShapePoint(x = -0.0973, y = -0.3808, role = "logo-flame-inner", progress = 0.457405),
+            ShapePoint(x = -0.0239, y = -0.2378, role = "logo-flame-inner", progress = 0.458716),
+            ShapePoint(x = -0.0347, y = -0.2477, role = "logo-flame-inner", progress = 0.460026),
+            ShapePoint(x = -0.0456, y = -0.2576, role = "logo-flame-spark", progress = 0.461337),
+            ShapePoint(x = -0.0538, y = -0.2661, role = "logo-flame-inner", progress = 0.462647),
+            ShapePoint(x = -0.0642, y = -0.2746, role = "logo-flame-inner", progress = 0.463958),
+            ShapePoint(x = -0.0757, y = -0.2798, role = "logo-flame-inner", progress = 0.465269),
+            ShapePoint(x = -0.0865, y = -0.2818, role = "logo-flame-spark", progress = 0.466579),
+            ShapePoint(x = -0.0845, y = -0.2938, role = "logo-flame-inner", progress = 0.467890),
+            ShapePoint(x = -0.0785, y = -0.3034, role = "logo-flame-inner", progress = 0.469201),
+            ShapePoint(x = -0.0726, y = -0.3129, role = "logo-flame-inner", progress = 0.470511),
+            ShapePoint(x = -0.0658, y = -0.3239, role = "logo-flame-spark", progress = 0.471822),
+            ShapePoint(x = -0.0600, y = -0.3341, role = "logo-flame-inner", progress = 0.473132),
+            ShapePoint(x = -0.0560, y = -0.3450, role = "logo-flame-inner", progress = 0.474443),
+            ShapePoint(x = -0.0430, y = -0.3420, role = "logo-flame-inner", progress = 0.475754),
+            ShapePoint(x = -0.0314, y = -0.3365, role = "logo-flame-spark", progress = 0.477064),
+            ShapePoint(x = -0.0199, y = -0.3310, role = "logo-flame-inner", progress = 0.478375),
+            ShapePoint(x = -0.0091, y = -0.3261, role = "logo-flame-inner", progress = 0.479685),
+            ShapePoint(x = 0.0014, y = -0.3207, role = "logo-flame-inner", progress = 0.480996),
+            ShapePoint(x = 0.0117, y = -0.3140, role = "logo-flame-spark", progress = 0.482307),
+            ShapePoint(x = 0.0218, y = -0.3071, role = "logo-flame-inner", progress = 0.483617),
+            ShapePoint(x = 0.0319, y = -0.3001, role = "logo-flame-inner", progress = 0.484928),
+            ShapePoint(x = 0.0240, y = -0.2893, role = "logo-flame-inner", progress = 0.486239),
+            ShapePoint(x = 0.0140, y = -0.2824, role = "logo-flame-spark", progress = 0.487549),
+            ShapePoint(x = 0.0035, y = -0.2741, role = "logo-flame-inner", progress = 0.488860),
+            ShapePoint(x = -0.0077, y = -0.2648, role = "logo-flame-inner", progress = 0.490170),
+            ShapePoint(x = -0.0146, y = -0.2539, role = "logo-flame-inner", progress = 0.491481),
+            ShapePoint(x = -0.2188, y = -0.2466, role = "logo-flame-spark", progress = 0.492792),
+            ShapePoint(x = -0.2262, y = -0.2620, role = "logo-flame-inner", progress = 0.494102),
+            ShapePoint(x = -0.2324, y = -0.2732, role = "logo-flame-inner", progress = 0.495413),
+            ShapePoint(x = -0.2386, y = -0.2844, role = "logo-flame-inner", progress = 0.496723),
+            ShapePoint(x = -0.2459, y = -0.2947, role = "logo-flame-spark", progress = 0.498034),
+            ShapePoint(x = -0.2556, y = -0.3019, role = "logo-flame-inner", progress = 0.499345),
+            ShapePoint(x = -0.2671, y = -0.3065, role = "logo-flame-inner", progress = 0.500655),
+            ShapePoint(x = -0.2786, y = -0.3085, role = "logo-flame-inner", progress = 0.501966),
+            ShapePoint(x = -0.2904, y = -0.3088, role = "logo-flame-spark", progress = 0.503277),
+            ShapePoint(x = -0.2859, y = -0.3197, role = "logo-flame-inner", progress = 0.504587),
+            ShapePoint(x = -0.2748, y = -0.3227, role = "logo-flame-inner", progress = 0.505898),
+            ShapePoint(x = -0.2628, y = -0.3220, role = "logo-flame-inner", progress = 0.507208),
+            ShapePoint(x = -0.2513, y = -0.3168, role = "logo-flame-spark", progress = 0.508519),
+            ShapePoint(x = -0.2419, y = -0.3082, role = "logo-flame-inner", progress = 0.509830),
+            ShapePoint(x = -0.2348, y = -0.2983, role = "logo-flame-inner", progress = 0.511140),
+            ShapePoint(x = 0.2794, y = -0.0937, role = "logo-flame-inner", progress = 0.512451),
+            ShapePoint(x = 0.2816, y = -0.1050, role = "logo-flame-spark", progress = 0.513761),
+            ShapePoint(x = 0.2833, y = -0.1171, role = "logo-flame-inner", progress = 0.515072),
+            ShapePoint(x = 0.2848, y = -0.1281, role = "logo-flame-inner", progress = 0.516383),
+            ShapePoint(x = 0.2856, y = -0.1415, role = "logo-flame-inner", progress = 0.517693),
+            ShapePoint(x = 0.2858, y = -0.1553, role = "logo-flame-spark", progress = 0.519004),
+            ShapePoint(x = 0.2849, y = -0.1691, role = "logo-flame-inner", progress = 0.520315),
+            ShapePoint(x = 0.2835, y = -0.1817, role = "logo-flame-inner", progress = 0.521625),
+            ShapePoint(x = 0.2819, y = -0.1944, role = "logo-flame-inner", progress = 0.522936),
+            ShapePoint(x = 0.2784, y = -0.2091, role = "logo-flame-spark", progress = 0.524246),
+            ShapePoint(x = 0.2733, y = -0.2259, role = "logo-flame-inner", progress = 0.525557),
+            ShapePoint(x = 0.2682, y = -0.2428, role = "logo-flame-inner", progress = 0.526868),
+            ShapePoint(x = 0.2651, y = -0.2536, role = "logo-flame-inner", progress = 0.528178),
+            ShapePoint(x = 0.2791, y = -0.2402, role = "logo-flame-spark", progress = 0.529489),
+            ShapePoint(x = 0.2861, y = -0.2304, role = "logo-flame-inner", progress = 0.530799),
+            ShapePoint(x = 0.2918, y = -0.2198, role = "logo-flame-inner", progress = 0.532110),
+            ShapePoint(x = 0.2964, y = -0.2086, role = "logo-flame-inner", progress = 0.533421),
+            ShapePoint(x = 0.3006, y = -0.1935, role = "logo-flame-spark", progress = 0.534731),
+            ShapePoint(x = 0.3024, y = -0.1782, role = "logo-flame-inner", progress = 0.536042),
+            ShapePoint(x = 0.3019, y = -0.1627, role = "logo-flame-inner", progress = 0.537353),
+            ShapePoint(x = 0.3001, y = -0.1511, role = "logo-flame-inner", progress = 0.538663),
+            ShapePoint(x = 0.2971, y = -0.1383, role = "logo-flame-spark", progress = 0.539974),
+            ShapePoint(x = -0.2234, y = 0.1237, role = "logo-flame-inner", progress = 0.541284),
+            ShapePoint(x = -0.2191, y = 0.1111, role = "logo-flame-inner", progress = 0.542595),
+            ShapePoint(x = -0.2140, y = 0.1011, role = "logo-flame-inner", progress = 0.543906),
+            ShapePoint(x = -0.2089, y = 0.0912, role = "logo-flame-spark", progress = 0.545216),
+            ShapePoint(x = -0.2207, y = 0.0856, role = "logo-flame-inner", progress = 0.546527),
+            ShapePoint(x = -0.2325, y = 0.0821, role = "logo-flame-inner", progress = 0.547837),
+            ShapePoint(x = -0.2336, y = 0.0710, role = "logo-flame-inner", progress = 0.549148),
+            ShapePoint(x = -0.2247, y = 0.0637, role = "logo-flame-spark", progress = 0.550459),
+            ShapePoint(x = -0.2166, y = 0.0549, role = "logo-flame-inner", progress = 0.551769),
+            ShapePoint(x = -0.2119, y = 0.0446, role = "logo-flame-inner", progress = 0.553080),
+            ShapePoint(x = -0.2126, y = 0.0308, role = "logo-flame-inner", progress = 0.554391),
+            ShapePoint(x = -0.2172, y = 0.0181, role = "logo-flame-spark", progress = 0.555701),
+            ShapePoint(x = -0.2245, y = 0.0070, role = "logo-flame-inner", progress = 0.557012),
+            ShapePoint(x = -0.2346, y = -0.0023, role = "logo-flame-inner", progress = 0.558322),
+            ShapePoint(x = -0.2423, y = -0.0118, role = "logo-flame-inner", progress = 0.559633),
+            ShapePoint(x = -0.2407, y = -0.0230, role = "logo-flame-spark", progress = 0.560944),
+            ShapePoint(x = -0.2335, y = -0.0331, role = "logo-flame-inner", progress = 0.562254),
+            ShapePoint(x = -0.2251, y = -0.0415, role = "logo-flame-inner", progress = 0.563565),
+            ShapePoint(x = -0.2213, y = -0.0523, role = "logo-flame-inner", progress = 0.564875),
+            ShapePoint(x = -0.2234, y = -0.0635, role = "logo-flame-spark", progress = 0.566186),
+            ShapePoint(x = -0.2185, y = -0.0741, role = "logo-flame-inner", progress = 0.567497),
+            ShapePoint(x = -0.2066, y = -0.0751, role = "logo-flame-inner", progress = 0.568807),
+            ShapePoint(x = -0.1953, y = -0.0780, role = "logo-flame-inner", progress = 0.570118),
+            ShapePoint(x = -0.1855, y = -0.0835, role = "logo-flame-spark", progress = 0.571429),
+            ShapePoint(x = -0.1748, y = -0.0893, role = "logo-flame-inner", progress = 0.572739),
+            ShapePoint(x = -0.1636, y = -0.0910, role = "logo-flame-inner", progress = 0.574050),
+            ShapePoint(x = -0.1707, y = -0.0997, role = "logo-flame-inner", progress = 0.575360),
+            ShapePoint(x = -0.1814, y = -0.1028, role = "logo-flame-spark", progress = 0.576671),
+            ShapePoint(x = -0.1892, y = -0.0942, role = "logo-flame-inner", progress = 0.577982),
+            ShapePoint(x = -0.2009, y = -0.0947, role = "logo-flame-inner", progress = 0.579292),
+            ShapePoint(x = -0.2060, y = -0.1048, role = "logo-flame-inner", progress = 0.580603),
+            ShapePoint(x = -0.1952, y = -0.1091, role = "logo-flame-spark", progress = 0.581913),
+            ShapePoint(x = -0.2049, y = -0.1159, role = "logo-flame-inner", progress = 0.583224),
+            ShapePoint(x = -0.2157, y = -0.1134, role = "logo-flame-inner", progress = 0.584535),
+            ShapePoint(x = -0.2216, y = -0.1023, role = "logo-flame-inner", progress = 0.585845),
+            ShapePoint(x = -0.2230, y = -0.0914, role = "logo-flame-spark", progress = 0.587156),
+            ShapePoint(x = -0.2300, y = -0.0756, role = "logo-flame-inner", progress = 0.588467),
+            ShapePoint(x = -0.2490, y = -0.0306, role = "logo-flame-inner", progress = 0.589777),
+            ShapePoint(x = -0.2499, y = -0.0418, role = "logo-flame-inner", progress = 0.591088),
+            ShapePoint(x = -0.2496, y = -0.0530, role = "logo-flame-spark", progress = 0.592398),
+            ShapePoint(x = -0.2480, y = -0.0641, role = "logo-flame-inner", progress = 0.593709),
+            ShapePoint(x = -0.2455, y = -0.0750, role = "logo-flame-inner", progress = 0.595020),
+            ShapePoint(x = -0.2419, y = -0.0867, role = "logo-flame-inner", progress = 0.596330),
+            ShapePoint(x = -0.2374, y = -0.0986, role = "logo-flame-spark", progress = 0.597641),
+            ShapePoint(x = -0.2321, y = -0.1101, role = "logo-flame-inner", progress = 0.598952),
+            ShapePoint(x = -0.2255, y = -0.1227, role = "logo-flame-inner", progress = 0.600262),
+            ShapePoint(x = -0.2202, y = -0.1327, role = "logo-flame-inner", progress = 0.601573),
+            ShapePoint(x = -0.2148, y = -0.1427, role = "logo-flame-spark", progress = 0.602883),
+            ShapePoint(x = -0.2094, y = -0.1527, role = "logo-flame-inner", progress = 0.604194),
+            ShapePoint(x = -0.2039, y = -0.1627, role = "logo-flame-inner", progress = 0.605505),
+            ShapePoint(x = -0.1980, y = -0.1724, role = "logo-flame-inner", progress = 0.606815),
+            ShapePoint(x = -0.1900, y = -0.1802, role = "logo-flame-spark", progress = 0.608126),
+            ShapePoint(x = -0.1780, y = -0.1851, role = "logo-flame-inner", progress = 0.609436),
+            ShapePoint(x = -0.1660, y = -0.1858, role = "logo-flame-inner", progress = 0.610747),
+            ShapePoint(x = -0.1539, y = -0.1853, role = "logo-flame-inner", progress = 0.612058),
+            ShapePoint(x = -0.1411, y = -0.1839, role = "logo-flame-spark", progress = 0.613368),
+            ShapePoint(x = -0.1293, y = -0.1824, role = "logo-flame-inner", progress = 0.614679),
+            ShapePoint(x = -0.1168, y = -0.1806, role = "logo-flame-inner", progress = 0.615990),
+            ShapePoint(x = -0.1058, y = -0.1790, role = "logo-flame-inner", progress = 0.617300),
+            ShapePoint(x = -0.0944, y = -0.1793, role = "logo-flame-spark", progress = 0.618611),
+            ShapePoint(x = -0.0848, y = -0.1855, role = "logo-flame-inner", progress = 0.619921),
+            ShapePoint(x = -0.0771, y = -0.1936, role = "logo-flame-inner", progress = 0.621232),
+            ShapePoint(x = -0.0699, y = -0.2022, role = "logo-flame-inner", progress = 0.622543),
+            ShapePoint(x = -0.0617, y = -0.2132, role = "logo-flame-spark", progress = 0.623853),
+            ShapePoint(x = -0.0546, y = -0.2250, role = "logo-flame-inner", progress = 0.625164),
+            ShapePoint(x = -0.0452, y = -0.2309, role = "logo-flame-inner", progress = 0.626474),
+            ShapePoint(x = -0.0360, y = -0.2224, role = "logo-flame-inner", progress = 0.627785),
+            ShapePoint(x = -0.0316, y = -0.2085, role = "logo-flame-spark", progress = 0.629096),
+            ShapePoint(x = -0.0330, y = -0.1953, role = "logo-flame-inner", progress = 0.630406),
+            ShapePoint(x = -0.0339, y = -0.1833, role = "logo-flame-inner", progress = 0.631717),
+            ShapePoint(x = -0.0334, y = -0.1707, role = "logo-flame-inner", progress = 0.633028),
+            ShapePoint(x = -0.0326, y = -0.1595, role = "logo-flame-spark", progress = 0.634338),
+            ShapePoint(x = -0.0314, y = -0.1483, role = "logo-flame-inner", progress = 0.635649),
+            ShapePoint(x = -0.0294, y = -0.1356, role = "logo-flame-inner", progress = 0.636959),
+            ShapePoint(x = -0.0274, y = -0.1228, role = "logo-flame-inner", progress = 0.638270),
+            ShapePoint(x = -0.0254, y = -0.1100, role = "logo-flame-spark", progress = 0.639581),
+            ShapePoint(x = -0.0233, y = -0.0973, role = "logo-flame-inner", progress = 0.640891),
+            ShapePoint(x = -0.0213, y = -0.0845, role = "logo-flame-inner", progress = 0.642202),
+            ShapePoint(x = -0.0193, y = -0.0717, role = "logo-flame-inner", progress = 0.643512),
+            ShapePoint(x = -0.0167, y = -0.0570, role = "logo-flame-spark", progress = 0.644823),
+            ShapePoint(x = -0.0139, y = -0.0422, role = "logo-flame-inner", progress = 0.646134),
+            ShapePoint(x = -0.0113, y = -0.0274, role = "logo-flame-inner", progress = 0.647444),
+            ShapePoint(x = -0.0092, y = -0.0156, role = "logo-flame-inner", progress = 0.648755),
+            ShapePoint(x = -0.0069, y = -0.0017, role = "logo-flame-spark", progress = 0.650066),
+            ShapePoint(x = -0.0050, y = 0.0123, role = "logo-flame-inner", progress = 0.651376),
+            ShapePoint(x = -0.0038, y = 0.0232, role = "logo-flame-inner", progress = 0.652687),
+            ShapePoint(x = -0.0031, y = 0.0343, role = "logo-flame-inner", progress = 0.653997),
+            ShapePoint(x = -0.0027, y = 0.0464, role = "logo-flame-spark", progress = 0.655308),
+            ShapePoint(x = -0.0027, y = 0.0597, role = "logo-flame-inner", progress = 0.656619),
+            ShapePoint(x = -0.0028, y = 0.0730, role = "logo-flame-inner", progress = 0.657929),
+            ShapePoint(x = -0.0040, y = 0.0846, role = "logo-flame-inner", progress = 0.659240),
+            ShapePoint(x = -0.0153, y = 0.0882, role = "logo-flame-spark", progress = 0.660550),
+            ShapePoint(x = -0.0288, y = 0.0906, role = "logo-flame-inner", progress = 0.661861),
+            ShapePoint(x = -0.0366, y = 0.0989, role = "logo-flame-inner", progress = 0.663172),
+            ShapePoint(x = -0.0458, y = 0.0922, role = "logo-flame-inner", progress = 0.664482),
+            ShapePoint(x = -0.0591, y = 0.0925, role = "logo-flame-spark", progress = 0.665793),
+            ShapePoint(x = -0.0734, y = 0.0924, role = "logo-flame-inner", progress = 0.667104),
+            ShapePoint(x = -0.0876, y = 0.0920, role = "logo-flame-inner", progress = 0.668414),
+            ShapePoint(x = -0.1047, y = 0.0948, role = "logo-flame-inner", progress = 0.669725),
+            ShapePoint(x = -0.1117, y = 0.1035, role = "logo-flame-spark", progress = 0.671035),
+            ShapePoint(x = -0.1230, y = 0.1003, role = "logo-flame-inner", progress = 0.672346),
+            ShapePoint(x = -0.1607, y = 0.0810, role = "logo-flame-inner", progress = 0.673657),
+            ShapePoint(x = -0.1710, y = 0.0769, role = "logo-flame-inner", progress = 0.674967),
+            ShapePoint(x = -0.1637, y = 0.0920, role = "logo-flame-spark", progress = 0.676278),
+            ShapePoint(x = -0.1758, y = 0.0929, role = "logo-flame-inner", progress = 0.677588),
+            ShapePoint(x = -0.1872, y = 0.0898, role = "logo-flame-inner", progress = 0.678899),
+            ShapePoint(x = 0.0630, y = -0.1751, role = "logo-flame-inner", progress = 0.680210),
+            ShapePoint(x = 0.0515, y = -0.1821, role = "logo-flame-spark", progress = 0.681520),
+            ShapePoint(x = 0.0405, y = -0.1888, role = "logo-flame-inner", progress = 0.682831),
+            ShapePoint(x = 0.0306, y = -0.1951, role = "logo-flame-inner", progress = 0.684142),
+            ShapePoint(x = 0.0240, y = -0.2047, role = "logo-flame-inner", progress = 0.685452),
+            ShapePoint(x = 0.0286, y = -0.2147, role = "logo-flame-spark", progress = 0.686763),
+            ShapePoint(x = 0.0378, y = -0.2216, role = "logo-flame-inner", progress = 0.688073),
+            ShapePoint(x = 0.0500, y = -0.2205, role = "logo-flame-inner", progress = 0.689384),
+            ShapePoint(x = 0.0608, y = -0.2137, role = "logo-flame-inner", progress = 0.690695),
+            ShapePoint(x = 0.0670, y = -0.2041, role = "logo-flame-spark", progress = 0.692005),
+            ShapePoint(x = 0.0667, y = -0.1917, role = "logo-flame-inner", progress = 0.693316),
+            ShapePoint(x = 0.0544, y = -0.0948, role = "logo-flame-inner", progress = 0.694626),
+            ShapePoint(x = 0.0500, y = -0.1067, role = "logo-flame-inner", progress = 0.695937),
+            ShapePoint(x = 0.0459, y = -0.1189, role = "logo-flame-spark", progress = 0.697248),
+            ShapePoint(x = 0.0421, y = -0.1295, role = "logo-flame-inner", progress = 0.698558),
+            ShapePoint(x = 0.0377, y = -0.1425, role = "logo-flame-inner", progress = 0.699869),
+            ShapePoint(x = 0.0333, y = -0.1558, role = "logo-flame-inner", progress = 0.701180),
+            ShapePoint(x = 0.0291, y = -0.1692, role = "logo-flame-spark", progress = 0.702490),
+            ShapePoint(x = 0.0444, y = -0.1606, role = "logo-flame-inner", progress = 0.703801),
+            ShapePoint(x = 0.0549, y = -0.1541, role = "logo-flame-inner", progress = 0.705111),
+            ShapePoint(x = 0.0593, y = -0.1440, role = "logo-flame-inner", progress = 0.706422),
+            ShapePoint(x = 0.0581, y = -0.1299, role = "logo-flame-spark", progress = 0.707733),
+            ShapePoint(x = 0.1571, y = 0.1762, role = "logo-flame-inner", progress = 0.709043),
+            ShapePoint(x = 0.1612, y = 0.1644, role = "logo-flame-inner", progress = 0.710354),
+            ShapePoint(x = 0.1652, y = 0.1527, role = "logo-flame-inner", progress = 0.711664),
+            ShapePoint(x = 0.1716, y = 0.1321, role = "logo-flame-spark", progress = 0.712975),
+            ShapePoint(x = 0.1749, y = 0.1212, role = "logo-flame-inner", progress = 0.714286),
+            ShapePoint(x = 0.1781, y = 0.1104, role = "logo-flame-inner", progress = 0.715596),
+            ShapePoint(x = 0.1813, y = 0.0995, role = "logo-flame-inner", progress = 0.716907),
+            ShapePoint(x = 0.1845, y = 0.0887, role = "logo-flame-spark", progress = 0.718218),
+            ShapePoint(x = 0.1878, y = 0.0778, role = "logo-flame-inner", progress = 0.719528),
+            ShapePoint(x = 0.1915, y = 0.0652, role = "logo-flame-inner", progress = 0.720839),
+            ShapePoint(x = 0.1952, y = 0.0526, role = "logo-flame-inner", progress = 0.722149),
+            ShapePoint(x = 0.1989, y = 0.0400, role = "logo-flame-spark", progress = 0.723460),
+            ShapePoint(x = 0.2026, y = 0.0274, role = "logo-flame-inner", progress = 0.724771),
+            ShapePoint(x = 0.2064, y = 0.0147, role = "logo-flame-inner", progress = 0.726081),
+            ShapePoint(x = 0.2098, y = 0.0033, role = "logo-flame-inner", progress = 0.727392),
+            ShapePoint(x = 0.2133, y = -0.0082, role = "logo-flame-spark", progress = 0.728702),
+            ShapePoint(x = 0.2167, y = -0.0196, role = "logo-flame-inner", progress = 0.730013),
+            ShapePoint(x = 0.2198, y = -0.0312, role = "logo-flame-inner", progress = 0.731324),
+            ShapePoint(x = 0.2228, y = -0.0446, role = "logo-flame-inner", progress = 0.732634),
+            ShapePoint(x = 0.2253, y = -0.0563, role = "logo-flame-spark", progress = 0.733945),
+            ShapePoint(x = 0.2278, y = -0.0692, role = "logo-flame-inner", progress = 0.735256),
+            ShapePoint(x = 0.2299, y = -0.0802, role = "logo-flame-inner", progress = 0.736566),
+            ShapePoint(x = -0.2403, y = 0.0403, role = "logo-flame-inner", progress = 0.737877),
+            ShapePoint(x = -0.2438, y = 0.0287, role = "logo-flame-spark", progress = 0.739187),
+            ShapePoint(x = -0.2424, y = 0.0171, role = "logo-flame-inner", progress = 0.740498),
+            ShapePoint(x = -0.2460, y = 0.0712, role = "logo-flame-inner", progress = 0.741809),
+            ShapePoint(x = -0.2571, y = 0.0679, role = "logo-flame-inner", progress = 0.743119),
+            ShapePoint(x = -0.2551, y = 0.0562, role = "logo-flame-spark", progress = 0.744430),
+            ShapePoint(x = -0.2435, y = 0.0526, role = "logo-flame-inner", progress = 0.745740),
+            ShapePoint(x = -0.2322, y = 0.0530, role = "logo-flame-inner", progress = 0.747051),
+            ShapePoint(x = 0.1003, y = 0.0617, role = "logo-flame-inner", progress = 0.748362),
+            ShapePoint(x = 0.0876, y = 0.0592, role = "logo-flame-spark", progress = 0.749672),
+            ShapePoint(x = 0.0781, y = 0.0527, role = "logo-flame-inner", progress = 0.750983),
+            ShapePoint(x = 0.1068, y = 0.0527, role = "logo-flame-inner", progress = 0.752294),
+            ShapePoint(x = 0.1187, y = 0.0491, role = "logo-flame-inner", progress = 0.753604),
+            ShapePoint(x = 0.1309, y = 0.0493, role = "logo-flame-spark", progress = 0.754915),
+            ShapePoint(x = 0.1145, y = 0.0608, role = "logo-flame-inner", progress = 0.756225),
+            ShapePoint(x = -0.1503, y = 0.1839, role = "logo-flame-inner", progress = 0.757536),
+            ShapePoint(x = -0.1479, y = 0.1698, role = "logo-flame-inner", progress = 0.758847),
+            ShapePoint(x = -0.1447, y = 0.1570, role = "logo-flame-spark", progress = 0.760157),
+            ShapePoint(x = -0.1411, y = 0.1436, role = "logo-flame-inner", progress = 0.761468),
+            ShapePoint(x = -0.1371, y = 0.1323, role = "logo-flame-inner", progress = 0.762779),
+            ShapePoint(x = -0.1323, y = 0.1213, role = "logo-flame-inner", progress = 0.764089),
+            ShapePoint(x = -0.1270, y = 0.1106, role = "logo-flame-spark", progress = 0.765400),
+            ShapePoint(x = -0.1200, y = 0.3686, role = "logo-flame-inner", progress = 0.766710),
+            ShapePoint(x = -0.1088, y = 0.3686, role = "logo-flame-inner", progress = 0.768021),
+            ShapePoint(x = -0.0969, y = 0.3674, role = "logo-flame-inner", progress = 0.769332),
+            ShapePoint(x = -0.0855, y = 0.3657, role = "logo-flame-spark", progress = 0.770642),
+            ShapePoint(x = -0.0728, y = 0.3625, role = "logo-flame-inner", progress = 0.771953),
+            ShapePoint(x = -0.0599, y = 0.3575, role = "logo-flame-inner", progress = 0.773263),
+            ShapePoint(x = -0.0475, y = 0.3512, role = "logo-flame-inner", progress = 0.774574),
+            ShapePoint(x = -0.0350, y = 0.3433, role = "logo-flame-spark", progress = 0.775885),
+            ShapePoint(x = -0.0260, y = 0.3368, role = "logo-flame-inner", progress = 0.777195),
+            ShapePoint(x = -0.0174, y = 0.3298, role = "logo-flame-inner", progress = 0.778506),
+            ShapePoint(x = -0.0092, y = 0.3224, role = "logo-flame-inner", progress = 0.779817),
+            ShapePoint(x = -0.0014, y = 0.3146, role = "logo-flame-spark", progress = 0.781127),
+            ShapePoint(x = 0.0064, y = 0.3058, role = "logo-flame-inner", progress = 0.782438),
+            ShapePoint(x = 0.0140, y = 0.2961, role = "logo-flame-inner", progress = 0.783748),
+            ShapePoint(x = 0.0210, y = 0.2858, role = "logo-flame-inner", progress = 0.785059),
+            ShapePoint(x = 0.0274, y = 0.2747, role = "logo-flame-spark", progress = 0.786370),
+            ShapePoint(x = 0.0332, y = 0.2631, role = "logo-flame-inner", progress = 0.787680),
+            ShapePoint(x = 0.0386, y = 0.2512, role = "logo-flame-inner", progress = 0.788991),
+            ShapePoint(x = 0.0434, y = 0.2390, role = "logo-flame-inner", progress = 0.790301),
+            ShapePoint(x = 0.0476, y = 0.2265, role = "logo-flame-spark", progress = 0.791612),
+            ShapePoint(x = 0.0512, y = 0.2139, role = "logo-flame-inner", progress = 0.792923),
+            ShapePoint(x = 0.0545, y = 0.2012, role = "logo-flame-inner", progress = 0.794233),
+            ShapePoint(x = 0.0571, y = 0.1895, role = "logo-flame-inner", progress = 0.795544),
+            ShapePoint(x = 0.0593, y = 0.1773, role = "logo-flame-spark", progress = 0.796855),
+            ShapePoint(x = 0.0682, y = 0.1696, role = "logo-flame-inner", progress = 0.798165),
+            ShapePoint(x = 0.0714, y = 0.1589, role = "logo-flame-inner", progress = 0.799476),
+            ShapePoint(x = 0.0635, y = 0.1486, role = "logo-flame-inner", progress = 0.800786),
+            ShapePoint(x = 0.0690, y = 0.1923, role = "logo-flame-spark", progress = 0.802097),
+            ShapePoint(x = 0.0799, y = 0.1943, role = "logo-flame-inner", progress = 0.803408),
+            ShapePoint(x = 0.0910, y = 0.1960, role = "logo-flame-inner", progress = 0.804718),
+            ShapePoint(x = 0.1019, y = 0.1943, role = "logo-flame-inner", progress = 0.806029),
+            ShapePoint(x = 0.1038, y = 0.1828, role = "logo-flame-spark", progress = 0.807339),
+            ShapePoint(x = 0.0952, y = 0.1752, role = "logo-flame-inner", progress = 0.808650),
+            ShapePoint(x = 0.0981, y = 0.1633, role = "logo-flame-inner", progress = 0.809961),
+            ShapePoint(x = 0.1093, y = 0.1565, role = "logo-flame-inner", progress = 0.811271),
+            ShapePoint(x = 0.1205, y = 0.1512, role = "logo-flame-spark", progress = 0.812582),
+            ShapePoint(x = 0.1029, y = 0.2058, role = "logo-flame-inner", progress = 0.813893),
+            ShapePoint(x = 0.0960, y = 0.2259, role = "logo-flame-inner", progress = 0.815203),
+            ShapePoint(x = 0.0914, y = 0.2372, role = "logo-flame-inner", progress = 0.816514),
+            ShapePoint(x = 0.0869, y = 0.2485, role = "logo-flame-spark", progress = 0.817824),
+            ShapePoint(x = 0.0823, y = 0.2598, role = "logo-flame-inner", progress = 0.819135),
+            ShapePoint(x = 0.0777, y = 0.2711, role = "logo-flame-inner", progress = 0.820446),
+            ShapePoint(x = 0.0731, y = 0.2824, role = "logo-flame-inner", progress = 0.821756),
+            ShapePoint(x = 0.0654, y = 0.2924, role = "logo-flame-spark", progress = 0.823067),
+            ShapePoint(x = 0.0576, y = 0.3025, role = "logo-flame-inner", progress = 0.824377),
+            ShapePoint(x = 0.0499, y = 0.3125, role = "logo-flame-inner", progress = 0.825688),
+            ShapePoint(x = 0.0422, y = 0.3225, role = "logo-flame-inner", progress = 0.826999),
+            ShapePoint(x = 0.0345, y = 0.3326, role = "logo-flame-spark", progress = 0.828309),
+            ShapePoint(x = 0.0268, y = 0.3426, role = "logo-flame-inner", progress = 0.829620),
+            ShapePoint(x = 0.0137, y = 0.3517, role = "logo-flame-inner", progress = 0.830931),
+            ShapePoint(x = 0.0006, y = 0.3609, role = "logo-flame-inner", progress = 0.832241),
+            ShapePoint(x = -0.0125, y = 0.3700, role = "logo-flame-spark", progress = 0.833552),
+            ShapePoint(x = -0.0238, y = 0.3737, role = "logo-flame-inner", progress = 0.834862),
+            ShapePoint(x = -0.0351, y = 0.3773, role = "logo-flame-inner", progress = 0.836173),
+            ShapePoint(x = -0.0464, y = 0.3810, role = "logo-flame-inner", progress = 0.837484),
+            ShapePoint(x = -0.0582, y = 0.3822, role = "logo-flame-spark", progress = 0.838794),
+            ShapePoint(x = -0.2799, y = 0.2694, role = "logo-flame-inner", progress = 0.840105),
+            ShapePoint(x = -0.2898, y = 0.2605, role = "logo-flame-inner", progress = 0.841415),
+            ShapePoint(x = -0.2984, y = 0.2520, role = "logo-flame-inner", progress = 0.842726),
+            ShapePoint(x = -0.3213, y = 0.2097, role = "logo-flame-spark", progress = 0.844037),
+            ShapePoint(x = -0.3228, y = 0.1972, role = "logo-flame-inner", progress = 0.845347),
+            ShapePoint(x = -0.3262, y = 0.1867, role = "logo-flame-inner", progress = 0.846658),
+            ShapePoint(x = -0.3110, y = 0.2173, role = "logo-flame-inner", progress = 0.847969),
+            ShapePoint(x = -0.3058, y = 0.2279, role = "logo-flame-spark", progress = 0.849279),
+            ShapePoint(x = -0.3002, y = 0.2382, role = "logo-flame-inner", progress = 0.850590),
+            ShapePoint(x = 0.1527, y = 0.1892, role = "logo-flame-inner", progress = 0.851900),
+            ShapePoint(x = -0.2767, y = 0.2507, role = "logo-flame-inner", progress = 0.853211),
+            ShapePoint(x = -0.2838, y = 0.2420, role = "logo-flame-spark", progress = 0.854522),
+            ShapePoint(x = -0.3106, y = 0.2062, role = "logo-flame-inner", progress = 0.855832),
+            ShapePoint(x = -0.2987, y = 0.2060, role = "logo-flame-inner", progress = 0.857143),
+            ShapePoint(x = -0.2994, y = 0.1946, role = "logo-flame-inner", progress = 0.858453),
+            ShapePoint(x = -0.2897, y = 0.2125, role = "logo-flame-spark", progress = 0.859764),
+            ShapePoint(x = -0.2843, y = 0.2025, role = "logo-flame-inner", progress = 0.861075),
+            ShapePoint(x = -0.2753, y = 0.1955, role = "logo-flame-inner", progress = 0.862385),
+            ShapePoint(x = -0.2699, y = 0.2061, role = "logo-flame-inner", progress = 0.863696),
+            ShapePoint(x = -0.2650, y = 0.2178, role = "logo-flame-spark", progress = 0.865007),
+            ShapePoint(x = -0.2601, y = 0.2296, role = "logo-flame-inner", progress = 0.866317),
+            ShapePoint(x = -0.2721, y = 0.2285, role = "logo-flame-inner", progress = 0.867628),
+            ShapePoint(x = -0.2700, y = 0.2398, role = "logo-flame-inner", progress = 0.868938),
+            ShapePoint(x = -0.2076, y = 0.2730, role = "logo-flame-spark", progress = 0.870249),
+            ShapePoint(x = -0.2151, y = 0.2638, role = "logo-flame-inner", progress = 0.871560),
+            ShapePoint(x = -0.2224, y = 0.2527, role = "logo-flame-inner", progress = 0.872870),
+            ShapePoint(x = -0.2284, y = 0.2431, role = "logo-flame-inner", progress = 0.874181),
+            ShapePoint(x = -0.2343, y = 0.2336, role = "logo-flame-spark", progress = 0.875491),
+            ShapePoint(x = -0.2433, y = 0.2249, role = "logo-flame-inner", progress = 0.876802),
+            ShapePoint(x = -0.2531, y = 0.2196, role = "logo-flame-inner", progress = 0.878113),
+            ShapePoint(x = -0.2485, y = 0.2360, role = "logo-flame-inner", progress = 0.879423),
+            ShapePoint(x = -0.2587, y = 0.2040, role = "logo-flame-spark", progress = 0.880734),
+            ShapePoint(x = -0.2385, y = 0.2148, role = "logo-flame-inner", progress = 0.882045),
+            ShapePoint(x = -0.2360, y = 0.2037, role = "logo-flame-inner", progress = 0.883355),
+            ShapePoint(x = -0.2283, y = 0.2206, role = "logo-flame-inner", progress = 0.884666),
+            ShapePoint(x = -0.0747, y = 0.2843, role = "logo-flame-spark", progress = 0.885976),
+            ShapePoint(x = -0.0718, y = 0.2723, role = "logo-flame-inner", progress = 0.887287),
+            ShapePoint(x = -0.0693, y = 0.2602, role = "logo-flame-inner", progress = 0.888598),
+            ShapePoint(x = -0.0693, y = 0.2490, role = "logo-flame-inner", progress = 0.889908),
+            ShapePoint(x = -0.0806, y = 0.2459, role = "logo-flame-spark", progress = 0.891219),
+            ShapePoint(x = -0.0900, y = 0.2401, role = "logo-flame-inner", progress = 0.892529),
+            ShapePoint(x = -0.1013, y = 0.2391, role = "logo-flame-inner", progress = 0.893840),
+            ShapePoint(x = -0.1117, y = 0.2343, role = "logo-flame-inner", progress = 0.895151),
+            ShapePoint(x = -0.1102, y = 0.2234, role = "logo-flame-spark", progress = 0.896461),
+            ShapePoint(x = -0.0992, y = 0.2175, role = "logo-flame-inner", progress = 0.897772),
+            ShapePoint(x = -0.0882, y = 0.2131, role = "logo-flame-inner", progress = 0.899083),
+            ShapePoint(x = -0.0774, y = 0.2160, role = "logo-flame-inner", progress = 0.900393),
+            ShapePoint(x = -0.0684, y = 0.2096, role = "logo-flame-spark", progress = 0.901704),
+            ShapePoint(x = -0.0678, y = 0.2234, role = "logo-flame-inner", progress = 0.903014),
+            ShapePoint(x = -0.0566, y = 0.2063, role = "logo-flame-inner", progress = 0.904325),
+            ShapePoint(x = -0.0545, y = 0.2177, role = "logo-flame-inner", progress = 0.905636),
+            ShapePoint(x = -0.0452, y = 0.2063, role = "logo-flame-spark", progress = 0.906946),
+            ShapePoint(x = -0.0443, y = 0.2221, role = "logo-flame-inner", progress = 0.908257),
+            ShapePoint(x = -0.0429, y = 0.2354, role = "logo-flame-inner", progress = 0.909567),
+            ShapePoint(x = -0.0488, y = 0.2478, role = "logo-flame-inner", progress = 0.910878),
+            ShapePoint(x = -0.0558, y = 0.2603, role = "logo-flame-spark", progress = 0.912189),
+            ShapePoint(x = -0.1636, y = 0.2611, role = "logo-flame-inner", progress = 0.913499),
+            ShapePoint(x = -0.1679, y = 0.2497, role = "logo-flame-inner", progress = 0.914810),
+            ShapePoint(x = -0.1715, y = 0.2384, role = "logo-flame-inner", progress = 0.916121),
+            ShapePoint(x = -0.1818, y = 0.2329, role = "logo-flame-spark", progress = 0.917431),
+            ShapePoint(x = -0.1930, y = 0.2335, role = "logo-flame-inner", progress = 0.918742),
+            ShapePoint(x = -0.2036, y = 0.2370, role = "logo-flame-inner", progress = 0.920052),
+            ShapePoint(x = -0.2138, y = 0.2418, role = "logo-flame-inner", progress = 0.921363),
+            ShapePoint(x = -0.2195, y = 0.2313, role = "logo-flame-spark", progress = 0.922674),
+            ShapePoint(x = -0.2172, y = 0.2135, role = "logo-flame-inner", progress = 0.923984),
+            ShapePoint(x = -0.2055, y = 0.2142, role = "logo-flame-inner", progress = 0.925295),
+            ShapePoint(x = -0.1925, y = 0.2151, role = "logo-flame-inner", progress = 0.926606),
+            ShapePoint(x = -0.1810, y = 0.2187, role = "logo-flame-spark", progress = 0.927916),
+            ShapePoint(x = -0.1701, y = 0.2156, role = "logo-flame-inner", progress = 0.929227),
+            ShapePoint(x = -0.1627, y = 0.2287, role = "logo-flame-inner", progress = 0.930537),
+            ShapePoint(x = -0.1543, y = 0.2492, role = "logo-flame-inner", progress = 0.931848),
+            ShapePoint(x = -0.1521, y = 0.2228, role = "logo-flame-spark", progress = 0.933159),
+            ShapePoint(x = -0.1396, y = 0.2210, role = "logo-flame-inner", progress = 0.934469),
+            ShapePoint(x = -0.1273, y = 0.2206, role = "logo-flame-inner", progress = 0.935780),
+            ShapePoint(x = -0.1202, y = 0.2433, role = "logo-flame-inner", progress = 0.937090),
+            ShapePoint(x = -0.1315, y = 0.2464, role = "logo-flame-spark", progress = 0.938401),
+            ShapePoint(x = -0.1433, y = 0.2480, role = "logo-flame-inner", progress = 0.939712),
+            ShapePoint(x = 0.1920, y = 0.2870, role = "logo-flame-inner", progress = 0.941022),
+            ShapePoint(x = 0.1912, y = 0.2750, role = "logo-flame-inner", progress = 0.942333),
+            ShapePoint(x = 0.1806, y = 0.2783, role = "logo-flame-spark", progress = 0.943644),
+            ShapePoint(x = 0.1714, y = 0.2876, role = "logo-flame-inner", progress = 0.944954),
+            ShapePoint(x = 0.1703, y = 0.2744, role = "logo-flame-inner", progress = 0.946265),
+            ShapePoint(x = 0.1601, y = 0.2696, role = "logo-flame-inner", progress = 0.947575),
+            ShapePoint(x = 0.1573, y = 0.2586, role = "logo-flame-spark", progress = 0.948886),
+            ShapePoint(x = 0.1479, y = 0.2522, role = "logo-flame-inner", progress = 0.950197),
+            ShapePoint(x = 0.1369, y = 0.2540, role = "logo-flame-inner", progress = 0.951507),
+            ShapePoint(x = 0.1257, y = 0.2568, role = "logo-flame-inner", progress = 0.952818),
+            ShapePoint(x = 0.1175, y = 0.2647, role = "logo-flame-spark", progress = 0.954128),
+            ShapePoint(x = 0.1141, y = 0.2539, role = "logo-flame-inner", progress = 0.955439),
+            ShapePoint(x = 0.1029, y = 0.2527, role = "logo-flame-inner", progress = 0.956750),
+            ShapePoint(x = 0.1087, y = 0.2425, role = "logo-flame-inner", progress = 0.958060),
+            ShapePoint(x = 0.1189, y = 0.2369, role = "logo-flame-spark", progress = 0.959371),
+            ShapePoint(x = 0.1269, y = 0.2282, role = "logo-flame-inner", progress = 0.960682),
+            ShapePoint(x = 0.1368, y = 0.2233, role = "logo-flame-inner", progress = 0.961992),
+            ShapePoint(x = 0.1306, y = 0.2406, role = "logo-flame-inner", progress = 0.963303),
+            ShapePoint(x = 0.1524, y = 0.2417, role = "logo-flame-spark", progress = 0.964613),
+            ShapePoint(x = 0.1633, y = 0.2434, role = "logo-flame-inner", progress = 0.965924),
+            ShapePoint(x = 0.1743, y = 0.2394, role = "logo-flame-inner", progress = 0.967235),
+            ShapePoint(x = 0.1794, y = 0.2292, role = "logo-flame-inner", progress = 0.968545),
+            ShapePoint(x = 0.1847, y = 0.2189, role = "logo-flame-spark", progress = 0.969856),
+            ShapePoint(x = 0.1909, y = 0.2281, role = "logo-flame-inner", progress = 0.971166),
+            ShapePoint(x = 0.1896, y = 0.2394, role = "logo-flame-inner", progress = 0.972477),
+            ShapePoint(x = 0.1932, y = 0.2499, role = "logo-flame-inner", progress = 0.973788),
+            ShapePoint(x = 0.2022, y = 0.2431, role = "logo-flame-spark", progress = 0.975098),
+            ShapePoint(x = 0.1967, y = 0.2614, role = "logo-flame-inner", progress = 0.976409),
+            ShapePoint(x = 0.2030, y = 0.2717, role = "logo-flame-inner", progress = 0.977720),
+            ShapePoint(x = 0.2037, y = 0.2894, role = "logo-flame-inner", progress = 0.979030),
+            ShapePoint(x = -0.0315, y = 0.2959, role = "logo-flame-spark", progress = 0.980341),
+            ShapePoint(x = -0.0292, y = 0.2848, role = "logo-flame-inner", progress = 0.981651),
+            ShapePoint(x = -0.0394, y = 0.2796, role = "logo-flame-inner", progress = 0.982962),
+            ShapePoint(x = -0.0432, y = 0.2681, role = "logo-flame-inner", progress = 0.984273),
+            ShapePoint(x = -0.0375, y = 0.2467, role = "logo-flame-spark", progress = 0.985583),
+            ShapePoint(x = -0.0261, y = 0.2459, role = "logo-flame-inner", progress = 0.986894),
+            ShapePoint(x = -0.0155, y = 0.2489, role = "logo-flame-inner", progress = 0.988204),
+            ShapePoint(x = -0.0065, y = 0.2565, role = "logo-flame-inner", progress = 0.989515),
+            ShapePoint(x = -0.0046, y = 0.2674, role = "logo-flame-spark", progress = 0.990826),
+            ShapePoint(x = -0.0014, y = 0.2782, role = "logo-flame-inner", progress = 0.992136),
+            ShapePoint(x = 0.0070, y = 0.2710, role = "logo-flame-inner", progress = 0.993447),
+            ShapePoint(x = 0.0142, y = 0.2603, role = "logo-flame-inner", progress = 0.994758),
+            ShapePoint(x = 0.0206, y = 0.2491, role = "logo-flame-spark", progress = 0.996068),
+            ShapePoint(x = 0.0306, y = 0.2429, role = "logo-flame-inner", progress = 0.997379),
+            ShapePoint(x = -0.0007, y = 0.2893, role = "logo-flame-inner", progress = 0.998689),
+            ShapePoint(x = -0.0117, y = 0.2896, role = "logo-flame-inner", progress = 1.000000)
         )
-        val pts = ArrayList<ShapePoint>()
-        val count = coords.size / 2
-        for (i in 0 until count) {
-            val x = coords[i * 2]
-            val y = coords[i * 2 + 1]
-            val progress = i.toDouble() / (count - 1).coerceAtLeast(1).toDouble()
-            pts.add(
-                ShapePoint(
-                    x = x,
-                    y = y,
-                    role = if (i % 3 == 0) "logo-flame-spark" else "logo-flame-inner",
-                    progress = progress
-                )
-            )
-        }
-        return pts
     }
 
     private fun generateXAILogoPoints(): List<ShapePoint> {

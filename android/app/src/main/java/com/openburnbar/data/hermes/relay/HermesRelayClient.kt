@@ -21,6 +21,8 @@ class HermesRelayException(message: String, cause: Throwable? = null) : RuntimeE
  */
 object HermesRelayOperationName {
     const val CHAT_COMPLETIONS = "chatCompletions"
+    const val CLI_AGENT_CHAT = "cliAgentChat"
+    const val CLI_AGENT_MODEL_CATALOG = "cliAgentModelCatalog"
     const val MODELS = "models"
     const val SESSIONS = "sessions"
     const val SESSION_DETAIL = "sessionDetail"
@@ -160,10 +162,11 @@ class HermesRelayClient(
         path: String,
         body: ByteArray = ByteArray(0),
         sessionId: String? = null,
+        timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS,
     ): String {
-        val handle = sendEnvelope(connection, operation, method, path, body, sessionId)
+        val handle = sendEnvelope(connection, operation, method, path, body, sessionId, timeoutMillis)
         val fragments = sortedMapOf<Int, String>()
-        poll(handle = handle) { chunk ->
+        poll(handle = handle, timeoutMillis = timeoutMillis) { chunk ->
             when (chunk.kind) {
                 HermesRelayChunkKindWire.ERROR -> throw HermesRelayException(chunk.text)
                 HermesRelayChunkKindWire.SSE, HermesRelayChunkKindWire.DATA ->
@@ -180,10 +183,11 @@ class HermesRelayClient(
         path: String,
         body: ByteArray,
         sessionId: String? = null,
+        timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS,
         onChunk: suspend (kind: String, text: String) -> Unit,
     ) {
-        val handle = sendEnvelope(connection, operation, method, path, body, sessionId)
-        poll(handle = handle) { chunk ->
+        val handle = sendEnvelope(connection, operation, method, path, body, sessionId, timeoutMillis)
+        poll(handle = handle, timeoutMillis = timeoutMillis) { chunk ->
             when (chunk.kind) {
                 HermesRelayChunkKindWire.ERROR -> throw HermesRelayException(chunk.text)
                 else -> onChunk(chunk.kind, chunk.text)
@@ -199,12 +203,13 @@ class HermesRelayClient(
         path: String,
         body: ByteArray,
         sessionId: String?,
+        timeoutMillis: Long,
     ): RelayRequestHandle {
         val uid = auth.currentUser?.uid
             ?: throw HermesRelayException("Iroh relay requires a signed-in Firebase user.")
         val requestId = "relay_${UUID.randomUUID().toString().lowercase()}"
         val now = System.currentTimeMillis()
-        val expiresAt = now + DEFAULT_TIMEOUT_MILLIS + 30_000L
+        val expiresAt = HermesRelayTimeouts.expiresAtMillis(now, timeoutMillis)
 
         val keyData = HermesRelayCrypto.generateSymmetricKey()
         val bodyString = if (body.isNotEmpty()) String(body, Charsets.UTF_8) else null
@@ -248,10 +253,14 @@ class HermesRelayClient(
 
     private data class DecryptedChunk(val kind: String, val sequence: Int, val text: String)
 
-    private suspend fun poll(handle: RelayRequestHandle, onChunk: suspend (DecryptedChunk) -> Unit) {
+    private suspend fun poll(
+        handle: RelayRequestHandle,
+        timeoutMillis: Long,
+        onChunk: suspend (DecryptedChunk) -> Unit,
+    ) {
         val requestRef = firestore.collection("users").document(handle.uid)
             .collection("hermes_relay_requests").document(handle.requestId)
-        val deadline = System.currentTimeMillis() + DEFAULT_TIMEOUT_MILLIS
+        val deadline = HermesRelayTimeouts.deadlineMillis(System.currentTimeMillis(), timeoutMillis)
         var lastSequence = -1
         while (System.currentTimeMillis() < deadline) {
             val chunks = requestRef.collection("chunks")
@@ -303,8 +312,22 @@ class HermesRelayClient(
     )
 
     companion object {
-        private const val DEFAULT_TIMEOUT_MILLIS = 30_000L
+        private const val DEFAULT_TIMEOUT_MILLIS = HermesRelayTimeouts.DEFAULT_TIMEOUT_MILLIS
         private const val POLL_INTERVAL_MILLIS = 350L
         private val ISO8601: DateTimeFormatter = DateTimeFormatter.ISO_INSTANT
     }
+}
+
+internal object HermesRelayTimeouts {
+    internal const val DEFAULT_TIMEOUT_MILLIS = 30_000L
+    private const val EXPIRATION_GRACE_MILLIS = 30_000L
+
+    fun effectiveTimeoutMillis(timeoutMillis: Long): Long =
+        timeoutMillis.takeIf { it > 0 } ?: DEFAULT_TIMEOUT_MILLIS
+
+    fun deadlineMillis(nowMillis: Long, timeoutMillis: Long): Long =
+        nowMillis + effectiveTimeoutMillis(timeoutMillis)
+
+    fun expiresAtMillis(nowMillis: Long, timeoutMillis: Long): Long =
+        deadlineMillis(nowMillis, timeoutMillis) + EXPIRATION_GRACE_MILLIS
 }

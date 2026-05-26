@@ -199,7 +199,7 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         switch action {
         case .browser:
             if !context.entitlement.allowsBrowser { return .denied(.entitlement) }
-        case .macInput, .macInspect:
+        case .macInput, .macInspect, .remoteClipboard:
             if !context.entitlement.allowsSystem { return .denied(.entitlement) }
             if context.originatedFromPhone && !context.entitlement.allowsPhoneControl { return .denied(.entitlement) }
             if !context.accessibilityTrusted { return .denied(.accessibilityRevoked) }
@@ -271,7 +271,7 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
     ) -> Bool {
         guard context.originatedFromPhone else { return false }
         switch action {
-        case .macInput, .phoneIntent:
+        case .macInput, .phoneIntent, .remoteClipboard:
             return true
         case .browser, .macInspect:
             return false

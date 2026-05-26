@@ -629,7 +629,11 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                  .controlClassify, .controlActionLogEntry, .controlInputIntent,
                  .controlApprovalRequest, .controlApprovalResponse,
                  .controlAgentGrantRequest, .controlAgentGrantReceipt,
-                 .controlDenied:
+                 .controlClipboardRequest, .controlClipboardResponse,
+                 .controlAgentContextTarget,
+                 .controlDenied,
+                 .controlSystemPermissionRequest,
+                 .controlSystemPermissionStatus:
                 continue
             case .mediaClassify,
                     .mediaBlobAdvertise,
@@ -698,7 +702,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             return requestedTimeout
         case .cliAgentChat:
             return requestedTimeout
-        case .models, .sessions, .sessionDetail, .profiles, .jobs:
+        case .cliAgentModelCatalog, .models, .sessions, .sessionDetail, .profiles, .jobs:
             return max(requestedTimeout, minimumControlPlaneRequestTimeout)
         }
     }

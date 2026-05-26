@@ -208,6 +208,28 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testMacPresenceHeartbeatUpdatesControlRoundTripMillis() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+        try await waitUntilHeartbeatCount(stream, count: 1)
+
+        XCTAssertNil(coordinator.lastRoundTripMillis)
+        await stream.pushInbound(macPresenceFrame(uid: "user-1", connectionID: "conn-1"))
+        try await waitUntil { coordinator.lastRoundTripMillis != nil }
+
+        XCTAssertGreaterThanOrEqual(coordinator.lastRoundTripMillis ?? -1, 0)
+        await coordinator.stop()
+    }
+
     func testReadLoopForwardsMacPresenceHeartbeatToInstalledHandler() async throws {
         let stream = MediaControlFakeStream()
         let receiver = makeReceiver()

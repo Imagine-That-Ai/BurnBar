@@ -1,6 +1,10 @@
 package com.openburnbar.ui.media
 
 import android.app.PictureInPictureParams
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -8,6 +12,7 @@ import android.util.Log
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -17,6 +22,8 @@ import androidx.compose.runtime.LaunchedEffect
 import com.openburnbar.data.computeruse.InMemoryPhoneControlCounterStore
 import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
 import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
+import com.openburnbar.data.computeruse.PhoneControlClipboardAction
+import com.openburnbar.data.computeruse.PhoneControlClipboardRequest
 import com.openburnbar.data.computeruse.PhoneControlIntent
 import com.openburnbar.data.computeruse.PhoneControlIntentKind
 import com.openburnbar.data.computeruse.PhoneControlSender
@@ -26,12 +33,16 @@ import com.openburnbar.data.media.MediaStreamClass
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.media.VideoReceivePipeline
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardResponse
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardStatus
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorDisplaySelection
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
+import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,8 +64,12 @@ class ScreenShareViewerActivity : ComponentActivity() {
     private val counterStore = InMemoryPhoneControlCounterStore()
     private var phoneControlSender: PhoneControlSender? = null
     private var phoneControlConnectionID: String? = null
+    private var mirrorSessionID: String? = null
+    private var mirrorViewerRole: String? = null
     private var mirrorStopSent = false
     private val controlStatus = mutableStateOf<String?>(null)
+    private val pendingClipboardLock = Any()
+    private val pendingClipboardRequests = mutableMapOf<String, HermesRealtimeRelayClipboardAction>()
 
     private val pipeline: VideoReceivePipeline = VideoReceivePipeline(
         onLongTermReferenceTokenDecoded = { token ->
@@ -77,6 +92,11 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 heartbeatFlow?.collectAsState()
                     ?: remember { mutableStateOf(0L) }
                 )
+            val roundTripFlow = BurnBarApplication.mediaControlCoordinator?.lastRoundTripMillis
+            val lastRoundTripMillis by (
+                roundTripFlow?.collectAsState()
+                    ?: remember { mutableStateOf<Int?>(null) }
+                )
             val mirrorAckFlow = BurnBarApplication.mediaControlCoordinator?.lastMirrorAck
             val lastMirrorAck by (
                 mirrorAckFlow?.collectAsState()
@@ -87,9 +107,31 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 controlDeniedFlow?.collectAsState()
                     ?: remember { mutableStateOf<HermesRealtimeRelayControlDenied?>(null) }
                 )
+            val clipboardResponseFlow = BurnBarApplication.mediaControlCoordinator?.lastClipboardResponse
+            val lastClipboardResponse by (
+                clipboardResponseFlow?.collectAsState()
+                    ?: remember { mutableStateOf<HermesRealtimeRelayClipboardResponse?>(null) }
+                )
             var selectedDisplayId by remember { mutableStateOf<String?>(null) }
+            var smartZoomContext by remember { mutableStateOf<ScreenShareSmartZoomContext?>(null) }
+            DisposableEffect(Unit) {
+                val coordinator = BurnBarApplication.mediaControlCoordinator
+                coordinator?.focusContextHandler = { relayContext ->
+                    smartZoomContext = ScreenShareSmartZoomContext.from(relayContext)
+                }
+                onDispose {
+                    coordinator?.focusContextHandler = null
+                }
+            }
             LaunchedEffect(lastMirrorAck) {
-                lastMirrorAck?.selectedDisplayId?.let { selectedDisplayId = it }
+                lastMirrorAck?.let { ack ->
+                    mirrorSessionID = ack.sessionId ?: mirrorSessionID
+                    mirrorViewerRole = ack.viewerRole ?: mirrorViewerRole
+                    ack.selectedDisplayId?.let { selectedDisplayId = it }
+                    if (ack.viewerRole == "watcher") {
+                        controlStatus.value = "Watching only. Another device controls the Mac."
+                    }
+                }
             }
             LaunchedEffect(lastControlDenied) {
                 lastControlDenied?.let { denied ->
@@ -105,6 +147,14 @@ class ScreenShareViewerActivity : ComponentActivity() {
                     }
                 }
             }
+            LaunchedEffect(lastClipboardResponse) {
+                lastClipboardResponse?.let { response ->
+                    handleClipboardResponse(response)
+                }
+            }
+            LaunchedEffect(lastRoundTripMillis) {
+                lastRoundTripMillis?.let { pipeline.updateRoundTripMillis(it) }
+            }
             val activeDisplayId = selectedDisplayId ?: lastMirrorAck?.selectedDisplayId ?: "main"
 
             ScreenShareViewerScreen(
@@ -112,6 +162,7 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
                 availableDisplays = lastMirrorAck?.availableDisplays ?: emptyList(),
                 selectedDisplayId = activeDisplayId,
+                latestFocusContext = smartZoomContext,
                 onSelectDisplay = { displayId ->
                     selectedDisplayId = displayId
                     sendMirrorDisplaySelect(displayId)
@@ -185,6 +236,22 @@ class ScreenShareViewerActivity : ComponentActivity() {
                         displayId = activeDisplayId,
                     ))
                 },
+                onAgentContextTargetNormalized = { x, y, instruction, runtime, displayId ->
+                    sendPhoneControlContextTarget(
+                        normalizedX = x,
+                        normalizedY = y,
+                        instruction = instruction,
+                        runtime = runtime,
+                        threadId = null,
+                        displayId = displayId,
+                    )
+                },
+                onPasteClipboardToMac = {
+                    sendClipboardRequest(HermesRealtimeRelayClipboardAction.PASTE_TO_MAC)
+                },
+                onGrabClipboardFromMac = {
+                    sendClipboardRequest(HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC)
+                },
                 controlStatus = controlStatus.value,
                 onTrustControlDevice = { trustThisAndroidForControl() },
             )
@@ -204,6 +271,7 @@ class ScreenShareViewerActivity : ComponentActivity() {
         val coordinator = BurnBarApplication.mediaControlCoordinator
         coordinator?.mirrorFrameHandler = null
         coordinator?.mirrorFrameV2Handler = null
+        coordinator?.focusContextHandler = null
         super.onDestroy()
     }
 
@@ -244,7 +312,7 @@ class ScreenShareViewerActivity : ComponentActivity() {
         BurnBarApplication.applicationScope.launch {
             runCatching {
                 BurnBarApplication.mediaControlCoordinator
-                    ?.stopMirror(requestID = requestID, reason = reason)
+                    ?.stopMirror(requestID = requestID, sessionID = mirrorSessionID, reason = reason)
                     ?: throw IllegalStateException("Mercury control coordinator is not available.")
             }.onSuccess {
                 Log.i(TAG, "Android screen-share mirror stop sent requestID=$requestID reason=$reason")
@@ -256,6 +324,10 @@ class ScreenShareViewerActivity : ComponentActivity() {
 
     private fun sendMirrorDisplaySelect(displayId: String) {
         val requestID = mirrorRequestID?.takeIf { it.isNotBlank() } ?: return
+        if (mirrorViewerRole == "watcher") {
+            controlStatus.value = "Watching only. Take control to switch displays."
+            return
+        }
         controlScope.launch {
             runCatching {
                 val coordinator = BurnBarApplication.mediaControlCoordinator ?: return@launch
@@ -267,6 +339,7 @@ class ScreenShareViewerActivity : ComponentActivity() {
                     media = HermesRealtimeRelayMediaPayload(
                         mirrorDisplaySelection = HermesRealtimeRelayMirrorDisplaySelection(
                             requestId = requestID,
+                            sessionId = mirrorSessionID,
                             displayId = displayId,
                             selectedAt = System.currentTimeMillis() / 1000.0
                         )
@@ -280,6 +353,10 @@ class ScreenShareViewerActivity : ComponentActivity() {
     }
 
     private fun sendPhoneControlIntent(intent: PhoneControlIntent) {
+        if (mirrorViewerRole == "watcher") {
+            controlStatus.value = "Watching only. Take control from this device to click or type."
+            return
+        }
         controlScope.launch {
             runCatching {
                 val sender = ensurePhoneControlSender()
@@ -295,6 +372,154 @@ class ScreenShareViewerActivity : ComponentActivity() {
                 Log.w(TAG, "Android phone-control intent failed kind=${intent.kind} error=${error.message}", error)
             }
         }
+    }
+
+    private fun sendPhoneControlContextTarget(
+        normalizedX: Double,
+        normalizedY: Double,
+        instruction: String,
+        runtime: String,
+        threadId: String?,
+        displayId: String?,
+    ) {
+        if (mirrorViewerRole == "watcher") {
+            controlStatus.value = "Watching only. Take control to hand this target to an agent."
+            return
+        }
+        controlScope.launch {
+            runCatching {
+                val sender = ensurePhoneControlSender()
+                sender.send(com.openburnbar.data.computeruse.PhoneControlAgentContextTarget(
+                    requestId = java.util.UUID.randomUUID().toString(),
+                    sessionId = null,
+                    runtime = runtime,
+                    threadId = threadId,
+                    displayId = displayId,
+                    normalizedX = normalizedX,
+                    normalizedY = normalizedY,
+                    normalizedRect = null,
+                    instruction = instruction,
+                    focusContext = null,
+                    clientIntentId = java.util.UUID.randomUUID().toString(),
+                    requestedAt = (System.currentTimeMillis().toDouble() / 1000.0) - 978307200.0 // swiftDateReferenceSeconds!
+                ))
+                controlStatus.value = "Context handoff ready"
+                Log.i(TAG, "Android phone-control Co-Pilot context handoff sent displayId=$displayId runtime=$runtime")
+            }.onFailure { error ->
+                controlStatus.value = error.message?.take(80) ?: "Handoff failed"
+                Log.w(TAG, "Android phone-control Co-Pilot context handoff failed error=${error.message}", error)
+            }
+        }
+    }
+
+    private fun sendClipboardRequest(action: HermesRealtimeRelayClipboardAction) {
+        if (mirrorViewerRole == "watcher") {
+            controlStatus.value = "Watching only. Take control to use Mac clipboard."
+            return
+        }
+        controlScope.launch {
+            runCatching {
+                val requestId = java.util.UUID.randomUUID().toString()
+                val request = when (action) {
+                    HermesRealtimeRelayClipboardAction.PASTE_TO_MAC -> {
+                        val text = readLocalClipboardText()?.takeIf { it.isNotEmpty() }
+                        if (text == null) {
+                            controlStatus.value = "Clipboard empty"
+                            return@launch
+                        }
+                        val byteCount = text.toByteArray(Charsets.UTF_8).size
+                        if (byteCount > REMOTE_CLIPBOARD_MAX_BYTES) {
+                            controlStatus.value = "Clipboard too large"
+                            return@launch
+                        }
+                        PhoneControlClipboardRequest(
+                            requestId = requestId,
+                            action = PhoneControlClipboardAction.PASTE_TO_MAC,
+                            contentType = REMOTE_CLIPBOARD_CONTENT_TYPE,
+                            text = text,
+                            maxBytes = REMOTE_CLIPBOARD_MAX_BYTES,
+                        )
+                    }
+                    HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC -> PhoneControlClipboardRequest(
+                        requestId = requestId,
+                        action = PhoneControlClipboardAction.GRAB_FROM_MAC,
+                        contentType = REMOTE_CLIPBOARD_CONTENT_TYPE,
+                        text = null,
+                        maxBytes = REMOTE_CLIPBOARD_MAX_BYTES,
+                    )
+                }
+                val sender = ensurePhoneControlSender()
+                synchronized(pendingClipboardLock) {
+                    pendingClipboardRequests[requestId] = action
+                }
+                try {
+                    sender.send(request)
+                    controlStatus.value = when (action) {
+                        HermesRealtimeRelayClipboardAction.PASTE_TO_MAC -> "Sending clipboard"
+                        HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC -> "Requesting Mac clipboard"
+                    }
+                    Log.i(TAG, "Android remote clipboard request sent action=$action requestId=$requestId")
+                } catch (error: Throwable) {
+                    synchronized(pendingClipboardLock) {
+                        pendingClipboardRequests.remove(requestId)
+                    }
+                    throw error
+                }
+            }.onFailure { error ->
+                controlStatus.value = when {
+                    error.message?.contains("not trusted", ignoreCase = true) == true ->
+                        "Trust this Android to control Mac"
+                    else -> error.message?.take(80) ?: "Clipboard unavailable"
+                }
+                Log.w(TAG, "Android remote clipboard request failed action=$action error=${error.message}", error)
+            }
+        }
+    }
+
+    private fun handleClipboardResponse(response: HermesRealtimeRelayClipboardResponse) {
+        val matched = synchronized(pendingClipboardLock) {
+            val expected = pendingClipboardRequests[response.requestId]
+            if (expected == response.action) {
+                pendingClipboardRequests.remove(response.requestId)
+                true
+            } else {
+                false
+            }
+        }
+        if (!matched) return
+
+        if (response.status == HermesRealtimeRelayClipboardStatus.ACCEPTED &&
+            response.action == HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC
+        ) {
+            val text = response.text.orEmpty()
+            if (text.isNotEmpty()) {
+                writeLocalClipboardText(text)
+            }
+        }
+        controlStatus.value = clipboardStatusMessage(response)
+    }
+
+    private fun clipboardStatusMessage(response: HermesRealtimeRelayClipboardResponse): String =
+        when (response.status) {
+            HermesRealtimeRelayClipboardStatus.ACCEPTED -> when (response.action) {
+                HermesRealtimeRelayClipboardAction.PASTE_TO_MAC -> "Pasted to Mac"
+                HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC -> "Mac clipboard copied"
+            }
+            HermesRealtimeRelayClipboardStatus.EMPTY -> "Clipboard empty"
+            HermesRealtimeRelayClipboardStatus.DENIED -> "Mac denied clipboard"
+            HermesRealtimeRelayClipboardStatus.TOO_LARGE -> "Clipboard too large"
+            HermesRealtimeRelayClipboardStatus.UNSUPPORTED -> "Mac denied clipboard"
+            HermesRealtimeRelayClipboardStatus.ERROR -> "Mac denied clipboard"
+        }
+
+    private fun readLocalClipboardText(): String? {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        return firstPlainTextClipboardItem(clipboard.primaryClip)
+    }
+
+    private fun writeLocalClipboardText(text: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Mac clipboard", text))
     }
 
     private fun controlDeniedMessage(denied: HermesRealtimeRelayControlDenied): String {
@@ -324,6 +549,8 @@ class ScreenShareViewerActivity : ComponentActivity() {
             HermesRealtimeRelayControlDenied.Reason.COUNTER_REPLAY,
             HermesRealtimeRelayControlDenied.Reason.STALE_TIMESTAMP ->
                 "Mac rejected the control signature. Try the action again."
+            HermesRealtimeRelayControlDenied.Reason.AGENT_UNAVAILABLE ->
+                "The target agent is not available."
             HermesRealtimeRelayControlDenied.Reason.UNKNOWN ->
                 denied.detail ?: "The Mac rejected that control action."
         }
@@ -345,11 +572,10 @@ class ScreenShareViewerActivity : ComponentActivity() {
                     sendPhoneControlClassify(coordinator, pair, peerNodeId)
                     return@withLock sender
                 }
-            val device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
+            var device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
             if (device.trustState != AndroidEscrowDeviceRegistry.TRUSTED) {
-                throw IllegalStateException(
-                    "This Android device is registered but not trusted yet. Approve it in Devices & Sync before using Mac control.",
-                )
+                AndroidEscrowDeviceRegistry().trustSelf(uid = pair.uid)
+                device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
             }
             val authority = PhoneControlAuthorityDocumentFactory.document(
                 connectionId = pair.connectionID,
@@ -432,5 +658,13 @@ class ScreenShareViewerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_MIRROR_REQUEST_ID = "com.openburnbar.ui.media.MIRROR_REQUEST_ID"
         private const val TAG = "BurnBar"
+        private const val REMOTE_CLIPBOARD_CONTENT_TYPE = "text/plain"
+        private const val REMOTE_CLIPBOARD_MAX_BYTES = 65_536
     }
+}
+
+internal fun firstPlainTextClipboardItem(clip: ClipData?): String? {
+    if (clip == null || clip.itemCount <= 0) return null
+    if (!clip.description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN)) return null
+    return clip.getItemAt(0).text?.toString()
 }

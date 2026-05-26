@@ -136,7 +136,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
@@ -146,17 +146,69 @@ jobs:
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
         run: bash ./scripts/ci/inject-firebase-config.sh
 
+      - name: Install OpenBurnBar Functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Lint OpenBurnBar Functions
+        run: npm --prefix functions run lint
+
+      - name: Build OpenBurnBar Functions
+        run: npm --prefix functions run build
+
+      - name: Run OpenBurnBar Functions tests
+        run: npm --prefix functions test
+
       - name: Install extension dependencies
         run: npm ci --prefix extensions/openburnbar
 
       - name: Run Swift tests
-        run: ./scripts/test-openburnbar-swift.sh
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
 
       - name: Run OpenBurnBar app tests
-        run: ./scripts/test-openburnbar-app.sh
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+
+      - name: Run OpenBurnBar mobile unit tests
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh
+
+      - name: Run retrieval replay evals
+        run: ./scripts/test-openburnbar-retrieval-evals.sh
 
       - name: Run TypeScript tests
         run: ./scripts/test-openburnbar-ts.sh
+
+      - name: Run replay evals
+        run: ./scripts/test-openburnbar-replay-evals.sh
+
+      - name: Run extension-host tests
+        run: ./scripts/test-openburnbar-extension-host.sh
+
+      - name: Run Firestore rules emulator tests
+        run: npm --prefix functions run test:firestore-rules
+
+      - name: Verify OpenBurnBar app SwiftPM lockfile
+        run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
+
+      - name: Set up Java 21 (Android release tests)
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: "platforms;android-35 build-tools;35.0.0"
+
+      - name: Inject Android Firebase config
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config-android.sh
+
+      - name: Run Android unit tests
+        run: ./scripts/test-openburnbar-android.sh
+
+      - name: Run supply chain audit
+        run: ./scripts/supply-chain-audit.sh
 
       - name: Build extension
         run: npm run --prefix extensions/openburnbar build
@@ -665,6 +717,20 @@ jobs:
           METADATA_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "release-metadata.json" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
 
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          VERSION_TAG="${VERSION#v}"
+          awk -v ver="$VERSION_TAG" '
+            /^## / {
+              if (found) { exit }
+              if ($0 ~ "\\[" ver "\\]") { found=1; next }
+            }
+            found { print }
+          ' CHANGELOG.md > "$NOTES_FILE"
+          if [[ ! -s "$NOTES_FILE" ]]; then
+            echo "::warning::No CHANGELOG section for $VERSION_TAG; falling back to full CHANGELOG"
+            cp CHANGELOG.md "$NOTES_FILE"
+          fi
+
           ASSETS=("$DMG_PATH" "$ZIP_PATH")
           for asset in "${ASSETS[@]}"; do
             if [[ ! -f "$asset" ]]; then
@@ -685,7 +751,7 @@ jobs:
               "${ASSETS[@]}" \
               --title "OpenBurnBar $VERSION" \
               --prerelease \
-              --notes-file CHANGELOG.md
+              --notes-file "$NOTES_FILE"
           fi
 
       - name: Clean up Firebase config

@@ -244,6 +244,9 @@ struct CLIAgentTranscriptView: View {
         case .codex:    return Color(hex: "1ABC9C")
         case .claude:   return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
+        case .droid:    return Color(hex: "8B5CF6")
+        case .forge:    return Color(hex: "F97316")
+        case .antigravity: return Color(hex: "6C63FF")
         }
     }
 }

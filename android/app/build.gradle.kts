@@ -5,7 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+    id("org.jetbrains.kotlin.kapt")
+    jacoco
 }
+
+import org.gradle.testing.jacoco.tasks.JacocoReport
 
 android {
     namespace = "com.openburnbar"
@@ -60,6 +64,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            enableUnitTestCoverage = true
+        }
         release {
             if (hasReleaseSigningConfig) {
                 signingConfig = signingConfigs.getByName("releaseUpload")
@@ -102,7 +109,41 @@ android {
         unitTests.all {
             it.jvmArgs("-Xshare:off")
         }
+        unitTests.isIncludeAndroidResources = true
     }
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    dependsOn("testDebugUnitTest")
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        xml.outputLocation.set(
+            layout.buildDirectory.file("reports/jacoco/testDebugUnitTest/jacocoTestReport.xml")
+        )
+    }
+    val debugTree = fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+        exclude(
+            "**/R.class",
+            "**/R\$*.class",
+            "**/BuildConfig.*",
+            "**/Manifest*.*",
+            "**/*Test*.*",
+            "**/*\$Lambda\$*.*",
+        )
+    }
+    classDirectories.setFrom(debugTree)
+    sourceDirectories.setFrom(files("src/main/java", "src/main/kotlin"))
+    executionData.setFrom(
+        fileTree(layout.buildDirectory) {
+            include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+            include("jacoco/testDebugUnitTest.exec")
+        }
+    )
+}
+
+tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
+    finalizedBy("jacocoTestReport")
 }
 
 dependencies {
@@ -207,6 +248,12 @@ dependencies {
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // Room
+    val roomVersion = "2.6.1"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    kapt("androidx.room:room-compiler:$roomVersion")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

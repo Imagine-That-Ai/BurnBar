@@ -15,6 +15,9 @@ class ChatTilePreferencesTest {
         val prefs = ChatTilePreferences.DEFAULT
         assertTrue(prefs.enabledTiles.contains(AssistantRuntimeID.HERMES))
         assertTrue(prefs.enabledTiles.contains(AssistantRuntimeID.PI))
+        assertTrue(prefs.enabledTiles.contains(AssistantRuntimeID.DROID))
+        assertTrue(prefs.enabledTiles.contains(AssistantRuntimeID.FORGE))
+        assertTrue(prefs.enabledTiles.contains(AssistantRuntimeID.ANTIGRAVITY))
     }
 
     @Test
@@ -87,6 +90,9 @@ class ChatTilePreferencesTest {
         assertEquals("codex", AssistantRuntimeID.CODEX.token)
         assertEquals("claude", AssistantRuntimeID.CLAUDE.token)
         assertEquals("openclaw", AssistantRuntimeID.OPEN_CLAW.token)
+        assertEquals("droid", AssistantRuntimeID.DROID.token)
+        assertEquals("forge", AssistantRuntimeID.FORGE.token)
+        assertEquals("antigravity", AssistantRuntimeID.ANTIGRAVITY.token)
     }
 
     @Test

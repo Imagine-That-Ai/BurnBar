@@ -598,7 +598,9 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
         let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
+        let configClaudeDirectory = home.appendingPathComponent(".config/claude", isDirectory: true)
         try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: configClaudeDirectory, withIntermediateDirectories: true)
 
         let settingsURL = claudeDirectory.appendingPathComponent("settings.json")
         let originalSettings = """
@@ -1615,37 +1617,52 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertNotNil(creds.expiresAt)
     }
 
-    func test_claudeQuotaSourceDoesNotReadClaudeCredentialStores() throws {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let sourceFiles = [
-            "AgentLens/Services/ProviderQuota/ClaudeCredentialsReader.swift",
-            "AgentLens/Services/ProviderQuota/ClaudeQuotaAdapter.swift",
-            "AgentLens/Services/ProviderQuota/ProviderQuotaService.swift",
-            "AgentLens/Services/ProviderQuota/QuotaRefreshActor.swift"
-        ]
-        let forbidden = [
-            "Claude Code-credentials",
-            "SecItemCopyMatching",
-            "SecKeychain",
-            "kSecAttrService",
-            "CLAUDE_CODE_OAUTH_TOKEN",
-            "CLAUDE_CREDENTIALS_SKIP_KEYCHAIN",
-            "Data(contentsOf: credentialsFileURL"
-        ]
+    func test_claudeQuotaDefaultPathIgnoresCredentialStoreArtifactsUnlessInjected() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
+        let configClaudeDirectory = home.appendingPathComponent(".config/claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: configClaudeDirectory, withIntermediateDirectories: true)
 
-        for relativePath in sourceFiles {
-            let url = repoRoot.appendingPathComponent(relativePath)
-            let contents = try String(contentsOf: url, encoding: .utf8)
-            for needle in forbidden {
-                XCTAssertFalse(
-                    contents.contains(needle),
-                    "\(relativePath) must not contain \(needle); Claude quota must not read third-party credential stores."
-                )
-            }
+        let credentialStorePayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "sk-ant-oat-store-credential",
+            "refreshToken": "sk-ant-ort-store-credential",
+            "expiresAt": 1778310120051,
+            "subscriptionType": "pro"
+          }
         }
+        """
+        try Data(credentialStorePayload.utf8)
+            .write(to: claudeDirectory.appendingPathComponent(".credentials.json"))
+        try Data(credentialStorePayload.utf8)
+            .write(to: configClaudeDirectory.appendingPathComponent(".credentials.json"))
+
+        let session = makeStubSession { request in
+            XCTFail("Default Claude quota refresh must not use discovered Claude credentials. Got: \(request.url?.absoluteString ?? "?")")
+            throw URLError(.cannotConnectToHost)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: [
+                "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-env-credential",
+                "CLAUDE_CREDENTIALS_SKIP_KEYCHAIN": "false"
+            ],
+            refreshProviders: [.claudeCode]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertNotEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertFalse(snapshot.statusMessage.contains("Plan: Pro"))
+        XCTAssertTrue(snapshot.statusMessage.contains("Sign in to Claude Code") || snapshot.statusMessage.contains("Bridge installed"))
     }
 
     func test_claudeCredentials_canCallUsageEndpoint_acceptsExpiredAccessWithRefreshToken() {
@@ -2736,7 +2753,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let first = makeService(
             home: home,
             appSupportRoot: appSupport,
-            factoryPlanProvider: { .pro }
+            factoryPlanProvider: { .pro },
+            refreshProviders: [.factory]
         )
 
         let store = try makeDataStore()
@@ -2746,7 +2764,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let second = makeService(
             home: home,
             appSupportRoot: appSupport,
-            factoryPlanProvider: { .pro }
+            factoryPlanProvider: { .pro },
+            refreshProviders: [.factory]
         )
 
         XCTAssertNotNil(second.snapshot(for: .factory))

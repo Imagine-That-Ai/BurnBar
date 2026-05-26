@@ -1,0 +1,56 @@
+package com.openburnbar
+
+import com.openburnbar.data.hermes.CliRuntimeModelCatalogResponse
+import com.openburnbar.data.hermes.CliModelSource
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class CLIRuntimeModelCatalogTest {
+    @Test
+    fun cliRuntimeModelCatalogResponseDecodesSwiftWireShape() {
+        val response = CliRuntimeModelCatalogResponse.decode(
+            """
+            {
+              "runtime": "droid",
+              "machineName": "Alberto Mac",
+              "generatedAtEpochMillis": 42,
+              "options": [
+                {
+                  "modelID": "custom:OpenBurnBar-claude-opus-4-7-1",
+                  "displayName": "Claude Opus 4.7 · Anthropic · via OpenBurnBar · Reasoning: default",
+                  "providerID": "anthropic",
+                  "providerName": "Anthropic via OpenBurnBar API/OAuth",
+                  "tier": "flagship",
+                  "source": "openBurnBarProxy"
+                },
+                {
+                  "modelID": "glm-5.1",
+                  "displayName": "Droid Core (GLM-5.1) · Factory Droid Core · via OpenBurnBar · Reasoning: CLI default",
+                  "providerID": "factory",
+                  "providerName": "Factory Droid Core quota",
+                  "tier": "mid",
+                  "source": "droidCoreQuota"
+                },
+                {
+                  "modelID": "",
+                  "displayName": "Antigravity default · Google · via OpenBurnBar · Reasoning: CLI default",
+                  "providerID": "google",
+                  "providerName": "Google via Antigravity CLI",
+                  "tier": "mid",
+                  "source": "antigravityProfile"
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals("droid", response.runtime)
+        assertEquals("Alberto Mac", response.machineName)
+        assertEquals(42L, response.generatedAtEpochMillis)
+        assertEquals(CliModelSource.OPENBURNBAR_PROXY, response.options[0].source)
+        assertEquals(CliModelSource.DROID_CORE_QUOTA, response.options[1].source)
+        assertEquals(CliModelSource.ANTIGRAVITY_PROFILE, response.options[2].source)
+        assertEquals("Claude Opus 4.7 · Anthropic · via OpenBurnBar · Reasoning: default", response.options[0].displayName)
+        assertEquals("Anthropic via OpenBurnBar API/OAuth", response.options[0].providerName)
+    }
+}

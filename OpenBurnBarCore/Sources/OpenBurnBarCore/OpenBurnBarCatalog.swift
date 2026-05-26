@@ -110,6 +110,7 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         case canonicalModelID
         case capabilityClassID
         case capabilityClassRank
+        case modelCapabilities
     }
 
     public let id: String
@@ -129,6 +130,9 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
     /// Higher rank means more capable. Used only when explicit downgrade
     /// policies are enabled by the user.
     public let capabilityClassRank: Int?
+    /// Model-specific input/output metadata. Provider capabilities describe
+    /// routing transport; this describes what the underlying model accepts.
+    public let modelCapabilities: ModelIOCapabilities?
 
     public init(
         id: String,
@@ -139,7 +143,8 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         pricing: BurnBarModelPricing,
         canonicalModelID: String? = nil,
         capabilityClassID: String? = nil,
-        capabilityClassRank: Int? = nil
+        capabilityClassRank: Int? = nil,
+        modelCapabilities: ModelIOCapabilities? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -150,6 +155,7 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         self.canonicalModelID = Self.normalizedCanonicalModelID(canonicalModelID)
         self.capabilityClassID = capabilityClassID
         self.capabilityClassRank = capabilityClassRank
+        self.modelCapabilities = modelCapabilities
     }
 
     public init(from decoder: Decoder) throws {
@@ -165,6 +171,7 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         )
         self.capabilityClassID = try container.decodeIfPresent(String.self, forKey: .capabilityClassID)
         self.capabilityClassRank = try container.decodeIfPresent(Int.self, forKey: .capabilityClassRank)
+        self.modelCapabilities = try container.decodeIfPresent(ModelIOCapabilities.self, forKey: .modelCapabilities)
     }
 
     public func matches(modelName: String) -> Bool {

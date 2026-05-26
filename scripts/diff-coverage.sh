@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Compute diff coverage for changed Swift files in the current working tree.
+# Compute true diff coverage for changed Swift files.
+#
+# Intersects git diff added-line hunks with per-line xccov data when available.
+# Matches files by full repo-relative path (not basename).
 #
 # Usage:
-#   diff-coverage.sh <base-ref> [coverage-summary-json]
-#   diff-coverage.sh origin/main /path/to/coverage.json
+#   diff-coverage.sh <base-ref> [coverage-summary-json] [coverage-lines-json]
 #
 # Exit codes:
 #   0 — diff coverage meets or exceeds threshold
@@ -19,115 +21,182 @@ base_ref="${1:-origin/main}"
 threshold="${COVERAGE_THRESHOLD:-80}"
 
 coverage_json="${2:-}"
-# If second argument omitted, try to generate one from xcresult
-data_dir=""
+lines_json="${3:-}"
+
 if [[ -z "$coverage_json" ]]; then
   for candidate in "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult"; do
     if [[ -d "$candidate" ]]; then
-      data_dir="$candidate"
+      coverage_json="$TMPDIR/openburnbar-diff-coverage-summary.json"
+      "$repo_root/scripts/extract-coverage.sh" "$candidate" > "$coverage_json"
       break
     fi
   done
-  if [[ -n "$data_dir" ]]; then
-    coverage_json="$TMPDIR/openburnbar-diff-coverage-summary.json"
-    "$repo_root/scripts/extract-coverage.sh" "$data_dir" > "$coverage_json"
-  fi
 fi
 
-# Determine changed Swift files against base ref
+if [[ -z "$lines_json" && -d "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" ]]; then
+  lines_json="$TMPDIR/openburnbar-diff-coverage-lines.json"
+  "$repo_root/scripts/extract-coverage-lines.sh" "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$lines_json" 2>/dev/null || lines_json=""
+fi
+
 changed_files=""
-if ! changed_files="$(git diff --name-only "$base_ref" HEAD -- '*.swift' 2>/dev/null)" || [[ -z "$changed_files" ]]; then
-  echo '{"diffCoverage":{"percent":100.0,"threshold"':"$threshold",'"passed":true,"changedFiles":0,"changedLines":0},"details":[]}'
+if ! changed_files="$(git diff --name-only "$base_ref" HEAD -- '*.swift' 2>/dev/null)"; then
+  changed_files=""
+fi
+
+if [[ -z "$changed_files" ]]; then
+  echo "{\"diffCoverage\":{\"percent\":100.0,\"threshold\":$threshold,\"passed\":true,\"changedFiles\":0,\"changedLines\":0,\"method\":\"no_swift_changes\"},\"details\":[]}"
   exit 0
 fi
 
-# Gather executable line info from coverage JSON
 if [[ ! -f "${coverage_json:-}" ]]; then
   echo '::error::No coverage data found. Run tests with OPENBURNBAR_ENABLE_COVERAGE=YES first.' >&2
   exit 1
 fi
 
-python3 -c "
-import json, sys, subprocess, os, re
+export COVERAGE_THRESHOLD="$threshold"
+export BASE_REF="$base_ref"
+export REPO_ROOT="$repo_root"
+export COVERAGE_JSON="$coverage_json"
+export LINES_JSON="${lines_json:-}"
 
-threshold = int('$threshold')
-base_ref = '$base_ref'
-repo_root = '$repo_root'
-coverage_json_path = '${coverage_json}'
+python3 - "$coverage_json" <<'PY'
+import json
+import os
+import re
+import subprocess
+import sys
 
-with open(coverage_json_path) as f:
-    cov = json.load(f)
+threshold = int(os.environ["COVERAGE_THRESHOLD"])
+base_ref = os.environ["BASE_REF"]
+repo_root = os.environ["REPO_ROOT"]
+coverage_json_path = sys.argv[1]
+lines_json_path = os.environ.get("LINES_JSON") or ""
 
-file_map = {}
-for item in cov.get('targets', []):
-    name = item.get('name', '')
-    file_map[os.path.basename(name)] = item
+with open(coverage_json_path, encoding="utf-8") as handle:
+    cov = json.load(handle)
 
-changed_file_list = [l.strip() for l in sys.stdin if l.strip()]
-if not changed_file_list:
-    changed_file_list = subprocess.check_output(
-        ['git', 'diff', '--name-only', base_ref, 'HEAD', '--', '*.swift'],
-        cwd=repo_root, text=True
-    ).splitlines()
-    changed_file_list = [l.strip() for l in changed_file_list if l.strip()]
+line_files = {}
+if lines_json_path and os.path.isfile(lines_json_path):
+    with open(lines_json_path, encoding="utf-8") as handle:
+        line_payload = json.load(handle)
+        line_files = line_payload.get("files", {})
 
-# Get diff output for changed files
+# Full-path and basename maps for aggregate fallback
+file_map_by_path = {}
+file_map_by_base = {}
+for item in cov.get("targets", []):
+    name = item.get("name", "")
+    rel = name
+    if name.startswith(repo_root):
+        rel = os.path.relpath(name, repo_root)
+    elif "/BurnBar/" in name:
+        rel = name.split("/BurnBar/", 1)[1]
+    file_map_by_path[rel] = item
+    file_map_by_base[os.path.basename(rel)] = item
+
+changed_file_list = subprocess.check_output(
+    ["git", "diff", "--name-only", base_ref, "HEAD", "--", "*.swift"],
+    cwd=repo_root,
+    text=True,
+).splitlines()
+changed_file_list = [line.strip() for line in changed_file_list if line.strip()]
+
 git_output = subprocess.run(
-    ['git', 'diff', '-U0', base_ref, 'HEAD', '--'] + changed_file_list,
-    cwd=repo_root, capture_output=True, text=True
+    ["git", "diff", "-U0", base_ref, "HEAD", "--"] + changed_file_list,
+    cwd=repo_root,
+    capture_output=True,
+    text=True,
 ).stdout
 
 file_blocks = {}
 current_file = None
 for line in git_output.splitlines():
-    m = re.match(r'^diff --git a/.* b/(.*)$', line)
+    m = re.match(r"^diff --git a/.* b/(.*)$", line)
     if m:
         current_file = m.group(1)
-        if current_file not in file_blocks:
-            file_blocks[current_file] = []
-    if current_file and line.startswith('@@'):
-        nm = re.search(r'\+\\d+(?:,\\d+)?', line)
-        if nm:
-            parts = nm.group(0).lstrip('+').split(',')
-            start = int(parts[0])
-            count = int(parts[1]) if len(parts) > 1 else 1
-            file_blocks[current_file].append((start, start + count - 1))
-
-covered_changed_exc = 0
-covered_changed_hit = 0
-details = []
-for rel_path in changed_file_list:
-    base = os.path.basename(rel_path)
-    cov_item = file_map.get(base)
-    if not cov_item:
+        file_blocks.setdefault(current_file, [])
         continue
-    exc = cov_item.get('executable', 0)
-    hit = cov_item.get('hit', 0)
-    pct = cov_item.get('percent', 0.0)
-    covered_changed_exc += exc
-    covered_changed_hit += hit
+    if current_file and line.startswith("@@"):
+        nm = re.search(r"\+(\d+)(?:,(\d+))?", line)
+        if not nm:
+            continue
+        start = int(nm.group(1))
+        count = int(nm.group(2) or "1")
+        if count <= 0:
+            continue
+        for ln in range(start, start + count):
+            file_blocks[current_file].append(ln)
+
+total_exc = 0
+total_hit = 0
+details = []
+
+for rel_path in changed_file_list:
+    changed_lines = sorted(set(file_blocks.get(rel_path, [])))
+    if not changed_lines:
+        continue
+
+    line_entry = line_files.get(rel_path, {})
+    line_cov = line_entry.get("lines", {})
+
+    exc = 0
+    hit = 0
+    method = "line_level"
+
+    if line_cov and "_aggregate" not in line_cov:
+        for ln in changed_lines:
+            key = str(ln)
+            if key not in line_cov:
+                continue
+            exc += 1
+            if line_cov[key]:
+                hit += 1
+    else:
+        method = "file_aggregate_fallback"
+        cov_item = file_map_by_path.get(rel_path) or file_map_by_base.get(os.path.basename(rel_path))
+        if not cov_item:
+            exc = len(changed_lines)
+            hit = 0
+        else:
+            file_exc = cov_item.get("executable", 0)
+            file_hit = cov_item.get("hit", 0)
+            if file_exc <= 0:
+                exc = len(changed_lines)
+                hit = 0
+            else:
+                ratio = file_hit / file_exc
+                exc = len(changed_lines)
+                hit = int(round(exc * ratio))
+
+    if exc <= 0:
+        continue
+
+    pct = round(hit * 100.0 / exc, 2)
+    total_exc += exc
+    total_hit += hit
     details.append({
-        'file': rel_path,
-        'executableLines': exc,
-        'coveredLines': hit,
-        'percent': pct
+        "file": rel_path,
+        "executableLines": exc,
+        "coveredLines": hit,
+        "percent": pct,
+        "method": method,
     })
 
-total_pct = 0.0 if covered_changed_exc <= 0 else round(covered_changed_hit * 100.0 / covered_changed_exc, 2)
-passed = total_pct >= threshold
+total_pct = 0.0 if total_exc <= 0 else round(total_hit * 100.0 / total_exc, 2)
+passed = total_exc <= 0 or total_pct >= threshold
 
 output = {
-    'diffCoverage': {
-        'percent': total_pct,
-        'threshold': threshold,
-        'passed': passed,
-        'changedFiles': len(details),
-        'changedLines': covered_changed_exc
+    "diffCoverage": {
+        "percent": total_pct,
+        "threshold": threshold,
+        "passed": passed,
+        "changedFiles": len(details),
+        "changedLines": total_exc,
+        "method": "line_intersection",
     },
-    'details': details
+    "details": details,
 }
 print(json.dumps(output, indent=2))
-if not passed and covered_changed_exc > 0:
+if not passed and total_exc > 0:
     sys.exit(1)
-" < <(printf '%s\n' "$changed_files")
-# Feed changed files list to python via stdin
+PY

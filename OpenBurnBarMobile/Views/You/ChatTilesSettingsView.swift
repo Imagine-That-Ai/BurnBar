@@ -119,6 +119,9 @@ struct ChatTilesSettingsView: View {
         case .codex:    return AnyShapeStyle(LinearGradient(colors: [Color(hex: "1ABC9C"), Color(hex: "2ECC71")], startPoint: .topLeading, endPoint: .bottomTrailing))
         case .claude:   return AnyShapeStyle(LinearGradient(colors: [Color(hex: "D58A4F"), Color(hex: "C76A2C")], startPoint: .topLeading, endPoint: .bottomTrailing))
         case .openClaw: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "6E56CF"), Color(hex: "4F44C6")], startPoint: .topLeading, endPoint: .bottomTrailing))
+        case .droid:    return AnyShapeStyle(LinearGradient(colors: [Color(hex: "8B5CF6"), Color(hex: "6D5DF6")], startPoint: .topLeading, endPoint: .bottomTrailing))
+        case .forge:    return AnyShapeStyle(LinearGradient(colors: [Color(hex: "F97316"), Color(hex: "EA580C")], startPoint: .topLeading, endPoint: .bottomTrailing))
+        case .antigravity: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "6C63FF"), Color(hex: "8F8AFF")], startPoint: .topLeading, endPoint: .bottomTrailing))
         }
     }
 
@@ -129,6 +132,9 @@ struct ChatTilesSettingsView: View {
         case .codex:    return "Codex chat bridged from your Mac."
         case .claude:   return "Claude Code chat bridged from your Mac."
         case .openClaw: return "OpenClaw local agent bridged from your Mac."
+        case .droid:    return "Droid chat bridged from your Mac."
+        case .forge:    return "Forge chat bridged from your Mac."
+        case .antigravity: return "Antigravity chat bridged from your Mac."
         }
     }
 }

@@ -65,6 +65,44 @@ class FirestoreRepository {
     private val modelBenchmarkSnapshotsCollection: CollectionReference
         get() = db.collection("model_benchmark_snapshots")
 
+    private val budgetRulesCollection: CollectionReference
+        get() = db.collection("users").document(currentUserId()).collection("budgetRules")
+
+    private val budgetEventsCollection: CollectionReference
+        get() = db.collection("users").document(currentUserId()).collection("budgetEvents")
+
+    // ── Budget Sync APIs ──
+    suspend fun uploadBudgetRule(rule: BudgetRule) {
+        budgetRulesCollection.document(rule.id).set(rule.toMap()).await()
+    }
+
+    suspend fun deleteBudgetRule(id: String) {
+        budgetRulesCollection.document(id).delete().await()
+    }
+
+    suspend fun uploadBudgetRules(rules: List<BudgetRule>) {
+        if (rules.isEmpty()) return
+        val batch = db.batch()
+        for (rule in rules) {
+            batch.set(budgetRulesCollection.document(rule.id), rule.toMap())
+        }
+        batch.commit().await()
+    }
+
+    suspend fun uploadBudgetEvents(events: List<BudgetEvent>) {
+        if (events.isEmpty()) return
+        val batch = db.batch()
+        for (event in events) {
+            batch.set(budgetEventsCollection.document(event.id), event.toMap())
+        }
+        batch.commit().await()
+    }
+
+    suspend fun downloadAllBudgetRules(): List<BudgetRule> {
+        val snapshot = budgetRulesCollection.get().await()
+        return snapshot.documents.mapNotNull { it.toBudgetRule() }
+    }
+
     // ── Rollups ──
     suspend fun fetchRollups(): UsageRollups {
         // Cloud Functions write one document per window key:
@@ -259,6 +297,12 @@ class FirestoreRepository {
             providerAccountsCollection.get(Source.DEFAULT).await()
         }
         return snapshot.documents.mapNotNull { it.toProviderAccount() }
+    }
+
+    suspend fun markProviderAccountDeleted(accountId: String) {
+        providerAccountsCollection.document(accountId)
+            .update(mapOf("status" to "deleted", "updatedAt" to FieldValue.serverTimestamp()))
+            .await()
     }
 
     // ── Provider Account Device Links ──
@@ -619,5 +663,88 @@ private fun DocumentSnapshot.toProjectSummary(): ProjectSummary? {
         totalCost = (data["total_cost"] as? Number)?.toDouble() ?: 0.0,
         totalTokens = (data["total_tokens"] as? Number)?.toLong() ?: 0L,
         totalSessions = (data["total_sessions"] as? Number)?.toInt() ?: 0
+    )
+}
+
+fun BudgetRule.toMap(): Map<String, Any?> {
+    return mapOf(
+        "id" to id,
+        "scope" to scope,
+        "identifier" to identifier,
+        "providerID" to providerID,
+        "accountID" to accountID,
+        "projectName" to projectName,
+        "label" to label,
+        "amountUSD" to amountUSD,
+        "period" to period,
+        "behavior" to behavior,
+        "fallbackCredentialIDsJSON" to fallbackCredentialIDsJSON,
+        "pausedUntil" to pausedUntil?.let { com.google.firebase.Timestamp(it) },
+        "createdAt" to (createdAt?.let { com.google.firebase.Timestamp(it) } ?: com.google.firebase.firestore.FieldValue.serverTimestamp()),
+        "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+        "sourceDeviceID" to sourceDeviceID,
+        "isEnabled" to isEnabled
+    )
+}
+
+fun DocumentSnapshot.toBudgetRule(): BudgetRule? {
+    val data = data ?: return null
+    val pausedUntilTimestamp = data["pausedUntil"] as? com.google.firebase.Timestamp
+    val createdAtTimestamp = data["createdAt"] as? com.google.firebase.Timestamp
+    val updatedAtTimestamp = data["updatedAt"] as? com.google.firebase.Timestamp
+    val syncedAtTimestamp = data["syncedAt"] as? com.google.firebase.Timestamp
+
+    return BudgetRule(
+        id = id,
+        scope = data["scope"] as? String ?: "",
+        identifier = data["identifier"] as? String,
+        providerID = data["providerID"] as? String,
+        accountID = data["accountID"] as? String,
+        projectName = data["projectName"] as? String,
+        label = data["label"] as? String,
+        amountUSD = (data["amountUSD"] as? Number)?.toDouble() ?: 0.0,
+        period = data["period"] as? String ?: "",
+        behavior = data["behavior"] as? String ?: "",
+        fallbackCredentialIDsJSON = data["fallbackCredentialIDsJSON"] as? String,
+        pausedUntil = pausedUntilTimestamp?.toDate(),
+        createdAt = createdAtTimestamp?.toDate(),
+        updatedAt = updatedAtTimestamp?.toDate(),
+        syncedAt = syncedAtTimestamp?.toDate(),
+        sourceDeviceID = data["sourceDeviceID"] as? String,
+        isEnabled = data["isEnabled"] as? Boolean ?: true
+    )
+}
+
+fun BudgetEvent.toMap(): Map<String, Any?> {
+    return mapOf(
+        "id" to id,
+        "ruleID" to ruleID,
+        "kind" to kind,
+        "source" to source,
+        "amountAtEvent" to amountAtEvent,
+        "limitAtEvent" to limitAtEvent,
+        "detailJSON" to detailJSON,
+        "occurredAt" to (occurredAt?.let { com.google.firebase.Timestamp(it) } ?: com.google.firebase.firestore.FieldValue.serverTimestamp()),
+        "syncedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+        "sourceDeviceID" to sourceDeviceID
+    )
+}
+
+fun DocumentSnapshot.toBudgetEvent(): BudgetEvent? {
+    val data = data ?: return null
+    val occurredAtTimestamp = data["occurredAt"] as? com.google.firebase.Timestamp
+    val syncedAtTimestamp = data["syncedAt"] as? com.google.firebase.Timestamp
+
+    return BudgetEvent(
+        id = id,
+        ruleID = data["ruleID"] as? String ?: "",
+        kind = data["kind"] as? String ?: "",
+        source = data["source"] as? String,
+        amountAtEvent = (data["amountAtEvent"] as? Number)?.toDouble() ?: 0.0,
+        limitAtEvent = (data["limitAtEvent"] as? Number)?.toDouble() ?: 0.0,
+        detailJSON = data["detailJSON"] as? String,
+        occurredAt = occurredAtTimestamp?.toDate(),
+        syncedAt = syncedAtTimestamp?.toDate(),
+        sourceDeviceID = data["sourceDeviceID"] as? String
     )
 }

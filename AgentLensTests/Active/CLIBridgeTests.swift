@@ -1,9 +1,25 @@
 import XCTest
 import OpenBurnBarComputerUseCore
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 @MainActor
 final class CLIBridgeTests: XCTestCase {
+
+    func test_openAICompatibleAdvertisedModelMenuTitleDoesNotDuplicateRichDisplayNames() {
+        let advertised = OpenAICompatibleAdvertisedModel(
+            id: "kimi-k2.6",
+            displayName: "Kimi K2.6 · Moonshot Kimi · via OpenBurnBar · Reasoning: extra high",
+            providerID: "kimi",
+            providerName: "Moonshot Kimi",
+            routeEligible: true
+        )
+
+        XCTAssertEqual(
+            advertised.menuTitle,
+            "Kimi K2.6 · Moonshot Kimi · via OpenBurnBar · Reasoning: extra high"
+        )
+    }
 
     // MARK: - Executable Path Parsing Tests
 
@@ -139,6 +155,126 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(args.contains("--dangerously-bypass-approvals-and-sandbox"))
         XCTAssertNil(value(after: "--sandbox", in: args))
         XCTAssertEqual(args.last, "test")
+    }
+
+    // MARK: - Droid Arguments Tests
+
+    func test_cliBridge_droidArguments_useExecJSONAndWorkspace() {
+        let workspace = URL(fileURLWithPath: "/tmp/openburnbar-workspace")
+
+        let args = CLIBridge.droidArguments(
+            prompt: "test",
+            model: "kimi-k2.6",
+            workspaceDirectory: workspace
+        )
+
+        XCTAssertEqual(args.prefix(3), ["exec", "--output-format", "json"])
+        XCTAssertEqual(value(after: "--cwd", in: args), workspace.path)
+        XCTAssertEqual(value(after: "--model", in: args), "kimi-k2.6")
+        XCTAssertEqual(args.last, "test")
+        XCTAssertFalse(args.contains("--skip-permissions-unsafe"))
+    }
+
+    func test_cliBridge_droidArguments_writeGrantUsesLowAutoWithoutShellTool() {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .droid,
+            threadID: "thread-1",
+            capabilities: [.workspaceRead, .workspaceWrite],
+            now: Date(),
+            duration: 60
+        )
+
+        let args = CLIBridge.droidArguments(prompt: "test", capabilityGrant: grant)
+
+        XCTAssertEqual(value(after: "--auto", in: args), "low")
+        XCTAssertEqual(value(after: "--disabled-tools", in: args), "execute-cli")
+    }
+
+    func test_cliBridge_droidArguments_shellGrantUsesMediumAuto() {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .droid,
+            threadID: "thread-1",
+            capabilities: [.workspaceRead, .workspaceWrite, .shell],
+            now: Date(),
+            duration: 60
+        )
+
+        let args = CLIBridge.droidArguments(prompt: "test", capabilityGrant: grant)
+
+        XCTAssertEqual(value(after: "--auto", in: args), "medium")
+        XCTAssertNil(value(after: "--disabled-tools", in: args))
+    }
+
+    // MARK: - Forge Arguments Tests
+
+    func test_cliBridge_forgeArguments_usePromptWorkspaceAndKnownAgent() {
+        let workspace = URL(fileURLWithPath: "/tmp/openburnbar-workspace")
+
+        let args = CLIBridge.forgeArguments(
+            prompt: "test",
+            model: "muse",
+            workspaceDirectory: workspace
+        )
+
+        XCTAssertEqual(value(after: "-C", in: args), workspace.path)
+        XCTAssertEqual(value(after: "--agent", in: args), "muse")
+        XCTAssertNotNil(value(after: "--prompt", in: args))
+        XCTAssertTrue(value(after: "--prompt", in: args)?.contains("read-only mode") == true)
+    }
+
+    func test_cliBridge_forgeArguments_omitsUnknownAgentAndNarrowsPrompt() {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .forge,
+            threadID: "thread-1",
+            capabilities: [.workspaceRead],
+            now: Date(),
+            duration: 60
+        )
+
+        let args = CLIBridge.forgeArguments(prompt: "test", model: "unknown-agent", capabilityGrant: grant)
+        let prompt = value(after: "--prompt", in: args) ?? ""
+
+        XCTAssertNil(value(after: "--agent", in: args))
+        XCTAssertTrue(prompt.contains("Do not edit files."))
+        XCTAssertTrue(prompt.contains("Do not execute shell commands."))
+    }
+
+    // MARK: - CLI Model Menu Tests
+
+    func test_chatEngineModelMenu_droidAndForgeDoNotAddSyntheticDefaultRows() {
+        let droidRows = ChatEngineModelMenu.cliMenuRows(
+            options: [
+                CLIRuntimeModelOption(
+                    modelID: "glm-5.1",
+                    displayName: "Droid Core (GLM-5.1)",
+                    providerID: "factory",
+                    providerName: "Droid Core quota",
+                    source: .droidCoreQuota
+                )
+            ],
+            error: nil,
+            selected: "",
+            defaultTitle: nil
+        )
+        let forgeRows = ChatEngineModelMenu.cliMenuRows(
+            options: [
+                CLIRuntimeModelOption(
+                    modelID: "muse",
+                    displayName: "Generate detailed implementation plans",
+                    providerID: "kimicoding",
+                    providerName: "KimiCoding · kimi-for-coding",
+                    source: .forgeAgent
+                )
+            ],
+            error: nil,
+            selected: "",
+            defaultTitle: nil
+        )
+
+        XCTAssertEqual(droidRows.map(\.id), ["glm-5.1"])
+        XCTAssertEqual(forgeRows.map(\.id), ["muse"])
+        XCTAssertFalse(droidRows.contains { $0.title.localizedCaseInsensitiveContains("default") })
+        XCTAssertFalse(forgeRows.contains { $0.title.localizedCaseInsensitiveContains("default") })
     }
 
     func test_openAICompatibleChatGatewayClient_extractsToolCalls() {

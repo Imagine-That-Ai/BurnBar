@@ -280,3 +280,5 @@ final class DashboardStore {
         }
     }
 }
+
+extension DashboardStore: BudgetSpendDataSource {}

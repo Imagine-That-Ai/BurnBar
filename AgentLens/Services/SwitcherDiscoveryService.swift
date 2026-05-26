@@ -10,6 +10,9 @@ enum DiscoverySource: Equatable {
     case codex(executablePath: String, hasAPIKey: Bool, lastRefresh: Date?, accountDescription: String?, configDirectory: String?)
     case claudeCode(executablePath: String, isAuthenticated: Bool, accountDescription: String?, configDirectory: String?)
     case opencode(executablePath: String?)
+    case droid(executablePath: String?, configDirectory: String?)
+    case forge(executablePath: String?, configDirectory: String?)
+    case antigravity(executablePath: String?, configDirectory: String?)
 }
 
 /// Authentication state of a discovered identity.
@@ -163,6 +166,12 @@ final class SwitcherDiscoveryService: ObservableObject {
                 )
             case .opencode:
                 source = .opencode(executablePath: cliInfo.executablePath)
+            case .droid:
+                source = .droid(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .forge:
+                source = .forge(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .antigravity:
+                source = .antigravity(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             }
 
             guard cliInfo.isInstalled else {
@@ -278,6 +287,42 @@ final class SwitcherDiscoveryService: ObservableObject {
                 cliMetadata: SwitcherCLIProfileMetadata(
                     workingDirectory: nil,
                     displayLabel: "OpenCode"
+                ),
+                sortKey: 0
+            )
+        case .droid(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .droid,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Droid",
+                    configDirectory: configDirectory,
+                    accountDescription: "Factory Droid local profile"
+                ),
+                sortKey: 0
+            )
+        case .forge(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .forge,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Forge",
+                    configDirectory: configDirectory,
+                    accountDescription: "Forge local profile"
+                ),
+                sortKey: 0
+            )
+        case .antigravity(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .antigravity,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Antigravity",
+                    configDirectory: configDirectory,
+                    accountDescription: "Google Antigravity local profile"
                 ),
                 sortKey: 0
             )
@@ -622,6 +667,12 @@ final class SwitcherDiscoveryService: ObservableObject {
                         && configDirectory == saved.cliMetadata?.configDirectory
                 case .opencode:
                     return cliType == .opencode
+                case .droid(_, let configDirectory):
+                    return cliType == .droid
+                        && configDirectory == saved.cliMetadata?.configDirectory
+                case .forge(_, let configDirectory):
+                    return cliType == .forge
+                        && configDirectory == saved.cliMetadata?.configDirectory
                 default:
                     return false
                 }
@@ -702,6 +753,12 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .claudeCode(executablePath: CLILaunchAdapter.executablePath(for: .claude) ?? "", isAuthenticated: false, accountDescription: nil, configDirectory: nil)
         case .opencode:
             return .opencode(executablePath: CLILaunchAdapter.executablePath(for: .opencode))
+        case .droid:
+            return .droid(executablePath: CLILaunchAdapter.executablePath(for: .droid), configDirectory: nil)
+        case .forge:
+            return .forge(executablePath: CLILaunchAdapter.executablePath(for: .forge), configDirectory: nil)
+        case .antigravity:
+            return .antigravity(executablePath: CLILaunchAdapter.executablePath(for: .antigravity), configDirectory: nil)
         }
     }
 
@@ -726,13 +783,16 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
             case .codex: cliType = .codex
             case .claudeCode: cliType = .claude
             case .opencode: cliType = .opencode
+            case .droid: cliType = .droid
+            case .forge: cliType = .forge
+            case .antigravity: cliType = .antigravity
             default: cliType = .codex
             }
             let execPath = CLILaunchAdapter.executablePath(for: cliType)
@@ -793,6 +853,12 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .claudeCode
         case .opencode:
             return .openCode
+        case .droid:
+            return .factory
+        case .forge:
+            return .forgeDev
+        case .antigravity:
+            return .antigravity
         }
     }
 
@@ -872,6 +938,8 @@ final class SwitcherDiscoveryService: ObservableObject {
         case (.claudeCode, .claudeCLI): return true
         case (.claudeCode, .claude): return true
         case (.opencode, .openCodeCLI): return true
+        case (.droid, .droidCLI): return true
+        case (.forge, .forgeCLI): return true
         default: return false
         }
     }
@@ -885,6 +953,9 @@ extension DiscoverySource {
         case .codex: return .codex
         case .claudeCode: return .claude
         case .opencode: return .opencode
+        case .droid: return .droid
+        case .forge: return .forge
+        case .antigravity: return .antigravity
         default: return nil
         }
     }

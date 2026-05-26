@@ -1,0 +1,7 @@
+emit:
+  - "<emit>/ts"
+  - "<emit>/json-schema"
+
+options:
+  "@typespec/openapi3":
+    emitter-output-dir: "{project-root}/emit/json-schema"

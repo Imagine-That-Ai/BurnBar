@@ -188,4 +188,28 @@ class SwarmSimulationTest {
         // Check that we go backward in cycle
         assertTrue(simulation.inShapeMode)
     }
+
+    @Test
+    fun `isRewinding enabled repels targeted particles from targets`() {
+        val simulation = SwarmSimulation(particleCount = 300, pace = SwarmPace.CINEMATIC)
+        simulation.ensureBounds(Size(1200f, 800f))
+        simulation.setShapeMode("providers")
+
+        // First snap to target
+        simulation.instantlySettle()
+
+        // Enable rewinding and take a step
+        simulation.isRewinding = true
+        // Set particle slightly off target to have non-zero dx/dy
+        val p = simulation.particles.first { it.tx != null }
+        p.x = p.tx!! - 5.0
+        p.y = p.ty!!
+
+        // Advance simulation
+        simulation.advance(System.nanoTime(), pointer = null)
+
+        // Since x is to the left of tx, attraction would pull right (vx > 0),
+        // but rewinding repulsion should push it further left (vx < 0).
+        assertTrue(p.vx < 0)
+    }
 }

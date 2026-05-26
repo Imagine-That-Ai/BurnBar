@@ -30,6 +30,13 @@ struct DashboardChatWorkspaceToolbar: View {
             ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
             ChatEngineModelMenu(controller: controller)
 
+            ChatViewModePicker(controller: controller)
+
+            if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
+                quotaChip
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
+
             Button {
                 controller.revealChatWorkspaceInFinder()
             } label: {
@@ -98,6 +105,7 @@ struct DashboardChatWorkspaceToolbar: View {
                 .help("Close")
             }
         }
+        .animation(DesignSystem.Animation.gentle, value: controller.chatBackend)
         .padding(.horizontal, DesignSystem.Spacing.lg)
         .padding(.vertical, DesignSystem.Spacing.sm)
         .background(DesignSystem.Colors.surface.opacity(0.6))

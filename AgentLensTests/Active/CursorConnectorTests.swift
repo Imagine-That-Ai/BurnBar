@@ -1,4 +1,5 @@
 import XCTest
+import Security
 @testable import OpenBurnBar
 
 @MainActor
@@ -245,32 +246,21 @@ final class CursorConnectorTests: XCTestCase {
     }
 
     func test_keychainStoreDisablesSystemPromptsForBackgroundReads() throws {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let sourceURL = repoRoot.appendingPathComponent("AgentLens/Services/CursorConnector/KeychainStore.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let security = RecordingSecurityKeychainOperations()
+        let backend = SecurityKeychainStoreBackend(security: security)
 
-        XCTAssertTrue(source.contains("SecKeychainSetUserInteractionAllowed"))
-        XCTAssertTrue(source.contains("if allowUserInteraction"))
-        XCTAssertTrue(source.contains("status = withKeychainInteractionDisabled"))
-        XCTAssertTrue(
-            source.contains("withKeychainInteractionDisabled {\n                SecItemCopyMatching"),
-            "Background Cursor connector keychain reads must keep Security.framework UI disabled."
-        )
-        XCTAssertTrue(
-            source.contains("withKeychainInteractionDisabled {\n            SecItemUpdate"),
-            "Cursor connector keychain rewrites must not be able to show login-keychain prompts."
-        )
-        XCTAssertTrue(
-            source.contains("withKeychainInteractionDisabled {\n            SecItemAdd"),
-            "Cursor connector keychain migrations must not be able to show login-keychain prompts."
-        )
-        XCTAssertTrue(
-            source.contains("withKeychainInteractionDisabled {\n            SecItemDelete"),
-            "Cursor connector keychain deletes must not be able to show login-keychain prompts."
-        )
+        try backend.set(Data("secret".utf8), service: "service", account: "account")
+        _ = try backend.data(for: "service", account: "account", allowUserInteraction: false)
+        _ = try backend.data(for: "service", account: "account", allowUserInteraction: true)
+        try backend.delete(service: "service", account: "account")
+
+        XCTAssertEqual(security.events, [
+            RecordingSecurityKeychainOperations.Event(operation: .update, interactionDisabled: true),
+            RecordingSecurityKeychainOperations.Event(operation: .add, interactionDisabled: true),
+            RecordingSecurityKeychainOperations.Event(operation: .copyMatching, interactionDisabled: true),
+            RecordingSecurityKeychainOperations.Event(operation: .copyMatching, interactionDisabled: false),
+            RecordingSecurityKeychainOperations.Event(operation: .delete, interactionDisabled: true)
+        ])
     }
 
     func test_proxyScript_preservesDeepSeekReasoningContentAcrossResponsesConversion() {
@@ -393,5 +383,62 @@ final class CursorConnectorTests: XCTestCase {
     private func readJSON(_ url: URL) throws -> [String: Any] {
         let data = try Data(contentsOf: url)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+}
+
+private final class RecordingSecurityKeychainOperations: SecurityKeychainOperations, @unchecked Sendable {
+    struct Event: Equatable {
+        enum Operation: Equatable {
+            case update
+            case add
+            case copyMatching
+            case delete
+        }
+
+        let operation: Operation
+        let interactionDisabled: Bool
+    }
+
+    private let lock = NSLock()
+    private var disabledDepth = 0
+    private var recordedEvents: [Event] = []
+
+    var events: [Event] {
+        lock.withLock { recordedEvents }
+    }
+
+    func runWithDisabledInteraction(_ operation: () -> OSStatus) -> OSStatus {
+        lock.withLock { disabledDepth += 1 }
+        defer { lock.withLock { disabledDepth -= 1 } }
+        return operation()
+    }
+
+    func update(query: CFDictionary, attributes: CFDictionary) -> OSStatus {
+        record(.update)
+        return errSecItemNotFound
+    }
+
+    func add(query: CFDictionary) -> OSStatus {
+        record(.add)
+        return errSecSuccess
+    }
+
+    func copyMatching(query: CFDictionary, item: UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus {
+        record(.copyMatching)
+        return errSecItemNotFound
+    }
+
+    func delete(query: CFDictionary) -> OSStatus {
+        record(.delete)
+        return errSecSuccess
+    }
+
+    private func record(_ operation: Event.Operation) {
+        lock.withLock {
+            recordedEvents.append(Event(
+                operation: operation,
+                interactionDisabled: disabledDepth > 0
+            ))
+        }
     }
 }

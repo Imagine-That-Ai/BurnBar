@@ -44,6 +44,24 @@ struct AuthGateView: View {
         .animation(.snappy(duration: 0.25), value: authStore.state)
         .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
         .environment(\.mobileAuthStore, authStore)
+        .task(id: authStore.currentIdentity?.uid) {
+            guard let uid = authStore.currentIdentity?.uid, !uid.isEmpty else { return }
+            if !BudgetEnforcement.shared.isConfigured {
+                let rulesStore = BudgetRulesStore()
+                let settings = BudgetSettings(store: rulesStore)
+                let budgetDashboard = DashboardStore()
+                await budgetDashboard.load()
+                let ledger = BudgetLedger(dataSource: budgetDashboard)
+                let gate = BudgetGate(settings: settings, ledger: ledger)
+                let notifications = BudgetNotificationCenter()
+                let forecast = BudgetForecast(dataSource: budgetDashboard)
+                BudgetEnforcement.shared.configure(
+                    gate: gate,
+                    notifications: notifications,
+                    forecast: forecast
+                )
+            }
+        }
         #if DEBUG
         .onAppear {
             logHermesE2EAuthState("auth-gate-appeared")

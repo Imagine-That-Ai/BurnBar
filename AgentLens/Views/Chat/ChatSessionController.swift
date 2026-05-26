@@ -3,6 +3,8 @@ import SwiftUI
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
+
+
 protocol ChatSessionSearchProviding {
     func search(query: String) async -> [SearchResult]
 }
@@ -62,6 +64,15 @@ final class ChatSessionController {
     var chatModelPiAgent: String = "" {
         didSet { UserDefaults.standard.set(chatModelPiAgent, forKey: Self.udChatModelPiAgent) }
     }
+    var chatModelDroid: String = "" {
+        didSet { UserDefaults.standard.set(chatModelDroid, forKey: Self.udChatModelDroid) }
+    }
+    var chatModelForge: String = "" {
+        didSet { UserDefaults.standard.set(chatModelForge, forKey: Self.udChatModelForge) }
+    }
+    var chatModelAntigravity: String = "" {
+        didSet { UserDefaults.standard.set(chatModelAntigravity, forKey: Self.udChatModelAntigravity) }
+    }
     var hermesAvailable: Bool = false
     var openClawAvailable: Bool = false
     var piAgentAvailable: Bool = false
@@ -87,6 +98,17 @@ final class ChatSessionController {
     var panelHeight: CGFloat = 440
     /// When true, the chat panel collapses to a small dockable pill.
     var isMinimized = false
+    /// Display mode for chat messages: rich agent bubbles (`.agent`) or raw
+    /// monospaced CLI output (`.cli`). Persists across launches.
+    var chatViewMode: ChatViewMode = {
+        if let raw = UserDefaults.standard.string(forKey: "chatPanel.viewMode"),
+           let mode = ChatViewMode(rawValue: raw) {
+            return mode
+        }
+        return .agent
+    }() {
+        didSet { UserDefaults.standard.set(chatViewMode.rawValue, forKey: "chatPanel.viewMode") }
+    }
 
     /// User-attached files staged for the next outgoing message. Cleared on
     /// send (and reset when the chat is cleared or the thread switches).
@@ -111,6 +133,9 @@ final class ChatSessionController {
     private static let udChatModelHermes = "chatPanel.model.hermes"
     private static let udChatModelOpenClaw = "chatPanel.model.openclaw"
     private static let udChatModelPiAgent = "chatPanel.model.piagent"
+    private static let udChatModelDroid = "chatPanel.model.droid"
+    private static let udChatModelForge = "chatPanel.model.forge"
+    private static let udChatModelAntigravity = "chatPanel.model.antigravity"
     /// Legacy keys (migrated once into per-backend keys).
     private static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
     private static let udThreadIDHermes = "chatPanelThreadIDHermes"
@@ -121,7 +146,7 @@ final class ChatSessionController {
     }
     var firstAssistantBadgeShown = false
     private(set) var activeStreamMessageId: String?
-    private let dataStore: DataStore
+    let dataStore: DataStore
     private var searchService: any ChatSessionSearchProviding
     /// Typed reference for methods that require SearchService (runBurnBarQuery, InsightBriefSnapshot).
     private var typedSearchService: SearchService? { searchService as? SearchService }
@@ -175,6 +200,9 @@ final class ChatSessionController {
         chatModelHermes = UserDefaults.standard.string(forKey: Self.udChatModelHermes) ?? ""
         chatModelOpenClaw = UserDefaults.standard.string(forKey: Self.udChatModelOpenClaw) ?? ""
         chatModelPiAgent = UserDefaults.standard.string(forKey: Self.udChatModelPiAgent) ?? ""
+        chatModelDroid = UserDefaults.standard.string(forKey: Self.udChatModelDroid) ?? ""
+        chatModelForge = UserDefaults.standard.string(forKey: Self.udChatModelForge) ?? ""
+        chatModelAntigravity = UserDefaults.standard.string(forKey: Self.udChatModelAntigravity) ?? ""
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
         if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }
@@ -204,6 +232,9 @@ final class ChatSessionController {
         case .hermes: return chatModelHermes
         case .openclaw: return chatModelOpenClaw
         case .piAgent: return chatModelPiAgent
+        case .droid: return chatModelDroid
+        case .forge: return chatModelForge
+        case .antigravity: return chatModelAntigravity
         }
     }
 
@@ -214,6 +245,9 @@ final class ChatSessionController {
         case .hermes: chatModelHermes = value
         case .openclaw: chatModelOpenClaw = value
         case .piAgent: chatModelPiAgent = value
+        case .droid: chatModelDroid = value
+        case .forge: chatModelForge = value
+        case .antigravity: chatModelAntigravity = value
         }
     }
 
@@ -298,6 +332,9 @@ final class ChatSessionController {
         case .hermes: return .hermes
         case .openclaw: return .openClaw
         case .piAgent: return .pi
+        case .droid: return .droid
+        case .forge: return .forge
+        case .antigravity: return .antigravity
         }
     }
 
@@ -325,6 +362,12 @@ final class ChatSessionController {
             let s = chatModelPiAgent.trimmingCharacters(in: .whitespacesAndNewlines)
             if s.isEmpty { return liveDefaultModel(for: .piAgent) ?? "" }
             return s
+        case .droid:
+            return chatModelDroid.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .forge:
+            return chatModelForge.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .antigravity:
+            return chatModelAntigravity.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -336,9 +379,20 @@ final class ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude:
+        case .codex, .claude, .droid, .forge, .antigravity:
             return []
         }
+    }
+
+    private func backendCapabilities(
+        for backend: ChatBackendID,
+        modelID: String
+    ) -> HermesBackendCapabilities {
+        liveAdvertisedModels(for: backend)
+            .first { $0.id.caseInsensitiveCompare(modelID) == .orderedSame }?
+            .modelCapabilities?
+            .asHermesBackendCapabilities
+            ?? HermesBackendCapabilities.default
     }
 
     private func liveDefaultModel(for backend: ChatBackendID) -> String? {
@@ -658,7 +712,7 @@ final class ChatSessionController {
         }
 
         switch backend {
-        case .codex, .claude:
+        case .codex, .claude, .droid, .forge, .antigravity:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
                (try? dataStore.chatThreadExists(id: legacy)) == true {
                 UserDefaults.standard.set(legacy, forKey: key)
@@ -677,7 +731,7 @@ final class ChatSessionController {
                     UserDefaults.standard.set(created, forKey: key)
                     return created
                 } catch {
-                    AppLogger.chat.silentFailure("createChatThread (codex/claude)", error: error)
+                    AppLogger.chat.silentFailure("createChatThread (cli)", error: error)
                 }
             }
             return DataStore.legacyChatThreadID
@@ -1026,11 +1080,11 @@ final class ChatSessionController {
                 refreshHistory()
                 return
             }
-        case .codex, .claude:
+        case .codex, .claude, .droid, .forge, .antigravity:
             guard settingsManager.cliAssistantAllowed else {
                 let err = ChatMessageRecord(
                     role: .assistant,
-                    content: "Local CLI assistant is off. Enable \"Claude Code / Codex CLI\" in Settings → Privacy, or complete the permission prompt from the chat button.",
+                    content: "Local CLI assistant is off. Enable Mac CLI assistants in Settings → Privacy, or complete the permission prompt from the chat button.",
                     cliUsed: nil
                 )
                 messages.append(err)
@@ -1038,6 +1092,51 @@ final class ChatSessionController {
                     try dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (CLI disabled)", error: error)
+                }
+                refreshHistory()
+                return
+            }
+            if chatBackend == .droid, await !cliBridge.isExecutableAvailable(named: "droid") {
+                let err = ChatMessageRecord(
+                    role: .assistant,
+                    content: "Droid CLI was not found. Install Factory Droid and ensure `droid` is on your PATH.",
+                    cliUsed: nil
+                )
+                messages.append(err)
+                do {
+                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                } catch {
+                    AppLogger.chat.silentFailure("saveChatMessage (Droid not found)", error: error)
+                }
+                refreshHistory()
+                return
+            }
+            if chatBackend == .forge, await !cliBridge.isExecutableAvailable(named: "forge") {
+                let err = ChatMessageRecord(
+                    role: .assistant,
+                    content: "Forge CLI was not found. Install Forge and ensure `forge` is on your PATH.",
+                    cliUsed: nil
+                )
+                messages.append(err)
+                do {
+                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                } catch {
+                    AppLogger.chat.silentFailure("saveChatMessage (Forge not found)", error: error)
+                }
+                refreshHistory()
+                return
+            }
+            if chatBackend == .antigravity, await !cliBridge.isExecutableAvailable(named: "agy") {
+                let err = ChatMessageRecord(
+                    role: .assistant,
+                    content: "Antigravity CLI was not found. Install Google Antigravity and ensure `agy` is on your PATH.",
+                    cliUsed: nil
+                )
+                messages.append(err)
+                do {
+                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                } catch {
+                    AppLogger.chat.silentFailure("saveChatMessage (Antigravity not found)", error: error)
                 }
                 refreshHistory()
                 return
@@ -1274,7 +1373,7 @@ final class ChatSessionController {
             history: multiTurnHistory,
             workspaceURL: chatWorkspaceURL
         )
-        let backendCapabilities = HermesBackendCapabilities.default
+        let backendCapabilities = backendCapabilities(for: chatBackend, modelID: requestModel)
 
         streamTask = Task { [weak self] in
             guard let self else { return }
@@ -1354,6 +1453,29 @@ final class ChatSessionController {
                             model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
+                    case .droid:
+                        return self.cliBridge.chatDroidStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
+                        )
+                    case .forge:
+                        return self.cliBridge.chatForgeStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
+                        )
+                    case .antigravity:
+                        return self.cliBridge.chatAntigravityStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            capabilityGrant: activeDesktopGrant
+                        )
                     }
                 }
                 for try await event in stream {
@@ -1364,6 +1486,17 @@ final class ChatSessionController {
                         pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
                     case .toolResult(let name, let detail):
                         pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
+                        #if canImport(AppKit) && !DISTRIBUTION_MAS
+                        if let detail {
+                            Task { @MainActor in
+                                await SystemPermissionToolFailureWatcher.shared.observe(
+                                    toolName: name,
+                                    detail: detail,
+                                    toolCallId: assistantId
+                                )
+                            }
+                        }
+                        #endif
                     case .usage(let usage):
                         if let prev = usageSnapshot {
                             usageSnapshot = usage.totalTokens >= prev.totalTokens ? usage : prev
@@ -1561,6 +1694,15 @@ final class ChatSessionController {
             case .claude:
                 let m = chatModelClaude.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "claude"
                 return (.claudeCode, "OpenBurnBar Claude Chat", m)
+            case .droid:
+                let m = chatModelDroid.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "droid"
+                return (.factory, "OpenBurnBar Droid Chat", m)
+            case .forge:
+                let m = chatModelForge.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "forge"
+                return (.forgeDev, "OpenBurnBar Forge Chat", m)
+            case .antigravity:
+                let m = chatModelAntigravity.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "antigravity"
+                return (.antigravity, "OpenBurnBar Antigravity Chat", m)
             }
         }()
 

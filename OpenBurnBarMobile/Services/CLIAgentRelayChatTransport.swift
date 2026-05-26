@@ -10,6 +10,7 @@ protocol CLIAgentRelayChatTransporting: AnyObject {
         title: String,
         parentSessionID: String?,
         resumeAction: String?,
+        presentationMode: CLIAgentChatPresentationMode,
         onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
     ) async throws
 }
@@ -38,9 +39,20 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
         title: String,
         parentSessionID: String?,
         resumeAction: String?,
+        presentationMode: CLIAgentChatPresentationMode = .nativeChat,
         onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
     ) async throws {
-        let modelID = try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime.assistantRuntime)?.nonEmpty
+        let preferred = CLIAgentModelPreferences.preferredModelID(for: runtime.assistantRuntime)?.nonEmpty
+        let modelID: String?
+        if preferred == nil {
+            modelID = nil
+        } else {
+            let catalog = try await hermesService.fetchCLIRuntimeModelCatalog(runtime: runtime.assistantRuntime)
+            modelID = try CLIAgentModelPreferences.validatedPreferredModelID(
+                for: runtime.assistantRuntime,
+                options: catalog.options.map(AssistantModelOption.init(cliOption:))
+            )?.nonEmpty
+        }
         try await stream(
             runtimeRawValue: runtime.rawValue,
             threadID: threadID,
@@ -49,6 +61,7 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
             modelID: modelID,
             parentSessionID: parentSessionID,
             resumeAction: resumeAction,
+            presentationMode: presentationMode,
             onEvent: onEvent
         )
     }
@@ -61,6 +74,7 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
         modelID: String?,
         parentSessionID: String?,
         resumeAction: String?,
+        presentationMode: CLIAgentChatPresentationMode = .nativeChat,
         onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
     ) async throws {
         try await stream(
@@ -71,6 +85,7 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
             modelID: modelID,
             parentSessionID: parentSessionID,
             resumeAction: resumeAction,
+            presentationMode: presentationMode,
             onEvent: onEvent
         )
     }
@@ -83,8 +98,36 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
         modelID: String?,
         parentSessionID: String?,
         resumeAction: String?,
+        presentationMode: CLIAgentChatPresentationMode,
         onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
     ) async throws {
+        // Budget gate: evaluate before dispatching so spending limits are
+        // enforced even when the Mac daemon isn't running its own gate.
+        if BudgetEnforcement.shared.isConfigured {
+            let credential = MobileCredentialIdentity.make(
+                providerHint: runtimeRawValue,
+                bearerToken: nil,
+                displayLabel: runtimeRawValue
+            )
+            let estimatedCost = BudgetEnforcement.estimateCost(
+                model: modelID ?? runtimeRawValue,
+                inputCharacters: prompt.count
+            )
+            let decision = await BudgetEnforcement.shared.evaluate(
+                credential: credential,
+                estimatedCost: estimatedCost
+            )
+            if case .block(let rule, let used, let limit, let fallback) = decision {
+                throw BudgetBlockedError(
+                    rule: rule,
+                    used: used,
+                    limit: limit,
+                    fallback: fallback,
+                    resetAt: rule.period.nextReset(reference: Date())
+                )
+            }
+        }
+
         let request = CLIAgentRelayChatRequest(
             runtime: runtimeRawValue,
             prompt: prompt,
@@ -92,7 +135,8 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
             modelID: modelID,
             title: title,
             parentSessionID: parentSessionID,
-            resumeAction: resumeAction
+            resumeAction: resumeAction,
+            presentationMode: presentationMode
         )
         let body = try encoder.encode(request)
         let payload = try await hermesService.macRelayPayloadForCLIAgentChat(

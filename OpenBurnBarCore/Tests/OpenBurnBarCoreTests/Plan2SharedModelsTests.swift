@@ -10,7 +10,7 @@ final class Plan2SharedModelsTests: XCTestCase {
     // MARK: AssistantRuntimeID
 
     func test_assistantRuntimeID_caseRawValuesMatchRelayDiscriminator() {
-        // These five rawValues are persisted on every platform — UserDefaults
+        // These rawValues are persisted on every platform — UserDefaults
         // (`assistants.activeRuntime`, `chat.tilePreferences.v1`) on Apple
         // platforms, SharedPreferences on Android. Any rename is a migration.
         XCTAssertEqual(AssistantRuntimeID.hermes.rawValue, "hermes")
@@ -18,9 +18,12 @@ final class Plan2SharedModelsTests: XCTestCase {
         XCTAssertEqual(AssistantRuntimeID.codex.rawValue, "codex")
         XCTAssertEqual(AssistantRuntimeID.claude.rawValue, "claude")
         XCTAssertEqual(AssistantRuntimeID.openClaw.rawValue, "openclaw")
+        XCTAssertEqual(AssistantRuntimeID.droid.rawValue, "droid")
+        XCTAssertEqual(AssistantRuntimeID.forge.rawValue, "forge")
+        XCTAssertEqual(AssistantRuntimeID.antigravity.rawValue, "antigravity")
         XCTAssertEqual(
             AssistantRuntimeID.allCases,
-            [.hermes, .pi, .codex, .claude, .openClaw]
+            [.hermes, .pi, .codex, .claude, .openClaw, .droid, .forge, .antigravity]
         )
     }
 
@@ -33,11 +36,26 @@ final class Plan2SharedModelsTests: XCTestCase {
             AssistantRuntimeID.pi.defaultGatewayURL.absoluteString,
             "http://127.0.0.1:8765"
         )
+        XCTAssertEqual(
+            AssistantRuntimeID.droid.defaultGatewayURL.absoluteString,
+            "http://127.0.0.1:8642"
+        )
+        XCTAssertEqual(
+            AssistantRuntimeID.forge.defaultGatewayURL.absoluteString,
+            "http://127.0.0.1:8642"
+        )
+        XCTAssertEqual(
+            AssistantRuntimeID.antigravity.defaultGatewayURL.absoluteString,
+            "http://127.0.0.1:8642"
+        )
     }
 
     func test_assistantRuntimeID_glyphsAreStableAcrossPlatforms() {
         XCTAssertEqual(AssistantRuntimeID.hermes.glyph, "\u{263F}")
         XCTAssertEqual(AssistantRuntimeID.pi.glyph, "\u{03C0}")
+        XCTAssertEqual(AssistantRuntimeID.droid.glyph, "\u{25C6}")
+        XCTAssertEqual(AssistantRuntimeID.forge.glyph, "\u{25B0}")
+        XCTAssertEqual(AssistantRuntimeID.antigravity.glyph, "\u{2727}")
     }
 
     func test_assistantRuntimeID_codableRoundTrip() throws {
@@ -68,6 +86,72 @@ final class Plan2SharedModelsTests: XCTestCase {
 
         XCTAssertEqual(decoded.runtime, "pi")
         XCTAssertEqual(decoded.requestId, "req-1")
+    }
+
+    func test_realtimeRelayClipboardRequestAndResponseRoundTrip() throws {
+        let authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "ios-phone-node",
+            counter: 42,
+            timestamp: Date(timeIntervalSince1970: 1_774_000_000),
+            intentHashBlake3: "abc123",
+            signatureEd25519: "signature"
+        )
+        let request = HermesRealtimeRelayClipboardRequest(
+            requestId: "clipboard-req-1",
+            action: .pasteToMac,
+            contentType: "text/plain",
+            text: "paste me",
+            maxBytes: 65_536,
+            clientIntentId: "client-intent-1",
+            authority: authority
+        )
+        let requestFrame = HermesRealtimeRelayFrame(
+            type: .controlClipboardRequest,
+            uid: "user-1",
+            connectionId: "mac-conn-1",
+            requestId: request.requestId,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.clipboard",
+                sessionId: "session-1",
+                clipboardRequest: request
+            )
+        )
+        let response = HermesRealtimeRelayClipboardResponse(
+            requestId: request.requestId,
+            action: .pasteToMac,
+            status: .accepted,
+            contentType: "text/plain",
+            byteCount: 8,
+            detail: "pasted"
+        )
+        let responseFrame = HermesRealtimeRelayFrame(
+            type: .controlClipboardResponse,
+            uid: "user-1",
+            connectionId: "mac-conn-1",
+            requestId: request.requestId,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.clipboard",
+                sessionId: "session-1",
+                clipboardResponse: response
+            )
+        )
+
+        let decoder = JSONDecoder()
+        let decodedRequest = try decoder.decode(
+            HermesRealtimeRelayFrame.self,
+            from: JSONEncoder().encode(requestFrame)
+        )
+        let decodedResponse = try decoder.decode(
+            HermesRealtimeRelayFrame.self,
+            from: JSONEncoder().encode(responseFrame)
+        )
+
+        XCTAssertEqual(decodedRequest.type, .controlClipboardRequest)
+        XCTAssertEqual(decodedRequest.control?.clipboardRequest, request)
+        XCTAssertEqual(decodedRequest.control?.clipboardRequest?.action.rawValue, "paste_to_mac")
+        XCTAssertEqual(decodedResponse.type, .controlClipboardResponse)
+        XCTAssertEqual(decodedResponse.control?.clipboardResponse, response)
+        XCTAssertEqual(decodedResponse.control?.clipboardResponse?.status.rawValue, "accepted")
     }
 
     // MARK: PiConnectionMode/Status

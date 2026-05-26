@@ -464,6 +464,224 @@ final class ComputerUsePhoneControlSignerTests: XCTestCase {
         }
     }
 
+    func testAgentContextTargetSigningAndVerification() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        let target = HermesRealtimeRelayAgentContextTarget(
+            requestId: UUID().uuidString,
+            sessionId: "test-session",
+            runtime: "hermes",
+            threadId: "test-thread",
+            displayId: "main",
+            normalizedX: 0.25,
+            normalizedY: 0.75,
+            normalizedRect: HermesRealtimeRelayNormalizedRect(x: 0.1, y: 0.1, width: 0.3, height: 0.3),
+            instruction: "Click this button",
+            focusContext: nil,
+            clientIntentId: UUID().uuidString,
+            requestedAt: Date(),
+            authority: placeholder
+        )
+        let signed = try signer.sign(
+            target: target,
+            peerNodeId: "phone-node",
+            counter: 12,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+
+        let signedTarget = HermesRealtimeRelayAgentContextTarget(
+            requestId: target.requestId,
+            sessionId: target.sessionId,
+            runtime: target.runtime,
+            threadId: target.threadId,
+            displayId: target.displayId,
+            normalizedX: target.normalizedX,
+            normalizedY: target.normalizedY,
+            normalizedRect: target.normalizedRect,
+            instruction: target.instruction,
+            focusContext: target.focusContext,
+            clientIntentId: target.clientIntentId,
+            requestedAt: target.requestedAt,
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: signed.peerNodeId,
+                counter: signed.counter,
+                timestamp: signed.timestamp,
+                intentHashBlake3: signed.intentHashHex,
+                signatureEd25519: signed.signatureBase64
+            )
+        )
+
+        try signer.verify(
+            target: signedTarget,
+            authority: signed,
+            peerPublicKey: privateKey.publicKey,
+            lastSeenCounter: 11,
+            now: Date()
+        )
+    }
+
+    func testRealtimeClipboardRequestHashExcludesAuthorityEnvelope() throws {
+        let placeholder = authority(peerNodeId: "", counter: 0, intentHash: "", signature: "")
+        let final = authority(
+            peerNodeId: "phone-node",
+            counter: 42,
+            intentHash: String(repeating: "b", count: 64),
+            signature: Data(repeating: 0x5A, count: 64).base64EncodedString()
+        )
+        let beforeSigning = HermesRealtimeRelayClipboardRequest(
+            requestId: "clipboard-1",
+            action: .pasteToMac,
+            contentType: "text/plain",
+            text: "hello",
+            maxBytes: 65_536,
+            clientIntentId: "intent-1",
+            authority: placeholder
+        )
+        let afterSigning = HermesRealtimeRelayClipboardRequest(
+            requestId: "clipboard-1",
+            action: .pasteToMac,
+            contentType: "text/plain",
+            text: "hello",
+            maxBytes: 65_536,
+            clientIntentId: "intent-1",
+            authority: final
+        )
+
+        XCTAssertEqual(
+            try signer.canonicalClipboardRequestHashHex(request: beforeSigning),
+            try signer.canonicalClipboardRequestHashHex(request: afterSigning)
+        )
+    }
+
+    func testRealtimeClipboardRequestRoundTripSucceedsAfterAuthorityIsAttached() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let placeholder = authority(peerNodeId: "", counter: 0, intentHash: "", signature: "")
+        var request = HermesRealtimeRelayClipboardRequest(
+            requestId: "clipboard-2",
+            action: .grabFromMac,
+            contentType: "text/plain",
+            maxBytes: 65_536,
+            clientIntentId: "intent-2",
+            authority: placeholder
+        )
+
+        let signed = try signer.sign(
+            clipboardRequest: request,
+            peerNodeId: "phone-node",
+            counter: 8,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        request.authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+
+        try signer.verify(
+            clipboardRequest: request,
+            authority: signed,
+            peerPublicKey: privateKey.publicKey,
+            lastSeenCounter: 7,
+            now: Date()
+        )
+    }
+
+    func testRealtimeClipboardRequestRejectsReplayCounter() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let placeholder = authority(peerNodeId: "", counter: 0, intentHash: "", signature: "")
+        var request = HermesRealtimeRelayClipboardRequest(
+            requestId: "clipboard-replay",
+            action: .pasteToMac,
+            contentType: "text/plain",
+            text: "hello",
+            maxBytes: 65_536,
+            clientIntentId: "intent-replay",
+            authority: placeholder
+        )
+
+        let signed = try signer.sign(
+            clipboardRequest: request,
+            peerNodeId: "phone-node",
+            counter: 12,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        request.authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+
+        XCTAssertThrowsError(
+            try signer.verify(
+                clipboardRequest: request,
+                authority: signed,
+                peerPublicKey: privateKey.publicKey,
+                lastSeenCounter: 12,
+                now: Date()
+            )
+        ) { error in
+            guard case ComputerUsePhoneControlSigner.VerifyError.counterReplay(let lastSeen, let attempted) = error else {
+                XCTFail("expected counterReplay, got \(error)")
+                return
+            }
+            XCTAssertEqual(lastSeen, 12)
+            XCTAssertEqual(attempted, 12)
+        }
+    }
+
+    func testRealtimeClipboardRequestHashCoversTextAndClientIntentId() throws {
+        let placeholder = authority(peerNodeId: "", counter: 0, intentHash: "", signature: "")
+        let original = HermesRealtimeRelayClipboardRequest(
+            requestId: "clipboard-3",
+            action: .pasteToMac,
+            contentType: "text/plain",
+            text: "first",
+            maxBytes: 65_536,
+            clientIntentId: "intent-a",
+            authority: placeholder
+        )
+        let changedText = HermesRealtimeRelayClipboardRequest(
+            requestId: "clipboard-3",
+            action: .pasteToMac,
+            contentType: "text/plain",
+            text: "second",
+            maxBytes: 65_536,
+            clientIntentId: "intent-a",
+            authority: placeholder
+        )
+        let changedIntent = HermesRealtimeRelayClipboardRequest(
+            requestId: "clipboard-3",
+            action: .pasteToMac,
+            contentType: "text/plain",
+            text: "first",
+            maxBytes: 65_536,
+            clientIntentId: "intent-b",
+            authority: placeholder
+        )
+
+        XCTAssertNotEqual(
+            try signer.canonicalClipboardRequestHashHex(request: original),
+            try signer.canonicalClipboardRequestHashHex(request: changedText)
+        )
+        XCTAssertNotEqual(
+            try signer.canonicalClipboardRequestHashHex(request: original),
+            try signer.canonicalClipboardRequestHashHex(request: changedIntent)
+        )
+    }
+
     private func authority(
         peerNodeId: String,
         counter: UInt64,

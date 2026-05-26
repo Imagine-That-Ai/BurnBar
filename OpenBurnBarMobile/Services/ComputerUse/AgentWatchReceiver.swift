@@ -58,6 +58,20 @@ public final class AgentWatchReceiver: ObservableObject {
             guard let wireReceipt = frame.control?.agentGrantReceipt,
                   let receipt = try? AgentCapabilityGrantReceipt(wire: wireReceipt) else { return }
             MobileAgentPermissionGrantController.shared.apply(receipt: receipt)
+        case .controlSystemPermissionStatus:
+            guard let wireStatus = frame.control?.systemPermissionStatus else { return }
+            let threadID = HermesService.shared.selectedSessionID ?? frame.control?.sessionId ?? "unknown"
+            SystemPermissionInboxStore.shared.ingest(wireStatus: wireStatus, threadID: threadID)
+            if wireStatus.status == .granted,
+               let item = SystemPermissionInboxStore.shared.latestItem(forThread: threadID),
+               item.status == .granted,
+               item.originatingToolCallId != nil {
+                Task { @MainActor in
+                    if let handler = SystemPermissionInboxStore.shared.retryHandler {
+                        await handler(item)
+                    }
+                }
+            }
         case .controlDenied:
             state.setDeniedReason(denyReason(from: frame.control?.denied?.reason))
         default:
@@ -209,7 +223,7 @@ public final class AgentWatchReceiver: ObservableObject {
         case .signatureFailure: return .signatureFailure
         case .counterReplay: return .counterReplay
         case .staleTimestamp: return .staleTimestamp
-        case .unknown, .none: return .scopeNotMatched
+        case .agentUnavailable, .unknown, .none: return .scopeNotMatched
         }
     }
 }

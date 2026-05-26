@@ -2,6 +2,7 @@ package com.openburnbar.data.computeruse
 
 import com.openburnbar.data.media.MediaStreamClass
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayInputIntentKind
 import kotlinx.coroutines.runBlocking
@@ -9,6 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import kotlin.math.roundToLong
 
 class PhoneControlSenderTest {
     private val privateSeed = ByteArray(32) { index -> (index + 1).toByte() }
@@ -156,6 +158,63 @@ class PhoneControlSenderTest {
     }
 
     @Test
+    fun sendWritesSignedClipboardRequestFrame() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val sender = PhoneControlSender(
+            uid = "uid-1",
+            connectionId = "conn-1",
+            peerNodeId = "android-phone-1",
+            privateKeySeedProvider = { privateSeed },
+            counterStore = InMemoryPhoneControlCounterStore(),
+            nowMillis = { 1_700_000_000_123L },
+            frameSink = { frames += it },
+        )
+
+        val wire = sender.send(
+            PhoneControlClipboardRequest(
+                requestId = "clipboard-1",
+                action = PhoneControlClipboardAction.PASTE_TO_MAC,
+                contentType = "text/plain",
+                text = "hello",
+                maxBytes = 65_536,
+            )
+        )
+
+        assertEquals(1, frames.size)
+        val frame = frames.single()
+        assertEquals(HermesRealtimeRelayFrameType.CONTROL_CLIPBOARD_REQUEST, frame.type)
+        assertEquals("uid-1", frame.uid)
+        assertEquals("conn-1", frame.connectionId)
+        assertEquals("clipboard-1", frame.requestId)
+        assertEquals("control.clipboard", frame.control?.streamClass)
+        val request = frame.control?.clipboardRequest
+        assertNotNull(request)
+        assertEquals(HermesRealtimeRelayClipboardAction.PASTE_TO_MAC, request?.action)
+        assertEquals("text/plain", request?.contentType)
+        assertEquals("hello", request?.text)
+        assertEquals(65_536, request?.maxBytes)
+        assertNotNull(request?.clientIntentId)
+        assertEquals("android-phone-1", request?.authority?.peerNodeId)
+        assertEquals(1L, request?.authority?.counter)
+        assertEquals(wire.authority.intentHashBlake3, request?.authority?.intentHashBlake3)
+
+        PhoneControlSigner.verifyClipboardRequest(
+            request = PhoneControlClipboardRequest(
+                requestId = request?.requestId ?: "",
+                action = PhoneControlClipboardAction.PASTE_TO_MAC,
+                contentType = request?.contentType ?: "",
+                text = request?.text,
+                maxBytes = request?.maxBytes ?: 0,
+                clientIntentId = request?.clientIntentId,
+            ),
+            authority = wire.authority.toPhoneControlAuthority(),
+            publicKey = PhoneControlSigner.publicKey(privateSeed),
+            lastSeenCounter = 0,
+            nowMillis = 1_700_000_000_123L,
+        )
+    }
+
+    @Test
     fun sendFailsWhenSigningKeyMissing() {
         val sender = PhoneControlSender(
             uid = "uid-1",
@@ -172,4 +231,13 @@ class PhoneControlSenderTest {
             }
         }
     }
+
+    private fun com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope.toPhoneControlAuthority(): PhoneControlAuthorityEnvelope =
+        PhoneControlAuthorityEnvelope(
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = ((timestamp + 978_307_200.0) * 1000.0).roundToLong(),
+            intentHashBlake3 = intentHashBlake3,
+            signatureEd25519 = signatureEd25519,
+        )
 }

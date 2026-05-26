@@ -197,6 +197,11 @@ enum ContextBuilder {
             lines.append("(No recent assistant message indexed yet.)")
         }
 
+        if let budgetSection = await BudgetEnforcement.shared.budgetContextSection() {
+            lines.append("")
+            lines.append(budgetSection)
+        }
+
         lines.append("")
         lines.append("Answer the user's question using this context. Be concise and specific.")
 
@@ -321,6 +326,11 @@ enum ContextBuilder {
             lines.append(latest.lastAssistantMessage)
         } else {
             lines.append("(None yet.)")
+        }
+
+        if let budgetSection = await BudgetEnforcement.shared.budgetContextSection() {
+            lines.append("")
+            lines.append(budgetSection)
         }
 
         var result = lines.joined(separator: "\n")

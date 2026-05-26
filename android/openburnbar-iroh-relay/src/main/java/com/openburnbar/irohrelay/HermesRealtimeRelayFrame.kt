@@ -69,6 +69,11 @@ enum class HermesRealtimeRelayFrameType {
     @SerialName("control.approval.response") CONTROL_APPROVAL_RESPONSE,
     @SerialName("control.agent.grant.request") CONTROL_AGENT_GRANT_REQUEST,
     @SerialName("control.agent.grant.receipt") CONTROL_AGENT_GRANT_RECEIPT,
+    @SerialName("control.clipboard.request") CONTROL_CLIPBOARD_REQUEST,
+    @SerialName("control.clipboard.response") CONTROL_CLIPBOARD_RESPONSE,
+    @SerialName("control.agent.context.target") CONTROL_AGENT_CONTEXT_TARGET,
+    @SerialName("control.system.permission.request") CONTROL_SYSTEM_PERMISSION_REQUEST,
+    @SerialName("control.system.permission.status") CONTROL_SYSTEM_PERMISSION_STATUS,
     @SerialName("control.denied") CONTROL_DENIED,
 }
 
@@ -127,11 +132,48 @@ data class HermesRealtimeRelayMediaPayload(
 )
 
 @Serializable
+enum class HermesRealtimeRelayFocusTargetKind {
+    @SerialName("cursor") CURSOR,
+    @SerialName("focused_element") FOCUSED_ELEMENT,
+    @SerialName("focused_window") FOCUSED_WINDOW,
+    @SerialName("agent_workspace") AGENT_WORKSPACE,
+}
+
+@Serializable
+data class HermesRealtimeRelayNormalizedRect(
+    val x: Double,
+    val y: Double,
+    val width: Double,
+    val height: Double,
+)
+
+@Serializable
+data class HermesRealtimeRelayNormalizedPoint(
+    val x: Double,
+    val y: Double,
+)
+
+@Serializable
 data class HermesRealtimeRelayFocusContext(
     val appName: String,
     val bundleId: String,
     val windowTitle: String? = null,
     val windowId: Long? = null,
+    /** Smart Zoom target type. Optional for backwards compat. */
+    val targetKind: HermesRealtimeRelayFocusTargetKind? = null,
+    /** Display id that the rect/point are relative to. */
+    val displayId: String? = null,
+    /** Target rectangle in display-relative normalized coordinates `[0..1]`. */
+    val normalizedRect: HermesRealtimeRelayNormalizedRect? = null,
+    /** Target point in display-relative normalized coordinates `[0..1]`. */
+    val normalizedPoint: HermesRealtimeRelayNormalizedPoint? = null,
+    /** Provider confidence in the target. */
+    val confidence: Double? = null,
+    /**
+     * Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC.
+     * Optional so older peers without Smart Zoom decode unchanged.
+     */
+    val updatedAt: Double? = null,
 )
 
 @Serializable
@@ -176,6 +218,9 @@ data class HermesRealtimeRelayMirrorRequest(
     val streamClass: String,
     val streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = null,
     val focusFollowMode: String? = null,
+    val viewerId: String? = null,
+    val viewerDeviceId: String? = null,
+    val controlAuthorityPeerNodeId: String? = null,
 )
 
 @Serializable
@@ -195,6 +240,12 @@ data class HermesRealtimeRelayMirrorAck(
     val cooldownSecondsRemaining: Int? = null,
     val availableDisplays: List<HermesRealtimeRelayDisplayDescriptor>? = null,
     val selectedDisplayId: String? = null,
+    val sessionId: String? = null,
+    val viewerId: String? = null,
+    val viewerRole: String? = null,
+    val viewerCount: Int? = null,
+    val maxViewers: Int? = null,
+    val controlOwnerViewerId: String? = null,
 ) {
     @Serializable
     enum class Decision {
@@ -209,6 +260,7 @@ data class HermesRealtimeRelayMirrorAck(
 @Serializable
 data class HermesRealtimeRelayMirrorStop(
     val requestId: String,
+    val sessionId: String? = null,
     /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
     val stoppedAt: Double,
     val reason: String? = null,
@@ -217,6 +269,7 @@ data class HermesRealtimeRelayMirrorStop(
 @Serializable
 data class HermesRealtimeRelayMirrorDisplaySelection(
     val requestId: String,
+    val sessionId: String? = null,
     val displayId: String,
     /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
     val selectedAt: Double,
@@ -317,7 +370,124 @@ data class HermesRealtimeRelayControlPayload(
     val approvalResponse: HermesRealtimeRelayApprovalResponse? = null,
     val agentGrantRequest: HermesRealtimeRelayAgentGrantRequest? = null,
     val agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt? = null,
+    val clipboardRequest: HermesRealtimeRelayClipboardRequest? = null,
+    val clipboardResponse: HermesRealtimeRelayClipboardResponse? = null,
+    val agentContextTarget: HermesRealtimeRelayAgentContextTarget? = null,
+    val systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest? = null,
+    val systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = null,
     val denied: HermesRealtimeRelayControlDenied? = null,
+)
+
+@Serializable
+enum class HermesRealtimeRelaySystemPermissionKind {
+    @SerialName("screen_recording") SCREEN_RECORDING,
+    @SerialName("accessibility") ACCESSIBILITY,
+    @SerialName("camera") CAMERA,
+    @SerialName("microphone") MICROPHONE,
+    @SerialName("full_disk_access") FULL_DISK_ACCESS,
+    @SerialName("automation") AUTOMATION,
+}
+
+@Serializable
+enum class HermesRealtimeRelaySystemPermissionStatusKind {
+    @SerialName("needs_access") NEEDS_ACCESS,
+    @SerialName("requesting") REQUESTING,
+    @SerialName("granted") GRANTED,
+    @SerialName("denied") DENIED,
+    @SerialName("timeout") TIMEOUT,
+    @SerialName("unknown") UNKNOWN,
+}
+
+@Serializable
+enum class HermesRealtimeRelaySystemPermissionAction {
+    @SerialName("prompt") PROMPT,
+    @SerialName("open_settings") OPEN_SETTINGS,
+    @SerialName("prompt_and_open_settings") PROMPT_AND_OPEN_SETTINGS,
+    @SerialName("probe_only") PROBE_ONLY,
+    @SerialName("retry_failed_tool") RETRY_FAILED_TOOL,
+}
+
+@Serializable
+data class HermesRealtimeRelaySystemPermissionRequest(
+    val requestId: String,
+    val clientIntentId: String,
+    val kind: HermesRealtimeRelaySystemPermissionKind,
+    val bundleId: String? = null,
+    val originatingToolCallId: String? = null,
+    val originatingToolName: String? = null,
+    val action: HermesRealtimeRelaySystemPermissionAction,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val requestedAt: Double,
+    val authority: HermesRealtimeRelayAuthorityEnvelope,
+)
+
+@Serializable
+data class HermesRealtimeRelaySystemPermissionStatus(
+    val kind: HermesRealtimeRelaySystemPermissionKind,
+    val bundleId: String? = null,
+    val status: HermesRealtimeRelaySystemPermissionStatusKind,
+    val originatingToolCallId: String? = null,
+    val originatingToolName: String? = null,
+    val deepLink: String? = null,
+    val instructions: String? = null,
+    val failureCategory: String? = null,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val lastChangedAt: Double,
+)
+
+@Serializable
+data class HermesRealtimeRelayAgentContextTarget(
+    val requestId: String,
+    val sessionId: String? = null,
+    val runtime: String,
+    val threadId: String? = null,
+    val displayId: String? = null,
+    val normalizedX: Double,
+    val normalizedY: Double,
+    val normalizedRect: HermesRealtimeRelayNormalizedRect? = null,
+    val instruction: String,
+    val focusContext: HermesRealtimeRelayFocusContext? = null,
+    val clientIntentId: String,
+    val requestedAt: Double,
+    val authority: HermesRealtimeRelayAuthorityEnvelope,
+)
+
+@Serializable
+enum class HermesRealtimeRelayClipboardAction {
+    @SerialName("paste_to_mac") PASTE_TO_MAC,
+    @SerialName("grab_from_mac") GRAB_FROM_MAC,
+}
+
+@Serializable
+enum class HermesRealtimeRelayClipboardStatus {
+    @SerialName("accepted") ACCEPTED,
+    @SerialName("denied") DENIED,
+    @SerialName("empty") EMPTY,
+    @SerialName("too_large") TOO_LARGE,
+    @SerialName("unsupported") UNSUPPORTED,
+    @SerialName("error") ERROR,
+}
+
+@Serializable
+data class HermesRealtimeRelayClipboardRequest(
+    val requestId: String,
+    val action: HermesRealtimeRelayClipboardAction,
+    val contentType: String,
+    val text: String? = null,
+    val maxBytes: Int,
+    val clientIntentId: String,
+    val authority: HermesRealtimeRelayAuthorityEnvelope,
+)
+
+@Serializable
+data class HermesRealtimeRelayClipboardResponse(
+    val requestId: String,
+    val action: HermesRealtimeRelayClipboardAction,
+    val status: HermesRealtimeRelayClipboardStatus,
+    val contentType: String? = null,
+    val text: String? = null,
+    val byteCount: Int? = null,
+    val detail: String? = null,
 )
 
 @Serializable
@@ -338,6 +508,7 @@ data class HermesRealtimeRelayControlDenied(
         @SerialName("signature_failure") SIGNATURE_FAILURE,
         @SerialName("counter_replay") COUNTER_REPLAY,
         @SerialName("stale_timestamp") STALE_TIMESTAMP,
+        @SerialName("agent_unavailable") AGENT_UNAVAILABLE,
         @SerialName("unknown") UNKNOWN,
     }
 }

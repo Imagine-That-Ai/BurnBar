@@ -96,6 +96,9 @@ Build ${APP.buildVersion} adds NSCameraUsageDescription to the iOS app Info.plis
 Guideline 2.1(b) subscription responsiveness fix:
 Build ${APP.buildVersion} no longer blocks the Subscribe button on Firebase authentication or background StoreKit product metadata loading. If App Review opens the OpenBurnBar Cloud screen before signing in, tapping Subscribe still attempts Apple's StoreKit purchase flow immediately. Signed-in users continue to get server-side entitlement binding through appAccountToken, and signed-out purchases finish cleanly with an actionable sign-in/restore message instead of an Unauthenticated error.
 
+Guideline 2.3.3 accurate screenshot metadata fix:
+The 6.7-inch iPhone and 13-inch iPad App Store screenshots have been replaced with current build ${APP.buildVersion} screenshots captured from the real OpenBurnBar app using seeded App Store screenshot mode. They now show the current Pulse, Burn, and Provider Accounts views instead of the stale light-mode screenshots from the older submission.
+
 Terms of Use: ${LEGAL_URLS.terms}
 Privacy Policy: ${LEGAL_URLS.privacy}
 
@@ -856,6 +859,24 @@ async function addAppVersionToReviewSubmission(submissionId, versionId) {
   }
 }
 
+async function resolveRejectedReviewSubmissionItems(submissionId) {
+  const response = await api(
+    "GET",
+    `/reviewSubmissions/${submissionId}/items${query({ limit: 50 })}`
+  );
+  const rejectedItems = (response.data || []).filter(
+    (item) => item.attributes?.state === "REJECTED"
+  );
+  for (const item of rejectedItems) {
+    await api(
+      "PATCH",
+      `/reviewSubmissionItems/${item.id}`,
+      data("reviewSubmissionItems", { resolved: true }, undefined, item.id)
+    );
+    console.log(`Resolved rejected review submission item ${item.id}`);
+  }
+}
+
 async function submitReviewSubmission(submissionId) {
   const response = await api(
     "PATCH",
@@ -906,6 +927,8 @@ async function submitIosAppReview() {
   const submission = await getOrCreateDraftReviewSubmission(version.id);
   if (submission.attributes?.state !== "UNRESOLVED_ISSUES") {
     await addAppVersionToReviewSubmission(submission.id, version.id);
+  } else {
+    await resolveRejectedReviewSubmissionItems(submission.id);
   }
   await submitReviewSubmission(submission.id);
 }

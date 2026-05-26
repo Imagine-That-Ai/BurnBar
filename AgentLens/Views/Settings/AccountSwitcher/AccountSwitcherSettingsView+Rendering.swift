@@ -487,6 +487,9 @@ extension AccountSwitcherSettingsView {
             (.claude, "Claude Code", "terminal.fill", Color(hex: "CC785C")),
             (.codex,  "Codex",       "terminal.fill", Color(hex: "00A67E")),
             (.opencode, "OpenCode",  "terminal.fill", DesignSystem.Colors.whimsy),
+            (.droid, "Droid", "terminal.fill", Color(hex: "8B5CF6")),
+            (.forge, "Forge", "flame.fill", Color(hex: "F97316")),
+            (.antigravity, "Antigravity", "terminal.fill", Color(hex: "6C63FF")),
         ]
 
         var groups: [ProfileGroup] = []
@@ -498,6 +501,9 @@ extension AccountSwitcherSettingsView {
                 case .claude: "ClaudeCodeLogo"
                 case .codex: "CodexLogo"
                 case .opencode: nil
+                case .droid: "FactoryLogo"
+                case .forge: "ForgeLogo"
+                case .antigravity: "AntigravityLogo"
                 }
                 groups.append(ProfileGroup(
                     key: cliType.rawValue,

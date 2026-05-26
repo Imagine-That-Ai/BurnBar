@@ -40,8 +40,41 @@ data class HermesRuntimeModelOption(
     val providerID: String,
     val providerName: String,
     val modelID: String,
-    val displayName: String
+    val displayName: String,
+    val modelCapabilities: ModelIOCapabilities? = null
 )
+
+data class ModelIOCapabilities(
+    val schemaVersion: Int = 1,
+    val inputModalities: List<String> = listOf("text"),
+    val outputModalities: List<String> = listOf("text"),
+    val supportedParameters: List<String> = emptyList(),
+    val contextWindowTokens: Int? = null,
+    val maxOutputTokens: Int? = null,
+    val acceptedInputMimeTypes: List<String> = emptyList(),
+    val imageMaxBytes: Int? = null,
+    val audioMaxBytes: Int? = null,
+    val videoMaxBytes: Int? = null
+) {
+    val supportsImageInput: Boolean
+        get() = inputModalities.any { it.equals("image", ignoreCase = true) }
+
+    fun acceptsInputMimeType(mimeType: String?): Boolean {
+        val normalized = mimeType?.substringBefore(";")?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+            ?: return false
+        if (acceptedInputMimeTypes.isEmpty()) {
+            return normalized.startsWith("image/") && supportsImageInput
+        }
+        return acceptedInputMimeTypes.any { accepted ->
+            val value = accepted.trim().lowercase()
+            if (value.endsWith("/*")) {
+                normalized.startsWith(value.dropLast(1))
+            } else {
+                normalized == value
+            }
+        }
+    }
+}
 
 data class HermesRuntimeProfile(
     val name: String,
@@ -79,5 +112,5 @@ data class HermesSessionSummary(
 )
 
 enum class HermesRelayOperation {
-    CHAT_COMPLETIONS, MODELS, SESSIONS, PROFILES, JOBS, SESSION_DETAIL
+    CHAT_COMPLETIONS, CLI_AGENT_CHAT, CLI_AGENT_MODEL_CATALOG, MODELS, SESSIONS, PROFILES, JOBS, SESSION_DETAIL
 }

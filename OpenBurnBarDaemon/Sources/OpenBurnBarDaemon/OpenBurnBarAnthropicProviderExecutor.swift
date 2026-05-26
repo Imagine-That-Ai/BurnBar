@@ -261,6 +261,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         // BurnBar routes through /v1/messages, so strip known transport-only
         // keys instead of making Claude retry a deterministic 400 forever.
         json.removeValue(forKey: "context_management")
+        json.removeValue(forKey: "effort")
         if applyClaudeCodeSystemGuard {
             json["system"] = injectClaudeCodeSystemGuard(into: json["system"])
         }
@@ -271,10 +272,9 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     }
 
     /// Variant-always-wins injection of Anthropic extended-thinking config.
-    /// Sets `thinking = { type: enabled, budget_tokens: ... }` and `effort`
-    /// (gated by the `effort-2025-11-24` beta header BurnBar already sends
-    /// for Claude Code routes). Anthropic rejects `budget_tokens >= max_tokens`,
-    /// so the helper raises the floor of `max_tokens` to
+    /// Sets `thinking = { type: enabled, budget_tokens: ... }`.
+    /// Anthropic rejects `budget_tokens >= max_tokens`, so the helper raises
+    /// the floor of `max_tokens` to
     /// `budget_tokens + 4096` when the caller's value would conflict.
     static func applyAnthropicVariant(
         _ variant: BurnBarModelVariant,
@@ -286,7 +286,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             "budget_tokens": budget
         ]
         object["thinking"] = thinking
-        object["effort"] = variant.thinkingLevel.anthropicEffort
+        object.removeValue(forKey: "effort")
 
         let floor = budget + 4096
         let callerMax = intValue(object["max_tokens"]) ?? 0
@@ -533,11 +533,11 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             return []
         }
         return items.compactMap { item in
-            let text = openAIContentText(item["content"] ?? item["text"])
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let content = item["content"] ?? item["text"]
+            guard let content, !openAIContentIsEmpty(content) else { return nil }
             return [
                 "role": (item["role"] as? String) ?? "user",
-                "content": text
+                "content": content
             ]
         }
     }
@@ -572,9 +572,12 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     }
 
     private static func anthropicContentBlocks(from value: Any?) -> [[String: Any]] {
-        let text = openAIContentText(value)
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        return [["type": "text", "text": text]]
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? [] : [["type": "text", "text": text]]
+        }
+        guard let parts = value as? [[String: Any]] else { return [] }
+        return parts.compactMap(anthropicContentBlock)
     }
 
     private static func openAIContentText(_ value: Any?) -> String {
@@ -596,6 +599,81 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             }
             return nil
         }.joined(separator: "\n")
+    }
+
+    private static func openAIContentIsEmpty(_ value: Any?) -> Bool {
+        if let text = value as? String {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if let parts = value as? [[String: Any]] {
+            return parts.isEmpty
+        }
+        return value == nil
+    }
+
+    private static func anthropicContentBlock(_ part: [String: Any]) -> [String: Any]? {
+        let type = (part["type"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        switch type {
+        case "text", "input_text", "output_text":
+            guard let text = (part["text"] as? String)
+                ?? (part["input_text"] as? String)
+                ?? (part["output_text"] as? String),
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return ["type": "text", "text": text]
+        case "image_url", "input_image":
+            return anthropicImageBlock(from: part)
+        default:
+            if part["image_url"] != nil || part["url"] != nil {
+                return anthropicImageBlock(from: part)
+            }
+            if let text = part["text"] as? String,
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return ["type": "text", "text": text]
+            }
+            return nil
+        }
+    }
+
+    private static func anthropicImageBlock(from part: [String: Any]) -> [String: Any]? {
+        let imageURL = ((part["image_url"] as? [String: Any])?["url"] as? String)
+            ?? (part["image_url"] as? String)
+            ?? (part["url"] as? String)
+        guard let dataURL = imageURL,
+              let parsed = parseDataURL(dataURL),
+              parsed.mediaType.hasPrefix("image/") else {
+            return nil
+        }
+        return [
+            "type": "image",
+            "source": [
+                "type": "base64",
+                "media_type": parsed.mediaType,
+                "data": parsed.base64Data
+            ]
+        ]
+    }
+
+    private static func parseDataURL(_ value: String) -> (mediaType: String, base64Data: String)? {
+        guard value.lowercased().hasPrefix("data:"),
+              let comma = value.firstIndex(of: ",") else {
+            return nil
+        }
+        let metadata = value[value.index(value.startIndex, offsetBy: 5)..<comma]
+        let payload = value[value.index(after: comma)...]
+        let metadataParts = metadata.split(separator: ";").map(String.init)
+        let mediaType = metadataParts.first?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard metadataParts.contains(where: { $0.caseInsensitiveCompare("base64") == .orderedSame }),
+              let mediaType,
+              !mediaType.isEmpty,
+              !payload.isEmpty else {
+            return nil
+        }
+        return (mediaType, String(payload))
     }
 
     private static func anthropicToolUseBlocks(from value: Any?) -> [[String: Any]] {

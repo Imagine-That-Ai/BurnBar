@@ -33,7 +33,8 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
     init(
         accountManager: AccountManager,
         settingsManager: SettingsManager,
-        relayHostService: HermesRelayHostService? = nil
+        relayHostService: HermesRelayHostService? = nil,
+        chatController: ChatSessionController? = nil
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
@@ -42,9 +43,18 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
             accountManager: accountManager,
             settingsManager: settingsManager
         )
+        self.coordinator.chatController = chatController
         configurePanelModel()
         bindCoordinator()
+        bindBudgetStatusListener()
         refreshEntitlement()
+    }
+
+    private func bindBudgetStatusListener() {
+        ComputerUseBudgetStatusStore.shared.onEnvelopeChanged = { [weak self] envelope in
+            self?.coordinator.updateBudgetEnvelope(envelope)
+        }
+        ComputerUseBudgetStatusStore.shared.startListening()
     }
 
     func attach(relayHostService: HermesRelayHostService) {
@@ -243,6 +253,10 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
     @discardableResult
     func ensureSystemSession(trustMode: ComputerUseTrustMode = .manual) async throws -> ComputerUseSessionStartResponse? {
         try await ensureSession(mode: .system, trustMode: trustMode)
+    }
+
+    func setPhoneControlAuthorizedPeerNodeProvider(_ provider: (@MainActor @Sendable () -> String?)?) {
+        coordinator.phoneControlAuthorizedPeerNodeProvider = provider
     }
 
     func endSession() async {

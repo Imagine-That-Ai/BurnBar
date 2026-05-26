@@ -4,6 +4,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 
 // MARK: - Hermes Chat Message
 
@@ -749,6 +750,9 @@ final class HermesService {
         self.selectedModelWasExplicit = self.selectedModelID?.nilIfBlank != nil
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         history.loadFromDiskIfNeeded()
+        SystemPermissionInboxStore.shared.retryHandler = { [weak self] item in
+            self?.retryAfterSystemPermissionGrant(item: item)
+        }
     }
 
     func loadHistory() {
@@ -1387,6 +1391,17 @@ final class HermesService {
         sendMessage(trimmed, context: context, attachments: userMessage.attachments)
     }
 
+    /// Phase 14 — Sentinel re-send fired when a macOS TCC grant lands
+    /// and a failed tool call needs to be retried. Routes through the
+    /// normal `sendMessage` path so transport, persistence, and tool
+    /// loops behave identically to a user-typed message.
+    func retryAfterSystemPermissionGrant(item: SystemPermissionItem) {
+        guard !isStreaming else { return }
+        let toolName = item.originatingToolName ?? "the previous tool"
+        let sentinel = "Permission added on your Mac (\(item.kind.displayTitle)). Retry \(toolName) and finish the previous step."
+        sendMessage(sentinel)
+    }
+
     func sendMessage(_ text: String, context: String? = nil, attachments: [HermesAttachment] = []) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Allow attachment-only messages (no text) so users can send a photo
@@ -1480,9 +1495,10 @@ final class HermesService {
             return
         }
 
+        let body = try completionRequestBody(context: context)
         var request = try makeRequest(path: "/v1/chat/completions", timeout: 60)
         request.httpMethod = "POST"
-        request.httpBody = try completionRequestBody(context: context)
+        request.httpBody = body
 
         let (stream, response) = try await urlSession.bytes(for: request)
 
@@ -1620,7 +1636,7 @@ final class HermesService {
         let requestMessages = HermesAttachmentEncoder.encodeMessages(
             systemPrompt: systemPrompt,
             messages: encoderMessages,
-            capabilities: backendCapabilities,
+            capabilities: backendCapabilities(for: model),
             workspaceAbsolutePath: { att in
                 guard let workspaceForRefs else { return att.workspaceRelativePath }
                 return workspaceForRefs.appendingPathComponent(att.workspaceRelativePath).path
@@ -1654,8 +1670,10 @@ final class HermesService {
 
     /// Capability hints used by the encoder. Defaults to vision-on,
     /// audio-off; refined when we learn more from `/v1/models`.
-    private var backendCapabilities: HermesBackendCapabilities {
-        HermesBackendCapabilities.default
+    private func backendCapabilities(for modelID: String) -> HermesBackendCapabilities {
+        modelOptions.first { $0.modelID.caseInsensitiveCompare(modelID) == .orderedSame }?
+            .backendCapabilities
+            ?? HermesBackendCapabilities.default
     }
 
     private func streamRelayCompletion(context: String?, iteration: Int = 0) async throws {
@@ -1756,6 +1774,11 @@ final class HermesService {
             onEvent: { event in
                 if let text = event.text {
                     assistantMessage.text = text
+                    SystemPermissionTextClassifier.shared.observeAssistantText(
+                        text,
+                        threadID: threadID,
+                        toolCallId: assistantMessage.id
+                    )
                 }
                 if let modelID = event.modelID {
                     assistantMessage.modelName = modelID
@@ -2530,6 +2553,7 @@ final class HermesService {
                 sourceID: model.sourceID,
                 sourceKind: model.sourceKind,
                 capabilities: model.capabilities ?? [],
+                modelCapabilities: model.modelCapabilities,
                 quotaState: model.quotaState,
                 routeEligible: model.routeEligible,
                 lastRefreshAt: model.lastRefreshAt,
@@ -2700,19 +2724,78 @@ final class HermesService {
         method: String,
         path: String? = nil,
         sessionID: String? = nil,
-        body: Data? = nil
+        body: Data? = nil,
+        connection: HermesConnectionRecord? = nil
     ) -> HermesRelayPayload {
-        HermesRelayPayload(
-            connectionID: selectedConnection.id,
-            relayPublicKey: selectedConnection.relayPublicKey,
-            relayKeyVersion: selectedConnection.relayKeyVersion,
-            relayEncryption: selectedConnection.relayEncryption,
-            realtimeRelayURL: selectedConnection.realtimeRelayURL,
+        let relay = connection ?? selectedConnection
+        return HermesRelayPayload(
+            connectionID: relay.id,
+            relayPublicKey: relay.relayPublicKey,
+            relayKeyVersion: relay.relayKeyVersion,
+            relayEncryption: relay.relayEncryption,
+            realtimeRelayURL: relay.realtimeRelayURL,
             operation: operation,
             method: method,
             path: path,
             sessionID: sessionID,
             body: body
+        )
+    }
+
+    private static func advertisesCLIModelCatalog(_ connection: HermesConnectionRecord) -> Bool {
+        connection.capabilities.contains("cli_agent_model_catalog")
+            || connection.capabilities.contains(HermesRelayOperation.cliAgentModelCatalog.rawValue)
+    }
+
+    private func resolveCLIAgentModelCatalogRelayConnection() async throws -> HermesConnectionRecord {
+        if selectedConnection.mode != .relayLink || suggestedRelayConnection == nil {
+            await refreshConnections(refreshSelectedConnection: false)
+        }
+        if selectedConnection.mode != .relayLink {
+            _ = connectToSuggestedRelay(refresh: false)
+        }
+        if Self.advertisesCLIModelCatalog(selectedConnection),
+           selectedConnection.mode == .relayLink {
+            return selectedConnection
+        }
+
+        await refreshConnections(refreshSelectedConnection: false)
+        if Self.advertisesCLIModelCatalog(selectedConnection),
+           selectedConnection.mode == .relayLink {
+            return selectedConnection
+        }
+
+        if let relay = relayConnections.first(where: Self.advertisesCLIModelCatalog(_:)) {
+            return relay
+        }
+
+        if let runtimeError = runtimeErrorText,
+           runtimeError.contains("Could not load Hermes connections") {
+            switch CloudErrorClassification.classify(message: runtimeError) {
+            case .permissionDenied:
+                throw HermesServiceError.relayUnavailable(
+                    "Could not load relay connections: sign out and sign back in with the same account you use on your Mac, then try again."
+                )
+            case .appCheckBlocked:
+                throw HermesServiceError.relayUnavailable(
+                    "Could not load relay connections: App Check rejected this device. Reinstall from the official channel or register a debug token."
+                )
+            case .notAuthenticated:
+                throw HermesServiceError.relayUnavailable(
+                    "Could not load relay connections: sign in to discover models from your paired Mac."
+                )
+            default:
+                break
+            }
+        }
+
+        if !relayConnections.isEmpty {
+            throw HermesServiceError.relayUnavailable(
+                "Your Mac relay is online but has not published live CLI model discovery yet. Update or restart OpenBurnBar on the Mac."
+            )
+        }
+        throw HermesServiceError.relayUnavailable(
+            "No paired Mac relay is available for CLI model discovery. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay."
         )
     }
 
@@ -2742,6 +2825,32 @@ final class HermesService {
             path: "/v1/cli-agent/chat",
             sessionID: sessionID,
             body: body
+        )
+    }
+
+    func fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID) async throws -> CLIRuntimeModelCatalogResponse {
+        let request = CLIRuntimeModelCatalogRequest(runtime: runtime.rawValue)
+        let body = try JSONEncoder().encode(request)
+        let payload = try await macRelayPayloadForCLIRuntimeModelCatalog(
+            body: body,
+            sessionID: "cli-model-catalog-\(runtime.rawValue)"
+        )
+        let data = try await relayTransport.sendUnary(payload, timeout: 20)
+        return try JSONDecoder().decode(CLIRuntimeModelCatalogResponse.self, from: data)
+    }
+
+    private func macRelayPayloadForCLIRuntimeModelCatalog(
+        body: Data,
+        sessionID: String
+    ) async throws -> HermesRelayPayload {
+        let connection = try await resolveCLIAgentModelCatalogRelayConnection()
+        return relayPayload(
+            operation: .cliAgentModelCatalog,
+            method: "POST",
+            path: "/v1/cli-agent/model-catalog",
+            sessionID: sessionID,
+            body: body,
+            connection: connection
         )
     }
 
@@ -3399,7 +3508,11 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
             case .controlClassify, .controlActionLogEntry, .controlInputIntent,
                  .controlApprovalRequest, .controlApprovalResponse,
                  .controlAgentGrantRequest, .controlAgentGrantReceipt,
-                 .controlDenied:
+                 .controlClipboardRequest, .controlClipboardResponse,
+                 .controlAgentContextTarget,
+                 .controlDenied,
+                 .controlSystemPermissionRequest,
+                 .controlSystemPermissionStatus:
                 // Computer Use control frames are handled by the control
                 // plane; chat relay responses ignore them.
                 break
@@ -4019,6 +4132,7 @@ private struct OpenAIModel: Decodable {
     var sourceID: String?
     var sourceKind: String?
     var capabilities: [String]?
+    var modelCapabilities: ModelIOCapabilities?
     var quotaState: String?
     var routeEligible: Bool?
     var lastRefreshAt: Date?
@@ -4036,6 +4150,7 @@ private struct OpenAIModel: Decodable {
         case sourceID = "source_id"
         case sourceKind = "source_kind"
         case capabilities
+        case modelCapabilities = "model_capabilities"
         case quotaState = "quota_state"
         case routeEligible = "route_eligible"
         case lastRefreshAt = "last_refresh_at"
@@ -4188,6 +4303,15 @@ extension HermesService {
                 toolCallID: result.toolCallID
             )
             messages.append(reply)
+
+            if result.isError, let threadID = selectedSessionID {
+                SystemPermissionTextClassifier.shared.observe(
+                    toolName: result.toolName,
+                    toolResultDetail: result.content,
+                    toolCallId: result.toolCallID,
+                    threadID: threadID
+                )
+            }
         }
 
         return results

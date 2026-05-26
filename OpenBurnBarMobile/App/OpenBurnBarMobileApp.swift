@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseCore
+import GoogleSignIn
 import OpenBurnBarCore
 
 @main
@@ -31,6 +32,9 @@ struct OpenBurnBarMobileApp: App {
     }
 
     private func handleDeepLink(_ url: URL) {
+        if GIDSignIn.sharedInstance.handle(url) {
+            return
+        }
         guard url.scheme == "burnbar" else { return }
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let promptParam = components?.queryItems?.first(where: { $0.name == "prompt" })?.value

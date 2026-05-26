@@ -8,7 +8,7 @@ import com.openburnbar.data.hermes.HermesConnectionRecord
 // MARK: - Agent Identity Registry (Android parity)
 //
 // Composable-state registry of every agent the user has access to.
-// Seeds with the five built-ins on construction; future Phase C wires
+// Seeds with the built-ins on construction; future Phase C wires
 // user-installed manifests.
 
 class AgentIdentityRegistry private constructor() {

@@ -204,6 +204,11 @@ final class SwitcherCLIAuthCoordinator {
             return false
         case .opencode:
             return false
+        case .droid, .forge, .antigravity:
+            if case .authenticated = authInfo.authState {
+                return true
+            }
+            return false
         }
     }
 
@@ -386,7 +391,7 @@ final class SwitcherCLIAuthCoordinator {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode:
+        case .opencode, .droid, .forge, .antigravity:
             candidates = []
         }
 
@@ -403,6 +408,12 @@ final class SwitcherCLIAuthCoordinator {
             return ["CLAUDE_CONFIG_DIR", "CLAUDE_CONFIG_PATH"]
         case .opencode:
             return []
+        case .droid:
+            return ["FACTORY_HOME", "DROID_HOME"]
+        case .forge:
+            return ["FORGE_HOME", "FORGE_CONFIG_HOME"]
+        case .antigravity:
+            return ["AGY_CONFIG_HOME", "ANTIGRAVITY_HOME", "GEMINI_HOME"]
         }
     }
 
@@ -533,6 +544,12 @@ final class SwitcherCLIAuthCoordinator {
             installHint = "Reinstall Claude Code from its official installer or npm package, then retry Add Account."
         case .opencode:
             installHint = "Reinstall OpenCode, then retry Add Account."
+        case .droid:
+            installHint = "Reinstall Factory Droid, then retry Add Account."
+        case .forge:
+            installHint = "Reinstall Forge, then retry Add Account."
+        case .antigravity:
+            installHint = "Reinstall Google Antigravity, then retry Add Account."
         }
 
         let reason: String

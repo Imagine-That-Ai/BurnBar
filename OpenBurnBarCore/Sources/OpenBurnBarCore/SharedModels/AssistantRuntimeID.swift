@@ -18,6 +18,9 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
     case codex
     case claude
     case openClaw = "openclaw"
+    case droid
+    case forge
+    case antigravity
 
     public var displayName: String {
         switch self {
@@ -26,6 +29,9 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .codex:    return "Codex"
         case .claude:   return "Claude"
         case .openClaw: return "OpenClaw"
+        case .droid:    return "Droid"
+        case .forge:    return "Forge"
+        case .antigravity: return "Antigravity"
         }
     }
 
@@ -37,6 +43,9 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .codex:    return URL(string: "http://127.0.0.1:8642")!
         case .claude:   return URL(string: "http://127.0.0.1:8642")!
         case .openClaw: return URL(string: "http://127.0.0.1:18789")!
+        case .droid:    return URL(string: "http://127.0.0.1:8642")!
+        case .forge:    return URL(string: "http://127.0.0.1:8642")!
+        case .antigravity: return URL(string: "http://127.0.0.1:8642")!
         }
     }
 
@@ -48,20 +57,22 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .codex:    return "\u{21BB}" // ⟳
         case .claude:   return "\u{2726}" // ✦
         case .openClaw: return "\u{26A1}" // ⚡
+        case .droid:    return "\u{25C6}" // ◆
+        case .forge:    return "\u{25B0}" // ▰
+        case .antigravity: return "\u{2727}" // ✧
         }
     }
 
     /// Runtimes that today have a first-class mobile surface. Hermes and Pi
-    /// run through the mobile relay; Codex, Claude Code, and OpenClaw use the
-    /// same native thread model while execution stays on the trusted Mac.
+    /// run through the mobile relay; CLI runtimes use the same native thread
+    /// model while execution stays on the trusted Mac.
     public var hasMobileChatSurface: Bool {
         switch self {
-        case .hermes, .pi, .codex, .claude, .openClaw: return true
+        case .hermes, .pi, .codex, .claude, .openClaw, .droid, .forge, .antigravity: return true
         }
     }
 
-    /// Default set surfaced to a fresh install. All five runtimes are visible
-    /// so Codex and Claude Code are first-class alongside Hermes, Pi, and
-    /// OpenClaw.
+    /// Default set surfaced to a fresh install. All built-in runtimes are
+    /// visible so local Mac CLIs are first-class alongside Hermes and Pi.
     public static let defaultEnabledTiles: Set<AssistantRuntimeID> = Set(AssistantRuntimeID.allCases)
 }

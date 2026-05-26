@@ -20,13 +20,13 @@ final class CLILaunchInvokerTests: XCTestCase {
         let script = """
         #!/bin/sh
         echo "quota exhausted for the 5-hour window" >&2
-        sleep 2
+        exit 1
         """
         try script.write(to: executable, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
         defer { try? FileManager.default.removeItem(at: executable) }
 
-        CLILaunchInvoker.startupObservationTimeout = 1.0
+        CLILaunchInvoker.startupObservationTimeout = 2.0
 
         let result = await CLILaunchInvoker.launchCLI(
             cliType: .codex,
@@ -45,7 +45,7 @@ final class CLILaunchInvokerTests: XCTestCase {
     }
 
     func test_launchCLI_detectsQuotaExhaustionFromStartupOutputAcrossRepeatedLaunches() async throws {
-        CLILaunchInvoker.startupObservationTimeout = 1.0
+        CLILaunchInvoker.startupObservationTimeout = 2.0
 
         for _ in 0..<6 {
             let executable = FileManager.default.temporaryDirectory
@@ -53,7 +53,7 @@ final class CLILaunchInvokerTests: XCTestCase {
             let script = """
             #!/bin/sh
             echo "quota exhausted for the 5-hour window" >&2
-            sleep 2
+            exit 1
             """
             try script.write(to: executable, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)

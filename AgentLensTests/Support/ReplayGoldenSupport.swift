@@ -82,28 +82,53 @@ enum OpenBurnBarReplayGoldens {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        let fixtureURL = makeFixtureURL(fixtureFile: fixtureFile, sourceFilePath: sourceFilePath)
+        let sourceFixtureURL = makeSourceFixtureURL(fixtureFile: fixtureFile, sourceFilePath: sourceFilePath)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let actualData = try encoder.encode(actual)
 
         if ProcessInfo.processInfo.environment[updateEnvironmentKey] == "1" {
+            guard !isRunningInAppTestHost else {
+                XCTFail(
+                    "Golden updates must run outside the app-hosted test bundle because macOS can block source-tree writes from the test host.",
+                    file: file,
+                    line: line
+                )
+                return
+            }
             try FileManager.default.createDirectory(
-                at: fixtureURL.deletingLastPathComponent(),
+                at: sourceFixtureURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try actualData.write(to: fixtureURL, options: .atomic)
+            try actualData.write(to: sourceFixtureURL, options: .atomic)
+            return
+        }
+
+        guard let fixtureURL = bundledFixtureURL(fixtureFile: fixtureFile) ?? sourceFixtureURLIfSafe(sourceFixtureURL) else {
+            XCTFail(
+                "Missing bundled golden fixture \(fixtureFile). Add AgentLensTests/Fixtures to the OpenBurnBarTests resources.",
+                file: file,
+                line: line
+            )
             return
         }
 
         guard FileManager.default.fileExists(atPath: fixtureURL.path) else {
+            guard !isRunningInAppTestHost else {
+                XCTFail(
+                    "Missing bundled golden fixture \(fixtureFile). Add AgentLensTests/Fixtures to the OpenBurnBarTests resources.",
+                    file: file,
+                    line: line
+                )
+                return
+            }
             try FileManager.default.createDirectory(
-                at: fixtureURL.deletingLastPathComponent(),
+                at: sourceFixtureURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try actualData.write(to: fixtureURL, options: .atomic)
+            try actualData.write(to: sourceFixtureURL, options: .atomic)
             XCTFail(
-                "Missing golden fixture at \(fixtureURL.path). Wrote a candidate fixture; re-run tests to validate.",
+                "Missing golden fixture at \(sourceFixtureURL.path). Wrote a candidate fixture; re-run tests to validate.",
                 file: file,
                 line: line
             )
@@ -124,7 +149,27 @@ enum OpenBurnBarReplayGoldens {
         }
     }
 
-    private static func makeFixtureURL(
+    private static var isRunningInAppTestHost: Bool {
+        Bundle.main.bundlePath.hasSuffix(".app")
+    }
+
+    private static func bundledFixtureURL(fixtureFile: String) -> URL? {
+        let bundle = Bundle(for: ReplayGoldenBundleMarker.self)
+        let fixture = fixtureFile as NSString
+        let name = fixture.deletingPathExtension
+        let ext = fixture.pathExtension.isEmpty ? nil : fixture.pathExtension
+
+        return bundle.url(forResource: name, withExtension: ext)
+            ?? bundle.url(forResource: fixtureFile, withExtension: nil)
+            ?? bundle.url(forResource: name, withExtension: ext, subdirectory: "ReplayGoldens")
+            ?? bundle.url(forResource: name, withExtension: ext, subdirectory: "Fixtures/ReplayGoldens")
+    }
+
+    private static func sourceFixtureURLIfSafe(_ sourceFixtureURL: URL) -> URL? {
+        isRunningInAppTestHost ? nil : sourceFixtureURL
+    }
+
+    private static func makeSourceFixtureURL(
         fixtureFile: String,
         sourceFilePath: StaticString
     ) -> URL {
@@ -137,6 +182,8 @@ enum OpenBurnBarReplayGoldens {
             .appendingPathComponent(fixtureFile, isDirectory: false)
     }
 }
+
+private final class ReplayGoldenBundleMarker {}
 
 @MainActor
 final class ReplayStubSemanticCandidateProvider: SemanticCandidateProviding {

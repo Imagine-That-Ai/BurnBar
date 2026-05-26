@@ -11,7 +11,7 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        settingsManager = SettingsManager(defaults: UserDefaults(suiteName: #file)!)
+        settingsManager = makeSettingsManager()
         settingsManager.conversationIndexingConsentShown = false
         settingsManager.conversationIndexingEnabled = false
         settingsManager.sessionLogCloudBackupConsentShown = false
@@ -19,9 +19,6 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
     }
 
     override func tearDown() {
-        if let suiteName = UserDefaults(suiteName: #file) {
-            suiteName.removePersistentDomain(forName: #file)
-        }
         settingsManager = nil
         super.tearDown()
     }

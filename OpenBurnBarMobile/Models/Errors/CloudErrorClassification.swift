@@ -36,10 +36,33 @@ public enum CloudErrorClassification: Sendable, Equatable {
     }
 
     static func permissionDeniedClassification(message: String) -> CloudErrorClassification {
+        classify(message: message)
+    }
+
+    /// Best-effort classifier for Firestore, relay, and auth failures surfaced to UI.
+    static func classify(message: String) -> CloudErrorClassification {
         let normalized = message.replacingOccurrences(of: " ", with: "").lowercased()
         if normalized.contains("appcheck") || normalized.contains("attestation") {
             return .appCheckBlocked
         }
-        return .permissionDenied
+        if normalized.contains("notsignedin")
+            || normalized.contains("notauthenticated")
+            || normalized.contains("signintoview")
+            || normalized.contains("signintodiscover") {
+            return .notAuthenticated
+        }
+        if normalized.contains("offline")
+            || normalized.contains("networkerror")
+            || normalized.contains("notconnectedtointernet")
+            || normalized.contains("appeartobeoffline") {
+            return .networkUnavailable
+        }
+        if normalized.contains("missingorinsufficientpermissions")
+            || normalized.contains("permissiondenied")
+            || normalized.contains("permission-denied")
+            || normalized.contains("couldnotloadhermesconnections") {
+            return .permissionDenied
+        }
+        return .other(message: message)
     }
 }

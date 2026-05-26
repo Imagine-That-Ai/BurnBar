@@ -1,49 +1,42 @@
 # Governance and Maintainer Expectations
 
+> **Canonical location:** this file. The repo root [`GOVERNANCE.md`](../GOVERNANCE.md) redirects here.
+
 ## Current Maintainer
 
 OpenBurnBar is maintained by [@Ajnunezg](https://github.com/Ajnunezg).
 
-## Decision-Making
+## Support tiers
 
-This is a single-maintainer project. Design decisions, roadmap priorities, and merge authority rest with the maintainer.
+| Tier | Surfaces | Support posture |
+|------|----------|-----------------|
+| **Core** | macOS app, `OpenBurnBarCore`, daemon, CLI, VS Code extension | Best-effort OSS; tagged releases; security fixes prioritized |
+| **Commercial** | iOS 1.0, hosted quota sync, Remote MCP, App Store billing | Launch-gate enforced (`scripts/commercial-launch-gate.mjs`); App Check ENFORCED required |
+| **Experimental** | Connectors, mission control, optional cloud sync planes, Computer Use rollout flags | Explicit no-SLA; feature-flagged; may change without deprecation |
 
-Contributions are welcome through pull requests. The maintainer will review and merge at their discretion. There is no formal RFC or proposal process at this stage.
+macOS remains **beta** (`0.1.3-beta.1`) while commercial mobile/hosted paths finish approval. This is not an “experimental source-only” project — it is a **tiered product** with different readiness bars per surface.
 
-## Support Model
+## Decision-making
 
-OpenBurnBar is an **experimental source release** with **best-effort support**.
+Single-maintainer project. Design decisions, roadmap priorities, and merge authority rest with the maintainer. Contributions welcome via pull requests; no formal RFC process.
 
-What this means in practice:
+## Releases
 
-- **Issues** are triaged when the maintainer has time. There is no SLA.
-- **Pull requests** are reviewed when the maintainer has time. Small, focused PRs are easier to review and more likely to land quickly.
-- **Security reports** are taken seriously and handled as quickly as possible. See [SECURITY.md](../SECURITY.md).
-- **Breaking changes** may happen without deprecation periods before `1.0`.
-- **Releases** happen when the maintainer decides a tag is warranted. There is no fixed cadence.
+- Semantic versioning for tagged macOS releases
+- iOS/Android store versions tracked in `project.yml` / Gradle independently
+- Release notes extracted per tag via `scripts/tag-release.sh` (not the full `CHANGELOG.md`)
 
-## What "Experimental" Means
+## Security
 
-- The API and data model may change without notice.
-- Features documented as "experimental" may be removed or redesigned.
-- The project does not promise backwards compatibility across commits.
-- Tagged GitHub Release DMGs are the primary install path; build-from-source remains supported for contributors and anyone who wants the latest tree.
+Security reports handled per [`SECURITY.md`](../SECURITY.md). Computer Use kill switch and budget envelopes are operator-automated — see [`docs/runbooks/computer-use-budget.md`](runbooks/computer-use-budget.md).
 
-## How to Help
+## How to help
 
-The most valuable contributions right now:
+- Bug reports with reproduction steps
+- Tests in active suites (`AgentLensTests/Active/`, mobile/Android CI-gated tests)
+- Schema changes via `tools/schema-sync/` (TypeSpec → emit → `check-drift.sh`)
+- Documentation fixes with cross-links in [`README.md`](../README.md)
 
-- Bug reports with clear reproduction steps
-- Parser implementations for new AI agent providers
-- Test coverage for active test suites (see `AgentLensTests/README.md`)
-- Documentation fixes and improvements
+## Future governance
 
-Less helpful at this stage:
-
-- Large architectural refactors without prior discussion
-- Feature requests that expand scope beyond the current roadmap
-- PRs that touch shared contracts (`OpenBurnBarCore`) without coordinating
-
-## Future Governance
-
-If the project grows to the point where single-maintainer governance becomes a bottleneck, the maintainer will revisit this document. Until then, keep it simple.
+If single-maintainer governance becomes a bottleneck, this document will be revised. Until then, keep it simple.

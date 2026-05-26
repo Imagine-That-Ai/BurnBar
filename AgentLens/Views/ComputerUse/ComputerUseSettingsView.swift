@@ -179,10 +179,15 @@ struct ComputerUseSettingsView: View {
         }
     }
 
+    @Environment(SettingsManager.self) private var settingsManager
     @StateObject private var panelModel = ComputerUseSessionPanelModel()
     @StateObject private var wizardModel = ComputerUseSetupWizardModel()
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    @StateObject private var permissionsCoordinator = PermissionsOnboardingCoordinator()
+    #endif
     @State private var accessibilityTrusted = AXIsProcessTrusted()
     @State private var showingSetupWizard = false
+    @State private var showingPermissionsWizard = false
     @State private var auditSessionId = ""
     @State private var auditIncludeScreenshots = true
     @State private var auditAdvancedExpanded = false
@@ -233,7 +238,43 @@ struct ComputerUseSettingsView: View {
                 }
             )
         }
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        .sheet(isPresented: $showingPermissionsWizard) {
+            permissionsWizardSheet
+        }
+        #endif
     }
+
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    private var permissionsWizardSheet: some View {
+        VStack(spacing: 0) {
+            OnboardingSystemPermissionsView(coordinator: permissionsCoordinator)
+                .padding(24)
+                .frame(width: 520, height: 540)
+            Divider()
+            HStack {
+                Button("Reset deferrals") {
+                    permissionsCoordinator.resetDeferrals()
+                }
+                .buttonStyle(.plain)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer()
+                Button("Done") {
+                    settingsManager.systemPermissionsDeferredKinds = permissionsCoordinator.deferredKinds()
+                    settingsManager.systemPermissionsOnboardingCompleted = true
+                    showingPermissionsWizard = false
+                    refreshReadiness()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+        }
+        .background(DesignSystem.Colors.background)
+    }
+    #endif
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -301,6 +342,11 @@ struct ComputerUseSettingsView: View {
             SettingsGlassButton(title: "Run Setup", icon: "wand.and.stars", style: .prominent) {
                 showingSetupWizard = true
             }
+
+            SettingsGlassButton(title: "Re-run Mac Permissions Setup", icon: "lock.shield") {
+                showingPermissionsWizard = true
+            }
+            .settingsAnchor(SettingsAnchor.computerUsePermissionsSetup)
 
             SettingsGlassButton(title: "Open Accessibility", icon: "lock.open") {
                 requestAccessibility()

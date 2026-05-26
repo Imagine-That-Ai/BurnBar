@@ -27,6 +27,9 @@ struct OnboardingProvider: Identifiable, Equatable {
         case codexCLI
         case claudeCLI
         case openCodeCLI
+        case droidCLI
+        case forgeCLI
+        case antigravityCLI
     }
 
     static let defaultOrder: [OnboardingProvider] = [
@@ -37,6 +40,9 @@ struct OnboardingProvider: Identifiable, Equatable {
         OnboardingProvider(id: "codexcli",  label: "Codex CLI",       icon: "terminal.fill", bundledLogoName: "CodexLogo",    color: Color(hex: "00A67E"), kind: .codexCLI),
         OnboardingProvider(id: "claudecli", label: "Claude Code CLI", icon: "terminal.fill", bundledLogoName: "ClaudeCodeLogo", color: Color(hex: "CC785C"), kind: .claudeCLI),
         OnboardingProvider(id: "opencode",  label: "OpenCode",        icon: "terminal.fill", bundledLogoName: nil,             color: DesignSystem.Colors.whimsy, kind: .openCodeCLI),
+        OnboardingProvider(id: "droidcli",  label: "Droid CLI",       icon: "terminal.fill", bundledLogoName: "FactoryLogo",    color: Color(hex: "8B5CF6"), kind: .droidCLI),
+        OnboardingProvider(id: "forgecli",  label: "Forge CLI",       icon: "terminal.fill", bundledLogoName: "ForgeLogo",      color: Color(hex: "F97316"), kind: .forgeCLI),
+        OnboardingProvider(id: "antigravitycli", label: "Antigravity CLI", icon: "terminal.fill", bundledLogoName: "AntigravityLogo", color: Color(hex: "6C63FF"), kind: .antigravityCLI),
     ]
 }
 

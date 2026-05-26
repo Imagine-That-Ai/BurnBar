@@ -105,8 +105,8 @@ fun ProviderConnectionsView(
                             selectedProvider = provider
                             showAddSheet = true
                         },
-                        onRefresh = { /* TODO */ },
-                        onDelete = { /* TODO */ }
+                        onRefresh = { account -> accountStore.refreshProviderAccount(account) },
+                        onDelete = { account -> accountStore.removeProviderAccount(account) }
                     )
                 }
             }

@@ -138,8 +138,9 @@ class PiService {
 
     /** Restores messages from a persisted thread. */
     fun loadThread(id: String) {
+        val cleanId = id.removePrefix("pi:")
         val store = historyStore ?: return
-        val thread = store.thread(id) ?: return
+        val thread = store.thread(cleanId) ?: return
         if (thread.runtime != "pi") return
         _currentThreadID.value = thread.id
         _messages.value = thread.messages.map { stored ->
@@ -158,8 +159,9 @@ class PiService {
 
     /** Removes a thread from chat history. Clears the active chat if it matches. */
     fun deleteThread(id: String) {
-        historyStore?.delete(id)
-        if (_currentThreadID.value == id) startNewThread()
+        val cleanId = id.removePrefix("pi:")
+        historyStore?.delete(cleanId)
+        if (_currentThreadID.value == cleanId) startNewThread()
     }
 
     internal fun persistCurrentThread() {

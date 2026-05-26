@@ -9,6 +9,8 @@ final class ChatTilePreferencesTests: XCTestCase {
         let prefs = ChatTilePreferences.default
         XCTAssertTrue(prefs.enabledTiles.contains(.hermes))
         XCTAssertTrue(prefs.enabledTiles.contains(.pi))
+        XCTAssertTrue(prefs.enabledTiles.contains(.droid))
+        XCTAssertTrue(prefs.enabledTiles.contains(.forge))
     }
 
     func testDefaultIncludesAllSixHermesSubProviders() {
@@ -80,7 +82,7 @@ final class ChatTilePreferencesTests: XCTestCase {
             enabledTiles: [.openClaw, .hermes, .codex],
             enabledHermesSubProviders: []
         )
-        // AssistantRuntimeID.allCases order: hermes, pi, codex, claude, openClaw
+        // AssistantRuntimeID.allCases order: hermes, pi, codex, claude, openClaw, droid, forge, antigravity
         XCTAssertEqual(prefs.orderedVisibleTiles, [.hermes, .codex, .openClaw])
     }
 
@@ -94,6 +96,9 @@ final class ChatTilePreferencesTests: XCTestCase {
         XCTAssertEqual(AssistantRuntimeID.codex.rawValue, "codex")
         XCTAssertEqual(AssistantRuntimeID.claude.rawValue, "claude")
         XCTAssertEqual(AssistantRuntimeID.openClaw.rawValue, "openclaw")
+        XCTAssertEqual(AssistantRuntimeID.droid.rawValue, "droid")
+        XCTAssertEqual(AssistantRuntimeID.forge.rawValue, "forge")
+        XCTAssertEqual(AssistantRuntimeID.antigravity.rawValue, "antigravity")
     }
 
     // MARK: - HermesSubProvider routing tokens

@@ -31,7 +31,8 @@ final class CLIAgentMissionDispatcher {
         sourceSkillID: HermesSkillRunID? = nil,
         sourceSurface: String? = nil,
         deliveryMode: SkillRunDeliveryMode = .actionOnly,
-        parentHermesThreadID: String? = nil
+        parentHermesThreadID: String? = nil,
+        presentationMode: CLIAgentChatPresentationMode = .nativeChat
     ) async throws -> String {
         guard FirebaseApp.app() != nil else {
             throw DispatchError.firebaseUnavailable
@@ -68,7 +69,8 @@ final class CLIAgentMissionDispatcher {
             sourceSkillID: sourceSkillID,
             sourceSurface: sourceSurface,
             deliveryMode: deliveryMode,
-            parentHermesThreadID: parentHermesThreadID
+            parentHermesThreadID: parentHermesThreadID,
+            presentationMode: presentationMode
         )
         let db = firestoreProvider()
         let requestRef = db
@@ -79,7 +81,8 @@ final class CLIAgentMissionDispatcher {
         batch.setData(
             CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
                 label: isChatRequest ? "Chat" : "Mission",
-                source: isChatRequest ? "ios-chat" : "ios",
+                source: sourceSurface?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    ?? (isChatRequest ? "ios-chat" : "ios"),
                 sourceSkillID: sourceSkillID,
                 deliveryMode: deliveryMode,
                 now: Date()
@@ -177,7 +180,8 @@ final class CLIAgentMissionDispatcher {
         sourceSkillID: HermesSkillRunID? = nil,
         sourceSurface: String? = nil,
         deliveryMode: SkillRunDeliveryMode = .actionOnly,
-        parentHermesThreadID: String? = nil
+        parentHermesThreadID: String? = nil,
+        presentationMode: CLIAgentChatPresentationMode = .nativeChat
     ) async throws -> FanOutDispatchResult {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
@@ -268,7 +272,8 @@ final class CLIAgentMissionDispatcher {
                 sourceSkillID: sourceSkillID,
                 sourceSurface: sourceSurface,
                 deliveryMode: deliveryMode,
-                parentHermesThreadID: parentHermesThreadID
+                parentHermesThreadID: parentHermesThreadID,
+                presentationMode: presentationMode
             )
             let overlay = MissionGroupPayloadFactory.childPayloadOverlay(
                 groupID: groupID,
@@ -315,6 +320,12 @@ final class CLIAgentMissionDispatcher {
             runtime = .claude
         case "openclaw":
             runtime = .openClaw
+        case "droid":
+            runtime = .droid
+        case "forge":
+            runtime = .forge
+        case "antigravity", "agy", "google-antigravity":
+            runtime = .antigravity
         default:
             runtime = nil
         }
@@ -328,7 +339,7 @@ final class CLIAgentMissionDispatcher {
         case .openClaw:
             return try OpenClawService.shared.validatedModelIDForMissionDispatch()
                 ?? CLIAgentModelPreferences.preferredModelID(for: .openClaw)?.nonEmpty
-        case .codex, .claude:
+        case .codex, .claude, .droid, .forge, .antigravity:
             return try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime)?.nonEmpty
         }
     }
@@ -564,6 +575,7 @@ enum CLIAgentMissionRequestPayloadFactory {
         sourceSurface: String? = nil,
         deliveryMode: SkillRunDeliveryMode = .actionOnly,
         parentHermesThreadID: String? = nil,
+        presentationMode: CLIAgentChatPresentationMode = .nativeChat,
         now: Date = Date()
     ) -> [String: Any] {
         let timestamp = ISO8601DateFormatter().string(from: now)
@@ -584,6 +596,7 @@ enum CLIAgentMissionRequestPayloadFactory {
             "source": baseSource,
             "sourceSurface": sourceSurface?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? baseSource,
             "deliveryMode": deliveryMode.rawValue,
+            "presentationMode": presentationMode.rawValue,
             "status": "pending",
             "liveSummary": isChatRequest
                 ? "Chat queued from this device. Waiting for the signed-in Mac agent listener to claim it."

@@ -21,6 +21,10 @@ struct SettingsDrillRow: View {
     let badge: String?
     let badgeTint: Color?
     let logoProviders: [AgentProvider]
+    /// When set, a `ProviderQuotaChip` for this provider renders in the
+    /// trailing region next to the existing `value` text. Self-hides when
+    /// the provider has no quota signal yet, so rows stay clean.
+    let quotaProvider: AgentProvider?
 
     init(
         icon: String,
@@ -32,7 +36,8 @@ struct SettingsDrillRow: View {
         badge: String? = nil,
         badgeTint: Color? = nil,
         logoProvider: AgentProvider? = nil,
-        logoProviders: [AgentProvider] = []
+        logoProviders: [AgentProvider] = [],
+        quotaProvider: AgentProvider? = nil
     ) {
         self.icon = icon
         self.iconTint = iconTint
@@ -47,6 +52,7 @@ struct SettingsDrillRow: View {
         } else {
             self.logoProviders = logoProviders
         }
+        self.quotaProvider = quotaProvider
     }
 
     var body: some View {
@@ -82,6 +88,10 @@ struct SettingsDrillRow: View {
             }
 
             Spacer(minLength: DesignSystem.Spacing.sm)
+
+            if let quotaProvider {
+                ProviderQuotaChip(provider: quotaProvider)
+            }
 
             if let value, !value.isEmpty {
                 Text(value)
