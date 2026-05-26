@@ -360,7 +360,7 @@ final class RoutedClientWiringSentry {
 
     private static func targetRequiresAdvertisedModels(_ target: RoutingClientWiringTarget) -> Bool {
         switch target {
-        case .claudeCode, .forge:
+        case .claudeCode, .forge, .antigravity:
             return false
         case .codex, .opencode, .droid:
             return true

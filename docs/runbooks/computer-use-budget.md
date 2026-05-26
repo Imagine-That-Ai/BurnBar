@@ -24,7 +24,7 @@ This runbook fires when the hourly `evaluateComputerUseBudget` Cloud Function fl
 
 1. Hard cap is **kill switch**. Existing sessions tear down within 60 s.
 2. Confirm `ops/computer_use_budget_status/state/current.level = "hard_cap"`.
-3. Set Remote Config `computer_use_kill_switch=true` if not already auto-set.
+3. `evaluateComputerUseBudget` **automatically publishes** Remote Config `computer_use_kill_switch=true` when level is `hard_cap`, and clears it when level returns below hard cap.
 4. Page the on-call. Drop the day's `users/*/computer_use_actions/*` and `users/*/computer_use_sessions/*` documents into a snapshot bucket for forensics.
 5. Communicate via the in-app banner + status page: "Computer Use is paused while we investigate elevated vision-model spend. Existing audit chains are intact and your work is saved."
 6. Resume only after `evaluateComputerUseBudget` projects month-end < $2000 with a 24 h trailing average.
@@ -35,5 +35,5 @@ If a single user's `users/{uid}/computer_use_quota_usage/{day}.visionModelSpendU
 
 ## Reset path
 
-1. The auto-tightening function unwinds itself: when projection drops back below $1500, soft cap → normal; when projection drops back below $2500 AND `computer_use_kill_switch` is manually flipped to false, hard cap → soft cap → normal.
+1. The auto-tightening function unwinds itself: when projection drops back below $1500, soft cap → normal; when projection drops back below $2500, `evaluateComputerUseBudget` clears the Remote Config kill switch and hard cap → soft cap → normal.
 2. Per-user per-day counters reset at midnight UTC via the `recomputeComputerUseQuotaUsage` Cloud Function rollup.

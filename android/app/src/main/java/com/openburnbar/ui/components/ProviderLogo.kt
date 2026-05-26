@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.data.hermes.HermesSubProvider
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.LLMModelBrand
 import com.openburnbar.data.models.logoRes
@@ -82,6 +83,23 @@ fun ProviderLogo(
     BundledLogo(
         resId = ProviderLogo.drawableFor(runtime),
         fallbackInitials = runtime.displayName.take(2).uppercase(),
+        fallbackColors = listOf(Color.Black, Color.DarkGray),
+        size = size,
+        circular = circular,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun ProviderLogo(
+    subProvider: HermesSubProvider,
+    size: Dp = 24.dp,
+    modifier: Modifier = Modifier,
+    circular: Boolean = false
+) {
+    BundledLogo(
+        resId = ProviderLogo.drawableFor(subProvider),
+        fallbackInitials = subProvider.displayName.take(2).uppercase(),
         fallbackColors = listOf(Color.Black, Color.DarkGray),
         size = size,
         circular = circular,

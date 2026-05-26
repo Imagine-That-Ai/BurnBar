@@ -49,6 +49,10 @@ AgentLens/
 - **Xcode project** is generated from **`project.yml`** (XcodeGen). After editing `project.yml`, run `xcodegen generate` if you maintain `OpenBurnBar.xcodeproj` locally.
 - **Swift packages**: `swift test --package-path OpenBurnBarCore`, `swift test --package-path OpenBurnBarDaemon`.
 - **App tests**: `./scripts/test-openburnbar-app.sh` runs **`OpenBurnBarTests` only** — the target compiles `AgentLensTests/Active/**` plus `AgentLensTests/Support/**`; anything under `AgentLensTests/Quarantine/**` is archival until fixed and moved back to `Active/`.
+- **Mobile tests**: `./scripts/test-openburnbar-mobile.sh` (iOS Simulator, `OpenBurnBarMobileTests`).
+- **Android tests**: `./scripts/test-openburnbar-android.sh`.
+- **Full CI locally**: `make ci` (Functions, Firestore rules, extension evals, supply chain audit, all unit test surfaces).
+- **Diff coverage**: `./scripts/diff-coverage-all.sh origin/main` after tests with `OPENBURNBAR_ENABLE_COVERAGE=YES`.
 
 ### Stale Xcode caches after shared-core migrations
 

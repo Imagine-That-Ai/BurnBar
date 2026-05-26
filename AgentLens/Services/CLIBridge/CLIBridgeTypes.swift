@@ -27,11 +27,34 @@ struct OpenAICompatibleAdvertisedModel: Identifiable, Equatable, Hashable, Senda
     let providerID: String?
     let providerName: String?
     let routeEligible: Bool
+    let modelCapabilities: ModelIOCapabilities?
+
+    init(
+        id: String,
+        displayName: String,
+        providerID: String?,
+        providerName: String?,
+        routeEligible: Bool,
+        modelCapabilities: ModelIOCapabilities? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.providerID = providerID
+        self.providerName = providerName
+        self.routeEligible = routeEligible
+        self.modelCapabilities = modelCapabilities
+    }
 
     var menuTitle: String {
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let provider = providerName?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let provider, !provider.isEmpty, !name.isEmpty, name != id {
+            let normalizedName = name.lowercased()
+            if normalizedName.contains(provider.lowercased())
+                || normalizedName.contains("openburnbar route")
+                || normalizedName.contains("via openburnbar") {
+                return name
+            }
             return "\(name) · \(provider)"
         }
         if !name.isEmpty { return name }
@@ -56,7 +79,7 @@ enum CLIBridgeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noCLI:
-            return "No claude or codex CLI found in PATH. Install one to use chat."
+            return "Requested CLI was not found in PATH. Install it and restart OpenBurnBar so the Mac relay can run it."
         case .processExit(let code):
             if code == 127 {
                 return "CLI exited with status 127 (runtime command not found). OpenBurnBar can see the CLI binary, but one of its dependencies (often `node`) is missing from app PATH."

@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.DispatchException
 import com.openburnbar.data.square.AgentIdentityRegistry
+import com.openburnbar.ui.components.ProviderLogo
 import kotlinx.coroutines.launch
 
 // MARK: - Fan-out composer (Hermes Square §6.4)
@@ -125,15 +126,22 @@ internal fun HermesSquareFanOutSheet(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
-                            androidx.compose.foundation.layout.Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .androidx_background(hexColor(identity.paletteHex))
-                            ) {
-                                Text(identity.glyph, color = Color.White,
-                                    fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            if (identity.runtimeID != null) {
+                                ProviderLogo(
+                                    runtime = identity.runtimeID,
+                                    size = 22.dp
+                                )
+                            } else {
+                                androidx.compose.foundation.layout.Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .androidx_background(hexColor(identity.paletteHex))
+                                ) {
+                                    Text(identity.glyph, color = Color.White,
+                                        fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(identity.displayName,

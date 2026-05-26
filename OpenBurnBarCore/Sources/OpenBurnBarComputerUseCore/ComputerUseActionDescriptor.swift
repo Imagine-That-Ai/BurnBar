@@ -12,6 +12,7 @@ public enum ComputerUseAction: Codable, Hashable, Sendable {
     case macInput(MacInputAction)
     case macInspect(MacInspectAction)
     case phoneIntent(PhoneControlIntent)
+    case remoteClipboard(RemoteClipboardActionDescriptor)
 }
 
 public extension ComputerUseAction {
@@ -28,6 +29,8 @@ public extension ComputerUseAction {
             return action.executableSummary(forApproval: context)
         case .phoneIntent(let intent):
             return intent.executableSummary(forApproval: context)
+        case .remoteClipboard(let action):
+            return action.executableSummary(forApproval: context)
         }
     }
 
@@ -39,6 +42,7 @@ public extension ComputerUseAction {
         case .macInput(let a): return "mac.input.\(a.kind.rawValue)"
         case .macInspect(let a): return "mac.inspect.\(a.kind.rawValue)"
         case .phoneIntent(let i): return "phone.\(i.kind.rawValue)"
+        case .remoteClipboard(let a): return "clipboard.\(a.kind.rawValue)"
         }
     }
 }
@@ -197,6 +201,45 @@ public struct MacInputAction: Codable, Hashable, Sendable {
     }
 }
 
+// MARK: - Remote clipboard actions (Path D)
+
+public struct RemoteClipboardActionDescriptor: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable, Hashable, CaseIterable {
+        case pasteToMac = "paste_to_mac"
+        case grabFromMac = "grab_from_mac"
+    }
+
+    public let kind: Kind
+    public let requestId: String
+    public let contentType: String
+    public let byteCount: Int?
+    public let maxBytes: Int
+
+    public init(
+        kind: Kind,
+        requestId: String,
+        contentType: String,
+        byteCount: Int? = nil,
+        maxBytes: Int
+    ) {
+        self.kind = kind
+        self.requestId = requestId
+        self.contentType = contentType
+        self.byteCount = byteCount
+        self.maxBytes = maxBytes
+    }
+
+    public func executableSummary(forApproval context: ComputerUseScopeContext? = nil) -> String {
+        let app = context?.bundleId ?? "Mac"
+        switch kind {
+        case .pasteToMac:
+            return "Paste phone clipboard text into \(app)"
+        case .grabFromMac:
+            return "Copy Mac clipboard text from \(app)"
+        }
+    }
+}
+
 // MARK: - Mac inspect actions (Path C, read-only)
 
 public struct MacInspectAction: Codable, Hashable, Sendable {
@@ -235,6 +278,7 @@ public struct PhoneControlIntent: Codable, Hashable, Sendable {
         case shortcut
         case scroll
         case panic
+        case contextTarget = "context_target"
     }
 
     public let kind: Kind
@@ -286,6 +330,8 @@ public struct PhoneControlIntent: Codable, Hashable, Sendable {
             return "Phone scroll on \(app)"
         case .panic:
             return "Phone panic halt"
+        case .contextTarget:
+            return "Phone context handoff for instruction \(quoted(text ?? "")) on \(app)"
         }
     }
 }

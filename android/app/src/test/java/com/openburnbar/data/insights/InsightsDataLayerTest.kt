@@ -1,6 +1,7 @@
 package com.openburnbar.data.insights
 
 import com.openburnbar.data.assistants.CLIAgentMissionEvent
+import com.openburnbar.data.assistants.CLIAgentChatPresentationMode
 import com.openburnbar.data.assistants.CLIAgentMissionRequestPayloadFactory
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.assistants.SkillRunDeliveryMode
@@ -396,6 +397,7 @@ class InsightsDataLayerTest {
         assertEquals("android-insights", payload["source"])
         assertEquals("android-insights", payload["sourceSurface"])
         assertEquals("action_only", payload["deliveryMode"])
+        assertEquals("native_chat", payload["presentationMode"])
         assertEquals("pending", payload["status"])
         assertEquals(3, payload["schemaVersion"])
         assertFalse(payload.containsKey("events"))
@@ -424,6 +426,29 @@ class InsightsDataLayerTest {
         assertEquals("android-hermes-square", payload["sourceSurface"])
         assertEquals("full_stream", payload["deliveryMode"])
         assertEquals("thread-1", payload["parentHermesThreadID"])
+    }
+
+    @Test
+    fun `CLI agent mission request payload includes visible Mac CLI presentation mode`() {
+        val payload = CLIAgentMissionRequestPayloadFactory.build(
+            id = "mission-visible",
+            title = "Visible Codex",
+            prompt = "Run where I can watch it.",
+            missionKind = "chat",
+            requestedRuntime = "codex",
+            targetProject = null,
+            depth = "standard",
+            approvalMode = "existing_policy",
+            commandsAllowed = false,
+            fileEditsAllowed = false,
+            sourceSurface = "android-chat-mac-visible-cli",
+            deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
+            presentationMode = CLIAgentChatPresentationMode.MAC_VISIBLE_CLI,
+        )
+
+        assertEquals("android-chat-mac-visible-cli", payload["sourceSurface"])
+        assertEquals("full_stream", payload["deliveryMode"])
+        assertEquals("mac_visible_cli", payload["presentationMode"])
     }
 
     @Test

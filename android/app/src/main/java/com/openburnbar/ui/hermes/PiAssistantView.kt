@@ -23,19 +23,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,8 +44,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.assistants.PiPendingPrompt
@@ -164,37 +165,82 @@ private fun PiMessageBubble(message: PiChatMessage) {
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+            horizontalArrangement = if (isUser) Arrangement.End as androidx.compose.foundation.layout.Arrangement.Horizontal else Arrangement.Start as androidx.compose.foundation.layout.Arrangement.Horizontal
         ) {
-            Column(
-                modifier = Modifier
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                        shape = RoundedCornerShape(14.dp)
-                    )
-                    .border(
-                        width = 0.7.dp,
-                        brush = Brush.linearGradient(AuroraGradients.piGradient),
-                        shape = RoundedCornerShape(14.dp)
-                    )
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                if (!isUser) {
+            if (isUser) {
+                Surface(
+                    shape = RoundedCornerShape(
+                        topStart = 20.dp,
+                        topEnd = 20.dp,
+                        bottomStart = 20.dp,
+                        bottomEnd = 4.dp
+                    ),
+                    color = AuroraColors.whimsy.copy(alpha = 0.12f),
+                    border = BorderStroke(
+                        width = 0.75.dp,
+                        brush = Brush.linearGradient(
+                            listOf(AuroraColors.whimsy.copy(alpha = 0.45f), AuroraColors.purple.copy(alpha = 0.15f))
+                        )
+                    ),
+                    modifier = Modifier.widthIn(max = 300.dp)
+                ) {
                     Text(
-                        text = "π via Pi",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AuroraColors.whimsy
+                        text = message.content,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                     )
                 }
-                val shouldShowText =
-                    message.content.isNotEmpty() || message.toolCalls.isEmpty() || message.isStreaming
-                if (shouldShowText) {
-                    Text(
-                        text = if (message.content.isEmpty() && message.isStreaming) "…" else message.content,
-                        color = if (message.isError) AuroraColors.error else MaterialTheme.colorScheme.onSurface,
-                        fontSize = 14.sp
-                    )
+            } else {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(Brush.linearGradient(AuroraGradients.piGradient))
+                                .padding(1.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("π", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Pi",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = AuroraColors.whimsy,
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(
+                            topStart = 4.dp,
+                            topEnd = 20.dp,
+                            bottomStart = 20.dp,
+                            bottomEnd = 20.dp
+                        ),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.35f),
+                        border = BorderStroke(
+                            width = 0.75.dp,
+                            brush = Brush.linearGradient(
+                                listOf(
+                                    AuroraColors.whimsy.copy(alpha = 0.28f),
+                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+                                )
+                            )
+                        ),
+                        modifier = Modifier.widthIn(max = 320.dp)
+                    ) {
+                        Text(
+                            text = if (message.content.isEmpty() && message.isStreaming) "…" else message.content,
+                            fontSize = 15.sp,
+                            color = if (message.isError) AuroraColors.error else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        )
+                    }
                 }
             }
         }
@@ -219,61 +265,69 @@ private fun PiToolCallStrip(toolCalls: List<PiToolCall>) {
 
 @Composable
 private fun PiToolCallPill(tool: PiToolCall) {
+    val accent = AuroraColors.whimsy
+    val isDone = tool.status == "done" || tool.status.isBlank()
+    val statusColor = if (isDone) Color(0xFF22C55E) else Color(0xFFF59E0B)
+    val visualKind = toolCallVisualKind(tool.name)
     Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier
-            .widthIn(max = 240.dp)
-            .border(
-                width = 0.75.dp,
-                brush = Brush.linearGradient(AuroraGradients.piGradient),
-                shape = RoundedCornerShape(12.dp)
-            )
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+        border = BorderStroke(
+            width = 0.8.dp,
+            brush = Brush.linearGradient(listOf(accent.copy(alpha = 0.45f), statusColor.copy(alpha = 0.25f)))
+        ),
+        modifier = Modifier.widthIn(max = 240.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.12f))
+                    .border(0.5.dp, accent.copy(alpha = 0.35f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
-                    imageVector = piToolIcon(tool.name),
+                    imageVector = toolCallIcon(visualKind),
                     contentDescription = null,
+                    tint = accent,
                     modifier = Modifier.size(12.dp),
-                    tint = AuroraColors.whimsy
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = tool.name,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = AuroraColors.whimsy
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = tool.status,
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            val detail = tool.detail?.trim().orEmpty()
-            if (detail.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = detail,
-                    fontSize = 10.sp,
-                    maxLines = 2,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(statusColor, CircleShape)
+                    )
+                    Text(
+                        text = if (isDone) "completed" else tool.status,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = statusColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
-    }
-}
-
-private fun piToolIcon(name: String): ImageVector {
-    val n = name.lowercase()
-    return when {
-        n.contains("search") || n.contains("grep") || n.contains("find") -> Icons.Filled.Search
-        n.contains("terminal") || n.contains("bash") || n.contains("exec") || n.contains("run") -> Icons.Filled.Terminal
-        n.contains("edit") || n.contains("write") || n.contains("patch") -> Icons.Filled.Edit
-        else -> Icons.Filled.Code
     }
 }
 
@@ -284,38 +338,97 @@ private fun PiComposer(
     onChange: (String) -> Unit,
     onSend: () -> Unit
 ) {
-    Row(
+    val glassStrokeBrush = Brush.linearGradient(AuroraGradients.glassStroke)
+    val accent = AuroraColors.whimsy
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, glassStrokeBrush),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        tonalElevation = 8.dp
     ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onChange,
-            placeholder = { Text("Ask Pi…", fontSize = 14.sp) },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { onSend() }),
-            singleLine = false,
-            modifier = Modifier.weight(1f)
-        )
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Brush.linearGradient(AuroraGradients.piGradient)),
-            contentAlignment = Alignment.Center
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
         ) {
-            IconButton(
-                onClick = onSend,
-                enabled = !isStreaming && value.isNotBlank()
+            androidx.compose.foundation.text.BasicTextField(
+                value = value,
+                onValueChange = onChange,
+                enabled = !isStreaming,
+                textStyle = LocalTextStyle.current.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 15.sp
+                ),
+                cursorBrush = SolidColor(accent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { onSend() }),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 12.dp),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (value.isEmpty()) {
+                            Text(
+                                text = "Ask Pi…",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                fontSize = 15.sp
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            val canSend = value.isNotBlank() && !isStreaming
+            val sendBg = when {
+                canSend -> accent
+                isStreaming -> accent.copy(alpha = 0.35f)
+                else -> Color.Transparent
+            }
+            val sendTint = when {
+                canSend -> Color.White
+                isStreaming -> Color.White.copy(alpha = 0.7f)
+                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+            }
+            val outline = if (!canSend && !isStreaming)
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+            else
+                Color.Transparent
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (canSend)
+                            Brush.radialGradient(listOf(accent.copy(alpha = 0.32f), Color.Transparent))
+                        else
+                            SolidColor(Color.Transparent)
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Send,
-                    contentDescription = "Send",
-                    tint = Color.Black
-                )
+                IconButton(
+                    onClick = onSend,
+                    enabled = canSend,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(sendBg)
+                        .border(1.dp, outline, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = if (isStreaming) Icons.Filled.HourglassEmpty else Icons.AutoMirrored.Filled.Send,
+                        contentDescription = when {
+                            canSend -> "Send message"
+                            isStreaming -> "Waiting for response — send disabled"
+                            else -> "Type a message to enable send"
+                        },
+                        tint = sendTint
+                    )
+                }
             }
         }
     }

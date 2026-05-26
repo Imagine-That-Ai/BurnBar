@@ -9,6 +9,7 @@ struct DashboardView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.uiMode) private var uiMode
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
     private var isPadRegular: Bool {
@@ -103,6 +104,11 @@ struct DashboardView: View {
         VStack(spacing: MobileTheme.Spacing.xl) {
             heroSection
                 .staggeredEntrance(delay: 0.0)
+            if uiMode == .cooking {
+                AIStoveControlCard()
+                    .staggeredEntrance(delay: 0.03)
+                    .padding(.horizontal, MobileTheme.Spacing.lg)
+            }
             summaryLine
                 .staggeredEntrance(delay: 0.05)
             periodCards
@@ -132,6 +138,10 @@ struct DashboardView: View {
             ) {
                 heroSection
                     .staggeredEntrance(delay: 0.0)
+                if uiMode == .cooking {
+                    AIStoveControlCard()
+                        .staggeredEntrance(delay: 0.03)
+                }
                 velocitySparklineSection
                     .staggeredEntrance(delay: 0.05)
             }
@@ -351,7 +361,7 @@ struct DashboardView: View {
 
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-            Text("Daily Tokens")
+            Text(uiMode == .cooking ? "Daily Smoothie Mixes" : "Daily Tokens")
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -404,7 +414,7 @@ struct DashboardView: View {
 
     private var topProvidersSection: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-            Text("Top Providers")
+            Text(uiMode == .cooking ? "Active Smoothie Blenders" : "Top Providers")
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -422,7 +432,7 @@ struct DashboardView: View {
 
     private var topModelsSection: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-            Text("Top Models")
+            Text(uiMode == .cooking ? "Top Fruit Recipes" : "Top Models")
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .padding(.horizontal, MobileTheme.Spacing.lg)

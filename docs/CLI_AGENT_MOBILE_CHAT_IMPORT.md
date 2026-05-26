@@ -1,19 +1,22 @@
 # CLI Agent Mobile Chat And Import
 
-OpenBurnBar treats Codex, Claude Code, and OpenClaw as Mac-backed agent
-runtimes on mobile. iOS/iPadOS and Android can start a blank chat immediately,
-but the actual execution and local history import happen on a signed-in trusted
-macOS device because the source logs and CLIs live on the Mac.
+OpenBurnBar treats Codex, Claude Code, OpenClaw, Droid, Forge, and Antigravity
+as Mac-backed agent runtimes on mobile. iOS/iPadOS and Android can start a
+blank chat immediately, but the actual execution and local history import happen
+on a signed-in trusted macOS device because the source logs and CLIs live on the
+Mac.
 
 ## Chat Transport Contract
 
-Mobile Codex and Claude chat uses the Hermes Remote Relay surface first. The
-iPhone/iPad writes a `cliAgentChat` relay request to the selected Mac relay and
-streams native `CLIAgentRelayChatEvent` updates back into the local
-`mobile_assistant_chats` thread. The relay cascade is the same one Hermes uses:
-iroh when enabled, then the realtime WSS relay, then the encrypted Firestore
-relay fallback. The Mac opens or creates the provided `clientThreadID` in its
-`ChatSessionController`, so the phone thread and Mac chat thread stay aligned.
+Mobile CLI-agent chat uses the Hermes Remote Relay surface first. iOS, iPadOS,
+and Android write a `cliAgentChat` relay request to the selected Mac relay and
+stream native `CLIAgentRelayChatEvent` updates back into the local
+`mobile_assistant_chats` thread. Android tries the direct iroh relay first when
+the native transport is available, then falls back to the encrypted Firestore
+relay for `cliAgentChat` so direct-transport failures do not demote native chat
+to a mission request. iOS/iPadOS use their full relay cascade for the same
+operation. The Mac opens or creates the provided `clientThreadID` in its
+`ChatSessionController`, so the mobile thread and Mac chat thread stay aligned.
 
 The legacy mission-dispatch path remains a compatibility fallback for old or
 unpaired Macs. That fallback writes
@@ -41,7 +44,8 @@ the job out of `pending`, the second listener exits without parsing.
 - `agent_import_jobs`: import control, status, counts, and human-readable
   progress.
 - `mobile_assistant_chats`: native mobile chat threads for Hermes, Pi, Codex,
-  Claude Code, and OpenClaw; Codex/Claude execution remains Mac-backed.
+  Claude Code, OpenClaw, Droid, Forge, and Antigravity; CLI execution remains
+  Mac-backed.
 - `session_logs`: encrypted hosted transcript bodies and searchable encrypted
   index data.
 - `cli_sessions`: lightweight mobile list, thread, resume, fork, and archive
@@ -69,10 +73,30 @@ guessing whether anything happened.
 ## Mobile UX Rules
 
 - The `+` affordance opens a blank composer, not a setup blocker.
-- Codex and Claude render user and assistant bubbles immediately; the primary
-  path is live Mac relay chat, and any mission/queued fallback remains a hidden
-  transport detail.
+- Mac-backed CLI runtimes render user and assistant bubbles immediately; the
+  primary path is live Mac relay chat, and any mission/queued fallback remains a
+  hidden transport detail.
 - Project/model/options can be adjusted without blocking text entry.
+- CLI model pickers are runtime-scoped and Mac-sourced. Mobile asks the selected
+  Mac relay for `cliAgentModelCatalog` before showing Codex, Claude Code, Droid,
+  Forge, or Antigravity options; if the paired Mac cannot enumerate or verify
+  the catalog, the picker shows a refresh/error state instead of falling back to
+  a bundled list. Codex and Claude Code currently publish only the paired Mac
+  CLI default/profile because their CLIs accept `--model` but do not expose a
+  reliable enumerable model catalog. Antigravity publishes the paired Mac
+  `agy` profile/default row because `agy 1.0.2` exposes no model-list command.
+  Forge rows come from `forge agent list`. Droid rows come from
+  `droid exec --help` and are split by spend source: `Droid Standard quota` and
+  `Droid Core quota` rows consume Droid CLI quota, while `API/OAuth via
+  OpenBurnBar` rows are Droid custom models that route through
+  OpenBurnBar-connected API/OAuth subscriptions instead. OpenBurnBar proxy rows
+  must render the underlying model logo with an OpenBurnBar app-logo badge so
+  users can see the model family and the billing/auth path at the same time.
+  Display names are intentionally verbose: `Model · Provider/source ·
+  via OpenBurnBar · Reasoning: level`. Keep model IDs machine-stable and put
+  this context in the user-facing name, provider fields, and source badges.
+  Hermes/Pi/OpenClaw remain live-relay scoped and only show models the paired
+  Mac relay advertises for that runtime.
 - Import is explicit and observable: users choose harnesses, start a job, and
   watch progress/counts from the Mac.
 - Archived rows expose resume, fork, and forward actions from their

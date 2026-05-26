@@ -15,6 +15,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
+import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -51,8 +52,8 @@ class AgentCapabilityGrantController(
         deliveryMode: AgentGrantDeliveryMode = AgentGrantDeliveryMode.LIVE_THEN_QUEUED,
     ): AgentCapabilityGrantReceipt {
         val uid = auth.currentUser?.uid ?: throw GrantError.NotSignedIn
-        val authenticated = authenticateIfNeeded(activity, preset)
         val sourceDeviceId = trustedSourceDeviceId(uid)
+        val authenticated = authenticateIfNeeded(activity, preset)
         val request = AgentCapabilityGrantRequest(
             runtime = runtime,
             threadId = threadId,
@@ -74,6 +75,15 @@ class AgentCapabilityGrantController(
 
         queue(uid = uid, request = request)
         return remember(request.pendingReceipt("Mac was unreachable, so this was queued for 5 minutes."))
+    }
+
+    suspend fun sendSystemPermissionRequest(
+        request: PhoneControlSystemPermissionRequest,
+    ): HermesRealtimeRelaySystemPermissionRequest {
+        val uid = auth.currentUser?.uid ?: throw GrantError.NotSignedIn
+        val sourceDeviceId = trustedSourceDeviceId(uid)
+        val sender = ensurePhoneControlSender(uid = uid, sourceDeviceId = sourceDeviceId)
+        return sender.send(systemPermissionRequest = request)
     }
 
     private suspend fun trustedSourceDeviceId(uid: String): String {
@@ -111,11 +121,7 @@ class AgentCapabilityGrantController(
                             }
                         }
 
-                        override fun onAuthenticationFailed() {
-                            if (continuation.isActive) {
-                                continuation.resumeWithException(GrantError.LocalAuthenticationFailed)
-                            }
-                        }
+                        override fun onAuthenticationFailed() = Unit
                     },
                 )
                 val info = BiometricPrompt.PromptInfo.Builder()

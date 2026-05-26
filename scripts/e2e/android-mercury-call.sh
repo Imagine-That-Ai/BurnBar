@@ -111,13 +111,24 @@ sleep 4
 
 echo "▶ Running instrumented call-path suites…"
 RUNNER="com.openburnbar.test/androidx.test.runner.AndroidJUnitRunner"
-"${ADB}" -s "${DEVICE_LINE}" shell am instrument -w \
+INSTRUMENT_OUTPUT="$("${ADB}" -s "${DEVICE_LINE}" shell am instrument -w \
     -e class \
 "com.openburnbar.ui.media.CallHUDViewTest,\
 com.openburnbar.data.media.MediaControlStreamCoordinatorTest,\
 com.openburnbar.services.media.IncomingCallActivityTest,\
 com.openburnbar.services.media.MercuryFcmServiceTest" \
-    "${RUNNER}"
+    "${RUNNER}" 2>&1)"
+printf '%s\n' "${INSTRUMENT_OUTPUT}"
+
+if grep -q "FAILURES!!!" <<<"${INSTRUMENT_OUTPUT}" ||
+   grep -q "INSTRUMENTATION_RESULT: shortMsg=Process crashed" <<<"${INSTRUMENT_OUTPUT}"; then
+    echo "❌ Android Mercury call instrumented suite failed."
+    exit 1
+fi
+if ! grep -Eq "^OK \\([0-9]+ tests?\\)" <<<"${INSTRUMENT_OUTPUT}"; then
+    echo "❌ Android Mercury call instrumented suite did not report an OK test summary."
+    exit 1
+fi
 
 if [[ "${SIMULATE_CALL}" -eq 1 ]]; then
     echo "▶ Simulating an incoming-call intent (no real FCM round-trip)…"

@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.openburnbar.data.assistants.AgentImportJobSnapshot
 import com.openburnbar.MainActivity
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
+import com.openburnbar.data.assistants.CLIAgentRelayChatTransport
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.ChatTilePreferences
@@ -57,16 +58,17 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 import kotlinx.coroutines.launch
 
-// Android Assistants surface. Hosts up to five runtimes (Hermes / Pi /
-// Codex / Claude / OpenClaw) behind a single tab. The pill renders only the
-// runtimes the user has enabled in `ChatTilePreferences` (Settings → Chat
-// tiles). Hermes + Pi have first-class Android chat surfaces. Codex, Claude,
-// and OpenClaw use the same remote-composer and Mac-backed import contract as
-// iOS so the flow is usable before native Android runtimes ship.
+// Android Assistants surface. Hosts the built-in runtimes behind a single tab.
+// The pill renders only the runtimes enabled in `ChatTilePreferences` (Settings
+// -> Chat tiles). Hermes + Pi have first-class Android chat surfaces. Codex,
+// Claude, OpenClaw, Droid, Forge, and Antigravity use the same remote-composer
+// and Mac-backed import contract as iOS so the flow is usable before native
+// Android runtimes ship.
 
 @Composable
 fun AssistantsScreen(
-    initialRuntime: AssistantRuntimeID? = null
+    initialRuntime: AssistantRuntimeID? = null,
+    initialThreadId: String? = null
 ) {
     val context = LocalContext.current
     val tilePrefs = remember { loadChatTilePreferences(context).sanitized() }
@@ -93,6 +95,9 @@ fun AssistantsScreen(
     val piService = remember { PiService().apply { bindHistoryStore(historyStore) } }
     val hermesService = remember(context) {
         HermesService(appContext = context.applicationContext)
+    }
+    val cliRelayChatTransport = remember(hermesService) {
+        CLIAgentRelayChatTransport(hermesService)
     }
 
     // Honor the runtime hint carried by the launch / new intent — widget
@@ -122,13 +127,20 @@ fun AssistantsScreen(
         )
 
         when (runtime) {
-            AssistantRuntimeID.HERMES -> HermesView(hermesService = hermesService)
+            AssistantRuntimeID.HERMES -> HermesView(
+                hermesService = hermesService,
+                initialThreadId = initialThreadId
+            )
             AssistantRuntimeID.PI -> PiAssistantView(piService = piService)
             AssistantRuntimeID.CODEX,
             AssistantRuntimeID.CLAUDE,
-            AssistantRuntimeID.OPEN_CLAW -> CliAgentChatView(
+            AssistantRuntimeID.OPEN_CLAW,
+            AssistantRuntimeID.DROID,
+            AssistantRuntimeID.FORGE,
+            AssistantRuntimeID.ANTIGRAVITY -> CliAgentChatView(
                 runtime = runtime,
                 historyStore = historyStore,
+                relayChatTransport = cliRelayChatTransport,
             )
         }
     }
@@ -451,6 +463,9 @@ private fun bridgeCopy(runtime: AssistantRuntimeID): String = when (runtime) {
     AssistantRuntimeID.CODEX -> "Codex chat runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
     AssistantRuntimeID.CLAUDE -> "Claude Code chat runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
     AssistantRuntimeID.OPEN_CLAW -> "OpenClaw uses your Mac's local agent runtime. Pair your Mac to chat from here."
+    AssistantRuntimeID.DROID -> "Droid runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
+    AssistantRuntimeID.FORGE -> "Forge runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
+    AssistantRuntimeID.ANTIGRAVITY -> "Antigravity runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     else -> ""
 }
 
@@ -460,6 +475,9 @@ private fun gradientForRuntime(runtime: AssistantRuntimeID): Brush = when (runti
     AssistantRuntimeID.CODEX -> Brush.linearGradient(listOf(Color(0xFF1ABC9C), Color(0xFF2ECC71)))
     AssistantRuntimeID.CLAUDE -> Brush.linearGradient(listOf(Color(0xFFD58A4F), Color(0xFFC76A2C)))
     AssistantRuntimeID.OPEN_CLAW -> Brush.linearGradient(listOf(Color(0xFF6E56CF), Color(0xFF4F44C6)))
+    AssistantRuntimeID.DROID -> Brush.linearGradient(listOf(Color(0xFF8B5CF6), Color(0xFF6D5DF6)))
+    AssistantRuntimeID.FORGE -> Brush.linearGradient(listOf(Color(0xFFF97316), Color(0xFFEA580C)))
+    AssistantRuntimeID.ANTIGRAVITY -> Brush.linearGradient(listOf(Color(0xFF6C63FF), Color(0xFF8F8AFF)))
 }
 
 private fun foregroundForRuntime(runtime: AssistantRuntimeID): Color = when (runtime) {

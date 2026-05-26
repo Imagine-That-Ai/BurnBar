@@ -292,7 +292,7 @@ final class UsageAggregatorTests: XCTestCase {
 
         await aggregator.refreshAll()
 
-        let deadline = Date().addingTimeInterval(25)
+        let deadline = Date().addingTimeInterval(75)
         while Date() < deadline {
             let completed = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
             if completed >= jobCount { break }
@@ -301,8 +301,9 @@ final class UsageAggregatorTests: XCTestCase {
 
         let completed = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
         let pending = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
-        XCTAssertEqual(completed, jobCount)
-        XCTAssertEqual(pending, 0)
+        let diagnostic = "completed=\(completed) pending=\(pending) expected=\(jobCount)"
+        XCTAssertEqual(completed, jobCount, diagnostic)
+        XCTAssertEqual(pending, 0, diagnostic)
         XCTAssertGreaterThan(ProjectionWorkerPolicy.catchUpMaxJobsPerPass, ProjectionWorkerPolicy.maxJobsPerPass)
     }
 

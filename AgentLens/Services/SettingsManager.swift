@@ -658,6 +658,21 @@ final class SettingsManager {
         set { chatBackend.chatBackendOnboardingCompleted = newValue }
     }
 
+    var systemPermissionsOnboardingCompleted: Bool {
+        get { chatBackend.systemPermissionsOnboardingCompleted }
+        set { chatBackend.systemPermissionsOnboardingCompleted = newValue }
+    }
+
+    var systemPermissionsDeferredKinds: Set<String> {
+        get {
+            let csv = chatBackend.systemPermissionsDeferredKindsCSV
+            return Set(csv.split(separator: ",").map { String($0) }.filter { !$0.isEmpty })
+        }
+        set {
+            chatBackend.systemPermissionsDeferredKindsCSV = newValue.sorted().joined(separator: ",")
+        }
+    }
+
     var hermesSetupWizardCompleted: Bool {
         get { chatBackend.hermesSetupWizardCompleted }
         set { chatBackend.hermesSetupWizardCompleted = newValue }

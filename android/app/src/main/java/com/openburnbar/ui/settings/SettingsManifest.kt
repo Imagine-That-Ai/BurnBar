@@ -147,6 +147,15 @@ object SettingsManifest {
             keywords = listOf("sparkles", "twinkle", "shimmer", "screensaver", "swarm", "animation", "visual"),
         ),
         SettingsItem(
+            id = "root.budgeting",
+            section = SettingsSection.BUDGET,
+            pageRoute = SettingsPageRoute.BUDGET_PREFS,
+            anchorId = SettingsAnchor.BUDGET_ROW,
+            title = "Budgeting & Rules",
+            subtitle = "Set hard limits and warnings on usage spends",
+            keywords = listOf("budget", "rules", "limit", "spend", "warn", "block", "enforce"),
+        ),
+        SettingsItem(
             id = "root.quotaCustomization",
             section = SettingsSection.THEME,
             pageRoute = SettingsPageRoute.QUOTA_PREFS,
@@ -272,6 +281,7 @@ object SettingsManifest {
         SettingsAnchor.USE_WEBSITE_BACKGROUND,
         SettingsAnchor.ENABLE_SWARM_SPARKLES,
         SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
+        SettingsAnchor.BUDGET_ROW,
         SettingsAnchor.HERMES_CONNECTIONS,
         SettingsAnchor.HERMES_MODELS,
         SettingsAnchor.HERMES_DISPLAY,

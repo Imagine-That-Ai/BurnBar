@@ -174,7 +174,37 @@ final class CLIAgentSessionCodecTests: XCTestCase {
         XCTAssertEqual(CLIAgentRuntime(assistant: .codex), .codex)
         XCTAssertEqual(CLIAgentRuntime(assistant: .claude), .claude)
         XCTAssertEqual(CLIAgentRuntime(assistant: .openClaw), .openClaw)
+        XCTAssertEqual(CLIAgentRuntime(assistant: .droid), .droid)
+        XCTAssertEqual(CLIAgentRuntime(assistant: .forge), .forge)
         XCTAssertNil(CLIAgentRuntime(assistant: .hermes))
         XCTAssertNil(CLIAgentRuntime(assistant: .pi))
+    }
+
+    func test_cliAgentRelayChatRequestDefaultsToNativeChatPresentationMode() throws {
+        let legacyJSON = """
+        {
+          "runtime": "codex",
+          "prompt": "hello",
+          "clientThreadID": "thread-1"
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(CLIAgentRelayChatRequest.self, from: legacyJSON)
+
+        XCTAssertEqual(decoded.presentationMode, .nativeChat)
+    }
+
+    func test_cliAgentRelayChatRequestRoundTripsVisibleCLIPresentationMode() throws {
+        let request = CLIAgentRelayChatRequest(
+            runtime: "claude",
+            prompt: "show this on the Mac",
+            clientThreadID: "thread-2",
+            presentationMode: .macVisibleCLI
+        )
+
+        let encoded = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(CLIAgentRelayChatRequest.self, from: encoded)
+
+        XCTAssertEqual(decoded.presentationMode, .macVisibleCLI)
     }
 }

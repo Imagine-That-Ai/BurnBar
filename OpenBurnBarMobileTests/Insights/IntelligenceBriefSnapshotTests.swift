@@ -188,12 +188,13 @@ final class IntelligenceBriefSnapshotTests: XCTestCase {
             scheme: scheme,
             dynamicType: dynamicType,
             reduceMotion: reduceMotion,
-            width: size.width
+            width: size.width,
+            height: size.height
         )
 
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2.0
-        renderer.proposedSize = ProposedViewSize(width: size.width, height: nil)
+        renderer.proposedSize = ProposedViewSize(width: size.width, height: size.height)
         guard let image = renderer.uiImage,
               let png = image.pngData()
         else {
@@ -705,10 +706,12 @@ private struct SnapshotHost: View {
     let dynamicType: DynamicTypeSize
     let reduceMotion: Bool
     let width: CGFloat
+    let height: CGFloat
 
     var body: some View {
         IntelligenceBriefView(result: result, snapshotMode: true).unscrolledBody
-            .frame(width: width)
+            .frame(width: width, height: height, alignment: .top)
+            .clipped()
             .background(UnifiedDesignSystem.Colors.background)
             .environment(\.colorScheme, scheme)
             .environment(\.dynamicTypeSize, dynamicType)

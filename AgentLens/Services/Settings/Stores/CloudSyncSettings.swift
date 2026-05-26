@@ -31,6 +31,12 @@ final class CloudSyncSettings {
         didSet { persistence.set(chatThreadContentCloudBackupConsentShown, forKey: "chatThreadContentCloudBackupConsentShown") }
     }
 
+    /// Enterprise org view toggle — gates the cross-seat rollup dashboard.
+    /// Default off; admins enable via Settings → Cloud → Organization view.
+    var enterpriseOrgViewEnabled: Bool = false {
+        didSet { persistence.set(enterpriseOrgViewEnabled, forKey: "enterpriseOrgViewEnabled") }
+    }
+
     init(persistence: SettingsPersistenceCoordinator) {
         self.persistence = persistence
         self.conversationCloudBackupEnabled = persistence.bool(forKey: "conversationCloudBackupEnabled")
@@ -39,5 +45,6 @@ final class CloudSyncSettings {
         self.sessionLogCloudBackupConsentShown = persistence.bool(forKey: "sessionLogCloudBackupConsentShown")
         self.chatThreadContentCloudBackupEnabled = persistence.bool(forKey: "chatThreadContentCloudBackupEnabled")
         self.chatThreadContentCloudBackupConsentShown = persistence.bool(forKey: "chatThreadContentCloudBackupConsentShown")
+        self.enterpriseOrgViewEnabled = persistence.bool(forKey: "enterpriseOrgViewEnabled")
     }
 }

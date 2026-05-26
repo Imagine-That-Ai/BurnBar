@@ -4,9 +4,9 @@ import OpenBurnBarCore
 // MARK: - Assistant Model Lens
 //
 // Read-only view over the *current* model each harness is using, unified
-// across the two live-discovery harnesses (Hermes / Pi) and the three CLI
-// harnesses with a static preference catalog (Codex / Claude Code /
-// OpenClaw). Callers ask "what is harness X running right now?" and get a
+// across live relay harnesses (Hermes / Pi / OpenClaw) and CLI harnesses
+// whose selectable catalogs are pulled from the paired Mac on demand.
+// Callers ask "what is harness X running right now?" and get a
 // `ModelSnapshot` back — display name, provider for icon lookup, and an
 // origin tag for honest UI copy.
 
@@ -53,7 +53,7 @@ struct AssistantModelLens {
             return hermesSnapshot()
         case .pi:
             return piSnapshot()
-        case .codex, .claude, .openClaw:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity:
             return cliSnapshot(for: runtime)
         }
     }
@@ -120,13 +120,12 @@ struct AssistantModelLens {
                 activeModelID: option.modelID
             )
         }
-        if let preferred = CLIAgentModelPreferences.preferredOption(for: runtime),
-           CLIAgentModelPreferences.preferredModelID(for: runtime) != nil {
+        if let preferredID = CLIAgentModelPreferences.preferredModelID(for: runtime) {
             return ModelSnapshot(
-                displayName: preferred.displayName,
-                provider: hermesAgentProvider(for: preferred.providerID + " " + preferred.modelID),
+                displayName: preferredID,
+                provider: hermesAgentProvider(for: preferredID),
                 origin: .preference,
-                activeModelID: preferred.modelID
+                activeModelID: preferredID
             )
         }
         if let cliRuntime = CLIAgentRuntime(assistant: runtime),
@@ -139,16 +138,8 @@ struct AssistantModelLens {
                 activeModelID: nil
             )
         }
-        if let fallback = AssistantModelCatalog.defaultOption(for: runtime) {
-            return ModelSnapshot(
-                displayName: fallback.displayName,
-                provider: hermesAgentProvider(for: fallback.providerID + " " + fallback.modelID),
-                origin: .fallback,
-                activeModelID: nil
-            )
-        }
         return ModelSnapshot(
-            displayName: "—",
+            displayName: "\(runtime.displayName) default",
             provider: hermesAgentProvider(for: runtime.rawValue),
             origin: .fallback,
             activeModelID: nil
@@ -174,8 +165,8 @@ extension PiService {
 // MARK: - AssistantModelOption ↔ HermesRuntimeModelOption bridge
 
 extension AssistantModelOption {
-    /// Adapter so the static catalog can flow through code paths that
-    /// already accept `HermesRuntimeModelOption`.
+    /// Adapter so catalog rows can flow through code paths that already
+    /// accept `HermesRuntimeModelOption`.
     var asHermesRuntimeModelOption: HermesRuntimeModelOption {
         HermesRuntimeModelOption(
             providerID: providerID,

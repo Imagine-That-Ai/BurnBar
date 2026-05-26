@@ -1,13 +1,18 @@
 package com.openburnbar.data.computeruse
 
 import com.openburnbar.data.media.MediaStreamClass
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentContextTarget
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayInputIntent
 import com.openburnbar.irohrelay.HermesRealtimeRelayInputIntentKind
+import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionAction
+import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind
+import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionRequest
 
 class PhoneControlSender(
     private val uid: String,
@@ -79,6 +84,130 @@ class PhoneControlSender(
             control = HermesRealtimeRelayControlPayload(
                 streamClass = "control.agent.grant",
                 agentGrantRequest = signedWire,
+            ),
+        )
+        frameSink(frame)
+        return signedWire
+    }
+
+    suspend fun send(clipboardRequest: PhoneControlClipboardRequest): HermesRealtimeRelayClipboardRequest {
+        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val request = if (clipboardRequest.clientIntentId.isNullOrBlank()) {
+            clipboardRequest.copy(clientIntentId = java.util.UUID.randomUUID().toString())
+        } else {
+            clipboardRequest
+        }
+        val counter = counterStore.nextCounter(peerNodeId)
+        val timestampMillis = nowMillis()
+        val authority = PhoneControlSigner.signClipboardRequest(
+            request = request,
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = timestampMillis,
+            privateKeySeed = privateKeySeed,
+        )
+        val signedWire = HermesRealtimeRelayClipboardRequest(
+            requestId = request.requestId,
+            action = request.toRelayAction(),
+            contentType = request.contentType,
+            text = request.text,
+            maxBytes = request.maxBytes,
+            clientIntentId = request.clientIntentId.orEmpty(),
+            authority = authority.toRelayAuthority(),
+        )
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.CONTROL_CLIPBOARD_REQUEST,
+            uid = uid,
+            connectionId = connectionId,
+            requestId = request.requestId,
+            control = HermesRealtimeRelayControlPayload(
+                streamClass = "control.clipboard",
+                clipboardRequest = signedWire,
+            ),
+        )
+        frameSink(frame)
+        return signedWire
+    }
+
+    suspend fun send(agentContextTarget: PhoneControlAgentContextTarget): HermesRealtimeRelayAgentContextTarget {
+        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val target = if (agentContextTarget.clientIntentId.isNullOrBlank()) {
+            agentContextTarget.copy(clientIntentId = java.util.UUID.randomUUID().toString())
+        } else {
+            agentContextTarget
+        }
+        val counter = counterStore.nextCounter(peerNodeId)
+        val timestampMillis = nowMillis()
+        val authority = PhoneControlSigner.signAgentContextTarget(
+            target = target,
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = timestampMillis,
+            privateKeySeed = privateKeySeed,
+        )
+        val signedWire = HermesRealtimeRelayAgentContextTarget(
+            requestId = target.requestId,
+            sessionId = target.sessionId,
+            runtime = target.runtime,
+            threadId = target.threadId,
+            displayId = target.displayId,
+            normalizedX = target.normalizedX,
+            normalizedY = target.normalizedY,
+            normalizedRect = target.normalizedRect,
+            instruction = target.instruction,
+            focusContext = target.focusContext,
+            clientIntentId = target.clientIntentId,
+            requestedAt = target.requestedAt,
+            authority = authority.toRelayAuthority(),
+        )
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.CONTROL_AGENT_CONTEXT_TARGET,
+            uid = uid,
+            connectionId = connectionId,
+            control = HermesRealtimeRelayControlPayload(
+                streamClass = MediaStreamClass.CONTROL_INPUT.raw,
+                agentContextTarget = signedWire,
+            ),
+        )
+        frameSink(frame)
+        return signedWire
+    }
+
+    suspend fun send(systemPermissionRequest: PhoneControlSystemPermissionRequest): HermesRealtimeRelaySystemPermissionRequest {
+        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val request = if (systemPermissionRequest.clientIntentId.isNullOrBlank()) {
+            systemPermissionRequest.copy(clientIntentId = java.util.UUID.randomUUID().toString())
+        } else {
+            systemPermissionRequest
+        }
+        val counter = counterStore.nextCounter(peerNodeId)
+        val timestampMillis = nowMillis()
+        val authority = PhoneControlSigner.signSystemPermissionRequest(
+            request = request,
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = timestampMillis,
+            privateKeySeed = privateKeySeed,
+        )
+        val signedWire = HermesRealtimeRelaySystemPermissionRequest(
+            requestId = request.requestId,
+            clientIntentId = request.clientIntentId.orEmpty(),
+            kind = request.kind.toRelayKind(),
+            bundleId = request.bundleId,
+            originatingToolCallId = request.originatingToolCallId,
+            originatingToolName = request.originatingToolName,
+            action = request.action.toRelayAction(),
+            requestedAt = request.requestedAtSwiftReferenceSeconds,
+            authority = authority.toRelayAuthority(),
+        )
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.CONTROL_SYSTEM_PERMISSION_REQUEST,
+            uid = uid,
+            connectionId = connectionId,
+            requestId = request.requestId,
+            control = HermesRealtimeRelayControlPayload(
+                streamClass = "control.system.permission",
+                systemPermissionRequest = signedWire,
             ),
         )
         frameSink(frame)

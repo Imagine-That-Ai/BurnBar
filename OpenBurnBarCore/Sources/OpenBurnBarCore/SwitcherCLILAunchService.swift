@@ -88,6 +88,9 @@ public enum CLILaunchAdapter {
         "CODEX_CONFIG_PATH",
         // OpenCode-specific safe variables
         "OPENCODE_CONFIG_PATH",
+        "AGY_CONFIG_HOME",
+        "ANTIGRAVITY_HOME",
+        "GEMINI_HOME",
     ]
 
     // MARK: - Additional Arguments Allowlist
@@ -285,6 +288,11 @@ public enum CLILaunchAdapter {
             "\(homeDirectory)/.codex/bin",
             "\(homeDirectory)/.claude/bin",
             "\(homeDirectory)/.opencode/bin",
+            "\(homeDirectory)/.factory/bin",
+            "\(homeDirectory)/.forge/bin",
+            "\(homeDirectory)/.antigravity/bin",
+            "\(homeDirectory)/.gemini/antigravity-cli",
+            "\(homeDirectory)/.cargo/bin",
             "\(homeDirectory)/.npm-global/bin",
             "\(homeDirectory)/.bun/bin",
             "\(homeDirectory)/.volta/bin",
@@ -749,6 +757,12 @@ public enum CLILaunchAdapter {
             return ["CLAUDE_CONFIG_DIR", "CLAUDE_CONFIG_PATH"]
         case .opencode:
             return ["OPENCODE_CONFIG_PATH", "OPENCODE_DATA", "OPENCODE_DATA_HOME"]
+        case .droid:
+            return ["FACTORY_HOME", "DROID_HOME"]
+        case .forge:
+            return ["FORGE_HOME", "FORGE_CONFIG_HOME"]
+        case .antigravity:
+            return ["AGY_CONFIG_HOME", "ANTIGRAVITY_HOME", "GEMINI_HOME"]
         }
     }
 }

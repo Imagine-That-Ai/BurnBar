@@ -1,0 +1,60 @@
+[
+  {
+    "providerID": "kimi",
+    "modelID": "kimi-k2-6",
+    "canonicalModelID": "moonshotai/kimi-k2.6",
+    "openRouterModelID": "moonshotai/kimi-k2.6",
+    "aliases": [
+      "kimi-k2.6",
+      "moonshotai/Kimi-K2.6",
+      "moonshotai/kimi-k2.6",
+      "moonshot/kimi-2.6",
+      "kimi-k2-6-non-reasoning"
+    ],
+    "modelCapabilities": {
+      "schemaVersion": 1,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "supportedParameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "logit_bias",
+        "logprobs",
+        "max_tokens",
+        "min_p",
+        "parallel_tool_calls",
+        "presence_penalty",
+        "reasoning",
+        "reasoning_effort",
+        "repetition_penalty",
+        "response_format",
+        "seed",
+        "stop",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_logprobs",
+        "top_p"
+      ],
+      "contextWindowTokens": 262144,
+      "maxOutputTokens": 262142,
+      "acceptedInputMimeTypes": ["image/*"],
+      "sourceRefs": [
+        {
+          "label": "OpenRouter /api/v1/models",
+          "url": "https://openrouter.ai/docs/api/api-reference/models/get-models"
+        },
+        {
+          "label": "Kimi vision guide",
+          "url": "https://platform.kimi.ai/docs/guide/use-kimi-vision-model"
+        },
+        {
+          "label": "Kimi K2.6 quickstart",
+          "url": "https://platform.kimi.ai/docs/guide/kimi-k2-6-quickstart"
+        }
+      ]
+    }
+  }
+]

@@ -47,12 +47,18 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     case codex
     case claude
     case opencode
+    case droid
+    case forge
+    case antigravity
 
     public var displayName: String {
         switch self {
         case .codex: return "Codex"
         case .claude: return "Claude Code"
         case .opencode: return "OpenCode"
+        case .droid: return "Droid"
+        case .forge: return "Forge"
+        case .antigravity: return "Antigravity"
         }
     }
 
@@ -62,6 +68,9 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .codex: return "CodexLogo"
         case .claude: return "ClaudeCodeLogo"
         case .opencode: return nil
+        case .droid: return "FactoryLogo"
+        case .forge: return "ForgeLogo"
+        case .antigravity: return "AntigravityLogo"
         }
     }
 
@@ -71,6 +80,9 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .codex: return "codex"
         case .claude: return "claude"
         case .opencode: return "opencode"
+        case .droid: return "droid"
+        case .forge: return "forge"
+        case .antigravity: return "agy"
         }
     }
 
@@ -95,6 +107,29 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
                 "/usr/local/bin/opencode",
                 "/opt/homebrew/bin/opencode",
                 "$HOME/.opencode/bin/opencode"
+            ]
+        case .droid:
+            return [
+                "/usr/local/bin/droid",
+                "/opt/homebrew/bin/droid",
+                "$HOME/.local/bin/droid",
+                "$HOME/.factory/bin/droid"
+            ]
+        case .forge:
+            return [
+                "/usr/local/bin/forge",
+                "/opt/homebrew/bin/forge",
+                "$HOME/.local/bin/forge",
+                "$HOME/.forge/bin/forge",
+                "$HOME/.cargo/bin/forge"
+            ]
+        case .antigravity:
+            return [
+                "/usr/local/bin/agy",
+                "/opt/homebrew/bin/agy",
+                "$HOME/.local/bin/agy",
+                "$HOME/.antigravity/bin/agy",
+                "$HOME/.gemini/antigravity-cli/agy"
             ]
         }
     }

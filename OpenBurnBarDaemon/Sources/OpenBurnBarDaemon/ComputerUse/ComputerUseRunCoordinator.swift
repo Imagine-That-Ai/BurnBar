@@ -600,6 +600,15 @@ public actor ComputerUseRunCoordinator {
                 (intent.modifiers ?? []).map { $0.lowercased() }.sorted().joined(separator: "+"),
                 intent.text ?? ""
             ].joined(separator: "|")
+        case .remoteClipboard(let action):
+            return [
+                "clipboard",
+                action.kind.rawValue,
+                scopeContext.bundleId ?? "",
+                action.contentType,
+                String(action.byteCount ?? 0),
+                String(action.maxBytes)
+            ].joined(separator: "|")
         }
     }
 
@@ -657,6 +666,11 @@ public actor ComputerUseRunCoordinator {
             // actions by the PhoneControlReceiver before reaching this
             // path. A raw phoneIntent here is a wiring bug.
             throw DispatchError.unsupportedTool("phone_intent_in_run_dispatch")
+        case .remoteClipboard:
+            // Remote clipboard is handled by the Mac app's phone-control
+            // coordinator because it touches NSPasteboard and focused app
+            // context. It must never route through the daemon run dispatcher.
+            throw DispatchError.unsupportedTool("remote_clipboard_in_run_dispatch")
         }
     }
 

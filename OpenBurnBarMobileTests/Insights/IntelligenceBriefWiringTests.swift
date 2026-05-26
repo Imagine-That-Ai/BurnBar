@@ -216,6 +216,7 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertEqual(payload["source"] as? String, "ios-insights")
         XCTAssertEqual(payload["sourceSurface"] as? String, "ios-insights")
         XCTAssertEqual(payload["deliveryMode"] as? String, "action_only")
+        XCTAssertEqual(payload["presentationMode"] as? String, "native_chat")
         XCTAssertEqual(payload["status"] as? String, "pending")
         XCTAssertEqual(payload["schemaVersion"] as? Int, 3)
         XCTAssertNil(payload["events"])
@@ -243,6 +244,28 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertEqual(payload["sourceSurface"] as? String, "ipad-hermes-square")
         XCTAssertEqual(payload["deliveryMode"] as? String, "full_stream")
         XCTAssertEqual(payload["parentHermesThreadID"] as? String, "thread-1")
+    }
+
+    func test_cliAgentMissionRequestPayloadIncludesVisibleMacCLIPresentationMode() throws {
+        let payload = CLIAgentMissionRequestPayloadFactory.build(
+            id: "mission-visible",
+            title: "Visible Codex",
+            prompt: "Run where I can watch it.",
+            missionKind: "chat",
+            requestedRuntime: "codex",
+            targetProject: nil,
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            sourceSurface: "ios-chat-mac-visible-cli",
+            deliveryMode: .fullStream,
+            presentationMode: .macVisibleCLI
+        )
+
+        XCTAssertEqual(payload["sourceSurface"] as? String, "ios-chat-mac-visible-cli")
+        XCTAssertEqual(payload["deliveryMode"] as? String, "full_stream")
+        XCTAssertEqual(payload["presentationMode"] as? String, "mac_visible_cli")
     }
 
     func test_cliAgentMissionRequestPayloadIncludesRequestedModelID() throws {

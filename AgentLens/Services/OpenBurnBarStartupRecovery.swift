@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Observation
 import OpenBurnBarMedia
 
@@ -216,6 +217,10 @@ final class OpenBurnBarRuntimeContext {
     var mercuryConsentStore: MercuryConsentStore?
     var mercuryIncomingPanelPresenter: MercuryIncomingPanelPresenter?
     var voipCallTrigger: VoIPCallTrigger?
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    var smartZoomContextProvider: SmartZoomContextProvider?
+    private var mercurySmartZoomPhaseCancellable: AnyCancellable?
+    #endif
     private var didStartForegroundRuntimeServices = false
     private var managedRuntimeProbeTask: Task<Void, Never>?
     private var startupScanTask: Task<Void, Never>?
@@ -253,11 +258,15 @@ final class OpenBurnBarRuntimeContext {
             hermesRelayHost = existingRelayHost
         } else {
             let cliRelayExecutor = ChatSessionControllerCLIAgentRelayChatExecutor(chatController: chatController)
+            let cliModelCatalogDiscovery = CLIRuntimeModelCatalogDiscovery()
             hermesRelayHost = HermesRelayHostService(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
                 cliChatDispatcher: { request, eventSender in
                     try await cliRelayExecutor.streamChat(request: request, onEvent: eventSender)
+                },
+                cliModelCatalogDispatcher: { request in
+                    try await cliModelCatalogDiscovery.modelCatalog(for: request)
                 }
             )
             hermesRelayHostService = hermesRelayHost
@@ -426,7 +435,8 @@ final class OpenBurnBarRuntimeContext {
             controller = ComputerUseRuntimeController(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
-                relayHostService: explicitRelayHostService ?? hermesRelayHostService
+                relayHostService: explicitRelayHostService ?? hermesRelayHostService,
+                chatController: chatController
             )
             computerUseRuntimeController = controller
         }
@@ -584,6 +594,9 @@ final class OpenBurnBarRuntimeContext {
             ensureComputerUseSession: { [weak self] in
                 guard let self else { return }
                 self.startComputerUseServices()
+                self.computerUseRuntimeController?.setPhoneControlAuthorizedPeerNodeProvider { [weak self] in
+                    self?.mercuryRouter?.activeMirrorControlAuthorityPeerNodeID
+                }
                 self.computerUseRuntimeController?.attachFocusFollow(mediaSessionCoordinator: session)
                 _ = try await self.computerUseRuntimeController?.ensureSystemSession(trustMode: .manual)
             },
@@ -621,7 +634,38 @@ final class OpenBurnBarRuntimeContext {
         // owns the persistent `media.control` registry; CloudSyncService
         // only owns Firestore sync.
         hermesRelayHostService?.attachMercuryRouter(router)
+
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        attachSmartZoomToRouter(router)
+        #endif
     }
+
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    @MainActor
+    private func attachSmartZoomToRouter(_ router: MercuryRouter) {
+        let provider = SmartZoomContextProvider(
+            inputsProvider: { @MainActor in
+                SmartZoomSystemSampler.sample()
+            },
+            sink: { [weak router] context in
+                await router?.sendFocusContextOnActiveMirror(context)
+            }
+        )
+        smartZoomContextProvider = provider
+        mercurySmartZoomPhaseCancellable = router.$phase
+            .removeDuplicates()
+            .sink { phase in
+                Task { @MainActor in
+                    switch phase {
+                    case .streaming:
+                        provider.start()
+                    default:
+                        provider.stop()
+                    }
+                }
+            }
+    }
+    #endif
 
     private func makeMercuryPeerSource() -> MercuryPeerSource {
         let registry = hermesRelayHostService?.mercuryControlStreamRegistry

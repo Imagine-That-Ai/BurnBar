@@ -152,9 +152,9 @@ final class MobileProviderWizardModelTests: XCTestCase {
     }
 
     func test_matchesSearch_matchesRegistrySummary() {
-        // OpenAI registry summary: "OpenAI — proxy routing with API keys..."
+        // OpenAI registry summary: "OpenAI — API-key routing plus Codex OAuth sign-in..."
         let model = makeModel()
-        model.searchText = "proxy"
+        model.searchText = "codex oauth"
         XCTAssertTrue(model.matchesSearch(.openAI))
     }
 

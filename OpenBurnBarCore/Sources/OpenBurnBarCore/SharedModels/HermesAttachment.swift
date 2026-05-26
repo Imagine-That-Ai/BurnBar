@@ -100,10 +100,12 @@ public struct HermesAttachment: Identifiable, Codable, Sendable, Hashable {
 public struct HermesBackendCapabilities: Codable, Sendable, Hashable {
     public var vision: Bool
     public var audio: Bool
+    public var modelIO: ModelIOCapabilities?
 
-    public init(vision: Bool = true, audio: Bool = false) {
+    public init(vision: Bool = true, audio: Bool = false, modelIO: ModelIOCapabilities? = nil) {
         self.vision = vision
         self.audio = audio
+        self.modelIO = modelIO
     }
 
     /// Conservative defaults used when probing fails or the backend doesn't

@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 import CoreGraphics
 import CoreText
 #if canImport(AppKit)
@@ -43,6 +44,7 @@ public struct SwarmCanvasView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.uiMode) private var uiMode
 
     @State private var simulation: SwarmSimulation
 
@@ -118,13 +120,15 @@ public struct SwarmCanvasView: View {
                     to: timeline.date,
                     bounds: size,
                     reduceMotion: reduceMotion,
-                    isBatteryThrottled: isBatteryThrottled
+                    isBatteryThrottled: isBatteryThrottled,
+                    uiMode: uiMode
                 )
                 simulation.draw(
                     into: context,
                     size: size,
                     scheme: colorScheme,
-                    isBatteryThrottled: isBatteryThrottled
+                    isBatteryThrottled: isBatteryThrottled,
+                    uiMode: uiMode
                 )
             }
             .background(backdrop)
@@ -232,6 +236,10 @@ public enum SwarmFormationMode: Equatable {
     case shapeRouterFlow
     case shapeProviderLogo([AgentProvider])
     case shapeGrok
+    case shapeSkillet
+    case shapeApple
+    case shapeChefHat
+    case shapeChili
 
     static let showcaseProviders: [AgentProvider] = AgentProvider.swarmGlyphProviders
 
@@ -251,7 +259,20 @@ public enum SwarmFormationMode: Equatable {
         grouped(SwarmProviderGlyphSelection.normalized(providers), size: 2)
     }
 
-    static func defaultCycle(for providers: [AgentProvider], excludeBrandShapes: Bool = false) -> [SwarmFormationMode] {
+    static func defaultCycle(for providers: [AgentProvider], excludeBrandShapes: Bool = false, uiMode: UIMode = .standard) -> [SwarmFormationMode] {
+        if uiMode == .cooking {
+            return [
+                .swarm,
+                .shapeSkillet,
+                .swarm,
+                .shapeApple,
+                .swarm,
+                .shapeChefHat,
+                .swarm,
+                .shapeChili
+            ]
+        }
+
         let enabledProviders = SwarmProviderGlyphSelection.normalized(providers)
         let providerCycle = providerLogoGroups(for: enabledProviders).flatMap { group in
             [
@@ -282,7 +303,17 @@ public enum SwarmFormationMode: Equatable {
         ]
     }
 
-    static func inspectionCycle(for providers: [AgentProvider], excludeBrandShapes: Bool = false) -> [SwarmFormationMode] {
+    static func inspectionCycle(for providers: [AgentProvider], excludeBrandShapes: Bool = false, uiMode: UIMode = .standard) -> [SwarmFormationMode] {
+        if uiMode == .cooking {
+            return [
+                .swarm,
+                .shapeSkillet,
+                .shapeApple,
+                .shapeChefHat,
+                .shapeChili
+            ]
+        }
+
         let enabledProviders = SwarmProviderGlyphSelection.normalized(providers)
         let grokCycle: [SwarmFormationMode] = enabledProviders.contains(.xAI) ? [.shapeGrok] : []
 
@@ -310,7 +341,8 @@ public enum SwarmFormationMode: Equatable {
 
     var requiresSettledAdmireHold: Bool {
         switch self {
-        case .shapeDollar, .shapeCode, .shapeBurnBarLogo, .shapeRings, .shapeProviderLogo(_), .shapeGrok:
+        case .shapeDollar, .shapeCode, .shapeBurnBarLogo, .shapeRings, .shapeProviderLogo(_), .shapeGrok,
+             .shapeSkillet, .shapeApple, .shapeChefHat, .shapeChili:
             return true
         case .swarm, .shapeRouterFlow:
             return false
@@ -390,6 +422,11 @@ public final class SwarmSimulation {
     private lazy var burnBarLogoPoints = SwarmLogoShape.generatePoints()
     private lazy var ringPoints = SwarmSimulation.generateRingPoints()
     private lazy var routerFlowPoints = SwarmSimulation.generateRouterFlowPoints()
+
+    private lazy var skilletPoints = SwarmSimulation.generateSkilletPoints()
+    private lazy var applePoints = SwarmSimulation.generateApplePoints()
+    private lazy var chefHatPoints = SwarmSimulation.generateChefHatPoints()
+    private lazy var chiliPoints = SwarmSimulation.generateChiliPoints()
 
     private lazy var providerLogoPointCache: [AgentProvider: [ShapePoint]] = {
         Dictionary(uniqueKeysWithValues: SwarmFormationMode.showcaseProviders.map { provider in
@@ -478,14 +515,28 @@ public final class SwarmSimulation {
 
     // MARK: Frame step
 
-    public func advance(to date: Date, bounds size: CGSize, reduceMotion: Bool, isBatteryThrottled: Bool) {
+    private var lastUIMode: UIMode?
+
+    public func advance(to date: Date, bounds size: CGSize, reduceMotion: Bool, isBatteryThrottled: Bool, uiMode: UIMode = .standard) {
         let now = date.timeIntervalSinceReferenceDate
+
+        if lastUIMode != uiMode {
+            let wasNil = (lastUIMode == nil)
+            lastUIMode = uiMode
+            self.modes = SwarmFormationMode.defaultCycle(for: enabledProviderGlyphs, excludeBrandShapes: excludeBrandShapes, uiMode: uiMode)
+            if !wasNil {
+                cycleIndex = 0
+                assignMode(modes[cycleIndex], at: now, uiMode: uiMode)
+                shouldResetCycleTimer = true
+            }
+        }
+
         if !initialized {
             self.bounds = size
             seedParticlesAcrossBounds()
             modeAssignedAt = now
             if mode != .swarm {
-                assignMode(mode, at: now)
+                assignMode(mode, at: now, uiMode: uiMode)
             }
             nextCycleAt = now + effectiveCycleInterval
             initialized = true
@@ -515,7 +566,7 @@ public final class SwarmSimulation {
                 nextCycleAt = now + Self.shapeSettleRecheckInterval
             } else {
                 cycleIndex = (cycleIndex + 1) % modes.count
-                assignMode(modes[cycleIndex], at: now)
+                assignMode(modes[cycleIndex], at: now, uiMode: uiMode)
                 nextCycleAt = now + effectiveCycleInterval
             }
         }
@@ -672,7 +723,7 @@ public final class SwarmSimulation {
 
     // MARK: Draw
 
-    public func draw(into ctx: GraphicsContext, size: CGSize, scheme: ColorScheme, isBatteryThrottled: Bool) {
+    public func draw(into ctx: GraphicsContext, size: CGSize, scheme: ColorScheme, isBatteryThrottled: Bool, uiMode: UIMode = .standard) {
         renderScheme = scheme   // drives the light/dark particle palette in colorFromKey
 
         let shouldRenderIndividually: Bool = {
@@ -687,7 +738,7 @@ public final class SwarmSimulation {
             // provider palette, so we render individually.
             for (index, p) in particles.enumerated() where !p.isGlyph {
                 if isBatteryThrottled && index % 2 == 1 { continue } // Skip 50% on battery
-                let color = resolvedColor(for: p, at: index, isBatteryThrottled: isBatteryThrottled)
+                let color = resolvedColor(for: p, at: index, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
                 let inShape = (mode != .swarm && p.tx != nil)
                 var r = max(0.4, p.size * (inShape ? 1.2 : 0.85))
 
@@ -746,7 +797,7 @@ public final class SwarmSimulation {
                 bucketPaths[key] = path
             }
             for (key, path) in bucketPaths {
-                let baseColor = colorFromKey(key)
+                let baseColor = colorFromKey(key, uiMode: uiMode)
                 let finalColor = isBatteryThrottled ? baseColor.opacity(0.5) : baseColor
                 ctx.fill(path, with: .color(finalColor))
             }
@@ -755,7 +806,7 @@ public final class SwarmSimulation {
         // Glyphs — relatively few; resolve once per draw.
         for (index, p) in particles.enumerated() where p.isGlyph {
             if isBatteryThrottled && index % 2 == 1 { continue } // Skip 50% on battery
-            let color = resolvedColor(for: p, at: index, isBatteryThrottled: isBatteryThrottled)
+            let color = resolvedColor(for: p, at: index, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
             let resolved = ctx.resolve(
                 Text(p.glyph)
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -767,7 +818,7 @@ public final class SwarmSimulation {
 
     // MARK: Mode transitions
 
-    public func assignMode(_ next: SwarmFormationMode, at assignedAt: TimeInterval = Date.timeIntervalSinceReferenceDate) {
+    public func assignMode(_ next: SwarmFormationMode, at assignedAt: TimeInterval = Date.timeIntervalSinceReferenceDate, uiMode: UIMode = .standard) {
         mode = next
         modeAssignedAt = assignedAt
         shapeSettledAt = nil
@@ -810,6 +861,22 @@ public final class SwarmSimulation {
             shapePoints = routerFlowPoints.map { SIMD2(Double($0.point.x), Double($0.point.y)) }
             shapeRoles = routerFlowPoints.map { $0.role }
             progress = routerFlowPoints.map { $0.progress }
+        case .shapeSkillet:
+            shapePoints = skilletPoints.map { SIMD2(Double($0.point.x), Double($0.point.y)) }
+            shapeRoles = skilletPoints.map { $0.role }
+            progress = skilletPoints.map { $0.progress }
+        case .shapeApple:
+            shapePoints = applePoints.map { SIMD2(Double($0.point.x), Double($0.point.y)) }
+            shapeRoles = applePoints.map { $0.role }
+            progress = applePoints.map { $0.progress }
+        case .shapeChefHat:
+            shapePoints = chefHatPoints.map { SIMD2(Double($0.point.x), Double($0.point.y)) }
+            shapeRoles = chefHatPoints.map { $0.role }
+            progress = chefHatPoints.map { $0.progress }
+        case .shapeChili:
+            shapePoints = chiliPoints.map { SIMD2(Double($0.point.x), Double($0.point.y)) }
+            shapeRoles = chiliPoints.map { $0.role }
+            progress = chiliPoints.map { $0.progress }
         }
 
         let width = Double(bounds.width)
@@ -939,12 +1006,16 @@ public final class SwarmSimulation {
         }
     }
 
+    private var effectiveShapeSettleFallbackDelay: TimeInterval {
+        Self.shapeSettleFallbackDelay / motionSpeedMultiplier.clamped(to: 0.35...2.5)
+    }
+
     private func shouldDelayCycleForAdmireHold(now: TimeInterval) -> Bool {
         guard mode.requiresSettledAdmireHold else { return false }
 
         if shapeSettledAt == nil {
             if currentShapeIsSettled()
-                || now - modeAssignedAt >= effectiveCycleInterval + Self.shapeSettleFallbackDelay {
+                || now - modeAssignedAt >= effectiveCycleInterval + effectiveShapeSettleFallbackDelay {
                 shapeSettledAt = now
             } else {
                 return true
@@ -956,7 +1027,11 @@ public final class SwarmSimulation {
     }
 
     private func currentShapeIsSettled() -> Bool {
-        let threshold = max(22.0, Double(min(bounds.width, bounds.height)) * 0.022)
+        // Tighten the threshold at slower speeds so particles must form a sharper,
+        // fully-settled shape before starting the hold/admire timer.
+        let baseThreshold = max(22.0, Double(min(bounds.width, bounds.height)) * 0.022)
+        let threshold = baseThreshold * motionSpeedMultiplier.clamped(to: 0.5...1.0)
+
         var targeted = 0
         var close = 0
         var totalDistance = 0.0
@@ -1027,7 +1102,7 @@ public final class SwarmSimulation {
         return 3                                   // blaze
     }
 
-    private func rgbaFromKey(_ key: Int) -> RGBA {
+    private func rgbaFromKey(_ key: Int, uiMode: UIMode = .standard) -> RGBA {
         let bucket = key / 100
         let tier = key % 100
         // In light mode, lift the opacity floor a touch so the deeper palette
@@ -1035,6 +1110,35 @@ public final class SwarmSimulation {
         let base = Double(tier) / 16.0 + 0.04        // ~0.04 … 0.98
         let opacity = renderScheme == .dark ? base : min(1.0, base + 0.08)
         let dark = renderScheme == .dark
+
+        if uiMode == .cooking {
+            let pitayaPink = RGBA(r: 1.0, g: 0.165, b: 0.52, a: opacity)
+            let mangoOrange = RGBA(r: 1.0, g: 0.647, b: 0.0, a: opacity)
+            let electricLime = RGBA(r: 0.224, g: 1.0, b: 0.078, a: opacity)
+            let kiwiTurquoise = RGBA(r: 0.0, g: 0.96, b: 1.0, a: opacity)
+
+            let sparkleWhite = RGBA(r: 1.0, g: 1.0, b: 1.0, a: min(1.0, opacity * 1.65))
+            let cherryPink = RGBA(r: 1.0, g: 0.078, b: 0.576, a: min(1.0, opacity * 1.55))
+
+            switch bucket {
+            case 0: return kiwiTurquoise
+            case 1: return electricLime
+            case 2: return mangoOrange
+            case 3: return pitayaPink
+            case 4: return RGBA(r: kiwiTurquoise.r, g: kiwiTurquoise.g, b: kiwiTurquoise.b, a: min(1.0, opacity * 1.6))
+            case 5: return RGBA(r: pitayaPink.r, g: pitayaPink.g, b: pitayaPink.b, a: min(1.0, opacity * 1.5))
+            case 6: return RGBA(r: mangoOrange.r, g: mangoOrange.g, b: mangoOrange.b, a: min(1.0, opacity * 1.5))
+            case 7: return RGBA(r: electricLime.r, g: electricLime.g, b: electricLime.b, a: min(1.0, opacity * 1.5))
+            case 9: return sparkleWhite
+            case 10: return pitayaPink
+            case 11: return electricLime
+            case 12: return mangoOrange
+            case 13: return electricLime
+            case 14: return cherryPink
+            case 15: return kiwiTurquoise
+            default: return pitayaPink
+            }
+        }
 
         let whimsy: RGBA
         let ember: RGBA
@@ -1141,15 +1245,15 @@ public final class SwarmSimulation {
         }
     }
 
-    private func colorFromKey(_ key: Int) -> Color {
-        rgbaFromKey(key).color
+    private func colorFromKey(_ key: Int, uiMode: UIMode = .standard) -> Color {
+        rgbaFromKey(key, uiMode: uiMode).color
     }
 
-    private func colorFor(particle p: Particle) -> Color {
-        colorFromKey(colorKey(for: p))
+    private func colorFor(particle p: Particle, uiMode: UIMode = .standard) -> Color {
+        colorFromKey(colorKey(for: p), uiMode: uiMode)
     }
 
-    private func resolvedColor(for p: Particle, at index: Int, isBatteryThrottled: Bool = false) -> Color {
+    private func resolvedColor(for p: Particle, at index: Int, isBatteryThrottled: Bool = false, uiMode: UIMode = .standard) -> Color {
         if let providerLogoRGBA = resolvedProviderLogoRGBA(for: p, at: index) {
             var intensity = 1.0
             if let driver = colorDriver, driver.mode == .active {
@@ -1191,7 +1295,7 @@ public final class SwarmSimulation {
         }
 
         // Fallback to original palette (when idle or driver nil)
-        let fallbackRGBA = rgbaFromKey(colorKey(for: p))
+        let fallbackRGBA = rgbaFromKey(colorKey(for: p), uiMode: uiMode)
         var intensity = 1.0
         if isBatteryThrottled {
             intensity *= 0.5
@@ -1503,6 +1607,13 @@ public final class SwarmSimulation {
     }
 
     private static func logoPoints(for provider: AgentProvider, fallback: [ShapePoint]) -> [ShapePoint] {
+        if provider == .factory {
+            return generateFactoryLogoPoints()
+        }
+        if provider == .hermes {
+            return generateHermesLogoPoints()
+        }
+
         let candidates: [String]
         switch provider {
         case .openAI:
@@ -1796,6 +1907,8 @@ public final class SwarmSimulation {
 
     private static func fallbackLogoPoints(for provider: AgentProvider) -> [ShapePoint] {
         switch provider {
+        case .factory:
+            return generateFactoryLogoPoints()
         case .openAI:
             return generateOpenAILogoPoints()
         case .codex:
@@ -1952,6 +2065,107 @@ public final class SwarmSimulation {
         .windsurf: [-0.2056, 0.0568, -0.2164, 0.0568, -0.2217, 0.0137, -0.2217, -0.0725, -0.2203, -0.0751, -0.2134, -0.0755, -0.2027, -0.0755, -0.2027, 0.0107, -0.2037, 0.0548, -0.2056, 0.0568, -0.2165, 0.1053, -0.2051, 0.1053, -0.2026, 0.1039, -0.2022, 0.0953, -0.2022, 0.0813, -0.2156, 0.0813, -0.2222, 0.0883, -0.2222, 0.1024, -0.2208, 0.1049, -0.2203, 0.1053, -0.2222, 0.1053, -0.1258, 0.0585, -0.149, 0.0449, -0.149, 0.0488, -0.1542, 0.0508, -0.1648, 0.0508, -0.1648, -0.0354, -0.1644, -0.08, -0.1618, -0.0814, -0.1513, -0.0814, -0.146, -0.0542, -0.146, 0.0004, -0.133, 0.0324, -0.1104, 0.0073, -0.1104, -0.0481, -0.1089, -0.0507, -0.102, -0.0511, -0.0913, -0.0511, -0.0913, 0.0084, -0.0971, 0.0646, -0.1372, 0.0849, -0.1279, 0.0767, -0.1094, 0.0604, 0.0548, 0.0629, 0.0548, 0.1024, 0.0563, 0.1049, 0.063, 0.1053, 0.0736, 0.1053, 0.0761, 0.1039, 0.0765, 0.0431, 0.0765, -0.0755, 0.066, -0.0755, 0.0607, -0.0729, 0.0607, -0.0678, 0.0565, -0.0635, 0.0435, -0.0735, 0.0115, -0.0821, -0.0385, -0.0502, -0.0379, 0.0287, 0.0123, 0.0604, 0.0438, 0.0518, 0.0539, 0.0431, 0.0548, 0.0431, -0.0176, -0.0439, 0.021, -0.0619, 0.0594, -0.0439, 0.0594, 0.022, 0.021, 0.0402, -0.0066, 0.0061, 0.1758, -0.0026, 0.1585, 0.0004, 0.1355, 0.0062, 0.1273, 0.0211, 0.139, 0.0393, 0.177, 0.0391, 0.1913, 0.0193, 0.1928, 0.017, 0.1995, 0.0166, 0.2099, 0.0166, 0.2126, 0.0182, 0.2046, 0.0419, 0.159, 0.0605, 0.1126, 0.0406, 0.1111, 0.0006, 0.1439, -0.017, 0.1629, -0.0205, 0.1848, -0.026, 0.1934, -0.0404, 0.1813, -0.0609, 0.1556, -0.0632, 0.1451, -0.0632, 0.1737, -0.1007, 0.2308, -0.1, 0.2574, -0.0625, 0.238, -0.032, 0.2038, -0.018, 0.1758, -0.0026, 0.3123, -0.06, 0.3251, -0.028, 0.3251, 0.0265, 0.3255, 0.0553, 0.328, 0.0567, 0.3387, 0.0567, 0.3456, 0.0563, 0.3471, 0.0538, 0.3471, -0.0324, 0.3417, -0.0755, 0.331, -0.0755, 0.331, -0.0718, 0.3298, -0.0666, 0.3239, -0.0667, 0.301, -0.0802, 0.2612, -0.0772, 0.2396, -0.0354, 0.2396, 0.024, 0.24, 0.0553, 0.2426, 0.0567, 0.2533, 0.0567, 0.2601, 0.0563, 0.2616, 0.0538, 0.2616, -0.0016, 0.264, -0.0506, 0.2962, -0.0627, 0.2922, -0.0627, 0.4757, 0.0568, 0.4757, 0.0683, 0.4774, 0.0803, 0.488, 0.0864, 0.496, 0.0864, 0.5, 0.0918, 0.5, 0.1024, 0.4944, 0.1024, 0.4713, 0.0981, 0.4537, 0.0667, 0.4537, 0.0581, 0.4479, 0.0538, 0.4363, 0.0538, 0.41, 0.0493, 0.3975, 0.0407, 0.3935, 0.0454, 0.3935, 0.051, 0.3882, 0.0538, 0.3775, 0.0538, 0.3775, -0.0324, 0.3779, -0.077, 0.3804, -0.0784, 0.3911, -0.0784, 0.3965, -0.0514, 0.3965, 0.0026, 0.4102, 0.0331, 0.4406, 0.0357, 0.4567, 0.0357, 0.4567, -0.0384, 0.4571, -0.077, 0.4596, -0.0785, 0.4703, -0.0785, 0.4757, -0.0394, 0.4757, 0.0386, 0.4919, 0.0386, 0.5, 0.0437, 0.5, 0.0538, 0.4838, 0.0538, 0.4757, 0.0548, 0.4757, 0.0568, -0.3019, 0.0046, -0.2773, 0.1031, -0.265, 0.1031, -0.2572, 0.1026, -0.256, 0.0994, -0.2869, -0.0192, -0.3133, -0.0785, -0.3352, -0.0785, -0.3559, 0.0222, -0.3663, 0.0725, -0.3665, 0.0725, -0.3922, -0.0266, -0.4203, -0.0762, -0.4509, -0.0762, -0.4836, 0.0423, -0.4939, 0.1016],
         .xAI: [0.4312, 0.2671, 0.4541, 0.2671, 0.4771, 0.2671, 0.5, 0.2671, 0.5, 0.089, 0.5, -0.089, 0.5, -0.2671, 0.4771, -0.2671, 0.4541, -0.2671, 0.4312, -0.2671, 0.4312, -0.089, 0.4312, 0.089, 0.4312, 0.2671, 0.0842, 0.2671, 0.1084, 0.2671, 0.1326, 0.2671, 0.1568, 0.2671, 0.2258, 0.089, 0.2949, -0.089, 0.364, -0.2671, 0.339, -0.2671, 0.3141, -0.2671, 0.2892, -0.2671, 0.2705, -0.2174, 0.2518, -0.1678, 0.2331, -0.1182, 0.1568, -0.1182, 0.0805, -0.1182, 0.0042, -0.1182, -0.0145, -0.1678, -0.0332, -0.2174, -0.0519, -0.2671, -0.0759, -0.2671, -0.0998, -0.2671, -0.1238, -0.2671, -0.0545, -0.089, 0.0149, 0.089, 0.0842, 0.2671, 0.2121, -0.0584, 0.1807, 0.0242, 0.1493, 0.1067, 0.1179, 0.1893, 0.0869, 0.1067, 0.056, 0.0242, 0.0251, -0.0584, 0.0874, -0.0584, 0.1498, -0.0584, 0.2121, -0.0584, -0.3571, -0.0636, -0.4003, -0.0025, -0.4434, 0.0586, -0.4865, 0.1197, -0.4611, 0.1197, -0.4357, 0.1197, -0.4102, 0.1197, -0.3796, 0.0741, -0.3489, 0.0284, -0.3182, -0.0172, -0.2863, 0.0284, -0.2544, 0.0741, -0.2225, 0.1197, -0.1993, 0.1197, -0.1761, 0.1197, -0.1529, 0.1197, -0.1953, 0.0589, -0.2377, -0.002, -0.2801, -0.0628, -0.2332, -0.1309, -0.1863, -0.199, -0.1394, -0.2671, -0.1646, -0.2671, -0.1898, -0.2671, -0.215, -0.2671, -0.2504, -0.215, -0.2858, -0.1628, -0.3212, -0.1107, -0.3569, -0.1628, -0.3925, -0.215, -0.4282, -0.2671, -0.4521, -0.2671, -0.4761, -0.2671, -0.5, -0.2671, -0.4524, -0.1992, -0.4047, -0.1314, -0.3571, -0.0636],
     ]
+
+    private static func sampleEmojiPoints(emoji: String, fontSize: CGFloat) -> [ShapePoint] {
+        let side = 320
+        let bytesPerPixel = 4
+        let bytesPerRow = side * bytesPerPixel
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        var pixels = [UInt8](repeating: 0, count: side * bytesPerRow)
+
+        guard let ctx = CGContext(
+            data: &pixels,
+            width: side,
+            height: side,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return [] }
+
+        ctx.clear(CGRect(x: 0, y: 0, width: side, height: side))
+
+        let font = CTFontCreateWithName("AppleColorEmoji" as CFString, fontSize, nil)
+        let attrStr = NSAttributedString(
+            string: emoji,
+            attributes: [
+                .font: font
+            ]
+        )
+        let line = CTLineCreateWithAttributedString(attrStr)
+        let bounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
+
+        ctx.textPosition = CGPoint(
+            x: (CGFloat(side) - bounds.width) / 2 - bounds.minX,
+            y: (CGFloat(side) - bounds.height) / 2 - bounds.minY
+        )
+        CTLineDraw(line, ctx)
+
+        var pts: [ShapePoint] = []
+        let gap = 5 // Premium particle density spacing
+        for y in stride(from: 0, to: side, by: gap) {
+            for x in stride(from: 0, to: side, by: gap) {
+                let offset = y * bytesPerRow + x * bytesPerPixel
+                let alpha = pixels[offset + 3]
+                if alpha > 40 {
+                    let red = pixels[offset]
+                    let green = pixels[offset + 1]
+                    let blue = pixels[offset + 2]
+
+                    let luminance = 0.2126 * Double(red) + 0.7152 * Double(green) + 0.0722 * Double(blue)
+                    let role: String
+                    if luminance < 80 {
+                        role = "logo-flame-outer"
+                    } else if luminance > 210 {
+                        role = "logo-flame-spark"
+                    } else {
+                        role = "logo-flame-inner"
+                    }
+
+                    // Center and scale to fit standard -0.35 to 0.35 layout box nicely
+                    pts.append(ShapePoint(
+                        point: CGPoint(
+                            x: (CGFloat(x - side / 2) / CGFloat(side / 2)) * 0.75,
+                            y: (-CGFloat(y - side / 2) / CGFloat(side / 2)) * 0.75
+                        ),
+                        role: role,
+                        progress: Double(pts.count)
+                    ))
+                }
+            }
+        }
+
+        // Normalize progress stably
+        if !pts.isEmpty {
+            let denom = Double(pts.count - 1)
+            for i in pts.indices {
+                pts[i] = ShapePoint(
+                    point: pts[i].point,
+                    role: pts[i].role,
+                    progress: denom > 0 ? Double(i) / denom : 0.0
+                )
+            }
+        }
+
+        return pts
+    }
+
+    private static func generateSkilletPoints() -> [ShapePoint] {
+        sampleEmojiPoints(emoji: "🍳", fontSize: 210)
+    }
+
+    private static func generateApplePoints() -> [ShapePoint] {
+        sampleEmojiPoints(emoji: "🍎", fontSize: 210)
+    }
+
+    private static func generateChefHatPoints() -> [ShapePoint] {
+        sampleEmojiPoints(emoji: "👨‍🍳", fontSize: 210)
+    }
+
+    private static func generateChiliPoints() -> [ShapePoint] {
+        sampleEmojiPoints(emoji: "🌶️", fontSize: 210)
+    }
 
     private static func generateRingPoints(numRings: Int = 3) -> [ShapePoint] {
         var pts: [ShapePoint] = []
@@ -2256,17 +2470,15 @@ public final class SwarmSimulation {
         }
     }
 
+    private static func generateFactoryLogoPoints() -> [ShapePoint] {
+        SwarmProviderLogoDotMap.factory().map {
+            ShapePoint(point: $0.point, role: $0.role, progress: $0.progress)
+        }
+    }
+
     private static func generateHermesLogoPoints() -> [ShapePoint] {
-        let coords: [CGPoint] = [
-            CGPoint(x: -0.30448000000000003, y: 0.06732), CGPoint(x: -0.18700000000000003, y: -0.09614000000000002), CGPoint(x: -0.18722, y: -0.09581), CGPoint(x: -0.18744000000000002, y: -0.09548000000000001), CGPoint(x: -0.18755000000000002, y: -0.09515), CGPoint(x: -0.18425000000000002, y: -0.09405000000000001), CGPoint(x: -0.17567000000000002, y: -0.09185000000000001), CGPoint(x: -0.16885, y: -0.09020000000000002), CGPoint(x: -0.16192, y: -0.08844), CGPoint(x: -0.1606, y: -0.08723), CGPoint(x: -0.16104000000000002, y: -0.08624000000000001), CGPoint(x: -0.16159, y: -0.08514000000000001), CGPoint(x: -0.16203, y: -0.08415), CGPoint(x: -0.16159, y: -0.08327000000000001), CGPoint(x: -0.16093000000000002, y: -0.08239), CGPoint(x: -0.15994000000000003, y: -0.08129), CGPoint(x: -0.15928000000000003, y: -0.08041000000000001), CGPoint(x: -0.16071000000000002, y: -0.07931), CGPoint(x: -0.16214, y: -0.07832), CGPoint(x: -0.16357000000000002, y: -0.07722000000000001), CGPoint(x: -0.165, y: -0.07623), CGPoint(x: -0.16467, y: -0.07524000000000002), CGPoint(x: -0.16434, y: -0.07414000000000001), CGPoint(x: -0.16401000000000002, y: -0.07315), CGPoint(x: -0.16434, y: -0.07205), CGPoint(x: -0.16665000000000002, y: -0.07150000000000001), CGPoint(x: -0.16896, y: -0.07106000000000001), CGPoint(x: -0.17138, y: -0.07051000000000002), CGPoint(x: -0.17292000000000002, y: -0.06974000000000001), CGPoint(x: -0.17204000000000003, y: -0.06831000000000001), CGPoint(x: -0.17116, y: -0.06677), CGPoint(x: -0.17039, y: -0.06534000000000001), CGPoint(x: -0.17127, y: -0.06424), CGPoint(x: -0.17424000000000003, y: -0.06424), CGPoint(x: -0.17721, y: -0.06424), CGPoint(x: -0.18018, y: -0.06424), CGPoint(x: -0.18172000000000002, y: -0.06336), CGPoint(x: -0.18183000000000002, y: -0.06171), CGPoint(x: -0.18194000000000002, y: -0.06017), CGPoint(x: -0.18194000000000002, y: -0.05852), CGPoint(x: -0.18238000000000001, y: -0.05698), CGPoint(x: -0.18315000000000003, y: -0.055110000000000006), CGPoint(x: -0.18381, y: -0.053680000000000005), CGPoint(x: -0.18436000000000002, y: -0.05214), CGPoint(x: -0.18568, y: -0.051480000000000005), CGPoint(x: -0.18733000000000002, y: -0.05115), CGPoint(x: -0.18887, y: -0.050710000000000005), CGPoint(x: -0.19041000000000002, y: -0.05027), CGPoint(x: -0.19195, y: -0.05016), CGPoint(x: -0.19338000000000002, y: -0.05016), CGPoint(x: -0.19525, y: -0.05016), CGPoint(x: -0.19679000000000002, y: -0.05016), CGPoint(x: -0.19613, y: -0.052250000000000005), CGPoint(x: -0.19547, y: -0.054340000000000006), CGPoint(x: -0.19492, y: -0.05643), CGPoint(x: -0.19426000000000002, y: -0.058410000000000004), CGPoint(x: -0.19294000000000003, y: -0.06182000000000001), CGPoint(x: -0.19162, y: -0.06523000000000001), CGPoint(x: -0.1903, y: -0.06864), CGPoint(x: -0.18887, y: -0.07348), CGPoint(x: -0.18843000000000001, y: -0.07953), CGPoint(x: -0.18788000000000002, y: -0.08558), CGPoint(x: -0.18744000000000002, y: -0.09163), CGPoint(x: -0.20306, y: -0.03047), CGPoint(x: -0.01573, y: -0.5453800000000001), CGPoint(x: -0.01727, y: -0.54351), CGPoint(x: -0.018920000000000003, y: -0.54164), CGPoint(x: -0.02046, y: -0.5397700000000001), CGPoint(x: -0.022000000000000002, y: -0.53801), CGPoint(x: -0.021780000000000004, y: -0.53768), CGPoint(x: -0.02145, y: -0.53724), CGPoint(x: -0.02112, y: -0.53691), CGPoint(x: -0.02486, y: -0.53691), CGPoint(x: -0.02849, y: -0.53691), CGPoint(x: -0.03223, y: -0.53691), CGPoint(x: -0.03597, y: -0.53691), CGPoint(x: -0.03586, y: -0.53625), CGPoint(x: -0.03564, y: -0.5357000000000001), CGPoint(x: -0.035530000000000006, y: -0.53493), CGPoint(x: -0.03542, y: -0.53427), CGPoint(x: -0.03509, y: -0.53339), CGPoint(x: -0.034760000000000006, y: -0.5324), CGPoint(x: -0.03443, y: -0.5315200000000001), CGPoint(x: -0.03564, y: -0.53086), CGPoint(x: -0.041580000000000006, y: -0.53086), CGPoint(x: -0.04741, y: -0.53086), CGPoint(x: -0.05335000000000001, y: -0.53086), CGPoint(x: -0.05786000000000001, y: -0.53097), CGPoint(x: -0.05808000000000001, y: -0.5313), CGPoint(x: -0.058410000000000004, y: -0.53174), CGPoint(x: -0.05863, y: -0.53207), CGPoint(x: -0.06028000000000001, y: -0.5315200000000001), CGPoint(x: -0.06182000000000001, y: -0.53108), CGPoint(x: -0.06347000000000001, y: -0.5305300000000001), CGPoint(x: -0.06512000000000001, y: -0.5300900000000001), CGPoint(x: -0.09119000000000001, y: -0.5300900000000001), CGPoint(x: -0.11726, y: -0.5300900000000001), CGPoint(x: -0.14344, y: -0.5300900000000001), CGPoint(x: -0.16951, y: -0.5300900000000001), CGPoint(x: -0.17072, y: -0.5300900000000001), CGPoint(x: -0.17182000000000003, y: -0.5300900000000001), CGPoint(x: -0.17292000000000002, y: -0.5300900000000001), CGPoint(x: -0.17402000000000004, y: -0.5300900000000001), CGPoint(x: -0.21538000000000002, y: -0.5300900000000001), CGPoint(x: -0.25685, y: -0.5300900000000001), CGPoint(x: -0.30855000000000005, y: -0.5300900000000001), CGPoint(x: -0.33957, y: -0.5313), CGPoint(x: -0.33913000000000004, y: -0.53625), CGPoint(x: -0.33869000000000005, y: -0.5413100000000001), CGPoint(x: -0.33825, y: -0.5462600000000001), CGPoint(x: -0.31229, y: -0.5424100000000001), CGPoint(x: -0.23441000000000004, y: -0.52283), CGPoint(x: -0.18689, y: -0.5166700000000001), CGPoint(x: -0.15862, y: -0.51865), CGPoint(x: -0.13541, y: -0.5237100000000001), CGPoint(x: -0.10351000000000002, y: -0.5294300000000001), CGPoint(x: -0.07161000000000001, y: -0.5352600000000001), CGPoint(x: -0.03971, y: -0.5410900000000001), CGPoint(x: -0.10406000000000001, y: 0.54483), CGPoint(x: -0.10428, y: 0.54549), CGPoint(x: -0.10450000000000001, y: 0.54615), CGPoint(x: -0.10483, y: 0.54681), CGPoint(x: -0.10505, y: 0.54747), CGPoint(x: -0.10527, y: 0.5480200000000001), CGPoint(x: -0.10560000000000001, y: 0.5486800000000001), CGPoint(x: -0.10582, y: 0.54934), CGPoint(x: -0.10615000000000001, y: 0.55), CGPoint(x: -0.10626000000000002, y: 0.5498900000000001), CGPoint(x: -0.10648, y: 0.54978), CGPoint(x: -0.10659, y: 0.54967), CGPoint(x: -0.10681000000000002, y: 0.54956), CGPoint(x: -0.10703, y: 0.54934), CGPoint(x: -0.10714000000000001, y: 0.5492300000000001), CGPoint(x: -0.10736000000000001, y: 0.54912), CGPoint(x: -0.10714000000000001, y: 0.54879), CGPoint(x: -0.10681000000000002, y: 0.5482400000000001), CGPoint(x: -0.10637, y: 0.54769), CGPoint(x: -0.10593000000000001, y: 0.54725), CGPoint(x: -0.10549000000000001, y: 0.5467000000000001), CGPoint(x: -0.10505, y: 0.54615), CGPoint(x: -0.10461000000000001, y: 0.5456000000000001), CGPoint(x: -0.10417000000000001, y: 0.54505), CGPoint(x: -0.02519, y: 0.36828), CGPoint(x: -0.026290000000000004, y: 0.36949), CGPoint(x: -0.02849, y: 0.3718000000000001), CGPoint(x: -0.02959, y: 0.37290000000000006), CGPoint(x: -0.03179, y: 0.37521000000000004), CGPoint(x: -0.03289, y: 0.37642000000000003), CGPoint(x: -0.033990000000000006, y: 0.37752), CGPoint(x: -0.03619, y: 0.37983), CGPoint(x: -0.037290000000000004, y: 0.38104), CGPoint(x: -0.03839, y: 0.38214000000000004), CGPoint(x: -0.0407, y: 0.38445), CGPoint(x: -0.041800000000000004, y: 0.38555), CGPoint(x: -0.0429, y: 0.38676000000000005), CGPoint(x: -0.0407, y: 0.38445), CGPoint(x: -0.039490000000000004, y: 0.38324), CGPoint(x: -0.037290000000000004, y: 0.38104), CGPoint(x: -0.03619, y: 0.37983), CGPoint(x: -0.03509, y: 0.37873), CGPoint(x: -0.03289, y: 0.37642000000000003), CGPoint(x: -0.03179, y: 0.37521000000000004), CGPoint(x: -0.02959, y: 0.37290000000000006), CGPoint(x: -0.02849, y: 0.3718000000000001), CGPoint(x: -0.02739, y: 0.37059000000000003), CGPoint(x: -0.02519, y: 0.36828), CGPoint(x: -0.30448000000000003, y: 0.38093000000000005), CGPoint(x: 0.40953000000000006, y: 0.16181), CGPoint(x: 0.40942, y: 0.16192), CGPoint(x: 0.4092, y: 0.16203), CGPoint(x: 0.40909000000000006, y: 0.16203), CGPoint(x: 0.40898000000000007, y: 0.16214), CGPoint(x: 0.40887, y: 0.16225), CGPoint(x: 0.40865, y: 0.16236000000000003), CGPoint(x: 0.40854, y: 0.16247), CGPoint(x: 0.40843000000000007, y: 0.16258), CGPoint(x: 0.40821, y: 0.16269000000000003), CGPoint(x: 0.4081, y: 0.16269000000000003), CGPoint(x: 0.40799, y: 0.1628), CGPoint(x: 0.40799, y: 0.1628), CGPoint(x: 0.4081, y: 0.16269000000000003), CGPoint(x: 0.40821, y: 0.16269000000000003), CGPoint(x: 0.40832, y: 0.16258), CGPoint(x: 0.40854, y: 0.16247), CGPoint(x: 0.40865, y: 0.16236000000000003), CGPoint(x: 0.40876, y: 0.16225), CGPoint(x: 0.40898000000000007, y: 0.16214), CGPoint(x: 0.40909000000000006, y: 0.16203), CGPoint(x: 0.4092, y: 0.16203), CGPoint(x: 0.40931, y: 0.16192), CGPoint(x: 0.40953000000000006, y: 0.16181), CGPoint(x: -0.31119, y: -0.14982), CGPoint(x: -0.31141, y: -0.14740000000000003), CGPoint(x: -0.31163, y: -0.14509), CGPoint(x: -0.31196000000000007, y: -0.14190000000000003), CGPoint(x: -0.31218, y: -0.13948000000000002), CGPoint(x: -0.3124, y: -0.13717000000000001), CGPoint(x: -0.31251000000000007, y: -0.13739), CGPoint(x: -0.31273, y: -0.13761), CGPoint(x: -0.31295, y: -0.13805), CGPoint(x: -0.31372000000000005, y: -0.13816), CGPoint(x: -0.31548000000000004, y: -0.13783), CGPoint(x: -0.31735, y: -0.1375), CGPoint(x: -0.31911000000000006, y: -0.13717000000000001), CGPoint(x: -0.32153000000000004, y: -0.13673), CGPoint(x: -0.3229600000000001, y: -0.13684000000000002), CGPoint(x: -0.32384, y: -0.13805), CGPoint(x: -0.32472000000000006, y: -0.13926), CGPoint(x: -0.32582000000000005, y: -0.1408), CGPoint(x: -0.32659000000000005, y: -0.14201), CGPoint(x: -0.32615, y: -0.14322000000000001), CGPoint(x: -0.32318, y: -0.14454), CGPoint(x: -0.32021000000000005, y: -0.14586000000000002), CGPoint(x: -0.31625, y: -0.14762000000000003), CGPoint(x: -0.31317000000000006, y: -0.14894000000000002), CGPoint(x: 0.09933000000000002, y: 0.27841), CGPoint(x: 0.09889, y: 0.27874000000000004), CGPoint(x: 0.09801, y: 0.27929000000000004), CGPoint(x: 0.09757, y: 0.27951000000000004), CGPoint(x: 0.09669000000000001, y: 0.28006000000000003), CGPoint(x: 0.09625, y: 0.28028000000000003), CGPoint(x: 0.09581, y: 0.28061), CGPoint(x: 0.09493000000000001, y: 0.28116), CGPoint(x: 0.09449000000000002, y: 0.2813800000000001), CGPoint(x: 0.09405000000000001, y: 0.28171), CGPoint(x: 0.09317, y: 0.28215), CGPoint(x: 0.09273, y: 0.28248), CGPoint(x: 0.09229000000000001, y: 0.2827), CGPoint(x: 0.09317, y: 0.28215), CGPoint(x: 0.09361, y: 0.28193), CGPoint(x: 0.09449000000000002, y: 0.2813800000000001), CGPoint(x: 0.09493000000000001, y: 0.28116), CGPoint(x: 0.09537000000000001, y: 0.2808300000000001), CGPoint(x: 0.09625, y: 0.28028000000000003), CGPoint(x: 0.09669000000000001, y: 0.28006000000000003), CGPoint(x: 0.09757, y: 0.27951000000000004), CGPoint(x: 0.09801, y: 0.27929000000000004), CGPoint(x: 0.09845000000000001, y: 0.27896000000000004), CGPoint(x: 0.09933000000000002, y: 0.27841), CGPoint(x: 0.08701000000000002, y: 0.16335), CGPoint(x: 0.08679, y: 0.16071000000000002), CGPoint(x: 0.08635000000000001, y: 0.15543), CGPoint(x: 0.08624000000000001, y: 0.15279), CGPoint(x: 0.0858, y: 0.14751), CGPoint(x: 0.08558, y: 0.14487000000000003), CGPoint(x: 0.08536, y: 0.14223000000000002), CGPoint(x: 0.08492000000000001, y: 0.13684000000000002), CGPoint(x: 0.08481000000000001, y: 0.1342), CGPoint(x: 0.08459, y: 0.13156), CGPoint(x: 0.08415, y: 0.12628), CGPoint(x: 0.08393000000000002, y: 0.12364000000000001), CGPoint(x: 0.08371, y: 0.12100000000000001), CGPoint(x: 0.08415, y: 0.12628), CGPoint(x: 0.08437000000000001, y: 0.12892), CGPoint(x: 0.08481000000000001, y: 0.1342), CGPoint(x: 0.08492000000000001, y: 0.13684000000000002), CGPoint(x: 0.08514000000000001, y: 0.13959000000000002), CGPoint(x: 0.08558, y: 0.14487000000000003), CGPoint(x: 0.0858, y: 0.14751), CGPoint(x: 0.08624000000000001, y: 0.15279), CGPoint(x: 0.08635000000000001, y: 0.15543), CGPoint(x: 0.08657000000000001, y: 0.15807000000000002), CGPoint(x: 0.08701000000000002, y: 0.16335), CGPoint(x: 0.23419000000000004, y: -0.22506), CGPoint(x: 0.23540000000000003, y: -0.22165000000000004), CGPoint(x: 0.23661000000000004, y: -0.21824000000000002), CGPoint(x: 0.23771, y: -0.21483000000000002), CGPoint(x: 0.23859000000000002, y: -0.21230000000000002), CGPoint(x: 0.24409, y: -0.19393000000000002), CGPoint(x: 0.25102, y: -0.17061), CGPoint(x: 0.25795, y: -0.14729), CGPoint(x: 0.26488, y: -0.12408000000000001), CGPoint(x: 0.26686000000000004, y: -0.11825000000000001), CGPoint(x: 0.26730000000000004, y: -0.11836), CGPoint(x: 0.26774000000000003, y: -0.11847000000000002), CGPoint(x: 0.26719000000000004, y: -0.12177000000000002), CGPoint(x: 0.26642000000000005, y: -0.12606), CGPoint(x: 0.26565, y: -0.13035), CGPoint(x: 0.26477, y: -0.13475), CGPoint(x: 0.26389, y: -0.13783), CGPoint(x: 0.26246, y: -0.14179), CGPoint(x: 0.26114000000000004, y: -0.14586000000000002), CGPoint(x: 0.25971000000000005, y: -0.14982), CGPoint(x: 0.25586000000000003, y: -0.16104000000000002), CGPoint(x: 0.25124, y: -0.17468), CGPoint(x: 0.24508000000000002, y: -0.19305), CGPoint(x: 0.23881, y: -0.21131), CGPoint(x: -0.29073, y: 0.1375), CGPoint(x: -0.33825, y: 0.026510000000000002), CGPoint(x: -0.33539, y: -0.030250000000000003), CGPoint(x: -0.33539, y: -0.030030000000000005), CGPoint(x: -0.33539, y: -0.02959), CGPoint(x: -0.33539, y: -0.02926), CGPoint(x: -0.33539, y: -0.028820000000000002), CGPoint(x: -0.33539, y: -0.0286), CGPoint(x: -0.33539, y: -0.028270000000000003), CGPoint(x: -0.33539, y: -0.02783), CGPoint(x: -0.33539, y: -0.027610000000000003), CGPoint(x: -0.33539, y: -0.027280000000000002), CGPoint(x: -0.33539, y: -0.026840000000000003), CGPoint(x: -0.33539, y: -0.02662), CGPoint(x: -0.33539, y: -0.026290000000000004), CGPoint(x: -0.33539, y: -0.026840000000000003), CGPoint(x: -0.33539, y: -0.027060000000000004), CGPoint(x: -0.33539, y: -0.027610000000000003), CGPoint(x: -0.33539, y: -0.02783), CGPoint(x: -0.33539, y: -0.028050000000000002), CGPoint(x: -0.33539, y: -0.0286), CGPoint(x: -0.33539, y: -0.028820000000000002), CGPoint(x: -0.33539, y: -0.02926), CGPoint(x: -0.33539, y: -0.02959), CGPoint(x: -0.33539, y: -0.02981), CGPoint(x: -0.33539, y: -0.030250000000000003), CGPoint(x: -0.33616, y: -0.07656), CGPoint(x: -0.33561, y: -0.07612000000000001), CGPoint(x: -0.33506, y: -0.07557), CGPoint(x: -0.33451000000000003, y: -0.07513), CGPoint(x: -0.33396, y: -0.07469), CGPoint(x: -0.33341, y: -0.07425000000000001), CGPoint(x: -0.33286, y: -0.07381000000000001), CGPoint(x: -0.33231, y: -0.07337), CGPoint(x: -0.33176, y: -0.07282), CGPoint(x: -0.33319000000000004, y: -0.07293000000000001), CGPoint(x: -0.33462000000000003, y: -0.07293000000000001), CGPoint(x: -0.33605, y: -0.07293000000000001), CGPoint(x: -0.33748000000000006, y: -0.07293000000000001), CGPoint(x: -0.33968000000000004, y: -0.07304000000000001), CGPoint(x: -0.34111, y: -0.07304000000000001), CGPoint(x: -0.34254, y: -0.07304000000000001), CGPoint(x: -0.34276, y: -0.07326000000000002), CGPoint(x: -0.3418800000000001, y: -0.07370000000000002), CGPoint(x: -0.341, y: -0.07414000000000001), CGPoint(x: -0.34012, y: -0.07458000000000001), CGPoint(x: -0.33924000000000004, y: -0.07502), CGPoint(x: -0.33836, y: -0.07546), CGPoint(x: -0.33748000000000006, y: -0.07590000000000001), CGPoint(x: -0.3366, y: -0.07634), CGPoint(x: 0.15279, y: -0.06105000000000001), CGPoint(x: -0.20647000000000001, y: -0.23606000000000002), CGPoint(x: -0.20790000000000003, y: -0.23859000000000002), CGPoint(x: -0.21065000000000003, y: -0.24365000000000003), CGPoint(x: -0.21208000000000002, y: -0.24618), CGPoint(x: -0.21494000000000002, y: -0.25113), CGPoint(x: -0.21626, y: -0.25366), CGPoint(x: -0.21769000000000002, y: -0.25619000000000003), CGPoint(x: -0.22055000000000002, y: -0.26114000000000004), CGPoint(x: -0.22198000000000004, y: -0.26367), CGPoint(x: -0.22330000000000003, y: -0.2662), CGPoint(x: -0.22616000000000003, y: -0.27126000000000006), CGPoint(x: -0.22759000000000001, y: -0.27368000000000003), CGPoint(x: -0.22902, y: -0.27621), CGPoint(x: -0.22616000000000003, y: -0.27126000000000006), CGPoint(x: -0.22473000000000004, y: -0.26873), CGPoint(x: -0.22198000000000004, y: -0.26367), CGPoint(x: -0.22055000000000002, y: -0.26114000000000004), CGPoint(x: -0.21912, y: -0.25872), CGPoint(x: -0.21626, y: -0.25366), CGPoint(x: -0.21494000000000002, y: -0.25113), CGPoint(x: -0.21208000000000002, y: -0.24618), CGPoint(x: -0.21065000000000003, y: -0.24365000000000003), CGPoint(x: -0.20922000000000002, y: -0.24112000000000003), CGPoint(x: -0.20647000000000001, y: -0.23606000000000002), CGPoint(x: -0.09141, y: -0.5220600000000001), CGPoint(x: -0.08536, y: -0.5192), CGPoint(x: -0.0814, y: -0.5173300000000001), CGPoint(x: -0.07535000000000001, y: -0.5144700000000001), CGPoint(x: -0.07139000000000001, y: -0.51249), CGPoint(x: -0.06534000000000001, y: -0.50963), CGPoint(x: -0.05929000000000001, y: -0.50677), CGPoint(x: -0.05918, y: -0.50699), CGPoint(x: -0.058960000000000005, y: -0.50732), CGPoint(x: -0.05874000000000001, y: -0.50754), CGPoint(x: -0.05863, y: -0.5077600000000001), CGPoint(x: -0.05852, y: -0.50798), CGPoint(x: -0.05808000000000001, y: -0.5082000000000001), CGPoint(x: -0.05775, y: -0.50831), CGPoint(x: -0.0572, y: -0.50853), CGPoint(x: -0.05687000000000001, y: -0.50875), CGPoint(x: -0.05632000000000001, y: -0.50897), CGPoint(x: -0.05577000000000001, y: -0.50919), CGPoint(x: -0.05786000000000001, y: -0.51007), CGPoint(x: -0.06457, y: -0.51249), CGPoint(x: -0.06908, y: -0.51403), CGPoint(x: -0.07579000000000001, y: -0.51645), CGPoint(x: -0.0825, y: -0.51887), CGPoint(x: -0.08701000000000002, y: -0.5205200000000001), CGPoint(x: 0.22957000000000002, y: -0.2376), CGPoint(x: 0.22946000000000003, y: -0.23782000000000003), CGPoint(x: 0.22935, y: -0.23815000000000003), CGPoint(x: 0.22924000000000003, y: -0.23826), CGPoint(x: 0.22913000000000003, y: -0.23848), CGPoint(x: 0.22902, y: -0.23881), CGPoint(x: 0.2288, y: -0.23903000000000002), CGPoint(x: 0.22869000000000003, y: -0.23925000000000002), CGPoint(x: 0.22869000000000003, y: -0.23947000000000002), CGPoint(x: 0.22847, y: -0.23969000000000004), CGPoint(x: 0.22836000000000004, y: -0.23958000000000002), CGPoint(x: 0.22825, y: -0.23947000000000002), CGPoint(x: 0.22803000000000004, y: -0.23947000000000002), CGPoint(x: 0.22803000000000004, y: -0.23936000000000002), CGPoint(x: 0.22781, y: -0.23925000000000002), CGPoint(x: 0.22781, y: -0.23914000000000002), CGPoint(x: 0.22814, y: -0.23892000000000002), CGPoint(x: 0.22825, y: -0.23881), CGPoint(x: 0.22847, y: -0.23859000000000002), CGPoint(x: 0.22869000000000003, y: -0.23837000000000003), CGPoint(x: 0.22891000000000003, y: -0.23815000000000003), CGPoint(x: 0.22913000000000003, y: -0.23804000000000003), CGPoint(x: 0.22924000000000003, y: -0.23793), CGPoint(x: 0.22946000000000003, y: -0.23771), CGPoint(x: -0.39215, y: -0.35871000000000003), CGPoint(x: -0.39435000000000003, y: -0.35662), CGPoint(x: -0.39754, y: -0.35343), CGPoint(x: -0.39974000000000004, y: -0.35134000000000004), CGPoint(x: -0.40304, y: -0.34815), CGPoint(x: -0.40513000000000005, y: -0.34606000000000003), CGPoint(x: -0.40733, y: -0.34386), CGPoint(x: -0.40931, y: -0.34166), CGPoint(x: -0.40887, y: -0.34155), CGPoint(x: -0.40821, y: -0.34133), CGPoint(x: -0.40777, y: -0.34122), CGPoint(x: -0.40711, y: -0.34089), CGPoint(x: -0.40667, y: -0.34078), CGPoint(x: -0.40623000000000004, y: -0.34067), CGPoint(x: -0.40590000000000004, y: -0.34078), CGPoint(x: -0.40579000000000004, y: -0.34089), CGPoint(x: -0.40568000000000004, y: -0.34122), CGPoint(x: -0.40557000000000004, y: -0.34133), CGPoint(x: -0.40304, y: -0.34463000000000005), CGPoint(x: -0.40139, y: -0.3468300000000001), CGPoint(x: -0.39974000000000004, y: -0.34892), CGPoint(x: -0.39721, y: -0.35222000000000003), CGPoint(x: -0.39545, y: -0.35442), CGPoint(x: -0.39303000000000005, y: -0.35761000000000004), CGPoint(x: 0.22781, y: -0.24365000000000003), CGPoint(x: 0.22781, y: -0.24354000000000003), CGPoint(x: 0.22792, y: -0.24354000000000003), CGPoint(x: 0.22792, y: -0.24343), CGPoint(x: 0.22803000000000004, y: -0.24343), CGPoint(x: 0.22814, y: -0.24321), CGPoint(x: 0.22825, y: -0.2431), CGPoint(x: 0.22836000000000004, y: -0.24299000000000004), CGPoint(x: 0.22847, y: -0.24288), CGPoint(x: 0.22847, y: -0.24277000000000004), CGPoint(x: 0.22858000000000003, y: -0.24277000000000004), CGPoint(x: 0.22858000000000003, y: -0.24266000000000001), CGPoint(x: 0.22858000000000003, y: -0.24266000000000001), CGPoint(x: 0.22858000000000003, y: -0.24277000000000004), CGPoint(x: 0.22847, y: -0.24277000000000004), CGPoint(x: 0.22847, y: -0.24288), CGPoint(x: 0.22836000000000004, y: -0.24299000000000004), CGPoint(x: 0.22825, y: -0.2431), CGPoint(x: 0.22814, y: -0.24321), CGPoint(x: 0.22803000000000004, y: -0.24332000000000004), CGPoint(x: 0.22803000000000004, y: -0.24343), CGPoint(x: 0.22792, y: -0.24354000000000003), CGPoint(x: 0.22781, y: -0.24354000000000003), CGPoint(x: 0.22781, y: -0.24365000000000003), CGPoint(x: -0.38753000000000004, y: -0.33176), CGPoint(x: -0.38555, y: -0.33176), CGPoint(x: -0.3834600000000001, y: -0.33176), CGPoint(x: -0.38148000000000004, y: -0.33176), CGPoint(x: -0.37939, y: -0.33176), CGPoint(x: -0.3773000000000001, y: -0.33176), CGPoint(x: -0.37653000000000003, y: -0.33176), CGPoint(x: -0.37620000000000003, y: -0.33176), CGPoint(x: -0.37587000000000004, y: -0.33165), CGPoint(x: -0.37576000000000004, y: -0.33044), CGPoint(x: -0.37576000000000004, y: -0.32857000000000003), CGPoint(x: -0.37576000000000004, y: -0.3267), CGPoint(x: -0.37576000000000004, y: -0.32483), CGPoint(x: -0.37576000000000004, y: -0.32307), CGPoint(x: -0.37565000000000004, y: -0.32186000000000003), CGPoint(x: -0.37532000000000004, y: -0.32175), CGPoint(x: -0.37510000000000004, y: -0.32175), CGPoint(x: -0.37356000000000006, y: -0.32494), CGPoint(x: -0.36971000000000004, y: -0.33440000000000003), CGPoint(x: -0.3657500000000001, y: -0.34386), CGPoint(x: -0.36179000000000006, y: -0.35332), CGPoint(x: -0.35783, y: -0.36278), CGPoint(x: -0.35398, y: -0.37235000000000007), CGPoint(x: -0.35387, y: -0.37257), CGPoint(x: -0.35376, y: -0.37290000000000006), CGPoint(x: -0.35365, y: -0.37323), CGPoint(x: -0.35783, y: -0.36806000000000005), CGPoint(x: -0.36421000000000003, y: -0.36036), CGPoint(x: -0.37059000000000003, y: -0.35255000000000003), CGPoint(x: -0.37697, y: -0.34474000000000005), CGPoint(x: -0.38324, y: -0.33704), CGPoint(x: -0.28853, y: -0.36377000000000004), CGPoint(x: -0.28853, y: -0.36399000000000004), CGPoint(x: -0.28864000000000006, y: -0.36432000000000003), CGPoint(x: -0.28875000000000006, y: -0.36443000000000003), CGPoint(x: -0.28886, y: -0.36476000000000003), CGPoint(x: -0.28776, y: -0.3652), CGPoint(x: -0.28622000000000003, y: -0.36586), CGPoint(x: -0.28523, y: -0.36619), CGPoint(x: -0.28358, y: -0.36685000000000006), CGPoint(x: -0.28259000000000006, y: -0.36729), CGPoint(x: -0.28105, y: -0.36795000000000005), CGPoint(x: -0.2805, y: -0.36784), CGPoint(x: -0.2805, y: -0.36707), CGPoint(x: -0.2805, y: -0.36652), CGPoint(x: -0.2805, y: -0.36597), CGPoint(x: -0.2805, y: -0.3652), CGPoint(x: -0.2805, y: -0.36465000000000003), CGPoint(x: -0.2805, y: -0.36377000000000004), CGPoint(x: -0.28149, y: -0.36377000000000004), CGPoint(x: -0.28303, y: -0.36377000000000004), CGPoint(x: -0.28402, y: -0.36377000000000004), CGPoint(x: -0.28556000000000004, y: -0.36377000000000004), CGPoint(x: -0.28655, y: -0.36377000000000004), CGPoint(x: -0.28798, y: -0.36377000000000004), CGPoint(x: -0.09801, y: -0.38005), CGPoint(x: -0.09911, y: -0.38005), CGPoint(x: -0.09988000000000001, y: -0.38005), CGPoint(x: -0.10098000000000001, y: -0.38005), CGPoint(x: -0.10219, y: -0.38005), CGPoint(x: -0.10285000000000001, y: -0.38005), CGPoint(x: -0.10406000000000001, y: -0.38005), CGPoint(x: -0.10439000000000001, y: -0.38082000000000005), CGPoint(x: -0.10472000000000002, y: -0.38137000000000004), CGPoint(x: -0.10516000000000002, y: -0.38214000000000004), CGPoint(x: -0.10549000000000001, y: -0.38291000000000003), CGPoint(x: -0.10582, y: -0.3834600000000001), CGPoint(x: -0.10626000000000002, y: -0.38423), CGPoint(x: -0.10593000000000001, y: -0.38423), CGPoint(x: -0.10571000000000001, y: -0.38423), CGPoint(x: -0.10549000000000001, y: -0.38434), CGPoint(x: -0.10516000000000002, y: -0.38434), CGPoint(x: -0.10494, y: -0.38434), CGPoint(x: -0.10428, y: -0.38412), CGPoint(x: -0.10307000000000001, y: -0.38324), CGPoint(x: -0.10219, y: -0.38280000000000003), CGPoint(x: -0.10098000000000001, y: -0.38192000000000004), CGPoint(x: -0.09966000000000001, y: -0.38115), CGPoint(x: -0.09889, y: -0.3806), CGPoint(x: -0.2255, y: -0.3468300000000001), CGPoint(x: -0.22462000000000001, y: -0.34540000000000004), CGPoint(x: -0.22374000000000002, y: -0.34397), CGPoint(x: -0.22297, y: -0.34254), CGPoint(x: -0.22209, y: -0.341), CGPoint(x: -0.22132000000000002, y: -0.33957), CGPoint(x: -0.22044000000000002, y: -0.33814000000000005), CGPoint(x: -0.21956, y: -0.33671), CGPoint(x: -0.21879, y: -0.33528), CGPoint(x: -0.21901, y: -0.34397), CGPoint(x: -0.21923000000000004, y: -0.35277000000000003), CGPoint(x: -0.21956, y: -0.36146000000000006), CGPoint(x: -0.21978000000000003, y: -0.37015000000000003), CGPoint(x: -0.22011000000000003, y: -0.38324), CGPoint(x: -0.22044000000000002, y: -0.39193000000000006), CGPoint(x: -0.22066000000000002, y: -0.40073000000000003), CGPoint(x: -0.22110000000000002, y: -0.40139), CGPoint(x: -0.22165000000000004, y: -0.39413000000000004), CGPoint(x: -0.22220000000000004, y: -0.38687000000000005), CGPoint(x: -0.22286000000000003, y: -0.37961000000000006), CGPoint(x: -0.22341000000000003, y: -0.37224), CGPoint(x: -0.22396000000000002, y: -0.36498), CGPoint(x: -0.22462000000000001, y: -0.35772000000000004), CGPoint(x: -0.22517, y: -0.35046000000000005), CGPoint(x: -0.21219000000000002, y: -0.3296700000000001), CGPoint(x: -0.21175000000000002, y: -0.33), CGPoint(x: -0.21120000000000003, y: -0.33033), CGPoint(x: -0.21076, y: -0.33055), CGPoint(x: -0.21032000000000003, y: -0.33088000000000006), CGPoint(x: -0.20988, y: -0.33121), CGPoint(x: -0.20933000000000002, y: -0.33154), CGPoint(x: -0.20889000000000002, y: -0.33176), CGPoint(x: -0.20845000000000002, y: -0.33209000000000005), CGPoint(x: -0.20889000000000002, y: -0.33440000000000003), CGPoint(x: -0.20944000000000004, y: -0.33682000000000006), CGPoint(x: -0.20988, y: -0.33913000000000004), CGPoint(x: -0.21032000000000003, y: -0.34155), CGPoint(x: -0.21109, y: -0.34507), CGPoint(x: -0.21153000000000002, y: -0.3473800000000001), CGPoint(x: -0.21208000000000002, y: -0.34969000000000006), CGPoint(x: -0.21230000000000002, y: -0.34958000000000006), CGPoint(x: -0.21230000000000002, y: -0.34694), CGPoint(x: -0.21219000000000002, y: -0.34430000000000005), CGPoint(x: -0.21219000000000002, y: -0.34166), CGPoint(x: -0.21219000000000002, y: -0.33902), CGPoint(x: -0.21219000000000002, y: -0.33638000000000007), CGPoint(x: -0.21219000000000002, y: -0.33363000000000004), CGPoint(x: -0.21219000000000002, y: -0.33099), CGPoint(x: 0.27775000000000005, y: -0.41217), CGPoint(x: 0.27643000000000006, y: -0.4136), CGPoint(x: 0.27555, y: -0.41459000000000007), CGPoint(x: 0.27434000000000003, y: -0.41591), CGPoint(x: 0.27302000000000004, y: -0.41723000000000005), CGPoint(x: 0.27324000000000004, y: -0.41635000000000005), CGPoint(x: 0.27423000000000003, y: -0.4139300000000001), CGPoint(x: 0.27522, y: -0.41140000000000004), CGPoint(x: 0.27588000000000007, y: -0.40953000000000006), CGPoint(x: 0.27676, y: -0.40766), CGPoint(x: 0.27709000000000006, y: -0.40777), CGPoint(x: 0.27731, y: -0.4078800000000001), CGPoint(x: 0.27797, y: -0.40711), CGPoint(x: 0.27907, y: -0.40535000000000004), CGPoint(x: 0.27984000000000003, y: -0.40414000000000005), CGPoint(x: 0.28094, y: -0.40249), CGPoint(x: 0.28182, y: -0.4011700000000001), CGPoint(x: 0.28215, y: -0.40139), CGPoint(x: 0.28248, y: -0.40161), CGPoint(x: 0.28292, y: -0.40183), CGPoint(x: 0.28479000000000004, y: -0.39809000000000005), CGPoint(x: 0.28622000000000003, y: -0.39534), CGPoint(x: 0.28809000000000007, y: -0.39171000000000006), CGPoint(x: 0.28996000000000005, y: -0.38797000000000004), CGPoint(x: 0.29073, y: -0.3872), CGPoint(x: 0.29117000000000004, y: -0.38742000000000004), CGPoint(x: 0.29161000000000004, y: -0.38753000000000004), CGPoint(x: 0.29205000000000003, y: -0.3872), CGPoint(x: 0.29271, y: -0.38632000000000005), CGPoint(x: 0.29337, y: -0.38544), CGPoint(x: 0.29392, y: -0.38478), CGPoint(x: 0.29447, y: -0.38412), CGPoint(x: 0.29480000000000006, y: -0.38434), CGPoint(x: 0.29502, y: -0.38445), CGPoint(x: 0.29557, y: -0.38445), CGPoint(x: 0.29689, y: -0.38368), CGPoint(x: 0.29788000000000003, y: -0.38324), CGPoint(x: 0.2992, y: -0.38247000000000003), CGPoint(x: 0.30041, y: -0.38181000000000004), CGPoint(x: 0.30019, y: -0.38368), CGPoint(x: 0.29997, y: -0.3861), CGPoint(x: 0.29964, y: -0.38863000000000003), CGPoint(x: 0.29942, y: -0.3905), CGPoint(x: 0.29942, y: -0.39182000000000006), CGPoint(x: 0.29986, y: -0.39215), CGPoint(x: 0.30008, y: -0.39226), CGPoint(x: 0.30052, y: -0.39248000000000005), CGPoint(x: 0.30239, y: -0.39116000000000006), CGPoint(x: 0.30426000000000003, y: -0.38984), CGPoint(x: 0.30558, y: -0.38885000000000003), CGPoint(x: 0.30745000000000006, y: -0.38742000000000004), CGPoint(x: 0.30833, y: -0.38654), CGPoint(x: 0.30866000000000005, y: -0.38599), CGPoint(x: 0.30910000000000004, y: -0.38522000000000006), CGPoint(x: 0.30954, y: -0.38445), CGPoint(x: 0.30998000000000003, y: -0.38423), CGPoint(x: 0.31031000000000003, y: -0.38445), CGPoint(x: 0.31064, y: -0.38478), CGPoint(x: 0.30657, y: -0.38830000000000003), CGPoint(x: 0.29832000000000003, y: -0.39512), CGPoint(x: 0.29007, y: -0.40194), CGPoint(x: 0.28391, y: -0.40711), CGPoint(x: -0.03619, y: -0.39655), CGPoint(x: -0.04059000000000001, y: -0.39556), CGPoint(x: -0.04499, y: -0.39446), CGPoint(x: -0.05049000000000001, y: -0.39325), CGPoint(x: -0.05324, y: -0.3916), CGPoint(x: -0.05137, y: -0.38830000000000003), CGPoint(x: -0.0495, y: -0.385), CGPoint(x: -0.04752000000000001, y: -0.38181000000000004), CGPoint(x: -0.04587000000000001, y: -0.37906000000000006), CGPoint(x: -0.04488000000000001, y: -0.37818), CGPoint(x: -0.044000000000000004, y: -0.3773000000000001), CGPoint(x: -0.043120000000000006, y: -0.37653000000000003), CGPoint(x: -0.04191, y: -0.37598000000000004), CGPoint(x: -0.04048, y: -0.37543000000000004), CGPoint(x: -0.038610000000000005, y: -0.37488000000000005), CGPoint(x: -0.037070000000000006, y: -0.37444), CGPoint(x: -0.04015, y: -0.37169), CGPoint(x: -0.04488000000000001, y: -0.36828), CGPoint(x: -0.0495, y: -0.36487), CGPoint(x: -0.055330000000000004, y: -0.36069000000000007), CGPoint(x: -0.057420000000000006, y: -0.36311000000000004), CGPoint(x: -0.0594, y: -0.36564), CGPoint(x: -0.06138000000000001, y: -0.36806000000000005), CGPoint(x: -0.06347000000000001, y: -0.37059000000000003), CGPoint(x: -0.05665, y: -0.37708), CGPoint(x: -0.04807000000000001, y: -0.38522000000000006), CGPoint(x: -0.04125, y: -0.39171000000000006)
-        ]
-        let denominator = max(1, coords.count - 1)
-        return coords.enumerated().map { index, pt in
-            ShapePoint(
-                point: pt,
-                role: index.isMultiple(of: 3) ? "logo-flame-spark" : "logo-flame-inner",
-                progress: Double(index) / Double(denominator)
-            )
+        SwarmProviderLogoDotMap.hermesAgent().map {
+            ShapePoint(point: $0.point, role: $0.role, progress: $0.progress)
         }
     }
 
@@ -2358,6 +2570,7 @@ public final class SwarmSimulation {
             under: colorPalette,
             role: parsed.role,
             toneSeed: Self.flameToneSeed(for: p, at: index),
+            colorScheme: renderScheme,
             sourceLogoColor: p.logoColor
         )
         let opacity = Self.logoOpacity(for: p, role: parsed.role, colorScheme: renderScheme)
@@ -2393,37 +2606,130 @@ public final class SwarmSimulation {
         under palette: SwarmColorPalette,
         role: String?,
         toneSeed: Double,
+        colorScheme: ColorScheme,
         sourceLogoColor: RGBA? = nil
     ) -> RGBA {
         if let sourceLogoColor {
-            return contrastAdjustedSourceLogoColor(sourceLogoColor)
+            return contrastAdjustedSourceLogoColor(sourceLogoColor, colorScheme: colorScheme)
         }
 
-        // To ensure all logos are pristine, easily distinguishable, and use the correct colors,
-        // we use their canonical brand colors across all custom palette states.
-        let base: RGBA
-        if provider == .xAI {
-            base = RGBA(r: 0.95, g: 0.95, b: 0.98) // Beautiful glowing silver-white for xAI
-        } else {
-            base = DesignSystemColors.providerRGBA(for: provider)
-        }
+        let base = paletteAwareProviderLogoBase(for: provider, under: palette, role: role, toneSeed: toneSeed)
 
         if let r = role {
-            let sourceLuminance = sourceLogoColor.map(Self.relativeLuminance) ?? 0.5
-            let seed = ((toneSeed - floor(toneSeed)) * 0.35 + sourceLuminance * 0.65).clamped(to: 0...1)
+            let seed = (toneSeed - floor(toneSeed)).clamped(to: 0...1)
             let hot = base.lightened(by: r == "logo-flame-inner" ? 0.24 : 0.10)
             let shadow = base.darkened(by: r == "logo-flame-outer" ? 0.30 : 0.15)
-            return shadow.mix(with: hot, amount: seed)
+            return contrastAdjustedForScheme(shadow.mix(with: hot, amount: seed), colorScheme: colorScheme)
         }
-        return base
+        return contrastAdjustedForScheme(base, colorScheme: colorScheme)
     }
 
-    private static func contrastAdjustedSourceLogoColor(_ color: RGBA) -> RGBA {
+    static func providerLogoColorForTesting(
+        _ provider: AgentProvider,
+        under palette: SwarmColorPalette,
+        role: String?,
+        toneSeed: Double,
+        colorScheme: ColorScheme,
+        sourceLogoColor: RGBA? = nil
+    ) -> RGBA {
+        colorForProvider(
+            provider,
+            under: palette,
+            role: role,
+            toneSeed: toneSeed,
+            colorScheme: colorScheme,
+            sourceLogoColor: sourceLogoColor
+        )
+    }
+
+    private static func paletteAwareProviderLogoBase(
+        for provider: AgentProvider,
+        under palette: SwarmColorPalette,
+        role: String?,
+        toneSeed: Double
+    ) -> RGBA {
+        let brand: RGBA = provider == .xAI
+            ? RGBA(r: 0.95, g: 0.95, b: 0.98)
+            : DesignSystemColors.providerRGBA(for: provider)
+        guard palette != .defaultEmber else { return brand }
+
+        let paletteColor = logoPaletteColor(for: palette, role: role, toneSeed: toneSeed)
+        let amount: Double = (provider == .factory || provider == .hermes) ? 0.84 : 0.58
+        return brand.mix(with: paletteColor, amount: amount)
+    }
+
+    private static func logoPaletteColor(
+        for palette: SwarmColorPalette,
+        role: String?,
+        toneSeed: Double
+    ) -> RGBA {
+        let choices: [RGBA]
+        switch palette {
+        case .defaultEmber:
+            choices = [
+                RGBA(r: 1.00, g: 0.78, b: 0.15),
+                RGBA(r: 0.96, g: 0.36, b: 0.04),
+                RGBA(r: 1.00, g: 0.92, b: 0.50)
+            ]
+        case .auroraTeal:
+            choices = [
+                RGBA(r: 0.00, g: 0.98, b: 0.88),
+                RGBA(r: 0.18, g: 0.72, b: 1.00),
+                RGBA(r: 0.72, g: 0.48, b: 1.00)
+            ]
+        case .sunsetCrimson:
+            choices = [
+                RGBA(r: 1.00, g: 0.50, b: 0.28),
+                RGBA(r: 1.00, g: 0.16, b: 0.50),
+                RGBA(r: 0.72, g: 0.22, b: 1.00)
+            ]
+        case .cyberpunkViolet:
+            choices = [
+                RGBA(r: 0.10, g: 0.92, b: 1.00),
+                RGBA(r: 1.00, g: 0.16, b: 0.96),
+                RGBA(r: 0.72, g: 0.32, b: 1.00)
+            ]
+        case .forestMoss:
+            choices = [
+                RGBA(r: 0.68, g: 0.88, b: 0.46),
+                RGBA(r: 0.32, g: 0.74, b: 0.44),
+                RGBA(r: 0.96, g: 0.72, b: 0.24)
+            ]
+        case .solarFlare:
+            choices = [
+                RGBA(r: 1.00, g: 0.95, b: 0.66),
+                RGBA(r: 1.00, g: 0.58, b: 0.10),
+                RGBA(r: 1.00, g: 0.20, b: 0.04)
+            ]
+        }
+
+        let shiftedSeed: Double
+        switch role {
+        case "logo-flame-outer": shiftedSeed = toneSeed + 0.18
+        case "logo-flame-spark": shiftedSeed = toneSeed + 0.58
+        default: shiftedSeed = toneSeed
+        }
+        let normalized = shiftedSeed - floor(shiftedSeed)
+        let scaled = normalized * Double(choices.count)
+        let index = min(choices.count - 1, Int(scaled))
+        let nextIndex = (index + 1) % choices.count
+        let local = scaled - Double(index)
+        return choices[index].mix(with: choices[nextIndex], amount: local)
+    }
+
+    private static func contrastAdjustedSourceLogoColor(_ color: RGBA, colorScheme: ColorScheme) -> RGBA {
+        contrastAdjustedForScheme(color, colorScheme: colorScheme)
+    }
+
+    private static func contrastAdjustedForScheme(_ color: RGBA, colorScheme: ColorScheme) -> RGBA {
         let luminance = relativeLuminance(color)
-        if luminance < 0.08 {
+        if colorScheme == .light, luminance > 0.74 {
+            return color.darkened(by: 0.42)
+        }
+        if colorScheme == .dark, luminance < 0.08 {
             return RGBA(r: 0.84, g: 0.86, b: 0.90, a: color.a)
         }
-        if luminance < 0.22 {
+        if colorScheme == .dark, luminance < 0.22 {
             return color.lightened(by: 0.46)
         }
         return color
@@ -2432,6 +2738,234 @@ public final class SwarmSimulation {
     private static func relativeLuminance(_ color: RGBA) -> Double {
         0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b
     }
+}
+
+enum SwarmProviderLogoDotMap {
+    struct Point: Equatable {
+        let point: CGPoint
+        let role: String
+        let progress: Double
+    }
+
+    static func hermesAgent() -> [Point] {
+        decodePackedPoints(hermesAgentPacked, outerRadius: 0.74)
+    }
+
+    static func factory() -> [Point] {
+        decodePackedPoints(factoryPacked, outerRadius: 0.80)
+    }
+
+    private static func decodePackedPoints(_ packed: String, outerRadius: Double) -> [Point] {
+        guard let data = Data(base64Encoded: packed, options: .ignoreUnknownCharacters) else { return [] }
+        let bytes = [UInt8](data)
+        let count = bytes.count / 4
+        guard count > 0 else { return [] }
+
+        var points: [Point] = []
+        points.reserveCapacity(count)
+        for index in 0..<count {
+            let offset = index * 4
+            let xRaw = Int16(bitPattern: (UInt16(bytes[offset]) << 8) | UInt16(bytes[offset + 1]))
+            let yRaw = Int16(bitPattern: (UInt16(bytes[offset + 2]) << 8) | UInt16(bytes[offset + 3]))
+            let x = Double(xRaw) / 10_000.0
+            let y = Double(yRaw) / 10_000.0
+            let radius = hypot(x, y)
+            let role: String
+            if index.isMultiple(of: 11) {
+                role = "logo-flame-spark"
+            } else if radius >= outerRadius {
+                role = "logo-flame-outer"
+            } else {
+                role = "logo-flame-inner"
+            }
+            points.append(Point(
+                point: CGPoint(x: x, y: y),
+                role: role,
+                progress: Double(index) / Double(max(count - 1, 1))
+            ))
+        }
+        return points
+    }
+
+    // Generated from /Users/albertonunez/Downloads/hermesagent.svg at 1024px,
+    // preserving the SVG filled silhouette while keeping a stable particle count.
+    private static let hermesAgentPacked = [
+        "+bXZqvso2ar8m9mq/g7Zqv+B2aoA9NmqAmfZqgPa2aoFTdmq8+jbHf4O2x3/gdsdAPTbHQJn2x0D2tsdBU3bHQbB2x0INNsd",
+        "CafbHfEC3JDyddyQ8+jckPVb3JD2ztyQ+ELckAD03JACZ9yQA9rckAVN3JAGwdyQCDTckAmn3JALGtyQDI3ckO4c3gPvj94D",
+        "8QLeA/J13gPz6N4D9VveA/bO3gP4Qt4D+bXeA/so3gMCZ94DA9reAwVN3gMGwd4DCDTeAwmn3gMLGt4DDI3eAw4A3gPrNt92",
+        "7Knfdu4c33bvj9928QLfdvJ133bz6N929VvfdvbO33b4Qt92+bXfdvso33b8m992A9rfdgVN33YGwd92CDTfdgmn33YLGt92",
+        "DI3fdg4A33YPc9926FDg6enD4OnrNuDp7Kng6e4c4Onvj+Dp8QLg6fJ14Onz6ODp9Vvg6fbO4On4QuDp+bXg6fso4On8m+Dp",
+        "/g7g6f+B4OkFTeDpBsHg6Qg04OkJp+DpCxrg6QyN4OkOAODpD3Pg6RDm4Onm3OJc6FDiXOnD4lzrNuJc7KniXO4c4lzvj+Jc",
+        "8QLiXPJ14lzz6OJc9VviXPbO4lz4QuJc+bXiXPso4lz8m+Jc/g7iXP+B4lwGweJcCDTiXAmn4lwLGuJcDI3iXA4A4lwPc+Jc",
+        "EObiXBJZ4lzlaePP5tzjz+hQ48/pw+PP6zbjz+yp48/uHOPP74/jz/EC48/ydePP8+jjz/Vb48/2zuPP+ELjz/m148/7KOPP",
+        "/Jvjz/4O488A9OPPCDTjzwmn488LGuPPDI3jzw4A488Pc+PPEObjzxJZ48/j9uVC5WnlQubc5ULoUOVC6cPlQus25ULsqeVC",
+        "7hzlQu+P5ULxAuVC8nXlQvPo5UL1W+VC9s7lQvhC5UL5teVC+yjlQgJn5UIINOVCCaflQgsa5UIMjeVCDgDlQg9z5UIQ5uVC",
+        "FT/lQuKD5rXlaea15tzmtehQ5rXpw+a16zbmteyp5rXuHOa174/mtfEC5rXydea18+jmtfVb5rX2zua1+ELmtfso5rUA9Oa1",
+        "AmfmtQmn5rULGua1DI3mtQ4A5rUPc+a1E8zmtRU/5rXj9ugo5WnoKObc6CjoUOgo6cPoKOs26Cjsqego7hzoKPVb6Cj2zugo",
+        "/JvoKP4O6Cj/gegoAPToKAPa6CgJp+goDgDoKBU/6CgWs+go4oPpnOVp6Zzm3Omc6FDpnPyb6Zz+Dumc/4HpnAD06ZwCZ+mc",
+        "A9rpnAmn6ZwLGumcDI3pnA4A6ZwPc+mcEObpnBJZ6ZwTzOmcFT/pnBaz6Zzj9usP6FDrD+nD6w/sqesP7hzrD++P6w/xAusP",
+        "8nXrD/Po6w/1W+sP9s7rD/hC6w/5tesP+yjrD/yb6w/+DusP/4HrDwD06w8CZ+sPA9rrDwsa6w8MjesPDgDrDw9z6w8Q5usP",
+        "ElnrDxPM6w8VP+sPFrPrD9+d7ILhEOyC4oPsguP27ILlaeyC5tzsguhQ7ILpw+yC6zbsguyp7ILuHOyC74/sgvEC7ILydeyC",
+        "8+jsgvVb7IL2zuyC+ELsgvm17IL7KOyC/Jvsgv4O7IL/geyCAPTsggJn7IID2uyCBU3sggsa7IIMjeyCDgDsgg9z7IIQ5uyC",
+        "ElnsghPM7IIVP+yCFrPsghgm7ILfne314RDt9eKD7fXj9u315Wnt9ebc7fXoUO316cPt9es27fXsqe317hzt9e+P7fXxAu31",
+        "8nXt9fPo7fX1W+319s7t9fhC7fX5te31+yjt9fyb7fX+Du31/4Ht9QD07fUCZ+31A9rt9QVN7fUGwe31CDTt9Qmn7fULGu31",
+        "DI3t9Q4A7fUPc+31EObt9RJZ7fUTzO31FT/t9Raz7fUYJu31353vaOEQ72jig+9o4/bvaOVp72jm3O9o6FDvaOnD72jrNu9o",
+        "7KnvaO4c72jvj+9o8QLvaPJ172jz6O9o9VvvaPbO72j4Qu9o+bXvaPso72j8m+9o/g7vaP+B72gA9O9oAmfvaAPa72gFTe9o",
+        "CDTvaAmn72gLGu9oDI3vaA4A72gPc+9oEObvaBJZ72gTzO9oFT/vaBaz72gYJu9o3irw29+d8NvhEPDb4oPw2+P28NvlafDb",
+        "5tzw2+hQ8Nvpw/Db6zbw2+yp8NvuHPDb74/w2/EC8NvydfDb8+jw2/Vb8Nv2zvDb+ELw2/m18Nv7KPDb/Jvw2/4O8Nv/gfDb",
+        "APTw2wJn8NsD2vDbBU3w2wg08NsJp/DbDI3w2w4A8NsPc/DbEObw2xJZ8NsTzPDbFT/w2xaz8NsYJvDbGZnw294q8k7fnfJO",
+        "4RDyTuKD8k7j9vJO5WnyTubc8k7oUPJO6cPyTus28k7sqfJO7hzyTu+P8k7xAvJO8+jyTvVb8k72zvJO+ELyTvm18k77KPJO",
+        "/JvyTv4O8k7/gfJOAPTyTgJn8k4D2vJOBU3yTgbB8k4INPJOCafyTgsa8k4MjfJODgDyTg9z8k4Q5vJOElnyThPM8k4VP/JO",
+        "FrPyThgm8k4ZmfJO3irzwd+d88HhEPPB4oPzweP288HlafPB5tzzwehQ88Hpw/PB6zbzweyp88HuHPPB74/zwfEC88HydfPB",
+        "8+jzwfVb88H2zvPB+ELzwfm188H7KPPB/Jvzwf4O88H/gfPBAPTzwQJn88ED2vPBBU3zwQbB88EINPPBCafzwQsa88EMjfPB",
+        "DgDzwQ9z88EQ5vPBElnzwRPM88EVP/PBFrPzwRgm88EZmfPB3ir1NN+d9TThEPU04oP1NOP29TTlafU05tz1NOhQ9TTpw/U0",
+        "6zb1NOyp9TTuHPU074/1NPEC9TTydfU09Vv1NPbO9TT4QvU0+bX1NPso9TT8m/U0/g71NP+B9TQA9PU0Amf1NAPa9TQFTfU0",
+        "BsH1NAg09TQJp/U0Cxr1NAyN9TQOAPU0D3P1NBDm9TQSWfU0E8z1NBU/9TQWs/U0GCb1NBmZ9TTeKvan3532p+EQ9qfig/an",
+        "4/b2p+Vp9qfm3Pan6FD2p+nD9qfrNvan7Kn2p+4c9qfvj/an8QL2p/J19qf2zvan+EL2p/m19qf7KPan/Jv2p/4O9qf/gfan",
+        "APT2pwJn9qcD2vanBU32pwbB9qcINPanCaf2pwsa9qcMjfanDgD2pw9z9qcQ5vanEln2pxPM9qcVP/anFrP2pxgm9qcZmfan",
+        "Gwz2p9+d+BvhEPgb4oP4G+P2+Bvlafgb5tz4G+hQ+Bvvj/gb8nX4G/Po+Bv1W/gbAPT4GwJn+BsD2vgbBU34GwbB+BsINPgb",
+        "Caf4Gwsa+BsMjfgbDgD4Gw9z+BsQ5vgbE8z4GxU/+BsWs/gbGCb4GxmZ+BsbDPgb3535juEQ+Y7ig/mO4/b5juVp+Y7pw/mO",
+        "8nX5jvPo+Y71W/mO9s75jvhC+Y4A9PmOAmf5jgPa+Y4FTfmOBsH5jgg0+Y4Jp/mOCxr5jgyN+Y4OAPmOD3P5jhDm+Y4SWfmO",
+        "E8z5jhU/+Y4Ws/mOGCb5jhmZ+Y4bDPmO4RD7AeKD+wHj9vsB5Wn7Aebc+wHoUPsB6cP7AfPo+wH1W/sB9s77AfhC+wH5tfsB",
+        "APT7AQJn+wED2vsBBU37AQbB+wEJp/sBCxr7AQ4A+wEPc/sBEOb7ARJZ+wETzPsBFT/7ARaz+wEYJvsBGZn7ARsM+wHig/x0",
+        "4/b8dOVp/HTm3Px06cP8dOs2/HTz6Px09Vv8dPhC/HQA9Px0Amf8dAPa/HQFTfx0BsH8dAg0/HQJp/x0Cxr8dAyN/HQOAPx0",
+        "D3P8dBDm/HQSWfx0FT/8dBaz/HQYJvx0GZn8dBsM/HTm3P3n6cP95/Po/ef1W/3nAPT95wJn/ecD2v3nBU395wbB/ecINP3n",
+        "Caf95wsa/ecMjf3nDgD95w9z/ecQ5v3nEln95xPM/ecVP/3nFrP95xgm/ecZmf3nGwz95xx//efm3P9a6FD/WunD/1r/gf9a",
+        "APT/WgJn/1oD2v9aBU3/WgbB/1oINP9aCaf/Wgsa/1oMjf9aDgD/Wg9z/1oQ5v9aEln/WhPM/1oVP/9aFrP/Whgm/1oZmf9a",
+        "Gwz/Whx//1rm3ADN6FAAzf+BAM0A9ADNAmcAzQPaAM0FTQDNBsEAzQg0AM0JpwDNCxoAzQyNAM0OAADND3MAzRDmAM0SWQDN",
+        "E8wAzRU/AM0WswDNGCYAzRmZAM0bDADNHH8AzebcAkDoUAJA/4ECQAD0AkACZwJAA9oCQAVNAkAGwQJACDQCQAmnAkALGgJA",
+        "DI0CQA4AAkAPcwJAEOYCQBJZAkATzAJAFT8CQBazAkAYJgJAGZkCQBsMAkAcfwJA5twDs/+BA7MA9AOzAmcDswPaA7MFTQOz",
+        "BsEDswg0A7MJpwOzCxoDswyNA7MOAAOzD3MDsxDmA7MSWQOzE8wDsxU/A7MWswOzGCYDsxmZA7MbDAOzHH8Dsx3yA7PlaQUm",
+        "5twFJv+BBSYA9AUmAmcFJgPaBSYFTQUmBsEFJgg0BSYJpwUmCxoFJgyNBSYOAAUmD3MFJhDmBSYSWQUmE8wFJhU/BSYWswUm",
+        "GCYFJhmZBSYbDAUmHH8FJh3yBSblaQaZ5twGmenDBpn/gQaZAPQGmQJnBpkD2gaZBU0GmQbBBpkINAaZCacGmQsaBpkMjQaZ",
+        "DgAGmQ9zBpkQ5gaZElkGmRPMBpkVPwaZFrMGmRgmBpkZmQaZGwwGmRx/Bpkd8gaZ5WkIDebcCA3rNggN7KkIDf4OCA3/gQgN",
+        "APQIDQJnCA0D2ggNBU0IDQbBCA0INAgNCacIDQsaCA0MjQgNDgAIDQ9zCA0Q5ggNElkIDRPMCA0VPwgNFrMIDRgmCA0ZmQgN",
+        "GwwIDRx/CA0d8ggN5WkJgObcCYDoUAmA6zYJgO+PCYD+DgmA/4EJgAD0CYACZwmAA9oJgAbBCYAINAmACacJgAsaCYAMjQmA",
+        "DgAJgA9zCYAQ5gmAElkJgBPMCYAVPwmAFrMJgBgmCYAZmQmAGwwJgBx/CYAd8gmAH2UJgOVpCvPm3Arz6FAK8+s2CvPsqQrz",
+        "/g4K8/+BCvMA9ArzAmcK8wPaCvMGwQrzCDQK8wmnCvMLGgrzDI0K8w4ACvMPcwrzEOYK8xJZCvMTzArzFT8K8xazCvMYJgrz",
+        "GZkK8xsMCvMcfwrzHfIK8x9lCvPlaQxm5twMZuhQDGbpwwxm/g4MZv+BDGYA9AxmAmcMZgPaDGYGwQxmCDQMZgmnDGYLGgxm",
+        "DI0MZg4ADGYPcwxmEOYMZhJZDGYTzAxmFT8MZhazDGYYJgxmGZkMZhsMDGYd8gxmH2UMZuVpDdnm3A3Z6FAN2enDDdn+Dg3Z",
+        "/4EN2QD0DdkCZw3ZBsEN2Qg0DdkJpw3ZCxoN2QyNDdkOAA3ZD3MN2RDmDdkSWQ3ZE8wN2RU/DdkWsw3ZGCYN2RmZDdkbDA3Z",
+        "HfIN2R9lDdnctw9M5WkPTObcD0zoUA9M6cMPTOs2D0z+Dg9M/4EPTAD0D0wCZw9MBU0PTAbBD0wINA9MCacPTAsaD0wMjQ9M",
+        "DgAPTA9zD0wQ5g9MElkPTBPMD0wVPw9MFrMPTBgmD0wZmQ9MGwwPTB3yD0wfZQ9MINgPTNy3EL/j9hC/5WkQv+bcEL/oUBC/",
+        "6cMQv+s2EL/+DhC//4EQvwD0EL8CZxC/A9oQvwVNEL8GwRC/CDQQvwmnEL8LGhC/DI0Qvw4AEL8PcxC/EOYQvxJZEL8TzBC/",
+        "FT8QvxazEL8YJhC/GZkQvxsMEL8d8hC/H2UQvyDYEL/bRBIy3LcSMuP2EjLlaRIy5twSMuhQEjLpwxIy6zYSMuypEjLuHBIy",
+        "748SMvECEjLydRIy8+gSMvVbEjL2zhIy/g4SMv+BEjIA9BIyAmcSMgPaEjIGwRIyCDQSMgmnEjILGhIyDI0SMg4AEjIPcxIy",
+        "EOYSMhJZEjITzBIyFT8SMhazEjIYJhIyGZkSMhsMEjId8hIyH2USMiDYEjIjvhIy20QTpdy3E6Xj9hOl5WkTpebcE6XoUBOl",
+        "6cMTpes2E6XsqROl7hwTpe+PE6XxAhOl8nUTpfPoE6X1WxOl9s4TpfhCE6X+DhOl/4ETpQD0E6UCZxOlBsETpQg0E6UJpxOl",
+        "CxoTpQyNE6UOABOlD3MTpRDmE6USWROlE8wTpRU/E6UWsxOlGCYTpRmZE6UbDBOlHfITpR9lE6Ug2BOlI74Tpdy3FRjeKhUY",
+        "350VGOEQFRjigxUY4/YVGOVpFRjm3BUY6FAVGOnDFRjrNhUY7KkVGO4cFRjvjxUY8QIVGPJ1FRjz6BUY9VsVGPbOFRj4QhUY",
+        "+bUVGP4OFRj/gRUYAPQVGAJnFRgGwRUYCDQVGAmnFRgLGhUYDI0VGA4AFRgPcxUYEOYVGBJZFRgTzBUYFT8VGBazFRgYJhUY",
+        "GZkVGBsMFRgd8hUYH2UVGCDYFRgjvhUYJTEVGNtEFovctxaL3ioWi9+dFovhEBaL4oMWi+P2FovlaRaL5twWi+hQFovpwxaL",
+        "6zYWi+ypFovuHBaL748Wi/ECFovydRaL8+gWi/VbFov2zhaL+EIWi/m1Fov8mxaL/g4Wi/+BFosA9BaLAmcWiwPaFosFTRaL",
+        "BsEWiwg0FosJpxaLCxoWiwyNFosOABaLD3MWixDmFosSWRaLE8wWixU/FosWsxaLGCYWixmZFoscfxaLHfIWix9lFosg2BaL",
+        "I74WiyUxFovbRBf/3ioX/9+dF//hEBf/4oMX/+P2F//m3Bf/6FAX/+nDF//rNhf/7KkX/+4cF//vjxf/8QIX//J1F//z6Bf/",
+        "9VsX//bOF//4Qhf/+bUX//soF//8mxf//g4X//+BF/8A9Bf/AmcX/wPaF/8FTRf/BsEX/wg0F/8Jpxf/CxoX/wyNF/8OABf/",
+        "D3MX/xDmF/8SWRf/E8wX/xU/F/8Wsxf/GCYX/xmZF/8bDBf/HH8X/x3yF/8fZRf/INgX/yO+F/8lMRf/3LcZcuVpGXLm3Bly",
+        "6FAZcunDGXLrNhly7KkZcu4cGXLvjxly8QIZcvJ1GXLz6Bly9VsZcvbOGXL4Qhly+bUZcvsoGXL/gRlyAPQZcgJnGXID2hly",
+        "BU0ZcgbBGXIINBlyCacZcgsaGXIMjRlyDgAZcg9zGXIQ5hlyElkZchPMGXIVPxlyFrMZchgmGXIZmRlyGwwZchx/GXId8hly",
+        "H2UZciO+GXIlMRly3Lca5d4qGuXfnRrl4RAa5eKDGuXj9hrl5Wka5ebcGuXoUBrl6zYa5eypGuXuHBrl748a5fECGuXydRrl",
+        "8+ga5fVbGuX2zhrl+EIa5fm1GuUA9BrlAmca5QPaGuUFTRrlBsEa5Qg0GuUJpxrlCxoa5QyNGuUOABrlD3Ma5RDmGuUSWRrl",
+        "E8wa5RU/GuUWsxrlGCYa5RmZGuUbDBrlHH8a5R3yGuUfZRrlIksa5SO+GuXfnRxY4RAcWOKDHFjj9hxY5WkcWObcHFjoUBxY",
+        "6cMcWOs2HFjsqRxY7hwcWO+PHFjxAhxY8nUcWPPoHFj1WxxY9s4cWAPaHFgFTRxYBsEcWAg0HFgJpxxYCxocWAyNHFgOABxY",
+        "D3McWBDmHFgSWRxYE8wcWBU/HFgWsxxYGCYcWBmZHFgbDBxYHH8cWB3yHFgfZRxYIkscWCO+HFjigx3L4/Ydy+VpHcvpwx3L",
+        "6zYdy+ypHcvuHB3L748dy/ECHcvydR3L8+gdy/VbHcv2zh3L+EIdywJnHcsD2h3LBU0dywbBHcsINB3LCxodywyNHcsOAB3L",
+        "D3MdyxDmHcsSWR3LFT8dyxazHcsYJh3LGZkdyxsMHcscfx3LHfIdyyDYHcsiSx3L4oMfPuP2Hz7oUB8+6cMfPus2Hz7sqR8+",
+        "7hwfPu+PHz7xAh8+8nUfPvPoHz71Wx8+9s4fPvhCHz4A9B8+AmcfPgVNHz4INB8+CacfPhU/Hz4YJh8+GZkfPhsMHz4cfx8+",
+        "H2UfPiDYHz7j9iCx5WkgsebcILHoUCCx6cMgseypILHuHCCx748gsfECILHydSCx8+ggsfVbILH2ziCx+EIgsfm1ILH+DiCx",
+        "/4EgsQbBILEINCCxFrMgsRmZILEbDCCxHH8gsR3yILEfZSCx5WkiJObcIiToUCIk7KkiJO4cIiTvjyIk8QIiJPJ1IiTz6CIk",
+        "9VsiJPbOIiT4QiIk+bUiJPsoIiT8myIk/g4iJAJnIiQFTSIkBsEiJBgmIiQbDCIkHH8iJB3yIiTrNiOX7Kkjl+4cI5fvjyOX",
+        "8QIjl/J1I5fz6COX9Vsjl/bOI5f5tSOXA9ojlwVNI5cZmSOXGwwjl+s2JQrsqSUK7hwlCu+PJQrxAiUK8nUlCvPoJQr1WyUK",
+        "+EIlCgPaJQoZmSUKGwwlCunDJn7rNiZ+7Kkmfu4cJn7vjyZ+8QImfvVbJn72ziZ++EImfv+BJn4D2iZ+"
+    ].joined()
+
+    // Generated from /Users/albertonunez/Downloads/favicon.svg at 1024px,
+    // sampling only the foreground Factory mark, not the black circular tile.
+    private static let factoryPacked = [
+        "8OHaiPIa2ojzU9qIDQvaiA5E2ogPftqI76fbwfDh28HyGtvB81PbwfSN28EIJdvBCV7bwQqY28EL0dvBDQvbwQ5E28EPftvB",
+        "ELfbwRHw28Hubtz676fc+vDh3PryGtz681Pc+vSN3Pr1xtz6BbLc+gbr3PoIJdz6CV7c+gqY3PoL0dz6DQvc+g5E3PoPftz6",
+        "ELfc+hHw3PrtNN407m7eNO+n3jTw4d408hreNPNT3jT0jd409cbeNAM/3jQEeN40BbLeNAbr3jQIJd40CV7eNAqY3jQL0d40",
+        "DQveNA5E3jQPft40ELfeNBHw3jTtNN9t7m7fbe+n323w4d9t8hrfbfNT3230jd9t9cbfbfcA320AzN9tAgXfbQM/320EeN9t",
+        "BbLfbQbr320IJd9tCV7fbQqY320L0d9tDQvfbQ5E320Pft9tELffbRHw323r++Cn7TTgp+5u4Kfvp+Cn8OHgp/Ia4KfzU+Cn",
+        "9I3gp/XG4Kf3AOCn/lngp/+S4KcAzOCnAgXgpwM/4KcEeOCnBbLgpwbr4KcIJeCnCV7gpwqY4KcL0eCnDQvgpw5E4KcPfuCn",
+        "ELfgpxHw4Kfr++Hg7TTh4O5u4eDvp+Hg8OHh4PIa4eDzU+Hg9I3h4PXG4eD3AOHg+Dnh4Pvm4eD9H+Hg/lnh4P+S4eAAzOHg",
+        "AgXh4AvR4eANC+HgDkTh4A9+4eAQt+Hg6sHjGuv74xrtNOMa7m7jGu+n4xrw4eMa8hrjGvNT4xr0jeMa9cbjGvcA4xr4OeMa",
+        "+XPjGvqs4xr75uMa/R/jGv5Z4xr/kuMaC9HjGg0L4xoOROMaD37jGhC34xrqweRT6/vkU+005FPubuRT81PkU/SN5FP1xuRT",
+        "9wDkU/g55FP5c+RT+qzkU/vm5FP9H+RTCpjkUwvR5FMNC+RTDkTkUw9+5FMQt+RT6YjljerB5Y3r++WN7TTljfSN5Y31xuWN",
+        "9wDljfg55Y35c+WN+qzljQqY5Y0L0eWNDQvljQ5E5Y0PfuWN6YjmxurB5sbr++bG7TTmxvSN5sb1xubG9wDmxvg55sb5c+bG",
+        "CpjmxgvR5sYNC+bGDkTmxg9+5sbpiOgA6sHoAOv76AD1xugA9wDoAPg56AD5c+gA+qzoAAle6AAKmOgAC9HoAA0L6AAOROgA",
+        "D37oABC36AAR8OgAEyroABRj6ADoTuk56YjpOerB6Tnr++k59cbpOfcA6Tn4Oek5+XPpOfqs6TkJXuk5CpjpOQvR6TkNC+k5",
+        "DkTpOQ9+6TkQt+k5EfDpORMq6TkUY+k5FZ3pORbW6TkYEOk56E7qc+mI6nPqwepz9wDqc/g56nP5c+pz+qzqcwle6nMKmOpz",
+        "C9Hqcw0L6nMR8OpzEyrqcxRj6nMVnepzFtbqcxgQ6nMZSepzGoPqcxu86nPoTuus6YjrrOrB66z3AOus+DnrrPlz66z6rOus",
+        "++brrAgl66wJXuusCpjrrAvR66wNC+usFZ3rrBbW66wYEOusGUnrrBqD66wbvOusHPbrrB4v66wfaeus6E7s5umI7Ob4Oezm",
+        "+XPs5vqs7Ob75uzmCCXs5gle7OYKmOzmC9Hs5hgQ7OYZSezmGoPs5hu87OYc9uzmHi/s5h9p7OYgouzmIdzs5twP7h/dSe4f",
+        "3oLuH+cV7h/oTu4f6YjuH/g57h/5c+4f+qzuH/vm7h8G6+4fCCXuHwle7h8KmO4fC9HuHxqD7h8bvO4fHPbuHx4v7h8fae4f",
+        "IKLuHyHc7h8jFe4f2tbvWdwP71ndSe9Z3oLvWd+871ng9e9Z4i/vWecV71noTu9Z6YjvWfg571n5c+9Z+qzvWfvm71n9H+9Z",
+        "BuvvWQgl71kJXu9ZCpjvWRz271keL+9ZH2nvWSCi71kh3O9ZIxXvWSRP71nZnPCS2tbwktwP8JLdSfCS3oLwkt+88JLg9fCS",
+        "4i/wkuNo8JLkovCS5dvwkucV8JLoTvCS+XPwkvqs8JL75vCS/R/wkgbr8JIIJfCSCV7wkgqY8JIeL/CSH2nwkiCi8JIh3PCS",
+        "IxXwkiRP8JIliPCS2ZzxzNrW8czcD/HM3UnxzN6C8czfvPHM4PXxzOIv8czjaPHM5KLxzOXb8cznFfHM6E7xzPlz8cz6rPHM",
+        "++bxzP0f8cwFsvHMBuvxzAgl8cwJXvHMHi/xzB9p8cwgovHMIdzxzCMV8cwkT/HMJYjxzCbC8czZnPMF2tbzBdwP8wXdSfMF",
+        "3oLzBd+88wXg9fMF4i/zBeNo8wXkovMF5dvzBecV8wXoTvMF6YjzBerB8wX6rPMF++bzBf0f8wUFsvMFBuvzBQgl8wUJXvMF",
+        "HPbzBR4v8wUfafMFIKLzBSHc8wUjFfMFJE/zBSWI8wUmwvMF2tb0P9wP9D/dSfQ/3oL0P9+89D/g9fQ/4i/0P+No9D/kovQ/",
+        "5dv0P+cV9D/oTvQ/6Yj0P+rB9D/r+/Q/7TT0P/qs9D/75vQ//R/0P/5Z9D8EePQ/BbL0Pwbr9D8IJfQ/GoP0Pxu89D8c9vQ/",
+        "Hi/0Px9p9D8govQ/Idz0PyMV9D8kT/Q/JYj0P9rW9XjcD/V43Un1eN6C9XjfvPV44PX1eOIv9XjjaPV45KL1eOXb9XjnFfV4",
+        "6E71eOmI9XjqwfV46/v1eO009XjubvV476f1ePvm9Xj9H/V4/ln1eAR49XgFsvV4Buv1eAgl9XgYEPV4GUn1eBqD9XgbvPV4",
+        "HPb1eB4v9XgfafV4IKL1eCHc9XgjFfV4JE/1eNrW9rLcD/ay3Un2st6C9rLfvPay5xX2suhO9rLpiPay6sH2suv79rLtNPay",
+        "7m72su+n9rLw4fay8hr2svvm9rL9H/ay/ln2sgM/9rIEePayBbL2sgbr9rIVnfayFtb2shgQ9rIZSfayGoP2shu89rIc9vay",
+        "Hi/2sh9p9rIgovayIdz2strW9+vcD/fr3Un3696C9+vfvPfr6sH36+v79+vtNPfr7m736++n9+vw4ffr8hr36/NT9+v0jffr",
+        "++b36/0f9+v+Wffr/5L36wM/9+sEePfrBbL36xMq9+sUY/frFZ336xbW9+sYEPfrGUn36xqD9+sbvPfrHPb36x4v9+sfaffr",
+        "3A/5Jd1J+SXegvkl37z5Je5u+SXvp/kl8OH5JfIa+SXzU/kl9I35JfXG+SX3APkl/R/5Jf5Z+SX/kvklAgX5JQM/+SUEePkl",
+        "BbL5JQ9++SUQt/klEfD5JRMq+SUUY/klFZ35JRbW+SUYEPklGUn5JRqD+SUbvPklHPb5JdwP+l7dSfpe3oL6Xt+8+l7w4fpe",
+        "8hr6XvNT+l70jfpe9cb6XvcA+l74Ofpe+XP6Xv0f+l7+Wfpe/5L6XgDM+l4CBfpeAz/6XgR4+l4NC/peDkT6Xg9++l4Qt/pe",
+        "EfD6XhMq+l4UY/peFZ36XhbW+l4YEPpeGUn6XhqD+l4bvPpeHPb6Xh4v+l7dSfuX3oL7l9+8+5fzU/uX9I37l/XG+5f3APuX",
+        "+Dn7l/lz+5f6rPuX++b7l/0f+5f+WfuX/5L7lwDM+5cCBfuXAz/7lwR4+5cJXvuXCpj7lwvR+5cNC/uXDkT7lw9++5cQt/uX",
+        "EfD7lxMq+5cUY/uXFZ37lxu8+5cc9vuXHi/7l91J/NHegvzR37z80eD1/NH3APzR+Dn80flz/NH6rPzR++b80f0f/NH+WfzR",
+        "/5L80QDM/NECBfzRAz/80QR4/NEFsvzRBuv80Qgl/NEJXvzRCpj80QvR/NENC/zRDkT80Q9+/NEQt/zREfD80Rz2/NEeL/zR",
+        "H2n80d6C/grfvP4K4PX+Cvlz/gr6rP4K++b+Cv0f/gr+Wf4K/5L+CgDM/goCBf4KAz/+CgR4/goFsv4KBuv+Cggl/goJXv4K",
+        "Cpj+CgvR/goNC/4KDkT+Chz2/goeL/4KH2n+Ct6C/0TfvP9E4PX/RPqs/0T75v9E/R//RP5Z/0T/kv9EAMz/RAIF/0QDP/9E",
+        "BHj/RAWy/0QG6/9ECCX/RAle/0QeL/9EH2n/RCCi/0TfvAB94PUAfeIvAH34OQB9+XMAffqsAH375gB9/R8Aff5ZAH3/kgB9",
+        "AMwAfQIFAH0DPwB9BHgAfQWyAH0eLwB9H2kAfSCiAH3fvAG34PUBt+IvAbfzUwG39I0Bt/XGAbf3AAG3+DkBt/lzAbf6rAG3",
+        "++YBt/0fAbf+WQG3/5IBtwDMAbcCBQG3Az8BtwR4AbcFsgG3H2kBtyCiAbch3AG34PUC8OIvAvDjaALw7m4C8O+nAvDw4QLw",
+        "8hoC8PNTAvD0jQLw9cYC8PcAAvD4OQLw+XMC8PqsAvD75gLw/R8C8P5ZAvD/kgLwAMwC8AIFAvADPwLwBHgC8AWyAvAG6wLw",
+        "CCUC8AleAvAfaQLwIKIC8CHcAvDg9QQq4i8EKuNoBCrqwQQq6/sEKu00BCrubgQq76cEKvDhBCryGgQq81MEKvSNBCr1xgQq",
+        "9wAEKvvmBCr9HwQq/lkEKv+SBCoAzAQqAgUEKgM/BCoEeAQqBbIEKgbrBCoIJQQqCV4EKgqYBCoL0QQqH2kEKiCiBCoh3AQq",
+        "IxUEKuIvBWPjaAVj5KIFY+cVBWPoTgVj6YgFY+rBBWPr+wVj7TQFY+5uBWPvpwVj8OEFY/IaBWPzUwVj9I0FY/qsBWP75gVj",
+        "/R8FY/5ZBWP/kgVjAMwFYwIFBWMDPwVjBusFYwglBWMJXgVjCpgFYwvRBWMNCwVjDkQFYyCiBWMh3AVjIxUFY+IvBp3jaAad",
+        "5KIGneXbBp3nFQad6E4GnemIBp3qwQad6/sGne00Bp3ubgad76cGnfDhBp36rAad++YGnf0fBp0AzAadAgUGnQM/Bp0IJQad",
+        "CV4GnQqYBp0L0QadDQsGnQ5EBp0PfgadELcGnRHwBp0gogadIdwGnSMVBp0kTwad4PUH1uIvB9bjaAfW5KIH1uXbB9bnFQfW",
+        "6E4H1umIB9bqwQfW6/sH1u00B9b5cwfW+qwH1vvmB9b9HwfWAMwH1gIFB9YDPwfWCpgH1gvRB9YNCwfWDkQH1g9+B9YQtwfW",
+        "EfAH1hMqB9YUYwfWIKIH1iHcB9YjFQfWJE8H1t6CCRDfvAkQ4PUJEOIvCRDjaAkQ5KIJEOXbCRDnFQkQ6E4JEOmICRDqwQkQ",
+        "+XMJEPqsCRD75gkQAMwJEAIFCRADPwkQBHgJEA0LCRAORAkQD34JEBC3CRAR8AkQEyoJEBRjCRAVnQkQFtYJEBgQCRAgogkQ",
+        "IdwJECMVCRAkTwkQJYgJENwPCkndSQpJ3oIKSd+8Ckng9QpJ4i8KSeNoCknkogpJ5dsKSecVCknoTgpJ+DkKSflzCkn6rApJ",
+        "++YKSQIFCkkDPwpJBHgKSQ9+CkkQtwpJEfAKSRMqCkkUYwpJFZ0KSRbWCkkYEApJGUkKSRqDCkkbvApJH2kKSSCiCkkh3ApJ",
+        "IxUKSSRPCkkliApJ2tYLg9wPC4PdSQuD3oILg9+8C4Pg9QuD4i8Lg+NoC4PkoguD5dsLg/g5C4P5cwuD+qwLg/vmC4MCBQuD",
+        "Az8LgwR4C4MR8AuDEyoLgxRjC4MVnQuDFtYLgxgQC4MZSQuDGoMLgxu8C4Mc9guDHi8Lgx9pC4MgoguDIdwLgyMVC4MkTwuD",
+        "JYgLg9mcDLza1gy83A8MvN1JDLzeggy837wMvOD1DLziLwy842gMvPcADLz4OQy8+XMMvPqsDLwCBQy8Az8MvAR4DLwFsgy8",
+        "FGMMvBWdDLwW1gy8GBAMvBlJDLwagwy8G7wMvBz2DLweLwy8H2kMvCCiDLwh3Ay8IxUMvCRPDLwliAy82ZwN9trWDfbcDw32",
+        "3UkN9t6CDfbfvA324PUN9uIvDfb3AA32+DkN9vlzDfb6rA32AgUN9gM/DfYEeA32BbIN9hbWDfYYEA32GUkN9hqDDfYbvA32",
+        "HPYN9h4vDfYfaQ32IKIN9iHcDfYjFQ32JE8N9iWIDfbZnA8v2tYPL9wPDy/dSQ8v3oIPL9+8Dy/g9Q8v4i8PL/XGDy/3AA8v",
+        "+DkPL/lzDy8DPw8vBHgPLwWyDy8G6w8vFtYPLxgQDy8ZSQ8vGoMPLxu8Dy8c9g8vHi8PLx9pDy8gog8vIdwPLyMVDy8kTw8v",
+        "JYgPL9rWEGncDxBp3UkQad6CEGnfvBBp4PUQaeIvEGnjaBBp9I0QafXGEGn3ABBp+DkQaflzEGkDPxBpBHgQaQWyEGkG6xBp",
+        "FtYQaRgQEGkZSRBpHPYQaR4vEGkfaRBpIKIQaSHcEGkjFRBpJE8QaSWIEGncDxGi3UkRot6CEaLfvBGi4PURouIvEaLjaBGi",
+        "5KIRovSNEaL1xhGi9wARovg5EaIDPxGiBHgRogWyEaIG6xGiCCURohbWEaIYEBGiGUkRoiCiEaIh3BGiIxURoiRPEaLeghLc",
+        "37wS3OD1EtziLxLc42gS3OSiEtzl2xLc5xUS3PNTEtz0jRLc9cYS3PcAEtz4ORLcBHgS3AWyEtwG6xLcCCUS3BWdEtwW1hLc",
+        "GBAS3OD1FBXiLxQV42gUFeSiFBXl2xQV5xUUFehOFBXpiBQV81MUFfSNFBX1xhQV9wAUFfg5FBUEeBQVBbIUFQbrFBUIJRQV",
+        "FZ0UFRbWFBUYEBQV42gVT+SiFU/l2xVP5xUVT+hOFU/piBVP6sEVT+v7FU/tNBVP8hoVT/NTFU/0jRVP9cYVT/cAFU8EeBVP",
+        "BbIVTwbrFU8IJRVPCV4VTxWdFU8W1hVPGBAVT+cVFojoThaI6YgWiOrBFojr+xaI7TQWiO5uFojvpxaI8OEWiPIaFojzUxaI",
+        "9I0WiPXGFoj3ABaIBbIWiAbrFogIJRaICV4WiBRjFogVnRaIFtYWiOrBF8Lr+xfC7TQXwu5uF8LvpxfC8OEXwvIaF8LzUxfC",
+        "9I0XwvXGF8IFshfCBusXwgglF8IJXhfCCpgXwhRjF8IVnRfCFtYXwu+nGPvw4Rj78hoY+/NTGPv0jRj79cYY+wWyGPsG6xj7",
+        "CCUY+wleGPsKmBj7EyoY+xRjGPsVnRj7FtYY+++nGjTw4Ro08hoaNPNTGjT0jRo09cYaNAWyGjQG6xo0CCUaNAleGjQKmBo0",
+        "C9EaNBMqGjQUYxo0FZ0aNO+nG27w4Rtu8hobbvNTG270jRtuAz8bbgR4G24FshtuBusbbgglG24JXhtuCpgbbgvRG24NCxtu",
+        "EfAbbhMqG24UYxtuFZ0bbu+nHKfw4Ryn8hocp/NTHKf0jRynAMwcpwIFHKcDPxynBHgcpwWyHKcG6xynCCUcpwleHKcKmByn",
+        "C9Ecpw0LHKcQtxynEfAcpxMqHKcUYxynFZ0cp+5uHeHvpx3h8OEd4fIaHeHzUx3h9I0d4f5ZHeH/kh3hAMwd4QIFHeEDPx3h",
+        "BHgd4QglHeEJXh3hCpgd4QvRHeENCx3hDkQd4Q9+HeEQtx3hEfAd4RMqHeEUYx3h7m4fGu+nHxrw4R8a8hofGvNTHxr0jR8a",
+        "9cYfGvlzHxr6rB8a++YfGv0fHxr+WR8a/5IfGgDMHxoCBR8aCCUfGgleHxoKmB8aC9EfGg0LHxoORB8aD34fGhC3HxoR8B8a",
+        "EyofGhRjHxrubiBU76cgVPDhIFTyGiBU81MgVPSNIFT1xiBU9wAgVPg5IFT5cyBU+qwgVPvmIFT9HyBU/lkgVP+SIFQAzCBU",
+        "CV4gVAqYIFQL0SBUDQsgVA5EIFQPfiBUELcgVBHwIFQTKiBU7m4hje+nIY3w4SGN8hohjfNTIY30jSGN9cYhjfcAIY34OSGN",
+        "+XMhjfqsIY375iGN/R8hjf5ZIY0JXiGNCpghjQvRIY0NCyGNDkQhjQ9+IY0QtyGNEfAhjRMqIY3ubiLH76cix/DhIsfyGiLH",
+        "81Mix/SNIsf1xiLH9wAix/g5Isf5cyLH+qwixwqYIscL0SLHDQsixw5EIscPfiLHELcixxHwIsfubiQA76ckAPDhJADyGiQA",
+        "81MkAPSNJAD1xiQA9wAkAPg5JAAL0SQADQskAA5EJAAPfiQAELckAO+nJTrw4SU68holOvNTJTr0jSU6DQslOg5EJToPfiU6"
+    ].joined()
 }
 
 enum SwarmLogoShape {

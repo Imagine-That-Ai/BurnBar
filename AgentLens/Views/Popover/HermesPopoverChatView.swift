@@ -81,6 +81,8 @@ struct AssistantsPopoverChatView: View {
 
                 ChatEngineModelMenu(controller: controller)
                     .fixedSize(horizontal: true, vertical: false)
+
+                ChatViewModePicker(controller: controller)
             }
 
             HermesModelStrip(controller: controller, settingsManager: settingsManager)
@@ -310,7 +312,8 @@ struct AssistantsPopoverChatView: View {
                                 message: msg,
                                 isStreaming: controller.isStreaming
                                     && msg.id == controller.activeStreamMessageId
-                                    && msg.role == .assistant
+                                    && msg.role == .assistant,
+                                viewMode: controller.chatViewMode
                             )
                             .id(msg.id)
                         }
@@ -571,6 +574,9 @@ struct AssistantsPopoverChatView: View {
         case .hermes: return "Ask Hermes…"
         case .openclaw: return "Ask OpenClaw…"
         case .piAgent: return "Ask Pi…"
+        case .droid: return "Ask Droid…"
+        case .forge: return "Ask Forge…"
+        case .antigravity: return "Ask Antigravity…"
         }
     }
 
@@ -598,12 +604,70 @@ typealias HermesPopoverChatView = AssistantsPopoverChatView
 private struct HermesPopoverBubble: View {
     let message: ChatMessageRecord
     var isStreaming: Bool
+    var viewMode: ChatViewMode = .agent
 
     private var transcript: [ChatTranscriptPiece] {
         message.displayTranscript
     }
 
     var body: some View {
+        if viewMode == .cli {
+            cliView
+        } else {
+            bubbleView
+        }
+    }
+
+    // MARK: - CLI View (compact)
+
+    @ViewBuilder
+    private var cliView: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if message.role == .user {
+                HStack(alignment: .top, spacing: 4) {
+                    Text(">")
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(DesignSystem.Colors.success)
+                        .frame(width: 12, alignment: .trailing)
+                    Text(message.content)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 4) {
+                    Text("<")
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(DesignSystem.Colors.coral)
+                        .frame(width: 12, alignment: .trailing)
+                    Text(cliTranscriptText)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.vertical, 1)
+    }
+
+    private var cliTranscriptText: String {
+        let pieces = message.displayTranscript
+        if pieces.isEmpty { return message.content }
+        return pieces.map { piece in
+            switch piece.kind {
+            case .text: return piece.value
+            case .toolUse: return "⟨\(piece.value)\(piece.detail.map { ": \($0)" } ?? "")⟩"
+            case .toolResult: return piece.detail ?? piece.value
+            }
+        }.joined(separator: "\n")
+    }
+
+    // MARK: - Bubble View (existing rendering)
+
+    @ViewBuilder
+    private var bubbleView: some View {
         HStack(alignment: .bottom) {
             if message.role == .user {
                 Spacer(minLength: 40)

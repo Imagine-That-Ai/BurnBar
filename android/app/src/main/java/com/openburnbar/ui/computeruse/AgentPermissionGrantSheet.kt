@@ -54,7 +54,11 @@ fun AgentPermissionGrantSheet(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
-    val controller = remember(context) { AgentCapabilityGrantController(context) }
+    val controller = remember(context) {
+        AgentCapabilityGrantController(context).also {
+            com.openburnbar.BurnBarApplication.agentCapabilityGrantController = it
+        }
+    }
     val scope = rememberCoroutineScope()
     val receipts by AgentCapabilityGrantState.receipts.collectAsState()
     val receipt = receipts.values.firstOrNull { it.runtime == runtime && it.threadId == threadId }
@@ -137,7 +141,7 @@ fun AgentPermissionGrantSheet(
                         }
                     }
                     if (selected) {
-                        Button(onClick = onClick, enabled = !isWorking, colors = colors) {
+                        Button(onClick = onClick, enabled = workingPreset == null, colors = colors) {
                             PermissionButtonContent(preset = preset, isWorking = isWorking, selected = true)
                         }
                     } else {

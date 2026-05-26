@@ -42,6 +42,9 @@ extension AgentIdentity {
         case .claude:   return .claudeCode
         case .codex:    return .codex
         case .openClaw: return .openClaw
+        case .droid:    return .factory
+        case .forge:    return .forgeDev
+        case .antigravity: return .antigravity
         }
     }
 }

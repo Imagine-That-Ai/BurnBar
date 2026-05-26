@@ -25,7 +25,7 @@ final class CLIAssistantConsentSheetTests: XCTestCase {
         let sm = makeSettings()
         let view = CLIAssistantConsentSheet(settingsManager: sm, onDismiss: {})
         let sut = try view.inspect()
-        XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("Claude Code or Codex") }))
+        XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("Use Mac CLI agents on this Mac?") }))
     }
 
     func test_hasAllowAndDenyButtons() throws {

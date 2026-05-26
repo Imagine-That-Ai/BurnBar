@@ -38,7 +38,7 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 
 @Composable
 fun HermesSquareSplitLayout(
-    onOpenLegacyRuntime: (AssistantRuntimeID) -> Unit = {},
+    onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit = { _, _ -> },
     onOpenBrandZone: (String) -> Unit = {},
     onOpenPairedMac: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -56,9 +56,9 @@ fun HermesSquareSplitLayout(
     Row(modifier = modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(0.42f).fillMaxHeight()) {
             HermesSquareScreen(
-                onOpenLegacyRuntime = { rt ->
-                    detail = DetailRoute.RuntimeNative(rt)
-                    onOpenLegacyRuntime(rt)
+                onOpenLegacyRuntime = { rt, threadId ->
+                    detail = DetailRoute.RuntimeNative(rt, threadId)
+                    onOpenLegacyRuntime(rt, threadId)
                 },
                 onOpenBrandZone = { uri ->
                     detail = DetailRoute.BrandZone(uri)
@@ -123,7 +123,7 @@ private fun SplitPlaceholder(message: String = "Pick a thread, mission, or pinne
 
 internal sealed class DetailRoute {
     data class BrandZone(val agentURI: String) : DetailRoute()
-    data class RuntimeNative(val runtime: AssistantRuntimeID) : DetailRoute()
+    data class RuntimeNative(val runtime: AssistantRuntimeID, val threadId: String? = null) : DetailRoute()
     data class MissionDetail(val missionID: String) : DetailRoute()
     object PairedMac : DetailRoute()
 }

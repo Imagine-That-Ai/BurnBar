@@ -1496,6 +1496,7 @@ public actor BurnBarHTTPGatewayServer {
         let nativeStreaming: Bool
         let displayName: String
         let capabilities: [String]
+        let modelCapabilities: ModelIOCapabilities?
         let formatFamily: String
         let servedEndpoints: [String]
         let quotaState: String
@@ -1517,7 +1518,13 @@ public actor BurnBarHTTPGatewayServer {
             let accountLabels = Self.uniqueNonEmpty(models.map(\.accountLabel))
             let accountCount = max(1, accountIDs.count)
             let capabilities = Self.mergedCapabilities(from: models)
+            let modelCapabilities = Self.mergedModelCapabilities(from: models)
             let formatFamily = Self.formatFamily(from: capabilities)
+            let rawDisplayName = Self.displayName(
+                representative: representative,
+                accountLabels: accountLabels
+            )
+            let thinkingLevel = models.compactMap(\.thinkingLevel).first
 
             self.id = advertisedID
             self.ownedBy = representative.providerID
@@ -1536,11 +1543,14 @@ public actor BurnBarHTTPGatewayServer {
             self.servedBy = Self.servedBy(from: models)
             self.usageLane = Self.usageLane(from: models)
             self.nativeStreaming = !models.allSatisfy { Self.isFactoryModel($0) }
-            self.displayName = Self.displayName(
-                representative: representative,
-                accountLabels: accountLabels
+            self.displayName = OpenBurnBarModelDisplayName.compose(
+                modelName: rawDisplayName,
+                providerName: representative.providerName,
+                providerID: representative.providerID,
+                reasoningLevel: thinkingLevel
             )
             self.capabilities = capabilities
+            self.modelCapabilities = modelCapabilities
             self.formatFamily = formatFamily.rawValue
             self.servedEndpoints = Self.servedEndpoints(for: formatFamily)
             self.quotaState = Self.quotaState(from: entries).rawValue
@@ -1552,7 +1562,7 @@ public actor BurnBarHTTPGatewayServer {
             self.lastRefreshAt = models.compactMap(\.lastRefreshAt).sorted().last
             self.lastError = models.compactMap(\.lastError).first
             self.baseModelID = models.compactMap(\.baseModelID).first
-            self.thinkingLevel = models.compactMap(\.thinkingLevel).first
+            self.thinkingLevel = thinkingLevel
         }
 
         private static func formatFamily(from capabilities: [String]) -> BurnBarProviderFormatFamily {
@@ -1580,6 +1590,49 @@ public actor BurnBarHTTPGatewayServer {
                 merged.append(capability)
             }
             return merged
+        }
+
+        private static func mergedModelCapabilities(from models: [BurnBarLiveAdvertisedModel]) -> ModelIOCapabilities? {
+            let values = models.compactMap(\.modelCapabilities)
+            guard let first = values.first else { return nil }
+            guard values.count > 1 else { return first }
+
+            return ModelIOCapabilities(
+                schemaVersion: first.schemaVersion,
+                inputModalities: intersection(values.map(\.inputModalities), fallback: first.inputModalities),
+                outputModalities: intersection(values.map(\.outputModalities), fallback: first.outputModalities),
+                supportedParameters: union(values.map(\.supportedParameters)),
+                contextWindowTokens: values.compactMap(\.contextWindowTokens).min(),
+                maxOutputTokens: values.compactMap(\.maxOutputTokens).min(),
+                acceptedInputMimeTypes: intersection(
+                    values.map(\.acceptedInputMimeTypes).filter { !$0.isEmpty },
+                    fallback: first.acceptedInputMimeTypes
+                ),
+                imageMaxBytes: values.compactMap(\.imageMaxBytes).min(),
+                audioMaxBytes: values.compactMap(\.audioMaxBytes).min(),
+                videoMaxBytes: values.compactMap(\.videoMaxBytes).min(),
+                sourceRefs: first.sourceRefs
+            )
+        }
+
+        private static func intersection(_ lists: [[String]], fallback: [String]) -> [String] {
+            guard let first = lists.first, !first.isEmpty else { return fallback }
+            let remaining = lists.dropFirst().map { Set($0.map { $0.lowercased() }) }
+            let result = first.filter { value in
+                remaining.allSatisfy { $0.contains(value.lowercased()) }
+            }
+            return result.isEmpty ? fallback : result
+        }
+
+        private static func union(_ lists: [[String]]) -> [String] {
+            var seen: Set<String> = []
+            var result: [String] = []
+            for value in lists.flatMap({ $0 }) {
+                let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !normalized.isEmpty, seen.insert(normalized).inserted else { continue }
+                result.append(value)
+            }
+            return result
         }
 
         private static func quotaState(from entries: [GatewayModelCatalogEntry]) -> BurnBarLiveModelQuotaState {
@@ -1675,6 +1728,7 @@ public actor BurnBarHTTPGatewayServer {
             case nativeStreaming = "native_streaming"
             case displayName = "display_name"
             case capabilities
+            case modelCapabilities = "model_capabilities"
             case formatFamily = "format_family"
             case servedEndpoints = "served_endpoints"
             case quotaState = "quota_state"
@@ -1724,6 +1778,7 @@ public actor BurnBarHTTPGatewayServer {
         let supportsSearchTool: Bool
 
         init(model: ModelDescriptor) {
+            let contextWindow = Self.contextWindow(for: model)
             self.slug = model.id
             self.displayName = model.displayName
             if model.accountCount > 1 {
@@ -1749,19 +1804,22 @@ public actor BurnBarHTTPGatewayServer {
             self.defaultVerbosity = nil
             self.applyPatchToolType = nil
             self.webSearchToolType = "text"
-            self.truncationPolicy = TruncationPolicy(mode: "tokens", limit: 65_536)
+            self.truncationPolicy = TruncationPolicy(mode: "tokens", limit: contextWindow)
             self.supportsParallelToolCalls = false
-            self.supportsImageDetailOriginal = false
-            self.contextWindow = Self.contextWindow(for: model)
-            self.maxContextWindow = Self.contextWindow(for: model)
+            self.supportsImageDetailOriginal = model.modelCapabilities?.supportsImageInput ?? false
+            self.contextWindow = contextWindow
+            self.maxContextWindow = contextWindow
             self.autoCompactTokenLimit = nil
             self.effectiveContextWindowPercent = 95
             self.experimentalSupportedTools = []
-            self.inputModalities = ["text"]
+            self.inputModalities = model.modelCapabilities?.inputModalities ?? ["text"]
             self.supportsSearchTool = false
         }
 
         private static func contextWindow(for model: ModelDescriptor) -> Int {
+            if let contextWindowTokens = model.modelCapabilities?.contextWindowTokens {
+                return contextWindowTokens
+            }
             let id = model.id.lowercased()
             if model.formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue,
                id.contains("opus") {

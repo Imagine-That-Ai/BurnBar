@@ -115,4 +115,47 @@ class HermesServiceStateTest {
             service.destroy()
         }
     }
+
+    @Test
+    fun `connectToSuggestedRelay selects correct online relay connection`() = runTest {
+        val mockRelayClient = io.mockk.mockk<com.openburnbar.data.hermes.relay.HermesRelayClient>()
+        io.mockk.every { mockRelayClient.isUsable() } returns true
+
+        val descriptors = listOf(
+            com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor(
+                id = "mac-relay-1",
+                displayName = "Alberto's Mac",
+                relayPublicKey = "somekey",
+                capabilities = listOf("cli_agent_chat"),
+                status = "online",
+                updatedAt = 1000L
+            ),
+            com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor(
+                id = "mac-relay-2",
+                displayName = "Older Mac",
+                relayPublicKey = "somekey2",
+                capabilities = listOf("cli_agent_chat"),
+                status = "online",
+                updatedAt = 500L
+            )
+        )
+        io.mockk.coEvery { mockRelayClient.listConnections() } returns descriptors
+
+        val service = HermesService(relayClient = mockRelayClient)
+        try {
+            service.refreshRelayConnections()
+
+            // It should successfully identify the fresh suggested relay (mac-relay-1 has larger updatedAt/lastSeenAt)
+            val suggested = service.suggestedRelayConnection
+            assertNotNull(suggested)
+            assertEquals("mac-relay-1", suggested!!.id)
+
+            // When connecting to suggested relay, selectedConnection changes to mac-relay-1
+            val connected = service.connectToSuggestedRelay(refresh = false)
+            assertTrue(connected)
+            assertEquals("mac-relay-1", service.selectedConnection.value.id)
+        } finally {
+            service.destroy()
+        }
+    }
 }

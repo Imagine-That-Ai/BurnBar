@@ -43,6 +43,10 @@ let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarComputerUseCore",
         targets: ["OpenBurnBarComputerUseCore"]
+    ),
+    .library(
+        name: "OpenBurnBarFirestoreModels",
+        targets: ["OpenBurnBarFirestoreModels"]
     )
 ] + (hasIrohXCFramework ? [
     .library(
@@ -107,6 +111,11 @@ let package = Package(
         .target(
             name: "OpenBurnBarComputerUseCore",
             dependencies: ["OpenBurnBarCore", "OpenBurnBarMedia"]
+        ),
+        .target(
+            name: "OpenBurnBarFirestoreModels",
+            dependencies: ["OpenBurnBarCore"],
+            path: "Sources/OpenBurnBarFirestoreModels"
         ),
         .testTarget(
             name: "OpenBurnBarCoreTests",

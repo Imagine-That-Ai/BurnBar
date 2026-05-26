@@ -34,7 +34,7 @@ final class MediaSessionCoordinator: ObservableObject {
     private var videoEncoder: VideoEncoder?
     private var bitrateController: BitrateController
     private var shadowBweController: MercuryShadowBweController
-    private var streamSink: MediaStreamSink?
+    private var streamSinks: [String: MediaStreamSink] = [:]
     private var sessionMetadata: MediaSessionMetadata?
     private var codecRoute: MercuryCodecRoutingDecision?
     private var activeStreamClass: MediaStreamClass = .screenVideo
@@ -55,14 +55,20 @@ final class MediaSessionCoordinator: ObservableObject {
         sink: MediaStreamSink,
         streamClassOverride: MediaStreamClass? = nil,
         displayId: String? = nil,
+        viewerID: String? = nil,
         cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)? = nil,
         localStreamingCapabilities: MercuryStreamingCapabilitySnapshot? = nil,
         remoteStreamingCapabilities: MercuryStreamingCapabilitySnapshot? = nil,
         codecPolicy: MercuryCodecPolicy = .production
     ) async throws {
-        guard phase.isRestartable else {
+        let sinkID = viewerID ?? peerDeviceID
+        let streamClass = streamClassOverride ?? .screenVideo
+        if case .active(feature: .screenShare) = phase {
+            guard streamClass == activeStreamClass else { throw MediaSessionError.encodeFailed }
+            streamSinks[sinkID] = sink
             return
         }
+        guard phase.isRestartable else { return }
         let check = await capabilityGate.check(
             feature: .screenShare,
             sessionDurationLimitSeconds: 60 * 60,
@@ -77,7 +83,6 @@ final class MediaSessionCoordinator: ObservableObject {
         }
 
         phase = .starting(feature: .screenShare)
-        let streamClass = streamClassOverride ?? .screenVideo
         activeStreamClass = streamClass
         self.cursorProvider = cursorProvider
         var enableLongTermReference = false
@@ -116,7 +121,7 @@ final class MediaSessionCoordinator: ObservableObject {
             streamClass: streamClass,
             peerDeviceID: peerDeviceID
         )
-        self.streamSink = sink
+        self.streamSinks = [sinkID: sink]
         let encoder = VideoEncoder(
             configuration: .init(
                 width: 1920,
@@ -201,10 +206,12 @@ final class MediaSessionCoordinator: ObservableObject {
             await screenCapture.stop()
         }
         videoEncoder?.stop()
-        await streamSink?.close()
+        for sink in streamSinks.values {
+            await sink.close()
+        }
         screenCapture = nil
         videoEncoder = nil
-        streamSink = nil
+        streamSinks.removeAll()
         cursorProvider = nil
         activeStreamClass = .screenVideo
         codecRoute = nil
@@ -217,6 +224,22 @@ final class MediaSessionCoordinator: ObservableObject {
         phase = .ended(reason: reason)
     }
 
+    @discardableResult
+    func detachScreenShareViewer(viewerID: String, reason: MediaSessionMetadata.EndReason = .completedUserCancel) async -> Bool {
+        guard let sink = streamSinks.removeValue(forKey: viewerID) else {
+            return false
+        }
+        await sink.close()
+        if streamSinks.isEmpty {
+            await stop(reason: reason)
+        }
+        return true
+    }
+
+    var activeScreenShareViewerCount: Int {
+        streamSinks.count
+    }
+
     private func handleEncodedFrame(_ encodedFrame: VideoEncoder.EncodedFrame) async {
         var outbound = encodedFrame.frame
         if activeStreamClass == .controlSurfaceFrame {
@@ -224,15 +247,20 @@ final class MediaSessionCoordinator: ObservableObject {
             outbound.cursor = cursorProvider?() ?? Self.currentCursorMetadata()
         }
         if codecRoute?.wireVersion == .v2, activeStreamClass == .screenVideo {
-            await streamSink?.write(frameV2: Self.makeFrameV2(
+            let frameV2 = Self.makeFrameV2(
                 from: outbound,
                 codec: negotiatedCodec,
                 longTermReferenceToken: encodedFrame.longTermReferenceToken
-            ))
+            )
+            for sink in streamSinks.values {
+                await sink.write(frameV2: frameV2)
+            }
         } else {
-            await streamSink?.write(frame: outbound)
+            for sink in streamSinks.values {
+                await sink.write(frame: outbound)
+            }
         }
-        sessionMetadata?.byteCountOutbound += Int64(outbound.payload.count)
+        sessionMetadata?.byteCountOutbound += Int64(outbound.payload.count * streamSinks.count)
     }
 
     nonisolated static func makeFrameV2(

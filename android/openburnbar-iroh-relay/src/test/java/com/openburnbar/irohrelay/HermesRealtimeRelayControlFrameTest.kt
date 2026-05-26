@@ -121,6 +121,77 @@ class HermesRealtimeRelayControlFrameTest {
     }
 
     @Test
+    fun codecDecodesLegacyFocusContextWithoutSmartZoomFields() {
+        val legacyJson = """
+            {
+              "type": "media.stream.frame",
+              "uid": "uid-legacy",
+              "connectionId": "conn-legacy",
+              "media": {
+                "streamClass": "media.stream.screen.video.v1",
+                "focusContext": {
+                  "appName": "OldMac",
+                  "bundleId": "com.old.mac",
+                  "windowTitle": "Old Window",
+                  "windowId": 12345
+                }
+              }
+            }
+        """.trimIndent()
+        val frame = HermesRealtimeRelayJson.decodeFromString(
+            HermesRealtimeRelayFrame.serializer(),
+            legacyJson,
+        )
+        val focus = frame.media?.focusContext
+        assertNotNull(focus)
+        assertEquals("OldMac", focus?.appName)
+        assertEquals("com.old.mac", focus?.bundleId)
+        assertEquals("Old Window", focus?.windowTitle)
+        assertEquals(12345L, focus?.windowId)
+        // Smart Zoom fields must default to null so older payloads continue to parse.
+        assertEquals(null, focus?.targetKind)
+        assertEquals(null, focus?.displayId)
+        assertEquals(null, focus?.normalizedRect)
+        assertEquals(null, focus?.normalizedPoint)
+        assertEquals(null, focus?.confidence)
+        assertEquals(null, focus?.updatedAt)
+    }
+
+    @Test
+    fun codecRoundTripsSmartZoomFocusContext() {
+        val codec = IrohRelayFrameCodec()
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME,
+            uid = "uid-smart",
+            connectionId = "conn-smart",
+            media = HermesRealtimeRelayMediaPayload(
+                streamClass = "media.stream.screen.video.v1",
+                focusContext = HermesRealtimeRelayFocusContext(
+                    appName = "Terminal",
+                    bundleId = "com.apple.terminal",
+                    targetKind = HermesRealtimeRelayFocusTargetKind.FOCUSED_ELEMENT,
+                    displayId = "display-1",
+                    normalizedRect = HermesRealtimeRelayNormalizedRect(
+                        x = 0.4, y = 0.45, width = 0.2, height = 0.05
+                    ),
+                    confidence = 0.95,
+                    updatedAt = 778_000_000.123,
+                ),
+            ),
+        )
+        val decoded = codec.decode(codec.encode(frame)).frame
+        val focus = decoded.media?.focusContext
+        assertNotNull(focus)
+        assertEquals("Terminal", focus?.appName)
+        assertEquals(HermesRealtimeRelayFocusTargetKind.FOCUSED_ELEMENT, focus?.targetKind)
+        assertEquals("display-1", focus?.displayId)
+        assertEquals(0.4, focus?.normalizedRect?.x)
+        assertEquals(0.2, focus?.normalizedRect?.width)
+        assertEquals(0.95, focus?.confidence)
+        assertEquals(778_000_000.123, focus?.updatedAt)
+    }
+
+    @Test
     fun codecRoundTripsMirrorStopFrame() {
         val frame = HermesRealtimeRelayFrame(
             type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_STOP,
@@ -130,6 +201,7 @@ class HermesRealtimeRelayControlFrameTest {
             media = HermesRealtimeRelayMediaPayload(
                 mirrorStop = HermesRealtimeRelayMirrorStop(
                     requestId = "req-stop-1",
+                    sessionId = "session-1",
                     stoppedAt = 801_000_002.0,
                     reason = "viewer_closed",
                 ),
@@ -142,6 +214,7 @@ class HermesRealtimeRelayControlFrameTest {
         assertEquals(HermesRealtimeRelayFrameType.MEDIA_MIRROR_STOP, decoded.type)
         assertEquals("req-stop-1", decoded.requestId)
         assertEquals("req-stop-1", decoded.media?.mirrorStop?.requestId)
+        assertEquals("session-1", decoded.media?.mirrorStop?.sessionId)
         assertEquals(801_000_002.0, decoded.media?.mirrorStop?.stoppedAt)
         assertEquals("viewer_closed", decoded.media?.mirrorStop?.reason)
     }

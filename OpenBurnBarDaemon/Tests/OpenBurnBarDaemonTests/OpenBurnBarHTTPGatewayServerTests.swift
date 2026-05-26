@@ -224,7 +224,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let codexPrimary = try XCTUnwrap(codexModels.first {
             ($0["slug"] as? String) == "glm-5-turbo"
         })
-        XCTAssertEqual(codexPrimary["display_name"] as? String, "GLM-5 Turbo")
+        XCTAssertEqual(codexPrimary["display_name"] as? String, "GLM-5 Turbo · Z.ai · via OpenBurnBar · Reasoning: default")
         XCTAssertEqual(codexPrimary["description"] as? String, "Z.ai via OpenBurnBar")
         XCTAssertEqual(codexPrimary["shell_type"] as? String, "shell_command")
         XCTAssertEqual(codexPrimary["visibility"] as? String, "list")
@@ -293,7 +293,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "gpt-5.5"
         })
         XCTAssertEqual(factory["provider_name"] as? String, "Factory Droid")
-        XCTAssertEqual(factory["display_name"] as? String, "GPT-5.5 via Factory")
+        XCTAssertEqual(factory["display_name"] as? String, "GPT-5.5 via Factory · Factory Droid · via OpenBurnBar · Reasoning: default")
         XCTAssertEqual(factory["source_kind"] as? String, "factory_droid_cli")
         XCTAssertEqual(factory["served_by"] as? String, "Factory Droid CLI")
         XCTAssertEqual(factory["usage_lane"] as? String, "standard")
@@ -521,12 +521,12 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             ($0["account_id"] as? String) == "primary" && ($0["id"] as? String) == "glm-5-turbo"
         })
         XCTAssertEqual(primary["id"] as? String, "glm-5-turbo")
-        XCTAssertEqual(primary["display_name"] as? String, "GLM-5 Turbo Live")
+        XCTAssertEqual(primary["display_name"] as? String, "GLM-5 Turbo Live · Z.ai · via OpenBurnBar · Reasoning: default")
         XCTAssertEqual(primary["source_kind"] as? String, "upstream_models_endpoint")
         XCTAssertEqual(primary["route_eligible"] as? Bool, true)
         XCTAssertNil(primary["last_error"])
         let discovered = try XCTUnwrap(data.first { ($0["id"] as? String) == "glm-5-live-new" })
-        XCTAssertEqual(discovered["display_name"] as? String, "GLM-5 Live New")
+        XCTAssertEqual(discovered["display_name"] as? String, "GLM-5 Live New · Z.ai · via OpenBurnBar · Reasoning: default")
         XCTAssertEqual(discovered["source_kind"] as? String, "upstream_models_endpoint")
         XCTAssertEqual(discovered["route_eligible"] as? Bool, true)
         XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/v1/models"])
@@ -1317,8 +1317,11 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/chat/completions"])
         let chatBody = try XCTUnwrap(upstreamRequests.last?.body)
-        XCTAssertTrue(chatBody.contains(#""content":"hello\nfrom droid""#), chatBody)
-        XCTAssertFalse(chatBody.contains(#""content":[{"#), chatBody)
+        let forwarded = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(chatBody.utf8)) as? [String: Any])
+        let messages = try XCTUnwrap(forwarded["messages"] as? [[String: Any]])
+        let content = try XCTUnwrap(messages.first?["content"] as? [[String: Any]])
+        XCTAssertEqual(content.count, 2)
+        XCTAssertEqual(content.compactMap { $0["text"] as? String }, ["hello", "from droid"])
     }
 
     func testGatewayModelsRefreshesProviderAccountsConcurrently() async throws {
@@ -1792,10 +1795,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let requestData = Data(chatRequest.body.utf8)
         let forwarded = try XCTUnwrap(JSONSerialization.jsonObject(with: requestData) as? [String: Any])
         let messages = try XCTUnwrap(forwarded["messages"] as? [[String: Any]])
-        XCTAssertEqual(messages.map { $0["role"] as? String }, ["system", "user"])
-        let systemContent = try XCTUnwrap(messages.first?["content"] as? String)
-        XCTAssertTrue(systemContent.contains("You are Codex."))
-        XCTAssertTrue(systemContent.contains("follow this developer instruction"))
+        XCTAssertEqual(messages.map { $0["role"] as? String }, ["system", "system", "user"])
+        let systemContents = messages
+            .filter { ($0["role"] as? String) == "system" }
+            .map { Self.messageText(from: $0["content"]) }
+        XCTAssertEqual(systemContents.count, 2)
+        let joinedSystemContent = systemContents.joined(separator: "\n")
+        XCTAssertTrue(joinedSystemContent.contains("You are Codex."))
+        XCTAssertTrue(joinedSystemContent.contains("follow this developer instruction"))
         let tools = try XCTUnwrap(forwarded["tools"] as? [[String: Any]])
         XCTAssertEqual(tools.count, 1)
         let firstTool = try XCTUnwrap(tools.first)
@@ -2543,7 +2550,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/messages",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"context_management":{"edits":[{"type":"clear_tool_uses_20250919","trigger":{"type":"input_tokens","value":100000},"keep":{"type":"tool_uses","value":10}}]},"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+            body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"effort":"adaptive","context_management":{"edits":[{"type":"clear_tool_uses_20250919","trigger":{"type":"input_tokens","value":100000},"keep":{"type":"tool_uses","value":10}}]},"messages":[{"role":"user","content":"hi"}]}"#.utf8)
         )
 
         XCTAssertEqual(response.statusCode, 200)
@@ -2551,6 +2558,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
         XCTAssertFalse(upstreamRequest.body.contains("context_management"))
+        XCTAssertFalse(upstreamRequest.body.contains(#""effort""#))
         XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-sonnet-4-6""#))
     }
 
@@ -3724,6 +3732,19 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         }
 
         return (status: status, headers: headers, body: body)
+    }
+
+    private static func messageText(from content: Any?) -> String {
+        if let text = content as? String {
+            return text
+        }
+        if let parts = content as? [[String: Any]] {
+            return parts.compactMap { part in
+                part["text"] as? String
+            }
+            .joined(separator: "\n")
+        }
+        return ""
     }
 }
 

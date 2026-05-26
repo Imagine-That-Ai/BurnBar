@@ -16,7 +16,7 @@ final class DashboardOverviewViewTests: XCTestCase {
 
     private func makeOverviewView() -> some View {
         let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), refreshOnInit: false)
-        let settingsManager = SettingsManager(defaults: UserDefaults(suiteName: #file)!)
+        let settingsManager = makeSettingsManager()
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         let layer = OpenBurnBarOperatingLayer(dataStore: store, settingsManager: settingsManager)
         let context = DashboardContext(
@@ -58,6 +58,8 @@ final class DashboardOverviewViewTests: XCTestCase {
             activeProviderCount: 1,
             providerSummaries: [providerSummary],
             modelSummaries: [modelSummary],
+            credentialSummaries: [],
+            projectSpendSummaries: [],
             cacheEfficiency: .zero
         )
         return DashboardOverviewView(

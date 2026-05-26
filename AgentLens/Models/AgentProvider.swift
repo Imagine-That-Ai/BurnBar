@@ -218,6 +218,101 @@ struct ProviderSummary: Identifiable, Hashable {
     }
 }
 
+
+// MARK: - Credential Summary
+
+/// Aggregated usage for a single provider credential (API key / account slot / OAuth identity).
+///
+/// `CredentialSummary` slices `token_usage` by `(provider, providerAccountID)` so dashboards
+/// and budget logic can answer "where did this specific key spend?" — the dimension the
+/// existing `ProviderSummary` collapses. The `accountID` here is the same hashed partition
+/// token persisted in `token_usage.providerAccountID` (see `UsageStore.usagePartitionToken`),
+/// and `accountLabel` is the human-readable counterpart from `token_usage.providerAccountLabel`.
+struct CredentialSummary: Identifiable, Hashable {
+    let id = UUID()
+    /// Display provider (drives logo, theme, copy). Mirrors `ProviderSummary.provider`.
+    let provider: AgentProvider
+    /// Stable hashed partition token identifying this credential within the provider scope.
+    /// `nil` when usage rows for this provider arrived without an account ID (e.g. legacy logs).
+    let accountID: String?
+    /// User-facing label for the credential. Falls back to a synthesized name when the row
+    /// arrived without a label (e.g. "anthropic · default").
+    let accountLabel: String
+    /// Where this credential's secret material lives. Drives the storage badge in the UI.
+    let accountSource: ProviderAccountStorageScope?
+    let totalCost: Double
+    let totalTokens: Int
+    let totalInputTokens: Int
+    let totalOutputTokens: Int
+    let sessionCount: Int
+    let modelBreakdown: [ModelUsage]
+    /// The dominant provenance confidence across rows for this credential.
+    let provenanceConfidence: UsageProvenanceConfidence
+    /// The dominant provenance method across rows for this credential.
+    let provenanceMethod: UsageProvenanceMethod
+    /// Whether any row contributing to this credential's spend used estimated provenance.
+    let hasEstimatedContributions: Bool
+    /// Aggregate cache hit-rate signal — feeds `UnifiedCacheHitRateBadge` in the lane.
+    let cacheEfficiency: OpenBurnBarCore.CacheEfficiency
+
+    var formattedCost: String {
+        totalCost.formatAsCost()
+    }
+
+    /// Whether this summary contains any estimated (non-exact) data.
+    var hasEstimatedData: Bool {
+        hasEstimatedContributions
+    }
+
+    /// Stable identity key for grouping / lookup — `(providerID, accountID ?? "default")`.
+    /// Independent of `id` (a per-instance UUID) so the same logical credential keeps
+    /// the same key across view refreshes.
+    var stableKey: String {
+        "\(provider.rawValue)#\(accountID ?? "default")"
+    }
+}
+
+
+// MARK: - Project Spend Summary
+
+/// Aggregated usage for a single project (free-text `projectName` populated by log parsers).
+///
+/// Slices `token_usage` by `projectName` so dashboards and budget logic can answer
+/// "where did this project's money go?" — a dimension already in every row but not
+/// surfaced as an aggregate in any view today. Provider and model breakdowns mirror
+/// the shape of `ProviderSummary.modelBreakdown` and `ModelSummary.providerBreakdown`.
+struct ProjectSpendSummary: Identifiable, Hashable {
+    let id = UUID()
+    /// Display name (the raw `token_usage.projectName` — free text, not normalized).
+    let projectName: String
+    let totalCost: Double
+    let totalTokens: Int
+    let totalInputTokens: Int
+    let totalOutputTokens: Int
+    let sessionCount: Int
+    /// Which providers contributed spend to this project (ranked by cost).
+    let providerBreakdown: [ProviderUsage]
+    /// Which models contributed spend to this project (ranked by cost).
+    let modelBreakdown: [ModelUsage]
+    /// The dominant provenance confidence across rows for this project.
+    let provenanceConfidence: UsageProvenanceConfidence
+    /// The dominant provenance method across rows for this project.
+    let provenanceMethod: UsageProvenanceMethod
+    /// Whether any row contributing to this project's spend used estimated provenance.
+    let hasEstimatedContributions: Bool
+    /// Aggregate cache hit-rate signal across rows in this project.
+    let cacheEfficiency: OpenBurnBarCore.CacheEfficiency
+
+    var formattedCost: String {
+        totalCost.formatAsCost()
+    }
+
+    /// Whether this summary contains any estimated (non-exact) data.
+    var hasEstimatedData: Bool {
+        hasEstimatedContributions
+    }
+}
+
 // MARK: - Model Usage
 
 /// Aggregated usage for a specific model within a provider summary.

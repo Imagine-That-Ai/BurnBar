@@ -6,7 +6,7 @@ import OpenBurnBarCore
 // ChatGPT-app-style picker for the Assistants tab. Replaces the old
 // text-glyph runtime pill. Surfaces three things in one tap target:
 //
-//   1. Swap between agent providers (Hermes / Pi / Codex / Claude / OpenClaw)
+//   1. Swap between agent providers (Hermes / Pi / Codex / Claude / OpenClaw / CLI agents)
 //      using brand icons rather than names.
 //   2. See the current connection status for each provider at a glance
 //      (online / pending / offline / bridged) via a corner status dot.
@@ -34,6 +34,9 @@ extension AssistantRuntimeID {
         case .codex:    return .codex
         case .claude:   return .claudeCode
         case .openClaw: return .openClaw
+        case .droid:    return .factory
+        case .forge:    return .forgeDev
+        case .antigravity: return .antigravity
         }
     }
 
@@ -46,6 +49,9 @@ extension AssistantRuntimeID {
         case .codex:    return Color(hex: "2ECC71")
         case .claude:   return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
+        case .droid:    return Color(hex: "8B5CF6")
+        case .forge:    return Color(hex: "F97316")
+        case .antigravity: return Color(hex: "6C63FF")
         }
     }
 
@@ -58,6 +64,9 @@ extension AssistantRuntimeID {
         case .codex:    return "CLI agent"
         case .claude:   return "CLI agent"
         case .openClaw: return "Local agent"
+        case .droid:    return "CLI agent"
+        case .forge:    return "CLI agent"
+        case .antigravity: return "CLI agent"
         }
     }
 
@@ -71,6 +80,9 @@ extension AssistantRuntimeID {
         case .codex:      return .codex
         case .claudeCode: return .claude
         case .openClaw:   return .openClaw
+        case .factory:    return .droid
+        case .forgeDev:   return .forge
+        case .antigravity: return .antigravity
         default:          return nil
         }
     }
@@ -147,7 +159,7 @@ struct AssistantStatusResolver {
             return RuntimeStatus(hermesService.selectedConnection.status)
         case .pi:
             return RuntimeStatus(piService.selectedConnection.status)
-        case .codex, .claude, .openClaw:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity:
             // CLI-style runtimes bridge through the Mac. We use the Hermes
             // relay reachability as a proxy — if Hermes can talk to the Mac,
             // these can too.
@@ -165,7 +177,7 @@ struct AssistantStatusResolver {
         case .pi:
             return piService.selectedConnection.endpointURL.flatMap(host(from:))
                 ?? piService.selectedConnection.displayName
-        case .codex, .claude, .openClaw:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity:
             return hermesService.selectedConnection.endpointURL.flatMap(host(from:))
                 ?? hermesService.selectedConnection.displayName
         }
@@ -413,7 +425,8 @@ struct AgentSwitcherSheet: View {
                                 .font(MobileTheme.Typography.body)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(MobileTheme.Colors.textPrimary)
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(modelExplanation(for: runtime, origin: snapshot.origin))
                                 .font(MobileTheme.Typography.tiny)
                                 .foregroundStyle(MobileTheme.Colors.textMuted)
@@ -448,6 +461,9 @@ struct AgentSwitcherSheet: View {
         case .codex:    kindCopy = "Codex CLI — pick the OpenAI model it runs on"
         case .claude:   kindCopy = "Claude Code — pick the Anthropic model it runs on"
         case .openClaw: kindCopy = "OpenClaw — pick the local model it runs on"
+        case .droid:    kindCopy = "Droid CLI — pick the model it runs on"
+        case .forge:    kindCopy = "Forge CLI — pick the model it runs on"
+        case .antigravity: kindCopy = "Antigravity CLI — pick the model it runs on"
         }
         switch origin {
         case .live, .preference:

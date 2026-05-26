@@ -28,9 +28,17 @@ data class PinnedAgentGridConfig(
         val seen = linkedSetOf<String>()
         val deduped = pinnedURIs.filter { uri -> seen.add(uri) }
         val trimmed = deduped.take(MAX_SLOTS)
+        val defaultMigrated = if (
+            lastRearrangedAtEpoch == null &&
+            trimmed == legacyDefaultPinnedURIsBeforeDroidForge()
+        ) {
+            defaultPinnedURIs()
+        } else {
+            trimmed
+        }
         val nonEmpty = if (trimmed.isEmpty())
             defaultPinnedURIs().take(1)
-        else trimmed
+        else defaultMigrated
         return copy(pinnedURIs = nonEmpty)
     }
 
@@ -106,6 +114,15 @@ data class PinnedAgentGridConfig(
 
         fun defaultPinnedURIs(): List<String> =
             AssistantRuntimeID.values().map { AgentIdentity.builtInURI(it) }
+
+        fun legacyDefaultPinnedURIsBeforeDroidForge(): List<String> =
+            listOf(
+                AssistantRuntimeID.HERMES,
+                AssistantRuntimeID.PI,
+                AssistantRuntimeID.CODEX,
+                AssistantRuntimeID.CLAUDE,
+                AssistantRuntimeID.OPEN_CLAW
+            ).map { AgentIdentity.builtInURI(it) }
 
         val DEFAULT = PinnedAgentGridConfig()
 

@@ -119,7 +119,8 @@ struct ChatMessagesStream: View {
                     isStreaming: controller.isStreaming && msg.id == controller.activeStreamMessageId && msg.role == .assistant,
                     showViaBadge: msg.cliUsed != nil,
                     isHermes: msg.cliUsed == "hermes" || msg.cliUsed == "openclaw",
-                    assistantModelKey: chatAssistantModelKey(for: msg)
+                    assistantModelKey: chatAssistantModelKey(for: msg),
+                    viewMode: controller.chatViewMode
                 )
                 .id(msg.id)
             }

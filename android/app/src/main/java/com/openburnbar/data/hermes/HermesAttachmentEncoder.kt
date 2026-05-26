@@ -26,7 +26,11 @@ object HermesAttachmentLimits {
  */
 object HermesAttachmentEncoder {
 
-    fun encodeUserTurn(prompt: String, attachments: List<HermesAttachment>): Any {
+    fun encodeUserTurn(
+        prompt: String,
+        attachments: List<HermesAttachment>,
+        modelCapabilities: ModelIOCapabilities? = null
+    ): Any {
         if (attachments.isEmpty()) return prompt
         val array = JSONArray()
         if (prompt.isNotBlank()) {
@@ -36,14 +40,17 @@ object HermesAttachmentEncoder {
             })
         }
         for (attachment in attachments) {
-            array.put(encodePart(attachment))
+            array.put(encodePart(attachment, modelCapabilities))
         }
         return array
     }
 
-    private fun encodePart(attachment: HermesAttachment): JSONObject {
+    private fun encodePart(
+        attachment: HermesAttachment,
+        modelCapabilities: ModelIOCapabilities?
+    ): JSONObject {
         val bytes = readBytesSafely(attachment)
-        if (attachment.isImage && bytes != null) {
+        if (attachment.isImage && bytes != null && canInlineImage(attachment, modelCapabilities)) {
             val b64 = Base64.getEncoder().encodeToString(bytes)
             return JSONObject().apply {
                 put("type", "image_url")
@@ -58,6 +65,15 @@ object HermesAttachmentEncoder {
             put("type", "text")
             put("text", "Attachment ${attachment.fileName} (${attachment.mimeType}):\n$body")
         }
+    }
+
+    private fun canInlineImage(
+        attachment: HermesAttachment,
+        modelCapabilities: ModelIOCapabilities?
+    ): Boolean {
+        return modelCapabilities?.let {
+            it.supportsImageInput && it.acceptsInputMimeType(attachment.mimeType)
+        } ?: true
     }
 
     private fun readBytesSafely(attachment: HermesAttachment): ByteArray? {

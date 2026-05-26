@@ -63,6 +63,25 @@ public enum CLIQuotaExhaustionClassifier {
                 "opencode go quota",
                 "opencode credit",
             ]
+        case .droid:
+            cliSpecificPatterns = [
+                "droid quota",
+                "factory quota",
+                "factory usage limit",
+            ]
+        case .forge:
+            cliSpecificPatterns = [
+                "forge quota",
+                "forge credit",
+                "provider quota",
+            ]
+        case .antigravity:
+            cliSpecificPatterns = [
+                "antigravity quota",
+                "agy quota",
+                "gemini quota",
+                "google ai quota",
+            ]
         }
 
         if genericPatterns.contains(where: normalized.contains) {

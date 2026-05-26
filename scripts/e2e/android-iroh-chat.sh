@@ -106,13 +106,24 @@ sleep 4
 
 echo "▶ Running instrumented suites for the chat path…"
 RUNNER="com.openburnbar.test/androidx.test.runner.AndroidJUnitRunner"
-"${ADB}" -s "${DEVICE_LINE}" shell am instrument -w \
+INSTRUMENT_OUTPUT="$("${ADB}" -s "${DEVICE_LINE}" shell am instrument -w \
     -e class \
 "com.openburnbar.ui.hermes.HermesRichBubbleTest,\
 com.openburnbar.ui.hermes.HermesToolCardTest,\
 com.openburnbar.ui.square.HermesSquareScreenTest,\
 com.openburnbar.ui.square.AgentBrandZoneScreenTest,\
 com.openburnbar.data.media.AndroidFileTransferServiceTest" \
-    "${RUNNER}"
+    "${RUNNER}" 2>&1)"
+printf '%s\n' "${INSTRUMENT_OUTPUT}"
+
+if grep -q "FAILURES!!!" <<<"${INSTRUMENT_OUTPUT}" ||
+   grep -q "INSTRUMENTATION_RESULT: shortMsg=Process crashed" <<<"${INSTRUMENT_OUTPUT}"; then
+    echo "❌ Android iroh chat instrumented suite failed."
+    exit 1
+fi
+if ! grep -Eq "^OK \\([0-9]+ tests?\\)" <<<"${INSTRUMENT_OUTPUT}"; then
+    echo "❌ Android iroh chat instrumented suite did not report an OK test summary."
+    exit 1
+fi
 
 echo "✅ E2E chat path complete."

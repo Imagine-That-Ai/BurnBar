@@ -294,6 +294,11 @@ final class PiService {
         await probeReachability()
         if isReachable {
             await loadModels()
+        } else {
+            // Direct gateway unreachable (typical on iOS — localhost points
+            // to the device, not the Mac). Fall back to relay-based model
+            // discovery via HermesService, mirroring the CLI runtime path.
+            await loadModelsViaRelay()
         }
     }
 
@@ -845,6 +850,50 @@ final class PiService {
             }
         } catch {
             runtimeErrorText = "Failed to list Pi models: \(error.localizedDescription)"
+        }
+    }
+
+    /// Fall back to relay-based model discovery when the direct gateway
+    /// probe fails (typical on iOS where localhost points to the device,
+    /// not the Mac). Mirrors the CLI runtime path through
+    /// `HermesService.fetchCLIRuntimeModelCatalog`.
+    private func loadModelsViaRelay() async {
+        do {
+            let catalog = try await HermesService.shared.fetchCLIRuntimeModelCatalog(runtime: .pi)
+            let relayOptions = catalog.options.map { option in
+                HermesRuntimeModelOption(
+                    providerID: option.providerID,
+                    providerName: option.providerName,
+                    modelID: option.modelID,
+                    displayName: option.displayName,
+                    accountID: nil,
+                    accountLabel: nil,
+                    sourceID: nil,
+                    sourceKind: nil,
+                    capabilities: [],
+                    quotaState: nil,
+                    routeEligible: nil,
+                    lastError: nil
+                )
+            }
+            if !relayOptions.isEmpty {
+                modelOptions = relayOptions
+                isReachable = true
+                if let selectedModelID,
+                   let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+                    persistResolvedSelectedModelID(resolved)
+                    runtimeErrorText = nil
+                } else if selectedModelID == nil {
+                    selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
+                        ?? modelOptions.first { $0.isRouteEligible }?.modelID
+                        ?? modelOptions.first?.modelID
+                    selectedModelWasExplicit = false
+                }
+            } else {
+                runtimeErrorText = runtimeErrorText ?? "Pi relay returned no models. Keep OpenBurnBar open on your Mac with Remote Relay enabled, then refresh."
+            }
+        } catch {
+            runtimeErrorText = error.localizedDescription
         }
     }
 

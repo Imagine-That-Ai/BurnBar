@@ -60,6 +60,7 @@ enum class SettingsSection(val displayTitle: String) {
     HERMES("Hermes"),
     COMPUTER_USE("Computer Use"),
     THEME("Theme"),
+    BUDGET("Budgeting & Rules"),
 }
 
 /**
@@ -74,6 +75,7 @@ enum class SettingsPageRoute {
     THEME_PREFS,
     QUOTA_PREFS,
     WALLPAPER_GENERATOR,
+    BUDGET_PREFS,
 }
 
 /**
@@ -93,6 +95,7 @@ object SettingsAnchor {
     const val COMPUTER_USE_ROW = "root.computerUse"
     const val THEME_ROW = "root.theme"
     const val QUOTA_CUSTOMIZATION_ROW = "root.quotaCustomization"
+    const val BUDGET_ROW = "root.budgeting"
 
     // Smart Displays
     const val GOOGLE_SMART_DISPLAY = "smartDisplays.google"

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.openburnbar.R
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.data.hermes.HermesSubProvider
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.square.AgentIdentity
 
@@ -75,6 +76,21 @@ object ProviderLogo {
         AssistantRuntimeID.CODEX      -> R.drawable.codex_logo
         AssistantRuntimeID.CLAUDE     -> R.drawable.claude_code_logo
         AssistantRuntimeID.OPEN_CLAW  -> R.drawable.open_claw_logo
+        AssistantRuntimeID.DROID      -> R.drawable.factory_logo
+        AssistantRuntimeID.FORGE      -> R.drawable.forge_logo
+        AssistantRuntimeID.ANTIGRAVITY -> R.drawable.antigravity_logo
+    }
+
+    /// Asset for a `HermesSubProvider`. Maps the sub-providers to their
+    /// brand logos.
+    @DrawableRes
+    fun drawableFor(subProvider: HermesSubProvider): Int = when (subProvider) {
+        HermesSubProvider.CODEX -> R.drawable.codex_logo
+        HermesSubProvider.CLAUDE -> R.drawable.claude_code_logo
+        HermesSubProvider.ZAI -> R.drawable.zai_logo
+        HermesSubProvider.KIMI -> R.drawable.kimi_logo
+        HermesSubProvider.MINIMAX -> R.drawable.mini_max_logo
+        HermesSubProvider.OLLAMA -> R.drawable.ollama_logo
     }
 
     /// Map a raw model/runtime token (e.g. "claude-3-5-sonnet", "gpt-4o",
@@ -87,6 +103,9 @@ object ProviderLogo {
             // Built-in runtimes first — these are the most precise identifiers
             // we have and they should always win over substring matching.
             "openclaw"   in k || "open_claw" in k || "open-claw" in k -> R.drawable.open_claw_logo
+            "droid"      in k || "factory-droid" in k || "factorydroid" in k -> R.drawable.factory_logo
+            "forge"      in k || "forge-dev" in k || "forgedev" in k -> R.drawable.forge_logo
+            "antigravity" in k || "agy" == k || "google-antigravity" in k -> R.drawable.antigravity_logo
             // Pi as a runtime token shows up as exact "pi" / "pi-agent".
             // Restrict it to whole-token matches so "openai" / "perplexity"
             // don't fall into this bucket.

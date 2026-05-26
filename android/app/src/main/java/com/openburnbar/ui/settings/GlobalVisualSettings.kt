@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.ui.theme.UIMode
 
 /**
  * Thread-safe singleton manager for global visual settings in the Android app.
@@ -21,6 +22,7 @@ object GlobalVisualSettings {
     private const val KEY_SWARM_SPARKLES = "enableSwarmSparkles"
     private const val KEY_PROVIDER_GLYPHS = "providerGlyphs"
     private const val KEY_EXCLUDE_BRAND_SHAPES = "excludeBrandShapesFromSwarm"
+    private const val KEY_UI_MODE = "appUiMode"
 
     private var loaded = false
 
@@ -34,6 +36,7 @@ object GlobalVisualSettings {
     private val _enableSwarmSparkles = mutableStateOf(true)
     private val _providerGlyphs = mutableStateOf(AgentProvider.swarmGlyphProviders.toSet())
     private val _excludeBrandShapesFromSwarm = mutableStateOf(false)
+    private val _uiMode = mutableStateOf(UIMode.STANDARD)
 
     private fun ensureLoaded() {
         if (!loaded) {
@@ -44,6 +47,7 @@ object GlobalVisualSettings {
                 _enableSwarmSparkles.value = prefs.getBoolean(KEY_SWARM_SPARKLES, true)
                 _excludeBrandShapesFromSwarm.value = prefs.getBoolean(KEY_EXCLUDE_BRAND_SHAPES, false)
                 _themePalette.value = prefs.getString(KEY_THEME_PALETTE, "System") ?: "System"
+                _uiMode.value = UIMode.fromKey(prefs.getString(KEY_UI_MODE, "standard") ?: "standard")
                 _providerGlyphs.value = decodeProviderGlyphs(prefs.getString(KEY_PROVIDER_GLYPHS, null))
                 _primaryTabs.value = prefs.getString(KEY_PRIMARY_TABS, defaultPrimaryTabs) ?: defaultPrimaryTabs
                 _secondaryTabs.value = prefs.getString(KEY_SECONDARY_TABS, defaultSecondaryTabs) ?: defaultSecondaryTabs
@@ -65,6 +69,15 @@ object GlobalVisualSettings {
 
     /** Exposes read-only access to Exclude Brand Shapes setting. */
     val excludeBrandShapesFromSwarm: State<Boolean> get() { ensureLoaded(); return _excludeBrandShapesFromSwarm }
+
+    /** Exposes read-only access to UI Mode setting. */
+    val uiMode: State<UIMode> get() { ensureLoaded(); return _uiMode }
+
+    fun setUIMode(value: UIMode) {
+        ensureLoaded()
+        _uiMode.value = value
+        try { prefs.edit().putString(KEY_UI_MODE, value.key).apply() } catch (e: Throwable) {}
+    }
 
     /** Exposes app-wide provider glyph filters for live swarm backgrounds. */
     val providerGlyphs: State<Set<AgentProvider>> get() { ensureLoaded(); return _providerGlyphs }
@@ -172,6 +185,9 @@ fun rememberExcludeBrandShapesFromSwarm(): State<Boolean> = remember { GlobalVis
 
 @Composable
 fun rememberThemePalette(): State<String> = remember { GlobalVisualSettings.themePalette }
+
+@Composable
+fun rememberUIMode(): State<UIMode> = remember { GlobalVisualSettings.uiMode }
 
 @Composable
 fun rememberProviderGlyphs(): State<Set<AgentProvider>> = remember { GlobalVisualSettings.providerGlyphs }

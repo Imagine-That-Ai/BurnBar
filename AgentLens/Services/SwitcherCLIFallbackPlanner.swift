@@ -83,6 +83,12 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
             return .claudeCode
         case .opencode:
             return .openCode
+        case .droid:
+            return .factory
+        case .forge:
+            return .forgeDev
+        case .antigravity:
+            return .antigravity
         }
     }
 

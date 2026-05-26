@@ -1,0 +1,119 @@
+name: OpenBurnBar Test Matrix
+description: Unified OpenBurnBar CI test gates (core, extension, mobile, supply chain)
+
+inputs:
+  tier:
+    description: "core | full | release"
+    required: false
+    default: full
+  base_ref:
+    description: Git base ref for diff coverage
+    required: false
+    default: origin/main
+  enable_diff_coverage:
+    description: Run multi-surface diff coverage
+    required: false
+    default: "true"
+  enable_mobile:
+    description: Run iOS and Android unit tests
+    required: false
+    default: "true"
+  enable_supply_chain:
+    description: Run supply chain audit
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Validate shell script syntax
+      shell: bash
+      run: |
+        set -euo pipefail
+        for script in scripts/*.sh; do
+          bash -n "$script"
+        done
+
+    - name: Verify version consistency
+      shell: bash
+      run: ./scripts/verify-version-consistency.sh
+
+    - name: Install OpenBurnBar Functions dependencies
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: npm ci --prefix functions
+
+    - name: Lint OpenBurnBar Functions
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: npm --prefix functions run lint
+
+    - name: Build OpenBurnBar Functions
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: npm --prefix functions run build
+
+    - name: Run OpenBurnBar Functions tests
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: npm --prefix functions test
+
+    - name: Run OpenBurnBar Swift tests
+      shell: bash
+      run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
+
+    - name: Run OpenBurnBar app tests
+      shell: bash
+      run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+
+    - name: Verify OpenBurnBar app SwiftPM lockfile
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
+
+    - name: Run OpenBurnBar retrieval replay evals
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: ./scripts/test-openburnbar-retrieval-evals.sh
+
+    - name: Run OpenBurnBar TypeScript unit tests
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: ./scripts/test-openburnbar-ts.sh
+
+    - name: Run OpenBurnBar replay evals
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: ./scripts/test-openburnbar-replay-evals.sh
+
+    - name: Run OpenBurnBar extension-host tests
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: ./scripts/test-openburnbar-extension-host.sh
+
+    - name: Run Firestore rules emulator tests
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: npm --prefix functions run test:firestore-rules
+
+    - name: Run iOS mobile unit tests
+      if: inputs.enable_mobile == 'true'
+      shell: bash
+      run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh
+
+    - name: Run Android unit tests
+      if: inputs.enable_mobile == 'true'
+      shell: bash
+      run: ./scripts/test-openburnbar-android.sh
+
+    - name: Run supply chain audit
+      if: inputs.enable_supply_chain == 'true'
+      shell: bash
+      run: ./scripts/supply-chain-audit.sh
+
+    - name: Compute diff coverage
+      if: inputs.enable_diff_coverage == 'true'
+      shell: bash
+      run: |
+        ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json" || true
+        ./scripts/diff-coverage-all.sh "${{ inputs.base_ref }}"
