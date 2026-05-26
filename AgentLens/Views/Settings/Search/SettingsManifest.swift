@@ -485,6 +485,28 @@ enum SettingsManifest {
             keywords: ["nest", "hub", "pixel", "clock", "display", "cast"]
         ),
 
+        // MARK: Text Expansion
+
+        SettingsItem(
+            id: "textExpansion.snippets",
+            tab: .textExpansion,
+            pageRoute: .textExpansionRoot,
+            anchorID: SettingsAnchor.textExpansionSnippets,
+            title: "Snippets",
+            subtitle: "Manage && triggers, static expansions, and LLM preview snippets",
+            keywords: ["text expansion", "snippet", "textexpander", "trigger", "keyboard", "llm", "rewrite"],
+            helpText: "Creates user-defined snippets that expand from &&trigger tokens inside OpenBurnBar and opted-in system typing surfaces."
+        ),
+        SettingsItem(
+            id: "textExpansion.runtime",
+            tab: .textExpansion,
+            pageRoute: .textExpansionRoot,
+            anchorID: SettingsAnchor.textExpansionRuntime,
+            title: "Expansion Runtime",
+            subtitle: "Control in-app expansion, Mac global expansion, keyboard snapshots, and LLM preview behavior",
+            keywords: ["runtime", "global", "mac", "ime", "keyboard extension", "full access", "preview"]
+        ),
+
         // MARK: Media & Sharing
 
         SettingsItem(

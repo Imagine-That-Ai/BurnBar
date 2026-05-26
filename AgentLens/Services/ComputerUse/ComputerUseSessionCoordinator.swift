@@ -86,6 +86,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private let macDispatcher: MacActionDispatcher
     private let inputController: MacInputController
     private let remoteClipboardController: RemoteClipboardController
+    private let remoteUnlockCredentialController: RemoteUnlockCredentialController
     private let scopeMatcher: ComputerUseScopeMatcher
     private let scopeRulesProvider: @MainActor () -> [ComputerUseScopeRule]
     private let approvalPresenter: ApprovalPresenter
@@ -177,6 +178,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             gate: gate,
             scopeMatcher: scopeMatcher
         )
+        self.remoteUnlockCredentialController = RemoteUnlockCredentialController(inputController: inputController)
         self.scopeMatcher = scopeMatcher
         self.scopeRulesProvider = scopeRulesProvider
         self.browserDispatcher = browserDispatcher
@@ -891,6 +893,52 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             // status frames. We still allow phone-side reflections
             // (e.g. tests) to flow through the retry dispatcher.
             await SystemPermissionRetryDispatcher.shared.observe(statusFrame: frame)
+        case .remoteUnlockCredential:
+            guard let credential = frame.control?.remoteUnlockCredential else { return }
+            let authorizedPeerNode = await MainActor.run { phoneControlAuthorizedPeerNodeProvider?() }
+            let result = await remoteUnlockCredentialController.handle(
+                credential: credential,
+                context: RemoteUnlockCredentialController.RuntimeContext(
+                    validator: phoneValidator,
+                    activeSessionId: activeSessionId,
+                    state: state,
+                    isDirectPhoneControl: activeSessionIsDirectPhoneControl,
+                    authorizedPeerNodeId: authorizedPeerNode
+                )
+            )
+            emitControlFrame(
+                type: result.status == .denied ? .remoteUnlockDenied : .remoteUnlockResult,
+                payload: HermesRealtimeRelayControlPayload(
+                    streamClass: "remote_unlock",
+                    sessionId: credential.sessionId,
+                    remoteUnlockResult: result
+                )
+            )
+        case .remoteUnlockSession,
+             .remoteUnlockInput:
+            let requestId = frame.requestId
+                ?? frame.control?.remoteUnlockSession?.requestId
+                ?? frame.control?.remoteUnlockInput?.requestId
+                ?? frame.control?.remoteUnlockCredential?.requestId
+                ?? UUID().uuidString
+            emitControlFrame(
+                type: .remoteUnlockDenied,
+                payload: HermesRealtimeRelayControlPayload(
+                    streamClass: "remote_unlock",
+                    sessionId: frame.control?.sessionId,
+                    remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult(
+                        requestId: requestId,
+                        sessionId: frame.control?.sessionId,
+                        status: .denied,
+                        detail: "remote_unlock_daemon_unavailable",
+                        completedAt: Date()
+                    )
+                )
+            )
+        case .remoteUnlockState,
+             .remoteUnlockResult,
+             .remoteUnlockDenied:
+            break
         default:
             break
         }

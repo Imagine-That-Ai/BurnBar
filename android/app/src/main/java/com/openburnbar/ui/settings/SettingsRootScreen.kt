@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
@@ -123,6 +124,9 @@ fun SettingsRootScreen(
                 onBack = { router.page = SettingsPageRoute.ROOT }
             )
             SettingsPageRoute.BUDGET_PREFS -> BudgetSettingsScreen(
+                onBack = { router.page = SettingsPageRoute.ROOT }
+            )
+            SettingsPageRoute.TEXT_EXPANSION -> TextExpansionSettingsScreen(
                 onBack = { router.page = SettingsPageRoute.ROOT }
             )
         }
@@ -287,6 +291,14 @@ private fun SettingsRootList(
                 subtitle = "Set hard limits and warnings on usage spends",
                 pageRoute = SettingsPageRoute.BUDGET_PREFS,
                 onTap = { router.page = SettingsPageRoute.BUDGET_PREFS }
+            ),
+            RootRow(
+                anchor = SettingsAnchor.TEXT_EXPANSION_ROW,
+                icon = Icons.Filled.Keyboard,
+                title = "Text Expansion",
+                subtitle = "Manage && snippets and the OpenBurnBar snippets keyboard",
+                pageRoute = SettingsPageRoute.TEXT_EXPANSION,
+                onTap = { router.page = SettingsPageRoute.TEXT_EXPANSION }
             )
         )
     }

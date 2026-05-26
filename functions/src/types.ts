@@ -840,6 +840,43 @@ export interface CloudVaultBlobEnvelopeDoc {
   createdAt: string;
 }
 
+export interface CloudVaultSealedTextDoc {
+  algorithm: "AES-256-GCM";
+  keyVersion: number;
+  nonce: string;
+  ciphertext: string;
+  tag: string;
+}
+
+export type TextExpansionModeDoc = "static" | "llm_rewrite";
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/text_snippets/{snippetID}
+// ---------------------------------------------------------------------------
+
+export interface TextExpansionSnippetDoc {
+  id: string;
+  uid: string;
+  sourceDeviceID: string;
+  triggerHash: string;
+  sealedTitle: CloudVaultSealedTextDoc;
+  sealedTrigger: CloudVaultSealedTextDoc;
+  sealedBody: CloudVaultSealedTextDoc;
+  sealedScope: CloudVaultSealedTextDoc;
+  mode: TextExpansionModeDoc;
+  isEnabled: boolean;
+  revision: number;
+  createdAt: import("firebase-admin/firestore").Timestamp | string | number;
+  updatedAt: import("firebase-admin/firestore").Timestamp | string | number;
+  deletedAt?: import("firebase-admin/firestore").Timestamp | string | number | null;
+  encryption: {
+    algorithm: "AES-256-GCM";
+    keyVersion: number;
+    tokenHashVersion: number;
+  };
+  schemaVersion: number;
+}
+
 export interface ProjectMemorySnapshotDoc {
   projectSlug: string;
   projectDisplayName: string;

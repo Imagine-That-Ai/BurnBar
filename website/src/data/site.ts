@@ -18,8 +18,8 @@ export const SITE = {
   iapProductId: "com.openburnbar.hostedQuotaSync.cloud.monthly",
   iapPriceUSD: "4.99",
   iapPeriod: "month",
-  macReleaseLatest: "0.1.2-beta.12", // last published; tree advertises 0.1.3-beta.1
-  macReleaseFile: "OpenBurnBar-0.1.2-beta.12-macOS.dmg",
+  macReleaseLatest: "1.0",
+  macReleaseFile: "OpenBurnBar-1.0-macOS.dmg",
   macMin: "macOS 14 Sonoma",
   iosMin: "iOS 17",
   iosStatus: "in App Store review",

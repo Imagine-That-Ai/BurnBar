@@ -13,6 +13,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case alerts
     case notifications
     case devicesAndSync
+    case textExpansion
     case media
     case computerUse
 
@@ -28,6 +29,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .alerts: return "Alerts"
         case .notifications: return "Notifications"
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
+        case .textExpansion: return "Text Expansion"
         case .media: return "Media & Sharing"
         case .computerUse: return "Computer Use"
         }
@@ -53,6 +55,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Local pings, Telegram, calendar"
         case .devicesAndSync:
             return "Cloud sync, trusted devices, smart displays"
+        case .textExpansion:
+            return "&& triggers, snippets, keyboard sync, and LLM previews"
         case .media:
             return "Mercury file transfer, screen share, calls — permissions and partner preferences"
         case .computerUse:
@@ -70,6 +74,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .alerts: return "bell.fill"
         case .notifications: return "bell.badge.fill"
         case .devicesAndSync: return "macbook.and.iphone"
+        case .textExpansion: return "text.cursor"
         case .media: return "play.rectangle.on.rectangle"
         case .computerUse: return "cursorarrow.click.2"
         }
@@ -85,6 +90,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .alerts: return DesignSystem.Colors.blaze
         case .notifications: return DesignSystem.Colors.whimsy
         case .devicesAndSync: return DesignSystem.Colors.teal
+        case .textExpansion: return DesignSystem.Colors.amber
         case .media: return DesignSystem.Colors.hermesMercury
         case .computerUse: return DesignSystem.Colors.blaze
         }

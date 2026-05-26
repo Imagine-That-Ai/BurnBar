@@ -25,6 +25,7 @@ import com.openburnbar.data.media.MediaControlStreamCoordinator
 import com.openburnbar.data.media.RetainedIrohControlTransportPool
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
+import com.openburnbar.data.text.TextExpansionSyncWorker
 import com.openburnbar.irohrelay.IrohDialTarget
 import com.openburnbar.irohrelay.IrohPairingPublisher
 import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
@@ -131,6 +132,7 @@ class BurnBarApplication : Application() {
         // Widget snapshot: hydrate from disk + schedule the 15-min refresh.
         BurnBarWidgetSnapshotStore.bind(this)
         BurnBarWidgetSyncWorker.enqueuePeriodic(this)
+        TextExpansionSyncWorker.enqueuePeriodic(this)
         BudgetNotificationCenter.ensureChannel(this)
 
         // Phase 6: Hermes iroh transport bootstraps lazily — first send on

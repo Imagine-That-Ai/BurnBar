@@ -126,6 +126,10 @@ struct SettingsHubView: View {
             SettingsDeepLinkScrollContainer(route: .media) { _ in
                 MediaSettingsView()
             }
+        case .textExpansion:
+            SettingsDeepLinkScrollContainer(route: .textExpansion) { _ in
+                MobileTextExpansionSettingsView()
+            }
         case .theme:
             SettingsDeepLinkScrollContainer(route: .theme) { _ in
                 ThemeSettingsView()
@@ -342,6 +346,15 @@ struct SettingsHubView: View {
                         )
                     }
                     .settingsAnchor(SettingsAnchor.mediaRow)
+
+                    NavigationLink(value: SettingsPageRoute.textExpansion) {
+                        SettingsLabel(
+                            icon: "keyboard",
+                            color: MobileTheme.ember,
+                            title: "Text Expansion"
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.textExpansionRow)
                 } header: { groupHeader("AI Environments") }
                 .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 

@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 @testable import OpenBurnBarDaemon
 import Foundation
 import XCTest
@@ -35,6 +36,10 @@ final class BurnBarCLITests: XCTestCase {
             invokedExecutablePath: "/tmp/OpenBurnBarCLI"
         ))
         XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
+            arguments: ["remote-unlock-certification", "status"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+        XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
             arguments: ["--model", "gpt-5"],
             invokedExecutablePath: "/tmp/codex"
         ))
@@ -54,6 +59,36 @@ final class BurnBarCLITests: XCTestCase {
 
         XCTAssertTrue(output.contains("Daemon 0.1.0"))
         XCTAssertTrue(output.contains("ok=true"))
+    }
+
+    func testRemoteUnlockCertificationStatusUsesProofStore() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cli-remote-unlock-\(UUID().uuidString)", isDirectory: true)
+        let store = RemoteUnlockCertificationReportStore(
+            fileURL: directory.appendingPathComponent("proof.json")
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let runner = BurnBarCLIRunner(
+            client: FakeCLIClient(),
+            remoteUnlockCertificationStore: store
+        )
+
+        let missing = try runner.run(arguments: ["remote-unlock-certification", "status"])
+        XCTAssertTrue(missing.contains("missing"))
+
+        let report = RemoteUnlockCertificationReport.certifiedHardware(
+            currentOSBuild: "24F74",
+            credentialRecipientKeyId: "hpke-0123456789abcdef01234567",
+            credentialRecipientPublicKeyBase64: Data(repeating: 0x42, count: 32).base64EncodedString(),
+            fileVaultSSHSupported: false,
+            generatedAt: Date(timeIntervalSince1970: 1_774_000_000)
+        )
+        try store.save(report)
+
+        let present = try runner.run(arguments: ["remote-unlock-certification", "status"])
+        XCTAssertTrue(present.contains("Remote Unlock certification: present"))
+        XCTAssertTrue(present.contains(report.reportId))
+        XCTAssertTrue(present.contains("hpke-0123456789abcdef01234567"))
     }
 
     func testMissionApproveCommandRequiresIdentifier() {

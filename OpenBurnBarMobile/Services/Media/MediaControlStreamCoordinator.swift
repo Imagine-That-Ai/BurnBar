@@ -144,6 +144,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// Explicit remote-clipboard responses from the Mac. Mirror surfaces
     /// match request IDs here before reading or writing the phone pasteboard.
     var clipboardResponseHandler: ((HermesRealtimeRelayClipboardResponse) async -> Void)?
+    var remoteUnlockStateHandler: ((HermesRealtimeRelayRemoteUnlockState) async -> Void)?
+    var remoteUnlockResultHandler: ((HermesRealtimeRelayRemoteUnlockResult) async -> Void)?
 
     /// Mercury Phase 8 — opt-in display name that piggybacks on the
     /// presence heartbeat so the Mac can render it in the popover.
@@ -494,6 +496,18 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     if let response = frame.control?.clipboardResponse,
                        let handler = clipboardResponseHandler {
                         await handler(response)
+                    }
+                    continue
+                case .remoteUnlockState:
+                    if let state = frame.control?.remoteUnlockState,
+                       let handler = remoteUnlockStateHandler {
+                        await handler(state)
+                    }
+                    continue
+                case .remoteUnlockResult, .remoteUnlockDenied:
+                    if let result = frame.control?.remoteUnlockResult,
+                       let handler = remoteUnlockResultHandler {
+                        await handler(result)
                     }
                     continue
                 case .mediaClassify:
