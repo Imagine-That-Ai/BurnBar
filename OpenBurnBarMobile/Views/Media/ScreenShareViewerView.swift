@@ -59,6 +59,7 @@ struct ScreenShareViewerView: View {
     let reconnectAttemptStartedAt: Date?
     let lastFailureReason: String?
     let lastLiveAt: Date?
+    let remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
     let onForceReconnect: () -> Void
     let onRetryRequest: () -> Void
     let sendTapIntent: (Double, Double, Int) -> Void
@@ -70,6 +71,7 @@ struct ScreenShareViewerView: View {
     let sendAgentContextTargetIntent: (Double, Double, String, String, String?) -> Void
     let pasteClipboardToMac: () -> Void
     let grabClipboardFromMac: () -> Void
+    let sendRemoteUnlockCredential: (String) -> Void
     let onSelectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let onClose: () -> Void
@@ -122,6 +124,7 @@ struct ScreenShareViewerView: View {
         reconnectAttemptStartedAt: Date? = nil,
         lastFailureReason: String? = nil,
         lastLiveAt: Date? = nil,
+        remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
         usePremiumSOTAUX: Bool = false,
         onForceReconnect: @escaping () -> Void = {},
         onRetryRequest: @escaping () -> Void = {},
@@ -134,6 +137,7 @@ struct ScreenShareViewerView: View {
         sendAgentContextTargetIntent: @escaping (Double, Double, String, String, String?) -> Void = { _, _, _, _, _ in },
         pasteClipboardToMac: @escaping () -> Void = {},
         grabClipboardFromMac: @escaping () -> Void = {},
+        sendRemoteUnlockCredential: @escaping (String) -> Void = { _ in },
         onSelectDisplay: @escaping (String) -> Void = { _ in },
         onTrustControlDevice: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
@@ -149,6 +153,7 @@ struct ScreenShareViewerView: View {
         self.reconnectAttemptStartedAt = reconnectAttemptStartedAt
         self.lastFailureReason = lastFailureReason
         self.lastLiveAt = lastLiveAt
+        self.remoteUnlockState = remoteUnlockState
         self.usePremiumSOTAUX = usePremiumSOTAUX
         self.onForceReconnect = onForceReconnect
         self.onRetryRequest = onRetryRequest
@@ -161,6 +166,7 @@ struct ScreenShareViewerView: View {
         self.sendAgentContextTargetIntent = sendAgentContextTargetIntent
         self.pasteClipboardToMac = pasteClipboardToMac
         self.grabClipboardFromMac = grabClipboardFromMac
+        self.sendRemoteUnlockCredential = sendRemoteUnlockCredential
         self.onSelectDisplay = onSelectDisplay
         self.onTrustControlDevice = onTrustControlDevice
         self.onClose = onClose
@@ -172,6 +178,15 @@ struct ScreenShareViewerView: View {
             stats.roundTripMillis = controlRoundTripMillis
         }
         return stats
+    }
+
+    private var activeRemoteUnlockState: HermesRealtimeRelayRemoteUnlockState? {
+        guard let remoteUnlockState, remoteUnlockState.lockState != .unlocked else { return nil }
+        return remoteUnlockState
+    }
+
+    private var standardControlInputEnabled: Bool {
+        controlInputEnabled && activeRemoteUnlockState == nil
     }
 
     var body: some View {
@@ -227,7 +242,7 @@ struct ScreenShareViewerView: View {
                     .transition(.opacity)
                 }
 
-                if interactionMode == .control, controlInputEnabled {
+                if interactionMode == .control, standardControlInputEnabled {
                     Color.clear
                         .contentShape(Rectangle())
                         .gesture(controlSurfaceGesture(in: proxy.size, contentRect: contentRect, viewport: visibleViewport))
@@ -235,7 +250,7 @@ struct ScreenShareViewerView: View {
                         .accessibilityLabel("Mac screen control surface")
                 }
 
-                if interactionMode == .trackpad, controlInputEnabled {
+                if interactionMode == .trackpad, standardControlInputEnabled {
                     TrackpadGlassSurface(
                         isVisible: true,
                         usePremiumSOTAUX: usePremiumSOTAUX,
@@ -280,7 +295,7 @@ struct ScreenShareViewerView: View {
                         .allowsHitTesting(false)
                 }
 
-                if controlInputEnabled,
+                if standardControlInputEnabled,
                    interactionMode != .view,
                    let visibleCursorPoint = cursorPoint ?? ScreenShareControlInputPolicy.initialCursorPoint(in: contentRect),
                    cursorStyle != .hidden {
@@ -293,7 +308,7 @@ struct ScreenShareViewerView: View {
                     .allowsHitTesting(false)
                 }
 
-                if hardwareScrollEnabled, controlInputEnabled {
+                if hardwareScrollEnabled, standardControlInputEnabled {
                     VolumeButtonScrollBridge { direction in
                         let endY = min(max(0.5 + direction, 0), 1)
                         sendScrollIntent(0.5, 0.5, 0.5, endY, selectedDisplayId)
@@ -381,7 +396,7 @@ struct ScreenShareViewerView: View {
                     cursorStyle: $cursorStyle,
                     stats: displayStats,
                     controlStatus: controlStatus,
-                    controlInputEnabled: controlInputEnabled,
+                    controlInputEnabled: standardControlInputEnabled,
                     displays: displays,
                     selectedDisplayId: selectedDisplayId,
                     isZoomed: viewport.isZoomed,
@@ -425,6 +440,20 @@ struct ScreenShareViewerView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 14)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+
+                if let activeRemoteUnlockState {
+                    RemoteUnlockStatusOverlay(
+                        state: activeRemoteUnlockState,
+                        sendCredential: sendRemoteUnlockCredential,
+                        onReconnect: onForceReconnect,
+                        onClose: onClose
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 18)
+                    .frame(maxWidth: 520)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
             .ignoresSafeArea()
         }
@@ -1259,6 +1288,129 @@ private enum MirrorCursorStyle: String, CaseIterable, Identifiable {
         case .white: return "White cursor"
         case .hidden: return "Hide cursor"
         }
+    }
+}
+
+private struct RemoteUnlockStatusOverlay: View {
+    let state: HermesRealtimeRelayRemoteUnlockState
+    let sendCredential: (String) -> Void
+    let onReconnect: () -> Void
+    let onClose: () -> Void
+    @State private var password = ""
+    @State private var isSending = false
+
+    private var isCertified: Bool {
+        state.capabilities.enabled && state.capabilities.certificationStatus == .certified
+    }
+
+    private var title: String {
+        switch state.lockState {
+        case .loginWindow, .rebootLoginWindow: return "Mac Login Window"
+        case .securityAgent: return "Mac Authentication Prompt"
+        case .screenSaver, .screenLocked: return "Mac Locked"
+        case .displaySleeping: return "Mac Display Sleeping"
+        case .fastUserSwitching: return "Fast User Switching"
+        case .fileVaultPreboot: return "FileVault Preboot"
+        case .remoteDesktopCurtain: return "Remote Desktop Curtain"
+        case .unknown: return "Mac Lock State Unknown"
+        case .unlocked: return "Mac Unlocked"
+        }
+    }
+
+    private var detail: String {
+        if isCertified {
+            return "Remote Unlock is certified on this Mac. Credential entry uses the dedicated remote-unlock lane; normal Mac control is paused while locked."
+        }
+        let firstBlocker = state.capabilities.blockers.first ?? "remote_unlock_not_certified"
+        return "Remote Unlock is not certified on this Mac: \(firstBlocker). Normal Mac control is paused while locked."
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: isCertified ? "lock.open.display" : "lock.display")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(isCertified ? .green : .yellow)
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.10), in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text(state.backend.rawValue.replacingOccurrences(of: "_", with: " "))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+
+                Spacer()
+
+                Button(action: onReconnect) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(Color.white.opacity(0.10), in: Circle())
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(Color.white.opacity(0.10), in: Circle())
+            }
+
+            Text(detail)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.82))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if isCertified {
+                HStack(spacing: 10) {
+                    SecureField("Mac password", text: $password)
+                        .textContentType(.password)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 42)
+                        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                        )
+
+                    Button {
+                        let credential = password
+                        password = ""
+                        isSending = true
+                        sendCredential(credential)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            isSending = false
+                        }
+                    } label: {
+                        Image(systemName: isSending ? "checkmark" : "lock.open")
+                            .font(.system(size: 16, weight: .bold))
+                            .frame(width: 42, height: 42)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.black)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .opacity(password.isEmpty || isSending ? 0.55 : 1)
+                    .disabled(password.isEmpty || isSending)
+                    .accessibilityLabel("Send Mac password")
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .padding(16)
+        .mirrorGlassBackground(cornerRadius: 18)
+        .shadow(color: .black.opacity(0.35), radius: 18, x: 0, y: 10)
     }
 }
 

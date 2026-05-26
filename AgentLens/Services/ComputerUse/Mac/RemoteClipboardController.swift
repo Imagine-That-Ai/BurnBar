@@ -459,4 +459,159 @@ public final class RemoteClipboardController {
         }
     }
 }
+
+@MainActor
+final class RemoteUnlockCredentialController {
+    struct RuntimeContext {
+        var validator: PhoneControlAuthorityValidator
+        var activeSessionId: ComputerUseSessionID?
+        var state: ComputerUseSessionState?
+        var isDirectPhoneControl: Bool
+        var authorizedPeerNodeId: String?
+        var readiness: MacRemoteUnlockReadinessService
+
+        @MainActor init(
+            validator: PhoneControlAuthorityValidator,
+            activeSessionId: ComputerUseSessionID?,
+            state: ComputerUseSessionState?,
+            isDirectPhoneControl: Bool,
+            authorizedPeerNodeId: String?,
+            readiness: MacRemoteUnlockReadinessService = .shared
+        ) {
+            self.validator = validator
+            self.activeSessionId = activeSessionId
+            self.state = state
+            self.isDirectPhoneControl = isDirectPhoneControl
+            self.authorizedPeerNodeId = authorizedPeerNodeId
+            self.readiness = readiness
+        }
+    }
+
+    private let inputController: MacInputController
+    private let keyStore: RemoteUnlockCredentialKeyStore
+    private let policy: RemoteUnlockPolicy
+
+    init(
+        inputController: MacInputController = MacInputController(),
+        keyStore: RemoteUnlockCredentialKeyStore = .shared,
+        policy: RemoteUnlockPolicy = .default
+    ) {
+        self.inputController = inputController
+        self.keyStore = keyStore
+        self.policy = policy
+    }
+
+    func handle(
+        credential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
+        context: RuntimeContext
+    ) async -> HermesRealtimeRelayRemoteUnlockResult {
+        func result(
+            _ status: HermesRealtimeRelayRemoteUnlockResult.Status,
+            detail: String,
+            lockState: HermesRealtimeRelayMacLockState? = nil
+        ) -> HermesRealtimeRelayRemoteUnlockResult {
+            HermesRealtimeRelayRemoteUnlockResult(
+                requestId: credential.requestId,
+                sessionId: credential.sessionId,
+                status: status,
+                lockState: lockState,
+                backend: context.readiness.capabilities().activeBackend,
+                detail: detail,
+                completedAt: Date()
+            )
+        }
+
+        let capabilities = context.readiness.capabilities()
+        guard capabilities.enabled else {
+            return result(.denied, detail: "remote_unlock_not_certified")
+        }
+        guard context.isDirectPhoneControl,
+              let manifestPeer = context.state?.manifest.phoneViewerNodeId,
+              manifestPeer == credential.authority.peerNodeId else {
+            return result(.denied, detail: "untrusted_controller")
+        }
+        if let authorized = context.authorizedPeerNodeId,
+           !authorized.isEmpty,
+           authorized != credential.authority.peerNodeId {
+            return result(.denied, detail: "control_owned_by_other_viewer")
+        }
+
+        do {
+            _ = try context.validator.validate(
+                envelope: credential.authority,
+                remoteUnlockCredential: credential,
+                now: Date()
+            )
+        } catch let error as PhoneControlAuthorityValidator.ValidationError {
+            return result(.denied, detail: validationDetail(for: error))
+        } catch {
+            return result(.denied, detail: "signature_failure")
+        }
+
+        switch policy.validate(credential: credential, sessionId: context.activeSessionId?.rawValue ?? "", now: Date()) {
+        case .allowed:
+            break
+        case .denied(let reason):
+            return result(.denied, detail: reason)
+        }
+
+        guard credential.recipientKeyId == capabilities.credentialRecipientKeyId else {
+            return result(.denied, detail: "recipient_key_mismatch")
+        }
+
+        let password: String
+        do {
+            let privateKey = try keyStore.copyPrivateKey()
+            password = try RemoteUnlockCredentialEnvelopeCrypto.open(
+                envelope: credential,
+                recipientPrivateKey: privateKey
+            )
+        } catch {
+            return result(.failed, detail: "credential_decryption_failed")
+        }
+
+        do {
+            _ = try inputController.type(text: password)
+            _ = try inputController.key("Return")
+        } catch {
+            return result(.failed, detail: remoteUnlockInputDetail(for: error))
+        }
+
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        let state = context.readiness.currentState(
+            sessionId: credential.sessionId,
+            controlOwnerViewerId: context.authorizedPeerNodeId
+        )
+        let unlocked = state.lockState == .unlocked
+        return result(
+            unlocked ? .unlocked : .accepted,
+            detail: unlocked ? "unlocked" : "credential_submitted",
+            lockState: state.lockState
+        )
+    }
+
+    private func validationDetail(for error: PhoneControlAuthorityValidator.ValidationError) -> String {
+        switch error {
+        case .missingPeerPubKey, .signatureFailed, .intentHashMismatch:
+            return "signature_failure"
+        case .counterReplay:
+            return "counter_replay"
+        case .staleTimestamp:
+            return "stale_timestamp"
+        }
+    }
+
+    private func remoteUnlockInputDetail(for error: Error) -> String {
+        if let inputError = error as? MacInputController.InputError {
+            switch inputError {
+            case .accessibilityNotTrusted: return "accessibility_not_trusted"
+            case .displayBoundsViolation: return "display_bounds_violation"
+            case .eventCreationFailed: return "event_creation_failed"
+            case .dragEndpointMissing: return "drag_endpoint_missing"
+            case .unknownKey: return "unknown_key"
+            }
+        }
+        return "credential_input_failed"
+    }
+}
 #endif

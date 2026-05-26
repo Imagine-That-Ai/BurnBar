@@ -175,6 +175,7 @@ private fun breadcrumb(item: SettingsItem): String {
         SettingsPageRoute.WALLPAPER_GENERATOR -> "Swarm Background"
         SettingsPageRoute.QUOTA_PREFS -> "Quota Customisation"
         SettingsPageRoute.BUDGET_PREFS -> "Budgeting & Rules"
+        SettingsPageRoute.TEXT_EXPANSION -> "Text Expansion"
     }
     return if (pageLabel.isEmpty()) sectionTitle else "$sectionTitle › $pageLabel"
 }

@@ -134,6 +134,9 @@ enum SettingsPageRoute: Hashable, Codable {
     // Devices & Sync
     case devicesAndSyncRoot
 
+    // Text Expansion
+    case textExpansionRoot
+
     // Media & Sharing
     case mediaRoot
 
@@ -235,6 +238,10 @@ enum SettingsAnchor {
     static let cloudSyncToggle = "devices.cloudSync"
     static let trustedDevices = "devices.trusted"
     static let smartDisplays = "devices.smartDisplays"
+
+    // Text Expansion
+    static let textExpansionRuntime = "textExpansion.runtime"
+    static let textExpansionSnippets = "textExpansion.snippets"
 
     // Media & Sharing
     static let mediaPermissions = "media.permissions"

@@ -154,11 +154,13 @@ actor RefreshOrchestrator {
             await coordinator.syncUsage()
             await coordinator.syncConversationMetadata()
             await coordinator.syncSessionLogs()
+            await coordinator.syncTextExpansionSnippets()
             await coordinator.syncCollaborationArtifacts()
         } else if let cloudSync = cloudSync {
             await cloudSync.uploadPending()
             await cloudSync.uploadPendingConversations()
             await cloudSync.uploadPendingSessionLogs()
+            await cloudSync.syncTextExpansionSnippets()
             await cloudSync.syncSharedArtifacts()
         }
 

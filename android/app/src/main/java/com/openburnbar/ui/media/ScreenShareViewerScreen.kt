@@ -71,11 +71,18 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import com.openburnbar.irohrelay.HermesRealtimeRelayDisplayDescriptor
+import com.openburnbar.irohrelay.HermesRealtimeRelayMacLockState
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -112,6 +119,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -145,6 +153,7 @@ fun ScreenShareViewerScreen(
     availableDisplays: List<HermesRealtimeRelayDisplayDescriptor> = emptyList(),
     selectedDisplayId: String? = null,
     latestFocusContext: ScreenShareSmartZoomContext? = null,
+    remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = null,
     onSelectDisplay: (String) -> Unit = {},
     onClose: () -> Unit = {},
     onEnterPictureInPicture: () -> Unit = {},
@@ -160,6 +169,7 @@ fun ScreenShareViewerScreen(
     onAgentContextTargetNormalized: (Double, Double, String, String, String?) -> Unit = { _, _, _, _, _ -> },
     onPasteClipboardToMac: () -> Unit = {},
     onGrabClipboardFromMac: () -> Unit = {},
+    onSendRemoteUnlockPassword: (String) -> Unit = {},
     controlStatus: String? = null,
     onTrustControlDevice: () -> Unit = {},
 ) {
@@ -199,6 +209,10 @@ fun ScreenShareViewerScreen(
     val controlMode = ScreenMirrorControlMode.entries.firstOrNull { it.name == controlModeName }
         ?: ScreenMirrorControlMode.VIEW
     val smartZoomMode = SmartZoomMode.entries.firstOrNull { it.name == smartZoomModeName } ?: SmartZoomMode.SMART
+    val activeRemoteUnlockState = remoteUnlockState?.takeIf {
+        it.lockState != HermesRealtimeRelayMacLockState.UNLOCKED
+    }
+    val standardControlEnabled = activeRemoteUnlockState == null
     val aspect = (stats.widthPx.toFloat() / stats.heightPx.toFloat())
         .takeIf { it.isFinite() && it > 0.1f }
         ?: (16f / 9f)
@@ -349,12 +363,12 @@ fun ScreenShareViewerScreen(
                     }
                 },
             )
-            if (controlMode != ScreenMirrorControlMode.VIEW) {
+            if (controlMode != ScreenMirrorControlMode.VIEW && standardControlEnabled) {
                 ScreenMirrorInputOverlay()
             }
         }
 
-        if (controlMode != ScreenMirrorControlMode.VIEW) {
+        if (controlMode != ScreenMirrorControlMode.VIEW && standardControlEnabled) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -435,13 +449,13 @@ fun ScreenShareViewerScreen(
             )
         }
 
-        if (controlMode == ScreenMirrorControlMode.COPILOT) {
+        if (controlMode == ScreenMirrorControlMode.COPILOT && standardControlEnabled) {
             coPilotViewPoint?.let { pos ->
                 CoPilotTargetReticle(position = pos)
             }
         }
 
-        if (controlMode == ScreenMirrorControlMode.COPILOT && coPilotTarget != null) {
+        if (controlMode == ScreenMirrorControlMode.COPILOT && coPilotTarget != null && standardControlEnabled) {
             CoPilotTargetOverlay(
                 coPilotTarget = coPilotTarget!!,
                 coPilotRuntime = coPilotRuntime,
@@ -456,7 +470,7 @@ fun ScreenShareViewerScreen(
             )
         }
 
-        if (controlMode == ScreenMirrorControlMode.TRACKPAD) {
+        if (controlMode == ScreenMirrorControlMode.TRACKPAD && standardControlEnabled) {
             ScreenMirrorTrackpadSurface(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -468,7 +482,7 @@ fun ScreenShareViewerScreen(
             )
         }
 
-        if (typingOpen) {
+        if (typingOpen && standardControlEnabled) {
             RemoteKeyboardCaptureField(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -494,6 +508,18 @@ fun ScreenShareViewerScreen(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(16.dp)
+            )
+        }
+
+        activeRemoteUnlockState?.let { state ->
+            RemoteUnlockStatusPanel(
+                state = state,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 16.dp, vertical = 18.dp),
+                onReconnect = onReconnect,
+                onClose = onClose,
+                onSendPassword = onSendRemoteUnlockPassword,
             )
         }
 
@@ -566,7 +592,7 @@ fun ScreenShareViewerScreen(
             onPasteClipboardToMac = onPasteClipboardToMac,
             onGrabClipboardFromMac = onGrabClipboardFromMac,
             onPanic = onPanic,
-            controlStatus = controlStatus,
+            controlStatus = if (activeRemoteUnlockState != null) "Mac locked. Remote Unlock controls only." else controlStatus,
             onTrustControlDevice = onTrustControlDevice,
             onReconnect = onReconnect,
             onEnterPictureInPicture = onEnterPictureInPicture,
@@ -2093,6 +2119,136 @@ private fun CoPilotTargetOverlay(
                         contentDescription = "Submit instruction",
                         tint = if (inputInstruction.trim().isNotEmpty()) Color.Red else Color.White.copy(alpha = 0.3f)
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteUnlockStatusPanel(
+    state: HermesRealtimeRelayRemoteUnlockState,
+    modifier: Modifier = Modifier,
+    onReconnect: () -> Unit,
+    onClose: () -> Unit,
+    onSendPassword: (String) -> Unit,
+) {
+    var password by rememberSaveable { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    val certified = state.capabilities.enabled &&
+        state.capabilities.certificationStatus.name == "CERTIFIED"
+    val title = when (state.lockState) {
+        HermesRealtimeRelayMacLockState.LOGIN_WINDOW,
+        HermesRealtimeRelayMacLockState.REBOOT_LOGIN_WINDOW -> "Mac Login Window"
+        HermesRealtimeRelayMacLockState.SECURITY_AGENT -> "Mac Authentication Prompt"
+        HermesRealtimeRelayMacLockState.SCREEN_SAVER,
+        HermesRealtimeRelayMacLockState.SCREEN_LOCKED -> "Mac Locked"
+        HermesRealtimeRelayMacLockState.DISPLAY_SLEEPING -> "Mac Display Sleeping"
+        HermesRealtimeRelayMacLockState.FAST_USER_SWITCHING -> "Fast User Switching"
+        HermesRealtimeRelayMacLockState.FILEVAULT_PREBOOT -> "FileVault Preboot"
+        HermesRealtimeRelayMacLockState.REMOTE_DESKTOP_CURTAIN -> "Remote Desktop Curtain"
+        HermesRealtimeRelayMacLockState.UNKNOWN -> "Mac Lock State Unknown"
+        HermesRealtimeRelayMacLockState.UNLOCKED -> "Mac Unlocked"
+    }
+    val detail = if (certified) {
+        "Remote Unlock is certified on this Mac. Normal Mac control is paused while locked."
+    } else {
+        val blocker = state.capabilities.blockers.firstOrNull() ?: "remote_unlock_not_certified"
+        "Remote Unlock is not certified on this Mac: $blocker. Normal Mac control is paused while locked."
+    }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = 520.dp)
+            .auroraGlass(cornerRadius = 20.dp, tintAlpha = 0.38f, shadow = AuroraShadows.large)
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.VerifiedUser,
+                    contentDescription = null,
+                    tint = if (certified) AuroraColors.successDark else AuroraColors.amber,
+                    modifier = Modifier.size(30.dp),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        color = Color.White,
+                        style = AuroraType.body.copy(fontWeight = FontWeight.Bold),
+                    )
+                    Text(
+                        text = state.backend.name.lowercase().replace('_', ' '),
+                        color = Color.White.copy(alpha = 0.62f),
+                        style = AuroraType.caption,
+                    )
+                }
+                IconButton(onClick = onReconnect) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Reconnect", tint = Color.White)
+                }
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
+                }
+            }
+            Text(
+                text = detail,
+                color = Color.White.copy(alpha = 0.82f),
+                style = AuroraType.caption,
+            )
+            if (certified) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        label = { Text("Mac password") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedLabelColor = Color.White.copy(alpha = 0.78f),
+                            unfocusedLabelColor = Color.White.copy(alpha = 0.58f),
+                            focusedBorderColor = Color.White.copy(alpha = 0.62f),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.24f),
+                            cursorColor = Color.White,
+                        ),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(
+                        enabled = password.isNotEmpty() && !sending,
+                        onClick = {
+                            val credential = password
+                            password = ""
+                            sending = true
+                            onSendPassword(credential)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White,
+                            contentColor = Color.Black,
+                            disabledContainerColor = Color.White.copy(alpha = 0.38f),
+                            disabledContentColor = Color.Black.copy(alpha = 0.55f),
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.height(52.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.LockOpen,
+                            contentDescription = "Send Mac password",
+                        )
+                    }
+                    LaunchedEffect(sending) {
+                        if (sending) {
+                            delay(1000)
+                            sending = false
+                        }
+                    }
                 }
             }
         }

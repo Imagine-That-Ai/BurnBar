@@ -36,6 +36,7 @@ final class DataStoreCoordinator {
     nonisolated var switcherStore: SwitcherProfileStore { actor.switcherStore }
     nonisolated var backfillCursorStore: BackfillCursorStore { actor.backfillCursorStore }
     nonisolated var providerAccountStore: ProviderAccountStore { actor.providerAccountStore }
+    nonisolated var textExpansionSnippetStore: TextExpansionSnippetStore { actor.textExpansionSnippetStore }
 
     /// Presentation-layer view model for dashboard aggregate metrics.
     /// Rebuilt automatically whenever usages change.

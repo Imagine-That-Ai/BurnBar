@@ -50,6 +50,7 @@ final class SettingsManager {
     let providerPath: ProviderPathSettings
     let artifactDiscovery: ArtifactDiscoverySettings
     let routedClientWiring: RoutedClientWiringSettings
+    let textExpansion: TextExpansionSettings
     private var computerUseRemoteConfigTask: Task<Void, Never>?
 
     // MARK: - Init
@@ -96,6 +97,7 @@ final class SettingsManager {
         self.providerPath = ProviderPathSettings(persistence: coordinator)
         self.artifactDiscovery = ArtifactDiscoverySettings(persistence: coordinator)
         self.routedClientWiring = RoutedClientWiringSettings(persistence: coordinator)
+        self.textExpansion = TextExpansionSettings(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(

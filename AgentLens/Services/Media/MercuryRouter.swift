@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 import OSLog
 import AppKit
@@ -102,6 +103,7 @@ final class MercuryRouter: ObservableObject {
     private let ensureComputerUseSession: ComputerUseSessionEnsurer?
     private let applyFocusFollowMode: FocusFollowModeApplier?
     private let maxMirrorViewers: Int
+    private let remoteUnlockReadiness: MacRemoteUnlockReadinessService
 
     private var mirrorSinkFactory: MirrorSinkFactory?
     /// The frame + reply sender from the most recently accepted request.
@@ -131,7 +133,7 @@ final class MercuryRouter: ObservableObject {
     private var remoteStreamingCapabilitiesByConnectionID: [String: MercuryStreamingCapabilitySnapshot] = [:]
     private var remoteStreamingCapabilitiesByControlStreamID: [UUID: MercuryStreamingCapabilitySnapshot] = [:]
     private var cooldownTask: Task<Void, Never>?
-    private var workspaceAuthGateObservers: [NSObjectProtocol] = []
+    private nonisolated(unsafe) var workspaceAuthGateObservers: [NSObjectProtocol] = []
 
     init(
         sessionCoordinator: MediaSessionCoordinator,
@@ -141,6 +143,7 @@ final class MercuryRouter: ObservableObject {
         applyFocusFollowMode: FocusFollowModeApplier? = nil,
         startScreenShare: ScreenShareStarter? = nil,
         maxMirrorViewers: Int = 3,
+        remoteUnlockReadiness: MacRemoteUnlockReadinessService = .shared,
         cooldownSeconds: TimeInterval = 30,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -149,6 +152,7 @@ final class MercuryRouter: ObservableObject {
         self.consentStore = consentStore
         self.ensureComputerUseSession = ensureComputerUseSession
         self.applyFocusFollowMode = applyFocusFollowMode
+        self.remoteUnlockReadiness = remoteUnlockReadiness
         if let startScreenShare {
             self.startScreenShare = startScreenShare
         } else {
@@ -445,7 +449,8 @@ final class MercuryRouter: ObservableObject {
                     sentAt: Date(),
                     deviceDisplayName: Host.current().localizedName ?? "My Mac",
                     capabilities: macCapabilities,
-                    peerDeviceId: frame.connectionId
+                    peerDeviceId: frame.connectionId,
+                    remoteUnlockCapabilities: remoteUnlockReadiness.capabilities()
                 )
                 let responseFrame = HermesRealtimeRelayFrame(
                     type: .mediaPresenceHeartbeat,
@@ -508,6 +513,9 @@ final class MercuryRouter: ObservableObject {
         ]
         if consentStore.alwaysAllow {
             capabilities.append(MercuryPeer.Feature.mirrorAutoAccept.rawValue)
+        }
+        if remoteUnlockReadiness.capabilities().enabled {
+            capabilities.append(MercuryPeer.Feature.remoteUnlockHost.rawValue)
         }
         return capabilities
     }
@@ -613,7 +621,7 @@ final class MercuryRouter: ObservableObject {
         }
     }
 
-    private static func hostAuthGateReason(from note: Notification) -> String? {
+    private nonisolated static func hostAuthGateReason(from note: Notification) -> String? {
         switch note.name {
         case NSWorkspace.screensDidSleepNotification:
             return "screen_sleep"
@@ -651,6 +659,23 @@ final class MercuryRouter: ObservableObject {
             || phase != .idle
 
         guard hadWorkToStop else { return }
+
+        if shouldKeepMirrorAliveForRemoteUnlock(activeViewers) {
+            let state = remoteUnlockReadiness.currentState(
+                sessionId: activeMirrorSessionID,
+                controlOwnerViewerId: activeControlViewerID
+            )
+            Self.log.info("router_host_auth_gate_remote_unlock_kept_alive reason=\(reason, privacy: .public) state=\(state.lockState.rawValue, privacy: .public)")
+            Self.debugTrace("router_host_auth_gate_remote_unlock_kept_alive reason=\(reason) state=\(state.lockState.rawValue)")
+            lastError = nil
+            await broadcastMirrorAck(
+                decision: .accepted,
+                detail: "Mac locked; Remote Unlock remains available.",
+                availableDisplays: ScreenCapturePipeline.availableDisplays(),
+                selectedDisplayId: activeSelectedDisplayID
+            )
+            return
+        }
 
         Self.log.info("router_host_auth_gate_closed reason=\(reason, privacy: .public)")
         Self.debugTrace("router_host_auth_gate_closed reason=\(reason)")
@@ -702,6 +727,13 @@ final class MercuryRouter: ObservableObject {
         phase = .idle
     }
 
+    private func shouldKeepMirrorAliveForRemoteUnlock(_ activeViewers: [ActiveMirrorViewer]) -> Bool {
+        guard remoteUnlockReadiness.capabilities().enabled else { return false }
+        return activeViewers.contains { viewer in
+            viewer.frame.media?.mirrorRequest?.remoteUnlockSession != nil
+        }
+    }
+
     private func handleMirrorRequest(
         frame: HermesRealtimeRelayFrame,
         controlStreamID: UUID?,
@@ -714,6 +746,31 @@ final class MercuryRouter: ObservableObject {
         }
         Self.log.info("router_mirror_request_received requestID=\(req.requestId, privacy: .public) requester=\(req.requesterDisplayName, privacy: .public)")
         Self.debugTrace("router_mirror_request_received requestID=\(req.requestId) requester=\(req.requesterDisplayName)")
+
+        if let remoteUnlockSession = req.remoteUnlockSession {
+            switch remoteUnlockReadiness.validateRemoteUnlockSession(remoteUnlockSession, now: clock()) {
+            case .allowed:
+                break
+            case .denied(let reason):
+                let state = remoteUnlockReadiness.currentState(
+                    sessionId: remoteUnlockSession.sessionId,
+                    controlOwnerViewerId: nil
+                )
+                Self.log.info("router_remote_unlock_request_denied requestID=\(req.requestId, privacy: .public) reason=\(reason, privacy: .public)")
+                Self.debugTrace("router_remote_unlock_request_denied requestID=\(req.requestId) reason=\(reason)")
+                await respond(
+                    requestID: req.requestId,
+                    decision: .unsupported,
+                    detail: reason,
+                    viewerID: req.viewerId,
+                    remoteUnlockState: state,
+                    remoteUnlockCapabilities: state.capabilities,
+                    frame: frame,
+                    replySender: replySender
+                )
+                return
+            }
+        }
 
         // Cooldown short-circuit — never bother the user mid-cooldown.
         if case let .cooldown(remaining) = phase {
@@ -1217,9 +1274,17 @@ final class MercuryRouter: ObservableObject {
         viewerCount: Int? = nil,
         maxViewers: Int? = nil,
         controlOwnerViewerID: String? = nil,
+        remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
+        remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil,
         frame: HermesRealtimeRelayFrame,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
+        let capabilities = remoteUnlockCapabilities ?? remoteUnlockReadiness.capabilities()
+        let remoteUnlockSessionID = frame.media?.mirrorRequest?.remoteUnlockSession?.sessionId ?? sessionID
+        let state = remoteUnlockState ?? remoteUnlockReadiness.currentState(
+            sessionId: remoteUnlockSessionID,
+            controlOwnerViewerId: controlOwnerViewerID
+        )
         let ack = HermesRealtimeRelayMirrorAck(
             requestId: requestID,
             decision: decision,
@@ -1232,7 +1297,9 @@ final class MercuryRouter: ObservableObject {
             viewerRole: viewerRole,
             viewerCount: viewerCount,
             maxViewers: maxViewers,
-            controlOwnerViewerId: controlOwnerViewerID
+            controlOwnerViewerId: controlOwnerViewerID,
+            remoteUnlockState: state,
+            remoteUnlockCapabilities: capabilities
         )
         let outbound = HermesRealtimeRelayFrame(
             type: .mediaMirrorAck,

@@ -218,6 +218,11 @@ sleep checks, and the request's `maxBytes` limit. `Paste to Mac` writes
 `NSPasteboard.general.string` and returns text only when it is non-empty and
 within the caller's byte limit.
 
+Remote Unlock password paste is not this clipboard lane. Locked-screen password
+entry uses `remote_unlock.credential`, a sealed credential envelope with no
+plaintext field, no Mac pasteboard write, no `Grab from Mac`, and no agent
+visibility. See [`REMOTE_UNLOCK.md`](REMOTE_UNLOCK.md).
+
 Audit entries use `clipboard.paste_to_mac` and `clipboard.grab_from_mac`
 descriptor kinds. They record the action, byte count, status, and session
 context, but never store clipboard text in the audit chain, action-log stream,

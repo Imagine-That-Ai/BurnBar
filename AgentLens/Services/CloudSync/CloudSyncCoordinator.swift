@@ -21,6 +21,7 @@ import Foundation
 /// | `syncConversationMetadata()` | `uploadPendingConversations()` |
 /// | `syncChatThreads()` | `uploadPendingChatThreads()` |
 /// | `syncSessionLogs()` | `uploadPendingSessionLogs()` |
+/// | `syncTextExpansionSnippets()` | new encrypted text-expansion mirror |
 /// | `syncCollaborationArtifacts()` | `syncSharedArtifacts()` |
 /// | `syncRemoteReplicas()` | `downloadRemoteData()` |
 @Observable
@@ -41,6 +42,7 @@ final class CloudSyncCoordinator {
     private let sessionLogSync: SessionLogSyncService
     private let providerAccountSync: ProviderAccountSyncService
     private let quotaSnapshotSync: QuotaSnapshotSyncService
+    private let textExpansionSync: TextExpansionSyncService
     private let downloadSync: DownloadSyncService
 
     // MARK: - Shared State
@@ -75,6 +77,7 @@ final class CloudSyncCoordinator {
         self.sessionLogSync = SessionLogSyncService(context: context)
         self.providerAccountSync = ProviderAccountSyncService(context: context)
         self.quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
+        self.textExpansionSync = TextExpansionSyncService(context: context)
         self.downloadSync = DownloadSyncService(context: context)
     }
 
@@ -103,6 +106,11 @@ final class CloudSyncCoordinator {
     /// Gated on `sessionLogCloudBackupEnabled`.
     func syncSessionLogs() async {
         await propagateSessionLogErrors { await sessionLogSync.sync() }
+    }
+
+    /// Upload and download encrypted Text Expansion snippets.
+    func syncTextExpansionSnippets() async {
+        await propagateTextExpansionErrors { await textExpansionSync.sync() }
     }
 
     /// Upload non-secret provider account metadata to Firestore for iOS visibility.
@@ -221,6 +229,20 @@ final class CloudSyncCoordinator {
         await block()
         if let err = conversationSync.lastSyncError, err.isEmpty == false {
             lastSyncError = err
+        }
+        isSyncing = false
+    }
+
+    private func propagateTextExpansionErrors(_ block: () async -> Void) async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        lastSyncError = nil
+        await block()
+        if let err = textExpansionSync.lastSyncError, err.isEmpty == false {
+            lastSyncError = err
+        }
+        if textExpansionSync.lastSyncDate != nil {
+            lastSyncDate = textExpansionSync.lastSyncDate
         }
         isSyncing = false
     }
