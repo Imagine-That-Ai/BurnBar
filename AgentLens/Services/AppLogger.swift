@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 import OSLog
 
 #if canImport(Sentry)
@@ -174,7 +175,12 @@ public struct AppLogger: Sendable {
     
     /// Log metadata pairs with private values (hashed in production logs).
     private func logMetadata(_ metadata: [String: String], at level: OSLogType = .default) {
-        for (key, value) in metadata.sorted(by: { $0.key < $1.key }) {
+        var merged = TraceContextBridge.currentContext().logFields()
+        for (key, value) in metadata {
+            merged[key] = value
+        }
+        let sanitized = Self.sanitizeMetadata(merged)
+        for (key, value) in sanitized.sorted(by: { $0.key < $1.key }) {
             logger.log(level: level, "\(key, privacy: .public)=\(value, privacy: .private(mask: .hash))")
         }
     }

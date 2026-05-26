@@ -652,6 +652,12 @@ private func defaultSwitcherConfigDirectory(
         return homeDirectoryURL.appendingPathComponent(".claude", isDirectory: true).path
     case .opencode:
         return homeDirectoryURL.appendingPathComponent(".config/opencode", isDirectory: true).path
+    case .droid:
+        return homeDirectoryURL.appendingPathComponent(".factory", isDirectory: true).path
+    case .forge:
+        return homeDirectoryURL.appendingPathComponent(".forge", isDirectory: true).path
+    case .antigravity:
+        return homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli", isDirectory: true).path
     }
 }
 
@@ -686,6 +692,12 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
         return .claudeCode
     case .opencode:
         return nil
+    case .droid:
+        return .factory
+    case .forge:
+        return .forgeDev
+    case .antigravity:
+        return .antigravity
     }
 }
 

@@ -10,7 +10,7 @@ import OpenBurnBarMedia
 /// trust-mode badge. Phase 8 ships the view; Phase 12 makes the
 /// approval-row buttons functional via `PhoneControlSender`.
 ///
-public struct AgentWatchView: View {
+public struct AgentWatchView<Placeholder: View>: View {
     @ObservedObject private var state: AgentWatchState
     @StateObject private var video = AgentWatchVideoCoordinator()
     private let downgradeTrustMode: (ComputerUseTrustMode) -> Void
@@ -21,6 +21,7 @@ public struct AgentWatchView: View {
     private let sendScrollIntent: (Double, Double, Double, Double) -> Void
     private let sendTextIntent: (String) -> Void
     private let sendShortcutIntent: (String, [String]) -> Void
+    private let placeholderBuilder: () -> Placeholder
     @State private var showingTimeline = false
     @State private var showingOptions = false
     @State private var dragPreview: (start: CGPoint, end: CGPoint)?
@@ -34,7 +35,8 @@ public struct AgentWatchView: View {
         sendTapIntent: @escaping (Double, Double) -> Void = { _, _ in },
         sendScrollIntent: @escaping (Double, Double, Double, Double) -> Void = { _, _, _, _ in },
         sendTextIntent: @escaping (String) -> Void = { _ in },
-        sendShortcutIntent: @escaping (String, [String]) -> Void = { _, _ in }
+        sendShortcutIntent: @escaping (String, [String]) -> Void = { _, _ in },
+        @ViewBuilder placeholder: @escaping () -> Placeholder
     ) {
         self._state = ObservedObject(wrappedValue: state)
         self.downgradeTrustMode = downgradeTrustMode
@@ -45,6 +47,7 @@ public struct AgentWatchView: View {
         self.sendScrollIntent = sendScrollIntent
         self.sendTextIntent = sendTextIntent
         self.sendShortcutIntent = sendShortcutIntent
+        self.placeholderBuilder = placeholder
     }
 
     public var body: some View {
@@ -54,7 +57,7 @@ public struct AgentWatchView: View {
                 .ignoresSafeArea()
                 .opacity(state.currentFrame == nil ? 0 : 1)
             if state.currentFrame == nil {
-                framePlaceholder
+                placeholderBuilder()
             }
             phoneInputSurface
             cursorOverlay
@@ -82,19 +85,6 @@ public struct AgentWatchView: View {
                 onShortcut: sendShortcutIntent,
                 onPanic: panicHalt
             )
-        }
-    }
-
-    private var framePlaceholder: some View {
-        VStack {
-            Image(systemName: "rectangle.dashed")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 96, height: 96)
-                .foregroundStyle(.white.opacity(0.2))
-            Text(state.sessionId == nil ? "Waiting for Mac session" : "Live control stream ready")
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.55))
         }
     }
 
@@ -269,6 +259,62 @@ public struct AgentWatchView: View {
         let x = min(max(point.x / size.width, 0), 1)
         let y = min(max(point.y / size.height, 0), 1)
         return (Double(x), Double(y))
+    }
+}
+
+public extension AgentWatchView where Placeholder == AgentWatchDefaultPlaceholder {
+    /// Convenience initializer that renders the legacy dashed-rectangle
+    /// placeholder. Used by any surface that hosts `AgentWatchView` outside
+    /// of the You-tab Agent Watch screen (which supplies its own editorial
+    /// `AgentWatchEmptyStateView`).
+    init(
+        state: AgentWatchState,
+        downgradeTrustMode: @escaping (ComputerUseTrustMode) -> Void,
+        approveAction: @escaping (HermesRealtimeRelayApprovalRequest) -> Void,
+        rejectAction: @escaping (HermesRealtimeRelayApprovalRequest, Bool) -> Void,
+        panicHalt: @escaping () -> Void,
+        sendTapIntent: @escaping (Double, Double) -> Void = { _, _ in },
+        sendScrollIntent: @escaping (Double, Double, Double, Double) -> Void = { _, _, _, _ in },
+        sendTextIntent: @escaping (String) -> Void = { _ in },
+        sendShortcutIntent: @escaping (String, [String]) -> Void = { _, _ in }
+    ) {
+        self.init(
+            state: state,
+            downgradeTrustMode: downgradeTrustMode,
+            approveAction: approveAction,
+            rejectAction: rejectAction,
+            panicHalt: panicHalt,
+            sendTapIntent: sendTapIntent,
+            sendScrollIntent: sendScrollIntent,
+            sendTextIntent: sendTextIntent,
+            sendShortcutIntent: sendShortcutIntent
+        ) {
+            AgentWatchDefaultPlaceholder(state: state)
+        }
+    }
+}
+
+/// The legacy dashed-rectangle placeholder. Retained as the default so
+/// surfaces that don't host the full editorial empty state (or that
+/// render inside a thin dock tile) keep their previous look.
+public struct AgentWatchDefaultPlaceholder: View {
+    @ObservedObject var state: AgentWatchState
+
+    public init(state: AgentWatchState) {
+        self._state = ObservedObject(wrappedValue: state)
+    }
+
+    public var body: some View {
+        VStack {
+            Image(systemName: "rectangle.dashed")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 96, height: 96)
+                .foregroundStyle(.white.opacity(0.2))
+            Text(state.sessionId == nil ? "Waiting for Mac session" : "Live control stream ready")
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.55))
+        }
     }
 }
 

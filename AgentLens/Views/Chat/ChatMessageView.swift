@@ -45,6 +45,8 @@ struct ChatMessageView: View {
     var isHermes: Bool = false
     /// When set (e.g. Hermes `/v1/models`), shows vendor logo beside assistant turns.
     var assistantModelKey: String? = nil
+    /// Display mode: rich agent bubbles or raw CLI output.
+    var viewMode: ChatViewMode = .agent
 
     private var transcript: [ChatTranscriptPiece] {
         message.displayTranscript
@@ -55,6 +57,85 @@ struct ChatMessageView: View {
     }
 
     var body: some View {
+        if viewMode == .cli {
+            cliView
+        } else {
+            agentView
+        }
+    }
+
+    // MARK: - CLI View
+
+    @ViewBuilder
+    private var cliView: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if message.role == .user {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                    Text(">")
+                        .font(DesignSystem.Typography.mono)
+                        .foregroundStyle(DesignSystem.Colors.success)
+                        .frame(width: 16, alignment: .trailing)
+                    Text(message.content)
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                    if let model = assistantModelKey?.trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty {
+                        ModelProviderLogoView(
+                            modelKey: model,
+                            size: 16,
+                            fallbackSymbolColor: isHermes ? DesignSystem.Colors.hermesMercury : nil
+                        )
+                        .padding(.top, 1)
+                    } else {
+                        Text(isHermes ? "☿" : "<")
+                            .font(DesignSystem.Typography.mono)
+                            .foregroundStyle(isHermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.coral)
+                            .frame(width: 16, alignment: .trailing)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        if showViaBadge, let via = message.cliUsed {
+                            Text(via == "hermes" ? "☿ via Hermes" : "via \(via)")
+                                .font(DesignSystem.Typography.monoTiny)
+                                .foregroundStyle(isHermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.textMuted)
+                        }
+                        Text(cliTranscriptText)
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// Plain-text representation for CLI view: interleaves tool markers into text.
+    private var cliTranscriptText: String {
+        let pieces = message.displayTranscript
+        if pieces.isEmpty {
+            return message.content
+        }
+        return pieces.map { piece in
+            switch piece.kind {
+            case .text:
+                return piece.value
+            case .toolUse:
+                return "⟨\(piece.value)\(piece.detail.map { ": \($0)" } ?? "")⟩"
+            case .toolResult:
+                return piece.detail ?? piece.value
+            }
+        }.joined(separator: "\n")
+    }
+
+    // MARK: - Agent View (existing rich bubble rendering)
+
+    @ViewBuilder
+    private var agentView: some View {
         HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
             if message.role == .user {
                 Spacer(minLength: 36)

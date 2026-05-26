@@ -162,6 +162,56 @@ public enum CLIAuthDiscovery {
                 configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: openCodeAccountDescription(dataDirectory: dataDir, authState: authState)
             )
+        case .droid:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.factory"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Factory Droid local profile" : nil
+            )
+        case .forge:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.forge"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Forge local profile" : nil
+            )
+        case .antigravity:
+            let primaryConfigDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.antigravity"
+            )
+            let legacyConfigDir = "\(home)/.gemini/antigravity-cli"
+            let exists = FileManager.default.fileExists(atPath: primaryConfigDir)
+                || FileManager.default.fileExists(atPath: legacyConfigDir)
+            let configDir = FileManager.default.fileExists(atPath: primaryConfigDir)
+                ? primaryConfigDir
+                : legacyConfigDir
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(primaryConfigDir),
+                accountDescription: exists ? "Antigravity local profile" : nil
+            )
         }
         #endif
     }

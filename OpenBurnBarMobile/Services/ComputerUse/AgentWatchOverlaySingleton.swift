@@ -122,6 +122,14 @@ final class AgentWatchOverlaySingleton: ObservableObject {
         }
     }
 
+    /// Phase 14 — returns the live `PhoneControlSender` if the
+    /// Computer Use control stream is paired and signed in. Used by the
+    /// System Permission grant sheet to dispatch signed
+    /// `controlSystemPermissionRequest` frames over the same stream.
+    func activePhoneControlSender() -> PhoneControlSender? {
+        coordinator.phoneControlSender
+    }
+
     /// Hard-stop the persistent stream (sign-out, kill switch, manual halt).
     func stop() async {
         dialTask?.cancel()

@@ -7,10 +7,142 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — CLI agent model pickers on mobile
+- **Allowed `cliAgentModelCatalog` through Firestore relay rules.** iOS and
+  Android Droid, Forge, Codex, Claude Code, and Antigravity model pickers were
+  failing with permission-denied copy even when Hermes relay models loaded,
+  because `hermes_relay_requests` rejected the catalog operation. Mobile now
+  surfaces the real relay error instead of mislabeling every failure as a
+  sign-in problem.
+
+### Added — Model capability intelligence
+- Added a canonical `ModelIOCapabilities` shape for per-model input/output modalities, limits, supported parameters, accepted MIME types, and source references.
+- Wired `/v1/models`, Codex-compatible model descriptors, Mac/iOS/Android attachment encoders, and the OpenAI-compatible proxy so Kimi K2.6 is advertised and routed as text+image instead of text-only.
+- Enriched user-facing model names across the proxy and CLI runtime catalogs so Droid, Forge, Codex, Claude Code, Antigravity, Hermes, Pi, and OpenClaw pickers show the model, provider/source, `via OpenBurnBar`, and reasoning level without changing machine-readable model IDs.
+
+### Added — Computer Use editorial empty state (iOS + Android)
+- **Replaced the blank "Waiting for Mac session" placeholder.** Tapping the
+  Computer Use tab on iOS and Android used to land users on a near-blank
+  surface with only a dashed-rectangle icon and the cryptic line
+  *"Select an online Mac Remote Relay in Hermes to watch the agent live."*
+  No explanation of what Computer Use is, no path to enable it, no idea why
+  the screen was empty. That entire surface is now an editorial onboarding
+  card: mercury-stroked hero ("Let the agent drive your Mac"), live
+  3-row setup checklist (Signed in / Hermes Remote Relay selected / Live
+  session) with green check or red dot per row, ordered 01/02/03 how-it-works
+  guide with mono ordinals, 2x2 capability strip (mirror / tap-to-drive /
+  audit / panic halt), and a footer that explains Mac permissions live on
+  the Mac.
+- **Status row CTAs are wired.** "Sign in" deep-links to Settings, "Open
+  Hermes" switches tabs, "Use {Mac name}" one-tap selects the suggested
+  relay-link connection via `HermesService.connectToSuggestedRelay(refresh:)`
+  on iOS and `HermesService.selectConnection(...)` on Android. The legacy
+  red coral pill overlay is gone — its blocker copy is now folded into the
+  live checklist row so users see *why* they're stuck and what to do about
+  it.
+
+### Added — Antigravity agent-tab parity
+- **Made Google Antigravity / `agy` a first-class assistant runtime.**
+  Antigravity now has shared runtime IDs, built-in Agent identities, provider
+  aliases, default mobile pins, Mac chat backend rows, onboarding/account
+  switcher support, branded assets, and iOS/Android chat surfaces alongside
+  Hermes, Pi, Codex, Claude Code, OpenClaw, Droid, and Forge.
+- **Routed mobile Antigravity chat through the trusted Mac.** The Mac relay and
+  mission fallback accept `antigravity`, `agy`, and Google-Antigravity aliases,
+  launch the real local `agy` CLI, stream output into mobile threads, and map
+  grants onto `agy --sandbox` or the explicit dangerous bypass only when the
+  user selected that capability.
+- **Kept Antigravity model selection Mac-sourced.** Because `agy 1.0.2` exposes
+  no enumerable model-list command, mobile asks the paired Mac for the live
+  Antigravity CLI catalog and shows the Mac profile/default row rather than a
+  guessed static model list.
+
+### Changed — Android assistant toolbar parity
+- **Brought Android assistant chat tool chrome up to iOS parity.** CLI chat now
+  uses provider identity instead of a misleading back arrow, removes the dead
+  Settings affordance, disables attachment tools while streaming, shows
+  icon-plus-label Chat vs Mac CLI controls, and renders Hermes/Pi/CLI tool
+  calls with shared, instantly recognizable category glyphs.
+
+### Fixed — Android CLI agent chat relay parity
+- **Moved Android native Codex/Claude/OpenClaw/Droid/Forge/Antigravity chat onto the same
+  encrypted Mac relay path as iOS.** Android now sends `cliAgentChat` requests
+  to `/v1/cli-agent/chat`, streams `CLIAgentRelayChatEvent` snapshots directly
+  into `mobile_assistant_chats`, and keeps the Firestore mission queue for the
+  explicit visible Mac CLI mode or safe relay fallback.
+- **Hardened the Android relay fallback for long Mac agent turns.** If direct
+  iroh fails for `cliAgentChat`, Android now falls back to the encrypted
+  Firestore relay instead of immediately queuing a mission request, and that
+  fallback honors the same 10-minute stream window as iOS native chat.
+- **Fixed Android CLI Agent / Hermes connection loopback stuck on localhost.** When starting up or using the model catalog/chat streaming on Android, the connection resolution now automatically detects and connects to the active online paired Mac remote relay (`RELAY_LINK`) instead of staying stuck on the loopback default (`127.0.0.1:8642`) and incorrectly reporting offline/unreachable status.
+
+### Added — Mobile visible CLI agent sessions
+- **Added Chat vs Mac CLI session modes for mobile CLI agents.** iOS, iPadOS,
+  and Android now let users choose whether Codex, Claude Code, OpenClaw, Droid,
+  Forge, or Antigravity replies stay in the native chat surface or launch as a
+  visible macOS Terminal session that can be watched through Mercury screen
+  sharing.
+- **Threaded the interface mode through the mission contract.** Mobile requests
+  now write `presentationMode = native_chat | mac_visible_cli`; the Mac listener
+  runs visible-mode requests through a real Terminal-backed CLI process and
+  streams the captured output back into the mobile thread.
+
+### Added — Mercury remote clipboard
+- **Added explicit Paste to Mac and Grab from Mac mirror controls.** iOS,
+  iPadOS, and Android now expose text-only Mercury clipboard actions beside the
+  keyboard controls, read or write phone clipboards only inside user-tapped
+  handlers, and show compact status chips for pasted, copied, empty, denied,
+  and too-large outcomes.
+- **Signed and gated clipboard control like phone input.** Clipboard requests
+  now use shared `control.clipboard.request` / `control.clipboard.response`
+  frames, Ed25519 authority envelopes, the phone-control monotonic counter, Mac
+  trust/session/entitlement/Accessibility/scope gates, and audit descriptors
+  that never persist clipboard text.
+
+### Added — Mercury multi-device Mac mirroring
+- **Allowed up to three iOS/Android devices to watch the same Mac mirror.**
+  The Mac now runs one ScreenCaptureKit capture/encoder session and fans out
+  encoded frames to every active viewer instead of treating the second phone as
+  a competing mirror request.
+- **Made mirror control ownership explicit.** The first viewer becomes the
+  controller, later viewers join as read-only watchers, and phone-control
+  intents are rejected on the Mac when they come from a non-controller peer.
+- **Scoped mirror lifecycle messages by session and viewer.** iOS, Android,
+  and the shared relay contract now carry viewer IDs, device IDs, session IDs,
+  viewer role/count metadata, and selected-display updates so reconnects,
+  stops, and display switches do not tear down the wrong viewer.
+
+### Added — Droid and Forge agent-tab parity
+- **Made Droid and Forge first-class assistant runtimes.** Droid and Forge now
+  have shared runtime IDs, built-in Agent identities, provider aliases, default
+  mobile pins, chat backend rows, model/agent pickers, and mobile/Android
+  history surfaces alongside Hermes, Pi, Codex, Claude Code, and OpenClaw.
+- **Routed mobile Droid/Forge chat through the trusted Mac.** The Mac relay and
+  mission fallback now accept Droid/Factory and Forge aliases, launch the real
+  local CLIs, stream text/tool events into mobile threads, and preserve explicit
+  runtime/model selections.
+- **Mapped grants onto Droid and Forge safely.** Droid uses
+  `droid exec --output-format json` with workspace, model, and grant-derived
+  autonomy flags; Forge uses `--prompt`/`--agent` plus OpenBurnBar safety
+  constraints when edit or shell grants are absent.
+- **Scoped model pickers to each CLI's real catalog.** Codex and Claude Code
+  now default to the paired Mac CLI profile instead of guessed static model
+  menus, while Droid and Forge pull their runtime-native model/agent lists from
+  the paired Mac through `cliAgentModelCatalog`. Droid uses `droid exec --help`,
+  Forge uses `forge agent list`, and mobile fails closed with refresh/error copy
+  instead of showing bundled stale rows when the Mac cannot verify the catalog.
+- **Made Droid model cost source visible before selection.** Droid model
+  pickers now separate first-party Droid Standard/Core quota rows from
+  OpenBurnBar proxy rows that use connected API/OAuth subscriptions, with
+  OpenBurnBar-badged proxy model logos on iOS and Android.
+
 ### Added — Dashboard drill-down affordances
 - **Made overview activity cards navigable.** Recent Sessions now opens the
   full Session Logs workspace, and Model Leaders rows open the matching model
   detail page with the searchable session ledger.
+
+### Fixed — Swarm background visual improvements
+- **Replaced broken scattered Hermes logo points with the high-fidelity Hermes girl.** The old raw scattered points that resulted in a messy, visual glitch on both iOS and Android have been replaced with a beautifully thinned and scaled vector-particle mapping of the signature Hermes anime girl with headphones directly from the canvas SVG. This ensures perfect visual parity and SOTA rendering of the Hermes AI chat assistant logo in the dynamic ember swarm wallpaper.
 
 ### Fixed — Mercury Mac mirror reliability
 - **Restored the Mac Local Network permission declaration.** The built macOS
@@ -64,7 +196,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Claude, and OpenClaw mobile chat surfaces now include an Agent Permissions
   control with Off, Low, Workspace, Desktop, All, and YOLO presets. Desktop,
   All, and YOLO require Face ID/Touch ID or Android biometric unlock before the
-  phone can issue the signed grant.
+  phone can issue the signed grant. iOS now declares the Face ID usage purpose
+  string for App Store review and install-time privacy readiness, and Android
+  keeps BiometricPrompt open after a failed face/fingerprint attempt instead of
+  aborting the grant flow.
+- **Preflighted trusted-device state before mobile grants.** iPhone, iPad, and
+  Android grant requests now register the current device if needed, verify the
+  `escrow_devices/{deviceId}` record is explicitly trusted, and show a direct
+  Devices & Sync recovery message before Face ID/Touch ID, Android biometrics,
+  or Firestore writes.
 - **Made mobile grants live-first and queue-safe.** Phones send signed
   `control.agent_grant.request` frames over the paired Mac iroh control stream
   when available, or fall back to a metadata-only Firestore queue that the Mac

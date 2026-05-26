@@ -1,6 +1,6 @@
 # Hermes CLI Session Archive
 
-Hermes treats Codex, Claude Code, and OpenClaw as first-class assistant runtimes. Live chats still mirror to `users/{uid}/cli_sessions`; archived local session logs are now exposed through the same surface without duplicating transcript plaintext.
+Hermes treats Codex, Claude Code, OpenClaw, Droid, Forge, and Antigravity as first-class assistant runtimes. Live chats still mirror to `users/{uid}/cli_sessions`; archived local session logs are now exposed through the same surface without duplicating transcript plaintext.
 
 ## What Syncs
 
@@ -11,7 +11,7 @@ Hermes treats Codex, Claude Code, and OpenClaw as first-class assistant runtimes
 
 ## Runtime Parity
 
-Hermes, Pi, Codex, Claude Code, and OpenClaw all appear as enabled mobile runtimes by default. Archived Codex and Claude Code rows include resume hints such as `codex resume "<id>"` or `claude --resume "<id>"`; mobile can search and inspect them, while actual resume/fork execution remains a Mac-side provider action.
+Hermes, Pi, Codex, Claude Code, OpenClaw, Droid, Forge, and Antigravity all appear as enabled mobile runtimes by default. Archived Codex and Claude Code rows include resume hints such as `codex resume "<id>"` or `claude --resume "<id>"`; mobile can search and inspect them, while actual resume/fork execution remains a Mac-side provider action.
 
 ## Hermes Square Search
 

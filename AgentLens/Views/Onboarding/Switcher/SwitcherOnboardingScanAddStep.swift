@@ -127,6 +127,9 @@ struct SwitcherOnboardingScanAddStep: View {
                     case .codex: cliKind = .codexCLI
                     case .claude: cliKind = .claudeCLI
                     case .opencode: cliKind = .openCodeCLI
+                    case .droid: cliKind = .droidCLI
+                    case .forge: cliKind = .forgeCLI
+                    case .antigravity: cliKind = .antigravityCLI
                     }
                     guard enforceCap(for: cliKind) else { return }
                     withAnimation(DesignSystem.Animation.snappy) {
@@ -301,6 +304,38 @@ struct SwitcherOnboardingScanAddStep: View {
                     selectedCLIType = .opencode
                     showAPIKeySheet = true
                 }
+
+            case .droidCLI:
+                differentAccountButton(
+                    title: "Connect Droid",
+                    subtitle: "Verify the local Droid CLI profile on this Mac",
+                    icon: "link.badge.plus",
+                    color: Color(hex: "8B5CF6"),
+                    isLoading: connectingCLIType == .droid
+                ) {
+                    await connectDifferentCLI(.droid)
+                }
+
+            case .forgeCLI:
+                differentAccountButton(
+                    title: "Connect Forge",
+                    subtitle: "Verify the local Forge CLI profile on this Mac",
+                    icon: "link.badge.plus",
+                    color: Color(hex: "F97316"),
+                    isLoading: connectingCLIType == .forge
+                ) {
+                    await connectDifferentCLI(.forge)
+                }
+            case .antigravityCLI:
+                differentAccountButton(
+                    title: "Connect Antigravity",
+                    subtitle: "Verify the local Antigravity CLI profile on this Mac",
+                    icon: "link.badge.plus",
+                    color: Color(hex: "6C63FF"),
+                    isLoading: connectingCLIType == .antigravity
+                ) {
+                    await connectDifferentCLI(.antigravity)
+                }
             }
         }
     }
@@ -354,6 +389,9 @@ struct SwitcherOnboardingScanAddStep: View {
         case (.claudeCode, .claudeCLI): return true
         case (.claudeCode, .claude): return true
         case (.opencode, .openCodeCLI): return true
+        case (.droid, .droidCLI): return true
+        case (.forge, .forgeCLI): return true
+        case (.antigravity, .antigravityCLI): return true
         default: return false
         }
     }
@@ -451,7 +489,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
     private func signInIdentity(_ identity: DiscoveredIdentity) {
         switch identity.source {
-        case .codex, .claudeCode:
+        case .codex, .claudeCode, .droid, .forge, .antigravity:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -470,7 +508,7 @@ struct SwitcherOnboardingScanAddStep: View {
             Task { await signInDifferentGoogle() }
         case .safari:
             Task { await signInDifferentApple() }
-        case .codex, .claudeCode:
+        case .codex, .claudeCode, .droid, .forge, .antigravity:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -489,6 +527,9 @@ struct SwitcherOnboardingScanAddStep: View {
         case .codex: return .codexCLI
         case .claudeCode: return .claudeCLI
         case .opencode: return .openCodeCLI
+        case .droid: return .droidCLI
+        case .forge: return .forgeCLI
+        case .antigravity: return .antigravityCLI
         }
     }
 
@@ -515,6 +556,12 @@ struct SwitcherOnboardingScanAddStep: View {
             kind = .claudeCLI
         case .opencode:
             kind = .openCodeCLI
+        case .droid:
+            kind = .droidCLI
+        case .forge:
+            kind = .forgeCLI
+        case .antigravity:
+            kind = .antigravityCLI
         }
 
         guard enforceCap(for: kind) else { return }
@@ -742,7 +789,7 @@ private struct IdentityCard: View {
             return "Signed in with a different Google account?"
         case .safari:
             return "Use a different Apple ID?"
-        case .codex, .claudeCode, .opencode:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity:
             return "Connect another account for this provider?"
         }
     }
@@ -772,6 +819,18 @@ private struct IdentityCard: View {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(DesignSystem.Colors.purple)
+        case .droid:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(DesignSystem.Colors.teal)
+        case .forge:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(DesignSystem.Colors.amber)
+        case .antigravity:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "6C63FF"))
         }
     }
 
@@ -1060,7 +1119,7 @@ private extension DiscoveredIdentity {
                 return "Not installed"
             }
 
-        case .opencode:
+        case .opencode, .droid, .forge, .antigravity:
             switch authState {
             case .authenticated:
                 return "Logged in"
@@ -1086,6 +1145,10 @@ private extension DiscoveredIdentity {
             return normalized(executablePath) ?? subtitle
         case .opencode(let executablePath):
             return normalized(executablePath) ?? subtitle
+        case .droid(let executablePath, let configDirectory),
+             .forge(let executablePath, let configDirectory),
+             .antigravity(let executablePath, let configDirectory):
+            return normalized(executablePath) ?? normalized(configDirectory) ?? subtitle
         }
     }
 

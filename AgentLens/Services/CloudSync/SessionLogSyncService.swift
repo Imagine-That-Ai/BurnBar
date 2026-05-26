@@ -341,6 +341,61 @@ final class SessionLogSyncService: CloudSyncDomain {
         return try decoder.decode(ProjectMemorySnapshot.self, from: plaintext)
     }
 
+    /// Fetches session log manifests from Firestore for the signed-in user.
+    /// Returns ConversationRecords with empty fullText; body is fetched lazily via DownloadSyncService.
+    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
+        guard context.accountManager.isFirebaseAvailable,
+              context.accountManager.isSignedIn,
+              let uid = context.currentUID else { return [] }
+        let vaultKey = try? vaultKeyStore.loadKey(uid: uid)
+
+        let snapshot = try await context.firestoreGateway
+            .collection("users")
+            .document(uid)
+            .collection("session_logs")
+            .order(by: "updatedAt", descending: true)
+            .limit(to: limit)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { doc -> ConversationRecord? in
+            let data = doc.data()
+            guard let rawProvider = data["provider"] as? String,
+                  let provider = AgentProvider(rawValue: rawProvider) else { return nil }
+
+            let id = data["id"] as? String ?? doc.documentID
+            let sourceTypeRaw = data["sourceType"] as? String ?? ConversationSourceType.providerLog.rawValue
+            let sourceType = ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
+            let decryptedTitle: String? = vaultKey.flatMap { key in
+                guard let envelope = Self.decodeSealedText(data["sealedTitle"]) else { return nil }
+                return try? CloudVaultCrypto.openText(envelope, keyData: key)
+            }
+            let title = decryptedTitle ?? data["inferredTaskTitle"] as? String ?? ""
+
+            return ConversationRecord(
+                id: id,
+                provider: provider,
+                sessionId: doc.documentID,
+                projectName: data["projectName"] as? String ?? "",
+                startTime: (data["startTime"] as? Timestamp)?.dateValue(),
+                endTime: (data["endTime"] as? Timestamp)?.dateValue(),
+                messageCount: data["messageCount"] as? Int ?? 0,
+                userWordCount: 0,
+                assistantWordCount: 0,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: title,
+                lastAssistantMessage: "",
+                fullText: "",
+                indexedAt: Date(),
+                fileModifiedAt: nil,
+                summary: nil,
+                summaryTitle: title.isEmpty ? nil : title,
+                sourceType: sourceType
+            )
+        }
+    }
+
 }
 
 @MainActor
@@ -479,6 +534,14 @@ private extension SessionLogSyncService {
     static func sha256Hex(_ text: String) -> String {
         let digest = SHA256.hash(data: Data(text.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
+        guard let dict = raw as? [String: Any],
+              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
     }
 }
 
@@ -621,57 +684,12 @@ extension CloudSyncService {
     /// Fetches session log manifests from Firestore for the signed-in user.
     /// Returns ConversationRecords with empty fullText; body is fetched lazily via fetchCloudSessionLogBody(docId:).
     func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
-        guard accountManager.isFirebaseAvailable,
-              accountManager.isSignedIn,
-              let uid = Auth.auth().currentUser?.uid else { return [] }
-        let vaultKey = try? await cloudVaultKey(uid: uid)
-
-        let snapshot = try await db
-            .collection("users")
-            .document(uid)
-            .collection("session_logs")
-            .order(by: "updatedAt", descending: true)
-            .limit(to: limit)
-            .getDocuments()
-
-        return snapshot.documents.compactMap { doc -> ConversationRecord? in
-            let data = doc.data()
-            guard let rawProvider = data["provider"] as? String,
-                  let provider = AgentProvider(rawValue: rawProvider) else { return nil }
-
-            let id = data["id"] as? String ?? doc.documentID
-            let sourceTypeRaw = data["sourceType"] as? String ?? ConversationSourceType.providerLog.rawValue
-            let sourceType = ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
-            let decryptedTitle: String? = vaultKey.flatMap { key in
-                guard let envelope = Self.decodeSealedText(data["sealedTitle"]) else { return nil }
-                return try? CloudVaultCrypto.openText(envelope, keyData: key)
-            }
-            let title = decryptedTitle ?? data["inferredTaskTitle"] as? String ?? ""
-
-            return ConversationRecord(
-                id: id,
-                provider: provider,
-                // Store Firestore docId in sessionId so fetchCloudSessionLogBody can look up chunks
-                sessionId: doc.documentID,
-                projectName: data["projectName"] as? String ?? "",
-                startTime: (data["startTime"] as? Timestamp)?.dateValue(),
-                endTime: (data["endTime"] as? Timestamp)?.dateValue(),
-                messageCount: data["messageCount"] as? Int ?? 0,
-                userWordCount: 0,
-                assistantWordCount: 0,
-                keyFiles: [],
-                keyCommands: [],
-                keyTools: [],
-                inferredTaskTitle: title,
-                lastAssistantMessage: "",
-                fullText: "",
-                indexedAt: Date(),
-                fileModifiedAt: nil,
-                summary: nil,
-                summaryTitle: title.isEmpty ? nil : title,
-                sourceType: sourceType
-            )
-        }
+        let context = CloudSyncContext(
+            dataStore: dataStore,
+            accountManager: accountManager,
+            settingsManager: settingsManager
+        )
+        return try await SessionLogSyncService(context: context).fetchCloudSessionLogs(limit: limit)
     }
 
     func searchCloudSessionLogs(query: String, limit: Int = 50) async throws -> [ConversationRecord] {

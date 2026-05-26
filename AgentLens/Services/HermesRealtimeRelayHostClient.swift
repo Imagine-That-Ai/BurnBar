@@ -27,6 +27,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
     private var readyUID: String?
     private var readyConnectionID: String?
     var cliChatDispatcher: CLIAgentRelayChatDispatcher?
+    var cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
 
     init(
         accountManager: AccountManager = .shared,
@@ -78,11 +79,15 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
             let socket = urlSession.webSocketTask(with: request)
             task = socket
             socket.resume()
+            var capabilities = ["chat_completions", "cli_agent_chat", "remote_relay", HermesRealtimeRelayProtocol.capability]
+            if cliModelCatalogDispatcher != nil {
+                capabilities.append("cli_agent_model_catalog")
+            }
             let frame = HermesRealtimeRelayFrame(
                 type: .hostRegister,
                 uid: uid,
                 connectionId: connectionID,
-                payload: HermesRealtimeRelayPayload(capabilities: ["chat_completions", "cli_agent_chat", "remote_relay", HermesRealtimeRelayProtocol.capability])
+                payload: HermesRealtimeRelayPayload(capabilities: capabilities)
             )
             try await socket.send(.data(encoder.encode(frame)))
             try await waitForHostReady(uid: uid, connectionID: connectionID, socket: socket)
@@ -150,7 +155,11 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                      .controlClassify, .controlActionLogEntry, .controlInputIntent,
                      .controlApprovalRequest, .controlApprovalResponse,
                      .controlAgentGrantRequest, .controlAgentGrantReceipt,
-                     .controlDenied:
+                     .controlClipboardRequest, .controlClipboardResponse,
+                     .controlAgentContextTarget,
+                     .controlDenied,
+                     .controlSystemPermissionRequest,
+                     .controlSystemPermissionStatus:
                     // Mercury media and computer-control frames ride the iroh
                     // transport, not WSS. If a peer sends one here it is
                     // either a misrouted frame or an old-format probe; ignore.
@@ -208,6 +217,17 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
             }
             if operation == .cliAgentChat {
                 try await forwardCLIAgentChat(
+                    payload: encryptedPayload,
+                    uid: uid,
+                    connectionID: connectionID,
+                    requestID: requestID,
+                    keyData: keyData,
+                    socket: socket
+                )
+                return
+            }
+            if operation == .cliAgentModelCatalog {
+                try await forwardCLIRuntimeModelCatalog(
                     payload: encryptedPayload,
                     uid: uid,
                     connectionID: connectionID,
@@ -279,6 +299,36 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         )
     }
 
+    private func forwardCLIRuntimeModelCatalog(
+        payload: HermesRelayEncryptedRequestPayload,
+        uid: String,
+        connectionID: String,
+        requestID: String,
+        keyData: Data,
+        socket: URLSessionWebSocketTask
+    ) async throws {
+        guard let cliModelCatalogDispatcher else {
+            throw HermesRealtimeRelayHostError.cliModelCatalogUnavailable
+        }
+        guard let body = payload.body?.data(using: .utf8) else {
+            throw HermesRealtimeRelayHostError.invalidPath
+        }
+        let request = try decoder.decode(CLIRuntimeModelCatalogRequest.self, from: body)
+        let response = try await cliModelCatalogDispatcher(request)
+        let data = try encoder.encode(response)
+        try await sendChunk(
+            data: String(data: data, encoding: .utf8) ?? "{}",
+            sequence: 0,
+            kind: .data,
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            keyData: keyData,
+            socket: socket
+        )
+        try await sendComplete(uid: uid, connectionID: connectionID, requestID: requestID, chunkCount: 1, socket: socket)
+    }
+
     private func forwardStreamingChat(
         payload: HermesRelayEncryptedRequestPayload,
         uid: String,
@@ -344,7 +394,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         switch operation {
         case .chatCompletions:
             path = "v1/chat/completions"
-        case .cliAgentChat:
+        case .cliAgentChat, .cliAgentModelCatalog:
             throw HermesRealtimeRelayHostError.invalidPath
         case .models:
             path = "v1/models"
@@ -389,7 +439,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         switch operation {
         case .chatCompletions, .models:
             return true
-        case .cliAgentChat, .sessions, .profiles, .jobs, .sessionDetail:
+        case .cliAgentChat, .cliAgentModelCatalog, .sessions, .profiles, .jobs, .sessionDetail:
             return false
         }
     }
@@ -556,6 +606,7 @@ private enum HermesRealtimeRelayHostError: LocalizedError {
     case invalidResponse
     case registrationTimedOut
     case cliAgentChatUnavailable
+    case cliModelCatalogUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -569,6 +620,8 @@ private enum HermesRealtimeRelayHostError: LocalizedError {
             return "Realtime Hermes relay registration timed out."
         case .cliAgentChatUnavailable:
             return "Codex and Claude chat relay is not available on this Mac yet."
+        case .cliModelCatalogUnavailable:
+            return "CLI model catalog discovery is not available on this Mac yet."
         }
     }
 }

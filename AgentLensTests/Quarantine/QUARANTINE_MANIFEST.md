@@ -20,12 +20,14 @@ it with `./scripts/test-openburnbar-app.sh`.
 
 ## Wave 2 — Stale Contract / Environmental Quarantines
 
+**2026-05-25 remediation:** `CloudSyncCoordinator` routes download sync through `DownloadSyncService`, cloud totals through `DownloadSyncService.fetchCloudTotal()`, and session-log manifest reads through `SessionLogSyncService.fetchCloudSessionLogs()`. Collaboration (`syncSharedArtifacts`) still delegates to `CloudSyncService` until the extension is lifted to a standalone engine.
+
 | Test Name | Reason | Owner | Source Subsystem | Revival Criteria | Target Date |
 |-----------|--------|-------|------------------|------------------|-------------|
 | `testOperatingLayerBuildsMissionDirectionBurnFromIndexedProjectData` | Stale contract — mission direction-burn signal classification drifted | AgentLens | Operating Layer | Refresh thresholds and realign mission/direction-burn fixtures | 2026-05-17 |
-| `test_backoff_suppression_onPermissionDenied` | Stale contract — sync gateway error-classification surface drifted | CloudSync | Offline/Online Merge | Retune mocks against current gateway error-classification | 2026-05-17 |
-| `test_watermark_doesNotAdvanceOnFailure` | Stale contract — watermark advancement now happens through a different code path | CloudSync | Offline/Online Merge | Rebuild mock surface to match new watermark advancement path | 2026-05-17 |
-| `test_circuitBreaker_halfOpenToClosed_recovery` | Stale contract — circuit breaker state machine refactor needed | CloudSync | Offline/Online Merge | Complete circuit breaker state machine refactor and rebuild test harness | 2026-05-24 |
+| `test_backoff_suppression_onPermissionDenied` | ~~Stale contract~~ **Revived 2026-05-25** → `AgentLensTests/Active/OfflineOnlineMergeTests.swift` | CloudSync | Offline/Online Merge | — | Done |
+| `test_watermark_doesNotAdvanceOnFailure` | ~~Stale contract~~ **Revived 2026-05-25** → `AgentLensTests/Active/OfflineOnlineMergeTests.swift` | CloudSync | Offline/Online Merge | — | Done |
+| `test_circuitBreaker_halfOpenToClosed_recovery` | Stale contract — circuit breaker state machine refactor needed | CloudSync | Offline/Online Merge | Fake gateway must surface retry failures to breaker | 2026-05-24 |
 | `test_runMigrationsSafely_integrityCheckFails_throws` | Stale contract — integrity check error path now handled before migrations dispatch | Database | Database Migration | Rebuild test against pre-migration integrity-check dispatch | 2026-05-17 |
 | `test_conversationUpload_writesToFirestoreAndMarksSynced` | Stale contract — Firestore mock surface drifted | CloudSync | Conversation Sync | Rebuild fakeStore writers against current conversation sync contract | 2026-05-17 |
 | `test_refreshAll_storesUsagesInDataStore` | Stale contract — UsageAggregator refresh now scans live provider directories | UsageAggregation | Usage Aggregator | Add hermetic FS sandbox so aggregator does not scan host machine | 2026-05-17 |
@@ -58,7 +60,7 @@ it with `./scripts/test-openburnbar-app.sh`.
 
 ## Totals
 
-- **Wave 2 quarantined:** 24 tests
+- **Wave 2 quarantined:** 22 tests (2 revived to Active on 2026-05-25; circuit breaker remains skipped in Active)
 - **Legacy quarantined:** 2 suites
 - **Fixed to passing:** 2 tests (`testParseEmptyDirectory`, `testWrongDeviceDecryptionFails` env-gate)
 - **Deleted:** 0 tests

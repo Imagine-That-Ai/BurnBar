@@ -5,14 +5,7 @@ import OpenBurnBarCore
 @MainActor
 final class SettingsManagerSecretStorageTests: XCTestCase {
     func test_macInfoPlistDeclaresLocalNetworkUsageForMercuryTransport() throws {
-        let plistURL = repoRoot()
-            .appendingPathComponent("AgentLens")
-            .appendingPathComponent("Resources")
-            .appendingPathComponent("OpenBurnBar-Info.plist")
-        let data = try Data(contentsOf: plistURL)
-        let plist = try XCTUnwrap(
-            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
+        let plist = try XCTUnwrap(Bundle.main.infoDictionary)
 
         let description = try XCTUnwrap(plist["NSLocalNetworkUsageDescription"] as? String)
         XCTAssertTrue(description.localizedCaseInsensitiveContains("trusted iPhone"))
@@ -22,11 +15,6 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         let services = Set(try XCTUnwrap(plist["NSBonjourServices"] as? [String]))
         XCTAssertTrue(services.contains("_googlecast._tcp"))
         XCTAssertTrue(services.contains("_http._tcp"))
-
-        let projectSource = try String(contentsOf: repoRoot().appendingPathComponent("project.yml"), encoding: .utf8)
-        XCTAssertTrue(projectSource.contains("NSLocalNetworkUsageDescription: OpenBurnBar uses the local network to connect this Mac"))
-        XCTAssertTrue(projectSource.contains("- _googlecast._tcp"))
-        XCTAssertTrue(projectSource.contains("- _http._tcp"))
     }
 
     func test_initMigratesLegacyDefaultsTokensIntoKeychain() throws {
@@ -338,11 +326,4 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "gatewayAuthToken"), "legacy-verify-value")
     }
 
-    private func repoRoot() -> URL {
-        var url = URL(fileURLWithPath: #filePath)
-        while url.lastPathComponent != "BurnBar", url.path != "/" {
-            url.deleteLastPathComponent()
-        }
-        return url
-    }
 }

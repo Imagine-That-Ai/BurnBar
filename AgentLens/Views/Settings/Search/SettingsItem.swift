@@ -241,6 +241,7 @@ enum SettingsAnchor {
 
     // Computer Use
     static let computerUseReadiness = "computerUse.readiness"
+    static let computerUsePermissionsSetup = "computerUse.permissionsSetup"
 
     // Switcher
     static let switcherBrowser = "switcher.browser"

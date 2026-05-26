@@ -148,6 +148,12 @@ struct AssistantModelMerger {
             return ["claude", "claude-agent", "claude-code-agent"]
         case .openClaw:
             return ["openclaw", "openclaw-agent", "open-claw", "claw"]
+        case .droid:
+            return ["droid", "droid-agent"]
+        case .forge:
+            return ["forge", "forge-agent", "forge-dev"]
+        case .antigravity:
+            return ["antigravity", "agy", "google-antigravity", "googleantigravity"]
         }
     }
 
@@ -172,7 +178,8 @@ struct AssistantModelMerger {
             providerName: catalog.providerName.isEmpty ? live.providerName : catalog.providerName,
             modelID: live.modelID,
             displayName: catalog.displayName.isEmpty ? live.displayName : catalog.displayName,
-            tier: catalog.tier
+            tier: catalog.tier,
+            cliSource: catalog.cliSource
         )
     }
 }

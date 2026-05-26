@@ -123,6 +123,89 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         ))
     }
 
+    /// Canonical hash for signed remote clipboard requests. The
+    /// authority envelope is excluded because the phone attaches it only
+    /// after signing, matching input intents and agent grants. Clipboard
+    /// content is hashed for tamper detection, but callers must not log
+    /// the request body or audit descriptor.
+    public func canonicalClipboardRequestHashHex(request: HermesRealtimeRelayClipboardRequest) throws -> String {
+        struct SignableClipboardRequest: Encodable {
+            let requestId: String
+            let action: HermesRealtimeRelayClipboardAction
+            let contentType: String
+            let text: String?
+            let maxBytes: Int
+            let clientIntentId: String
+        }
+        return try canonicalIntentHashHex(intent: SignableClipboardRequest(
+            requestId: request.requestId,
+            action: request.action,
+            contentType: request.contentType,
+            text: request.text,
+            maxBytes: request.maxBytes,
+            clientIntentId: request.clientIntentId
+        ))
+    }
+
+    /// Canonical hash for signed system permission requests. The authority
+    /// envelope is omitted from the canonical form because the phone
+    /// attaches it after signing, matching every other Phase 12+ wire
+    /// request.
+    public func canonicalSystemPermissionRequestHashHex(request: HermesRealtimeRelaySystemPermissionRequest) throws -> String {
+        struct SignableSystemPermissionRequest: Encodable {
+            let requestId: String
+            let clientIntentId: String
+            let kind: HermesRealtimeRelaySystemPermissionKind
+            let bundleId: String?
+            let originatingToolCallId: String?
+            let originatingToolName: String?
+            let action: HermesRealtimeRelaySystemPermissionAction
+            let requestedAt: Date
+        }
+        return try canonicalIntentHashHex(intent: SignableSystemPermissionRequest(
+            requestId: request.requestId,
+            clientIntentId: request.clientIntentId,
+            kind: request.kind,
+            bundleId: request.bundleId,
+            originatingToolCallId: request.originatingToolCallId,
+            originatingToolName: request.originatingToolName,
+            action: request.action,
+            requestedAt: request.requestedAt
+        ))
+    }
+
+    public func canonicalAgentContextTargetHashHex(target: HermesRealtimeRelayAgentContextTarget) throws -> String {
+        struct SignableAgentContextTarget: Encodable {
+            let requestId: String
+            let sessionId: String?
+            let runtime: String
+            let threadId: String?
+            let displayId: String?
+            let normalizedX: Double
+            let normalizedY: Double
+            let normalizedRect: HermesRealtimeRelayNormalizedRect?
+            let instruction: String
+            let focusContext: HermesRealtimeRelayFocusContext?
+            let clientIntentId: String
+            let requestedAt: Date
+        }
+        return try canonicalIntentHashHex(intent: SignableAgentContextTarget(
+            requestId: target.requestId,
+            sessionId: target.sessionId,
+            runtime: target.runtime,
+            threadId: target.threadId,
+            displayId: target.displayId,
+            normalizedX: target.normalizedX,
+            normalizedY: target.normalizedY,
+            normalizedRect: target.normalizedRect,
+            instruction: target.instruction,
+            focusContext: target.focusContext,
+            clientIntentId: target.clientIntentId,
+            requestedAt: target.requestedAt
+        ))
+    }
+
+
     public func sign<Intent: Encodable>(
         intent: Intent,
         peerNodeId: String,
@@ -179,6 +262,64 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             signatureBase64: signature.base64EncodedString()
         )
     }
+
+    public func sign(
+        clipboardRequest request: HermesRealtimeRelayClipboardRequest,
+        peerNodeId: String,
+        counter: UInt64,
+        timestamp: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> SignedAuthority {
+        let intentHashHex = try canonicalClipboardRequestHashHex(request: request)
+        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
+        let signature = try privateKey.signature(for: payload)
+        return SignedAuthority(
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: timestamp,
+            intentHashHex: intentHashHex,
+            signatureBase64: signature.base64EncodedString()
+        )
+    }
+
+    public func sign(
+        target: HermesRealtimeRelayAgentContextTarget,
+        peerNodeId: String,
+        counter: UInt64,
+        timestamp: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> SignedAuthority {
+        let intentHashHex = try canonicalAgentContextTargetHashHex(target: target)
+        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
+        let signature = try privateKey.signature(for: payload)
+        return SignedAuthority(
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: timestamp,
+            intentHashHex: intentHashHex,
+            signatureBase64: signature.base64EncodedString()
+        )
+    }
+
+    public func sign(
+        systemPermissionRequest request: HermesRealtimeRelaySystemPermissionRequest,
+        peerNodeId: String,
+        counter: UInt64,
+        timestamp: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> SignedAuthority {
+        let intentHashHex = try canonicalSystemPermissionRequestHashHex(request: request)
+        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
+        let signature = try privateKey.signature(for: payload)
+        return SignedAuthority(
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: timestamp,
+            intentHashHex: intentHashHex,
+            signatureBase64: signature.base64EncodedString()
+        )
+    }
+
 
     public struct SignedAuthority: Codable, Hashable, Sendable {
         public let peerNodeId: String
@@ -279,6 +420,102 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
         }
         let observedHex = try canonicalAgentGrantRequestHashHex(request: request)
+        guard observedHex == authority.intentHashHex else {
+            throw VerifyError.intentHashMismatch
+        }
+        guard let signatureData = Data(base64Encoded: authority.signatureBase64) else {
+            throw VerifyError.invalidBase64Signature
+        }
+        let payload = signablePayload(
+            intentHashHex: authority.intentHashHex,
+            counter: authority.counter,
+            timestamp: authority.timestamp
+        )
+        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+            throw VerifyError.signatureFailed
+        }
+    }
+
+    public func verify(
+        target: HermesRealtimeRelayAgentContextTarget,
+        authority: SignedAuthority,
+        peerPublicKey: Curve25519.Signing.PublicKey,
+        lastSeenCounter: UInt64,
+        now: Date,
+        freshnessSeconds: TimeInterval = 5.0
+    ) throws {
+        let skew = abs(now.timeIntervalSince(authority.timestamp))
+        guard skew <= freshnessSeconds else {
+            throw VerifyError.staleTimestamp(skewSeconds: skew)
+        }
+        guard authority.counter > lastSeenCounter else {
+            throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
+        }
+        let observedHex = try canonicalAgentContextTargetHashHex(target: target)
+        guard observedHex == authority.intentHashHex else {
+            throw VerifyError.intentHashMismatch
+        }
+        guard let signatureData = Data(base64Encoded: authority.signatureBase64) else {
+            throw VerifyError.invalidBase64Signature
+        }
+        let payload = signablePayload(
+            intentHashHex: authority.intentHashHex,
+            counter: authority.counter,
+            timestamp: authority.timestamp
+        )
+        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+            throw VerifyError.signatureFailed
+        }
+    }
+
+    public func verify(
+        clipboardRequest request: HermesRealtimeRelayClipboardRequest,
+        authority: SignedAuthority,
+        peerPublicKey: Curve25519.Signing.PublicKey,
+        lastSeenCounter: UInt64,
+        now: Date,
+        freshnessSeconds: TimeInterval = 5.0
+    ) throws {
+        let skew = abs(now.timeIntervalSince(authority.timestamp))
+        guard skew <= freshnessSeconds else {
+            throw VerifyError.staleTimestamp(skewSeconds: skew)
+        }
+        guard authority.counter > lastSeenCounter else {
+            throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
+        }
+        let observedHex = try canonicalClipboardRequestHashHex(request: request)
+        guard observedHex == authority.intentHashHex else {
+            throw VerifyError.intentHashMismatch
+        }
+        guard let signatureData = Data(base64Encoded: authority.signatureBase64) else {
+            throw VerifyError.invalidBase64Signature
+        }
+        let payload = signablePayload(
+            intentHashHex: authority.intentHashHex,
+            counter: authority.counter,
+            timestamp: authority.timestamp
+        )
+        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+            throw VerifyError.signatureFailed
+        }
+    }
+
+    public func verify(
+        systemPermissionRequest request: HermesRealtimeRelaySystemPermissionRequest,
+        authority: SignedAuthority,
+        peerPublicKey: Curve25519.Signing.PublicKey,
+        lastSeenCounter: UInt64,
+        now: Date,
+        freshnessSeconds: TimeInterval = 5.0
+    ) throws {
+        let skew = abs(now.timeIntervalSince(authority.timestamp))
+        guard skew <= freshnessSeconds else {
+            throw VerifyError.staleTimestamp(skewSeconds: skew)
+        }
+        guard authority.counter > lastSeenCounter else {
+            throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
+        }
+        let observedHex = try canonicalSystemPermissionRequestHashHex(request: request)
         guard observedHex == authority.intentHashHex else {
             throw VerifyError.intentHashMismatch
         }

@@ -1,0 +1,17 @@
+{
+  "name": "@openburnbar/schema-sync",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Canonical Firestore schema authoring and multi-language emit for OpenBurnBar",
+  "type": "module",
+  "scripts": {
+    "emit": "node emit/generate.mjs",
+    "check": "../schema-sync/check-drift.sh"
+  },
+  "devDependencies": {
+    "@typespec/compiler": "^0.63.0",
+    "@typespec/http": "^0.63.0",
+    "@typespec/rest": "^0.63.0",
+    "@typespec/openapi3": "^0.63.0"
+  }
+}

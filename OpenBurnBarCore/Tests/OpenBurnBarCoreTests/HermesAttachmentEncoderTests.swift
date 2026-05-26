@@ -82,6 +82,31 @@ final class HermesAttachmentEncoderTests: XCTestCase {
         XCTAssertTrue(text.contains("type: image"))
     }
 
+    func testModelIOCapabilitiesAllowKimiVisionImage() {
+        let (attachment, bytes) = makeImageAttachment()
+        let userMessage = HermesAttachmentEncoder.Message(
+            role: .user,
+            text: "Read the screenshot",
+            attachments: [attachment],
+            attachmentBytes: [attachment.id: bytes]
+        )
+        let kimiK26Capabilities = ModelIOCapabilities(
+            inputModalities: ["text", "image"],
+            outputModalities: ["text"],
+            contextWindowTokens: 262_144,
+            maxOutputTokens: 262_142,
+            acceptedInputMimeTypes: ["image/*"]
+        )
+        let encoded = HermesAttachmentEncoder.encodeMessages(
+            systemPrompt: "",
+            messages: [userMessage],
+            capabilities: kimiK26Capabilities.asHermesBackendCapabilities
+        )
+        let parts = encoded[0]["content"] as? [[String: Any]]
+        XCTAssertEqual(parts?.last?["type"] as? String, "image_url")
+        XCTAssertEqual(kimiK26Capabilities.contextWindowTokens, 262_144)
+    }
+
     func testTextDocumentInlinesContents() {
         let body = "fn main() { println!(\"hi\") }".data(using: .utf8)!
         let attachment = HermesAttachment(

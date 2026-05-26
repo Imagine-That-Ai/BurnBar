@@ -59,6 +59,7 @@ final class HermesRelayContractTests: XCTestCase {
 
         XCTAssertEqual(decodedRequest, request)
         XCTAssertEqual(HermesRelayOperation(rawValue: "cliAgentChat"), .cliAgentChat)
+        XCTAssertEqual(HermesRelayOperation(rawValue: "cliAgentModelCatalog"), .cliAgentModelCatalog)
 
         let event = CLIAgentRelayChatEvent(
             kind: .completed,

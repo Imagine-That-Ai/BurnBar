@@ -54,6 +54,10 @@ struct InsightsComposerBar: View {
         Task { await environment.compose(prompt: prompt) }
     }
 
+    private func resolveProvider(for providerKey: String) -> AgentProvider? {
+        AgentProvider.fromCatalogProviderID(providerKey) ?? AgentProvider.fromPersistedToken(providerKey)
+    }
+
     private var modelChip: some View {
         Menu {
             ForEach(environment.modelCatalog) { model in
@@ -72,7 +76,11 @@ struct InsightsComposerBar: View {
                                 .font(.caption)
                         }
                     } icon: {
-                        Image(systemName: model.egressTier.symbolName)
+                        if let provider = resolveProvider(for: model.providerKey) {
+                            UnifiedProviderLogoView(provider: provider, size: 16)
+                        } else {
+                            Image(systemName: model.egressTier.symbolName)
+                        }
                     }
                 }
             }
@@ -80,8 +88,12 @@ struct InsightsComposerBar: View {
             Toggle("Privacy mode (local models only)", isOn: $environment.privacyMode)
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: environment.selectedModelTag.egressTier.symbolName)
-                    .font(.system(size: 11, weight: .semibold))
+                if let provider = resolveProvider(for: environment.selectedModelTag.providerKey) {
+                    UnifiedProviderLogoView(provider: provider, size: 12)
+                } else {
+                    Image(systemName: environment.selectedModelTag.egressTier.symbolName)
+                        .font(.system(size: 11, weight: .semibold))
+                }
                 Text(environment.selectedModelTag.displayName)
                     .font(UnifiedDesignSystem.Typography.caption)
                 Image(systemName: "chevron.down")

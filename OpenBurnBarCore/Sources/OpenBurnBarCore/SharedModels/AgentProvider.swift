@@ -218,7 +218,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .hermes
         case "pi", "piagent", "pi-agent":
             return .piAgent
-        case "factory":
+        case "factory", "droid", "factory-droid", "factorydroid":
             return .factory
         case "cursor":
             return .cursor

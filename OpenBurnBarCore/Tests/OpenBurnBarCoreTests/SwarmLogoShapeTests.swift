@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import OpenBurnBarCore
 
 final class SwarmLogoShapeTests: XCTestCase {
@@ -101,13 +102,93 @@ final class SwarmLogoShapeTests: XCTestCase {
         XCTAssertTrue(SwarmFormationMode.shapeGrok.requiresSettledAdmireHold)
         XCTAssertFalse(SwarmFormationMode.swarm.requiresSettledAdmireHold)
         XCTAssertFalse(SwarmFormationMode.shapeRouterFlow.requiresSettledAdmireHold)
+
+        XCTAssertTrue(SwarmFormationMode.shapeSkillet.requiresSettledAdmireHold)
+        XCTAssertTrue(SwarmFormationMode.shapeApple.requiresSettledAdmireHold)
+        XCTAssertTrue(SwarmFormationMode.shapeChefHat.requiresSettledAdmireHold)
+        XCTAssertTrue(SwarmFormationMode.shapeChili.requiresSettledAdmireHold)
+    }
+
+    func testCookingModeCycleContainsOnlyFoodShapesAndSwarm() {
+        let cycle = SwarmFormationMode.defaultCycle(for: SwarmFormationMode.showcaseProviders, excludeBrandShapes: false, uiMode: .cooking)
+        XCTAssertTrue(cycle.contains(.swarm))
+        XCTAssertTrue(cycle.contains(.shapeSkillet))
+        XCTAssertTrue(cycle.contains(.shapeApple))
+        XCTAssertTrue(cycle.contains(.shapeChefHat))
+        XCTAssertTrue(cycle.contains(.shapeChili))
+
+        XCTAssertFalse(cycle.contains(.shapeBurnBarLogo))
+        XCTAssertFalse(cycle.contains(.shapeDollar))
+        XCTAssertFalse(cycle.contains(.shapeCode))
     }
 
     func testVisuallyInspectedProvidersUseRealBundledLogoAssets() {
+        XCTAssertEqual(AgentProvider.factory.bundledLogoName, "FactoryLogo")
         XCTAssertEqual(AgentProvider.openClaw.bundledLogoName, "OpenClawLogo")
         XCTAssertEqual(AgentProvider.hermes.bundledLogoName, "HermesLogo")
         XCTAssertEqual(AgentProvider.codex.bundledLogoName, "CodexLogo")
         XCTAssertEqual(AgentProvider.antigravity.bundledLogoName, "AntigravityLogo")
+    }
+
+    func testFactoryAndHermesDotMapsUseCanonicalSvgSilhouettes() throws {
+        let factory = SwarmProviderLogoDotMap.factory()
+        let hermes = SwarmProviderLogoDotMap.hermesAgent()
+
+        XCTAssertEqual(factory.count, 1_494)
+        XCTAssertEqual(hermes.count, 1_563)
+        XCTAssertEqual(dotMapChecksum(factory), 0x2a46_8fda_01c9_1076)
+        XCTAssertEqual(dotMapChecksum(hermes), 0xf395_55af_3bb4_4278)
+
+        let factoryBounds = try dotMapBounds(for: factory)
+        XCTAssertGreaterThan(factoryBounds.width, 1.90)
+        XCTAssertGreaterThan(factoryBounds.height, 1.85)
+        XCTAssertEqual(factoryBounds.midX, 0, accuracy: 0.08)
+        XCTAssertEqual(factoryBounds.midY, 0, accuracy: 0.08)
+
+        let hermesBounds = try dotMapBounds(for: hermes)
+        XCTAssertGreaterThan(hermesBounds.width, 1.85)
+        XCTAssertGreaterThan(hermesBounds.height, 1.90)
+        XCTAssertLessThan(hermesBounds.minY, -0.95)
+        XCTAssertGreaterThan(hermesBounds.maxY, 0.95)
+    }
+
+    @MainActor
+    func testProviderLogoColorsFollowPaletteAndStayReadable() {
+        let defaultFactory = SwarmSimulation.providerLogoColorForTesting(
+            .factory,
+            under: .defaultEmber,
+            role: "logo-flame-inner",
+            toneSeed: 0.42,
+            colorScheme: .dark
+        )
+        let auroraFactory = SwarmSimulation.providerLogoColorForTesting(
+            .factory,
+            under: .auroraTeal,
+            role: "logo-flame-inner",
+            toneSeed: 0.42,
+            colorScheme: .dark
+        )
+        XCTAssertNotEqual(roundedRGBA(defaultFactory), roundedRGBA(auroraFactory))
+        XCTAssertGreaterThan(relativeLuminance(auroraFactory), 0.30)
+
+        let solarHermesOnLight = SwarmSimulation.providerLogoColorForTesting(
+            .hermes,
+            under: .solarFlare,
+            role: "logo-flame-spark",
+            toneSeed: 0.84,
+            colorScheme: .light
+        )
+        XCTAssertLessThan(relativeLuminance(solarHermesOnLight), 0.74)
+
+        let liftedDarkSource = SwarmSimulation.providerLogoColorForTesting(
+            .hermes,
+            under: .cyberpunkViolet,
+            role: "logo-flame-inner",
+            toneSeed: 0.2,
+            colorScheme: .dark,
+            sourceLogoColor: RGBA(r: 0.01, g: 0.01, b: 0.01)
+        )
+        XCTAssertGreaterThan(relativeLuminance(liftedDarkSource), 0.70)
     }
 
     func testBurnBarLogoShapeContainsFlameAndBarGraphRoles() throws {
@@ -193,6 +274,43 @@ final class SwarmLogoShapeTests: XCTestCase {
         let minY = try XCTUnwrap(filtered.map(\.point.y).min())
         let maxY = try XCTUnwrap(filtered.map(\.point.y).max())
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private func dotMapBounds(for points: [SwarmProviderLogoDotMap.Point]) throws -> CGRect {
+        XCTAssertFalse(points.isEmpty)
+
+        let minX = try XCTUnwrap(points.map(\.point.x).min())
+        let maxX = try XCTUnwrap(points.map(\.point.x).max())
+        let minY = try XCTUnwrap(points.map(\.point.y).min())
+        let maxY = try XCTUnwrap(points.map(\.point.y).max())
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private func dotMapChecksum(_ points: [SwarmProviderLogoDotMap.Point]) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for point in points {
+            let x = Int16((point.point.x * 10_000).rounded())
+            let y = Int16((point.point.y * 10_000).rounded())
+            for raw in [UInt16(bitPattern: x), UInt16(bitPattern: y)] {
+                hash ^= UInt64((raw >> 8) & 0xff)
+                hash = hash &* 0x0000_0100_0000_01b3
+                hash ^= UInt64(raw & 0xff)
+                hash = hash &* 0x0000_0100_0000_01b3
+            }
+        }
+        return hash
+    }
+
+    private func roundedRGBA(_ color: RGBA) -> [Int] {
+        [
+            Int((color.r * 255).rounded()),
+            Int((color.g * 255).rounded()),
+            Int((color.b * 255).rounded())
+        ]
+    }
+
+    private func relativeLuminance(_ color: RGBA) -> Double {
+        0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b
     }
 
     private func canvasBounds(for points: [SwarmLogoShape.Point], role: String? = nil) throws -> CGRect {

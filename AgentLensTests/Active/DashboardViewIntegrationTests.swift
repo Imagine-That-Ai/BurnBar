@@ -13,7 +13,7 @@ final class DashboardViewIntegrationTests: XCTestCase {
         dataStore: DataStoreCoordinator? = nil
     ) -> DashboardView {
         let store = dataStore ?? (try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
-        let settingsManager = SettingsManager(defaults: UserDefaults(suiteName: #file)!)
+        let settingsManager = makeSettingsManager()
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         let layer = OpenBurnBarOperatingLayer(dataStore: store, settingsManager: settingsManager)
         let context = DashboardContext(

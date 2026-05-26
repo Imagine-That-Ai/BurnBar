@@ -764,6 +764,25 @@ struct OpenBurnBarApp: App {
         let daemonManager = OpenBurnBarDaemonManager(settingsManager: settings)
         let cursorConnectorManager = CursorConnectorManager(settingsManager: settings)
 
+        // Phase 4 — wire BudgetSettings + BudgetGate so `BudgetEnforcement.shared.evaluate`
+        // returns real decisions for AgentLens-plane requests. The daemon plane reads the
+        // same `budget_rules` table directly (Phase 4 Part B).
+        let budgetRulesStore = BudgetRulesStore(dbQueue: initializedStore.dbQueue)
+        let budgetSettings = BudgetSettings(
+            store: budgetRulesStore,
+            alertSettings: settings.alerts,
+            deviceID: ProcessInfo.processInfo.globallyUniqueString
+        )
+        let budgetLedger = BudgetLedger(dbQueue: initializedStore.dbQueue)
+        let budgetGate = BudgetGate(settings: budgetSettings, ledger: budgetLedger)
+        let budgetNotifications = BudgetNotificationCenter()
+        let budgetForecast = BudgetForecast(dbQueue: initializedStore.dbQueue)
+        BudgetEnforcement.shared.configure(
+            gate: budgetGate,
+            notifications: budgetNotifications,
+            forecast: budgetForecast
+        )
+
         let controller = ChatSessionController(dataStore: initializedStore, settingsManager: settings)
         let layer = OpenBurnBarOperatingLayer(
             dataStore: initializedStore,

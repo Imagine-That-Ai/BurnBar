@@ -61,6 +61,12 @@ struct AssistantTileBridgeView: View {
             return "Claude Code chat runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
         case .openClaw:
             return "OpenClaw uses your Mac's local agent runtime. Pair your Mac to chat with it from here."
+        case .droid:
+            return "Droid runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
+        case .forge:
+            return "Forge runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
+        case .antigravity:
+            return "Antigravity runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
         case .hermes, .pi:
             return ""
         }

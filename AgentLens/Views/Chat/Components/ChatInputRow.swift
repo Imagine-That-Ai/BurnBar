@@ -17,6 +17,9 @@ struct ChatInputRow: View {
         case .hermes: return "Ask Hermes\u{2026}"
         case .openclaw: return "Ask OpenClaw\u{2026}"
         case .piAgent: return "Ask Pi\u{2026}"
+        case .droid: return "Ask Droid\u{2026}"
+        case .forge: return "Ask Forge\u{2026}"
+        case .antigravity: return "Ask Antigravity\u{2026}"
         }
     }
 

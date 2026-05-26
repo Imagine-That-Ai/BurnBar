@@ -6,8 +6,28 @@ struct ChatEngineBackendStrip: View {
     @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
     @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
 
+    @State private var quotaService = ProviderQuotaService.shared
+
     private var enabledChatBackendsForHeader: [ChatBackendID] {
         settingsManager.enabledChatBackends
+    }
+
+    /// Builds the hover tooltip for a backend pill. When the backend has
+    /// a quota signal, the tooltip reads "Codex — 5h: 47% left · Combined
+    /// ..." so users can see each provider's remaining quota by hovering;
+    /// otherwise it falls back to the display name.
+    private func tooltipText(for backend: ChatBackendID) -> String {
+        guard let provider = backend.agentProvider,
+              let resolution = ProviderQuotaChip.resolve(
+                provider: provider,
+                style: .full,
+                displayName: backend.displayName,
+                service: quotaService
+              )
+        else {
+            return backend.displayName
+        }
+        return resolution.tooltip
     }
 
     var body: some View {
@@ -22,7 +42,7 @@ struct ChatEngineBackendStrip: View {
                 backendIcon(for: only, size: 13)
                     .frame(width: 18, height: 18)
                     .accessibilityLabel(only.displayName)
-                    .popoverTooltip(only.displayName)
+                    .popoverTooltip(tooltipText(for: only))
                     .padding(.horizontal, 6)
                 .padding(.vertical, 3)
             } else {
@@ -55,7 +75,7 @@ struct ChatEngineBackendStrip: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(backend.displayName)
-                        .popoverTooltip(backend.displayName)
+                        .popoverTooltip(tooltipText(for: backend))
                         .disabled(isBackendUnavailable(backend))
                         .opacity(isBackendUnavailable(backend) ? 0.4 : 1)
                     }
@@ -85,7 +105,7 @@ struct ChatEngineBackendStrip: View {
             return controller.hermesAvailable == false && settingsManager.hermesSetupWizardCompleted
         case .piAgent:
             return controller.piAgentAvailable == false
-        case .codex, .claude, .openclaw:
+        case .codex, .claude, .openclaw, .droid, .forge, .antigravity:
             return false
         }
     }
@@ -132,7 +152,7 @@ struct ChatEngineBackendStrip: View {
             false
         case .openclaw:
             controller.openClawAvailable == false
-        case .codex, .claude:
+        case .codex, .claude, .droid, .forge, .antigravity:
             false
         case .piAgent:
             false

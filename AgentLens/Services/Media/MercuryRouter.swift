@@ -80,6 +80,7 @@ final class MercuryRouter: ObservableObject {
         _ sink: MediaStreamSink,
         _ streamClassOverride: MediaStreamClass?,
         _ displayId: String?,
+        _ viewerID: String?,
         _ localStreamingCapabilities: MercuryStreamingCapabilitySnapshot?,
         _ remoteStreamingCapabilities: MercuryStreamingCapabilitySnapshot?,
         _ codecPolicy: MercuryCodecPolicy
@@ -100,6 +101,7 @@ final class MercuryRouter: ObservableObject {
     private let startScreenShare: ScreenShareStarter
     private let ensureComputerUseSession: ComputerUseSessionEnsurer?
     private let applyFocusFollowMode: FocusFollowModeApplier?
+    private let maxMirrorViewers: Int
 
     private var mirrorSinkFactory: MirrorSinkFactory?
     /// The frame + reply sender from the most recently accepted request.
@@ -109,6 +111,23 @@ final class MercuryRouter: ObservableObject {
     private var activeSessionSender: (@Sendable (HermesRealtimeRelayFrame) async throws -> Void)?
     private var activeSessionFrame: HermesRealtimeRelayFrame?
     private var activeSessionControlStreamID: UUID?
+    private struct ActiveMirrorViewer {
+        let viewerID: String
+        let requestID: String
+        let sessionID: String
+        let requesterName: String
+        let joinedAt: Date
+        let frame: HermesRealtimeRelayFrame
+        let replySender: (@Sendable (HermesRealtimeRelayFrame) async throws -> Void)
+        let controlStreamID: UUID?
+        let viewerDeviceID: String?
+        let controlAuthorityPeerNodeID: String?
+    }
+    private var activeMirrorSessionID: String?
+    private var activeMirrorViewers: [String: ActiveMirrorViewer] = [:]
+    private var activeMirrorViewOrder: [String] = []
+    private var activeControlViewerID: String?
+    private var activeSelectedDisplayID: String?
     private var remoteStreamingCapabilitiesByConnectionID: [String: MercuryStreamingCapabilitySnapshot] = [:]
     private var remoteStreamingCapabilitiesByControlStreamID: [UUID: MercuryStreamingCapabilitySnapshot] = [:]
     private var cooldownTask: Task<Void, Never>?
@@ -121,6 +140,7 @@ final class MercuryRouter: ObservableObject {
         ensureComputerUseSession: ComputerUseSessionEnsurer? = nil,
         applyFocusFollowMode: FocusFollowModeApplier? = nil,
         startScreenShare: ScreenShareStarter? = nil,
+        maxMirrorViewers: Int = 3,
         cooldownSeconds: TimeInterval = 30,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -132,21 +152,28 @@ final class MercuryRouter: ObservableObject {
         if let startScreenShare {
             self.startScreenShare = startScreenShare
         } else {
-            self.startScreenShare = { [sessionCoordinator] peerDeviceID, sink, streamClassOverride, displayId, localCapabilities, remoteCapabilities, codecPolicy in
+            self.startScreenShare = { [sessionCoordinator] peerDeviceID, sink, streamClassOverride, displayId, viewerID, localCapabilities, remoteCapabilities, codecPolicy in
                 try await sessionCoordinator.startScreenShare(
                     peerDeviceID: peerDeviceID,
                     sink: sink,
                     streamClassOverride: streamClassOverride,
                     displayId: displayId,
+                    viewerID: viewerID,
                     localStreamingCapabilities: localCapabilities,
                     remoteStreamingCapabilities: remoteCapabilities,
                     codecPolicy: codecPolicy
                 )
             }
         }
+        self.maxMirrorViewers = max(1, maxMirrorViewers)
         self.cooldownSeconds = cooldownSeconds
         self.clock = clock
         installHostAuthGateListeners()
+    }
+
+    var activeMirrorControlAuthorityPeerNodeID: String? {
+        guard let activeControlViewerID else { return nil }
+        return activeMirrorViewers[activeControlViewerID]?.controlAuthorityPeerNodeID
     }
 
     deinit {
@@ -158,6 +185,182 @@ final class MercuryRouter: ObservableObject {
     /// Inject the sink factory once the iroh per-GOP dial is available.
     func setMirrorSinkFactory(_ factory: @escaping MirrorSinkFactory) {
         self.mirrorSinkFactory = factory
+    }
+
+    /// Returns the reply sender + last request frame for the currently
+    /// active mirror session, or nil when not streaming. Used by the
+    /// Smart Zoom context provider to piggyback `focusContext` on the
+    /// existing `media.stream.frame` envelope without duplicating
+    /// the stream-class plumbing.
+    func currentMirrorSessionSender() -> (
+        sender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void,
+        frame: HermesRealtimeRelayFrame
+    )? {
+        guard case .streaming = phase else { return nil }
+        if let activeControlViewerID,
+           let viewer = activeMirrorViewers[activeControlViewerID] {
+            return (viewer.replySender, viewer.frame)
+        }
+        guard let viewer = activeMirrorViewOrder.compactMap({ activeMirrorViewers[$0] }).first else { return nil }
+        return (viewer.replySender, viewer.frame)
+    }
+
+    private func currentMirrorSessions() -> [ActiveMirrorViewer] {
+        guard case .streaming = phase else { return [] }
+        return activeMirrorViewOrder.compactMap { activeMirrorViewers[$0] }
+    }
+
+    private var activeMirrorRequestIDForPhase: String? {
+        if let activeControlViewerID,
+           let requestID = activeMirrorViewers[activeControlViewerID]?.requestID {
+            return requestID
+        }
+        return activeMirrorViewOrder.compactMap { activeMirrorViewers[$0]?.requestID }.first
+            ?? activeSessionFrame?.media?.mirrorRequest?.requestId
+    }
+
+    private func setStreamingPhaseIfNeeded() {
+        guard let requestID = activeMirrorRequestIDForPhase else {
+            phase = .idle
+            return
+        }
+        switch phase {
+        case .streaming(_, let since):
+            phase = .streaming(requestID: requestID, since: since)
+        default:
+            phase = .streaming(requestID: requestID, since: clock())
+        }
+    }
+
+    private func updateLegacyActiveSessionPointer() {
+        let viewer = activeControlViewerID.flatMap { activeMirrorViewers[$0] }
+            ?? activeMirrorViewOrder.compactMap { activeMirrorViewers[$0] }.first
+        activeSessionSender = viewer?.replySender
+        activeSessionFrame = viewer?.frame
+        activeSessionControlStreamID = viewer?.controlStreamID
+    }
+
+    private func viewerRole(for viewerID: String) -> String {
+        viewerID == activeControlViewerID ? "controller" : "watcher"
+    }
+
+    private func viewerID(for request: HermesRealtimeRelayMirrorRequest, frame: HermesRealtimeRelayFrame, controlStreamID: UUID?) -> String {
+        if let viewerId = request.viewerId, !viewerId.isEmpty { return viewerId }
+        if let controlStreamID { return "legacy-\(controlStreamID.uuidString)" }
+        return "legacy-\(frame.connectionId)"
+    }
+
+    private func viewer(matchingRequestID requestID: String) -> ActiveMirrorViewer? {
+        activeMirrorViewers.values.first { $0.requestID == requestID }
+    }
+
+    private func viewer(
+        matchingConnectionID connectionID: String,
+        controlStreamID: UUID?
+    ) -> ActiveMirrorViewer? {
+        activeMirrorViewers.values.first { candidate in
+            if let candidateControlStreamID = candidate.controlStreamID {
+                return candidateControlStreamID == controlStreamID
+            }
+            return candidate.frame.connectionId == connectionID
+        }
+    }
+
+    private func viewer(matchingDeviceID deviceID: String?) -> ActiveMirrorViewer? {
+        guard let deviceID, !deviceID.isEmpty else { return nil }
+        return activeMirrorViewers.values.first { $0.viewerDeviceID == deviceID }
+    }
+
+    private func activeMirrorSessionMatches(_ sessionID: String?) -> Bool {
+        guard let sessionID else { return true }
+        return activeMirrorSessionID == nil || activeMirrorSessionID == sessionID
+    }
+
+    private func addActiveMirrorViewer(_ viewer: ActiveMirrorViewer) {
+        if activeMirrorSessionID == nil {
+            activeMirrorSessionID = viewer.sessionID
+        }
+        activeMirrorViewers[viewer.viewerID] = viewer
+        activeMirrorViewOrder.removeAll { $0 == viewer.viewerID }
+        activeMirrorViewOrder.append(viewer.viewerID)
+        if activeControlViewerID == nil {
+            activeControlViewerID = viewer.viewerID
+        }
+        updateLegacyActiveSessionPointer()
+        setStreamingPhaseIfNeeded()
+    }
+
+    @discardableResult
+    private func removeActiveMirrorViewer(viewerID: String) async -> ActiveMirrorViewer? {
+        guard let viewer = activeMirrorViewers.removeValue(forKey: viewerID) else { return nil }
+        activeMirrorViewOrder.removeAll { $0 == viewerID }
+        await sessionCoordinator.detachScreenShareViewer(viewerID: viewerID)
+        if activeControlViewerID == viewerID {
+            activeControlViewerID = activeMirrorViewOrder.first
+        }
+        if activeMirrorViewers.isEmpty {
+            activeMirrorSessionID = nil
+            activeSelectedDisplayID = nil
+            clearActiveSessionState()
+            phase = .idle
+        } else {
+            updateLegacyActiveSessionPointer()
+            setStreamingPhaseIfNeeded()
+        }
+        return viewer
+    }
+
+    private func clearAllActiveMirrorViewers() {
+        activeMirrorSessionID = nil
+        activeMirrorViewers.removeAll()
+        activeMirrorViewOrder.removeAll()
+        activeControlViewerID = nil
+        activeSelectedDisplayID = nil
+        clearActiveSessionState()
+    }
+
+    private func broadcastMirrorAck(
+        decision: HermesRealtimeRelayMirrorAck.Decision,
+        detail: String?,
+        availableDisplays: [HermesRealtimeRelayDisplayDescriptor]? = nil,
+        selectedDisplayId: String? = nil,
+        excludingViewerID: String? = nil
+    ) async {
+        for viewer in currentMirrorSessions() {
+            if viewer.viewerID == excludingViewerID { continue }
+            await respond(
+                requestID: viewer.requestID,
+                decision: decision,
+                detail: detail,
+                availableDisplays: availableDisplays,
+                selectedDisplayId: selectedDisplayId,
+                sessionID: viewer.sessionID,
+                viewerID: viewer.viewerID,
+                viewerRole: viewerRole(for: viewer.viewerID),
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
+                frame: viewer.frame,
+                replySender: viewer.replySender
+            )
+        }
+    }
+
+    /// Emits a Smart Zoom-enriched `focusContext` over the active
+    /// mirror session. No-op when no session is streaming.
+    func sendFocusContextOnActiveMirror(_ context: HermesRealtimeRelayFocusContext) async {
+        for session in currentMirrorSessions() {
+            let frame = HermesRealtimeRelayFrame(
+                type: .mediaStreamFrame,
+                uid: session.frame.uid,
+                connectionId: session.frame.connectionId,
+                media: HermesRealtimeRelayMediaPayload(
+                    streamClass: MediaStreamClass.screenVideo.rawValue,
+                    focusContext: context
+                )
+            )
+            try? await session.replySender(frame)
+        }
     }
 
     /// Called by the media-control stream owner after the registry entry has
@@ -188,20 +391,17 @@ final class MercuryRouter: ObservableObject {
         if pendingMirrorClosed { pendingRequest = nil }
         if pendingCallClosed { pendingCall = nil }
 
-        let activeMirrorClosed = activeSessionMatches(
-            connectionID: connectionID,
-            controlStreamID: controlStreamID
-        )
-        if activeMirrorClosed {
-            await sessionCoordinator.stop(reason: .completedUserCancel)
-            clearActiveSessionState()
+        let closedViewer = viewer(matchingConnectionID: connectionID, controlStreamID: controlStreamID)
+        let activeMirrorClosed = closedViewer != nil
+        if let closedViewer {
+            _ = await removeActiveMirrorViewer(viewerID: closedViewer.viewerID)
         }
 
         switch phase {
         case .ringing where pendingMirrorClosed,
              .callRinging where pendingCallClosed,
              .starting where activeMirrorClosed,
-             .streaming where activeMirrorClosed:
+             .streaming where activeMirrorClosed && activeMirrorViewers.isEmpty:
             phase = .idle
         default:
             break
@@ -363,28 +563,25 @@ final class MercuryRouter: ObservableObject {
 
     /// User tapped "Stop" on the CallHUD during an active mirror.
     func stopMirror() async {
+        let viewers = currentMirrorSessions()
         await sessionCoordinator.stop(reason: .completedUserCancel)
-        let requestID: String
-        switch phase {
-        case .streaming(let id, _),
-             .starting(let id):
-            requestID = id
-        default:
-            requestID = ""
-        }
-        if !requestID.isEmpty,
-           let sender = activeSessionSender,
-           let sessionFrame = activeSessionFrame {
+        for viewer in viewers {
             await respond(
-                requestID: requestID,
+                requestID: viewer.requestID,
                 decision: .denied,
                 detail: "Host ended mirror",
-                frame: sessionFrame,
-                replySender: sender
+                sessionID: viewer.sessionID,
+                viewerID: viewer.viewerID,
+                viewerRole: viewerRole(for: viewer.viewerID),
+                viewerCount: 0,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: nil,
+                frame: viewer.frame,
+                replySender: viewer.replySender
             )
         }
         pendingRequest = nil
-        clearActiveSessionState()
+        clearAllActiveMirrorViewers()
         phase = .idle
     }
 
@@ -446,21 +643,11 @@ final class MercuryRouter: ObservableObject {
     private func handleHostAuthGateClosed(reason: String) async {
         let pendingMirror = pendingRequest
         let pendingPhoneCall = pendingCall
-        let activeSender = activeSessionSender
-        let activeFrame = activeSessionFrame
-        let activeRequestID: String?
-        switch phase {
-        case .streaming(let requestID, _),
-             .starting(let requestID):
-            activeRequestID = requestID
-        default:
-            activeRequestID = activeFrame?.media?.mirrorRequest?.requestId
-        }
+        let activeViewers = currentMirrorSessions()
 
         let hadWorkToStop = pendingMirror != nil
             || pendingPhoneCall != nil
-            || activeSender != nil
-            || activeFrame != nil
+            || !activeViewers.isEmpty
             || phase != .idle
 
         guard hadWorkToStop else { return }
@@ -492,20 +679,26 @@ final class MercuryRouter: ObservableObject {
             )
         }
 
-        if let activeSender,
-           let activeFrame,
-           let activeRequestID {
+        if !activeViewers.isEmpty {
             await sessionCoordinator.stop(reason: .completedUserCancel)
-            await respond(
-                requestID: activeRequestID,
-                decision: .denied,
-                detail: "Mac locked or screen capture became unavailable",
-                frame: activeFrame,
-                replySender: activeSender
-            )
+            for viewer in activeViewers {
+                await respond(
+                    requestID: viewer.requestID,
+                    decision: .denied,
+                    detail: "Mac locked or screen capture became unavailable",
+                    sessionID: viewer.sessionID,
+                    viewerID: viewer.viewerID,
+                    viewerRole: viewerRole(for: viewer.viewerID),
+                    viewerCount: 0,
+                    maxViewers: maxMirrorViewers,
+                    controlOwnerViewerID: nil,
+                    frame: viewer.frame,
+                    replySender: viewer.replySender
+                )
+            }
         }
 
-        clearActiveSessionState()
+        clearAllActiveMirrorViewers()
         phase = .idle
     }
 
@@ -537,29 +730,29 @@ final class MercuryRouter: ObservableObject {
             return
         }
 
-        // Recovery fast-path: if the same paired device asks again while
-        // the router still believes a previous mirror is active, treat it
-        // as a restart. This clears stale Mac-side streaming state after a
-        // phone viewer/app teardown without weakening the one-peer-at-a-time
-        // guard for other devices.
+        let requestedViewerID = viewerID(for: req, frame: frame, controlStreamID: controlStreamID)
+
+        // Recovery fast-path: if the same viewer/device asks again while the
+        // router still has its old sink, replace only that viewer lease.
         if case .streaming = phase,
-           activeSessionMatches(connectionID: frame.connectionId, controlStreamID: controlStreamID) {
+           let staleViewer = activeMirrorViewers[requestedViewerID] ?? viewer(matchingDeviceID: req.viewerDeviceId) {
             Self.log.info("router_mirror_request_restarting_same_peer requestID=\(req.requestId, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
             Self.debugTrace("router_mirror_request_restarting_same_peer requestID=\(req.requestId) connectionID=\(frame.connectionId)")
-            await sessionCoordinator.stop(reason: .completedUserCancel)
-            pendingRequest = nil
-            clearActiveSessionState()
-            phase = .idle
+            _ = await removeActiveMirrorViewer(viewerID: staleViewer.viewerID)
         }
 
-        // Busy short-circuit — one mirror at a time.
-        if case .streaming = phase {
-            Self.log.info("router_mirror_request_busy_streaming requestID=\(req.requestId, privacy: .public)")
-            Self.debugTrace("router_mirror_request_busy_streaming requestID=\(req.requestId)")
+        if case .streaming = phase,
+           activeMirrorViewers.count >= maxMirrorViewers {
+            Self.log.info("router_mirror_request_busy_viewer_cap requestID=\(req.requestId, privacy: .public)")
+            Self.debugTrace("router_mirror_request_busy_viewer_cap requestID=\(req.requestId)")
             await respond(
                 requestID: req.requestId,
                 decision: .busy,
-                detail: "Another mirror is in progress",
+                detail: "Mirror viewer limit reached",
+                viewerID: requestedViewerID,
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
                 frame: frame,
                 replySender: replySender
             )
@@ -572,6 +765,25 @@ final class MercuryRouter: ObservableObject {
                 requestID: req.requestId,
                 decision: .busy,
                 detail: "A mirror is starting",
+                viewerID: requestedViewerID,
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
+                frame: frame,
+                replySender: replySender
+            )
+            return
+        }
+
+        if pendingRequest != nil {
+            await respond(
+                requestID: req.requestId,
+                decision: .busy,
+                detail: "A mirror request is awaiting approval",
+                viewerID: requestedViewerID,
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
                 frame: frame,
                 replySender: replySender
             )
@@ -613,24 +825,21 @@ final class MercuryRouter: ObservableObject {
             Self.debugTrace("router_mirror_stop_missing_payload requestID=\(frame.requestId ?? "")")
             return
         }
-        let activeRequestID: String?
-        switch phase {
-        case .streaming(let requestID, _),
-             .starting(let requestID):
-            activeRequestID = requestID
-        default:
-            activeRequestID = activeSessionFrame?.media?.mirrorRequest?.requestId
-        }
-        guard activeRequestID == stop.requestId,
-              activeSessionAcceptsExplicitControlFrame(connectionID: frame.connectionId, controlStreamID: controlStreamID) else {
+        guard activeMirrorSessionMatches(stop.sessionId),
+              let activeViewer = viewer(matchingRequestID: stop.requestId),
+              request(activeViewer, matchesClosedConnectionID: frame.connectionId, controlStreamID: controlStreamID) else {
             Self.log.info("router_mirror_stop_ignored requestID=\(stop.requestId, privacy: .public) phase_mismatch=true")
             Self.debugTrace("router_mirror_stop_ignored requestID=\(stop.requestId) phase=\(String(describing: phase))")
             return
         }
-        await sessionCoordinator.stop(reason: .completedUserCancel)
+        _ = await removeActiveMirrorViewer(viewerID: activeViewer.viewerID)
         pendingRequest = nil
-        clearActiveSessionState()
-        phase = .idle
+        await broadcastMirrorAck(
+            decision: .accepted,
+            detail: "Viewer left",
+            availableDisplays: ScreenCapturePipeline.availableDisplays(),
+            selectedDisplayId: activeSelectedDisplayID
+        )
         Self.log.info("router_mirror_stop_completed requestID=\(stop.requestId, privacy: .public)")
         Self.debugTrace("router_mirror_stop_completed requestID=\(stop.requestId)")
     }
@@ -641,16 +850,27 @@ final class MercuryRouter: ObservableObject {
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         guard let selection = frame.media?.mirrorDisplaySelection else { return }
-        let activeRequestID: String?
-        switch phase {
-        case .streaming(let requestID, _),
-             .starting(let requestID):
-            activeRequestID = requestID
-        default:
-            activeRequestID = nil
+        guard activeMirrorSessionMatches(selection.sessionId),
+              let activeViewer = viewer(matchingRequestID: selection.requestId),
+              request(activeViewer, matchesClosedConnectionID: frame.connectionId, controlStreamID: controlStreamID) else { return }
+        guard activeViewer.viewerID == activeControlViewerID else {
+            await respond(
+                requestID: selection.requestId,
+                decision: .denied,
+                detail: "Another viewer owns Mac control",
+                availableDisplays: ScreenCapturePipeline.availableDisplays(),
+                selectedDisplayId: activeSelectedDisplayID,
+                sessionID: activeViewer.sessionID,
+                viewerID: activeViewer.viewerID,
+                viewerRole: viewerRole(for: activeViewer.viewerID),
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
+                frame: frame,
+                replySender: replySender
+            )
+            return
         }
-        guard activeRequestID == selection.requestId,
-              activeSessionMatches(connectionID: frame.connectionId, controlStreamID: controlStreamID) else { return }
         let displays = ScreenCapturePipeline.availableDisplays()
         guard displays.contains(where: { $0.id == selection.displayId }) else {
             await respond(
@@ -659,6 +879,12 @@ final class MercuryRouter: ObservableObject {
                 detail: "Display is no longer available",
                 availableDisplays: displays,
                 selectedDisplayId: displays.first?.id,
+                sessionID: activeViewer.sessionID,
+                viewerID: activeViewer.viewerID,
+                viewerRole: viewerRole(for: activeViewer.viewerID),
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
                 frame: frame,
                 replySender: replySender
             )
@@ -666,14 +892,12 @@ final class MercuryRouter: ObservableObject {
         }
         do {
             try await sessionCoordinator.switchScreenShareDisplay(displayId: selection.displayId)
-            await respond(
-                requestID: selection.requestId,
+            activeSelectedDisplayID = selection.displayId
+            await broadcastMirrorAck(
                 decision: .accepted,
                 detail: "Display switched",
                 availableDisplays: displays,
-                selectedDisplayId: selection.displayId,
-                frame: frame,
-                replySender: replySender
+                selectedDisplayId: selection.displayId
             )
         } catch {
             await respond(
@@ -682,6 +906,12 @@ final class MercuryRouter: ObservableObject {
                 detail: error.localizedDescription,
                 availableDisplays: displays,
                 selectedDisplayId: displays.first?.id,
+                sessionID: activeViewer.sessionID,
+                viewerID: activeViewer.viewerID,
+                viewerRole: viewerRole(for: activeViewer.viewerID),
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
                 frame: frame,
                 replySender: replySender
             )
@@ -751,7 +981,10 @@ final class MercuryRouter: ObservableObject {
     }
 
     private func beginMirror(for request: PendingRequest) async {
-        phase = .starting(requestID: request.id)
+        let wasJoiningExistingSession = !activeMirrorViewers.isEmpty
+        if !wasJoiningExistingSession {
+            phase = .starting(requestID: request.id)
+        }
         pendingRequest = nil
         guard let mirrorRequest = request.frame.media?.mirrorRequest else {
             await respond(
@@ -762,6 +995,40 @@ final class MercuryRouter: ObservableObject {
                 replySender: request.replySender
             )
             phase = .idle
+            return
+        }
+        let viewerID = viewerID(for: mirrorRequest, frame: request.frame, controlStreamID: request.controlStreamID)
+        guard activeMirrorViewers[viewerID] == nil else {
+            await respond(
+                requestID: request.id,
+                decision: .busy,
+                detail: "This viewer is already connected",
+                sessionID: activeMirrorSessionID,
+                viewerID: viewerID,
+                viewerRole: viewerRole(for: viewerID),
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
+                frame: request.frame,
+                replySender: request.replySender
+            )
+            setStreamingPhaseIfNeeded()
+            return
+        }
+        guard activeMirrorViewers.count < maxMirrorViewers else {
+            await respond(
+                requestID: request.id,
+                decision: .busy,
+                detail: "Mirror viewer limit reached",
+                sessionID: activeMirrorSessionID,
+                viewerID: viewerID,
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
+                frame: request.frame,
+                replySender: request.replySender
+            )
+            setStreamingPhaseIfNeeded()
             return
         }
         guard let factory = mirrorSinkFactory else {
@@ -777,9 +1044,7 @@ final class MercuryRouter: ObservableObject {
             phase = .idle
             return
         }
-        activeSessionSender = request.replySender
-        activeSessionFrame = request.frame
-        activeSessionControlStreamID = request.controlStreamID
+        let sessionID = activeMirrorSessionID ?? UUID().uuidString
         do {
             let requestedFocusMode = mirrorRequest.focusFollowMode
                 .flatMap(AgentFocusFollowMode.init(rawValue:))
@@ -788,10 +1053,6 @@ final class MercuryRouter: ObservableObject {
                 requestedMode: requestedFocusMode
             )
             let sink = try await factory(mirrorRequest, request.frame, request.replySender)
-            guard isActiveMirrorRequest(request) else {
-                await sink.close()
-                return
-            }
             let remoteCapabilities = mirrorRequest.streamingCapabilities
                 .map(MercuryStreamingCapabilitySnapshot.init(wire:))
                 ?? request.controlStreamID.flatMap {
@@ -806,48 +1067,62 @@ final class MercuryRouter: ObservableObject {
                 sink,
                 .screenVideo,
                 nil,
+                viewerID,
                 localCapabilities,
                 remoteCapabilities,
                 .production
             )
-            guard isActiveMirrorRequest(request) else {
-                await sessionCoordinator.stop(reason: .completedUserCancel)
-                return
-            }
-            do {
-                applyFocusFollowMode?(focusMode)
-                if let ensureComputerUseSession {
-                    try await ensureComputerUseSession()
+            let viewer = ActiveMirrorViewer(
+                viewerID: viewerID,
+                requestID: request.id,
+                sessionID: sessionID,
+                requesterName: request.requesterName,
+                joinedAt: clock(),
+                frame: request.frame,
+                replySender: request.replySender,
+                controlStreamID: request.controlStreamID,
+                viewerDeviceID: mirrorRequest.viewerDeviceId,
+                controlAuthorityPeerNodeID: mirrorRequest.controlAuthorityPeerNodeId
+            )
+            addActiveMirrorViewer(viewer)
+            if activeControlViewerID == viewerID {
+                do {
+                    applyFocusFollowMode?(focusMode)
+                    if let ensureComputerUseSession {
+                        try await ensureComputerUseSession()
+                    }
+                } catch {
+                    lastError = "Mirror is read-only: \(error.localizedDescription)"
+                    Self.log.error("router_computer_use_session_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                    Self.debugTrace("router_computer_use_session_failed requestID=\(request.id) error=\(error.localizedDescription)")
                 }
-            } catch {
-                lastError = "Mirror is read-only: \(error.localizedDescription)"
-                Self.log.error("router_computer_use_session_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-                Self.debugTrace("router_computer_use_session_failed requestID=\(request.id) error=\(error.localizedDescription)")
-            }
-            guard isActiveMirrorRequest(request) else {
-                await sessionCoordinator.stop(reason: .completedUserCancel)
-                return
             }
             let displays = ScreenCapturePipeline.availableDisplays()
+            activeSelectedDisplayID = activeSelectedDisplayID ?? displays.first?.id
             await respond(
                 requestID: request.id,
                 decision: .accepted,
                 detail: nil,
                 availableDisplays: displays,
-                selectedDisplayId: displays.first?.id,
+                selectedDisplayId: activeSelectedDisplayID,
+                sessionID: sessionID,
+                viewerID: viewerID,
+                viewerRole: viewerRole(for: viewerID),
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
                 frame: request.frame,
                 replySender: request.replySender
             )
-            guard isActiveMirrorRequest(request) else {
-                await sessionCoordinator.stop(reason: .completedUserCancel)
-                return
+            if wasJoiningExistingSession {
+                await broadcastMirrorAck(
+                    decision: .accepted,
+                    detail: "Viewer roster updated",
+                    availableDisplays: displays,
+                    selectedDisplayId: activeSelectedDisplayID,
+                    excludingViewerID: viewerID
+                )
             }
-            // Remember the session so stopMirror can ack when the
-            // host ends the mirror via the CallHUD.
-            activeSessionSender = request.replySender
-            activeSessionFrame = request.frame
-            activeSessionControlStreamID = request.controlStreamID
-            phase = .streaming(requestID: request.id, since: clock())
         } catch {
             lastError = error.localizedDescription
             Self.log.error("router_mirror_start_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
@@ -856,11 +1131,20 @@ final class MercuryRouter: ObservableObject {
                 requestID: request.id,
                 decision: .unsupported,
                 detail: error.localizedDescription,
+                sessionID: activeMirrorSessionID,
+                viewerID: viewerID,
+                viewerCount: activeMirrorViewers.count,
+                maxViewers: maxMirrorViewers,
+                controlOwnerViewerID: activeControlViewerID,
                 frame: request.frame,
                 replySender: request.replySender
             )
-            phase = .idle
-            clearActiveSessionState()
+            if activeMirrorViewers.isEmpty {
+                phase = .idle
+                clearAllActiveMirrorViewers()
+            } else {
+                setStreamingPhaseIfNeeded()
+            }
         }
     }
 
@@ -873,6 +1157,17 @@ final class MercuryRouter: ObservableObject {
             return requestControlStreamID == controlStreamID
         }
         return request.frame.connectionId == connectionID
+    }
+
+    private func request(
+        _ viewer: ActiveMirrorViewer,
+        matchesClosedConnectionID connectionID: String,
+        controlStreamID: UUID?
+    ) -> Bool {
+        if let requestControlStreamID = viewer.controlStreamID {
+            return requestControlStreamID == controlStreamID
+        }
+        return viewer.frame.connectionId == connectionID
     }
 
     private func activeSessionMatches(connectionID: String, controlStreamID: UUID?) -> Bool {
@@ -916,6 +1211,12 @@ final class MercuryRouter: ObservableObject {
         cooldownSecondsRemaining: Int? = nil,
         availableDisplays: [HermesRealtimeRelayDisplayDescriptor]? = nil,
         selectedDisplayId: String? = nil,
+        sessionID: String? = nil,
+        viewerID: String? = nil,
+        viewerRole: String? = nil,
+        viewerCount: Int? = nil,
+        maxViewers: Int? = nil,
+        controlOwnerViewerID: String? = nil,
         frame: HermesRealtimeRelayFrame,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
@@ -925,7 +1226,13 @@ final class MercuryRouter: ObservableObject {
             detail: detail,
             cooldownSecondsRemaining: cooldownSecondsRemaining,
             availableDisplays: availableDisplays,
-            selectedDisplayId: selectedDisplayId
+            selectedDisplayId: selectedDisplayId,
+            sessionId: sessionID,
+            viewerId: viewerID,
+            viewerRole: viewerRole,
+            viewerCount: viewerCount,
+            maxViewers: maxViewers,
+            controlOwnerViewerId: controlOwnerViewerID
         )
         let outbound = HermesRealtimeRelayFrame(
             type: .mediaMirrorAck,

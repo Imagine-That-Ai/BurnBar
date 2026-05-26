@@ -29,6 +29,8 @@ final class DashboardUsageViewModel {
         let dailySummaries: [DailyUsageSummary]
         let providerSummaries: [ProviderSummary]
         let modelSummaries: [ModelSummary]
+        let credentialSummaries: [CredentialSummary]
+        let projectSpendSummaries: [ProjectSpendSummary]
         let topProviderToday: (provider: AgentProvider, cost: Double)?
 
         static let empty = UsageAggregateCache(
@@ -47,6 +49,8 @@ final class DashboardUsageViewModel {
             dailySummaries: [],
             providerSummaries: [],
             modelSummaries: [],
+            credentialSummaries: [],
+            projectSpendSummaries: [],
             topProviderToday: nil
         )
     }
@@ -91,6 +95,8 @@ final class DashboardUsageViewModel {
 
     var providerSummaries: [ProviderSummary] { aggregateCache.providerSummaries }
     var modelSummaries: [ModelSummary] { aggregateCache.modelSummaries }
+    var credentialSummaries: [CredentialSummary] { aggregateCache.credentialSummaries }
+    var projectSpendSummaries: [ProjectSpendSummary] { aggregateCache.projectSpendSummaries }
 
     var hasEstimatedProviders: Bool {
         providerSummaries.contains { $0.provider.dataConfidence != .exact }
@@ -110,6 +116,22 @@ final class DashboardUsageViewModel {
 
     func modelSummaries(for timeRange: TimeRange) -> [ModelSummary] {
         windowSummary(for: timeRange).modelSummaries
+    }
+
+    func credentialSummaries(in dateRange: ClosedRange<Date>?) -> [CredentialSummary] {
+        windowSummary(in: dateRange).credentialSummaries
+    }
+
+    func credentialSummaries(for timeRange: TimeRange) -> [CredentialSummary] {
+        windowSummary(for: timeRange).credentialSummaries
+    }
+
+    func projectSpendSummaries(in dateRange: ClosedRange<Date>?) -> [ProjectSpendSummary] {
+        windowSummary(in: dateRange).projectSpendSummaries
+    }
+
+    func projectSpendSummaries(for timeRange: TimeRange) -> [ProjectSpendSummary] {
+        windowSummary(for: timeRange).projectSpendSummaries
     }
 
     func topProviderToday() -> (provider: AgentProvider, cost: Double)? {
@@ -212,6 +234,8 @@ final class DashboardUsageViewModel {
             activeProviderCount: Set(filteredUsages.map(\.provider)).count,
             providerSummaries: Self.makeProviderSummaries(from: filteredUsages),
             modelSummaries: Self.makeModelSummaries(from: filteredUsages),
+            credentialSummaries: Self.makeCredentialSummaries(from: filteredUsages),
+            projectSpendSummaries: Self.makeProjectSpendSummaries(from: filteredUsages),
             cacheEfficiency: CacheEfficiency.aggregate(filteredUsages)
         )
         windowSummaryCache[key] = summary
@@ -254,6 +278,8 @@ final class DashboardUsageViewModel {
             dailySummaries: snapshot.dailySummaries,
             providerSummaries: allTime.providerSummaries,
             modelSummaries: allTime.modelSummaries,
+            credentialSummaries: allTime.credentialSummaries,
+            projectSpendSummaries: allTime.projectSpendSummaries,
             topProviderToday: snapshot.topProviderToday
         )
     }
@@ -347,6 +373,8 @@ final class DashboardUsageViewModel {
                 .sorted { $0.date > $1.date },
             providerSummaries: Self.makeProviderSummaries(from: usages),
             modelSummaries: Self.makeModelSummaries(from: usages),
+            credentialSummaries: Self.makeCredentialSummaries(from: usages),
+            projectSpendSummaries: Self.makeProjectSpendSummaries(from: usages),
             topProviderToday: topProviderToday
         )
     }
@@ -409,6 +437,22 @@ final class DashboardUsageViewModel {
         }
         .sorted { $0.totalCost > $1.totalCost }
     }
+
+    // MARK: - Credential Summary Builder
+
+    /// Delegates to the canonical credential rollup in `UsageStore` so the in-memory
+    /// view-model path and the SQLite snapshot path produce identical summaries.
+    static func makeCredentialSummaries(from usages: [TokenUsage]) -> [CredentialSummary] {
+        UsageStore.makeCredentialSummaries(from: usages)
+    }
+
+    // MARK: - Project Spend Summary Builder
+
+    /// Delegates to the canonical project rollup in `UsageStore` so the in-memory
+    /// view-model path and the SQLite snapshot path produce identical summaries.
+    static func makeProjectSpendSummaries(from usages: [TokenUsage]) -> [ProjectSpendSummary] {
+        UsageStore.makeProjectSpendSummaries(from: usages)
+    }
 }
 
 // MARK: - Dashboard Cached Window Summary
@@ -421,6 +465,8 @@ struct DashboardUsageWindowSummary {
     let activeProviderCount: Int
     let providerSummaries: [ProviderSummary]
     let modelSummaries: [ModelSummary]
+    let credentialSummaries: [CredentialSummary]
+    let projectSpendSummaries: [ProjectSpendSummary]
     let cacheEfficiency: CacheEfficiency
 
     static let empty = DashboardUsageWindowSummary(
@@ -431,6 +477,8 @@ struct DashboardUsageWindowSummary {
         activeProviderCount: 0,
         providerSummaries: [],
         modelSummaries: [],
+        credentialSummaries: [],
+        projectSpendSummaries: [],
         cacheEfficiency: .zero
     )
 }

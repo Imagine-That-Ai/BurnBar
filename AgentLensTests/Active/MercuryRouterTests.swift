@@ -18,6 +18,7 @@ final class MercuryRouterTests: XCTestCase {
         ensureComputerUseSession: MercuryRouter.ComputerUseSessionEnsurer? = nil,
         applyFocusFollowMode: MercuryRouter.FocusFollowModeApplier? = nil,
         startScreenShare: MercuryRouter.ScreenShareStarter? = nil,
+        maxMirrorViewers: Int = 3,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink) {
         let scoped = makeRouterWithConsentStore(
@@ -26,6 +27,7 @@ final class MercuryRouterTests: XCTestCase {
             ensureComputerUseSession: ensureComputerUseSession,
             applyFocusFollowMode: applyFocusFollowMode,
             startScreenShare: startScreenShare,
+            maxMirrorViewers: maxMirrorViewers,
             clock: clock
         )
         return (scoped.router, scoped.sink)
@@ -37,6 +39,7 @@ final class MercuryRouterTests: XCTestCase {
         ensureComputerUseSession: MercuryRouter.ComputerUseSessionEnsurer? = nil,
         applyFocusFollowMode: MercuryRouter.FocusFollowModeApplier? = nil,
         startScreenShare: MercuryRouter.ScreenShareStarter? = nil,
+        maxMirrorViewers: Int = 3,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink, consentStore: MercuryConsentStore) {
         let registry = MediaControlStreamRegistry()
@@ -58,6 +61,7 @@ final class MercuryRouterTests: XCTestCase {
             ensureComputerUseSession: ensureComputerUseSession,
             applyFocusFollowMode: applyFocusFollowMode,
             startScreenShare: startScreenShare,
+            maxMirrorViewers: maxMirrorViewers,
             cooldownSeconds: cooldownSeconds,
             clock: clock
         )
@@ -97,7 +101,10 @@ final class MercuryRouterTests: XCTestCase {
         connectionID: String = "c",
         streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil,
         streamClass: String = MediaStreamClass.screenVideo.rawValue,
-        focusFollowMode: String? = nil
+        focusFollowMode: String? = nil,
+        viewerID: String? = nil,
+        viewerDeviceID: String? = nil,
+        controlAuthorityPeerNodeID: String? = nil
     ) -> HermesRealtimeRelayFrame {
         let req = HermesRealtimeRelayMirrorRequest(
             requestId: requestID,
@@ -105,7 +112,10 @@ final class MercuryRouterTests: XCTestCase {
             requesterDisplayName: requesterName,
             streamClass: streamClass,
             streamingCapabilities: streamingCapabilities,
-            focusFollowMode: focusFollowMode
+            focusFollowMode: focusFollowMode,
+            viewerId: viewerID,
+            viewerDeviceId: viewerDeviceID,
+            controlAuthorityPeerNodeId: controlAuthorityPeerNodeID
         )
         return HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -144,7 +154,7 @@ final class MercuryRouterTests: XCTestCase {
             ensureComputerUseSession: {
                 events.append("computer-use")
             },
-            startScreenShare: { _, _, _, _, _, _, _ in
+            startScreenShare: { _, _, _, _, _, _, _, _ in
                 events.append("screen-share")
             }
         )
@@ -166,7 +176,7 @@ final class MercuryRouterTests: XCTestCase {
             applyFocusFollowMode: { mode in
                 events.append("focus-\(mode.rawValue)")
             },
-            startScreenShare: { _, _, _, _, _, _, _ in
+            startScreenShare: { _, _, _, _, _, _, _, _ in
                 events.append("screen-share")
             }
         )
@@ -187,7 +197,7 @@ final class MercuryRouterTests: XCTestCase {
             consent: true,
             ensureComputerUseSession: {},
             applyFocusFollowMode: { modes.append($0) },
-            startScreenShare: { _, _, _, _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _, _ in }
         )
 
         await router.handleFrame(
@@ -243,7 +253,7 @@ final class MercuryRouterTests: XCTestCase {
         var capturedPolicy: MercuryCodecPolicy?
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _, localCapabilities, remoteCapabilities, codecPolicy in
+            startScreenShare: { _, _, _, _, _, localCapabilities, remoteCapabilities, codecPolicy in
                 capturedLocal = localCapabilities
                 capturedRemote = remoteCapabilities
                 capturedPolicy = codecPolicy
@@ -279,7 +289,7 @@ final class MercuryRouterTests: XCTestCase {
         var capturedRemote: MercuryStreamingCapabilitySnapshot?
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _, localCapabilities, remoteCapabilities, _ in
+            startScreenShare: { _, _, _, _, _, localCapabilities, remoteCapabilities, _ in
                 capturedLocal = localCapabilities
                 capturedRemote = remoteCapabilities
             }
@@ -363,15 +373,20 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(decoded, frameV2)
     }
 
-    private func mirrorStopFrame(requestID: String = "req_test") -> HermesRealtimeRelayFrame {
+    private func mirrorStopFrame(
+        requestID: String = "req_test",
+        connectionID: String = "c",
+        sessionID: String? = nil
+    ) -> HermesRealtimeRelayFrame {
         HermesRealtimeRelayFrame(
             type: .mediaMirrorStop,
             uid: "u",
-            connectionId: "c",
+            connectionId: connectionID,
             requestId: requestID,
             media: HermesRealtimeRelayMediaPayload(
                 mirrorStop: HermesRealtimeRelayMirrorStop(
                     requestId: requestID,
+                    sessionId: sessionID,
                     stoppedAt: Date(timeIntervalSince1970: 1_700_000_001),
                     reason: "viewer_closed"
                 )
@@ -454,7 +469,7 @@ final class MercuryRouterTests: XCTestCase {
 
     func testAcceptMirrorPersistsConsentForFutureAutoAccept() async {
         let (router, sink, consentStore) = makeRouterWithConsentStore(
-            startScreenShare: { _, _, _, _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _, _ in }
         )
 
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
@@ -634,7 +649,7 @@ final class MercuryRouterTests: XCTestCase {
         let (router, sink) = makeRouter(
             consent: true,
             cooldownSeconds: 30,
-            startScreenShare: { _, _, _, _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _, _ in }
         )
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
         let requestID = try extractStreaming(from: router.phase)
@@ -651,7 +666,7 @@ final class MercuryRouterTests: XCTestCase {
         let (router, sink) = makeRouter(
             consent: true,
             cooldownSeconds: 30,
-            startScreenShare: { _, _, _, _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _, _ in }
         )
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
         XCTAssertEqual(try extractStreaming(from: router.phase), "req_test")
@@ -693,7 +708,7 @@ final class MercuryRouterTests: XCTestCase {
         let (router, sink) = makeRouter(
             consent: true,
             cooldownSeconds: 30,
-            startScreenShare: { _, _, _, _, _, _, _ in
+            startScreenShare: { _, _, _, _, _, _, _, _ in
                 startCount += 1
             }
         )
@@ -705,7 +720,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(try extractStreaming(from: router.phase), "req_phone")
 
         await router.handleFrame(
-            mirrorStopFrame(requestID: "req_phone"),
+            mirrorStopFrame(requestID: "req_phone", connectionID: "iphone-1"),
             replySender: sink.sender
         )
         XCTAssertEqual(router.phase, .idle)
@@ -728,7 +743,7 @@ final class MercuryRouterTests: XCTestCase {
         let (router, sink) = makeRouter(
             consent: true,
             cooldownSeconds: 30,
-            startScreenShare: { peerDeviceID, _, _, _, _, _, _ in
+            startScreenShare: { peerDeviceID, _, _, _, _, _, _, _ in
                 startedPeers.append(peerDeviceID)
             }
         )
@@ -832,7 +847,7 @@ final class MercuryRouterTests: XCTestCase {
         var startCount = 0
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _, _, _, _ in
+            startScreenShare: { _, _, _, _, _, _, _, _ in
                 startCount += 1
             }
         )
@@ -851,24 +866,34 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(decisions, [.accepted, .denied, .accepted])
     }
 
-    func testSamePeerMirrorRequestRestartsActiveSessionForRecovery() async throws {
+    func testSameDeviceMirrorRequestRestartsActiveSessionForRecovery() async throws {
         var startCount = 0
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _, _, _, _ in
+            startScreenShare: { _, _, _, _, _, _, _, _ in
                 startCount += 1
             }
         )
 
         await router.handleFrame(
-            mirrorRequestFrame(requestID: "req_one", connectionID: "android-1"),
+            mirrorRequestFrame(
+                requestID: "req_one",
+                connectionID: "android-1",
+                viewerID: "viewer-old",
+                viewerDeviceID: "android-device"
+            ),
             replySender: sink.sender
         )
         XCTAssertEqual(try extractStreaming(from: router.phase), "req_one")
 
         await sink.reset()
         await router.handleFrame(
-            mirrorRequestFrame(requestID: "req_two", connectionID: "android-1"),
+            mirrorRequestFrame(
+                requestID: "req_two",
+                connectionID: "android-1",
+                viewerID: "viewer-new",
+                viewerDeviceID: "android-device"
+            ),
             replySender: sink.sender
         )
 
@@ -880,11 +905,11 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .accepted)
     }
 
-    func testDifferentPeerMirrorRequestRemainsBusyDuringActiveSession() async throws {
+    func testDifferentPeerMirrorRequestJoinsAsWatcherDuringActiveSession() async throws {
         var startCount = 0
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _, _, _, _ in
+            startScreenShare: { _, _, _, _, _, _, _, _ in
                 startCount += 1
             }
         )
@@ -901,22 +926,63 @@ final class MercuryRouterTests: XCTestCase {
             replySender: sink.sender
         )
 
-        XCTAssertEqual(startCount, 1)
+        XCTAssertEqual(startCount, 2)
+        XCTAssertEqual(try extractStreaming(from: router.phase), "req_one")
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 2)
+        let secondViewerAck = frames.compactMap(\.media?.mirrorAck).first { $0.requestId == "req_two" }
+        XCTAssertEqual(secondViewerAck?.decision, .accepted)
+        XCTAssertEqual(secondViewerAck?.viewerRole, "watcher")
+        XCTAssertEqual(secondViewerAck?.viewerCount, 2)
+        XCTAssertEqual(secondViewerAck?.maxViewers, 3)
+        XCTAssertNotNil(secondViewerAck?.controlOwnerViewerId)
+        let controllerRosterAck = frames.compactMap(\.media?.mirrorAck).first { $0.requestId == "req_one" }
+        XCTAssertEqual(controllerRosterAck?.decision, .accepted)
+        XCTAssertEqual(controllerRosterAck?.viewerRole, "controller")
+        XCTAssertEqual(controllerRosterAck?.viewerCount, 2)
+    }
+
+    func testMirrorViewerLimitDeniesAdditionalWatchers() async throws {
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            maxMirrorViewers: 2
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(requestID: "req_one", connectionID: "iphone-1"),
+            replySender: sink.sender
+        )
+        await router.handleFrame(
+            mirrorRequestFrame(requestID: "req_two", connectionID: "android-1"),
+            replySender: sink.sender
+        )
+        await sink.reset()
+
+        await router.handleFrame(
+            mirrorRequestFrame(requestID: "req_three", connectionID: "ipad-1"),
+            replySender: sink.sender
+        )
+
         XCTAssertEqual(try extractStreaming(from: router.phase), "req_one")
         let frames = await sink.frames
         XCTAssertEqual(frames.count, 1)
-        XCTAssertEqual(frames[0].media?.mirrorAck?.requestId, "req_two")
-        XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .busy)
-        XCTAssertEqual(frames[0].media?.mirrorAck?.detail, "Another mirror is in progress")
+        let ack = frames[0].media?.mirrorAck
+        XCTAssertEqual(ack?.requestId, "req_three")
+        XCTAssertEqual(ack?.decision, .busy)
+        XCTAssertEqual(ack?.detail, "Mirror viewer limit reached")
+        XCTAssertEqual(ack?.viewerCount, 2)
+        XCTAssertEqual(ack?.maxViewers, 2)
+        XCTAssertNotNil(ack?.controlOwnerViewerId)
     }
 
-    func testSiblingControlStreamWithSameConnectionIDRemainsBusyDuringActiveMirror() async throws {
+    func testSiblingControlStreamWithSameConnectionIDJoinsAsWatcherDuringActiveMirror() async throws {
         var startCount = 0
         let activeStreamID = UUID()
         let siblingStreamID = UUID()
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _, _, _, _ in
+            startScreenShare: { _, _, _, _, _, _, _, _ in
                 startCount += 1
             }
         )
@@ -935,12 +1001,14 @@ final class MercuryRouterTests: XCTestCase {
             replySender: sink.sender
         )
 
-        XCTAssertEqual(startCount, 1)
+        XCTAssertEqual(startCount, 2)
         XCTAssertEqual(try extractStreaming(from: router.phase), "req_iphone")
         let frames = await sink.frames
-        XCTAssertEqual(frames.count, 1)
-        XCTAssertEqual(frames[0].media?.mirrorAck?.requestId, "req_android")
-        XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .busy)
+        XCTAssertEqual(frames.count, 2)
+        let watcherAck = frames.compactMap(\.media?.mirrorAck).first { $0.requestId == "req_android" }
+        XCTAssertEqual(watcherAck?.decision, .accepted)
+        XCTAssertEqual(watcherAck?.viewerRole, "watcher")
+        XCTAssertEqual(watcherAck?.viewerCount, 2)
     }
 
     func testSiblingControlStreamCloseDoesNotStopActiveMirrorWithSameConnectionID() async throws {
@@ -948,7 +1016,7 @@ final class MercuryRouterTests: XCTestCase {
         let siblingStreamID = UUID()
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _, _ in }
         )
 
         await router.handleFrame(
@@ -979,7 +1047,7 @@ final class MercuryRouterTests: XCTestCase {
         }
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _, _ in }
         )
 
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
@@ -1002,7 +1070,7 @@ final class MercuryRouterTests: XCTestCase {
     func testMissingDisplaySelectionReturnsRecoverableAckWithoutEndingMirror() async throws {
         let (router, sink) = makeRouter(
             consent: true,
-            startScreenShare: { _, _, _, _, _, _, _ in }
+            startScreenShare: { _, _, _, _, _, _, _, _ in }
         )
 
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)

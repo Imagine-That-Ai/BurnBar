@@ -26,6 +26,9 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
     case codex
     case claude
     case openClaw = "openclaw"
+    case droid
+    case forge
+    case antigravity
 
     /// Map an `AssistantRuntimeID` to its CLI counterpart. `hermes` and
     /// `pi` are intentionally absent — they have their own first-class
@@ -35,6 +38,9 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
         case .codex:    self = .codex
         case .claude:   self = .claude
         case .openClaw: self = .openClaw
+        case .droid:    self = .droid
+        case .forge:    self = .forge
+        case .antigravity: self = .antigravity
         case .hermes, .pi: return nil
         }
     }
@@ -44,6 +50,9 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
         case .codex:    return .codex
         case .claude:   return .claude
         case .openClaw: return .openClaw
+        case .droid:    return .droid
+        case .forge:    return .forge
+        case .antigravity: return .antigravity
         }
     }
 
@@ -52,6 +61,9 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
         case .codex:    return "Codex"
         case .claude:   return "Claude Code"
         case .openClaw: return "OpenClaw"
+        case .droid:    return "Droid"
+        case .forge:    return "Forge"
+        case .antigravity: return "Antigravity"
         }
     }
 }

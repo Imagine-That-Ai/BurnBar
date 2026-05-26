@@ -26,12 +26,23 @@ struct AgentInsightsTabScreen: View {
     @State private var rosterStatus: [AgentProvider: AgentInsightsHeader.Status] = [:]
     @State private var rosterLastSeen: [AgentProvider: Date] = [:]
 
+    // Budget Center additions
+    @State private var selectedSection: InsightsSection = .insights
+    @State private var budgetSettings: BudgetSettings?
+    @State private var budgetDashboard = DashboardStore()
+
     @Environment(\.cloudSubscriptionStore) private var cloudStore
+
+    private enum InsightsSection: String, CaseIterable, Identifiable {
+        case insights = "Insights"
+        case budgets = "Budgets"
+        var id: String { rawValue }
+    }
 
     var body: some View {
         ZStack {
             AuroraBackdrop()
-            
+
             Group {
                 if let cloudStore, !cloudStore.isActive {
                     lockedInsightsTeaser
@@ -41,25 +52,35 @@ struct AgentInsightsTabScreen: View {
             }
         }
         .sheet(isPresented: $showWorkspace) {
-                InsightsWorkspaceSheet(
-                    dashboardStore: dashboardStore,
-                    hermesService: hermesService,
-                    isPresented: $showWorkspace
-                )
+            InsightsWorkspaceSheet(
+                dashboardStore: dashboardStore,
+                hermesService: hermesService,
+                isPresented: $showWorkspace
+            )
+        }
+        .sheet(isPresented: $showCloudStore) {
+            NavigationStack {
+                CloudStoreView(onClose: { showCloudStore = false })
             }
-            .sheet(isPresented: $showCloudStore) {
-                NavigationStack {
-                    CloudStoreView(onClose: { showCloudStore = false })
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .task { await prepare() }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowInsightsTab"))) { note in
+            if let section = note.userInfo?["section"] as? String, section == "budgets" {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    selectedSection = .budgets
                 }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-            }
-            .task { await prepare() }
-            .onReceive(NotificationCenter.default.publisher(for: .init("ShowInsightsTab"))) { note in
+            } else {
                 let slug = (note.userInfo?["slug"] as? String) ?? ""
-                guard let scope = AgentInsightsScope.from(routeSlug: slug) else { return }
-                select(scope)
+                if let scope = AgentInsightsScope.from(routeSlug: slug) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedSection = .insights
+                    }
+                    select(scope)
+                }
             }
+        }
     }
 
     @ViewBuilder
@@ -87,18 +108,33 @@ struct AgentInsightsTabScreen: View {
     /// scoped detail is pushed on selection.
     private var iPhoneLayout: some View {
         NavigationStack(path: $path) {
-            rosterContent
-                .navigationTitle("Insights")
-                .toolbar { toolbarContent }
-                .navigationDestination(for: AgentInsightsScope.self) { scope in
-                    AgentInsightsScopedDetail(
-                        scope: scope,
-                        producer: producer,
-                        store: insightsStore,
-                        hermesService: hermesService,
-                        onOpenWorkspace: { showWorkspace = true }
-                    )
+            VStack(spacing: 0) {
+                sectionPicker
+
+                Group {
+                    switch selectedSection {
+                    case .insights:
+                        rosterContent
+                    case .budgets:
+                        budgetCenterContent
+                    }
                 }
+            }
+            .navigationTitle(selectedSection == .insights ? "Insights" : "Budget Center")
+            .toolbar {
+                if selectedSection == .insights {
+                    toolbarContent
+                }
+            }
+            .navigationDestination(for: AgentInsightsScope.self) { scope in
+                AgentInsightsScopedDetail(
+                    scope: scope,
+                    producer: producer,
+                    store: insightsStore,
+                    hermesService: hermesService,
+                    onOpenWorkspace: { showWorkspace = true }
+                )
+            }
         }
     }
 
@@ -107,13 +143,30 @@ struct AgentInsightsTabScreen: View {
     /// updates the detail in place — no push animation, no back stack.
     private var iPadLayout: some View {
         NavigationSplitView {
-            rosterContent
-                .navigationTitle("Insights")
-                .toolbar { toolbarContent }
-                .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 380)
+            VStack(spacing: 0) {
+                sectionPicker
+
+                Group {
+                    switch selectedSection {
+                    case .insights:
+                        rosterContent
+                    case .budgets:
+                        budgetCenterContent
+                    }
+                }
+            }
+            .navigationTitle(selectedSection == .insights ? "Insights" : "Budget Center")
+            .toolbar {
+                if selectedSection == .insights {
+                    toolbarContent
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 380)
         } detail: {
             NavigationStack {
-                if let selectedScope {
+                if selectedSection == .budgets {
+                    budgetCenterContent
+                } else if let selectedScope {
                     AgentInsightsScopedDetail(
                         scope: selectedScope,
                         producer: producer,
@@ -174,6 +227,55 @@ struct AgentInsightsTabScreen: View {
         }
     }
 
+    private var sectionPicker: some View {
+        HStack(spacing: 4) {
+            ForEach(InsightsSection.allCases) { section in
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedSection = section
+                    }
+                    HapticBus.chipChange()
+                } label: {
+                    Text(section.rawValue)
+                        .font(.system(size: 13, weight: selectedSection == section ? .bold : .semibold, design: .rounded))
+                        .foregroundStyle(selectedSection == section ? MobileTheme.textPrimary : MobileTheme.textMuted)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background {
+                            if selectedSection == section {
+                                Capsule(style: .continuous)
+                                    .fill(MobileTheme.surfaceElevated)
+                                    .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background {
+            Capsule(style: .continuous)
+                .fill(MobileTheme.surface.opacity(0.4))
+        }
+        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+        .padding(.vertical, 8)
+    }
+
+    private var budgetCenterContent: some View {
+        Group {
+            if let budgetSettings {
+                BudgetCenterView(
+                    budgetSettings: budgetSettings,
+                    dashboardStore: budgetDashboard
+                )
+            } else {
+                ProgressView()
+                    .tint(MobileTheme.ember)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
     private func select(_ scope: AgentInsightsScope) {
         if horizontalSizeClass == .regular {
             selectedScope = scope
@@ -198,6 +300,26 @@ struct AgentInsightsTabScreen: View {
     private func prepare() async {
         guard cloudStore?.isActive ?? true else { return }
         await dashboardStore.load()
+        await budgetDashboard.load()
+
+        if budgetSettings == nil {
+            let rulesStore = BudgetRulesStore()
+            let settings = BudgetSettings(store: rulesStore)
+            budgetSettings = settings
+
+            if !BudgetEnforcement.shared.isConfigured {
+                let ledger = BudgetLedger(dataSource: budgetDashboard)
+                let gate = BudgetGate(settings: settings, ledger: ledger)
+                let notifications = BudgetNotificationCenter()
+                let forecast = BudgetForecast(dataSource: budgetDashboard)
+                BudgetEnforcement.shared.configure(
+                    gate: gate,
+                    notifications: notifications,
+                    forecast: forecast
+                )
+            }
+        }
+
         if insightsStore == nil {
             let dataSource = MobileInsightDataSource(dashboardStore: dashboardStore)
             do {
@@ -235,7 +357,7 @@ private struct AgentInsightsScopedDetail: View {
     var body: some View {
         ZStack {
             AuroraBackdrop()
-            
+
             Group {
                 if let viewModel {
                     AgentInsightsView(

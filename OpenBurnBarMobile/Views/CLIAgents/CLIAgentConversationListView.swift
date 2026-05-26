@@ -471,6 +471,12 @@ struct CLIAgentConversationListView: View {
             return "Start a Claude Code chat here. The trusted Mac executes it, but the conversation stays native on mobile."
         case .openClaw:
             return "Start an OpenClaw chat here. The Mac streams replies back into this mobile thread."
+        case .droid:
+            return "Start a Droid chat here. The Mac streams replies back into this mobile thread."
+        case .forge:
+            return "Start a Forge chat here. The Mac streams replies back into this mobile thread."
+        case .antigravity:
+            return "Start an Antigravity chat here. The Mac streams replies back into this mobile thread."
         }
     }
 
@@ -479,6 +485,9 @@ struct CLIAgentConversationListView: View {
         case .codex:    return Color(hex: "1ABC9C")
         case .claude:   return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
+        case .droid:    return Color(hex: "8B5CF6")
+        case .forge:    return Color(hex: "F97316")
+        case .antigravity: return Color(hex: "6C63FF")
         }
     }
 
@@ -626,7 +635,7 @@ final class CLIAgentMobileChatService {
         errorMessage = nil
     }
 
-    func send(message: String) async {
+    func send(message: String, presentationMode: CLIAgentChatPresentationMode = .nativeChat) async {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isSending else { return }
         isSending = true
@@ -647,6 +656,16 @@ final class CLIAgentMobileChatService {
         streamingMessageID = assistantPlaceholder.id
         upsertThreadAppending(userMessage: userMessage, assistantPlaceholder: assistantPlaceholder)
 
+        guard presentationMode == .nativeChat else {
+            await dispatchMissionFallback(
+                prompt: trimmed,
+                placeholderID: assistantPlaceholder.id,
+                relayError: nil,
+                presentationMode: presentationMode
+            )
+            return
+        }
+
         do {
             try await relayChatTransport.stream(
                 runtime: runtime,
@@ -655,6 +674,7 @@ final class CLIAgentMobileChatService {
                 title: currentThreadTitle(),
                 parentSessionID: parentSessionID,
                 resumeAction: resumeAction,
+                presentationMode: presentationMode,
                 onEvent: { [weak self] event in
                     self?.apply(event, placeholderID: assistantPlaceholder.id)
                 }
@@ -679,12 +699,18 @@ final class CLIAgentMobileChatService {
             await dispatchMissionFallback(
                 prompt: trimmed,
                 placeholderID: assistantPlaceholder.id,
-                relayError: error
+                relayError: error,
+                presentationMode: presentationMode
             )
         }
     }
 
-    private func dispatchMissionFallback(prompt: String, placeholderID: String, relayError: Error) async {
+    private func dispatchMissionFallback(
+        prompt: String,
+        placeholderID: String,
+        relayError: Error?,
+        presentationMode: CLIAgentChatPresentationMode
+    ) async {
         do {
             let requestID = try await CLIAgentMissionDispatcher.shared.dispatch(
                 title: currentThreadTitle(),
@@ -697,7 +723,10 @@ final class CLIAgentMobileChatService {
                 fileEditsAllowed: false,
                 clientThreadID: threadID,
                 parentSessionID: parentSessionID,
-                resumeAction: resumeAction
+                resumeAction: resumeAction,
+                sourceSurface: presentationMode.iosSourceSurface,
+                deliveryMode: presentationMode.mobileDeliveryMode,
+                presentationMode: presentationMode
             )
             observation = try CLIAgentMissionDispatcher.shared.observe(
                 requestID: requestID,
@@ -728,7 +757,7 @@ final class CLIAgentMobileChatService {
                 modelName: nil,
                 toolCalls: []
             )
-            errorMessage = relayError.localizedDescription
+            errorMessage = relayError?.localizedDescription ?? error.localizedDescription
             isSending = false
         }
     }
@@ -1003,6 +1032,7 @@ struct CLIAgentChatThreadView: View {
     @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var chatService: CLIAgentMobileChatService
     @State private var draft: String = ""
+    @State private var presentationMode: CLIAgentChatPresentationMode
     @State private var showConnectionSheet = false
     @State private var showModelPicker = false
     @State private var showPermissionSheet = false
@@ -1012,6 +1042,7 @@ struct CLIAgentChatThreadView: View {
         self.runtime = runtime
         self.route = route
         _chatService = State(initialValue: CLIAgentMobileChatService(runtime: runtime, route: route, historyStore: .shared))
+        _presentationMode = State(initialValue: CLIAgentPresentationModePreferences.mode(for: runtime))
     }
 
     var body: some View {
@@ -1230,24 +1261,38 @@ struct CLIAgentChatThreadView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("Message \(runtime.displayName)", text: $draft, axis: .vertical)
-                .focused($inputFocused)
-                .lineLimit(1...5)
-                .textInputAutocapitalization(.sentences)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous).fill(MobileTheme.Colors.surfaceElevated))
-                .onSubmit { send() }
-            Button {
-                send()
-            } label: {
-                Image(systemName: chatService.isSending ? "hourglass" : "arrow.up.circle.fill")
-                    .font(.system(size: 32, weight: .semibold))
-                    .foregroundStyle(canSend ? accent : MobileTheme.Colors.textMuted)
+        VStack(spacing: 8) {
+            Picker("Session interface", selection: $presentationMode) {
+                ForEach(CLIAgentChatPresentationMode.allCases) { mode in
+                    Label(mode.shortLabel, systemImage: mode.systemImage)
+                        .tag(mode)
+                }
             }
-            .disabled(!canSend)
-            .accessibilityLabel("Send message")
+            .pickerStyle(.segmented)
+            .disabled(chatService.isSending)
+            .onChange(of: presentationMode) { _, newValue in
+                CLIAgentPresentationModePreferences.set(newValue, for: runtime)
+            }
+
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Message \(runtime.displayName)", text: $draft, axis: .vertical)
+                    .focused($inputFocused)
+                    .lineLimit(1...5)
+                    .textInputAutocapitalization(.sentences)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous).fill(MobileTheme.Colors.surfaceElevated))
+                    .onSubmit { send() }
+                Button {
+                    send()
+                } label: {
+                    Image(systemName: chatService.isSending ? "hourglass" : "arrow.up.circle.fill")
+                        .font(.system(size: 32, weight: .semibold))
+                        .foregroundStyle(canSend ? accent : MobileTheme.Colors.textMuted)
+                }
+                .disabled(!canSend)
+                .accessibilityLabel("Send message")
+            }
         }
         .padding(MobileTheme.Spacing.md)
         .background(.ultraThinMaterial)
@@ -1264,7 +1309,7 @@ struct CLIAgentChatThreadView: View {
         draft = ""
         inputFocused = true
         Task {
-            await chatService.send(message: current)
+            await chatService.send(message: current, presentationMode: presentationMode)
         }
     }
 
@@ -1273,7 +1318,55 @@ struct CLIAgentChatThreadView: View {
         case .codex: return Color(hex: "1ABC9C")
         case .claude: return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
+        case .droid: return Color(hex: "8B5CF6")
+        case .forge: return Color(hex: "F97316")
+        case .antigravity: return Color(hex: "6C63FF")
         }
+    }
+}
+
+private extension CLIAgentChatPresentationMode {
+    var shortLabel: String {
+        switch self {
+        case .nativeChat: return "Chat"
+        case .macVisibleCLI: return "Mac CLI"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .nativeChat: return "bubble.left.and.bubble.right"
+        case .macVisibleCLI: return "terminal"
+        }
+    }
+
+    var iosSourceSurface: String {
+        switch self {
+        case .nativeChat: return "ios-chat-native"
+        case .macVisibleCLI: return "ios-chat-mac-visible-cli"
+        }
+    }
+
+    var mobileDeliveryMode: SkillRunDeliveryMode {
+        switch self {
+        case .nativeChat: return .actionOnly
+        case .macVisibleCLI: return .fullStream
+        }
+    }
+}
+
+private enum CLIAgentPresentationModePreferences {
+    private static func key(for runtime: CLIAgentRuntime) -> String {
+        "openburnbar.cliAgent.presentationMode.\(runtime.rawValue)"
+    }
+
+    static func mode(for runtime: CLIAgentRuntime) -> CLIAgentChatPresentationMode {
+        let raw = UserDefaults.standard.string(forKey: key(for: runtime))
+        return raw.flatMap(CLIAgentChatPresentationMode.init(rawValue:)) ?? .nativeChat
+    }
+
+    static func set(_ mode: CLIAgentChatPresentationMode, for runtime: CLIAgentRuntime) {
+        UserDefaults.standard.set(mode.rawValue, forKey: key(for: runtime))
     }
 }
 
@@ -1375,7 +1468,7 @@ private struct CLIAgentImportSheet: View {
     }
 
     private static func defaultHarnesses(focusedRuntime: CLIAgentRuntime) -> [Harness] {
-        let defaults = ["codex", "claude", "openclaw", "hermes", "opencode"]
+        let defaults = ["codex", "claude", "openclaw", "droid", "forge", "hermes", "opencode"]
         let focused = focusedRuntime.rawValue
         return availableHarnesses.filter { defaults.contains($0.id) || $0.id == focused }
     }
@@ -1384,6 +1477,7 @@ private struct CLIAgentImportSheet: View {
         Harness(id: "codex", name: "Codex", symbol: "terminal"),
         Harness(id: "claude", name: "Claude Code", symbol: "curlybraces"),
         Harness(id: "openclaw", name: "OpenClaw", symbol: "bolt"),
+        Harness(id: "droid", name: "Droid", symbol: "diamond.fill"),
         Harness(id: "hermes", name: "Hermes", symbol: "bubble.left.and.bubble.right"),
         Harness(id: "opencode", name: "OpenCode", symbol: "chevron.left.forwardslash.chevron.right"),
         Harness(id: "factory", name: "Factory", symbol: "hammer"),

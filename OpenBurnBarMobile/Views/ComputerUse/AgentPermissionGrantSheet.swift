@@ -41,6 +41,7 @@ struct AgentPermissionGrantSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .onAppear(perform: loadActiveReceipt)
     }
 
     private var header: some View {
@@ -161,6 +162,16 @@ struct AgentPermissionGrantSheet: View {
             errorMessage = error.localizedDescription
         }
         isSubmitting = false
+    }
+
+    private func loadActiveReceipt() {
+        guard let active = controller.optimisticGrant(runtimeID: runtimeID, threadID: threadID) else { return }
+        receipt = active
+        if let preset = AgentPermissionPreset.allCases.first(where: {
+            $0.matches(capabilities: active.capabilities, trustMode: active.trustMode)
+        }) {
+            selectedPreset = preset
+        }
     }
 }
 #endif

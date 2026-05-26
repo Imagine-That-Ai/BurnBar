@@ -49,11 +49,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Tab
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -175,15 +179,45 @@ fun InsightsScreen(
                 )
             },
         ) { innerPadding ->
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    top = innerPadding.calculateTopPadding(),
-                    bottom = innerPadding.calculateBottomPadding() + AuroraSpacing.lg.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+            var activeTab by remember { mutableStateOf("brief") }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = innerPadding.calculateTopPadding(),
+                        bottom = innerPadding.calculateBottomPadding()
+                    )
             ) {
-                verdict?.let { v ->
+                TabRow(
+                    selectedTabIndex = if (activeTab == "brief") 0 else 1,
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.xs.dp)
+                ) {
+                    Tab(
+                        selected = activeTab == "brief",
+                        onClick = { activeTab = "brief" },
+                        text = { Text("Brief", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold) }
+                    )
+                    Tab(
+                        selected = activeTab == "rollup",
+                        onClick = { activeTab = "rollup" },
+                        text = { Text("Org Spend", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold) }
+                    )
+                }
+
+                if (activeTab == "brief") {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            bottom = AuroraSpacing.lg.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+                    ) {
+                        verdict?.let { v ->
                     item {
                         Box(modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)) {
                             com.openburnbar.ui.insights.verdict.VerdictHeroSection(
@@ -322,6 +356,10 @@ fun InsightsScreen(
                                 .padding(horizontal = AuroraSpacing.lg.dp, vertical = 4.dp),
                         )
                     }
+                }
+            }
+                } else {
+                    OrgRollupView(modifier = Modifier.fillMaxSize())
                 }
             }
 

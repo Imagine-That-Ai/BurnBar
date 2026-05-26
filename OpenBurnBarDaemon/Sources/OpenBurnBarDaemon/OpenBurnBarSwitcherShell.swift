@@ -730,7 +730,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             return "OPENAI_API_KEY"
         case .claude:
             return "ANTHROPIC_API_KEY"
-        case .opencode:
+        case .opencode, .droid, .forge, .antigravity:
             return nil
         }
     }

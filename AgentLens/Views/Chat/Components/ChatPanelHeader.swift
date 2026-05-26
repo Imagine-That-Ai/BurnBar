@@ -43,6 +43,8 @@ struct ChatPanelHeader: View {
             }
             ChatEngineModelMenu(controller: controller)
 
+            ChatViewModePicker(controller: controller)
+
             Button {
                 controller.revealChatWorkspaceInFinder()
             } label: {

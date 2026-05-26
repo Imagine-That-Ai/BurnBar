@@ -9,6 +9,8 @@
     "start": "astro dev",
     "research": "node --env-file-if-exists=.env scripts/run-research.mjs",
     "research:test": "node scripts/test-rundown.mjs",
+    "model-capabilities:update": "node scripts/update-model-capabilities.mjs --apply --refresh-openrouter",
+    "model-capabilities:check": "node scripts/update-model-capabilities.mjs --check",
     "test:platform": "node scripts/test-platform-mockups.mjs",
     "test:router-copy": "node scripts/test-router-copy.mjs",
     "build": "node --env-file-if-exists=.env scripts/run-research.mjs || true && astro build && node scripts/build-sitemap.mjs",

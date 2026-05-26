@@ -520,6 +520,260 @@ final class UsageStore: Sendable {
         }.sorted { $0.totalCost > $1.totalCost }
     }
 
+
+    /// Aggregates `token_usage` rows by `(provider, providerAccountID)` to power the
+    /// "Spend by Credential" dashboard lane. Mirrors `makeProviderSummaries` but slices
+    /// at the credential dimension so users with multiple API keys (or distinct OAuth
+    /// identities) per provider see distinct totals.
+    static func makeCredentialSummaries(from usages: [TokenUsage]) -> [CredentialSummary] {
+        struct GroupKey: Hashable {
+            let provider: AgentProvider
+            let accountID: String?
+        }
+
+        var groups: [GroupKey: [TokenUsage]] = [:]
+        for usage in usages {
+            let key = GroupKey(provider: usage.provider, accountID: usage.providerAccountID)
+            groups[key, default: []].append(usage)
+        }
+
+        return groups.compactMap { (key, rows) -> CredentialSummary? in
+            guard !rows.isEmpty else { return nil }
+
+            let totalCost = rows.reduce(0) { $0 + $1.cost }
+            let totalTokens = rows.reduce(0) { $0 + $1.totalTokens }
+            let totalInputTokens = rows.reduce(0) { $0 + $1.inputTokens }
+            let totalOutputTokens = rows.reduce(0) { $0 + $1.outputTokens }
+
+            // Derive the best display label and storage scope across rows.
+            // Some rows may have richer metadata than others; prefer the most informative.
+            let nonEmptyLabel = rows.first(where: { ($0.providerAccountLabel ?? "").isEmpty == false })?.providerAccountLabel
+            let accountLabel: String = {
+                if let label = nonEmptyLabel, !label.isEmpty { return label }
+                if let id = key.accountID, !id.isEmpty {
+                    let suffix = id.suffix(6)
+                    return "\(key.provider.displayName) · …\(suffix)"
+                }
+                return "\(key.provider.displayName) · default"
+            }()
+            let accountSource = rows.compactMap { $0.providerAccountSource }.first
+
+            // Per-model rollup (same shape as makeProviderSummaries).
+            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double, bestConfidence: UsageProvenanceConfidence, bestMethod: UsageProvenanceMethod, hasEstimated: Bool)] = [:]
+            for usage in rows {
+                let existing = modelData[usage.model]
+                let newConfidence = usage.provenanceConfidence
+                let newMethod = usage.provenanceMethod
+                let bestConfidence: UsageProvenanceConfidence
+                let bestMethod: UsageProvenanceMethod
+                if let existingRec = existing {
+                    bestConfidence = newConfidence > existingRec.bestConfidence ? newConfidence : existingRec.bestConfidence
+                    if newConfidence == existingRec.bestConfidence {
+                        bestMethod = newMethod.precedence > existingRec.bestMethod.precedence ? newMethod : existingRec.bestMethod
+                    } else {
+                        bestMethod = newConfidence > existingRec.bestConfidence ? newMethod : existingRec.bestMethod
+                    }
+                } else {
+                    bestConfidence = newConfidence
+                    bestMethod = newMethod
+                }
+                let rowIsEstimated = newConfidence != .exact && newConfidence != .derivedExact
+                let existingHasEstimated = existing?.hasEstimated ?? false
+                modelData[usage.model] = (
+                    (existing?.0 ?? 0) + usage.inputTokens,
+                    (existing?.1 ?? 0) + usage.outputTokens,
+                    (existing?.2 ?? 0) + usage.cacheCreationTokens,
+                    (existing?.3 ?? 0) + usage.cacheReadTokens,
+                    (existing?.4 ?? 0) + usage.reasoningTokens,
+                    (existing?.5 ?? 0) + usage.cost,
+                    bestConfidence,
+                    bestMethod,
+                    existingHasEstimated || rowIsEstimated
+                )
+            }
+
+            // Dominant provenance across the credential's rows.
+            var dominantConfidence: UsageProvenanceConfidence = .unknown
+            var dominantMethod: UsageProvenanceMethod = .unknown
+            var bestCostSoFar: Double = 0
+            var hasAnyEstimated: Bool = false
+            for usage in rows {
+                let rowIsEstimated = usage.provenanceConfidence != .exact && usage.provenanceConfidence != .derivedExact
+                hasAnyEstimated = hasAnyEstimated || rowIsEstimated
+                let weight = usage.cost > 0 ? usage.cost : 0.001
+                if usage.provenanceConfidence > dominantConfidence {
+                    dominantConfidence = usage.provenanceConfidence
+                    dominantMethod = usage.provenanceMethod
+                    bestCostSoFar = weight
+                } else if usage.provenanceConfidence == dominantConfidence && weight > bestCostSoFar {
+                    dominantMethod = usage.provenanceMethod
+                    bestCostSoFar = weight
+                }
+            }
+
+            let modelBreakdown = modelData.map { modelName, data in
+                let totalModelTokens = data.0 + data.1 + data.2 + data.3 + data.4
+                return ModelUsage(
+                    modelName: modelName,
+                    inputTokens: data.0,
+                    outputTokens: data.1,
+                    cacheCreationTokens: data.2,
+                    cacheReadTokens: data.3,
+                    reasoningTokens: data.4,
+                    totalTokens: totalModelTokens,
+                    cost: data.5,
+                    percentage: totalCost > 0 ? (data.5 / totalCost) * 100 : 0,
+                    provenanceConfidence: data.bestConfidence,
+                    provenanceMethod: data.bestMethod,
+                    hasEstimatedContributions: data.hasEstimated
+                )
+            }.sorted { $0.cost > $1.cost }
+
+            return CredentialSummary(
+                provider: key.provider,
+                accountID: key.accountID,
+                accountLabel: accountLabel,
+                accountSource: accountSource,
+                totalCost: totalCost,
+                totalTokens: totalTokens,
+                totalInputTokens: totalInputTokens,
+                totalOutputTokens: totalOutputTokens,
+                sessionCount: rows.count,
+                modelBreakdown: modelBreakdown,
+                provenanceConfidence: dominantConfidence,
+                provenanceMethod: dominantMethod,
+                hasEstimatedContributions: hasAnyEstimated,
+                cacheEfficiency: CacheEfficiency.aggregate(rows)
+            )
+        }
+        .sorted { $0.totalCost > $1.totalCost }
+    }
+
+
+    /// Aggregates `token_usage` rows by `projectName` to power the "Spend by Project" lane.
+    /// Mirrors `makeCredentialSummaries` but slices on the project dimension. Free-text
+    /// project names are deduplicated by exact match (no case folding) so users see what
+    /// the parsers actually wrote.
+    static func makeProjectSpendSummaries(from usages: [TokenUsage]) -> [ProjectSpendSummary] {
+        var groups: [String: [TokenUsage]] = [:]
+        for usage in usages {
+            let key = usage.projectName.isEmpty ? "Unattributed" : usage.projectName
+            groups[key, default: []].append(usage)
+        }
+
+        return groups.compactMap { (projectName, rows) -> ProjectSpendSummary? in
+            guard !rows.isEmpty else { return nil }
+
+            let totalCost = rows.reduce(0) { $0 + $1.cost }
+            let totalTokens = rows.reduce(0) { $0 + $1.totalTokens }
+            let totalInputTokens = rows.reduce(0) { $0 + $1.inputTokens }
+            let totalOutputTokens = rows.reduce(0) { $0 + $1.outputTokens }
+
+            // Provider rollup within this project.
+            let byProvider = Dictionary(grouping: rows) { $0.provider }
+            let providerBreakdown = byProvider.map { provider, providerRows -> ProviderUsage in
+                let providerCost = providerRows.reduce(0) { $0 + $1.cost }
+                let providerTokens = providerRows.reduce(0) { $0 + $1.totalTokens }
+                return ProviderUsage(
+                    provider: provider,
+                    sessionCount: providerRows.count,
+                    totalTokens: providerTokens,
+                    cost: providerCost,
+                    percentage: totalCost > 0 ? (providerCost / totalCost) * 100 : 0,
+                    cacheEfficiency: CacheEfficiency.aggregate(providerRows)
+                )
+            }
+            .sorted { $0.cost > $1.cost }
+
+            // Model rollup within this project.
+            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double, bestConfidence: UsageProvenanceConfidence, bestMethod: UsageProvenanceMethod, hasEstimated: Bool)] = [:]
+            for usage in rows {
+                let existing = modelData[usage.model]
+                let newConfidence = usage.provenanceConfidence
+                let newMethod = usage.provenanceMethod
+                let bestConfidence: UsageProvenanceConfidence
+                let bestMethod: UsageProvenanceMethod
+                if let existingRec = existing {
+                    bestConfidence = newConfidence > existingRec.bestConfidence ? newConfidence : existingRec.bestConfidence
+                    if newConfidence == existingRec.bestConfidence {
+                        bestMethod = newMethod.precedence > existingRec.bestMethod.precedence ? newMethod : existingRec.bestMethod
+                    } else {
+                        bestMethod = newConfidence > existingRec.bestConfidence ? newMethod : existingRec.bestMethod
+                    }
+                } else {
+                    bestConfidence = newConfidence
+                    bestMethod = newMethod
+                }
+                let rowIsEstimated = newConfidence != .exact && newConfidence != .derivedExact
+                let existingHasEstimated = existing?.hasEstimated ?? false
+                modelData[usage.model] = (
+                    (existing?.0 ?? 0) + usage.inputTokens,
+                    (existing?.1 ?? 0) + usage.outputTokens,
+                    (existing?.2 ?? 0) + usage.cacheCreationTokens,
+                    (existing?.3 ?? 0) + usage.cacheReadTokens,
+                    (existing?.4 ?? 0) + usage.reasoningTokens,
+                    (existing?.5 ?? 0) + usage.cost,
+                    bestConfidence,
+                    bestMethod,
+                    existingHasEstimated || rowIsEstimated
+                )
+            }
+
+            // Dominant provenance across this project's rows.
+            var dominantConfidence: UsageProvenanceConfidence = .unknown
+            var dominantMethod: UsageProvenanceMethod = .unknown
+            var bestCostSoFar: Double = 0
+            var hasAnyEstimated: Bool = false
+            for usage in rows {
+                let rowIsEstimated = usage.provenanceConfidence != .exact && usage.provenanceConfidence != .derivedExact
+                hasAnyEstimated = hasAnyEstimated || rowIsEstimated
+                let weight = usage.cost > 0 ? usage.cost : 0.001
+                if usage.provenanceConfidence > dominantConfidence {
+                    dominantConfidence = usage.provenanceConfidence
+                    dominantMethod = usage.provenanceMethod
+                    bestCostSoFar = weight
+                } else if usage.provenanceConfidence == dominantConfidence && weight > bestCostSoFar {
+                    dominantMethod = usage.provenanceMethod
+                    bestCostSoFar = weight
+                }
+            }
+
+            let modelBreakdown = modelData.map { modelName, data in
+                let totalModelTokens = data.0 + data.1 + data.2 + data.3 + data.4
+                return ModelUsage(
+                    modelName: modelName,
+                    inputTokens: data.0,
+                    outputTokens: data.1,
+                    cacheCreationTokens: data.2,
+                    cacheReadTokens: data.3,
+                    reasoningTokens: data.4,
+                    totalTokens: totalModelTokens,
+                    cost: data.5,
+                    percentage: totalCost > 0 ? (data.5 / totalCost) * 100 : 0,
+                    provenanceConfidence: data.bestConfidence,
+                    provenanceMethod: data.bestMethod,
+                    hasEstimatedContributions: data.hasEstimated
+                )
+            }.sorted { $0.cost > $1.cost }
+
+            return ProjectSpendSummary(
+                projectName: projectName,
+                totalCost: totalCost,
+                totalTokens: totalTokens,
+                totalInputTokens: totalInputTokens,
+                totalOutputTokens: totalOutputTokens,
+                sessionCount: rows.count,
+                providerBreakdown: providerBreakdown,
+                modelBreakdown: modelBreakdown,
+                provenanceConfidence: dominantConfidence,
+                provenanceMethod: dominantMethod,
+                hasEstimatedContributions: hasAnyEstimated,
+                cacheEfficiency: CacheEfficiency.aggregate(rows)
+            )
+        }
+        .sorted { $0.totalCost > $1.totalCost }
+    }
+
     static func makeModelSummaries(from usages: [TokenUsage]) -> [ModelSummary] {
         let grouped = Dictionary(grouping: usages) {
             TokenExtractionUtility.normalizeModelKey($0.model)
@@ -811,6 +1065,8 @@ final class UsageStore: Sendable {
             activeProviderCount: Set(aggregateRows.map(\.provider)).count,
             providerSummaries: Self.makeProviderSummaries(fromAggregateRows: aggregateRows),
             modelSummaries: Self.makeModelSummaries(fromAggregateRows: aggregateRows),
+            credentialSummaries: Self.makeCredentialSummaries(from: loadedUsages),
+            projectSpendSummaries: Self.makeProjectSpendSummaries(from: loadedUsages),
             cacheEfficiency: CacheEfficiency(
                 inputTokens: totals.inputTokens,
                 cacheCreationTokens: totals.cacheCreationTokens,
@@ -968,6 +1224,61 @@ final class UsageStore: Sendable {
         return models.values
             .map(\.summary)
             .sorted { $0.totalCost > $1.totalCost }
+    }
+
+    // MARK: - Org Rollup
+
+    /// Cross-seat spend rollup grouped by user, project, credential, or provider.
+    /// Reuses the same `token_usage` table that `CloudSyncService` already syncs from
+    /// every seat — `sourceDeviceID` / `sourceDeviceName` distinguish per-seat rows.
+    func fetchOrgRollup(groupBy: OrgGroupBy, period: BudgetPeriod) throws -> [OrgRollupRow] {
+        let windowStart = period.windowStart()
+        let column: String
+        switch groupBy {
+        case .user:       column = "COALESCE(sourceDeviceName, sourceDeviceID, 'local')"
+        case .project:    column = "COALESCE(NULLIF(projectName, ''), 'Unassigned')"
+        case .credential: column = "COALESCE(NULLIF(providerAccountLabel, ''), NULLIF(providerAccountID, ''), providerID || ' default')"
+        case .provider:   column = "provider"
+        }
+
+        var clauses: [String] = []
+        var args: [DatabaseValueConvertible] = []
+        if let windowStart {
+            clauses.append("startTime >= ?")
+            args.append(windowStart)
+        }
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+
+        let sql = """
+            SELECT \(column) AS label,
+                   COALESCE(SUM(cost), 0) AS totalCost,
+                   COALESCE(SUM(totalTokens), 0) AS totalTokens,
+                   COUNT(DISTINCT sessionId) AS sessionCount,
+                   COUNT(DISTINCT COALESCE(sourceDeviceID, 'local')) AS deviceCount
+            FROM token_usage
+            \(whereSQL)
+            GROUP BY \(column)
+            ORDER BY totalCost DESC
+            LIMIT 100
+        """
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+            return rows.compactMap { row -> OrgRollupRow? in
+                guard let label = row["label"] as? String else { return nil }
+                let totalCost = (row["totalCost"] as? Double) ?? 0
+                let totalTokens = (row["totalTokens"] as? Double) ?? 0
+                let sessionCount = Int(row["sessionCount"] as? Int64 ?? 0)
+                let deviceCount = Int(row["deviceCount"] as? Int64 ?? 0)
+                return OrgRollupRow(
+                    label: label,
+                    totalCost: totalCost,
+                    totalTokens: totalTokens,
+                    sessionCount: sessionCount,
+                    deviceCount: deviceCount
+                )
+            }
+        }
     }
 }
 

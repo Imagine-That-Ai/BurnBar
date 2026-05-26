@@ -51,6 +51,88 @@ struct CLIProcessStreamRunner: Sendable {
         }
     }
 
+    func runDroid(
+        executable: String,
+        prompt: String,
+        model: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        var parser = GenericCLIJSONOrTextParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.droidArguments(
+                    prompt: prompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant
+                ),
+                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .droid
+            ),
+            continuation: continuation
+        ) { line in
+            (parser.events(fromLine: line), nil, false)
+        }
+    }
+
+    func runForge(
+        executable: String,
+        prompt: String,
+        model: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        var parser = GenericCLIJSONOrTextParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.forgeArguments(
+                    prompt: prompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant
+                ),
+                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .forge
+            ),
+            continuation: continuation
+        ) { line in
+            (parser.events(fromLine: line), nil, false)
+        }
+    }
+
+    func runAntigravity(
+        executable: String,
+        prompt: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        var parser = GenericCLIJSONOrTextParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.antigravityArguments(
+                    prompt: prompt,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant
+                ),
+                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .antigravity
+            ),
+            continuation: continuation
+        ) { line in
+            (parser.events(fromLine: line), nil, false)
+        }
+    }
+
     private func runProcess(
         invocation: CLIProcessInvocation,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation,
@@ -176,6 +258,12 @@ struct CLIProcessStreamRunner: Sendable {
             return .claudeCode
         case .opencode:
             return .openClaw
+        case .droid:
+            return .factory
+        case .forge:
+            return .forgeDev
+        case .antigravity:
+            return .antigravity
         }
     }
 

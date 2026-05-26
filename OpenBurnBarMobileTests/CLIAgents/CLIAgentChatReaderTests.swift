@@ -307,6 +307,7 @@ private final class StubCLIRelayTransport: CLIAgentRelayChatTransporting {
         let title: String
         let parentSessionID: String?
         let resumeAction: String?
+        let presentationMode: CLIAgentChatPresentationMode
     }
 
     var events: [CLIAgentRelayChatEvent]
@@ -323,6 +324,7 @@ private final class StubCLIRelayTransport: CLIAgentRelayChatTransporting {
         title: String,
         parentSessionID: String?,
         resumeAction: String?,
+        presentationMode: CLIAgentChatPresentationMode,
         onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
     ) async throws {
         requests.append(Request(
@@ -331,7 +333,8 @@ private final class StubCLIRelayTransport: CLIAgentRelayChatTransporting {
             prompt: prompt,
             title: title,
             parentSessionID: parentSessionID,
-            resumeAction: resumeAction
+            resumeAction: resumeAction,
+            presentationMode: presentationMode
         ))
         for event in events {
             onEvent(event)

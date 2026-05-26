@@ -11,15 +11,18 @@ enum ScreenSharePhoneControlStatus: Equatable {
     case unavailable(String)
     case connecting
     case live
+    case liveNotice(String)
 
     var isLive: Bool {
-        if case .live = self { return true }
-        return false
+        switch self {
+        case .live, .liveNotice: return true
+        case .connecting, .unavailable: return false
+        }
     }
 
     var label: String {
         switch self {
-        case .live: return "Control"
+        case .live, .liveNotice: return "Control"
         case .connecting: return "Connecting"
         case .unavailable: return "Read only"
         }
@@ -29,6 +32,8 @@ enum ScreenSharePhoneControlStatus: Equatable {
         switch self {
         case .live:
             return nil
+        case .liveNotice(let message):
+            return message
         case .connecting:
             return "Preparing Mac control"
         case .unavailable(let reason):
@@ -47,6 +52,7 @@ struct ScreenShareViewerView: View {
     let resetToken: String?
     let controlStatus: ScreenSharePhoneControlStatus
     let controlInputEnabled: Bool
+    let controlRoundTripMillis: Int?
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let streamPhase: MediaControlStreamCoordinator.Phase
@@ -61,14 +67,24 @@ struct ScreenShareViewerView: View {
     let sendPointerClickIntent: (Int) -> Void
     let sendTextIntent: (String) -> Void
     let sendShortcutIntent: (String, [String]) -> Void
+    let sendAgentContextTargetIntent: (Double, Double, String, String, String?) -> Void
+    let pasteClipboardToMac: () -> Void
+    let grabClipboardFromMac: () -> Void
     let onSelectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let onClose: () -> Void
     let usePremiumSOTAUX: Bool
     @State private var statsVisible: Bool = false
     @State private var viewport = ScreenShareViewportState()
+    @AppStorage("mercurySmartZoomMode") private var smartZoomModeRaw: String = SmartZoomMode.smart.rawValue
+    @State private var smartZoomManualOverrideUntil: Date?
+    @State private var smartZoomAutoFollowing: Bool = false
+    @State private var lastLayoutSize: CGSize?
     @State private var interactionMode: ScreenShareInteractionMode = .view
     @State private var isTyping = false
+    @State private var coPilotTarget: (normalizedX: Double, normalizedY: Double, viewPoint: CGPoint)? = nil
+    @State private var coPilotInstruction: String = ""
+    @State private var coPilotRuntime: String = "hermes"
     @State private var panelOffset = CGSize(width: -18, height: 18)
     @State private var panelDragBase = CGSize(width: -18, height: 18)
     @State private var showingDisplayPicker = false
@@ -89,11 +105,17 @@ struct ScreenShareViewerView: View {
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var typingFocusTask: Task<Void, Never>?
 
+    private var smartZoomMode: SmartZoomMode {
+        get { SmartZoomMode(rawValue: smartZoomModeRaw) ?? .smart }
+        nonmutating set { smartZoomModeRaw = newValue.rawValue }
+    }
+
     init(
         coordinator: ScreenShareViewerCoordinator,
         resetToken: String?,
         controlStatus: ScreenSharePhoneControlStatus = .unavailable("Phone control is not connected."),
         controlInputEnabled: Bool? = nil,
+        controlRoundTripMillis: Int? = nil,
         displays: [HermesRealtimeRelayDisplayDescriptor] = [],
         selectedDisplayId: String? = nil,
         streamPhase: MediaControlStreamCoordinator.Phase = .live,
@@ -109,6 +131,9 @@ struct ScreenShareViewerView: View {
         sendPointerClickIntent: @escaping (Int) -> Void = { _ in },
         sendTextIntent: @escaping (String) -> Void = { _ in },
         sendShortcutIntent: @escaping (String, [String]) -> Void = { _, _ in },
+        sendAgentContextTargetIntent: @escaping (Double, Double, String, String, String?) -> Void = { _, _, _, _, _ in },
+        pasteClipboardToMac: @escaping () -> Void = {},
+        grabClipboardFromMac: @escaping () -> Void = {},
         onSelectDisplay: @escaping (String) -> Void = { _ in },
         onTrustControlDevice: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
@@ -117,6 +142,7 @@ struct ScreenShareViewerView: View {
         self.resetToken = resetToken
         self.controlStatus = controlStatus
         self.controlInputEnabled = controlInputEnabled ?? controlStatus.isLive
+        self.controlRoundTripMillis = controlRoundTripMillis
         self.displays = displays
         self.selectedDisplayId = selectedDisplayId
         self.streamPhase = streamPhase
@@ -132,9 +158,20 @@ struct ScreenShareViewerView: View {
         self.sendPointerClickIntent = sendPointerClickIntent
         self.sendTextIntent = sendTextIntent
         self.sendShortcutIntent = sendShortcutIntent
+        self.sendAgentContextTargetIntent = sendAgentContextTargetIntent
+        self.pasteClipboardToMac = pasteClipboardToMac
+        self.grabClipboardFromMac = grabClipboardFromMac
         self.onSelectDisplay = onSelectDisplay
         self.onTrustControlDevice = onTrustControlDevice
         self.onClose = onClose
+    }
+
+    private var displayStats: ScreenShareViewerCoordinator.Stats {
+        var stats = coordinator.lastStats
+        if let controlRoundTripMillis {
+            stats.roundTripMillis = controlRoundTripMillis
+        }
+        return stats
     }
 
     var body: some View {
@@ -159,15 +196,19 @@ struct ScreenShareViewerView: View {
                     }
                     .onTapGesture(count: 2) {
                         guard interactionMode != .trackpad else { return }
+                        beginManualZoomOverride()
                         withAnimation(.snappy) {
                             viewport.toggleQuickZoom(in: proxy.size)
                         }
                     }
                     .onAppear {
                         viewport.reclamp(in: proxy.size)
+                        lastLayoutSize = proxy.size
                     }
                     .onChange(of: proxy.size) { _, newSize in
                         viewport.reclamp(in: newSize)
+                        lastLayoutSize = newSize
+                        applySmartZoomDecision(viewportSize: newSize, contentRect: renderedContentRect(in: newSize))
                     }
                     .animation(.snappy, value: viewport)
 
@@ -219,6 +260,26 @@ struct ScreenShareViewerView: View {
                         .allowsHitTesting(false)
                 }
 
+                if interactionMode == .coPilot {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                                .onEnded { value in
+                                    let normalized = visibleViewport.normalizedPoint(for: value.location, in: proxy.size, contentRect: contentRect)
+                                    withAnimation(.snappy) {
+                                        coPilotTarget = (normalizedX: normalized.x, normalizedY: normalized.y, viewPoint: value.location)
+                                    }
+                                }
+                        )
+                        .accessibilityLabel("Co-Pilot target selection area")
+                }
+
+                if interactionMode == .coPilot, let target = coPilotTarget {
+                    CoPilotTargetRing(point: target.viewPoint)
+                        .allowsHitTesting(false)
+                }
+
                 if controlInputEnabled,
                    interactionMode != .view,
                    let visibleCursorPoint = cursorPoint ?? ScreenShareControlInputPolicy.initialCursorPoint(in: contentRect),
@@ -241,10 +302,76 @@ struct ScreenShareViewerView: View {
                     .opacity(0.01)
                 }
 
+                if interactionMode == .coPilot, coPilotTarget != nil {
+                    VStack(spacing: 16) {
+                        HStack {
+                            Image(systemName: "dot.circle.and.hand.point.up.left")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(.red)
+                            Text("Agent Co-Pilot Target Locked")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Button {
+                                withAnimation(.snappy) {
+                                    coPilotTarget = nil
+                                    coPilotInstruction = ""
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        // Segmented Picker for Agent Runtime
+                        Picker("Agent", selection: $coPilotRuntime) {
+                            Text("Hermes").tag("hermes")
+                            Text("Pi").tag("pi")
+                            Text("Codex").tag("codex")
+                            Text("Claude").tag("claude")
+                            Text("OpenClaw").tag("openclaw")
+                        }
+                        .pickerStyle(.segmented)
+                        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+
+                        // TextField for instruction
+                        HStack(spacing: 8) {
+                            TextField("Enter instruction (e.g. 'click this button')", text: $coPilotInstruction)
+                                .font(.system(size: 14))
+                                .textFieldStyle(.plain)
+                                .padding(12)
+                                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                                .foregroundStyle(.white)
+                                .onSubmit {
+                                    submitCoPilotIntent()
+                                }
+
+                            Button(action: submitCoPilotIntent) {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(coPilotInstruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .white.opacity(0.3) : .red)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(coPilotInstruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                    .padding(18)
+                    .mirrorGlassBackground(cornerRadius: 24)
+                    .shadow(color: .black.opacity(0.35), radius: 18, x: 0, y: 10)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 80) // Stay above the control panel
+                    .frame(maxWidth: 420)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                }
+
                 MirrorControlPanel(
                     interactionMode: $interactionMode,
                     isCollapsed: $panelCollapsed,
                     isTyping: $isTyping,
+                    coPilotTarget: $coPilotTarget,
                     showingDisplayPicker: $showingDisplayPicker,
                     showingScrollTools: $showingScrollTools,
                     edgeScrollEnabled: $edgeScrollEnabled,
@@ -252,19 +379,34 @@ struct ScreenShareViewerView: View {
                     statsVisible: $statsVisible,
                     cursorSize: $cursorSize,
                     cursorStyle: $cursorStyle,
-                    stats: coordinator.lastStats,
+                    stats: displayStats,
                     controlStatus: controlStatus,
                     controlInputEnabled: controlInputEnabled,
                     displays: displays,
                     selectedDisplayId: selectedDisplayId,
                     isZoomed: viewport.isZoomed,
+                    smartZoomMode: smartZoomMode,
+                    smartZoomAutoFollowing: smartZoomAutoFollowing,
+                    setSmartZoomMode: { newMode in
+                        smartZoomMode = newMode
+                        smartZoomManualOverrideUntil = nil
+                        if newMode == .off {
+                            withAnimation(.snappy) { viewport.reset() }
+                            smartZoomAutoFollowing = false
+                        } else {
+                            applySmartZoomDecision(viewportSize: proxy.size, contentRect: contentRect)
+                        }
+                    },
                     zoomIn: {
+                        beginManualZoomOverride()
                         withAnimation(.snappy) { viewport.zoom(by: 1.25, in: proxy.size) }
                     },
                     zoomOut: {
+                        beginManualZoomOverride()
                         withAnimation(.snappy) { viewport.zoom(by: 0.8, in: proxy.size) }
                     },
                     resetZoom: {
+                        beginManualZoomOverride()
                         withAnimation(.snappy) { viewport.reset() }
                     },
                     focusTyping: {
@@ -276,6 +418,8 @@ struct ScreenShareViewerView: View {
                         let endY = min(max(0.5 + direction, 0), 1)
                         sendScrollIntent(0.5, 0.5, 0.5, endY, selectedDisplayId)
                     },
+                    pasteClipboardToMac: pasteClipboardToMac,
+                    grabClipboardFromMac: grabClipboardFromMac,
                     onClose: onClose
                 )
                 .padding(.horizontal, 12)
@@ -318,6 +462,43 @@ struct ScreenShareViewerView: View {
                 typingFocusTask = nil
             }
         }
+        .onChange(of: coordinator.latestFocusContext) { _, _ in
+            applySmartZoomDecisionUsingCurrentLayout()
+        }
+    }
+
+    private func beginManualZoomOverride() {
+        smartZoomManualOverrideUntil = Date().addingTimeInterval(ScreenShareSmartZoomReducer.manualOverrideHold)
+        smartZoomAutoFollowing = false
+    }
+
+    private func applySmartZoomDecisionUsingCurrentLayout() {
+        guard let layoutSize = lastLayoutSize else { return }
+        let contentRect = renderedContentRect(in: layoutSize)
+        applySmartZoomDecision(viewportSize: layoutSize, contentRect: contentRect)
+    }
+
+    @MainActor
+    private func applySmartZoomDecision(viewportSize: CGSize, contentRect: CGRect) {
+        let decision = ScreenShareSmartZoomReducer.reduce(
+            viewportSize: viewportSize,
+            contentRect: contentRect,
+            currentState: viewport,
+            context: coordinator.latestFocusContext,
+            mode: smartZoomMode,
+            selectedDisplayId: selectedDisplayId,
+            manualOverrideUntil: smartZoomManualOverrideUntil,
+            now: Date()
+        )
+        if decision.isAutoFollowing {
+            withAnimation(.snappy) {
+                viewport.scale = decision.scale
+                viewport.offset = decision.offset
+            }
+            if !smartZoomAutoFollowing { smartZoomAutoFollowing = true }
+        } else if smartZoomAutoFollowing {
+            smartZoomAutoFollowing = false
+        }
     }
 
     private func viewportGesture(in size: CGSize) -> some Gesture {
@@ -329,6 +510,7 @@ struct ScreenShareViewerView: View {
                 }
                 .onEnded { value in
                     guard interactionMode == .view else { return }
+                    beginManualZoomOverride()
                     viewport.applyMagnification(value.magnification, in: size)
                 },
             DragGesture(minimumDistance: 2)
@@ -338,6 +520,7 @@ struct ScreenShareViewerView: View {
                 }
                 .onEnded { value in
                     guard interactionMode == .view else { return }
+                    beginManualZoomOverride()
                     viewport.applyTranslation(value.translation, in: size)
                 }
         )
@@ -398,6 +581,25 @@ struct ScreenShareViewerView: View {
             normalized.y,
             ScreenShareControlInputPolicy.controlClickMouseButton(heldDuration: heldDuration)
         )
+    }
+
+    private func submitCoPilotIntent() {
+        guard let target = coPilotTarget else { return }
+        let instruction = coPilotInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !instruction.isEmpty else { return }
+
+        sendAgentContextTargetIntent(
+            target.normalizedX,
+            target.normalizedY,
+            instruction,
+            coPilotRuntime,
+            nil
+        )
+
+        withAnimation(.snappy) {
+            coPilotTarget = nil
+            coPilotInstruction = ""
+        }
     }
 
     private func controlMagnifyGesture(in size: CGSize) -> some Gesture {
@@ -687,6 +889,230 @@ private final class RemoteKeyboardTextView: UITextView {
 }
 #endif
 
+enum SmartZoomMode: String, CaseIterable, Identifiable, Sendable {
+    case off
+    case smart
+    case text
+    case window
+    case cursor
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .off: return "Off"
+        case .smart: return "Smart"
+        case .text: return "Text"
+        case .window: return "Window"
+        case .cursor: return "Cursor"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .off: return "rectangle.dashed"
+        case .smart: return "sparkles.rectangle.stack"
+        case .text: return "text.cursor"
+        case .window: return "rectangle.inset.filled"
+        case .cursor: return "cursorarrow"
+        }
+    }
+}
+
+struct ScreenShareSmartZoomContext: Equatable {
+    var targetKind: HermesRealtimeRelayFocusTargetKind
+    var displayId: String?
+    var normalizedRect: HermesRealtimeRelayNormalizedRect?
+    var normalizedPoint: HermesRealtimeRelayNormalizedPoint?
+    var confidence: Double?
+    var receivedAt: Date
+
+    static func from(
+        _ relay: HermesRealtimeRelayFocusContext,
+        receivedAt: Date = Date()
+    ) -> ScreenShareSmartZoomContext? {
+        guard let targetKind = relay.targetKind else { return nil }
+        return ScreenShareSmartZoomContext(
+            targetKind: targetKind,
+            displayId: relay.displayId,
+            normalizedRect: relay.normalizedRect,
+            normalizedPoint: relay.normalizedPoint,
+            confidence: relay.confidence,
+            receivedAt: receivedAt
+        )
+    }
+}
+
+enum ScreenShareSmartZoomReducer {
+    static let staleAfter: TimeInterval = 1.5
+    static let manualOverrideHold: TimeInterval = 5.0
+    static let textFillRatio: CGFloat = 0.62
+    static let windowFillRatio: CGFloat = 0.86
+    static let agentFillRatio: CGFloat = 0.72
+    static let textScaleRange: ClosedRange<CGFloat> = 1.4...4.0
+    static let windowScaleRange: ClosedRange<CGFloat> = 1.0...2.4
+    static let cursorEntryScale: CGFloat = 1.8
+    static let agentScaleRange: ClosedRange<CGFloat> = 1.0...3.0
+
+    struct Decision: Equatable {
+        var scale: CGFloat
+        var offset: CGSize
+        var isAutoFollowing: Bool
+    }
+
+    static func reduce(
+        viewportSize: CGSize,
+        contentRect: CGRect,
+        currentState: ScreenShareViewportState,
+        context: ScreenShareSmartZoomContext?,
+        mode: SmartZoomMode,
+        selectedDisplayId: String?,
+        manualOverrideUntil: Date?,
+        now: Date
+    ) -> Decision {
+        let idleDecision = Decision(
+            scale: currentState.scale,
+            offset: currentState.offset,
+            isAutoFollowing: false
+        )
+
+        guard mode != .off else { return idleDecision }
+        guard viewportSize.width > 0, viewportSize.height > 0 else { return idleDecision }
+        guard contentRect.width > 0, contentRect.height > 0 else { return idleDecision }
+        if let manualOverrideUntil, manualOverrideUntil > now { return idleDecision }
+        guard let context else { return idleDecision }
+        if now.timeIntervalSince(context.receivedAt) > staleAfter { return idleDecision }
+        if let target = context.displayId,
+           let selected = selectedDisplayId,
+           target != selected {
+            return idleDecision
+        }
+        guard targetMatches(mode: mode, kind: context.targetKind) else { return idleDecision }
+
+        switch context.targetKind {
+        case .focusedElement:
+            guard let rect = context.normalizedRect else { return idleDecision }
+            return fitRectDecision(
+                normalizedRect: rect,
+                viewportSize: viewportSize,
+                contentRect: contentRect,
+                fillRatio: textFillRatio,
+                scaleRange: textScaleRange
+            )
+        case .focusedWindow:
+            guard let rect = context.normalizedRect else { return idleDecision }
+            return fitRectDecision(
+                normalizedRect: rect,
+                viewportSize: viewportSize,
+                contentRect: contentRect,
+                fillRatio: windowFillRatio,
+                scaleRange: windowScaleRange
+            )
+        case .agentWorkspace:
+            guard let rect = context.normalizedRect else { return idleDecision }
+            return fitRectDecision(
+                normalizedRect: rect,
+                viewportSize: viewportSize,
+                contentRect: contentRect,
+                fillRatio: agentFillRatio,
+                scaleRange: agentScaleRange
+            )
+        case .cursor:
+            guard let point = context.normalizedPoint else { return idleDecision }
+            let targetScale: CGFloat
+            if currentState.isZoomed {
+                targetScale = currentState.scale
+            } else {
+                targetScale = min(max(cursorEntryScale, ScreenShareViewportState.minimumScale), ScreenShareViewportState.maximumScale)
+            }
+            return centerPointDecision(
+                normalizedPoint: point,
+                viewportSize: viewportSize,
+                contentRect: contentRect,
+                scale: targetScale
+            )
+        }
+    }
+
+    static func targetMatches(mode: SmartZoomMode, kind: HermesRealtimeRelayFocusTargetKind) -> Bool {
+        switch mode {
+        case .off: return false
+        case .smart: return true
+        case .text: return kind == .focusedElement
+        case .window: return kind == .focusedWindow
+        case .cursor: return kind == .cursor
+        }
+    }
+
+    static func fitRectDecision(
+        normalizedRect rect: HermesRealtimeRelayNormalizedRect,
+        viewportSize: CGSize,
+        contentRect: CGRect,
+        fillRatio: CGFloat,
+        scaleRange: ClosedRange<CGFloat>
+    ) -> Decision {
+        let rectWidthInContent = max(0.0001, CGFloat(rect.width)) * contentRect.width
+        let rectHeightInContent = max(0.0001, CGFloat(rect.height)) * contentRect.height
+        let shortRectAxis = min(rectWidthInContent, rectHeightInContent)
+        let shortViewportAxis = min(viewportSize.width, viewportSize.height)
+        let targetShortAxis = shortViewportAxis * fillRatio
+        let rawScale = targetShortAxis / max(shortRectAxis, 0.0001)
+        let scale = clamp(rawScale, range: scaleRange)
+        let centerX = contentRect.minX + CGFloat(rect.x + rect.width / 2) * contentRect.width
+        let centerY = contentRect.minY + CGFloat(rect.y + rect.height / 2) * contentRect.height
+        let offset = offsetForCenter(
+            centerInContent: CGPoint(x: centerX, y: centerY),
+            scale: scale,
+            viewportSize: viewportSize
+        )
+        return Decision(scale: scale, offset: offset, isAutoFollowing: true)
+    }
+
+    static func centerPointDecision(
+        normalizedPoint point: HermesRealtimeRelayNormalizedPoint,
+        viewportSize: CGSize,
+        contentRect: CGRect,
+        scale: CGFloat
+    ) -> Decision {
+        let clampedScale = ScreenShareViewportState.clampScale(scale)
+        let centerX = contentRect.minX + CGFloat(point.x) * contentRect.width
+        let centerY = contentRect.minY + CGFloat(point.y) * contentRect.height
+        let offset = offsetForCenter(
+            centerInContent: CGPoint(x: centerX, y: centerY),
+            scale: clampedScale,
+            viewportSize: viewportSize
+        )
+        return Decision(scale: clampedScale, offset: offset, isAutoFollowing: true)
+    }
+
+    /// Offset that puts `centerInContent` at the visual center of the
+    /// viewport when the content is scaled by `scale`. Inverse of
+    /// `ScreenShareViewportState.viewPoint(forNormalized:in:)`:
+    ///
+    ///   viewX = (cx - W/2) * scale + W/2 + offsetWidth
+    ///   put viewX = W/2 ⇒ offsetWidth = (W/2 - cx) * scale.
+    static func offsetForCenter(
+        centerInContent: CGPoint,
+        scale: CGFloat,
+        viewportSize: CGSize
+    ) -> CGSize {
+        let halfWidth = viewportSize.width / 2
+        let halfHeight = viewportSize.height / 2
+        let proposedX = (halfWidth - centerInContent.x) * scale
+        let proposedY = (halfHeight - centerInContent.y) * scale
+        return ScreenShareViewportState.clamp(
+            offset: CGSize(width: proposedX, height: proposedY),
+            scale: scale,
+            in: viewportSize
+        )
+    }
+
+    static func clamp(_ value: CGFloat, range: ClosedRange<CGFloat>) -> CGFloat {
+        if value.isNaN { return range.lowerBound }
+        return min(max(value, range.lowerBound), range.upperBound)
+    }
+}
+
 struct ScreenShareViewportState: Equatable {
     static let minimumScale: CGFloat = 1
     static let maximumScale: CGFloat = 4
@@ -783,6 +1209,7 @@ private enum ScreenShareInteractionMode {
     case view
     case control
     case trackpad
+    case coPilot
 }
 
 enum ScreenShareControlInputPolicy {
@@ -839,6 +1266,7 @@ private struct MirrorControlPanel: View {
     @Binding var interactionMode: ScreenShareInteractionMode
     @Binding var isCollapsed: Bool
     @Binding var isTyping: Bool
+    @Binding var coPilotTarget: (normalizedX: Double, normalizedY: Double, viewPoint: CGPoint)?
     @Binding var showingDisplayPicker: Bool
     @Binding var showingScrollTools: Bool
     @Binding var edgeScrollEnabled: Bool
@@ -852,6 +1280,9 @@ private struct MirrorControlPanel: View {
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let isZoomed: Bool
+    let smartZoomMode: SmartZoomMode
+    let smartZoomAutoFollowing: Bool
+    let setSmartZoomMode: (SmartZoomMode) -> Void
     let zoomIn: () -> Void
     let zoomOut: () -> Void
     let resetZoom: () -> Void
@@ -859,6 +1290,8 @@ private struct MirrorControlPanel: View {
     let selectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let sendScrollButton: (Double) -> Void
+    let pasteClipboardToMac: () -> Void
+    let grabClipboardFromMac: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -874,6 +1307,14 @@ private struct MirrorControlPanel: View {
                     withAnimation(.snappy) {
                         interactionMode = .view
                         isTyping = false
+                    }
+                }
+                panelButton("target", selected: interactionMode == .coPilot, label: "Agent Co-Pilot", disabled: controlInputEnabled == false) {
+                    guard controlInputEnabled else { return }
+                    withAnimation(.snappy) {
+                        interactionMode = .coPilot
+                        isTyping = false
+                        coPilotTarget = nil
                     }
                 }
                 if controlInputEnabled, controlStatus.isLive == false {
@@ -895,6 +1336,7 @@ private struct MirrorControlPanel: View {
                 }
                 displayButton
                 cursorMenu
+                smartZoomMenu
                 panelButton("magnifyingglass.plus", selected: false, label: "Zoom in", action: zoomIn)
                 panelButton("magnifyingglass.minus", selected: false, label: "Zoom out", disabled: isZoomed == false, action: zoomOut)
                 panelButton("chevron.up", selected: false, label: "Scroll up", disabled: controlInputEnabled == false) { sendScrollButton(-0.22) }
@@ -909,6 +1351,8 @@ private struct MirrorControlPanel: View {
                     }
                     if isTyping { focusTyping() }
                 }
+                panelButton("doc.on.clipboard", selected: false, label: "Paste to Mac", disabled: controlInputEnabled == false, action: pasteClipboardToMac)
+                panelButton("arrow.down.doc", selected: false, label: "Grab from Mac", disabled: controlInputEnabled == false, action: grabClipboardFromMac)
                 panelToggle("Edges", isOn: $edgeScrollEnabled, systemName: "arrow.left.and.right")
                 panelToggle("Volume", isOn: $hardwareScrollEnabled, systemName: "speaker.wave.2")
                 panelButton("waveform.path.ecg", selected: statsVisible, label: "Toggle performance stats") {
@@ -937,6 +1381,8 @@ private struct MirrorControlPanel: View {
         switch interactionMode {
         case .view:
             return "hand.draw"
+        case .coPilot:
+            return "target"
         case .control:
             return controlInputEnabled ? "cursorarrow.click.2" : "lock"
         case .trackpad:
@@ -1042,6 +1488,52 @@ private struct MirrorControlPanel: View {
         }
     }
 
+    private var smartZoomMenu: some View {
+        Menu {
+            ForEach(SmartZoomMode.allCases) { mode in
+                Button {
+                    setSmartZoomMode(mode)
+                } label: {
+                    Label(mode.label, systemImage: mode.systemImage)
+                }
+            }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                railIcon(
+                    smartZoomMode.systemImage,
+                    selected: smartZoomMode != .off,
+                    disabled: false
+                )
+                if smartZoomAutoFollowing {
+                    Text("Smart")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.17, green: 0.79, blue: 0.75),
+                                            Color(red: 0.56, green: 0.50, blue: 0.85)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                        .offset(x: -2, y: -2)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Smart Zoom: \(smartZoomMode.label)")
+        .accessibilityValue(smartZoomAutoFollowing ? "Auto-following" : "Idle")
+    }
+
     private func panelButton(_ systemName: String, selected: Bool, label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             railIcon(systemName, selected: selected, disabled: disabled)
@@ -1138,6 +1630,72 @@ private struct TapFeedbackMarker: View {
             withAnimation(.easeOut(duration: 0.45)) {
                 animScale = 1.2
                 animOpacity = 0.0
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct CoPilotTargetRing: View {
+    let point: CGPoint
+    @State private var animScale: CGFloat = 0.6
+    @State private var animPulse: CGFloat = 1.0
+
+    var body: some View {
+        ZStack {
+            // Outermost target ring
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [.red, .orange],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2
+                )
+                .frame(width: 48, height: 48)
+                .scaleEffect(animScale)
+
+            // Reticle lines (crosshairs)
+            Rectangle()
+                .fill(Color.red)
+                .frame(width: 2, height: 16)
+                .offset(y: -16)
+
+            Rectangle()
+                .fill(Color.red)
+                .frame(width: 2, height: 16)
+                .offset(y: 16)
+
+            Rectangle()
+                .fill(Color.red)
+                .frame(width: 16, height: 2)
+                .offset(x: -16)
+
+            Rectangle()
+                .fill(Color.red)
+                .frame(width: 16, height: 2)
+                .offset(x: 16)
+
+            // Inner pulsing ring
+            Circle()
+                .stroke(Color.red.opacity(0.6), lineWidth: 1.5)
+                .frame(width: 28, height: 28)
+                .scaleEffect(animPulse)
+
+            // Center core dot
+            Circle()
+                .fill(Color.red)
+                .frame(width: 6, height: 6)
+                .shadow(color: .red.opacity(0.8), radius: 4)
+        }
+        .position(point)
+        .onAppear {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.62)) {
+                animScale = 1.0
+            }
+            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                animPulse = 1.25
             }
         }
         .accessibilityHidden(true)
@@ -2028,20 +2586,75 @@ private extension View {
     }
 }
 
+struct ScreenShareViewerPerformanceStats: Equatable, Sendable {
+    var resolution: String = ""
+    var codec: String = ""
+    var bitsPerSecond: Int = 0
+    var roundTripMillis: Int = 0
+}
+
+struct ScreenShareViewerStatsMeter: Sendable {
+    private var windowStartedAt: Date?
+    private var bytesInWindow: Int = 0
+    private var lastStats = ScreenShareViewerPerformanceStats()
+    private let minimumSampleInterval: TimeInterval
+
+    init(minimumSampleInterval: TimeInterval = 0.5) {
+        self.minimumSampleInterval = minimumSampleInterval
+    }
+
+    mutating func recordFrame(
+        byteCount: Int,
+        now: Date = Date(),
+        codec: String? = nil,
+        resolution: String? = nil
+    ) -> ScreenShareViewerPerformanceStats {
+        if windowStartedAt == nil {
+            windowStartedAt = now
+        }
+        bytesInWindow += max(byteCount, 0)
+
+        var next = lastStats
+        if let codec, !codec.isEmpty {
+            next.codec = codec
+        }
+        if let resolution, !resolution.isEmpty {
+            next.resolution = resolution
+        }
+
+        let elapsed = max(0, now.timeIntervalSince(windowStartedAt ?? now))
+        if elapsed >= minimumSampleInterval {
+            next.bitsPerSecond = Int((Double(bytesInWindow) * 8.0 / elapsed).rounded())
+            windowStartedAt = now
+            bytesInWindow = 0
+        }
+
+        lastStats = next
+        return next
+    }
+
+    mutating func updateRoundTripMillis(_ roundTripMillis: Int) -> ScreenShareViewerPerformanceStats {
+        lastStats.roundTripMillis = max(0, roundTripMillis)
+        return lastStats
+    }
+}
+
 @MainActor
 final class ScreenShareViewerCoordinator: ObservableObject {
-    struct Stats: Equatable, Sendable {
-        var resolution: String = ""
-        var codec: String = ""
-        var bitsPerSecond: Int = 0
-        var roundTripMillis: Int = 0
-    }
+    typealias Stats = ScreenShareViewerPerformanceStats
 
     let displayLayer: AVSampleBufferDisplayLayer
     @Published var lastStats: Stats = Stats()
     @Published var displayAspectRatio: CGFloat?
+    @Published var latestFocusContext: ScreenShareSmartZoomContext?
     var longTermReferenceTokenHandler: ((MercuryLTRToken) async -> Void)?
     private var pipeline: VideoReceivePipeline?
+    private var statsMeter = ScreenShareViewerStatsMeter()
+
+    func ingest(focusContext: HermesRealtimeRelayFocusContext) {
+        guard let context = ScreenShareSmartZoomContext.from(focusContext) else { return }
+        latestFocusContext = context
+    }
 
     init() {
         let layer = AVSampleBufferDisplayLayer()
@@ -2057,16 +2670,23 @@ final class ScreenShareViewerCoordinator: ObservableObject {
     }
 
     func enqueue(sampleBuffer: CMSampleBuffer) {
+        var resolution: String?
         if let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) {
             let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
             let width = CGFloat(dimensions.width)
             let height = CGFloat(dimensions.height)
             if width > 0, height > 0 {
+                resolution = "\(Int(width))x\(Int(height))"
                 let aspectRatio = width / height
                 if displayAspectRatio.map({ abs($0 - aspectRatio) > 0.0001 }) ?? true {
                     displayAspectRatio = aspectRatio
                 }
             }
+        }
+        if let resolution, lastStats.resolution != resolution {
+            var stats = lastStats
+            stats.resolution = resolution
+            lastStats = stats
         }
         if displayLayer.isReadyForMoreMediaData {
             displayLayer.enqueue(sampleBuffer)
@@ -2074,6 +2694,7 @@ final class ScreenShareViewerCoordinator: ObservableObject {
     }
 
     func ingest(frame: MediaFrame) async {
+        recordIncomingFrame(byteCount: Self.estimatedWireByteCount(for: frame), codec: "HEVC")
         do {
             try await pipeline?.ingest(frame: frame)
         } catch {
@@ -2082,6 +2703,10 @@ final class ScreenShareViewerCoordinator: ObservableObject {
     }
 
     func ingest(frameV2: MediaFrameV2) async {
+        recordIncomingFrame(
+            byteCount: Self.estimatedWireByteCount(for: frameV2),
+            codec: Self.codecLabel(for: frameV2)
+        )
         do {
             try await pipeline?.ingest(frameV2: frameV2)
         } catch {
@@ -2091,6 +2716,40 @@ final class ScreenShareViewerCoordinator: ObservableObject {
 
     func update(stats: Stats) {
         lastStats = stats
+    }
+
+    func update(roundTripMillis: Int) {
+        lastStats = statsMeter.updateRoundTripMillis(roundTripMillis)
+    }
+
+    private func recordIncomingFrame(byteCount: Int, codec: String?) {
+        lastStats = statsMeter.recordFrame(
+            byteCount: byteCount,
+            codec: codec,
+            resolution: lastStats.resolution
+        )
+    }
+
+    private static func estimatedWireByteCount(for frame: MediaFrame) -> Int {
+        MediaFrame.headerByteCount
+            + (frame.flags.contains(.hasCursorMetadata) ? MediaFrame.cursorMetadataByteCount : 0)
+            + frame.payload.count
+    }
+
+    private static func estimatedWireByteCount(for frame: MediaFrameV2) -> Int {
+        MediaFrameV2Codec.fixedHeaderByteCount + frame.metadata.count + frame.payload.count
+    }
+
+    private static func codecLabel(for frame: MediaFrameV2) -> String? {
+        guard let metadata = try? MediaFrameV2Metadata.decode(frame.metadata),
+              let codec = metadata.codec
+        else { return nil }
+
+        switch codec {
+        case .hevc: return "HEVC"
+        case .h264: return "H.264"
+        case .av1: return "AV1"
+        }
     }
 }
 

@@ -50,6 +50,7 @@ class HermesCompositeRelayTransportTest {
 
         assertEquals("firestore-fallback", composite.sendUnary(payload, 100))
         coVerify(exactly = 0) { iroh.sendUnary(any(), any()) }
+        coVerify(exactly = 1) { firestore.sendUnary(payload, 100) }
     }
 
     @Test
@@ -65,7 +66,7 @@ class HermesCompositeRelayTransportTest {
         )
         assertEquals("fallback-after-timeout", composite.sendUnary(payload, 100))
         coVerify(exactly = 1) { iroh.sendUnary(any(), any()) }
-        coVerify(exactly = 1) { firestore.sendUnary(any(), any()) }
+        coVerify(exactly = 1) { firestore.sendUnary(payload, 100) }
     }
 
     @Test
@@ -107,6 +108,32 @@ class HermesCompositeRelayTransportTest {
     }
 
     @Test
+    fun streaming_cli_agent_chat_falls_back_to_firestore_after_iroh_transport_error() = runTest {
+        val cliPayload = payload.copy(
+            operation = HermesRelayOperationName.CLI_AGENT_CHAT,
+            path = "/v1/cli-agent/chat",
+        )
+        val iroh = mockk<HermesRelayTransporting>()
+        val firestore = mockk<HermesRelayTransporting>()
+        coEvery { iroh.sendStreaming(cliPayload, any(), any()) } throws IrohRelayTransportError.TimedOut
+        coEvery { firestore.sendStreaming(cliPayload, any(), any()) } answers {
+            val cb = thirdArg<suspend (String) -> Unit>()
+            kotlinx.coroutines.runBlocking { cb("""{"kind":"completed","text":"via-firestore"}""") }
+        }
+
+        val composite = HermesCompositeRelayTransport(
+            iroh = iroh,
+            firestoreFallback = firestore,
+        )
+        val received = mutableListOf<String>()
+        composite.sendStreaming(cliPayload, 600_000L) { received.add(it) }
+
+        assertEquals(listOf("""{"kind":"completed","text":"via-firestore"}"""), received)
+        coVerify(exactly = 1) { iroh.sendStreaming(cliPayload, 600_000L, any()) }
+        coVerify(exactly = 1) { firestore.sendStreaming(cliPayload, 600_000L, any()) }
+    }
+
+    @Test
     fun streaming_respects_kill_switch() = runTest {
         val iroh = mockk<HermesRelayTransporting>()
         val firestore = mockk<HermesRelayTransporting>()
@@ -123,5 +150,6 @@ class HermesCompositeRelayTransportTest {
         composite.sendStreaming(payload, 100) { received.add(it) }
         assertEquals(listOf("force-fallback"), received)
         coVerify(exactly = 0) { iroh.sendStreaming(any(), any(), any()) }
+        coVerify(exactly = 1) { firestore.sendStreaming(payload, 100, any()) }
     }
 }

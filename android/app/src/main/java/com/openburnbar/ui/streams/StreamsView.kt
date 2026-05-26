@@ -360,7 +360,7 @@ private fun CloudConversationDetailDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    ModeAwareLoader(style = CookingLoaderStyle.INLINE, strokeWidth = 2.dp)
                     Text("Opening encrypted conversation...")
                 }
                 error != null -> Text(error, color = MaterialTheme.colorScheme.error)

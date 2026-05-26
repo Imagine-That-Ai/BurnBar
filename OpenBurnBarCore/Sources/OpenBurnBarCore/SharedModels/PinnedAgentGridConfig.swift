@@ -20,12 +20,22 @@ public struct PinnedAgentGridConfig: Codable, Sendable, Hashable {
     /// Maximum number of slots in the grid (plan-mandated: 12).
     public static let maxSlots = 12
 
-    /// Default pinned set on first install — the five built-in runtimes in
+    /// Default pinned set on first install — the built-in runtimes in
     /// `AssistantRuntimeID.allCases` order, leaving the rest of the 12
     /// slots empty.
     public static var defaultPinnedURIs: [String] {
         AssistantRuntimeID.allCases.map(AgentIdentity.builtInURI)
     }
+
+    /// Built-in pin set before the later CLI runtime expansion.
+    /// Used only to non-destructively upgrade untouched default grids.
+    public static let legacyDefaultPinnedURIsBeforeDroidForge: [String] = [
+        "agent://burnbar/hermes",
+        "agent://burnbar/pi",
+        "agent://burnbar/codex",
+        "agent://burnbar/claude",
+        "agent://burnbar/openclaw"
+    ]
 
     /// Ordered list of pinned agent URIs.
     public var pinnedURIs: [String]
@@ -96,6 +106,10 @@ public struct PinnedAgentGridConfig: Codable, Sendable, Hashable {
         if trimmed.isEmpty,
            let firstBuiltIn = Self.defaultPinnedURIs.first {
             trimmed = [firstBuiltIn]
+        }
+        if lastRearrangedAt == nil,
+           trimmed == Self.legacyDefaultPinnedURIsBeforeDroidForge {
+            trimmed = Array(Self.defaultPinnedURIs.prefix(Self.maxSlots))
         }
         return PinnedAgentGridConfig(
             pinnedURIs: trimmed,

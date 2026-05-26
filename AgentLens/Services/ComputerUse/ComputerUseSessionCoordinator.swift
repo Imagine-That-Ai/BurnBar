@@ -85,6 +85,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private let gate: ComputerUseCapabilityGate
     private let macDispatcher: MacActionDispatcher
     private let inputController: MacInputController
+    private let remoteClipboardController: RemoteClipboardController
     private let scopeMatcher: ComputerUseScopeMatcher
     private let scopeRulesProvider: @MainActor () -> [ComputerUseScopeRule]
     private let approvalPresenter: ApprovalPresenter
@@ -97,6 +98,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
     private var phoneValidator = PhoneControlAuthorityValidator()
     private var phoneReceiver: PhoneControlReceiver?
+    var phoneControlAuthorizedPeerNodeProvider: (@MainActor @Sendable () -> String?)?
+    weak var chatController: ChatSessionController?
+    private var agentContextReceiver: AgentContextTargetReceiver?
+    private var systemPermissionReceiver: SystemPermissionReceiver?
     private var latestReplySender: (@Sendable (HermesRealtimeRelayFrame) async throws -> Void)?
     private var activeSessionId: ComputerUseSessionID?
     private var auditLogger: ComputerUseAuditLogger?
@@ -140,6 +145,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         gate: ComputerUseCapabilityGate = DefaultComputerUseCapabilityGate(),
         macDispatcher: MacActionDispatcher = MacActionDispatcher(),
         inputController: MacInputController = MacInputController(),
+        remoteClipboardController: RemoteClipboardController? = nil,
         scopeMatcher: ComputerUseScopeMatcher = ComputerUseScopeMatcher(),
         scopeRulesProvider: @escaping @MainActor () -> [ComputerUseScopeRule] = { [] },
         browserDispatcher: BrowserDispatcher? = nil,
@@ -166,6 +172,11 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         self.gate = gate
         self.macDispatcher = macDispatcher
         self.inputController = inputController
+        self.remoteClipboardController = remoteClipboardController ?? RemoteClipboardController(
+            inputController: inputController,
+            gate: gate,
+            scopeMatcher: scopeMatcher
+        )
         self.scopeMatcher = scopeMatcher
         self.scopeRulesProvider = scopeRulesProvider
         self.browserDispatcher = browserDispatcher
@@ -283,6 +294,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             sessionId: sessionId,
             validator: phoneValidator,
             displayBoundsProvider: displayBoundsProvider,
+            authorizedPeerNodeProvider: phoneControlAuthorizedPeerNodeProvider,
             dispatchHandler: { [weak self] action, sessionId, counter in
                 await self?.handlePhoneAction(action, sessionId: sessionId, counter: counter)
             },
@@ -297,6 +309,43 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 try await self.latestReplySender?(frame)
             }
         )
+
+        agentContextReceiver = AgentContextTargetReceiver(
+            sessionId: sessionId,
+            validator: phoneValidator,
+            chatControllerProvider: { [weak self] in self?.chatController },
+            displayBoundsProvider: displayBoundsProvider,
+            replyFrameSink: { [weak self] frame in
+                try await self?.latestReplySender?(frame)
+            },
+            auditLoggerProvider: { [weak self] in self?.auditLogger }
+        )
+
+        systemPermissionReceiver = SystemPermissionReceiver(
+            validator: phoneValidator,
+            monitor: .shared,
+            denyFrameSink: { [weak self] frame in
+                try await self?.latestReplySender?(frame)
+            },
+            statusFrameSink: { [weak self] frame in
+                try await self?.latestReplySender?(frame)
+                await SystemPermissionRetryDispatcher.shared.observe(statusFrame: frame)
+            }
+        )
+
+        SystemPermissionMonitor.shared.attach(
+            frameSink: { [weak self] frame in
+                try? await self?.latestReplySender?(frame)
+                await SystemPermissionRetryDispatcher.shared.observe(statusFrame: frame)
+            },
+            uidProvider: { [weak self] in
+                guard let self else { return nil }
+                guard let uid = self.latestControlUID,
+                      let connectionID = self.latestControlConnectionID else { return nil }
+                return (uid: uid, connectionId: connectionID, sessionId: self.activeSessionId?.rawValue)
+            }
+        )
+        SystemPermissionMonitor.shared.start()
 
         appendTimeline(
             kind: "session.start",
@@ -319,6 +368,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         cancelPendingApprovals(decision: .reject, note: "session ended")
         activeSessionId = nil
         phoneReceiver = nil
+        systemPermissionReceiver = nil
+        SystemPermissionMonitor.shared.detach()
         focusFollowController?.stop()
         auditLogger = nil
         screenshotEvidenceDataByHash.removeAll()
@@ -351,6 +402,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         }
         activeSessionId = nil
         phoneReceiver = nil
+        systemPermissionReceiver = nil
+        SystemPermissionMonitor.shared.detach()
         focusFollowController?.stop()
         auditLogger = nil
         screenshotEvidenceDataByHash.removeAll()
@@ -667,6 +720,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             output = try macDispatcher.dispatch(input)
         case .macInspect(let inspect):
             output = try macDispatcher.inspect(inspect)
+        case .remoteClipboard:
+            throw CoordinatorError.noActiveSession
         case .phoneIntent(let intent):
             if intent.kind == .panic {
                 await panicHalt(source: .phoneGesture)
@@ -751,6 +806,38 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 return
             }
             await phoneReceiver.ingest(frame)
+        case .controlClipboardRequest:
+            guard let request = frame.control?.clipboardRequest else { return }
+            recordE2EProofEvent([
+                "event": "mac_control_clipboard_received",
+                "action": request.action.rawValue,
+                "connectionId": frame.connectionId,
+                "counter": String(request.authority.counter)
+            ])
+            let result = remoteClipboardController.handle(
+                request: request,
+                context: RemoteClipboardController.RuntimeContext(
+                    activeSessionId: activeSessionId,
+                    state: state,
+                    configuration: configuration,
+                    auditLogger: auditLogger,
+                    scopeRules: scopeRulesProvider(),
+                    validator: phoneValidator,
+                    isDirectPhoneControl: activeSessionIsDirectPhoneControl
+                )
+            )
+            applyRemoteClipboardResult(result)
+            emitControlFrame(
+                type: .controlClipboardResponse,
+                payload: HermesRealtimeRelayControlPayload(
+                    streamClass: "control.clipboard",
+                    sessionId: activeSessionId?.rawValue,
+                    clipboardResponse: result.response
+                )
+            )
+        case .controlAgentContextTarget:
+            guard let receiver = agentContextReceiver else { return }
+            await receiver.ingest(frame)
         case .controlApprovalResponse:
             if let response = frame.control?.approvalResponse {
                 submitApprovalResponse(response)
@@ -796,6 +883,14 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     agentGrantReceipt: receipt.wire()
                 )
             )
+        case .controlSystemPermissionRequest:
+            guard let receiver = systemPermissionReceiver else { return }
+            await receiver.ingest(frame)
+        case .controlSystemPermissionStatus:
+            // The Mac is the source of truth for system-permission
+            // status frames. We still allow phone-side reflections
+            // (e.g. tests) to flow through the retry dispatcher.
+            await SystemPermissionRetryDispatcher.shared.observe(statusFrame: frame)
         default:
             break
         }
@@ -959,6 +1054,73 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         )
     }
 
+    private func applyRemoteClipboardResult(_ result: RemoteClipboardController.Result) {
+        if var currentState = state {
+            if result.executed {
+                currentState.actionsExecuted += 1
+                currentState.lastActionAt = Date()
+            } else if result.rejected {
+                currentState.actionsRejected += 1
+            }
+            if let logger = auditLogger {
+                currentState.auditChainHeadHashHex = logger.headHashHex
+            }
+            state = currentState
+        }
+        if let denyReason = result.denyReason {
+            lastDeniedReason = denyReason
+        }
+        guard let action = result.action else { return }
+        let timelineStatus: HermesRealtimeRelayActionLogEntry.Status
+        switch result.response.status {
+        case .accepted:
+            timelineStatus = .completed
+        case .denied, .empty, .tooLarge, .unsupported:
+            timelineStatus = .rejected
+        case .error:
+            timelineStatus = .failed
+        }
+        appendTimeline(
+            kind: action.auditKind,
+            summary: remoteClipboardTimelineSummary(for: result.response, action: action),
+            status: timelineStatus,
+            entryIndex: result.auditEntry?.entryIndex,
+            parentEntryBlake3: result.auditEntry?.parentEntryHashHex,
+            errorCategory: result.response.status == .error ? "dispatch_error" : nil
+        )
+        emitControlFrame(
+            type: .controlActionLogEntry,
+            payload: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlActionLog.rawValue,
+                sessionId: state?.sessionId.rawValue,
+                actionLogEntry: actionTimeline.last
+            )
+        )
+    }
+
+    private func remoteClipboardTimelineSummary(
+        for response: HermesRealtimeRelayClipboardResponse,
+        action: ComputerUseAction
+    ) -> String {
+        switch response.status {
+        case .accepted:
+            switch response.action {
+            case .pasteToMac: return "Pasted phone clipboard text into Mac"
+            case .grabFromMac: return "Copied Mac clipboard text to phone"
+            }
+        case .empty:
+            return "Clipboard empty"
+        case .tooLarge:
+            return "Clipboard too large"
+        case .denied:
+            return response.detail ?? "Mac denied clipboard"
+        case .unsupported:
+            return "Unsupported clipboard content"
+        case .error:
+            return response.detail ?? action.executableSummary(forApproval: macDispatcher.currentScopeContext())
+        }
+    }
+
     private func controlDeniedReason(for denyReason: String) -> HermesRealtimeRelayControlDenied.Reason {
         switch ComputerUseDenyReason(rawValue: denyReason) {
         case .entitlement:
@@ -1112,7 +1274,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         case .browser(let browser):
             if let url = browser.url { return ComputerUseScopeContext(url: url) }
             return macDispatcher.currentScopeContext()
-        case .macInput, .macInspect, .phoneIntent:
+        case .macInput, .macInspect, .phoneIntent, .remoteClipboard:
             return macDispatcher.currentScopeContext()
         }
     }

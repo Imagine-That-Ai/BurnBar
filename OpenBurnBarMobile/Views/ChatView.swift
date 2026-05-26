@@ -8,6 +8,13 @@ struct ChatView: View {
     @State private var inputText = ""
     @State private var showClearConfirmation = false
     @State private var atomRouter = HermesAtomRouter()
+    @State private var chatViewMode: ChatViewMode = {
+        if let raw = UserDefaults.standard.string(forKey: "chatViewMode"),
+           let mode = ChatViewMode(rawValue: raw) {
+            return mode
+        }
+        return .agent
+    }()
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -33,21 +40,24 @@ struct ChatView: View {
         .navigationTitle("Hermes")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button(role: .destructive) {
-                        showClearConfirmation = true
+                HStack(spacing: 8) {
+                    MobileChatViewModePicker(chatViewMode: $chatViewMode)
+                    Menu {
+                        Button(role: .destructive) {
+                            showClearConfirmation = true
+                        } label: {
+                            Label("Clear Chat", systemImage: "trash")
+                        }
+                        .disabled(service.messages.isEmpty)
+                        Button {
+                            Task { await service.checkReachability() }
+                        } label: {
+                            Label("Check Connection", systemImage: "arrow.clockwise")
+                        }
                     } label: {
-                        Label("Clear Chat", systemImage: "trash")
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
                     }
-                    .disabled(service.messages.isEmpty)
-                    Button {
-                        Task { await service.checkReachability() }
-                    } label: {
-                        Label("Check Connection", systemImage: "arrow.clockwise")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
             }
         }
@@ -104,40 +114,54 @@ struct ChatView: View {
 
     // MARK: - Message List
 
+    @ViewBuilder
     private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: MobileTheme.Spacing.lg) {
-                    ForEach(service.messages) { message in
-                        HermesChatBubble(message: message)
-                            .id(message.id)
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .bottom).combined(with: .opacity),
-                                removal: .opacity
-                            ))
-                    }
-                    if service.isStreaming {
-                        HStack(spacing: 4) {
-                            MercuryThinkingIndicator()
+        if chatViewMode == .cli {
+            InlineAgentMirrorView(
+                singleton: AgentWatchOverlaySingleton.shared,
+                hermesService: service
+            )
+                .onChange(of: chatViewMode) { _, new in
+                    UserDefaults.standard.set(new.rawValue, forKey: "chatViewMode")
+                }
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: MobileTheme.Spacing.lg) {
+                        ForEach(service.messages) { message in
+                            HermesChatBubble(message: message, viewMode: chatViewMode)
+                                .id(message.id)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                                    removal: .opacity
+                                ))
                         }
-                        .id("thinking")
+                        if service.isStreaming {
+                            HStack(spacing: 4) {
+                                MercuryThinkingIndicator()
+                            }
+                            .id("thinking")
+                        }
+                    }
+                    .padding(MobileTheme.Spacing.lg)
+                }
+                .onChange(of: service.messages.count) { _, _ in
+                    if let last = service.messages.last {
+                        withAnimation(MobileTheme.Animation.gentle) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                 }
-                .padding(MobileTheme.Spacing.lg)
+                .onChange(of: service.isStreaming) { _, new in
+                    if new {
+                        withAnimation(MobileTheme.Animation.gentle) {
+                            proxy.scrollTo("thinking", anchor: .bottom)
+                        }
+                    }
+                }
             }
-            .onChange(of: service.messages.count) { _, _ in
-                if let last = service.messages.last {
-                    withAnimation(MobileTheme.Animation.gentle) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
-                }
-            }
-            .onChange(of: service.isStreaming) { _, new in
-                if new {
-                    withAnimation(MobileTheme.Animation.gentle) {
-                        proxy.scrollTo("thinking", anchor: .bottom)
-                    }
-                }
+            .onChange(of: chatViewMode) { _, new in
+                UserDefaults.standard.set(new.rawValue, forKey: "chatViewMode")
             }
         }
     }
@@ -232,10 +256,66 @@ struct ChatView: View {
 
 struct HermesChatBubble: View {
     let message: HermesChatMessage
+    var viewMode: ChatViewMode = .agent
 
     var isUser: Bool { message.role == .user }
 
     var body: some View {
+        if viewMode == .cli {
+            cliView
+        } else {
+            agentView
+        }
+    }
+
+    // MARK: - CLI View
+
+    @ViewBuilder
+    private var cliView: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if isUser {
+                HStack(alignment: .top, spacing: 4) {
+                    Text(">")
+                        .font(MobileTheme.Typography.mono)
+                        .foregroundStyle(MobileTheme.Colors.success)
+                        .frame(width: 14, alignment: .trailing)
+                    Text(message.text)
+                        .font(MobileTheme.Typography.monoSmall)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 4) {
+                    Text("☿")
+                        .font(MobileTheme.Typography.mono)
+                        .foregroundStyle(MobileTheme.hermesAureate)
+                        .frame(width: 14, alignment: .trailing)
+                    Text(cliTranscriptText)
+                        .font(MobileTheme.Typography.monoSmall)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.vertical, 1)
+    }
+
+    private var cliTranscriptText: String {
+        let pieces = message.toolCalls.map { tc in
+            "⟨\((tc.name))\(tc.detail != nil ? ": \((tc.detail!))" : "")⟩"
+        }
+        if pieces.isEmpty {
+            return message.text
+        }
+        return ([message.text] + pieces).filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    // MARK: - Agent View (existing bubble rendering)
+
+    @ViewBuilder
+    private var agentView: some View {
         HStack(alignment: .bottom, spacing: MobileTheme.Spacing.sm) {
             if isUser {
                 Spacer(minLength: 48)

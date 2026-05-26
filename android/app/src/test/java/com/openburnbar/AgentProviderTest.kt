@@ -19,6 +19,10 @@ class AgentProviderTest {
         assertEquals(AgentProvider.XAI, AgentProvider.fromKey("x.ai"))
         assertEquals(AgentProvider.XAI, AgentProvider.fromKey("grok"))
         assertEquals(AgentProvider.PI_AGENT, AgentProvider.fromKey("pi-agent"))
+        assertEquals(AgentProvider.FACTORY, AgentProvider.fromKey("droid"))
+        assertEquals(AgentProvider.FACTORY, AgentProvider.fromKey("factory-droid"))
+        assertEquals(AgentProvider.FORGE_DEV, AgentProvider.fromKey("forge"))
+        assertEquals(AgentProvider.FORGE_DEV, AgentProvider.fromKey("forge-dev"))
     }
 
     @Test

@@ -74,20 +74,26 @@ final class CastChannelClientTests: XCTestCase {
         XCTAssertEqual(payload["reload_time"] as? Int, 0)
     }
 
-    func testCastProbeAndWatchdogCleanupDoesNotStopReceiverApp() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let repoRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+    func testNonDestructiveCastCleanupDisconnectsWithoutStoppingReceiver() {
+        let client = CastReceiverClientLifecycleSpy()
 
-        let bridgeSource = try String(contentsOf: repoRoot.appendingPathComponent("AgentLens/Services/SmartHub/SmartHubBridgeController.swift"))
-        XCTAssertFalse(bridgeSource.contains("await probeClient.stop()"))
-        XCTAssertFalse(bridgeSource.contains("await refreshClient.stop()"))
-        XCTAssertFalse(bridgeSource.contains("await kickClient.stop()"))
-        XCTAssertFalse(bridgeSource.contains("await recastClient.stop()"))
+        CastReceiverClientCleanup.disconnectOnly(client)
 
-        let strategySource = try String(contentsOf: repoRoot.appendingPathComponent("AgentLens/Services/Cast/CastReconnectStrategy.swift"))
-        XCTAssertTrue(strategySource.contains("client.disconnect()"))
+        XCTAssertEqual(client.disconnectCount, 1)
+        XCTAssertEqual(client.stopCount, 0)
+    }
+}
+
+@MainActor
+private final class CastReceiverClientLifecycleSpy: CastReceiverClientLifecycle {
+    private(set) var stopCount = 0
+    private(set) var disconnectCount = 0
+
+    func stop() async {
+        stopCount += 1
+    }
+
+    func disconnect() {
+        disconnectCount += 1
     }
 }

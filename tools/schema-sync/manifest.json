@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "canonicalRoot": "tools/schema-sync/typespec",
+  "domains": [
+    {
+      "id": "usage-quota",
+      "typespec": "typespec/domains/usage-quota.tsp",
+      "firestoreCollections": [
+        "users/{uid}/usage/{docId}",
+        "users/{uid}/usage_rollups/{windowKey}",
+        "users/{uid}/quota_snapshots/{snapshotId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/usage-quota.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/UsageQuotaModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/UsageQuotaModels.kt"
+      },
+      "swiftHandMirror": [
+        "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/TokenUsage.swift"
+      ],
+      "kotlinHandMirror": [
+        "android/app/src/main/java/com/openburnbar/data/models/TokenUsage.kt"
+      ]
+    }
+  ]
+}

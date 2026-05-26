@@ -414,7 +414,7 @@ service cloud.firestore {
         && request.resource.data.id is string
         && request.resource.data.id == requestId
         && request.resource.data.connectionId is string
-        && request.resource.data.operation in ["chatCompletions", "cliAgentChat", "models", "sessions", "sessionDetail", "profiles", "jobs"]
+        && request.resource.data.operation in ["chatCompletions", "cliAgentChat", "cliAgentModelCatalog", "models", "sessions", "sessionDetail", "profiles", "jobs"]
         && request.resource.data.status in ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired"]
         && request.resource.data.method in ["GET", "POST"]
         && request.resource.data.chunkCount is int
@@ -661,6 +661,21 @@ service cloud.firestore {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId);
       allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Budget rules: owner-scoped CRUD. Cross-device sync writes these from
+    // macOS CloudBudgetService and iOS BudgetRulesStore.
+    match /users/{userId}/budgetRules/{ruleId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Budget events: append-only audit log. Clients create events but never
+    // update or delete them — the history is immutable.
+    match /users/{userId}/budgetEvents/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId);
     }
 
     match /users/{userId}/conversations/{conversationId} {

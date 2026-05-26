@@ -1348,6 +1348,54 @@ final class OpenBurnBarDatabase: Sendable {
                 """)
         }
 
+        migrator.registerMigration("v42_budget_rules_and_events") { db in
+            // budget_rules — durable user-configured spending limits
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS budget_rules (
+                    id TEXT PRIMARY KEY,
+                    scope TEXT NOT NULL,
+                    identifier TEXT,
+                    providerID TEXT,
+                    accountID TEXT,
+                    projectName TEXT,
+                    label TEXT,
+                    amountUSD REAL NOT NULL,
+                    period TEXT NOT NULL,
+                    behavior TEXT NOT NULL,
+                    fallbackCredentialIDsJSON TEXT,
+                    pausedUntil DATETIME,
+                    createdAt DATETIME NOT NULL,
+                    updatedAt DATETIME NOT NULL,
+                    syncedAt DATETIME,
+                    sourceDeviceID TEXT,
+                    isEnabled INTEGER NOT NULL DEFAULT 1
+                )
+                """)
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS budget_rules_scope_idx ON budget_rules(scope, isEnabled)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS budget_rules_provider_account_idx ON budget_rules(providerID, accountID, isEnabled)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS budget_rules_project_idx ON budget_rules(projectName, isEnabled)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS budget_rules_synced_idx ON budget_rules(syncedAt)")
+
+            // budget_events — append-only audit log for warnings, blocks, overrides, pauses
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS budget_events (
+                    id TEXT PRIMARY KEY,
+                    ruleID TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    source TEXT,
+                    amountAtEvent REAL NOT NULL,
+                    limitAtEvent REAL NOT NULL,
+                    detailJSON TEXT,
+                    occurredAt DATETIME NOT NULL,
+                    syncedAt DATETIME,
+                    sourceDeviceID TEXT
+                )
+                """)
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS budget_events_rule_idx ON budget_events(ruleID, occurredAt DESC)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS budget_events_kind_idx ON budget_events(kind, occurredAt DESC)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS budget_events_synced_idx ON budget_events(syncedAt)")
+        }
+
         return migrator
     }
 

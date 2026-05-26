@@ -3,6 +3,9 @@ package com.openburnbar.data.media
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardResponse
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardStatus
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaFrameChunk
@@ -27,6 +30,8 @@ class MediaControlStreamCoordinatorTest {
         val coordinator = MediaControlStreamCoordinator(
             dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
             scope = backgroundScope,
+            peerDeviceIdProvider = { "android-device-1" },
+            controlAuthorityPeerNodeIdProvider = { "android-peer-node-1" },
         )
 
         coordinator.start(uid = "uid-1", connectionID = "conn-1")
@@ -44,6 +49,9 @@ class MediaControlStreamCoordinatorTest {
         assertEquals(requestID, mirror.media?.mirrorRequest?.requestId)
         assertEquals("Alberto's Android", mirror.media?.mirrorRequest?.requesterDisplayName)
         assertEquals("media.screen.video", mirror.media?.mirrorRequest?.streamClass)
+        assertNotNull(mirror.media?.mirrorRequest?.viewerId)
+        assertEquals("android-device-1", mirror.media?.mirrorRequest?.viewerDeviceId)
+        assertEquals("android-peer-node-1", mirror.media?.mirrorRequest?.controlAuthorityPeerNodeId)
         assertEquals(
             MercuryMediaFrameVersionSupport.V1_AND_V2,
             mirror.media?.mirrorRequest?.streamingCapabilities?.toMercury()?.mediaFrameVersions,
@@ -61,13 +69,14 @@ class MediaControlStreamCoordinatorTest {
 
         coordinator.start(uid = "uid-1", connectionID = "conn-1")
         val requestID = coordinator.requestMirror("Alberto's Android")
-        coordinator.stopMirror(requestID = requestID, reason = "viewer_closed")
+        coordinator.stopMirror(requestID = requestID, sessionID = "session-1", reason = "viewer_closed")
 
         val stop = stream.sent.last { it.type == HermesRealtimeRelayFrameType.MEDIA_MIRROR_STOP }
         assertEquals("uid-1", stop.uid)
         assertEquals("conn-1", stop.connectionId)
         assertEquals(requestID, stop.requestId)
         assertEquals(requestID, stop.media?.mirrorStop?.requestId)
+        assertEquals("session-1", stop.media?.mirrorStop?.sessionId)
         assertEquals("viewer_closed", stop.media?.mirrorStop?.reason)
         assertTrue((stop.media?.mirrorStop?.stoppedAt ?: 0.0) > 0.0)
     }
@@ -93,6 +102,12 @@ class MediaControlStreamCoordinatorTest {
                         requestId = requestID,
                         decision = HermesRealtimeRelayMirrorAck.Decision.BUSY,
                         detail = "Mac is busy",
+                        sessionId = "session-1",
+                        viewerId = "viewer-android-1",
+                        viewerRole = "watcher",
+                        viewerCount = 2,
+                        maxViewers = 3,
+                        controlOwnerViewerId = "viewer-ios-1",
                     )
                 ),
             )
@@ -105,6 +120,12 @@ class MediaControlStreamCoordinatorTest {
         }
         assertEquals(HermesRealtimeRelayMirrorAck.Decision.BUSY, coordinator.lastMirrorAck.value?.decision)
         assertEquals("Mac is busy", coordinator.lastMirrorAck.value?.detail)
+        assertEquals("session-1", coordinator.lastMirrorAck.value?.sessionId)
+        assertEquals("viewer-android-1", coordinator.lastMirrorAck.value?.viewerId)
+        assertEquals("watcher", coordinator.lastMirrorAck.value?.viewerRole)
+        assertEquals(2, coordinator.lastMirrorAck.value?.viewerCount)
+        assertEquals(3, coordinator.lastMirrorAck.value?.maxViewers)
+        assertEquals("viewer-ios-1", coordinator.lastMirrorAck.value?.controlOwnerViewerId)
     }
 
     @Test
@@ -139,6 +160,45 @@ class MediaControlStreamCoordinatorTest {
         }
         assertEquals(HermesRealtimeRelayControlDenied.Reason.UNKNOWN, coordinator.lastControlDenied.value?.reason)
         assertEquals("accessibility_revoked", coordinator.lastControlDenied.value?.detail)
+    }
+
+    @Test
+    fun readLoop_publishesClipboardResponseForMirrorTools() = runTest {
+        val stream = RecordingStream()
+        val coordinator = MediaControlStreamCoordinator(
+            dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+            scope = backgroundScope,
+        )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        stream.incoming.send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_CLIPBOARD_RESPONSE,
+                uid = "uid-1",
+                connectionId = "conn-1",
+                requestId = "clipboard-response-1",
+                control = HermesRealtimeRelayControlPayload(
+                    streamClass = "control.clipboard",
+                    clipboardResponse = HermesRealtimeRelayClipboardResponse(
+                        requestId = "clipboard-response-1",
+                        action = HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC,
+                        status = HermesRealtimeRelayClipboardStatus.ACCEPTED,
+                        contentType = "text/plain",
+                        text = "mac text",
+                        byteCount = 8,
+                    )
+                ),
+            )
+        )
+
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (coordinator.lastClipboardResponse.value?.requestId != "clipboard-response-1") {
+                kotlinx.coroutines.yield()
+            }
+        }
+        assertEquals(HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC, coordinator.lastClipboardResponse.value?.action)
+        assertEquals(HermesRealtimeRelayClipboardStatus.ACCEPTED, coordinator.lastClipboardResponse.value?.status)
+        assertEquals("mac text", coordinator.lastClipboardResponse.value?.text)
     }
 
     @Test
@@ -331,6 +391,46 @@ class MediaControlStreamCoordinatorTest {
             heartbeat.media?.presence?.streamingCapabilities?.toMercury()?.mediaFrameVersions,
         )
         assertNotNull(heartbeat.media?.presence?.sentAt)
+    }
+
+    @Test
+    fun readLoop_updatesRoundTripMillisFromPresenceReply() = runTest {
+        val stream = RecordingStream()
+        val coordinator = MediaControlStreamCoordinator(
+            dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+            scope = backgroundScope,
+            presenceHeartbeatIntervalMillis = 60_000,
+        )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (stream.sent.none { it.type == HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT }) {
+                kotlinx.coroutines.yield()
+            }
+        }
+
+        assertEquals(null, coordinator.lastRoundTripMillis.value)
+        stream.incoming.send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
+                uid = "uid-1",
+                connectionId = "conn-1",
+                media = HermesRealtimeRelayMediaPayload(
+                    presence = HermesRealtimeRelayPresenceHeartbeat(
+                        deviceDisplayName = "Alberto's Mac",
+                        capabilities = listOf("mirror.host"),
+                        sentAt = "2026-05-25T00:00:00Z",
+                    )
+                ),
+            )
+        )
+
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (coordinator.lastRoundTripMillis.value == null) {
+                kotlinx.coroutines.yield()
+            }
+        }
+        assertTrue((coordinator.lastRoundTripMillis.value ?: -1) >= 0)
     }
 
     @Test

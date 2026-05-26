@@ -61,6 +61,7 @@ final class IrohRelayRequestHandler: Sendable {
     private let mediaControlRegistrar: MediaControlStreamRegistrar?
     private let controlDispatcher: ControlFrameDispatcher?
     private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
+    private let cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
     private let auditLogger: (any IrohTransportAuditLogging)?
 
     @MainActor
@@ -72,6 +73,7 @@ final class IrohRelayRequestHandler: Sendable {
         mediaControlRegistrar: MediaControlStreamRegistrar? = nil,
         controlDispatcher: ControlFrameDispatcher? = nil,
         cliChatDispatcher: CLIAgentRelayChatDispatcher? = nil,
+        cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher? = nil,
         auditLogger: (any IrohTransportAuditLogging)? = nil
     ) {
         self.relayKeyStore = relayKeyStore
@@ -81,6 +83,7 @@ final class IrohRelayRequestHandler: Sendable {
         self.mediaControlRegistrar = mediaControlRegistrar
         self.controlDispatcher = controlDispatcher
         self.cliChatDispatcher = cliChatDispatcher
+        self.cliModelCatalogDispatcher = cliModelCatalogDispatcher
         self.auditLogger = auditLogger
     }
 
@@ -204,6 +207,11 @@ final class IrohRelayRequestHandler: Sendable {
                  .controlApprovalResponse,
                  .controlAgentGrantRequest,
                  .controlAgentGrantReceipt,
+                 .controlClipboardRequest,
+                 .controlClipboardResponse,
+                 .controlAgentContextTarget,
+                 .controlSystemPermissionRequest,
+                 .controlSystemPermissionStatus,
                  .controlDenied:
                 guard let controlDispatcher else { continue }
                 let replySender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
@@ -291,6 +299,17 @@ final class IrohRelayRequestHandler: Sendable {
         }
         if operation == .cliAgentChat {
             try await forwardCLIAgentChat(
+                payload: encryptedPayload,
+                uid: uid,
+                connectionID: connectionID,
+                requestID: requestID,
+                keyData: keyData,
+                stream: stream
+            )
+            return
+        }
+        if operation == .cliAgentModelCatalog {
+            try await forwardCLIRuntimeModelCatalog(
                 payload: encryptedPayload,
                 uid: uid,
                 connectionID: connectionID,
@@ -391,6 +410,56 @@ final class IrohRelayRequestHandler: Sendable {
             connectionID: connectionID,
             requestID: requestID,
             extra: ["chunks": String(chunkCount)]
+        )
+    }
+
+    private func forwardCLIRuntimeModelCatalog(
+        payload: HermesRelayEncryptedRequestPayload,
+        uid: String,
+        connectionID: String,
+        requestID: String,
+        keyData: Data,
+        stream: any IrohRelayStream
+    ) async throws {
+        guard let cliModelCatalogDispatcher else {
+            throw IrohRelayHostError.cliModelCatalogUnavailable
+        }
+        guard let body = payload.body?.data(using: .utf8) else {
+            throw IrohRelayHostError.invalidPath
+        }
+        let request = try JSONDecoder().decode(CLIRuntimeModelCatalogRequest.self, from: body)
+        await auditStage(
+            "host_forward_cli_model_catalog_start",
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            extra: ["runtime": request.runtime]
+        )
+        let response = try await cliModelCatalogDispatcher(request)
+        let data = try JSONEncoder().encode(response)
+        try await sendChunk(
+            data: String(data: data, encoding: .utf8) ?? "{}",
+            sequence: 0,
+            kind: .data,
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            keyData: keyData,
+            stream: stream
+        )
+        try await sendComplete(
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            chunkCount: 1,
+            stream: stream
+        )
+        await auditStage(
+            "host_forward_cli_model_catalog_complete",
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            extra: ["count": String(response.options.count)]
         )
     }
 
@@ -672,7 +741,7 @@ final class IrohRelayRequestHandler: Sendable {
         switch operation {
         case .chatCompletions:
             path = "v1/chat/completions"
-        case .cliAgentChat:
+        case .cliAgentChat, .cliAgentModelCatalog:
             throw IrohRelayHostError.invalidPath
         case .models:
             path = "v1/models"
@@ -722,7 +791,7 @@ final class IrohRelayRequestHandler: Sendable {
         switch operation {
         case .chatCompletions, .models:
             return true
-        case .cliAgentChat, .sessions, .profiles, .jobs, .sessionDetail:
+        case .cliAgentChat, .cliAgentModelCatalog, .sessions, .profiles, .jobs, .sessionDetail:
             return false
         }
     }
@@ -1249,6 +1318,7 @@ enum IrohRelayHostError: LocalizedError {
     case upstreamError(String)
     case streamSendTimeout(stage: String)
     case cliAgentChatUnavailable
+    case cliModelCatalogUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -1268,6 +1338,8 @@ enum IrohRelayHostError: LocalizedError {
             return "Iroh relay stalled while sending \(stage) to the mobile client."
         case .cliAgentChatUnavailable:
             return "Codex and Claude chat relay is not available on this Mac yet."
+        case .cliModelCatalogUnavailable:
+            return "CLI model catalog discovery is not available on this Mac yet."
         }
     }
 }

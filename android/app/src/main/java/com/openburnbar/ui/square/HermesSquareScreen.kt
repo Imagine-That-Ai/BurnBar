@@ -132,7 +132,7 @@ import java.util.UUID
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HermesSquareScreen(
-    onOpenLegacyRuntime: (AssistantRuntimeID) -> Unit = {},
+    onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit = { _, _ -> },
     onOpenBrandZone: (String) -> Unit = {},
     onOpenPairedMac: (String) -> Unit = {}
 ) {
@@ -405,7 +405,7 @@ fun HermesSquareScreen(
                                     val identity = registry.identity(hit.id)
                                     val runtime = identity?.runtimeID
                                     if (runtime != null && (runtime == AssistantRuntimeID.HERMES || runtime == AssistantRuntimeID.PI)) {
-                                        onOpenLegacyRuntime(runtime)
+                                        onOpenLegacyRuntime(runtime, null)
                                     } else {
                                         showBrandZoneURI = hit.id
                                     }
@@ -418,7 +418,7 @@ fun HermesSquareScreen(
                                     if (cliSession != null) {
                                         selectedCliSession = cliSession
                                     } else if (runtime != null) {
-                                        onOpenLegacyRuntime(runtime)
+                                        onOpenLegacyRuntime(runtime, hit.id)
                                     }
                                 }
                                 HermesSquareHit.Kind.CLOUD_SESSION -> {
@@ -488,7 +488,7 @@ fun HermesSquareScreen(
                                     onOpenPairedMac(uri.removePrefix(AgentIdentity.PAIRED_MAC_URI_PREFIX))
                                 }
                                 runtime != null -> {
-                                    onOpenLegacyRuntime(runtime)
+                                    onOpenLegacyRuntime(runtime, null)
                                 }
                                 else -> {
                                     showBrandZoneURI = uri
@@ -518,6 +518,7 @@ fun HermesSquareScreen(
                         onLongPress = { mission ->
                             missionToManage = mission
                         },
+                        onComposeMission = { showFanOut = true },
                         modifier = Modifier.padding(start = 16.dp, end = 0.dp)
                     )
                 }
@@ -566,7 +567,7 @@ fun HermesSquareScreen(
                                 if (cliSession != null) {
                                     selectedCliSession = cliSession
                                 } else if (runtime != null) {
-                                    onOpenLegacyRuntime(runtime)
+                                    onOpenLegacyRuntime(runtime, item.id)
                                 } else {
                                     showBrandZoneURI = item.agentURI
                                 }
@@ -1518,16 +1519,43 @@ private fun PinnedCell(
 private fun ActiveMissionsStrip(
     missions: List<com.openburnbar.data.missions.ActiveMission>,
     onLongPress: (com.openburnbar.data.missions.ActiveMission) -> Unit,
+    onComposeMission: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            "Active missions",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 0.dp, end = 16.dp)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(end = 16.dp)
+        ) {
+            Text(
+                "Active missions",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(
+                onClick = onComposeMission,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                modifier = Modifier.height(24.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(10.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        "Compose",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
         Spacer(modifier = Modifier.height(8.dp))
         if (missions.isEmpty()) {
             Surface(
@@ -1537,6 +1565,7 @@ private fun ActiveMissionsStrip(
                 modifier = Modifier
                     .width(280.dp)
                     .height(110.dp)
+                    .clickable { onComposeMission() }
             ) {
                 Column(
                     verticalArrangement = Arrangement.Center,
@@ -1562,7 +1591,7 @@ private fun ActiveMissionsStrip(
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        "Compose one from the FAB to fan out across runtimes.",
+                        "No live missions. Tap here to compose one.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         maxLines = 3,

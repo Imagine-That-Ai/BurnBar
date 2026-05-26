@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.settings.rememberThemePalette
+import com.openburnbar.ui.settings.rememberUIMode
+import androidx.compose.ui.platform.LocalDensity
 
 // ── Aurora Color Tokens ──
 // Light: warm botanical cream. Dark: cool slate blue (GitHub/Xcode dark lineage).
@@ -165,9 +167,53 @@ object AuroraColors {
     fun whimsy(isDark: Boolean) = if (isDark) whimsyDark else whimsy
 
     /**
-     * Completely shifts the entire color palette based on user preference.
+     * Completely shifts the entire color palette based on user preference and UI mode.
      */
-    fun updateColorsForPalette(palette: String, isDark: Boolean) {
+    fun updateColorsForPalette(palette: String, isDark: Boolean, uiMode: UIMode = UIMode.STANDARD) {
+        if (uiMode == UIMode.COOKING) {
+            // ACCENTS
+            _ember.value        = Color(0xFFE74C3C) // Premium Sriracha Crimson
+            _amber.value        = Color(0xFFF39C12) // Warm Honey Gold
+            _blaze.value        = Color(0xFFE74C3C) // Premium Sriracha Crimson
+            _whimsy.value       = Color(0xFF9B59B6) // Fig/Plum Purple
+            _purple.value       = Color(0xFF9B59B6) // Fig/Plum Purple
+            _teal.value         = Color(0xFF2ECC71) // Soft Basil Sage
+            _gold.value         = Color(0xFFF39C12) // Warm Honey Gold
+
+            _emberDark.value    = Color(0xFFE74C3C) // Premium Sriracha Crimson
+            _amberDark.value    = Color(0xFFF39C12) // Warm Honey Gold
+            _whimsyDark.value   = Color(0xFF9B59B6) // Fig/Plum Purple
+            _purpleDark.value   = Color(0xFF9B59B6) // Fig/Plum Purple
+            _tealDark.value     = Color(0xFF2ECC71) // Soft Basil Sage
+            _goldDark.value     = Color(0xFFF39C12) // Warm Honey Gold
+
+            // SURFACES & TEXT
+            _lightBackground.value       = Color(0xFFFAF6F0) // Warm Ivory
+            _lightSurface.value          = Color(0xFFFFFFFF) // Warm Meringue
+            _lightSurfaceElevated.value  = Color(0xFFFFFFFF) // Warm Meringue
+            _lightBorder.value           = Color(0xFFEFEBE4) // Soft Linen Outline
+            _lightBorderSubtle.value     = Color(0xFFEFEBE4).copy(alpha = 0.5f)
+            _lightTextPrimary.value      = Color(0xFF2C1D11) // Rich Coffee Text
+            _lightTextSecondary.value    = Color(0xFF7D6652) // Warm Chestnut/Caramel
+            _lightTextMuted.value        = Color(0xFF7D6652).copy(alpha = 0.7f)
+
+            _darkBackground.value        = Color(0xFF150F0A) // Rich Cacao Black
+            _darkSurface.value           = Color(0xFF1E1610) // Walnut Wood
+            _darkSurfaceElevated.value   = Color(0xFF1E1610) // Walnut Wood
+            _darkBorder.value            = Color(0xFF3E2718) // Deep Mahogany
+            _darkBorderSubtle.value      = Color(0xFF3E2718).copy(alpha = 0.5f)
+            _darkTextPrimary.value       = Color(0xFFF7EFE5) // Steamed Cream
+            _darkTextSecondary.value     = Color(0xFFCBB5A1) // Cinnamon Dust
+            _darkTextMuted.value         = Color(0xFFCBB5A1).copy(alpha = 0.7f)
+
+            // HERMES & SEMANTIC
+            _hermesMercury.value      = Color(0xFFCBB5A1)
+            _hermesAureate.value      = Color(0xFFF39C12)
+            _hermesMercuryDark.value  = Color(0xFFCBB5A1)
+            _hermesAureateDark.value  = Color(0xFFF39C12)
+            return
+        }
+
         when (palette) {
             "AuroraTeal" -> {
                 // ACCENTS
@@ -658,48 +704,52 @@ fun AuroraTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    // 1. Reactive color palette sync inside remember Block
+    // 1. Reactive color palette, UI Mode, and Mode Theme states
     val palette = rememberThemePalette().value
-    remember(palette, darkTheme) {
-        AuroraColors.updateColorsForPalette(palette, darkTheme)
+    val uiMode = rememberUIMode().value
+
+    val modeTheme = remember(uiMode, darkTheme) { UIModeTheme(uiMode, darkTheme) }
+
+    remember(palette, darkTheme, uiMode) {
+        AuroraColors.updateColorsForPalette(palette, darkTheme, uiMode)
         true
     }
 
-    // 2. Build the ColorScheme dynamically based on updated active color states
+    // 2. Build the ColorScheme dynamically based on active mode theme accents and surfaces
     val colorScheme = if (darkTheme) {
         darkColorScheme(
-            primary = AuroraColors.emberDark,
-            secondary = AuroraColors.amberDark,
-            tertiary = AuroraColors.whimsyDark,
-            background = AuroraColors.darkBackground,
-            surface = AuroraColors.darkSurface,
-            surfaceVariant = AuroraColors.darkSurfaceElevated,
+            primary = modeTheme.primaryAccent,
+            secondary = modeTheme.secondaryAccent,
+            tertiary = modeTheme.tertiaryAccent,
+            background = modeTheme.background,
+            surface = modeTheme.surface,
+            surfaceVariant = modeTheme.surface,
             onPrimary = Color.White,
             onSecondary = Color.White,
             onTertiary = Color.White,
-            onBackground = AuroraColors.darkTextPrimary,
-            onSurface = AuroraColors.darkTextPrimary,
-            onSurfaceVariant = AuroraColors.darkTextSecondary,
-            outline = AuroraColors.darkBorder,
-            outlineVariant = AuroraColors.darkBorderSubtle,
+            onBackground = modeTheme.textPrimary,
+            onSurface = modeTheme.textPrimary,
+            onSurfaceVariant = modeTheme.textSecondary,
+            outline = modeTheme.border,
+            outlineVariant = modeTheme.border,
             error = AuroraColors.errorDark
         )
     } else {
         lightColorScheme(
-            primary = AuroraColors.ember,
-            secondary = AuroraColors.amber,
-            tertiary = AuroraColors.whimsy,
-            background = AuroraColors.lightBackground,
-            surface = AuroraColors.lightSurface,
-            surfaceVariant = AuroraColors.lightSurfaceElevated,
+            primary = modeTheme.primaryAccent,
+            secondary = modeTheme.secondaryAccent,
+            tertiary = modeTheme.tertiaryAccent,
+            background = modeTheme.background,
+            surface = modeTheme.surface,
+            surfaceVariant = modeTheme.surface,
             onPrimary = Color.White,
             onSecondary = Color.White,
             onTertiary = Color.White,
-            onBackground = AuroraColors.lightTextPrimary,
-            onSurface = AuroraColors.lightTextPrimary,
-            onSurfaceVariant = AuroraColors.lightTextSecondary,
-            outline = AuroraColors.lightBorder,
-            outlineVariant = AuroraColors.lightBorderSubtle,
+            onBackground = modeTheme.textPrimary,
+            onSurface = modeTheme.textPrimary,
+            onSurfaceVariant = modeTheme.textSecondary,
+            outline = modeTheme.border,
+            outlineVariant = modeTheme.border,
             error = AuroraColors.error
         )
     }
@@ -718,7 +768,9 @@ fun AuroraTheme(
     val cloudBadgeSelection = com.openburnbar.ui.pro.rememberLocalCloudBadgeSelection()
     CompositionLocalProvider(
         LocalAuroraReduceMotion provides reduceMotion,
-        com.openburnbar.ui.pro.LocalCloudBadgeSelection provides cloudBadgeSelection
+        com.openburnbar.ui.pro.LocalCloudBadgeSelection provides cloudBadgeSelection,
+        LocalUIMode provides uiMode,
+        LocalUIModeTheme provides modeTheme
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

@@ -318,24 +318,58 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(configuration.brand.bundledLogoCandidates.first, "CohereLogo")
     }
 
-    func test_providerQuotaRefreshDoesNotMarkDaemonOwnedSlotMissingWhenAppSecretMirrorIsAbsent() throws {
-        let projectRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: projectRoot.appendingPathComponent("AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ProviderConfig.swift"),
-            encoding: .utf8
+    @MainActor
+    func test_providerQuotaRefreshDoesNotMarkDaemonOwnedSlotMissingWhenAppSecretMirrorIsAbsent() async throws {
+        let harness = try makeRuntimePathsHarness(name: "daemon-owned-quota-slot")
+        defer { harness.cleanup() }
+
+        let slotID = "daemon-owned-\(UUID().uuidString)"
+        let slot = BurnBarProviderCredentialSlot(
+            slotID: slotID,
+            label: "Daemon Plan",
+            isEnabled: true,
+            status: .ready,
+            lastQuotaRemainingPercent: 0.42,
+            lastStatusMessage: "Last daemon quota snapshot"
+        )
+        let configSnapshot = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: "minimax",
+                    isEnabled: true,
+                    baseURL: "https://api.minimax.io/v1",
+                    preferredModelIDs: ["minimax-m2.7-highspeed"],
+                    preferredCredentialSlotID: slotID,
+                    credentialSlots: [slot]
+                )
+            ]
         )
 
-        XCTAssertTrue(
-            source.contains("New provider slots are daemon-owned."),
-            "Quota refresh must treat app-side keychain misses as unknown daemon-owned credentials, not missing credentials."
+        let manager = OpenBurnBarDaemonManager(
+            settingsManager: makeSettingsManager(),
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { nil }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
         )
-        XCTAssertFalse(
-            source.contains("} else {\n                        slot.status = .missingSecret\n                        slot.lastStatusMessage = \"Missing API key\""),
-            "The post-save quota refresh path must not overwrite daemon-owned credential slots as missing when the app-side mirror is empty."
+        var refreshedSnapshot = configSnapshot
+
+        let didMutate = try await manager.applyProviderCredentialSlotQuotaRefresh(
+            to: &refreshedSnapshot,
+            providerID: "minimax",
+            secretLookup: { _ in nil },
+            fetchSnapshot: { _, _ in
+                XCTFail("Daemon-owned slots without an app-side mirror must not trigger a quota fetch.")
+                throw OpenBurnBarDaemonManagerError.rpcError("Unexpected quota fetch")
+            }
         )
+
+        XCTAssertFalse(didMutate)
+        let configuration = try XCTUnwrap(refreshedSnapshot.providerSettings(id: "minimax"))
+        let refreshedSlot = try XCTUnwrap(configuration.credentialSlots.first)
+        XCTAssertEqual(refreshedSlot.slotID, slotID)
+        XCTAssertEqual(refreshedSlot.status, .ready)
+        XCTAssertEqual(refreshedSlot.lastStatusMessage, "Last daemon quota snapshot")
+        XCTAssertEqual(refreshedSlot.lastQuotaRemainingPercent, 0.42)
     }
 
     func test_usageSync_importsDaemonUsageIntoLocalShape() throws {

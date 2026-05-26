@@ -35,7 +35,7 @@ extension AccountSwitcherSettingsView {
 
     func refreshLiveCLIAuthStates() {
         var next: [SwitcherCLIProfileType: CLIAuthInfo] = [:]
-        for cliType in [SwitcherCLIProfileType.claude, .codex, .opencode] {
+        for cliType in [SwitcherCLIProfileType.claude, .codex, .opencode, .droid, .forge, .antigravity] {
             next[cliType] = CLIAuthDiscovery.discoverAuthState(for: cliType)
         }
         liveCLIAuthStates = next
@@ -198,9 +198,9 @@ extension AccountSwitcherSettingsView {
         switch group.cliType {
         case .codex, .claude:
             await addCLIAccount(for: group)
-        case .opencode:
+        case .opencode, .droid, .forge, .antigravity:
             editFormTargetKind = .cli
-            editFormCLIType = .opencode
+            editFormCLIType = group.cliType ?? .opencode
             showingCreateSheet = true
         case .none:
             switch group.browserType {
@@ -628,7 +628,7 @@ extension AccountSwitcherSettingsView {
             return .openAI
         case .claude:
             return .claude
-        case .opencode, .none:
+        case .opencode, .droid, .forge, .antigravity, .none:
             return nil
         }
     }

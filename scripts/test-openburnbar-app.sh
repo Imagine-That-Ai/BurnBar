@@ -35,7 +35,13 @@ artifact_root="$repo_root/.derived-data"
 # can launch test hosts via launchd/testmanagerd, and those child processes do
 # not always inherit the caller's TCC grant for Documents, which can wedge dyld
 # before XCTest starts. Repo-local artifacts remain under .derived-data.
-derived_data_root="${OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT:-${TMPDIR:-/tmp}/openburnbar-app-tests}"
+if [[ -n "${OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT:-}" ]]; then
+    derived_data_root="$OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT"
+elif [[ -n "${OPENBURNBAR_SNAPSHOT_RECORD:-}" || "${OPENBURNBAR_RUN_SNAPSHOT_TESTS:-}" == "YES" ]]; then
+    derived_data_root="${TMPDIR:-/tmp}/openburnbar-snapshot-tests"
+else
+    derived_data_root="${TMPDIR:-/tmp}/openburnbar-app-tests"
+fi
 attempt_log_path="$artifact_root/test-openburnbar-app-attempts.jsonl"
 
 # Test runner timeouts (seconds). Defensive guards against hung individual
@@ -222,6 +228,12 @@ if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
 fi
 if [[ -n "${RUNNER_OS:-}" ]]; then
     export TEST_RUNNER_RUNNER_OS="${RUNNER_OS}"
+fi
+if [[ -z "${OPENBURNBAR_SNAPSHOT_RECORD:-}" && "${OPENBURNBAR_RUN_SNAPSHOT_TESTS:-}" != "YES" ]]; then
+    # Visual snapshot rendering can wedge under the full macOS app-test host on
+    # some Xcode/macOS pairs. The normal app gate matches GitHub by skipping
+    # snapshots; local snapshot audits stay available on demand.
+    export TEST_RUNNER_OPENBURNBAR_SKIP_SNAPSHOTS=true
 fi
 
 # Canonical coverage xcresult location consumed by extract-coverage.sh

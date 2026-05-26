@@ -159,5 +159,146 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             counter: envelope.counter
         )
     }
+
+    public func validate(
+        envelope: HermesRealtimeRelayAuthorityEnvelope,
+        target: HermesRealtimeRelayAgentContextTarget,
+        now: Date = Date()
+    ) throws -> ValidationResult {
+        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
+        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+
+        let skew = abs(now.timeIntervalSince(envelope.timestamp))
+        guard skew <= freshnessWindow else {
+            throw ValidationError.staleTimestamp(skewSeconds: skew)
+        }
+
+        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        guard envelope.counter > lastSeen else {
+            throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
+        }
+
+        let observedHex = try ComputerUsePhoneControlSigner()
+            .canonicalAgentContextTargetHashHex(target: target)
+        guard observedHex == envelope.intentHashBlake3 else {
+            throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
+        }
+
+        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
+            throw ValidationError.signatureFailed
+        }
+        var toVerify = Data()
+        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
+        var beCounter = envelope.counter.bigEndian
+        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
+        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
+        var beTs = timestampMs.bigEndian
+        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
+
+        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
+            throw ValidationError.signatureFailed
+        }
+
+        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        return ValidationResult(
+            peerNodeId: envelope.peerNodeId,
+            validatedAt: now,
+            counter: envelope.counter
+        )
+    }
+
+    public func validate(
+        envelope: HermesRealtimeRelayAuthorityEnvelope,
+        systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest,
+        now: Date = Date()
+    ) throws -> ValidationResult {
+        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
+        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+
+        let skew = abs(now.timeIntervalSince(envelope.timestamp))
+        guard skew <= freshnessWindow else {
+            throw ValidationError.staleTimestamp(skewSeconds: skew)
+        }
+
+        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        guard envelope.counter > lastSeen else {
+            throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
+        }
+
+        let observedHex = try ComputerUsePhoneControlSigner()
+            .canonicalSystemPermissionRequestHashHex(request: systemPermissionRequest)
+        guard observedHex == envelope.intentHashBlake3 else {
+            throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
+        }
+
+        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
+            throw ValidationError.signatureFailed
+        }
+        var toVerify = Data()
+        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
+        var beCounter = envelope.counter.bigEndian
+        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
+        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
+        var beTs = timestampMs.bigEndian
+        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
+
+        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
+            throw ValidationError.signatureFailed
+        }
+
+        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        return ValidationResult(
+            peerNodeId: envelope.peerNodeId,
+            validatedAt: now,
+            counter: envelope.counter
+        )
+    }
+
+    public func validate(
+        envelope: HermesRealtimeRelayAuthorityEnvelope,
+        clipboardRequest: HermesRealtimeRelayClipboardRequest,
+        now: Date = Date()
+    ) throws -> ValidationResult {
+        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
+        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+
+        let skew = abs(now.timeIntervalSince(envelope.timestamp))
+        guard skew <= freshnessWindow else {
+            throw ValidationError.staleTimestamp(skewSeconds: skew)
+        }
+
+        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        guard envelope.counter > lastSeen else {
+            throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
+        }
+
+        let observedHex = try ComputerUsePhoneControlSigner()
+            .canonicalClipboardRequestHashHex(request: clipboardRequest)
+        guard observedHex == envelope.intentHashBlake3 else {
+            throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
+        }
+
+        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
+            throw ValidationError.signatureFailed
+        }
+        var toVerify = Data()
+        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
+        var beCounter = envelope.counter.bigEndian
+        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
+        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
+        var beTs = timestampMs.bigEndian
+        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
+
+        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
+            throw ValidationError.signatureFailed
+        }
+
+        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        return ValidationResult(
+            peerNodeId: envelope.peerNodeId,
+            validatedAt: now,
+            counter: envelope.counter
+        )
+    }
 }
 #endif

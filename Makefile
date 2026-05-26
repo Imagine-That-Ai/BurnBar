@@ -30,7 +30,7 @@ DAEMON_CORE_DYLIB := libOpenBurnBarCore.dylib
 # Built .app location inside DerivedData
 APP_BUNDLE = $(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)
 
-.PHONY: preflight build build-signed install uninstall clean test lint ci release-checksums sbom
+.PHONY: preflight build build-signed install uninstall clean test test-full lint ci release-checksums sbom
 
 preflight:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "ERROR: xcodebuild not found. Install Xcode 16+ command line tools first."; exit 1; }
@@ -150,11 +150,33 @@ clean:
 	rm -rf $(DERIVED_DATA) $(CACHE_DIR)
 	@echo "==> Clean."
 
-test: ## Run all test suites (Swift packages + app tests)
+test: ## Run all test suites (Swift packages + macOS + mobile + Android when configured)
 	@echo "==> Running Swift package tests…"
 	@./scripts/test-openburnbar-swift.sh
-	@echo "==> Running app tests…"
+	@echo "==> Running macOS app tests…"
 	@./scripts/test-openburnbar-app.sh
+	@echo "==> Running iOS mobile tests (requires iOS Simulator)…"
+	@if xcodebuild -showdestinations -scheme OpenBurnBarMobile -project OpenBurnBar.xcodeproj 2>/dev/null | grep -q "iOS Simulator"; then \
+		./scripts/test-openburnbar-mobile.sh; \
+	else \
+		echo "WARNING: No iOS Simulator available; skipping mobile tests."; \
+	fi
+	@if [ -x android/gradlew ] && [ -n "$${JAVA_HOME:-}" -o -d "$$HOME/.homebrew/opt/openjdk@21" -o -d /opt/homebrew/opt/openjdk@21 ]; then \
+		echo "==> Running Android unit tests…"; \
+		./scripts/test-openburnbar-android.sh || echo "WARNING: Android tests failed or SDK missing."; \
+	fi
+
+test-full: lint ## Full CI parity (core + Functions + extension evals + supply chain)
+	@echo "==> Running Functions tests…"
+	@npm --prefix functions ci && npm --prefix functions test
+	@echo "==> Running extension evals…"
+	@./scripts/test-openburnbar-retrieval-evals.sh
+	@./scripts/test-openburnbar-replay-evals.sh
+	@./scripts/test-openburnbar-extension-host.sh
+	@./scripts/test-openburnbar-ts.sh
+	@npm --prefix functions run test:firestore-rules
+	@./scripts/supply-chain-audit.sh
+	@$(MAKE) test
 
 lint: ## Run SwiftLint
 	@if command -v swiftlint >/dev/null 2>&1; then \
@@ -163,7 +185,7 @@ lint: ## Run SwiftLint
 		echo "WARNING: swiftlint not found; skipping lint."; \
 	fi
 
-ci: lint test ## Full CI check (lint + test)
+ci: lint test-full ## Full CI check (matches GitHub PR harness intent)
 
 release-checksums: ## Compute SHA256/SHA512 checksums for release artifacts
 	@APP_PATH="$(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)"; \

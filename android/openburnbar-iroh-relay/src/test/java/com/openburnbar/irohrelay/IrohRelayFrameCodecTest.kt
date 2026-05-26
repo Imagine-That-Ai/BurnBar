@@ -111,6 +111,12 @@ class IrohRelayFrameCodecTest {
                     requestId = "mirror-1",
                     decision = HermesRealtimeRelayMirrorAck.Decision.ACCEPTED,
                     detail = "accepted",
+                    sessionId = "session-1",
+                    viewerId = "viewer-android-1",
+                    viewerRole = "controller",
+                    viewerCount = 2,
+                    maxViewers = 3,
+                    controlOwnerViewerId = "viewer-android-1",
                 )
             ),
         )
@@ -119,6 +125,12 @@ class IrohRelayFrameCodecTest {
         assertEquals("mirror-1", decoded.media?.mirrorAck?.requestId)
         assertEquals(HermesRealtimeRelayMirrorAck.Decision.ACCEPTED, decoded.media?.mirrorAck?.decision)
         assertEquals("accepted", decoded.media?.mirrorAck?.detail)
+        assertEquals("session-1", decoded.media?.mirrorAck?.sessionId)
+        assertEquals("viewer-android-1", decoded.media?.mirrorAck?.viewerId)
+        assertEquals("controller", decoded.media?.mirrorAck?.viewerRole)
+        assertEquals(2, decoded.media?.mirrorAck?.viewerCount)
+        assertEquals(3, decoded.media?.mirrorAck?.maxViewers)
+        assertEquals("viewer-android-1", decoded.media?.mirrorAck?.controlOwnerViewerId)
     }
 
     @Test

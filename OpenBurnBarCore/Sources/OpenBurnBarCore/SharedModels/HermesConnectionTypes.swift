@@ -174,6 +174,7 @@ public struct HermesRuntimeModelOption: Codable, Identifiable, Sendable, Equatab
     public var sourceID: String?
     public var sourceKind: String?
     public var capabilities: [String]
+    public var modelCapabilities: ModelIOCapabilities?
     public var quotaState: String?
     public var routeEligible: Bool?
     public var lastRefreshAt: Date?
@@ -189,6 +190,7 @@ public struct HermesRuntimeModelOption: Codable, Identifiable, Sendable, Equatab
         sourceID: String? = nil,
         sourceKind: String? = nil,
         capabilities: [String] = [],
+        modelCapabilities: ModelIOCapabilities? = nil,
         quotaState: String? = nil,
         routeEligible: Bool? = nil,
         lastRefreshAt: Date? = nil,
@@ -203,6 +205,7 @@ public struct HermesRuntimeModelOption: Codable, Identifiable, Sendable, Equatab
         self.sourceID = sourceID
         self.sourceKind = sourceKind
         self.capabilities = capabilities
+        self.modelCapabilities = modelCapabilities
         self.quotaState = quotaState
         self.routeEligible = routeEligible
         self.lastRefreshAt = lastRefreshAt
@@ -211,6 +214,19 @@ public struct HermesRuntimeModelOption: Codable, Identifiable, Sendable, Equatab
 
     public var isRouteEligible: Bool {
         routeEligible ?? true
+    }
+
+    public var backendCapabilities: HermesBackendCapabilities {
+        if let modelCapabilities {
+            return modelCapabilities.asHermesBackendCapabilities
+        }
+        let normalizedCapabilities = Set(capabilities.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        })
+        return HermesBackendCapabilities(
+            vision: true,
+            audio: normalizedCapabilities.contains("audio") || normalizedCapabilities.contains("audio_input")
+        )
     }
 
     public var liveCatalogDetailText: String? {
@@ -272,6 +288,7 @@ public struct HermesRuntimeJob: Codable, Identifiable, Sendable, Equatable {
 public enum HermesRelayOperation: String, Codable, Sendable, Equatable, CaseIterable {
     case chatCompletions
     case cliAgentChat
+    case cliAgentModelCatalog
     case models
     case sessions
     case sessionDetail
@@ -283,6 +300,13 @@ public enum CLIAgentRelayChatEventKind: String, Codable, Sendable, Equatable, Ca
     case assistantSnapshot
     case completed
     case failed
+}
+
+public enum CLIAgentChatPresentationMode: String, Codable, Sendable, Equatable, Hashable, CaseIterable, Identifiable {
+    case nativeChat = "native_chat"
+    case macVisibleCLI = "mac_visible_cli"
+
+    public var id: String { rawValue }
 }
 
 public enum CLIAgentRelayTranscriptPieceKind: String, Codable, Sendable, Equatable, CaseIterable {
@@ -318,6 +342,7 @@ public struct CLIAgentRelayChatRequest: Codable, Sendable, Equatable {
     public var title: String?
     public var parentSessionID: String?
     public var resumeAction: String?
+    public var presentationMode: CLIAgentChatPresentationMode
 
     public init(
         runtime: String,
@@ -326,7 +351,8 @@ public struct CLIAgentRelayChatRequest: Codable, Sendable, Equatable {
         modelID: String? = nil,
         title: String? = nil,
         parentSessionID: String? = nil,
-        resumeAction: String? = nil
+        resumeAction: String? = nil,
+        presentationMode: CLIAgentChatPresentationMode = .nativeChat
     ) {
         self.runtime = runtime
         self.prompt = prompt
@@ -335,6 +361,43 @@ public struct CLIAgentRelayChatRequest: Codable, Sendable, Equatable {
         self.title = title
         self.parentSessionID = parentSessionID
         self.resumeAction = resumeAction
+        self.presentationMode = presentationMode
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case runtime
+        case prompt
+        case clientThreadID
+        case modelID
+        case title
+        case parentSessionID
+        case resumeAction
+        case presentationMode
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.runtime = try container.decode(String.self, forKey: .runtime)
+        self.prompt = try container.decode(String.self, forKey: .prompt)
+        self.clientThreadID = try container.decode(String.self, forKey: .clientThreadID)
+        self.modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
+        self.title = try container.decodeIfPresent(String.self, forKey: .title)
+        self.parentSessionID = try container.decodeIfPresent(String.self, forKey: .parentSessionID)
+        self.resumeAction = try container.decodeIfPresent(String.self, forKey: .resumeAction)
+        self.presentationMode = try container.decodeIfPresent(CLIAgentChatPresentationMode.self, forKey: .presentationMode)
+            ?? .nativeChat
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(runtime, forKey: .runtime)
+        try container.encode(prompt, forKey: .prompt)
+        try container.encode(clientThreadID, forKey: .clientThreadID)
+        try container.encodeIfPresent(modelID, forKey: .modelID)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(parentSessionID, forKey: .parentSessionID)
+        try container.encodeIfPresent(resumeAction, forKey: .resumeAction)
+        try container.encode(presentationMode, forKey: .presentationMode)
     }
 }
 

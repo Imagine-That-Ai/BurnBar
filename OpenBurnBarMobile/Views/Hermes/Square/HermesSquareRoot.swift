@@ -578,18 +578,41 @@ struct HermesSquareRoot: View {
 
     private var activeMissionsStrip: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Active missions")
-                .font(.caption.bold())
-                .foregroundStyle(DesignSystemColors.textSecondary)
-                .padding(.trailing, 16)
+            HStack {
+                Text("Active missions")
+                    .font(.caption.bold())
+                    .foregroundStyle(DesignSystemColors.textSecondary)
+                Spacer()
+                Button {
+                    isShowingFanOut = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                        Text("Compose")
+                    }
+                    .font(.caption.bold())
+                    .foregroundStyle(DesignSystemColors.ember)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.trailing, 16)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     let tiles = missionHost.snapshot.activeTiles
                     if tiles.isEmpty {
-                        Text("No live missions. Compose one from the FAB.")
-                            .font(.caption)
-                            .foregroundStyle(DesignSystemColors.textMuted)
+                        Button {
+                            isShowingFanOut = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bolt.fill")
+                                    .foregroundStyle(DesignSystemColors.ember)
+                                Text("No live missions. Tap to compose one.")
+                                    .foregroundStyle(DesignSystemColors.textMuted)
+                            }
+                            .font(.caption.bold())
                             .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.plain)
                     } else {
                         ForEach(tiles) { tile in
                             Button {
@@ -599,9 +622,22 @@ struct HermesSquareRoot: View {
                             }
                             .buttonStyle(.plain)
                             .frame(width: 240)
-                            .onLongPressGesture(minimumDuration: 0.5) {
-                                HapticBus.threshold()
-                                missionForActionSheet = tile
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    let mid = tile.id
+                                    Task {
+                                        await missionHost.cancelMission(id: mid)
+                                        missionHost.dismissMission(id: mid)
+                                    }
+                                } label: {
+                                    Label("Cancel & Dismiss", systemImage: "xmark.circle.fill")
+                                }
+
+                                Button {
+                                    missionHost.dismissMission(id: tile.id)
+                                } label: {
+                                    Label("Just Dismiss", systemImage: "eye.slash.fill")
+                                }
                             }
                         }
                     }
@@ -1274,7 +1310,7 @@ struct HermesSquareRoot: View {
             HermesConversationListView(service: hermesService, dashboardSnapshot: nil)
         case .pi:
             PiConversationListView(service: piService)
-        case .codex, .claude, .openClaw:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity:
             if let cliRuntime = CLIAgentRuntime(assistant: runtime) {
                 CLIAgentConversationListView(runtime: cliRuntime)
             } else {
@@ -1290,7 +1326,7 @@ struct HermesSquareRoot: View {
             HermesChatView(service: hermesService, dashboardSnapshot: nil, route: .new)
         case .pi:
             PiChatThreadView(service: piService, route: .new)
-        case .claude, .codex, .openClaw:
+        case .claude, .codex, .openClaw, .droid, .forge, .antigravity:
             runtimeNativeView(for: runtime)
         }
     }

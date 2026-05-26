@@ -517,6 +517,20 @@ enum SettingsManifest {
             helpText: "Shows local permission state and the controls needed to validate Computer Use on this Mac."
         ),
 
+        SettingsItem(
+            id: "computerUse.permissionsSetup",
+            tab: .computerUse,
+            pageRoute: .computerUseRoot,
+            anchorID: SettingsAnchor.computerUsePermissionsSetup,
+            title: "Re-run Mac Permissions Setup",
+            subtitle: "Walk through Screen Recording, Accessibility, Camera, Mic, Full Disk, and Automation in order",
+            keywords: [
+                "permissions", "screen recording", "accessibility", "camera", "microphone",
+                "mic", "full disk access", "fda", "automation", "applescript", "tcc", "reset"
+            ],
+            helpText: "Reopens the step-by-step Mac permissions wizard so an existing user can grant anything they skipped during onboarding."
+        ),
+
         // MARK: Account Switcher — now lives inside Agents → CLIs / Advanced.
 
         SettingsItem(
@@ -671,6 +685,7 @@ enum SettingsManifest {
         SettingsAnchor.smartDisplays,
         SettingsAnchor.mediaPermissions,
         SettingsAnchor.computerUseReadiness,
+        SettingsAnchor.computerUsePermissionsSetup,
         SettingsAnchor.switcherBrowser,
         SettingsAnchor.switcherCLI,
         SettingsAnchor.hermesConnections,

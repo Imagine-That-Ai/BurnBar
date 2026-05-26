@@ -25,6 +25,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
     public typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
 
     public typealias DisplayBoundsProvider = @Sendable () -> [MacInputCore.DisplayBounds]
+    public typealias AuthorizedPeerNodeProvider = @MainActor @Sendable () -> String?
 
     public let sessionId: ComputerUseSessionID
     public let validator: PhoneControlAuthorityValidator
@@ -32,6 +33,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
     private let dispatchHandler: DispatchHandler
     private let denyFrameSink: FrameSink
     private let displayBoundsProvider: DisplayBoundsProvider
+    private let authorizedPeerNodeProvider: AuthorizedPeerNodeProvider?
     private let seenIntentQueue = DispatchQueue(label: "com.openburnbar.phoneControl.receiver.seenIntentIds")
     private var seenClientIntentIds: Set<String> = []
 
@@ -40,6 +42,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
         validator: PhoneControlAuthorityValidator,
         signer: ComputerUsePhoneControlSigner = ComputerUsePhoneControlSigner(),
         displayBoundsProvider: @escaping DisplayBoundsProvider,
+        authorizedPeerNodeProvider: AuthorizedPeerNodeProvider? = nil,
         dispatchHandler: @escaping DispatchHandler,
         denyFrameSink: @escaping FrameSink
     ) {
@@ -49,6 +52,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
         self.dispatchHandler = dispatchHandler
         self.denyFrameSink = denyFrameSink
         self.displayBoundsProvider = displayBoundsProvider
+        self.authorizedPeerNodeProvider = authorizedPeerNodeProvider
     }
 
     /// Entry point bound to the `ControlFrameDispatcher` closure on
@@ -60,8 +64,9 @@ public final class PhoneControlReceiver: @unchecked Sendable {
               let intent = payload.inputIntent else { return }
 
         // Validate the authority envelope.
+        let validation: PhoneControlAuthorityValidator.ValidationResult
         do {
-            _ = try validator.validate(
+            validation = try validator.validate(
                 envelope: intent.authority,
                 intent: intent,
                 now: Date()
@@ -71,6 +76,19 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             return
         } catch {
             await emitDeniedFrame(reason: .signatureFailure, uid: frame.uid, connectionId: frame.connectionId)
+            return
+        }
+
+        let authorizedPeerNode = await MainActor.run { authorizedPeerNodeProvider?() }
+        if let authorizedPeerNode,
+           !authorizedPeerNode.isEmpty,
+           validation.peerNodeId != authorizedPeerNode {
+            await emitDeniedFrame(
+                reason: .scope,
+                detail: "control_owned_by_other_viewer",
+                uid: frame.uid,
+                connectionId: frame.connectionId
+            )
             return
         }
 

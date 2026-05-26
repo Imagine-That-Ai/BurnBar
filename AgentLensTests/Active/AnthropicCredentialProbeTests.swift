@@ -158,9 +158,10 @@ final class AnthropicCredentialProbeTests: XCTestCase {
         body: String,
         recorder: RequestRecorder? = nil
     ) -> AnthropicCredentialProbe {
+        let probeID = UUID().uuidString
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
-        MockURLProtocol.responder = { request in
+        MockURLProtocol.registerResponder(id: probeID) { request in
             recorder?.record(request)
             let http = HTTPURLResponse(
                 url: request.url!,
@@ -173,7 +174,7 @@ final class AnthropicCredentialProbeTests: XCTestCase {
         let session = URLSession(configuration: configuration)
         return AnthropicCredentialProbe(
             session: session,
-            baseURL: URL(string: "https://api.anthropic.test/v1")!,
+            baseURL: URL(string: "https://api.anthropic.test/v1/\(probeID)")!,
             clock: { Date(timeIntervalSince1970: 1_700_000_000) }
         )
     }
@@ -199,13 +200,20 @@ private final class RequestRecorder: @unchecked Sendable {
 }
 
 private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var responder: ((URLRequest) -> (HTTPURLResponse, Data))?
+    private static let lock = NSLock()
+    private nonisolated(unsafe) static var responders: [String: (URLRequest) -> (HTTPURLResponse, Data)] = [:]
+
+    static func registerResponder(id: String, responder: @escaping (URLRequest) -> (HTTPURLResponse, Data)) {
+        lock.lock()
+        responders[id] = responder
+        lock.unlock()
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        guard let responder = Self.responder else {
+        guard let responder = Self.responder(for: request) else {
             client?.urlProtocol(self, didFailWithError: URLError(.cannotLoadFromNetwork))
             return
         }
@@ -219,4 +227,11 @@ private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() {}
+
+    private static func responder(for request: URLRequest) -> ((URLRequest) -> (HTTPURLResponse, Data))? {
+        guard let id = request.url?.pathComponents.dropFirst().dropFirst().first else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        return responders[id]
+    }
 }

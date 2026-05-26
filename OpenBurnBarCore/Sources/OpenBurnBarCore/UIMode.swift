@@ -46,63 +46,63 @@ public struct UIModeTheme {
     public var primaryAccent: Color {
         switch mode {
         case .standard: return UnifiedDesignSystem.Colors.ember
-        case .cooking:  return Color(hex: "FF5F1F") // Sriracha
+        case .cooking:  return Color(hex: "FF2A85") // Vibrant Pitaya Pink
         }
     }
 
     public var secondaryAccent: Color {
         switch mode {
         case .standard: return UnifiedDesignSystem.Colors.amber
-        case .cooking:  return Color(hex: "FFD700") // Lemon
+        case .cooking:  return Color(hex: "FFA500") // Luminous Mango Orange
         }
     }
 
     public var tertiaryAccent: Color {
         switch mode {
         case .standard: return UnifiedDesignSystem.Colors.blaze
-        case .cooking:  return Color(hex: "32CD32") // Basil
+        case .cooking:  return Color(hex: "39FF14") // Neon Lime Green
         }
     }
 
     public var quaternaryAccent: Color {
         switch mode {
         case .standard: return UnifiedDesignSystem.Colors.whimsy
-        case .cooking:  return Color(hex: "FF1493") // Dragonfruit
+        case .cooking:  return Color(hex: "00F5FF") // Electric Turquoise/Kiwi
         }
     }
 
     public var background: Color {
         switch mode {
         case .standard: return UnifiedDesignSystem.Colors.background
-        case .cooking:  return Color(light: "FFF8F0", dark: "1A120B") // Vanilla / Dark Chocolate
+        case .cooking:  return Color(light: "FFFDF0", dark: "12041A") // Coconut Cream / Deep Pitaya Acai
         }
     }
 
     public var surface: Color {
         switch mode {
         case .standard: return UnifiedDesignSystem.Colors.surface
-        case .cooking:  return Color(light: "FFFFFF", dark: "2D1F14") // Meringue / Espresso
+        case .cooking:  return Color(light: "FFF0F5", dark: "260835") // Guava Sorbet / Translucent Pitaya Pulp
         }
     }
 
     public var textPrimary: Color {
         switch mode {
         case .standard: return UnifiedDesignSystem.Colors.textPrimary
-        case .cooking:  return Color(light: "1A0F00", dark: "FFF5E6") // Coffee / Cream
+        case .cooking:  return Color(light: "3B0A20", dark: "FFF5FA") // Berry Jam / Sweet Meringue Cream
         }
     }
 
     public var textSecondary: Color {
         switch mode {
         case .standard: return UnifiedDesignSystem.Colors.textSecondary
-        case .cooking:  return Color(light: "5C3D2E", dark: "D4A574") // Caramel
+        case .cooking:  return Color(light: "B85C00", dark: "FCA3B7") // Papaya Gold / Soft Peach Pink
         }
     }
 
     public var border: Color {
         switch mode {
         case .standard: return UnifiedDesignSystem.Colors.border
-        case .cooking:  return Color(light: "FFB347", dark: "8B4513") // Apricot / Cocoa
+        case .cooking:  return Color(light: "FF4D80", dark: "D80073") // Strawberry Gloss / Bright Magenta Edge
         }
     }
 
@@ -191,7 +191,7 @@ public struct UIModeTheme {
         case .standard: return UnifiedDesignSystem.primaryGradient
         case .cooking:
             return LinearGradient(
-                colors: [Color(hex: "FF5F1F"), Color(hex: "FFD700")],
+                colors: [Color(hex: "FF2A85"), Color(hex: "FFA500"), Color(hex: "39FF14")],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -204,9 +204,9 @@ public struct UIModeTheme {
         case .cooking:
             return LinearGradient(
                 colors: [
-                    Color(hex: "FFFFFF").opacity(0.15),
-                    Color(hex: "FFF8F0").opacity(0.10),
-                    Color(hex: "FF5F1F").opacity(0.02)
+                    Color(hex: "FFFFFF").opacity(0.20),
+                    Color(hex: "FF2A85").opacity(0.06),
+                    Color(hex: "FFA500").opacity(0.02)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -225,5 +225,9 @@ public extension EnvironmentValues {
     var uiMode: UIMode {
         get { self[UIModeKey.self] }
         set { self[UIModeKey.self] = newValue }
+    }
+
+    var uiTheme: UIModeTheme {
+        UIModeTheme(mode: uiMode)
     }
 }

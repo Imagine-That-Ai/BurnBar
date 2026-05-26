@@ -247,9 +247,33 @@ final class HermesSquareCardEnvelopeTests: XCTestCase {
 
 final class HermesSquarePinnedGridTests: XCTestCase {
 
-    func testDefaultPinsAllFiveBuiltIns() {
+    func testDefaultPinsAllBuiltIns() {
         let config = PinnedAgentGridConfig.default
         XCTAssertEqual(config.pinnedURIs.count, AssistantRuntimeID.allCases.count)
+    }
+
+    func testUntouchedLegacyDefaultPinsMigrateToDroidAndForge() {
+        let legacy = PinnedAgentGridConfig(
+            pinnedURIs: PinnedAgentGridConfig.legacyDefaultPinnedURIsBeforeDroidForge
+        )
+
+        let migrated = legacy.sanitized()
+
+        XCTAssertEqual(migrated.pinnedURIs, PinnedAgentGridConfig.defaultPinnedURIs)
+        XCTAssertTrue(migrated.pinnedURIs.contains(AgentIdentity.builtInURI(.droid)))
+        XCTAssertTrue(migrated.pinnedURIs.contains(AgentIdentity.builtInURI(.forge)))
+    }
+
+    func testRearrangedLegacyDefaultPinsStayUserOrdered() {
+        let legacy = PinnedAgentGridConfig(
+            pinnedURIs: PinnedAgentGridConfig.legacyDefaultPinnedURIsBeforeDroidForge,
+            lastRearrangedAt: Date(timeIntervalSince1970: 1234)
+        )
+
+        XCTAssertEqual(
+            legacy.sanitized().pinnedURIs,
+            PinnedAgentGridConfig.legacyDefaultPinnedURIsBeforeDroidForge
+        )
     }
 
     func testSanitiseRemovesDuplicatesAndCapsAt12() {

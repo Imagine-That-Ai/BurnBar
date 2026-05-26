@@ -81,6 +81,26 @@ class AccountStore(
         fetchConnections()
     }
 
+    fun refreshProviderAccount(account: ProviderAccount) {
+        fetchConnections()
+    }
+
+    fun removeProviderAccount(account: ProviderAccount) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                firestore.markProviderAccountDeleted(account.id)
+                fetchConnections()
+            } catch (e: Exception) {
+                Log.e("BurnBar", "Delete provider account failed", e)
+                _error.value = e.message
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     fun signOut() {
         auth.signOut()
         resetSessionState()

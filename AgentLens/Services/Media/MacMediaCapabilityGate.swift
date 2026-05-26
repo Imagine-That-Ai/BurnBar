@@ -144,7 +144,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
     private func concurrentLimit(for feature: MediaStreamClass.Feature) -> Int {
         switch feature {
         case .fileTransfer: return 4
-        case .screenShare: return 1
+        case .screenShare: return 3
         case .videoCall: return 1
         case .computerUse: return 1
         }

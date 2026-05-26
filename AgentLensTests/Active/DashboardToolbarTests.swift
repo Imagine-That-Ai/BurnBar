@@ -14,7 +14,7 @@ final class DashboardToolbarTests: XCTestCase {
         isScanning: Bool = false,
         canRunRecount: Bool = true
     ) -> DashboardToolbar {
-        let settingsManager = SettingsManager(defaults: UserDefaults(suiteName: #file)!)
+        let settingsManager = makeSettingsManager()
         let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
         let chatController = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         return DashboardToolbar(

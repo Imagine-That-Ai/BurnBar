@@ -41,6 +41,15 @@ jobs:
       - name: Verify version consistency
         run: ./scripts/verify-version-consistency.sh
 
+      - name: Check schema sync drift
+        run: ./tools/schema-sync/check-drift.sh
+
+      - name: App Check config smoke
+        if: env.INTERNAL_RUN == 'true'
+        env:
+          INTERNAL_RUN: ${{ env.INTERNAL_RUN }}
+        run: bash ./scripts/ci/app-check-smoke.sh
+
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -85,7 +94,10 @@ jobs:
         # Xcode 16.4 can crash in SwiftEmitModule while lowering lazy global
         # initializers for this large SwiftUI app target. The script keeps this
         # as a real test gate while disabling the brittle batch compile path.
-        run: ./scripts/test-openburnbar-app.sh
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+
+      - name: Run OpenBurnBar mobile unit tests
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
@@ -96,7 +108,7 @@ jobs:
 
       - name: Compute diff coverage
         if: github.event_name == 'pull_request' && hashFiles('openburnbar-coverage.json') != ''
-        run: ./scripts/diff-coverage.sh origin/main "$GITHUB_WORKSPACE/openburnbar-coverage.json" > "$GITHUB_WORKSPACE/openburnbar-diff-coverage.json"
+        run: ./scripts/diff-coverage-all.sh origin/main
 
       - name: Post coverage summary
         if: always()
@@ -216,6 +228,12 @@ jobs:
       - name: Build Android APK
         run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Run Android unit tests
+        run: ./scripts/test-openburnbar-android.sh
+
+      - name: Run supply chain audit
+        run: ./scripts/supply-chain-audit.sh
+
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
@@ -231,7 +249,7 @@ jobs:
             echo ""
             echo "| Surface | Status |"
             echo "|---------|--------|"
-            for step in "Shell syntax" "Version consistency" "Functions lint" "Functions build" "Swift tests" "App tests" "SwiftPM lockfile" "Retrieval evals" "TypeScript tests" "Replay evals" "Extension-host tests" "Firestore rules" "CodeQL"; do
+            for step in "Shell syntax" "Version consistency" "Functions lint" "Functions build" "Swift tests" "App tests" "Mobile iOS tests" "SwiftPM lockfile" "Retrieval evals" "TypeScript tests" "Replay evals" "Extension-host tests" "Firestore rules" "Android unit tests" "Supply chain audit" "CodeQL"; do
               echo "| $step | ran |"
             done
           } >> "$GITHUB_STEP_SUMMARY"

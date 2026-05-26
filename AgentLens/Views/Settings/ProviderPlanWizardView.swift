@@ -3301,6 +3301,12 @@ struct ProviderPlanWizardView: View {
             return .anthropic
         case .opencode:
             return .openCode
+        case .droid:
+            return .factory
+        case .forge:
+            return ProviderID(rawValue: "forge")
+        case .antigravity:
+            return .antigravity
         }
     }
 
@@ -3321,7 +3327,7 @@ struct ProviderPlanWizardView: View {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode:
+        case .opencode, .droid, .forge, .antigravity:
             candidates = []
         }
 

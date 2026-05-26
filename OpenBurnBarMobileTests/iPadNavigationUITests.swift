@@ -92,6 +92,10 @@ final class iPadNavigationUITests: XCTestCase {
             CloudErrorClassification.permissionDeniedClassification(message: "Missing or insufficient permissions."),
             .permissionDenied
         )
+        XCTAssertEqual(
+            CloudErrorClassification.classify(message: "Your Mac relay is online but has not published live CLI model discovery yet."),
+            .other(message: "Your Mac relay is online but has not published live CLI model discovery yet.")
+        )
     }
 
     // MARK: - Provider Dashboard Store

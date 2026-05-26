@@ -218,7 +218,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
     }
 
     func test_missionRuntimePlanner_honorsExplicitMobileRuntimeSelection() {
-        let enabled: [ChatBackendID] = [.codex, .claude, .hermes, .piAgent, .openclaw]
+        let enabled: [ChatBackendID] = [.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity]
 
         XCTAssertEqual(
             CLIAgentMissionRuntimePlanner.resolve(
@@ -262,11 +262,43 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         )
         XCTAssertEqual(
             CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "pi-agent",
+                missionKind: "creative",
+                enabledBackends: enabled
+            ).chatBackend,
+            .piAgent
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
                 requestedRuntime: "openclaw",
                 missionKind: "ui_improvement",
                 enabledBackends: enabled
             ).chatBackend,
             .openclaw
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "droid",
+                missionKind: "provider_routing",
+                enabledBackends: enabled
+            ).chatBackend,
+            .droid
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "factory-droid",
+                missionKind: "provider_routing",
+                enabledBackends: enabled
+            ).chatBackend,
+            .droid
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "forge",
+                missionKind: "custom",
+                enabledBackends: enabled
+            ).chatBackend,
+            .forge
         )
 
         let opencode = CLIAgentMissionRuntimePlanner.resolve(
@@ -294,6 +326,9 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "hermes"), .hermes)
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "openclaw"), .openclaw)
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "pi-agent"), .piAgent)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "droid"), .droid)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "factory-droid"), .droid)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "forge"), .forge)
         XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "unknown"))
     }
 

@@ -2,6 +2,7 @@ package com.openburnbar
 
 import com.openburnbar.data.hermes.HermesAttachment
 import com.openburnbar.data.hermes.HermesAttachmentEncoder
+import com.openburnbar.data.hermes.ModelIOCapabilities
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -66,6 +67,34 @@ class HermesAttachmentEncoderTest {
         assertTrue("Image URL must be inline base64", url.startsWith("data:image/png;base64,"))
         // 8 bytes → "iVBORw0KGgo=" prefix (Base64 of PNG signature, no wrap)
         assertTrue("Image URL must contain the PNG body bytes", url.endsWith("iVBORw0KGgo="))
+    }
+
+    @Test
+    fun `model image capability controls whether Android inlines image bytes`() {
+        val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47)
+        val image = tempFolder.newFile("capability-fixture.png")
+        image.writeBytes(pngBytes)
+
+        val attachment = HermesAttachment(
+            fileName = "capability-fixture.png",
+            mimeType = "image/png",
+            absolutePath = image.absolutePath,
+            sizeBytes = pngBytes.size.toLong()
+        )
+        val kimiK26 = ModelIOCapabilities(
+            inputModalities = listOf("text", "image"),
+            outputModalities = listOf("text"),
+            contextWindowTokens = 262_144,
+            maxOutputTokens = 262_142,
+            acceptedInputMimeTypes = listOf("image/*")
+        )
+        val encoded = HermesAttachmentEncoder.encodeUserTurn(
+            "describe",
+            listOf(attachment),
+            kimiK26
+        ) as JSONArray
+
+        assertEquals("image_url", encoded.getJSONObject(1).getString("type"))
     }
 
     @Test

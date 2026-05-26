@@ -40,6 +40,8 @@ Every path rides the existing iroh QUIC transport. No new ALPN. No WebRTC. No ne
 control.classify              ← negotiation, first frame on a new bi-stream
 control.action.log.entry      ← Mac → phone planned/executing/completed/failed
 control.input.intent          ← Phone → Mac signed envelope
+control.clipboard.request     ← iOS/iPadOS/Android → Mac signed text clipboard request
+control.clipboard.response    ← Mac → iOS/iPadOS/Android text clipboard result
 control.approval.request      ← Mac → phone approval ask
 control.approval.response     ← Phone → Mac decision
 control.agent_grant.request   ← iOS/iPadOS/Android → Mac signed agent capability grant
@@ -170,15 +172,56 @@ For `HermesRealtimeRelayInputIntent`, the signed `intentHashBlake3` covers the a
 
 Agent capability grants reuse the same authority envelope and signing payload,
 but the authority-free hash is computed over `AgentCapabilityGrantRequest`.
-iOS/iPadOS use LocalAuthentication before issuing Desktop, All, or YOLO grants.
-Android uses AndroidX BiometricPrompt from `FragmentActivity` for the same
-high-trust presets. Low and Workspace do not require biometric unlock, but
-still require a signed-in user, a paired Mac, the hosted Computer Use
-entitlement, and a trusted controller identity.
+iOS/iPadOS and Android first register the current device if needed, require the
+matching `escrow_devices/{deviceId}` record to be explicitly `trusted`, and
+then require platform local authentication before issuing Desktop, All, or YOLO
+grants. iOS/iPadOS use LocalAuthentication; Android uses AndroidX
+BiometricPrompt from `FragmentActivity` and treats failed face/fingerprint
+attempts as retryable until the system reports success, cancellation, or a
+terminal error. Low and Workspace do not require biometric unlock, but still
+require a signed-in user, a paired Mac, the hosted Computer Use entitlement, and
+a trusted controller identity.
 
 ### 6.1 Replay rejection contract
 
 `counter` is strictly monotonic per peer. The Mac receiver persists `lastSeenCounter[peerNodeId]` and rejects any envelope whose counter is `<= lastSeen`. On pairing rotation the counter resets — same flow as the iroh-blobs ticket exchange.
+
+### 6.2 Mercury remote clipboard
+
+Mercury mirror exposes two explicit text-only clipboard actions next to the
+keyboard controls: **Paste to Mac** and **Grab from Mac**. There is no
+background sync, polling, image transfer, rich text, file transfer, Firestore
+clipboard queue, analytics payload, or visible phone text field.
+
+The wire types are `control.clipboard.request` and
+`control.clipboard.response`. Requests reuse the Phase 12 Ed25519 authority
+envelope, the same freshness window, and the same per-controller monotonic
+counter namespace as `control.input.intent`; the signed hash covers the
+authority-free `HermesRealtimeRelayClipboardRequest`, so tampering with
+`action`, `contentType`, `text`, `maxBytes`, or `clientIntentId` invalidates
+the signature. Swift and Android keep the canonical signing logic beside their
+existing phone-control signer implementations.
+
+V1 accepts only `text/plain`. Phones read their local clipboard only inside the
+user's **Paste to Mac** tap handler, reject empty text locally, and reject
+outbound UTF-8 payloads over 65536 bytes before signing. **Grab from Mac** sends
+no phone clipboard data; the phone writes its clipboard only after a matching
+accepted response for the pending request ID.
+
+On the Mac, `RemoteClipboardController` treats clipboard actions as direct
+phone-control actions. The request must pass authority validation, trusted
+controller identity, active Mercury session matching the manifest phone node,
+Computer Use entitlement, Remote Config kill-switch, Accessibility permission,
+scope rules, deny-region checks, secure-focus/loginwindow/SecurityAgent/screen
+sleep checks, and the request's `maxBytes` limit. `Paste to Mac` writes
+`NSPasteboard.general` and dispatches Command-V; `Grab from Mac` reads
+`NSPasteboard.general.string` and returns text only when it is non-empty and
+within the caller's byte limit.
+
+Audit entries use `clipboard.paste_to_mac` and `clipboard.grab_from_mac`
+descriptor kinds. They record the action, byte count, status, and session
+context, but never store clipboard text in the audit chain, action-log stream,
+analytics, Firestore, or relay logs.
 
 ---
 
@@ -290,9 +333,9 @@ Mobile surfaces:
   text, message bodies, screenshots, ciphertext blobs, and other payload fields
   so the queue cannot become a data exfiltration channel.
 - Mobile applies an optimistic local receipt while the request is in flight, so
-  the next Hermes/Pi/Codex/Claude send can route to the Mac desktop executor
-  immediately. The Mac receipt is still the source of truth and can revoke or
-  downgrade the optimistic state.
+  the next Hermes/Pi/Codex/Claude/Droid/Forge/Antigravity send can route to the
+  Mac desktop executor immediately. The Mac receipt is still the source of
+  truth and can revoke or downgrade the optimistic state.
 
 Runtime behavior:
 
@@ -301,6 +344,9 @@ Runtime behavior:
 | Hermes / OpenClaw / Pi | OpenAI-compatible `tools` descriptors from `AgentDesktopToolDefinitions` | `AgentToolBroker` routes browser calls to the daemon Browser CU session, Mac input/inspect calls to the app-owned System CU coordinator, and workspace/shell calls through a workspace-confined local broker. Mobile sends route through the Mac agent-relay mission path when a grant is active. |
 | Codex | CLI-native sandbox arguments | Read grants map to `--sandbox read-only`; write/shell grants map to `--sandbox workspace-write`; YOLO maps to Codex's explicit dangerous sandbox bypass flag. |
 | Claude | CLI-native permission arguments | Workspace tools map to `--allowedTools`; write grants enable `--permission-mode acceptEdits`; YOLO maps to Claude's explicit dangerous permission bypass flag. |
+| Droid | CLI-native autonomy arguments | Droid runs through `droid exec --output-format json` in the selected workspace. Write grants map to `--auto low --disabled-tools execute-cli`; shell grants map to `--auto medium`. OpenBurnBar does not pass Droid's unsafe permission bypass. |
+| Forge | Prompt-level safety constraints | Forge runs with `--prompt` and optional `--agent forge/muse/sage`. OpenBurnBar appends read-only, no-edit, and no-shell constraints unless the thread grant explicitly includes those capabilities. |
+| Antigravity | CLI-native sandbox arguments | Antigravity runs through `agy --print` in the selected workspace. Normal grants keep `--sandbox`; YOLO/full trust maps to `--dangerously-skip-permissions`, which is only passed after the user selects that capability. |
 
 The broker intentionally does not mutate global agent config, MCP config, or
 provider account settings. Grants are session-local app authority, which keeps

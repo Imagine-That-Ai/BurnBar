@@ -6,6 +6,10 @@ typealias CLIAgentRelayChatDispatcher = @Sendable (
     _ eventSender: @escaping @Sendable (CLIAgentRelayChatEvent) async throws -> Void
 ) async throws -> Void
 
+typealias CLIRuntimeModelCatalogDispatcher = @Sendable (
+    _ request: CLIRuntimeModelCatalogRequest
+) async throws -> CLIRuntimeModelCatalogResponse
+
 actor CLIAgentRelayChunkSequencer {
     private var value = 0
 
@@ -16,6 +20,133 @@ actor CLIAgentRelayChunkSequencer {
 
     func count() -> Int {
         value
+    }
+}
+
+struct CLIRuntimeModelCatalogDiscovery: Sendable {
+    private let resolver: CLIExecutableResolver
+
+    init(resolver: CLIExecutableResolver = CLIExecutableResolver()) {
+        self.resolver = resolver
+    }
+
+    func modelCatalog(for request: CLIRuntimeModelCatalogRequest) async throws -> CLIRuntimeModelCatalogResponse {
+        guard let runtime = AssistantRuntimeID(rawValue: request.runtime) else {
+            throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(request.runtime)
+        }
+        let options: [CLIRuntimeModelOption]
+        switch runtime {
+        case .codex:
+            _ = try await executable(named: "codex")
+            options = try Self.defaultProfileRows(for: runtime)
+        case .claude:
+            _ = try await executable(named: "claude")
+            options = try Self.defaultProfileRows(for: runtime)
+        case .droid:
+            let executable = try await executable(named: "droid")
+            let output = try await run(executable: executable, arguments: ["exec", "--help"], timeoutSeconds: 12)
+            options = CLIRuntimeModelCatalog.parseDroidExecHelp(output)
+            if options.isEmpty {
+                throw CLIRuntimeModelCatalogDiscoveryError.emptyCatalog(runtime.displayName)
+            }
+        case .forge:
+            let executable = try await executable(named: "forge")
+            let output = try await run(executable: executable, arguments: ["agent", "list"], timeoutSeconds: 12)
+            options = CLIRuntimeModelCatalog.parseForgeAgentList(output)
+            if options.isEmpty {
+                throw CLIRuntimeModelCatalogDiscoveryError.emptyCatalog(runtime.displayName)
+            }
+        case .antigravity:
+            _ = try await executable(named: "agy")
+            options = try Self.defaultProfileRows(for: runtime)
+        case .hermes, .pi, .openClaw:
+            throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(request.runtime)
+        }
+        return CLIRuntimeModelCatalogResponse(
+            runtime: runtime.rawValue,
+            machineName: Host.current().localizedName,
+            generatedAtEpochMillis: Int64(Date().timeIntervalSince1970 * 1000),
+            options: options
+        )
+    }
+
+    private static func defaultProfileRows(for runtime: AssistantRuntimeID) throws -> [CLIRuntimeModelOption] {
+        guard let option = CLIRuntimeModelCatalog.defaultProfileOption(for: runtime) else {
+            throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(runtime.rawValue)
+        }
+        return [option]
+    }
+
+    private func executable(named name: String) async throws -> String {
+        guard let executable = await resolver.resolveExecutable(named: name) else {
+            throw CLIRuntimeModelCatalogDiscoveryError.executableMissing(name)
+        }
+        return executable
+    }
+
+    private func run(
+        executable: String,
+        arguments: [String],
+        timeoutSeconds: TimeInterval
+    ) async throws -> String {
+        try await Task.detached(priority: .userInitiated) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+            process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+            process.standardInput = FileHandle.nullDevice
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            try process.run()
+            let deadline = Date().addingTimeInterval(timeoutSeconds)
+            while process.isRunning && Date() < deadline {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            if process.isRunning {
+                process.terminate()
+                throw CLIRuntimeModelCatalogDiscoveryError.timeout(URL(fileURLWithPath: executable).lastPathComponent)
+            }
+
+            let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let errorOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            guard process.terminationStatus == 0 else {
+                throw CLIRuntimeModelCatalogDiscoveryError.processFailed(
+                    URL(fileURLWithPath: executable).lastPathComponent,
+                    Int(process.terminationStatus),
+                    errorOutput.nonEmpty ?? output
+                )
+            }
+            return output
+        }.value
+    }
+}
+
+private enum CLIRuntimeModelCatalogDiscoveryError: LocalizedError {
+    case unsupportedRuntime(String)
+    case executableMissing(String)
+    case emptyCatalog(String)
+    case timeout(String)
+    case processFailed(String, Int, String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedRuntime(let runtime):
+            return "This Mac cannot publish a CLI model catalog for '\(runtime)'."
+        case .executableMissing(let name):
+            return "\(name) is not installed or is not visible in the OpenBurnBar app PATH on this Mac."
+        case .emptyCatalog(let runtime):
+            return "\(runtime) did not advertise any models or agents on this Mac."
+        case .timeout(let name):
+            return "\(name) model catalog discovery timed out on this Mac."
+        case .processFailed(let name, let code, let detail):
+            let suffix = detail?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty.map { ": \($0)" } ?? "."
+            return "\(name) model catalog discovery exited with status \(code)\(suffix)"
+        }
     }
 }
 
@@ -135,6 +266,12 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
             return .openclaw
         case "pi", "piagent", "pi-agent":
             return .piAgent
+        case "droid", "factory", "factory-droid", "factorydroid":
+            return .droid
+        case "forge", "forge-dev", "forgedev":
+            return .forge
+        case "antigravity", "agy", "google-antigravity", "googleantigravity":
+            return .antigravity
         default:
             return nil
         }
@@ -179,13 +316,13 @@ private enum CLIAgentRelayChatExecutorError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .busy:
-            return "Codex or Claude is already responding on this Mac. Wait for the current reply to finish, then send again."
+            return "A Mac CLI agent is already responding. Wait for the current reply to finish, then send again."
         case .emptyPrompt:
-            return "Cannot send an empty Codex or Claude message."
+            return "Cannot send an empty CLI agent message."
         case .emptyResponse:
-            return "Codex or Claude finished without returning a visible reply."
+            return "The CLI agent finished without returning a visible reply."
         case .unsupportedRuntime(let runtime):
-            return "This relay only supports Codex and Claude chat, not '\(runtime)'."
+            return "This relay does not support '\(runtime)' chat."
         }
     }
 }

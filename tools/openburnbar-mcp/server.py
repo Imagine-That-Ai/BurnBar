@@ -123,6 +123,24 @@ def _connect_ro(path: Path) -> sqlite3.Connection:
     # check_same_thread: default True; MCP tools run sync on one thread
 
 
+def _connect_rw(path: Path) -> sqlite3.Connection:
+    """Read-write SQLite connection for budget rule + event writes from Hermes / MCP.
+
+    Used only by the budget mutation tools (`burnbar_set_budget_limit`,
+    `burnbar_pause_budget_gate`, `burnbar_resume_budget_gate`). All other tools stay
+    read-only via `_connect_ro` so an MCP misuse can never corrupt the conversation,
+    usage, or operating-layer tables.
+    """
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"OpenBurnBar database not found at {path}. Open OpenBurnBar once or set BURNBAR_DB_PATH."
+        )
+    conn = sqlite3.connect(str(path), check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
 def fts5_safe_query(user_input: str) -> str:
     """
     Natural-language friendly FTS5 query builder, matching BurnBarFTSQueryBuilder.naturalLanguage().
@@ -1446,6 +1464,494 @@ def burnbar_resolve_usage_ledger_path() -> str:
             "knownConfidenceValues": sorted(KNOWN_CONFIDENCE),
         },
         indent=2,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Budget tools (Phase 7)
+# ---------------------------------------------------------------------------
+# Reads + writes against budget_rules / budget_events (schema v42, see
+# AgentLens/Services/DataStore/OpenBurnBarDatabase.swift). Write tools are
+# strictly scoped to budget_rules + budget_events; nothing else is mutable from
+# MCP.
+
+_BUDGET_PERIODS = {"day", "week", "month", "allTime"}
+_BUDGET_SCOPES = {"credential", "project", "global", "organization"}
+_BUDGET_BEHAVIORS = {
+    "warnThenBlock",
+    "hardBlock",
+    "warnOnly",
+    "hardBlockWithFallback",
+}
+_BUDGET_GROUP_BY = {"credential", "project", "model", "provider", "day"}
+
+
+def _budget_period_window_start(period: str) -> str | None:
+    """Return SQLite datetime modifier for the start of the rule's current period."""
+    if period == "day":
+        return "datetime('now', 'start of day')"
+    if period == "week":
+        return "datetime('now', '-7 days')"
+    if period == "month":
+        return "datetime('now', 'start of month')"
+    return None  # allTime
+
+
+@mcp.tool()
+def burnbar_query_spend(
+    group_by: str = "credential",
+    period: str = "month",
+    filter_provider: str | None = None,
+    filter_project: str | None = None,
+    limit: int = 20,
+) -> str:
+    """
+    Ranked spend breakdown for the requested period and grouping dimension.
+
+    group_by: one of `credential`, `project`, `model`, `provider`, `day`.
+    period:   one of `day`, `week`, `month`, `allTime`.
+    filter_provider: optional providerID filter (e.g. "anthropic", "openai", "openrouter").
+    filter_project:  optional projectName filter.
+    Returns ordered rows with totals so Hermes can answer "where did the money go?"
+    """
+    if group_by not in _BUDGET_GROUP_BY:
+        return json.dumps({"error": f"group_by must be one of {sorted(_BUDGET_GROUP_BY)}"})
+    if period not in _BUDGET_PERIODS:
+        return json.dumps({"error": f"period must be one of {sorted(_BUDGET_PERIODS)}"})
+
+    column_map = {
+        "credential": "providerAccountLabel",
+        "project": "projectName",
+        "model": "model",
+        "provider": "provider",
+        "day": "DATE(startTime)",
+    }
+    column = column_map[group_by]
+    window = _budget_period_window_start(period)
+
+    clauses: list[str] = []
+    args: list[Any] = []
+    if window:
+        clauses.append(f"startTime >= {window}")
+    if filter_provider:
+        clauses.append("providerID = ?")
+        args.append(filter_provider)
+    if filter_project:
+        clauses.append("projectName = ?")
+        args.append(filter_project)
+    where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    sql = f"""
+        SELECT {column} AS label,
+               COALESCE(SUM(cost), 0) AS totalCost,
+               COALESCE(SUM(totalTokens), 0) AS totalTokens,
+               COUNT(*) AS sessionCount
+        FROM token_usage
+        {where_sql}
+        GROUP BY {column}
+        ORDER BY totalCost DESC
+        LIMIT ?
+    """
+    args.append(max(1, min(int(limit), 200)))
+
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+    return json.dumps(
+        {"groupBy": group_by, "period": period, "rows": rows},
+        indent=2,
+        default=str,
+    )
+
+
+@mcp.tool()
+def burnbar_budget_status(
+    credential_account_id: str | None = None,
+    project_name: str | None = None,
+) -> str:
+    """
+    All active budget rules with their current spend, projected period-end, and remaining headroom.
+
+    Pass credential_account_id (hashed partition token from token_usage.providerAccountID)
+    to narrow to one credential. Pass project_name to narrow to one project.
+    """
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        rule_sql = "SELECT * FROM budget_rules WHERE isEnabled = 1"
+        rule_args: list[Any] = []
+        if credential_account_id:
+            rule_sql += " AND scope = 'credential' AND accountID = ?"
+            rule_args.append(credential_account_id)
+        if project_name:
+            rule_sql += " AND scope = 'project' AND projectName = ?"
+            rule_args.append(project_name)
+        rules = [dict(r) for r in conn.execute(rule_sql, rule_args).fetchall()]
+
+        snapshots = []
+        for rule in rules:
+            window = _budget_period_window_start(rule.get("period", "month"))
+            spend_clauses: list[str] = []
+            spend_args: list[Any] = []
+            if window:
+                spend_clauses.append(f"startTime >= {window}")
+            if rule.get("scope") == "credential":
+                if rule.get("providerID"):
+                    spend_clauses.append("providerID = ?")
+                    spend_args.append(rule["providerID"])
+                if rule.get("accountID"):
+                    spend_clauses.append("providerAccountID = ?")
+                    spend_args.append(rule["accountID"])
+            elif rule.get("scope") == "project" and rule.get("projectName"):
+                spend_clauses.append("projectName = ?")
+                spend_args.append(rule["projectName"])
+            spend_where = ("WHERE " + " AND ".join(spend_clauses)) if spend_clauses else ""
+            spend_row = conn.execute(
+                f"SELECT COALESCE(SUM(cost), 0) AS total FROM token_usage {spend_where}",
+                spend_args,
+            ).fetchone()
+            used = spend_row["total"] if spend_row else 0
+            limit = rule.get("amountUSD", 0) or 0
+            used_percent = (used / limit * 100) if limit > 0 else 0
+            snapshots.append(
+                {
+                    "ruleID": rule["id"],
+                    "label": rule.get("label") or rule.get("identifier") or rule["id"],
+                    "scope": rule.get("scope"),
+                    "providerID": rule.get("providerID"),
+                    "accountID": rule.get("accountID"),
+                    "projectName": rule.get("projectName"),
+                    "period": rule.get("period"),
+                    "behavior": rule.get("behavior"),
+                    "amountUSD": limit,
+                    "usedUSD": used,
+                    "remainingUSD": max(0, limit - used),
+                    "usedPercent": round(used_percent, 2),
+                    "pausedUntil": rule.get("pausedUntil"),
+                    "isEnabled": bool(rule.get("isEnabled", 1)),
+                }
+            )
+
+    return json.dumps({"rules": snapshots}, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_spend_forecast(
+    credential_account_id: str | None = None,
+    project_name: str | None = None,
+    horizon_days: int = 30,
+) -> str:
+    """
+    Linear forecast for spend over the next horizon_days based on the trailing 7-day average.
+    Returns trailingDailyAverageUSD and projectedTotalUSD per matched scope.
+    """
+    horizon = max(1, min(int(horizon_days), 365))
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        clauses: list[str] = ["startTime >= datetime('now', '-7 days')"]
+        args: list[Any] = []
+        if credential_account_id:
+            clauses.append("providerAccountID = ?")
+            args.append(credential_account_id)
+        if project_name:
+            clauses.append("projectName = ?")
+            args.append(project_name)
+        where_sql = "WHERE " + " AND ".join(clauses)
+        row = conn.execute(
+            f"SELECT COALESCE(SUM(cost), 0) AS total FROM token_usage {where_sql}",
+            args,
+        ).fetchone()
+        trailing_total = row["total"] if row else 0
+        daily_avg = trailing_total / 7
+        projected = daily_avg * horizon
+
+    return json.dumps(
+        {
+            "credentialAccountID": credential_account_id,
+            "projectName": project_name,
+            "horizonDays": horizon,
+            "trailingDailyAverageUSD": round(daily_avg, 4),
+            "projectedTotalUSD": round(projected, 4),
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+def burnbar_budget_audit(rule_id: str | None = None, limit: int = 50) -> str:
+    """Recent audit events from budget_events (warnings, blocks, overrides, rule mutations)."""
+    lim = max(1, min(int(limit), 500))
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        sql = "SELECT * FROM budget_events"
+        args: list[Any] = []
+        if rule_id:
+            sql += " WHERE ruleID = ?"
+            args.append(rule_id)
+        sql += " ORDER BY occurredAt DESC LIMIT ?"
+        args.append(lim)
+        rows = [dict(r) for r in conn.execute(sql, args).fetchall()]
+    return json.dumps({"events": rows}, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_set_budget_limit(
+    scope: str,
+    amount_usd: float,
+    period: str = "month",
+    behavior: str = "warnThenBlock",
+    rule_id: str | None = None,
+    provider_id: str | None = None,
+    account_id: str | None = None,
+    project_name: str | None = None,
+    label: str | None = None,
+    enabled: bool = True,
+) -> str:
+    """
+    Create or update a budget rule. Returns the persisted row.
+
+    scope: `credential`, `project`, `global`, or `organization`.
+    For credential scope, supply provider_id (and optionally account_id).
+    For project scope, supply project_name.
+    """
+    if scope not in _BUDGET_SCOPES:
+        return json.dumps({"error": f"scope must be one of {sorted(_BUDGET_SCOPES)}"})
+    if period not in _BUDGET_PERIODS:
+        return json.dumps({"error": f"period must be one of {sorted(_BUDGET_PERIODS)}"})
+    if behavior not in _BUDGET_BEHAVIORS:
+        return json.dumps({"error": f"behavior must be one of {sorted(_BUDGET_BEHAVIORS)}"})
+    if amount_usd <= 0:
+        return json.dumps({"error": "amount_usd must be > 0"})
+
+    import uuid
+
+    now = datetime.now(timezone.utc).isoformat(sep=" ", timespec="milliseconds")
+    rid = rule_id or str(uuid.uuid4())
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.execute(
+            """
+            INSERT INTO budget_rules (
+                id, scope, identifier, providerID, accountID, projectName, label,
+                amountUSD, period, behavior, fallbackCredentialIDsJSON, pausedUntil,
+                createdAt, updatedAt, syncedAt, sourceDeviceID, isEnabled
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+                scope = excluded.scope,
+                providerID = excluded.providerID,
+                accountID = excluded.accountID,
+                projectName = excluded.projectName,
+                label = excluded.label,
+                amountUSD = excluded.amountUSD,
+                period = excluded.period,
+                behavior = excluded.behavior,
+                pausedUntil = NULL,
+                updatedAt = excluded.updatedAt,
+                syncedAt = NULL,
+                isEnabled = excluded.isEnabled
+            """,
+            (
+                rid,
+                scope,
+                None,
+                provider_id,
+                account_id,
+                project_name,
+                label,
+                amount_usd,
+                period,
+                behavior,
+                None,
+                None,
+                now,
+                now,
+                None,
+                "mcp_tool",
+                1 if enabled else 0,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO budget_events (
+                id, ruleID, kind, source, amountAtEvent, limitAtEvent,
+                detailJSON, occurredAt, syncedAt, sourceDeviceID
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                str(uuid.uuid4()),
+                rid,
+                "ruleCreated" if not rule_id else "ruleUpdated",
+                "mcp_tool",
+                0.0,
+                amount_usd,
+                json.dumps({"label": label or "", "period": period, "scope": scope}),
+                now,
+                None,
+                "mcp_tool",
+            ),
+        )
+        conn.commit()
+    return json.dumps({"ruleID": rid, "scope": scope, "amountUSD": amount_usd, "period": period, "behavior": behavior}, indent=2)
+
+
+@mcp.tool()
+def burnbar_pause_budget_gate(rule_id: str, until_iso: str) -> str:
+    """
+    Pause a rule until until_iso (ISO 8601, e.g. "2026-05-26T09:00:00Z").
+    The gate short-circuits to .paused for matching requests until that time.
+    """
+    try:
+        parsed = datetime.fromisoformat(until_iso.replace("Z", "+00:00"))
+    except ValueError:
+        return json.dumps({"error": "until_iso must be ISO 8601 (e.g. 2026-05-26T09:00:00Z)"})
+
+    now = datetime.now(timezone.utc).isoformat(sep=" ", timespec="milliseconds")
+    until_str = parsed.isoformat(sep=" ", timespec="milliseconds")
+
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        rule_row = conn.execute(
+            "SELECT amountUSD FROM budget_rules WHERE id = ?", (rule_id,)
+        ).fetchone()
+        if rule_row is None:
+            return json.dumps({"error": f"no rule with id {rule_id}"})
+        conn.execute(
+            "UPDATE budget_rules SET pausedUntil = ?, updatedAt = ?, syncedAt = NULL WHERE id = ?",
+            (until_str, now, rule_id),
+        )
+        import uuid
+
+        conn.execute(
+            """
+            INSERT INTO budget_events (
+                id, ruleID, kind, source, amountAtEvent, limitAtEvent,
+                detailJSON, occurredAt, syncedAt, sourceDeviceID
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                str(uuid.uuid4()),
+                rule_id,
+                "pause",
+                "mcp_tool",
+                0.0,
+                float(rule_row[0]) if rule_row[0] is not None else 0.0,
+                json.dumps({"pausedUntil": until_str}),
+                now,
+                None,
+                "mcp_tool",
+            ),
+        )
+        conn.commit()
+    return json.dumps({"ruleID": rule_id, "pausedUntil": until_str}, indent=2)
+
+
+@mcp.tool()
+def burnbar_resume_budget_gate(rule_id: str) -> str:
+    """Cancel an active pause on a rule. Resumes enforcement immediately."""
+    now = datetime.now(timezone.utc).isoformat(sep=" ", timespec="milliseconds")
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        rule_row = conn.execute(
+            "SELECT amountUSD FROM budget_rules WHERE id = ?", (rule_id,)
+        ).fetchone()
+        if rule_row is None:
+            return json.dumps({"error": f"no rule with id {rule_id}"})
+        conn.execute(
+            "UPDATE budget_rules SET pausedUntil = NULL, updatedAt = ?, syncedAt = NULL WHERE id = ?",
+            (now, rule_id),
+        )
+        import uuid
+
+        conn.execute(
+            """
+            INSERT INTO budget_events (
+                id, ruleID, kind, source, amountAtEvent, limitAtEvent,
+                detailJSON, occurredAt, syncedAt, sourceDeviceID
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                str(uuid.uuid4()),
+                rule_id,
+                "resume",
+                "mcp_tool",
+                0.0,
+                float(rule_row[0]) if rule_row[0] is not None else 0.0,
+                None,
+                now,
+                None,
+                "mcp_tool",
+            ),
+        )
+        conn.commit()
+    return json.dumps({"ruleID": rule_id, "resumed": True}, indent=2)
+
+
+@mcp.tool()
+def burnbar_org_spend(
+    period: str = "month",
+    group_by: str = "user",
+    limit: int = 50,
+) -> str:
+    """
+    Enterprise cross-seat spend rollup.
+
+    Reads from the local copy of `token_usage` (which `CloudSyncService` already syncs
+    from every seat — fields `sourceDeviceID` and `sourceDeviceName` are present per
+    row). Groups by user (sourceDeviceID), project, credential, or provider.
+
+    group_by: one of `user`, `project`, `credential`, `provider`.
+    period:   one of `day`, `week`, `month`, `allTime`.
+
+    Note: full org-publish of shared rules across seats (sync of `budget_rules` /
+    `budget_events`) is a follow-up — each seat currently configures rules locally.
+    Per-seat spend reporting is fully functional.
+    """
+    if period not in _BUDGET_PERIODS:
+        return json.dumps({"error": f"period must be one of {sorted(_BUDGET_PERIODS)}"})
+    org_groups = {"user", "project", "credential", "provider"}
+    if group_by not in org_groups:
+        return json.dumps({"error": f"group_by must be one of {sorted(org_groups)}"})
+
+    column_map = {
+        "user": "COALESCE(sourceDeviceName, sourceDeviceID, 'local')",
+        "project": "projectName",
+        "credential": "COALESCE(providerAccountLabel, providerAccountID, 'default')",
+        "provider": "provider",
+    }
+    column = column_map[group_by]
+    window = _budget_period_window_start(period)
+
+    clauses = []
+    if window:
+        clauses.append(f"startTime >= {window}")
+    where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    sql = f"""
+        SELECT {column} AS label,
+               COALESCE(SUM(cost), 0) AS totalCost,
+               COALESCE(SUM(totalTokens), 0) AS totalTokens,
+               COUNT(DISTINCT sessionId) AS sessionCount,
+               COUNT(DISTINCT COALESCE(sourceDeviceID, 'local')) AS deviceCount
+        FROM token_usage
+        {where_sql}
+        GROUP BY {column}
+        ORDER BY totalCost DESC
+        LIMIT ?
+    """
+
+    lim = max(1, min(int(limit), 500))
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = [dict(r) for r in conn.execute(sql, [lim]).fetchall()]
+
+    return json.dumps(
+        {"groupBy": group_by, "period": period, "rows": rows},
+        indent=2,
+        default=str,
     )
 
 
