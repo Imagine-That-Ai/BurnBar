@@ -633,7 +633,13 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                  .controlAgentContextTarget,
                  .controlDenied,
                  .controlSystemPermissionRequest,
-                 .controlSystemPermissionStatus:
+                 .controlSystemPermissionStatus,
+                 .remoteUnlockSession,
+                 .remoteUnlockState,
+                 .remoteUnlockInput,
+                 .remoteUnlockCredential,
+                 .remoteUnlockResult,
+                 .remoteUnlockDenied:
                 continue
             case .mediaClassify,
                     .mediaBlobAdvertise,

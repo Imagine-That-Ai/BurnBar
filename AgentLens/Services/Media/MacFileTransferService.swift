@@ -307,6 +307,12 @@ final class MacFileTransferService: ObservableObject {
                      .controlClipboardRequest,
                      .controlClipboardResponse,
                      .controlAgentContextTarget,
+                     .remoteUnlockSession,
+                     .remoteUnlockState,
+                     .remoteUnlockInput,
+                     .remoteUnlockCredential,
+                     .remoteUnlockResult,
+                     .remoteUnlockDenied,
                      .controlDenied:
                     if let computerUseControlDispatcher {
                         Self.log.info("mac_control_stream_dispatch_computer_use type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")

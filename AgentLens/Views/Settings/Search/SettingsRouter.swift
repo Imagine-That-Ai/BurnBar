@@ -116,6 +116,7 @@ final class SettingsRouter {
              .alertsRoot,
              .notificationsRoot,
              .devicesAndSyncRoot,
+             .textExpansionRoot,
              .mediaRoot,
              .computerUseRoot:
             return []

@@ -128,7 +128,7 @@ treats Kimi as exact, which matches the running code.
 | Owner-scoped Firestore rules + secret-field-name denylist | `docs/THREAT_MODEL.md:140,221`, `firestore.rules` |
 | Releases signed + notarized + stapled | `docs/RELEASE_MACOS.md:42-55` |
 | Per-release SBOM + checksums + provenance JSON | `docs/RELEASE_MACOS.md:43-83` |
-| **Known limit:** macOS app is not sandboxed | `docs/THREAT_MODEL.md:113-124` |
+| **Known limit:** direct-download macOS app is not sandboxed; Mac App Store build is sandboxed | `docs/THREAT_MODEL.md:113-124`, `docs/RELEASE_MACOS.md` |
 | **Known limit:** Provider API calls aren't certificate-pinned | `SECURITY_PRIVACY_REVIEW.md:94` |
 | **Known limit:** Cursor connector tunnel routes through Cloudflare | `docs/THREAT_MODEL.md:152-156` |
 | **Known limit:** HTTP gateway is loopback-only by default | `SECURITY_PRIVACY_REVIEW.md:99-101` flags non-loopback bind as a risk. **[verify]** the shipping default is loopback-only |
@@ -140,17 +140,16 @@ treats Kimi as exact, which matches the running code.
 
 | Claim | Source |
 |---|---|
-| `v0.1.2-beta.12` is the latest published macOS release | `gh release list` |
-| Latest DMG asset URL | `https://github.com/Imagine-That-Ai/BurnBar/releases/download/v0.1.2-beta.12/OpenBurnBar-0.1.2-beta.12-macOS.dmg` |
+| `v1.0` is the prepared macOS release | `project.yml`, `src/data/site.ts`, `docs/RELEASE_MACOS.md` |
+| Latest DMG asset URL | `https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0/OpenBurnBar-1.0-macOS.dmg` |
 | macOS Sonoma min | `README.md:272`, `homebrew/burnbar.rb:22` |
 | iOS in App Store review | `docs/IOS_APP_STORE_RELEASE_RUNBOOK.md:9-17` |
 | Editor extension source-only | `extensions/openburnbar/README.md:7-10` |
 | Android in development, no Play Store yet | `docs/ANDROID_NATIVE_PARITY_GOAL.md`, `android/app/AGENTS.md` |
 | Homebrew tap not yet published | `QUICKSTART.md:46`. Site doesn't list a brew command — intentional |
 
-**[verify]** Marketing-version mismatch: `project.yml` says `0.1.3-beta.1`,
-README repeats that, but the latest *published* release is `v0.1.2-beta.12`.
-Site currently points to the published release; bump on publish.
+**[verify]** Before website deployment, confirm the GitHub `v1.0` release asset exists and matches
+the notarized local artifact checksums.
 
 ---
 
@@ -169,7 +168,7 @@ These are the recurring **[verify]** flags above, collected:
 1. **Canonical GitHub URL.** README + Homebrew formula say `Ajnunezg/BurnBar`. `git remote -v` says `Imagine-That-Ai/BurnBar`. Both repos exist publicly; only the latter has shipped release artifacts. Pick one and align everything.
 2. **iOS launch status.** Until Apple approves, the site copy says "in App Store review." When approved, set `SITE.iosStatus = "available on iPhone & iPad"` in `src/data/site.ts`.
 3. **App Store Connect price tier.** Site advertises $4.99/month. Confirm the live tier matches; if Apple sets a different tier in some locales, decide whether to footnote.
-4. **Marketing version.** When a fresh tag (`v0.1.3-beta.1` or later) is cut, bump `SITE.macReleaseLatest` / `SITE.macReleaseFile` in `src/data/site.ts`.
+4. **Marketing version.** `SITE.macReleaseLatest` / `SITE.macReleaseFile` now target `v1.0`; verify the GitHub release asset exists before deployment.
 5. **Sentry / encryption-key recovery / HTTP-gateway TLS** — `SECURITY_PRIVACY_REVIEW.md` notes a few items the team intended to fix. Re-read against the current shipping build before publishing the security page.
 6. **Trademark clearance for "OpenBurnBar"** is listed as a TODO in `docs/OSS_LAUNCH_CHECKLIST.md:108`. The site uses the name everywhere, so confirm clearance before going public.
 7. **Yearly plan / team plan copy** — kept off the page until built.

@@ -108,6 +108,8 @@ import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.components.ProviderLogoStyle
 import com.openburnbar.ui.components.ProviderLogoView
 import com.openburnbar.ui.computeruse.AgentPermissionGrantSheet
+import com.openburnbar.ui.text.expandStaticTextSnippetDraft
+import com.openburnbar.ui.text.rememberTextExpansionSnippets
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 import java.util.UUID
@@ -147,6 +149,7 @@ fun CliAgentChatView(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val textExpansionSnippets by rememberTextExpansionSnippets()
     var modelOptions by remember(runtime) { mutableStateOf<List<CliRuntimeModelOption>>(emptyList()) }
     var modelCatalogError by remember(runtime) { mutableStateOf<String?>(null) }
     var modelCatalogLoading by remember(runtime) { mutableStateOf(false) }
@@ -399,7 +402,7 @@ fun CliAgentChatView(
                 runtime = runtime,
                 provider = provider,
                 draft = draft,
-                onDraftChange = { draft = it },
+                onDraftChange = { draft = expandStaticTextSnippetDraft(it, textExpansionSnippets) },
                 isSending = pendingRequestID != null || streamingMessageID != null,
                 onPickPhoto = { pickPhoto.launch("image/*") },
                 onPickFile = { pickFile.launch(arrayOf("*/*")) },

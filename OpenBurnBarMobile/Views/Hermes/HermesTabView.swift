@@ -1175,6 +1175,8 @@ struct HermesChatView: View {
     @State private var atomRouter = HermesAtomRouter()
     @State private var pendingAttachments: [HermesAttachment] = []
     @State private var attachmentImportError: String?
+    @State private var textExpansionSnippets: [TextExpansionSnippet] = []
+    @State private var isApplyingTextExpansion = false
     @State private var showFileImporter = false
     @State private var showCameraSheet = false
     @State private var photoPickerSelection: [PhotosPickerItem] = []
@@ -1503,6 +1505,7 @@ struct HermesChatView: View {
             // service — disconnected automatically when this view goes
             // away.
             service.setToolAtomNavigator(atomRouter)
+            reloadTextExpansionSnippets()
         }
         .onDisappear {
             // Be explicit so the service drops its reference promptly
@@ -1512,6 +1515,10 @@ struct HermesChatView: View {
         }
         .onAppear {
             presentSetupWizardIfNeeded()
+            reloadTextExpansionSnippets()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            reloadTextExpansionSnippets()
         }
         .onChange(of: service.isReachable) { _, _ in
             reconcileSetupWizardCompletion()
@@ -1905,9 +1912,23 @@ struct HermesChatView: View {
             // Catch return-key inserts on multi-line text fields where
             // `.onSubmit` can be unreliable, and treat them as send.
             .onChange(of: input) { oldValue, newValue in
+                guard !isApplyingTextExpansion else { return }
                 if newValue.hasSuffix("\n"), !service.isStreaming {
                     input = oldValue
                     send()
+                    return
+                }
+                if let result = TextExpansionMatcher.expandStaticIfAvailable(
+                    in: newValue,
+                    snippets: textExpansionSnippets,
+                    surface: .inAppThread,
+                    threadID: textExpansionThreadID
+                ) {
+                    isApplyingTextExpansion = true
+                    input = result.text
+                    DispatchQueue.main.async {
+                        isApplyingTextExpansion = false
+                    }
                 }
             }
     }
@@ -1961,6 +1982,25 @@ struct HermesChatView: View {
             commandBias: commandBias
         )
         service.sendMessage(trimmed, context: context, attachments: attachments)
+    }
+
+    private var textExpansionThreadID: String? {
+        if let selectedSessionID = service.selectedSessionID {
+            return selectedSessionID
+        }
+        if case .existing(let sessionID) = route {
+            return sessionID
+        }
+        return nil
+    }
+
+    private func reloadTextExpansionSnippets() {
+        guard let url = TextExpansionSnapshotStore.snapshotURL(),
+              let snapshot = try? TextExpansionSnapshotStore.read(from: url) else {
+            textExpansionSnippets = []
+            return
+        }
+        textExpansionSnippets = snapshot.snippets
     }
 
     private func dismissKeyboard() {

@@ -1,7 +1,12 @@
 import Foundation
+import AppKit
+import CryptoKit
+import CoreGraphics
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
+import Security
 
 /// Mac-side authoritative implementation of `MediaCapabilityGate`
 /// (Decision 2 — `plans/2026-05-15-mercury-media-master-plan.md`). The
@@ -256,4 +261,254 @@ struct MediaQuotaUsageSnapshot: Sendable, Equatable {
     var screenShareSessions: Int = 0
     var videoCallSecondsUsed: Int = 0
     var videoCallSessions: Int = 0
+}
+
+@MainActor
+final class MacRemoteUnlockReadinessService {
+    static let shared = MacRemoteUnlockReadinessService()
+
+    private enum Keys {
+        static let featureEnabled = "mercury_remote_unlock_enabled"
+        static let certifiedAt = "remote_unlock.certified_at"
+        static let certifiedOSBuild = "remote_unlock.certified_os_build"
+        static let backendCertificationFresh = "remote_unlock.backend_certification_fresh"
+        static let loopbackFirewallActive = "remote_unlock.loopback_firewall_active"
+        static let generatedCredentialInSystemKeychain = "remote_unlock.generated_credential_in_system_keychain"
+        static let lastLockScreenProbeSucceeded = "remote_unlock.last_lock_screen_probe_succeeded"
+        static let lastCredentialInputProbeSucceeded = "remote_unlock.last_credential_input_probe_succeeded"
+        static let lastUnlockProbeSucceeded = "remote_unlock.last_unlock_probe_succeeded"
+        static let fileVaultSSHSupported = "remote_unlock.filevault_ssh_supported"
+        static let credentialRecipientKeyId = "remote_unlock.credential_recipient_key_id"
+        static let credentialRecipientPublicKeyBase64 = "remote_unlock.credential_recipient_public_key_base64"
+    }
+
+    private let defaults: UserDefaults
+    private let policy: RemoteUnlockPolicy
+    private let certificationStore: RemoteUnlockCertificationReportStore
+
+    init(
+        defaults: UserDefaults = .standard,
+        policy: RemoteUnlockPolicy = .default,
+        certificationStore: RemoteUnlockCertificationReportStore = RemoteUnlockCertificationReportStore()
+    ) {
+        self.defaults = defaults
+        self.policy = policy
+        self.certificationStore = certificationStore
+    }
+
+    func capabilities() -> HermesRealtimeRelayRemoteUnlockCapabilities {
+        policy.capabilities(for: snapshot())
+    }
+
+    func currentState(
+        sessionId: String?,
+        controlOwnerViewerId: String?
+    ) -> HermesRealtimeRelayRemoteUnlockState {
+        let capabilities = capabilities()
+        return HermesRealtimeRelayRemoteUnlockState(
+            sessionId: sessionId,
+            lockState: currentLockState(),
+            backend: capabilities.activeBackend,
+            capabilities: capabilities,
+            controlOwnerViewerId: controlOwnerViewerId,
+            observedAt: Date()
+        )
+    }
+
+    func validateRemoteUnlockSession(
+        _ session: HermesRealtimeRelayRemoteUnlockSession,
+        now: Date = Date()
+    ) -> RemoteUnlockDecision {
+        policy.validate(session: session, capabilities: capabilities(), now: now)
+    }
+
+    func snapshot() -> RemoteUnlockReadinessSnapshot {
+        let keyMaterial = try? RemoteUnlockCredentialKeyStore.shared.copyOrCreateKeyMaterial()
+        if let keyMaterial {
+            defaults.set(keyMaterial.keyId, forKey: Keys.credentialRecipientKeyId)
+            defaults.set(keyMaterial.publicKeyBase64, forKey: Keys.credentialRecipientPublicKeyBase64)
+        }
+        let osBuild = currentOSBuild()
+        let featureFlag = (defaults.object(forKey: Keys.featureEnabled) as? Bool) ?? true
+        let screenSharingAvailable = FileManager.default.fileExists(
+            atPath: "/System/Library/CoreServices/RemoteManagement/ARDAgent.app"
+        ) || FileManager.default.fileExists(
+            atPath: "/System/Library/CoreServices/Applications/Screen Sharing.app"
+        )
+        let daemonInstalled = FileManager.default.fileExists(
+            atPath: "/Library/LaunchDaemons/com.openburnbar.remote-access-agent.plist"
+        )
+        let report = try? certificationStore.load()
+        let reportBlockers = report?.validationBlockers(
+            now: Date(),
+            currentOSBuild: osBuild,
+            credentialRecipientKeyId: keyMaterial?.keyId,
+            credentialRecipientPublicKeyBase64: keyMaterial?.publicKeyBase64,
+            directDownloadBuild: isDirectDownloadBuild,
+            daemonInstalled: daemonInstalled,
+            systemScreenSharingAvailable: screenSharingAvailable
+        ) ?? ["remote_unlock_report_missing"]
+        let hasValidReport = reportBlockers.isEmpty
+
+        return RemoteUnlockReadinessSnapshot(
+            featureFlagEnabled: featureFlag,
+            directDownloadBuild: isDirectDownloadBuild,
+            daemonInstalled: daemonInstalled,
+            systemScreenSharingAvailable: screenSharingAvailable,
+            loopbackOnlyFirewallActive: hasValidReport && (report?.loopbackOnlyFirewallActive == true),
+            generatedCredentialInSystemKeychain: hasValidReport && (report?.generatedCredentialInSystemKeychain == true),
+            backendCertificationFresh: hasValidReport,
+            currentOSBuild: osBuild,
+            certifiedOSBuild: hasValidReport ? report?.currentOSBuild : nil,
+            certifiedAt: hasValidReport ? report?.generatedAt : nil,
+            fileVaultEnabled: isFileVaultLikelyEnabled(),
+            fileVaultSSHSupported: hasValidReport && (report?.fileVaultSSHSupported == true),
+            lastLockScreenProbeSucceeded: hasValidReport && (report?.probes.lockScreenCapture.succeeded == true),
+            lastCredentialInputProbeSucceeded: hasValidReport && (report?.probes.credentialInput.succeeded == true),
+            lastUnlockProbeSucceeded: hasValidReport && (report?.probes.unlockRoundTrip.succeeded == true),
+            credentialRecipientKeyId: keyMaterial?.keyId ?? defaults.string(forKey: Keys.credentialRecipientKeyId),
+            credentialRecipientPublicKeyBase64: keyMaterial?.publicKeyBase64 ?? defaults.string(forKey: Keys.credentialRecipientPublicKeyBase64)
+        )
+    }
+
+    func recordCertification(
+        osBuild: String? = nil,
+        fileVaultSSHSupported: Bool,
+        credentialRecipientKeyId: String,
+        credentialRecipientPublicKeyBase64: String,
+        certifiedAt: Date = Date()
+    ) {
+        guard !credentialRecipientKeyId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !credentialRecipientPublicKeyBase64.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            defaults.set(false, forKey: Keys.backendCertificationFresh)
+            return
+        }
+        let report = RemoteUnlockCertificationReport.certifiedHardware(
+            currentOSBuild: osBuild ?? currentOSBuild(),
+            credentialRecipientKeyId: credentialRecipientKeyId,
+            credentialRecipientPublicKeyBase64: credentialRecipientPublicKeyBase64,
+            fileVaultSSHSupported: fileVaultSSHSupported,
+            generatedAt: certifiedAt,
+            redactedViewerDeviceKind: "mac-local-certification",
+            notes: "Recorded by MacRemoteUnlockReadinessService after a local certified Remote Unlock proof."
+        )
+        try? certificationStore.save(report)
+        defaults.set(certifiedAt, forKey: Keys.certifiedAt)
+        defaults.set(osBuild ?? currentOSBuild(), forKey: Keys.certifiedOSBuild)
+        defaults.set(true, forKey: Keys.backendCertificationFresh)
+        defaults.set(true, forKey: Keys.loopbackFirewallActive)
+        defaults.set(true, forKey: Keys.generatedCredentialInSystemKeychain)
+        defaults.set(true, forKey: Keys.lastLockScreenProbeSucceeded)
+        defaults.set(true, forKey: Keys.lastCredentialInputProbeSucceeded)
+        defaults.set(true, forKey: Keys.lastUnlockProbeSucceeded)
+        defaults.set(fileVaultSSHSupported, forKey: Keys.fileVaultSSHSupported)
+        defaults.set(credentialRecipientKeyId, forKey: Keys.credentialRecipientKeyId)
+        defaults.set(credentialRecipientPublicKeyBase64, forKey: Keys.credentialRecipientPublicKeyBase64)
+    }
+
+    private var isDirectDownloadBuild: Bool {
+        #if DISTRIBUTION_MAS
+        return false
+        #else
+        return true
+        #endif
+    }
+
+    private func currentLockState() -> HermesRealtimeRelayMacLockState {
+        guard let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
+            return .unknown
+        }
+        switch frontmost {
+        case "com.apple.loginwindow":
+            return .loginWindow
+        case "com.apple.SecurityAgent", "com.apple.SecurityAgentHelper":
+            return .securityAgent
+        default:
+            return .unlocked
+        }
+    }
+
+    private func currentOSBuild() -> String {
+        ProcessInfo.processInfo.operatingSystemVersionString
+    }
+
+    private func isFileVaultLikelyEnabled() -> Bool {
+        let profiles = "/Library/Preferences/com.apple.fdesetup.plist"
+        return FileManager.default.fileExists(atPath: profiles)
+    }
+}
+
+struct RemoteUnlockCredentialKeyMaterial: Sendable {
+    var keyId: String
+    var publicKeyBase64: String
+    var privateKey: Curve25519.KeyAgreement.PrivateKey
+}
+
+final class RemoteUnlockCredentialKeyStore: @unchecked Sendable {
+    static let shared = RemoteUnlockCredentialKeyStore()
+
+    private let service = "com.openburnbar.remote-unlock.hpke"
+    private let account = "default"
+    private let queue = DispatchQueue(label: "com.openburnbar.remote-unlock.hpke-key")
+
+    func copyOrCreateKeyMaterial() throws -> RemoteUnlockCredentialKeyMaterial {
+        try queue.sync {
+            if let data = try copyPrivateKeyData() {
+                return try material(fromPrivateKeyData: data)
+            }
+            let privateKey = Curve25519.KeyAgreement.PrivateKey()
+            let data = privateKey.rawRepresentation
+            try savePrivateKeyData(data)
+            return try material(fromPrivateKeyData: data)
+        }
+    }
+
+    func copyPrivateKey() throws -> Curve25519.KeyAgreement.PrivateKey {
+        try copyOrCreateKeyMaterial().privateKey
+    }
+
+    private func material(fromPrivateKeyData data: Data) throws -> RemoteUnlockCredentialKeyMaterial {
+        let privateKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: data)
+        let publicKeyData = privateKey.publicKey.rawRepresentation
+        let keyId = SHA256.hash(data: publicKeyData)
+            .prefix(12)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return RemoteUnlockCredentialKeyMaterial(
+            keyId: "hpke-\(keyId)",
+            publicKeyBase64: publicKeyData.base64EncodedString(),
+            privateKey: privateKey
+        )
+    }
+
+    private func copyPrivateKeyData() throws -> Data? {
+        var query = baseQuery()
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw KeychainError(status: status) }
+        return item as? Data
+    }
+
+    private func savePrivateKeyData(_ data: Data) throws {
+        var item = baseQuery()
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(item as CFDictionary, nil)
+        guard status == errSecSuccess else { throw KeychainError(status: status) }
+    }
+
+    private func baseQuery() -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+    }
+
+    private struct KeychainError: Error {
+        let status: OSStatus
+    }
 }

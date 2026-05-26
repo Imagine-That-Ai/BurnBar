@@ -18,8 +18,8 @@ export const SURFACES: Surface[] = [
     id: "macos",
     name: "macOS menu bar app",
     platform: "macOS 14+",
-    status: "beta",
-    statusLabel: "Public beta",
+    status: "shipping",
+    statusLabel: "Shipping",
     description:
       "The home base. Lives in the menu bar, reads local agent logs, surfaces cost, tokens, quota, sessions, and insights.",
     bullets: [

@@ -16,6 +16,9 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorStop
 import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
 import com.openburnbar.irohrelay.IrohRelayStream
 import java.io.ByteArrayOutputStream
 import java.time.Instant
@@ -137,6 +140,14 @@ class MediaControlStreamCoordinator(
     val lastClipboardResponse: StateFlow<HermesRealtimeRelayClipboardResponse?> =
         _lastClipboardResponse.asStateFlow()
 
+    private val _lastRemoteUnlockState = MutableStateFlow<HermesRealtimeRelayRemoteUnlockState?>(null)
+    val lastRemoteUnlockState: StateFlow<HermesRealtimeRelayRemoteUnlockState?> =
+        _lastRemoteUnlockState.asStateFlow()
+
+    private val _lastRemoteUnlockResult = MutableStateFlow<HermesRealtimeRelayRemoteUnlockResult?>(null)
+    val lastRemoteUnlockResult: StateFlow<HermesRealtimeRelayRemoteUnlockResult?> =
+        _lastRemoteUnlockResult.asStateFlow()
+
     private val _lastPeerHeartbeatAtMillis = MutableStateFlow(0L)
     val lastPeerHeartbeatAtMillis: StateFlow<Long> = _lastPeerHeartbeatAtMillis.asStateFlow()
     private val _lastRoundTripMillis = MutableStateFlow<Int?>(null)
@@ -191,7 +202,10 @@ class MediaControlStreamCoordinator(
         stream.send(frame)
     }
 
-    suspend fun requestMirror(requesterDisplayName: String): String {
+    suspend fun requestMirror(
+        requesterDisplayName: String,
+        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null,
+    ): String {
         val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
         val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
         val requestID = UUID.randomUUID().toString()
@@ -207,6 +221,7 @@ class MediaControlStreamCoordinator(
             viewerId = viewerID,
             viewerDeviceId = peerDeviceIdProvider().ifBlank { "android" },
             controlAuthorityPeerNodeId = controlAuthorityPeerNodeIdProvider(),
+            remoteUnlockSession = remoteUnlockSession,
         )
         send(
             HermesRealtimeRelayFrame(
@@ -422,6 +437,17 @@ class MediaControlStreamCoordinator(
                     HermesRealtimeRelayFrameType.CONTROL_CLIPBOARD_RESPONSE -> {
                         frame.control?.clipboardResponse?.let { response ->
                             _lastClipboardResponse.value = response
+                        }
+                    }
+                    HermesRealtimeRelayFrameType.REMOTE_UNLOCK_STATE -> {
+                        frame.control?.remoteUnlockState?.let { state ->
+                            _lastRemoteUnlockState.value = state
+                        }
+                    }
+                    HermesRealtimeRelayFrameType.REMOTE_UNLOCK_RESULT,
+                    HermesRealtimeRelayFrameType.REMOTE_UNLOCK_DENIED -> {
+                        frame.control?.remoteUnlockResult?.let { result ->
+                            _lastRemoteUnlockResult.value = result
                         }
                     }
                     HermesRealtimeRelayFrameType.MEDIA_CLASSIFY -> {

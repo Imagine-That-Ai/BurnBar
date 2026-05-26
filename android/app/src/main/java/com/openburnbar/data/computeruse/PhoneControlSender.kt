@@ -10,6 +10,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayInputIntent
 import com.openburnbar.irohrelay.HermesRealtimeRelayInputIntentKind
+import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionAction
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionRequest
@@ -123,6 +124,43 @@ class PhoneControlSender(
             control = HermesRealtimeRelayControlPayload(
                 streamClass = "control.clipboard",
                 clipboardRequest = signedWire,
+            ),
+        )
+        frameSink(frame)
+        return signedWire
+    }
+
+    suspend fun send(
+        remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
+    ): HermesRealtimeRelayRemoteUnlockCredentialEnvelope {
+        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId = "",
+            counter = 0,
+            timestamp = 0.0,
+            intentHashBlake3 = "",
+            signatureEd25519 = "",
+        )
+        val unsignedCredential = remoteUnlockCredential.copy(authority = placeholder)
+        val counter = counterStore.nextCounter(peerNodeId)
+        val timestampMillis = nowMillis()
+        val authority = PhoneControlSigner.signRemoteUnlockCredential(
+            credential = unsignedCredential,
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = timestampMillis,
+            privateKeySeed = privateKeySeed,
+        )
+        val signedWire = unsignedCredential.copy(authority = authority.toRelayAuthority())
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_CREDENTIAL,
+            uid = uid,
+            connectionId = connectionId,
+            requestId = signedWire.requestId,
+            control = HermesRealtimeRelayControlPayload(
+                streamClass = "remote_unlock",
+                sessionId = signedWire.sessionId,
+                remoteUnlockCredential = signedWire,
             ),
         )
         frameSink(frame)

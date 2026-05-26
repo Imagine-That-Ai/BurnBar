@@ -59,6 +59,14 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case controlClipboardResponse = "control.clipboard.response"
     case controlDenied = "control.denied"
     case controlAgentContextTarget = "control.agent.context.target"
+    // Remote Unlock — human-only Mac unlock lane. These frames are kept
+    // separate from Computer Use so agents can never consume credential input.
+    case remoteUnlockSession = "remote_unlock.session"
+    case remoteUnlockState = "remote_unlock.state"
+    case remoteUnlockInput = "remote_unlock.input"
+    case remoteUnlockCredential = "remote_unlock.credential"
+    case remoteUnlockResult = "remote_unlock.result"
+    case remoteUnlockDenied = "remote_unlock.denied"
     // System Permission Concierge — Phase 14. Mac emits status frames when a
     // tool failure is classified as a TCC denial; the phone replies with a
     // signed request asking the Mac to surface the right native prompt /
@@ -130,6 +138,11 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
     public var authorityPeerNodeId: String?
     public var authorityPublicKeyBase64: String?
     public var agentContextTarget: HermesRealtimeRelayAgentContextTarget?
+    public var remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession?
+    public var remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
+    public var remoteUnlockInput: HermesRealtimeRelayRemoteUnlockInput?
+    public var remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope?
+    public var remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult?
     public var systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest?
     public var systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus?
 
@@ -148,6 +161,11 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         authorityPeerNodeId: String? = nil,
         authorityPublicKeyBase64: String? = nil,
         agentContextTarget: HermesRealtimeRelayAgentContextTarget? = nil,
+        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil,
+        remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
+        remoteUnlockInput: HermesRealtimeRelayRemoteUnlockInput? = nil,
+        remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope? = nil,
+        remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult? = nil,
         systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest? = nil,
         systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = nil
     ) {
@@ -165,6 +183,11 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         self.authorityPeerNodeId = authorityPeerNodeId
         self.authorityPublicKeyBase64 = authorityPublicKeyBase64
         self.agentContextTarget = agentContextTarget
+        self.remoteUnlockSession = remoteUnlockSession
+        self.remoteUnlockState = remoteUnlockState
+        self.remoteUnlockInput = remoteUnlockInput
+        self.remoteUnlockCredential = remoteUnlockCredential
+        self.remoteUnlockResult = remoteUnlockResult
         self.systemPermissionRequest = systemPermissionRequest
         self.systemPermissionStatus = systemPermissionStatus
     }
@@ -561,6 +584,564 @@ public struct HermesRealtimeRelayControlDenied: Codable, Sendable, Equatable {
     public init(reason: Reason, detail: String? = nil) {
         self.reason = reason
         self.detail = detail
+    }
+}
+
+// MARK: - Remote Unlock
+
+public enum HermesRealtimeRelayMacLockState: String, Codable, CaseIterable, Sendable, Hashable {
+    case unlocked
+    case screenSaver = "screen_saver"
+    case screenLocked = "screen_locked"
+    case displaySleeping = "display_sleeping"
+    case loginWindow = "login_window"
+    case securityAgent = "security_agent"
+    case fastUserSwitching = "fast_user_switching"
+    case remoteDesktopCurtain = "remote_desktop_curtain"
+    case rebootLoginWindow = "reboot_login_window"
+    case fileVaultPreboot = "filevault_preboot"
+    case unknown
+}
+
+public enum HermesRealtimeRelayRemoteUnlockBackend: String, Codable, CaseIterable, Sendable, Equatable {
+    case screenCaptureKit = "screen_capture_kit"
+    case persistentScreenCaptureKit = "persistent_screen_capture_kit"
+    case appleScreenSharingLoopback = "apple_screen_sharing_loopback"
+    case fileVaultSSH = "filevault_ssh"
+    case unavailable
+}
+
+public enum HermesRealtimeRelayRemoteUnlockCertificationStatus: String, Codable, CaseIterable, Sendable, Equatable {
+    case uncertified
+    case certified
+    case stale
+    case blocked
+    case failed
+}
+
+public struct HermesRealtimeRelayRemoteUnlockCapabilities: Codable, Sendable, Equatable {
+    public var enabled: Bool
+    public var certificationStatus: HermesRealtimeRelayRemoteUnlockCertificationStatus
+    public var certifiedAt: Date?
+    public var certifiedOSBuild: String?
+    public var activeBackend: HermesRealtimeRelayRemoteUnlockBackend
+    public var supportedBackends: [HermesRealtimeRelayRemoteUnlockBackend]
+    public var supportedLockStates: [HermesRealtimeRelayMacLockState]
+    public var blockers: [String]
+    public var allowsCredentialPaste: Bool
+    public var credentialRecipientKeyId: String?
+    public var credentialRecipientPublicKeyBase64: String?
+    public var credentialEnvelopeAlgorithm: String?
+    public var fileVaultSSHSupported: Bool
+
+    public init(
+        enabled: Bool,
+        certificationStatus: HermesRealtimeRelayRemoteUnlockCertificationStatus,
+        certifiedAt: Date? = nil,
+        certifiedOSBuild: String? = nil,
+        activeBackend: HermesRealtimeRelayRemoteUnlockBackend,
+        supportedBackends: [HermesRealtimeRelayRemoteUnlockBackend] = [],
+        supportedLockStates: [HermesRealtimeRelayMacLockState] = [],
+        blockers: [String] = [],
+        allowsCredentialPaste: Bool = false,
+        credentialRecipientKeyId: String? = nil,
+        credentialRecipientPublicKeyBase64: String? = nil,
+        credentialEnvelopeAlgorithm: String? = nil,
+        fileVaultSSHSupported: Bool = false
+    ) {
+        self.enabled = enabled
+        self.certificationStatus = certificationStatus
+        self.certifiedAt = certifiedAt
+        self.certifiedOSBuild = certifiedOSBuild
+        self.activeBackend = activeBackend
+        self.supportedBackends = supportedBackends
+        self.supportedLockStates = supportedLockStates
+        self.blockers = blockers
+        self.allowsCredentialPaste = allowsCredentialPaste
+        self.credentialRecipientKeyId = credentialRecipientKeyId
+        self.credentialRecipientPublicKeyBase64 = credentialRecipientPublicKeyBase64
+        self.credentialEnvelopeAlgorithm = credentialEnvelopeAlgorithm
+        self.fileVaultSSHSupported = fileVaultSSHSupported
+    }
+
+    public static let unavailable = HermesRealtimeRelayRemoteUnlockCapabilities(
+        enabled: false,
+        certificationStatus: .uncertified,
+        activeBackend: .unavailable,
+        blockers: ["remote_unlock_not_certified"]
+    )
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled
+        case certificationStatus
+        case certifiedAt
+        case certifiedOSBuild
+        case activeBackend
+        case supportedBackends
+        case supportedLockStates
+        case blockers
+        case allowsCredentialPaste
+        case credentialRecipientKeyId
+        case credentialRecipientPublicKeyBase64
+        case credentialEnvelopeAlgorithm
+        case fileVaultSSHSupported
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.enabled = try container.decode(Bool.self, forKey: .enabled)
+        self.certificationStatus = try container.decode(
+            HermesRealtimeRelayRemoteUnlockCertificationStatus.self,
+            forKey: .certificationStatus
+        )
+        if container.contains(.certifiedAt) {
+            self.certifiedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .certifiedAt)
+        } else {
+            self.certifiedAt = nil
+        }
+        self.certifiedOSBuild = try container.decodeIfPresent(String.self, forKey: .certifiedOSBuild)
+        self.activeBackend = try container.decode(
+            HermesRealtimeRelayRemoteUnlockBackend.self,
+            forKey: .activeBackend
+        )
+        self.supportedBackends = try container.decodeIfPresent(
+            [HermesRealtimeRelayRemoteUnlockBackend].self,
+            forKey: .supportedBackends
+        ) ?? []
+        self.supportedLockStates = try container.decodeIfPresent(
+            [HermesRealtimeRelayMacLockState].self,
+            forKey: .supportedLockStates
+        ) ?? []
+        self.blockers = try container.decodeIfPresent([String].self, forKey: .blockers) ?? []
+        self.allowsCredentialPaste = try container.decodeIfPresent(Bool.self, forKey: .allowsCredentialPaste) ?? false
+        self.credentialRecipientKeyId = try container.decodeIfPresent(String.self, forKey: .credentialRecipientKeyId)
+        self.credentialRecipientPublicKeyBase64 = try container.decodeIfPresent(
+            String.self,
+            forKey: .credentialRecipientPublicKeyBase64
+        )
+        self.credentialEnvelopeAlgorithm = try container.decodeIfPresent(
+            String.self,
+            forKey: .credentialEnvelopeAlgorithm
+        )
+        self.fileVaultSSHSupported = try container.decodeIfPresent(Bool.self, forKey: .fileVaultSSHSupported) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(certificationStatus, forKey: .certificationStatus)
+        if let certifiedAt {
+            try container.encode(HermesRealtimeRelayDateCodec.encode(certifiedAt), forKey: .certifiedAt)
+        }
+        try container.encodeIfPresent(certifiedOSBuild, forKey: .certifiedOSBuild)
+        try container.encode(activeBackend, forKey: .activeBackend)
+        try container.encode(supportedBackends, forKey: .supportedBackends)
+        try container.encode(supportedLockStates, forKey: .supportedLockStates)
+        try container.encode(blockers, forKey: .blockers)
+        try container.encode(allowsCredentialPaste, forKey: .allowsCredentialPaste)
+        try container.encodeIfPresent(credentialRecipientKeyId, forKey: .credentialRecipientKeyId)
+        try container.encodeIfPresent(credentialRecipientPublicKeyBase64, forKey: .credentialRecipientPublicKeyBase64)
+        try container.encodeIfPresent(credentialEnvelopeAlgorithm, forKey: .credentialEnvelopeAlgorithm)
+        try container.encode(fileVaultSSHSupported, forKey: .fileVaultSSHSupported)
+    }
+}
+
+public struct HermesRealtimeRelayRemoteUnlockSession: Codable, Sendable, Equatable {
+    public enum Intent: String, Codable, Sendable, Equatable {
+        case request
+        case attach
+        case cancel
+    }
+
+    public var requestId: String
+    public var sessionId: String?
+    public var intent: Intent
+    public var requesterDisplayName: String
+    public var viewerDeviceId: String?
+    public var requestedAt: Date
+    public var expiresAt: Date
+    public var localAuthenticationSatisfied: Bool
+    public var requestedLockState: HermesRealtimeRelayMacLockState?
+    public var requestedBackend: HermesRealtimeRelayRemoteUnlockBackend?
+    public var authority: HermesRealtimeRelayAuthorityEnvelope
+
+    public init(
+        requestId: String,
+        sessionId: String? = nil,
+        intent: Intent,
+        requesterDisplayName: String,
+        viewerDeviceId: String? = nil,
+        requestedAt: Date,
+        expiresAt: Date,
+        localAuthenticationSatisfied: Bool,
+        requestedLockState: HermesRealtimeRelayMacLockState? = nil,
+        requestedBackend: HermesRealtimeRelayRemoteUnlockBackend? = nil,
+        authority: HermesRealtimeRelayAuthorityEnvelope
+    ) {
+        self.requestId = requestId
+        self.sessionId = sessionId
+        self.intent = intent
+        self.requesterDisplayName = requesterDisplayName
+        self.viewerDeviceId = viewerDeviceId
+        self.requestedAt = requestedAt
+        self.expiresAt = expiresAt
+        self.localAuthenticationSatisfied = localAuthenticationSatisfied
+        self.requestedLockState = requestedLockState
+        self.requestedBackend = requestedBackend
+        self.authority = authority
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case sessionId
+        case intent
+        case requesterDisplayName
+        case viewerDeviceId
+        case requestedAt
+        case expiresAt
+        case localAuthenticationSatisfied
+        case requestedLockState
+        case requestedBackend
+        case authority
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
+        self.intent = try container.decode(Intent.self, forKey: .intent)
+        self.requesterDisplayName = try container.decode(String.self, forKey: .requesterDisplayName)
+        self.viewerDeviceId = try container.decodeIfPresent(String.self, forKey: .viewerDeviceId)
+        self.requestedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .requestedAt)
+        self.expiresAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .expiresAt)
+        self.localAuthenticationSatisfied = try container.decode(Bool.self, forKey: .localAuthenticationSatisfied)
+        self.requestedLockState = try container.decodeIfPresent(
+            HermesRealtimeRelayMacLockState.self,
+            forKey: .requestedLockState
+        )
+        self.requestedBackend = try container.decodeIfPresent(
+            HermesRealtimeRelayRemoteUnlockBackend.self,
+            forKey: .requestedBackend
+        )
+        self.authority = try container.decode(HermesRealtimeRelayAuthorityEnvelope.self, forKey: .authority)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encodeIfPresent(sessionId, forKey: .sessionId)
+        try container.encode(intent, forKey: .intent)
+        try container.encode(requesterDisplayName, forKey: .requesterDisplayName)
+        try container.encodeIfPresent(viewerDeviceId, forKey: .viewerDeviceId)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(requestedAt), forKey: .requestedAt)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(expiresAt), forKey: .expiresAt)
+        try container.encode(localAuthenticationSatisfied, forKey: .localAuthenticationSatisfied)
+        try container.encodeIfPresent(requestedLockState, forKey: .requestedLockState)
+        try container.encodeIfPresent(requestedBackend, forKey: .requestedBackend)
+        try container.encode(authority, forKey: .authority)
+    }
+}
+
+public struct HermesRealtimeRelayRemoteUnlockState: Codable, Sendable, Equatable {
+    public var sessionId: String?
+    public var lockState: HermesRealtimeRelayMacLockState
+    public var backend: HermesRealtimeRelayRemoteUnlockBackend
+    public var capabilities: HermesRealtimeRelayRemoteUnlockCapabilities
+    public var controlOwnerViewerId: String?
+    public var observedAt: Date
+
+    public init(
+        sessionId: String? = nil,
+        lockState: HermesRealtimeRelayMacLockState,
+        backend: HermesRealtimeRelayRemoteUnlockBackend,
+        capabilities: HermesRealtimeRelayRemoteUnlockCapabilities,
+        controlOwnerViewerId: String? = nil,
+        observedAt: Date
+    ) {
+        self.sessionId = sessionId
+        self.lockState = lockState
+        self.backend = backend
+        self.capabilities = capabilities
+        self.controlOwnerViewerId = controlOwnerViewerId
+        self.observedAt = observedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionId
+        case lockState
+        case backend
+        case capabilities
+        case controlOwnerViewerId
+        case observedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
+        self.lockState = try container.decode(HermesRealtimeRelayMacLockState.self, forKey: .lockState)
+        self.backend = try container.decode(HermesRealtimeRelayRemoteUnlockBackend.self, forKey: .backend)
+        self.capabilities = try container.decode(
+            HermesRealtimeRelayRemoteUnlockCapabilities.self,
+            forKey: .capabilities
+        )
+        self.controlOwnerViewerId = try container.decodeIfPresent(String.self, forKey: .controlOwnerViewerId)
+        self.observedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .observedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(sessionId, forKey: .sessionId)
+        try container.encode(lockState, forKey: .lockState)
+        try container.encode(backend, forKey: .backend)
+        try container.encode(capabilities, forKey: .capabilities)
+        try container.encodeIfPresent(controlOwnerViewerId, forKey: .controlOwnerViewerId)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(observedAt), forKey: .observedAt)
+    }
+}
+
+public enum HermesRealtimeRelayRemoteUnlockInputAction: String, Codable, CaseIterable, Sendable, Equatable {
+    case focusPasswordField = "focus_password_field"
+    case submit
+    case escape
+    case disconnect
+    case key
+    case pointerMove = "pointer_move"
+    case pointerClick = "pointer_click"
+}
+
+public struct HermesRealtimeRelayRemoteUnlockInput: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var sessionId: String
+    public var action: HermesRealtimeRelayRemoteUnlockInputAction
+    public var key: String?
+    public var normalizedX: Double?
+    public var normalizedY: Double?
+    public var clientIntentId: String
+    public var requestedAt: Date
+    public var authority: HermesRealtimeRelayAuthorityEnvelope
+
+    public init(
+        requestId: String,
+        sessionId: String,
+        action: HermesRealtimeRelayRemoteUnlockInputAction,
+        key: String? = nil,
+        normalizedX: Double? = nil,
+        normalizedY: Double? = nil,
+        clientIntentId: String,
+        requestedAt: Date,
+        authority: HermesRealtimeRelayAuthorityEnvelope
+    ) {
+        self.requestId = requestId
+        self.sessionId = sessionId
+        self.action = action
+        self.key = key
+        self.normalizedX = normalizedX
+        self.normalizedY = normalizedY
+        self.clientIntentId = clientIntentId
+        self.requestedAt = requestedAt
+        self.authority = authority
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case sessionId
+        case action
+        case key
+        case normalizedX
+        case normalizedY
+        case clientIntentId
+        case requestedAt
+        case authority
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.sessionId = try container.decode(String.self, forKey: .sessionId)
+        self.action = try container.decode(HermesRealtimeRelayRemoteUnlockInputAction.self, forKey: .action)
+        self.key = try container.decodeIfPresent(String.self, forKey: .key)
+        self.normalizedX = try container.decodeIfPresent(Double.self, forKey: .normalizedX)
+        self.normalizedY = try container.decodeIfPresent(Double.self, forKey: .normalizedY)
+        self.clientIntentId = try container.decode(String.self, forKey: .clientIntentId)
+        self.requestedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .requestedAt)
+        self.authority = try container.decode(HermesRealtimeRelayAuthorityEnvelope.self, forKey: .authority)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(action, forKey: .action)
+        try container.encodeIfPresent(key, forKey: .key)
+        try container.encodeIfPresent(normalizedX, forKey: .normalizedX)
+        try container.encodeIfPresent(normalizedY, forKey: .normalizedY)
+        try container.encode(clientIntentId, forKey: .clientIntentId)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(requestedAt), forKey: .requestedAt)
+        try container.encode(authority, forKey: .authority)
+    }
+}
+
+public struct HermesRealtimeRelayRemoteUnlockCredentialEnvelope: Codable, Sendable, Equatable {
+    public enum CredentialKind: String, Codable, Sendable, Equatable {
+        case typedPassword = "typed_password"
+        case clipboardPassword = "clipboard_password"
+    }
+
+    public var requestId: String
+    public var sessionId: String
+    public var clientIntentId: String
+    public var credentialKind: CredentialKind
+    public var recipientKeyId: String
+    public var algorithm: String
+    public var ciphertextBase64: String
+    public var aadBase64: String
+    public var redactedByteCount: Int
+    public var requestedAt: Date
+    public var expiresAt: Date
+    public var authority: HermesRealtimeRelayAuthorityEnvelope
+
+    public init(
+        requestId: String,
+        sessionId: String,
+        clientIntentId: String,
+        credentialKind: CredentialKind,
+        recipientKeyId: String,
+        algorithm: String,
+        ciphertextBase64: String,
+        aadBase64: String,
+        redactedByteCount: Int,
+        requestedAt: Date,
+        expiresAt: Date,
+        authority: HermesRealtimeRelayAuthorityEnvelope
+    ) {
+        self.requestId = requestId
+        self.sessionId = sessionId
+        self.clientIntentId = clientIntentId
+        self.credentialKind = credentialKind
+        self.recipientKeyId = recipientKeyId
+        self.algorithm = algorithm
+        self.ciphertextBase64 = ciphertextBase64
+        self.aadBase64 = aadBase64
+        self.redactedByteCount = redactedByteCount
+        self.requestedAt = requestedAt
+        self.expiresAt = expiresAt
+        self.authority = authority
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case sessionId
+        case clientIntentId
+        case credentialKind
+        case recipientKeyId
+        case algorithm
+        case ciphertextBase64
+        case aadBase64
+        case redactedByteCount
+        case requestedAt
+        case expiresAt
+        case authority
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.sessionId = try container.decode(String.self, forKey: .sessionId)
+        self.clientIntentId = try container.decode(String.self, forKey: .clientIntentId)
+        self.credentialKind = try container.decode(CredentialKind.self, forKey: .credentialKind)
+        self.recipientKeyId = try container.decode(String.self, forKey: .recipientKeyId)
+        self.algorithm = try container.decode(String.self, forKey: .algorithm)
+        self.ciphertextBase64 = try container.decode(String.self, forKey: .ciphertextBase64)
+        self.aadBase64 = try container.decode(String.self, forKey: .aadBase64)
+        self.redactedByteCount = try container.decode(Int.self, forKey: .redactedByteCount)
+        self.requestedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .requestedAt)
+        self.expiresAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .expiresAt)
+        self.authority = try container.decode(HermesRealtimeRelayAuthorityEnvelope.self, forKey: .authority)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(clientIntentId, forKey: .clientIntentId)
+        try container.encode(credentialKind, forKey: .credentialKind)
+        try container.encode(recipientKeyId, forKey: .recipientKeyId)
+        try container.encode(algorithm, forKey: .algorithm)
+        try container.encode(ciphertextBase64, forKey: .ciphertextBase64)
+        try container.encode(aadBase64, forKey: .aadBase64)
+        try container.encode(redactedByteCount, forKey: .redactedByteCount)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(requestedAt), forKey: .requestedAt)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(expiresAt), forKey: .expiresAt)
+        try container.encode(authority, forKey: .authority)
+    }
+}
+
+public struct HermesRealtimeRelayRemoteUnlockResult: Codable, Sendable, Equatable {
+    public enum Status: String, Codable, Sendable, Equatable {
+        case accepted
+        case denied
+        case failed
+        case expired
+        case unlocked
+        case disconnected
+    }
+
+    public var requestId: String
+    public var sessionId: String?
+    public var status: Status
+    public var lockState: HermesRealtimeRelayMacLockState?
+    public var backend: HermesRealtimeRelayRemoteUnlockBackend?
+    public var detail: String?
+    public var completedAt: Date
+
+    public init(
+        requestId: String,
+        sessionId: String? = nil,
+        status: Status,
+        lockState: HermesRealtimeRelayMacLockState? = nil,
+        backend: HermesRealtimeRelayRemoteUnlockBackend? = nil,
+        detail: String? = nil,
+        completedAt: Date
+    ) {
+        self.requestId = requestId
+        self.sessionId = sessionId
+        self.status = status
+        self.lockState = lockState
+        self.backend = backend
+        self.detail = detail
+        self.completedAt = completedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case sessionId
+        case status
+        case lockState
+        case backend
+        case detail
+        case completedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.requestId = try container.decode(String.self, forKey: .requestId)
+        self.sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
+        self.status = try container.decode(Status.self, forKey: .status)
+        self.lockState = try container.decodeIfPresent(HermesRealtimeRelayMacLockState.self, forKey: .lockState)
+        self.backend = try container.decodeIfPresent(HermesRealtimeRelayRemoteUnlockBackend.self, forKey: .backend)
+        self.detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        self.completedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .completedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encodeIfPresent(sessionId, forKey: .sessionId)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(lockState, forKey: .lockState)
+        try container.encodeIfPresent(backend, forKey: .backend)
+        try container.encodeIfPresent(detail, forKey: .detail)
+        try container.encode(HermesRealtimeRelayDateCodec.encode(completedAt), forKey: .completedAt)
     }
 }
 
@@ -1040,6 +1621,9 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
     public var viewerId: String?
     public var viewerDeviceId: String?
     public var controlAuthorityPeerNodeId: String?
+    /// Optional Remote Unlock request metadata. Presence is not enough to
+    /// start unlock; the embedded authority must still validate on the Mac.
+    public var remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession?
 
     public init(
         requestId: String,
@@ -1050,7 +1634,8 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         focusFollowMode: String? = nil,
         viewerId: String? = nil,
         viewerDeviceId: String? = nil,
-        controlAuthorityPeerNodeId: String? = nil
+        controlAuthorityPeerNodeId: String? = nil,
+        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil
     ) {
         self.requestId = requestId
         self.requestedAt = requestedAt
@@ -1061,6 +1646,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         self.viewerId = viewerId
         self.viewerDeviceId = viewerDeviceId
         self.controlAuthorityPeerNodeId = controlAuthorityPeerNodeId
+        self.remoteUnlockSession = remoteUnlockSession
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1073,6 +1659,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         case viewerId
         case viewerDeviceId
         case controlAuthorityPeerNodeId
+        case remoteUnlockSession
     }
 
     public init(from decoder: Decoder) throws {
@@ -1089,6 +1676,10 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         self.viewerId = try container.decodeIfPresent(String.self, forKey: .viewerId)
         self.viewerDeviceId = try container.decodeIfPresent(String.self, forKey: .viewerDeviceId)
         self.controlAuthorityPeerNodeId = try container.decodeIfPresent(String.self, forKey: .controlAuthorityPeerNodeId)
+        self.remoteUnlockSession = try container.decodeIfPresent(
+            HermesRealtimeRelayRemoteUnlockSession.self,
+            forKey: .remoteUnlockSession
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1102,6 +1693,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         try container.encodeIfPresent(viewerId, forKey: .viewerId)
         try container.encodeIfPresent(viewerDeviceId, forKey: .viewerDeviceId)
         try container.encodeIfPresent(controlAuthorityPeerNodeId, forKey: .controlAuthorityPeerNodeId)
+        try container.encodeIfPresent(remoteUnlockSession, forKey: .remoteUnlockSession)
     }
 }
 
@@ -1147,6 +1739,8 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
     public var viewerCount: Int?
     public var maxViewers: Int?
     public var controlOwnerViewerId: String?
+    public var remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
+    public var remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities?
 
     public init(
         requestId: String,
@@ -1160,7 +1754,9 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         viewerRole: String? = nil,
         viewerCount: Int? = nil,
         maxViewers: Int? = nil,
-        controlOwnerViewerId: String? = nil
+        controlOwnerViewerId: String? = nil,
+        remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
+        remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil
     ) {
         self.requestId = requestId
         self.decision = decision
@@ -1174,6 +1770,8 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         self.viewerCount = viewerCount
         self.maxViewers = maxViewers
         self.controlOwnerViewerId = controlOwnerViewerId
+        self.remoteUnlockState = remoteUnlockState
+        self.remoteUnlockCapabilities = remoteUnlockCapabilities
     }
 }
 
@@ -1377,6 +1975,7 @@ public struct HermesRealtimeRelayPresenceHeartbeat: Codable, Sendable, Equatable
     public var blurredWallpaperBase64: String?
     public var peerDeviceId: String?
     public var streamingCapabilities: HermesRealtimeRelayStreamingCapabilities?
+    public var remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities?
 
     public init(
         sentAt: Date,
@@ -1384,7 +1983,8 @@ public struct HermesRealtimeRelayPresenceHeartbeat: Codable, Sendable, Equatable
         capabilities: [String],
         blurredWallpaperBase64: String? = nil,
         peerDeviceId: String? = nil,
-        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil,
+        remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil
     ) {
         self.sentAt = sentAt
         self.deviceDisplayName = deviceDisplayName
@@ -1392,6 +1992,7 @@ public struct HermesRealtimeRelayPresenceHeartbeat: Codable, Sendable, Equatable
         self.blurredWallpaperBase64 = blurredWallpaperBase64
         self.peerDeviceId = peerDeviceId
         self.streamingCapabilities = streamingCapabilities
+        self.remoteUnlockCapabilities = remoteUnlockCapabilities
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1402,6 +2003,7 @@ public struct HermesRealtimeRelayPresenceHeartbeat: Codable, Sendable, Equatable
         case blurredWallpaperBase64
         case peerDeviceId
         case streamingCapabilities
+        case remoteUnlockCapabilities
     }
 
     public init(from decoder: Decoder) throws {
@@ -1417,6 +2019,10 @@ public struct HermesRealtimeRelayPresenceHeartbeat: Codable, Sendable, Equatable
             HermesRealtimeRelayStreamingCapabilities.self,
             forKey: .streamingCapabilities
         )
+        self.remoteUnlockCapabilities = try container.decodeIfPresent(
+            HermesRealtimeRelayRemoteUnlockCapabilities.self,
+            forKey: .remoteUnlockCapabilities
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1431,6 +2037,7 @@ public struct HermesRealtimeRelayPresenceHeartbeat: Codable, Sendable, Equatable
         try container.encodeIfPresent(blurredWallpaperBase64, forKey: .blurredWallpaperBase64)
         try container.encodeIfPresent(peerDeviceId, forKey: .peerDeviceId)
         try container.encodeIfPresent(streamingCapabilities, forKey: .streamingCapabilities)
+        try container.encodeIfPresent(remoteUnlockCapabilities, forKey: .remoteUnlockCapabilities)
     }
 }
 
