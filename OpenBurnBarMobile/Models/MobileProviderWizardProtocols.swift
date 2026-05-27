@@ -8,7 +8,7 @@ protocol ProviderConnectionProviding: AnyObject {
     var accounts: [ProviderAccountDoc] { get }
     var error: String? { get }
     func load() async
-    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc?
+    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?, metadata: ProviderAccountConnectMetadata?) async -> ProviderAccountDoc?
     func connectHosted(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc?
     func connectSelfHosted(providerID: ProviderID, label: String?) async -> ProviderAccountDoc?
     func delete(account: ProviderAccountDoc) async
@@ -47,6 +47,18 @@ protocol HapticPerforming: AnyObject {
 extension ProviderConnectionStore: ProviderConnectionProviding {}
 extension HostedQuotaSubscriptionStore: HostedQuotaSubscriptionProviding {}
 extension SelfHostedQuotaRunnerStore: SelfHostedRunnerSaving {}
+
+extension ProviderConnectionProviding {
+    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
+        await connect(
+            providerID: providerID,
+            credential: credential,
+            kind: kind,
+            label: label,
+            metadata: nil
+        )
+    }
+}
 
 final class LiveHaptics: HapticPerforming {
     func selection() { Haptics.selection() }

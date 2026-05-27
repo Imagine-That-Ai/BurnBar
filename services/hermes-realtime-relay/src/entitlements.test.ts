@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { FirestoreEntitlementVerifier } from "./entitlements.js";
 import { RelayHttpError } from "./errors.js";
+import type { EntitlementFirestore } from "./firestoreTypes.js";
 
 class FakeDoc {
   reads = 0;
@@ -16,16 +17,33 @@ class FakeDoc {
   }
 }
 
-class FakeFirestore {
+type EntitlementDocMap = Record<string, Record<string, unknown> | undefined>;
+
+function isEntitlementDoc(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isEntitlementDocMap(value: Record<string, unknown>): value is EntitlementDocMap {
+  return !("active" in value) && !("productID" in value) && !("expiresAt" in value) && !("expireAt" in value);
+}
+
+type EntitlementFixtureData = Record<string, unknown> | undefined | EntitlementDocMap;
+
+class FakeFirestore implements EntitlementFirestore {
   readonly docRefs = new Map<string, FakeDoc>();
-  constructor(data: Record<string, unknown> | undefined | Record<string, Record<string, unknown> | undefined>) {
-    if (data === undefined || "active" in data || "productID" in data || "expiresAt" in data || "expireAt" in data) {
-      this.docRefs.set("hosted_quota_sync", new FakeDoc(data as Record<string, unknown> | undefined));
+  constructor(data: EntitlementFixtureData) {
+    if (data === undefined) {
+      this.docRefs.set("hosted_quota_sync", new FakeDoc(undefined));
       return;
     }
-    const entitlementDocs = data as Record<string, Record<string, unknown> | undefined>;
-    for (const [id, value] of Object.entries(entitlementDocs)) {
-      this.docRefs.set(id, new FakeDoc(value));
+    if (isEntitlementDoc(data) && !isEntitlementDocMap(data)) {
+      this.docRefs.set("hosted_quota_sync", new FakeDoc(data));
+      return;
+    }
+    if (isEntitlementDocMap(data)) {
+      for (const [id, value] of Object.entries(data)) {
+        this.docRefs.set(id, new FakeDoc(value));
+      }
     }
   }
   doc(path: string): FakeDoc {
@@ -49,7 +67,7 @@ test("accepts active paid entitlement and caches the read", async () => {
     productIDs: ["com.openburnbar.hostedQuotaSync.cloud.monthly"],
     cacheTTLSeconds: 60,
     negativeCacheTTLSeconds: 1,
-    firestore: db as never,
+    firestore: db,
   });
 
   assert.equal((await verifier.assertActive("uid-1")).source, "firestore");
@@ -74,7 +92,7 @@ test("accepts active BurnBar Pro entitlement for upgraded accounts", async () =>
     ],
     cacheTTLSeconds: 60,
     negativeCacheTTLSeconds: 1,
-    firestore: db as never,
+    firestore: db,
   });
 
   const entitlement = await verifier.assertActive("uid-1");
@@ -94,7 +112,7 @@ test("rejects missing, wrong-product, and expired entitlement", async () => {
       productIDs: ["com.openburnbar.hostedQuotaSync.cloud.monthly"],
       cacheTTLSeconds: 60,
       negativeCacheTTLSeconds: 1,
-      firestore: new FakeFirestore(data) as never,
+      firestore: new FakeFirestore(data),
     });
     await assert.rejects(
       verifier.assertActive("uid-1"),

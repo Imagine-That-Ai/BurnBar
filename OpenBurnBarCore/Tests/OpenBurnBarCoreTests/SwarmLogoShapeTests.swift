@@ -191,6 +191,45 @@ final class SwarmLogoShapeTests: XCTestCase {
         XCTAssertGreaterThan(relativeLuminance(liftedDarkSource), 0.70)
     }
 
+    func testSwarmCanvasFrameRateClampRejectsInvalidValues() {
+        XCTAssertEqual(SwarmCanvasView.sanitizedFrameRate(nil, fallback: 60), 60)
+        XCTAssertEqual(SwarmCanvasView.sanitizedFrameRate(0, fallback: 60), 60)
+        XCTAssertEqual(SwarmCanvasView.sanitizedFrameRate(-12, fallback: 60), 60)
+        XCTAssertEqual(SwarmCanvasView.sanitizedFrameRate(.infinity, fallback: 60), 60)
+        XCTAssertEqual(SwarmCanvasView.sanitizedFrameRate(240, fallback: 60), 120)
+        XCTAssertEqual(SwarmCanvasView.sanitizedFrameRate(30, fallback: 60), 30)
+    }
+
+    @MainActor
+    func testProviderLogoFormationCachesCleanProviderMetadata() {
+        let simulation = SwarmSimulation(
+            particleCount: 96,
+            pace: .cinematic,
+            enabledProviderGlyphs: [.factory]
+        )
+        simulation.colorPalette = .auroraTeal
+        simulation.advance(
+            to: Date(timeIntervalSinceReferenceDate: 100),
+            bounds: CGSize(width: 900, height: 600),
+            reduceMotion: false,
+            isBatteryThrottled: false
+        )
+        simulation.assignMode(.shapeProviderLogo([.factory]), at: 101)
+
+        let targeted = simulation.particleMetadataForTesting().filter { $0.logoProvider != nil }
+        XCTAssertFalse(targeted.isEmpty)
+        XCTAssertTrue(targeted.allSatisfy { $0.logoProvider == .factory })
+        XCTAssertTrue(targeted.allSatisfy { $0.role?.contains(":") == false })
+        XCTAssertTrue(targeted.allSatisfy { $0.toneSeed != nil })
+        XCTAssertTrue(targeted.allSatisfy { $0.resolvedLogoColor != nil })
+
+        simulation.assignMode(.swarm, at: 102)
+        let cleared = simulation.particleMetadataForTesting()
+        XCTAssertTrue(cleared.allSatisfy { $0.logoProvider == nil })
+        XCTAssertTrue(cleared.allSatisfy { $0.resolvedLogoColor == nil })
+        XCTAssertTrue(cleared.allSatisfy { $0.toneSeed == nil })
+    }
+
     func testBurnBarLogoShapeContainsFlameAndBarGraphRoles() throws {
         let points = SwarmLogoShape.generatePoints()
         let roles = Set(points.map(\.role))

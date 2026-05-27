@@ -34,10 +34,7 @@ export function requestInitialState(): void {
 export function handleMessage(message: { type: string; payload?: unknown }): void {
   switch (message.type) {
   case 'workspace.stateUpdated': {
-    const payload = message.payload as {
-        runs?: BurnBarRunProjection[];
-        selectedRunId?: string;
-      };
+    const payload = workspaceStatePayload(message.payload);
     if (payload.runs !== undefined) {
       state.runs = payload.runs;
     }
@@ -49,23 +46,29 @@ export function handleMessage(message: { type: string; payload?: unknown }): voi
   }
 
   case 'workspace.runSelected': {
-    const payload = message.payload as { runId: string };
+    const payload = runIDPayload(message.payload);
+    if (!payload) {
+      return;
+    }
     state.selectedRunId = payload.runId;
     render();
     break;
   }
 
   case 'workspace.toolCallUpdated': {
-    const payload = message.payload as {
-        runId: string;
-        toolCall: BurnBarToolCallSnapshot;
-      };
+    const payload = toolCallPayload(message.payload);
+    if (!payload) {
+      return;
+    }
     updateToolCall(payload.runId, payload.toolCall);
     break;
   }
 
   case 'workspace.runDeleted': {
-    const payload = message.payload as { runId: string };
+    const payload = runIDPayload(message.payload);
+    if (!payload) {
+      return;
+    }
     deleteRun(payload.runId);
     break;
   }
@@ -239,9 +242,65 @@ window.addEventListener('message', (event: MessageEvent) => {
   if (origin !== '' && !ALLOWED_ORIGIN_PREFIXES.some((prefix) => origin.startsWith(prefix))) {
     return;
   }
-  const data = event.data as { type?: unknown; payload?: unknown } | null;
-  if (!data || typeof data.type !== 'string') {
+  const data = eventMessageData(event.data);
+  if (!data) {
     return;
   }
   handleMessage({ type: data.type, payload: data.payload });
 });
+
+function workspaceStatePayload(payload: unknown): { runs?: BurnBarRunProjection[]; selectedRunId?: string } {
+  if (!isRecord(payload)) {
+    return {};
+  }
+  return {
+    runs: Array.isArray(payload.runs) ? payload.runs.filter(isRunProjection) : undefined,
+    selectedRunId: typeof payload.selectedRunId === 'string' ? payload.selectedRunId : undefined
+  };
+}
+
+function runIDPayload(payload: unknown): { runId: string } | undefined {
+  if (!isRecord(payload) || typeof payload.runId !== 'string') {
+    return undefined;
+  }
+  return { runId: payload.runId };
+}
+
+function toolCallPayload(payload: unknown): { runId: string; toolCall: BurnBarToolCallSnapshot } | undefined {
+  if (!isRecord(payload) || typeof payload.runId !== 'string' || !isToolCallSnapshot(payload.toolCall)) {
+    return undefined;
+  }
+  return { runId: payload.runId, toolCall: payload.toolCall };
+}
+
+function eventMessageData(data: unknown): { type: string; payload?: unknown } | undefined {
+  if (!isRecord(data) || typeof data.type !== 'string') {
+    return undefined;
+  }
+  return { type: data.type, payload: data.payload };
+}
+
+function isRunProjection(value: unknown): value is BurnBarRunProjection {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.title === 'string'
+    && typeof value.phase === 'string'
+    && typeof value.note === 'string'
+    && typeof value.updatedAt === 'string'
+    && typeof value.source === 'string';
+}
+
+function isToolCallSnapshot(value: unknown): value is BurnBarToolCallSnapshot {
+  return isRecord(value)
+    && typeof value.callID === 'string'
+    && typeof value.runID === 'string'
+    && typeof value.tool === 'string'
+    && value.arguments !== undefined
+    && typeof value.status === 'string'
+    && typeof value.requestedBy === 'string'
+    && typeof value.requestedAt === 'string';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

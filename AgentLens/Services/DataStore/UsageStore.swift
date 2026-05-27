@@ -20,6 +20,7 @@ final class UsageStore: Sendable {
             try deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
             try upsertUsage(usage, in: db)
         }
+        SearchQueryCache.shared.clear()
     }
 
     func insert(_ newUsages: [TokenUsage]) throws {
@@ -30,6 +31,7 @@ final class UsageStore: Sendable {
                 try upsertUsage(usage, in: db)
             }
         }
+        SearchQueryCache.shared.clear()
     }
 
     /// Inserts `newUsages` in fixed-size chunks, each in its own transaction.
@@ -168,6 +170,45 @@ final class UsageStore: Sendable {
                             THEN excluded.usageSource
                             ELSE token_usage.usageSource
                         END,
+                        sourceDeviceId = CASE
+                            WHEN CASE excluded.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                                >=
+                                CASE token_usage.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                            THEN excluded.sourceDeviceId
+                            ELSE token_usage.sourceDeviceId
+                        END,
+                        sourceDeviceName = CASE
+                            WHEN CASE excluded.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                                >=
+                                CASE token_usage.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                            THEN excluded.sourceDeviceName
+                            ELSE token_usage.sourceDeviceName
+                        END,
+                        isRemote = excluded.isRemote,
                         providerID = excluded.providerID,
                         providerAccountID = excluded.providerAccountID,
                         providerAccountLabel = excluded.providerAccountLabel,
@@ -230,6 +271,7 @@ final class UsageStore: Sendable {
                 ]
             )
         }
+        SearchQueryCache.shared.clear()
     }
 
     // MARK: - Refresh

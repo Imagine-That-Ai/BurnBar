@@ -363,6 +363,6 @@ final class SettingsSwitcherProfileAdapter: SwitcherProfileStoreAdapter, Sendabl
     }
 
     func updateProfile(_ profile: SwitcherProfileRecord) {
-        try? store.update(profile)
+        _ = try? store.update(profile)
     }
 }

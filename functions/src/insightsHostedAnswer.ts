@@ -1,3 +1,4 @@
+import { errorMessage, isRecord, isTimestampWithToMillis } from "./guards.js";
 /**
  * @fileoverview BurnBar-hosted Intelligence Brief fallback callable.
  *
@@ -178,10 +179,39 @@ function isoNow(): string {
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
+  return isRecord(value) ? value : null;
+}
+
+function parseOpenRouterResponse(raw: unknown): OpenRouterResponse | undefined {
+  if (!isRecord(raw)) return undefined;
+  const choices = Array.isArray(raw.choices) ? raw.choices : undefined;
+  const error = isRecord(raw.error) ? raw.error : undefined;
+  return {
+    choices: choices?.flatMap((choice, index): OpenRouterChoice[] => {
+      if (!isRecord(choice)) return [];
+      const message = isRecord(choice.message) ? choice.message : undefined;
+      return [{
+        index: typeof choice.index === "number" ? choice.index : index,
+        message: message && typeof message.content === "string"
+          ? {
+              role: message.role === "system" || message.role === "user" || message.role === "assistant"
+                ? message.role
+                : "assistant",
+              content: message.content,
+            }
+          : undefined,
+        finish_reason: typeof choice.finish_reason === "string" || choice.finish_reason === null
+          ? choice.finish_reason
+          : undefined,
+      }];
+    }),
+    error: error
+      ? {
+          message: typeof error.message === "string" ? error.message : undefined,
+          code: typeof error.code === "string" || typeof error.code === "number" ? error.code : undefined,
+        }
+      : undefined,
+  };
 }
 
 function asArray(value: unknown): unknown[] {
@@ -310,15 +340,22 @@ async function callOpenRouter(args: {
   } catch (error) {
     throw new HttpsError(
       "unavailable",
-      `OpenRouter transport failed: ${(error as Error).message}`
+      `OpenRouter transport failed: ${errorMessage(error)}`
     );
   }
 
   const text = await response.text();
-  let parsed: OpenRouterResponse;
+  let parsed: OpenRouterResponse | undefined;
   try {
-    parsed = JSON.parse(text) as OpenRouterResponse;
+    parsed = parseOpenRouterResponse(JSON.parse(text));
   } catch {
+    throw new HttpsError(
+      "internal",
+      `OpenRouter returned non-JSON (${response.status}): ${clip(text, 240)}`
+    );
+  }
+
+  if (!parsed) {
     throw new HttpsError(
       "internal",
       `OpenRouter returned non-JSON (${response.status}): ${clip(text, 240)}`
@@ -376,7 +413,7 @@ function sanitizeEnvelope(rawContent: string): string {
   } catch (error) {
     throw new HttpsError(
       "internal",
-      `Model emitted invalid JSON: ${(error as Error).message}`
+      `Model emitted invalid JSON: ${errorMessage(error)}`
     );
   }
   const obj = asObject(parsed);
@@ -429,7 +466,10 @@ export const insightsHostedAnswer = onCall(
     // so the iOS / macOS / Android adapters can route directly to
     // the upgrade CTA without round-tripping a generic error.
     assertAuth(request);
-    const uid = request.auth!.uid;
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Request must be authenticated with Firebase Auth.");
+    }
     await assertActiveBurnBarProEntitlement(uid);
 
     const startedAtISO = isoNow();
@@ -593,11 +633,8 @@ function isActiveBurnBarProEntitlement(raw: Record<string, unknown> | undefined)
     return false;
   }
   const expireAt = raw.expireAt;
-  if (expireAt && typeof expireAt === "object") {
-    const candidate = expireAt as { toMillis?: () => number };
-    if (typeof candidate.toMillis === "function") {
-      return candidate.toMillis() > Date.now();
-    }
+  if (isTimestampWithToMillis(expireAt)) {
+    return expireAt.toMillis() > Date.now();
   }
   const expiresAt = raw.expiresAt ? Date.parse(String(raw.expiresAt)) : 0;
   return Number.isFinite(expiresAt) && expiresAt > Date.now();

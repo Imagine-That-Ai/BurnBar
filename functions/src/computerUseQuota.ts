@@ -13,8 +13,8 @@
 
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { numberField, stringField } from "./guards.js";
 import type {
-  ComputerUseActionDoc,
   ComputerUseQuotaUsageDoc,
 } from "./types.js";
 
@@ -49,22 +49,24 @@ async function recomputeForUser(uid: string, dayKey: string): Promise<void> {
   };
 
   for (const docSnap of snap.docs) {
-    const action = docSnap.data() as ComputerUseActionDoc;
-    const isBrowser = action.toolKind.startsWith("browser_");
-    const isSystem = action.toolKind.startsWith("mac_input_") ||
-      action.toolKind === "mac_inspect_accessibility";
-    const isPhone = action.approvedBy === "phone";
+    const action = docSnap.data();
+    const toolKind = stringField(action, "toolKind") ?? "";
+    const isBrowser = toolKind.startsWith("browser_");
+    const isSystem = toolKind.startsWith("mac_input_") ||
+      toolKind === "mac_inspect_accessibility";
+    const isPhone = stringField(action, "approvedBy") === "phone";
+    const status = stringField(action, "status");
 
-    if (action.status === "executed") {
+    if (status === "executed") {
       if (isBrowser) counters.browserActionsExecuted += 1;
       else if (isSystem) counters.systemActionsExecuted += 1;
       if (isPhone) counters.phoneControlIntentsExecuted += 1;
-    } else if (action.status === "denied" || action.status === "rejected") {
+    } else if (status === "denied" || status === "rejected") {
       if (isBrowser) counters.browserActionsRejected += 1;
       else if (isSystem) counters.systemActionsRejected += 1;
       if (isPhone) counters.phoneControlIntentsRejected += 1;
     }
-    counters.visionModelSpendUSD += action.visionTokensCostUSD ?? 0;
+    counters.visionModelSpendUSD += numberField(action, "visionTokensCostUSD") ?? 0;
   }
 
   await firestore
@@ -94,7 +96,7 @@ export const recomputeComputerUseQuotaUsage = onSchedule(
 
     const seen = new Set<string>();
     for (const doc of sessions.docs) {
-      const { userId } = doc.data() as { userId?: string };
+      const userId = stringField(doc.data(), "userId");
       if (!userId || seen.has(userId)) continue;
       seen.add(userId);
       await recomputeForUser(userId, todayKey);

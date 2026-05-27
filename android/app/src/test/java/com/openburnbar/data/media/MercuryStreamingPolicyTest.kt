@@ -128,7 +128,7 @@ class MercuryStreamingPolicyTest {
 
         assertNotNull(recorded.second)
         assertEquals(1, state.pendingRefreshTokens.size)
-        state = state.acknowledgeDecodedToken(recorded.second!!)
+        state = state.acknowledgeDecodedToken(requireNotNull(recorded.second))
         assertTrue(state.pendingRefreshTokens.isEmpty())
         assertEquals(tokenValue, state.acknowledgedTokenValuesForEncoder.first())
     }

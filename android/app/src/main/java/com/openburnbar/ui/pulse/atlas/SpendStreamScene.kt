@@ -75,9 +75,9 @@ fun SpendStreamScene(
                     .padding(horizontal = 4.dp)
                     .padding(top = 4.dp)
             )
-            if (selectedIndex != null) {
+            selectedIndex?.let { index ->
                 SelectedAnnotation(
-                    daily[selectedIndex!!],
+                    daily[index],
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 4.dp)

@@ -7,6 +7,7 @@ import OpenBurnBarCore
 struct OpenBurnBarMobileApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var customization = AppCustomization.shared
+    @StateObject private var agentNotifications = AgentReplyNotificationService.shared
 
     // Bound to ThemeSettingsView's "Appearance Mode" picker. Values match
     // the picker tags: "system" (no override), "light", "dark".
@@ -25,8 +26,26 @@ struct OpenBurnBarMobileApp: App {
             AuthGateView()
                 .tint(customization.themePalette.tintColor)
                 .preferredColorScheme(appearanceOverride)
+                .overlay(alignment: .top) {
+                    if let banner = agentNotifications.banner {
+                        AgentReplyNotificationBannerView(
+                            banner: banner,
+                            onOpen: { agentNotifications.open(banner) },
+                            onDismiss: { agentNotifications.dismissBanner() }
+                        )
+                    }
+                }
                 .onOpenURL { url in
                     handleDeepLink(url)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    agentNotifications.updateLifecycle("active")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                    agentNotifications.updateLifecycle("inactive")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+                    agentNotifications.updateLifecycle("background")
                 }
         }
     }
@@ -38,7 +57,12 @@ struct OpenBurnBarMobileApp: App {
         guard url.scheme == "burnbar" else { return }
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let promptParam = components?.queryItems?.first(where: { $0.name == "prompt" })?.value
+        let threadParam = components?.queryItems?.first(where: { $0.name == "threadId" })?.value
+            ?? components?.queryItems?.first(where: { $0.name == "threadID" })?.value
         let promptTrimmed = promptParam?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty()
+        let threadTrimmed = threadParam?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty()
 
@@ -57,6 +81,7 @@ struct OpenBurnBarMobileApp: App {
             NotificationCenter.default.post(name: .init("ShowHermesChat"), object: nil)
             var userInfo: [AnyHashable: Any] = ["runtime": AssistantRuntimeID.hermes.rawValue]
             if let promptTrimmed { userInfo["prompt"] = promptTrimmed }
+            if let threadTrimmed { userInfo["threadId"] = threadTrimmed }
             NotificationCenter.default.post(
                 name: .init("ShowAssistantsTab"),
                 object: nil,
@@ -75,10 +100,12 @@ struct OpenBurnBarMobileApp: App {
         case "assistants":
             // Generic deep link form: burnbar://assistants?runtime=hermes|pi&prompt=…
             let runtimeRaw = components?.queryItems?.first(where: { $0.name == "runtime" })?.value
+                ?? url.pathComponents.dropFirst().first
             let runtime = AssistantRuntimeID(rawValue: runtimeRaw ?? "") ?? .hermes
             AssistantPendingPrompt.shared.stash(assistant: runtime, prompt: promptTrimmed)
             var userInfo: [AnyHashable: Any] = ["runtime": runtime.rawValue]
             if let promptTrimmed { userInfo["prompt"] = promptTrimmed }
+            if let threadTrimmed { userInfo["threadId"] = threadTrimmed }
             NotificationCenter.default.post(
                 name: .init("ShowAssistantsTab"),
                 object: nil,

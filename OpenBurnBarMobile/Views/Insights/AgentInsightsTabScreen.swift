@@ -42,14 +42,7 @@ struct AgentInsightsTabScreen: View {
     var body: some View {
         ZStack {
             AuroraBackdrop()
-
-            Group {
-                if let cloudStore, !cloudStore.isActive {
-                    lockedInsightsTeaser
-                } else {
-                    adaptiveLayout
-                }
-            }
+            adaptiveLayout
         }
         .sheet(isPresented: $showWorkspace) {
             InsightsWorkspaceSheet(
@@ -122,7 +115,7 @@ struct AgentInsightsTabScreen: View {
             }
             .navigationTitle(selectedSection == .insights ? "Insights" : "Budget Center")
             .toolbar {
-                if selectedSection == .insights {
+                if selectedSection == .insights && (cloudStore?.isActive ?? true) {
                     toolbarContent
                 }
             }
@@ -157,7 +150,7 @@ struct AgentInsightsTabScreen: View {
             }
             .navigationTitle(selectedSection == .insights ? "Insights" : "Budget Center")
             .toolbar {
-                if selectedSection == .insights {
+                if selectedSection == .insights && (cloudStore?.isActive ?? true) {
                     toolbarContent
                 }
             }
@@ -201,7 +194,9 @@ struct AgentInsightsTabScreen: View {
 
     private var rosterContent: some View {
         Group {
-            if producer != nil {
+            if let cloudStore, !cloudStore.isActive {
+                lockedInsightsTeaser
+            } else if producer != nil {
                 AgentInsightsRosterView(
                     providers: AgentProvider.allCases,
                     statusProvider: { rosterStatus[$0] ?? .unconfigured },
@@ -298,8 +293,6 @@ struct AgentInsightsTabScreen: View {
 
     @MainActor
     private func prepare() async {
-        guard cloudStore?.isActive ?? true else { return }
-        await dashboardStore.load()
         await budgetDashboard.load()
 
         if budgetSettings == nil {
@@ -319,6 +312,9 @@ struct AgentInsightsTabScreen: View {
                 )
             }
         }
+
+        guard cloudStore?.isActive ?? true else { return }
+        await dashboardStore.load()
 
         if insightsStore == nil {
             let dataSource = MobileInsightDataSource(dashboardStore: dashboardStore)

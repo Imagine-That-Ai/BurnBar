@@ -116,6 +116,9 @@ struct ProviderPlanWizardView: View {
     @State private var isAddingExternalAccount = false
     @State private var externalAccountActionMessage: String?
     @State private var editingCredentialSlot: EditingCredentialSlot?
+    @State private var localMimoRegion: ProviderEndpointRegion = .sgp
+    @State private var localMimoTier: MimoTokenPlanTier = .standard
+    @State private var localMimoBillingCycle: MimoTokenPlanBillingCycle = .monthly
 
     // Strategy step state
     @State private var selectedStrategy: ProviderPlanStrategy = .auto
@@ -2217,6 +2220,10 @@ struct ProviderPlanWizardView: View {
             .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
             .animation(.snappy, value: apiKeyInput)
 
+            if selectedProviderID == "mimo", method.id == "mimo-token-plan" {
+                mimoTokenPlanConnectFields
+            }
+
             if let credentialImportMessage {
                 miniHintCard(
                     symbol: credentialImportMessage.localizedCaseInsensitiveContains("imported")
@@ -2709,6 +2716,9 @@ struct ProviderPlanWizardView: View {
         isAddingExternalAccount = false
         selectedStrategy = .auto
         saveError = nil
+        localMimoRegion = daemonManager.settingsManager.mimoTokenPlanRegion
+        localMimoTier = daemonManager.settingsManager.mimoTokenPlanTier ?? .standard
+        localMimoBillingCycle = daemonManager.settingsManager.mimoTokenPlanBillingCycle
 
         if descriptor.methods.count > 1 {
             navigateToStep(.auth)
@@ -3401,12 +3411,17 @@ struct ProviderPlanWizardView: View {
             saveError = method.validate(apiKey).message ?? "Enter a valid credential before saving."
             return
         }
+        if providerID == "mimo", method.id == "mimo-token-plan", localMimoRegion == .global {
+            saveError = "Select a Token Plan cluster (China, Singapore, or Europe)."
+            return
+        }
 
         isSaving = true
         saveError = nil
 
         Task {
             do {
+                let mimoMetadata = mimoSlotMetadata(for: method, providerID: providerID)
                 let newSlotID: String?
                 if method.storage.usesDaemonSlot {
                     if let editingCredentialSlot,
@@ -3416,7 +3431,12 @@ struct ProviderPlanWizardView: View {
                             slotID: editingCredentialSlot.slotID,
                             label: label,
                             isEnabled: selectedStrategy != .backup,
-                            apiKey: storageCredential
+                            apiKey: storageCredential,
+                            endpointProfileID: mimoMetadata.endpointProfileID,
+                            region: mimoMetadata.region,
+                            tokenPlanTier: mimoMetadata.tokenPlanTier,
+                            tokenPlanBillingCycle: mimoMetadata.tokenPlanBillingCycle,
+                            authMethodID: mimoMetadata.authMethodID
                         )
                         newSlotID = editingCredentialSlot.slotID
                     } else {
@@ -3424,7 +3444,12 @@ struct ProviderPlanWizardView: View {
                             providerID: providerID,
                             label: label,
                             apiKey: storageCredential,
-                            isEnabled: selectedStrategy != .backup
+                            isEnabled: selectedStrategy != .backup,
+                            endpointProfileID: mimoMetadata.endpointProfileID,
+                            region: mimoMetadata.region,
+                            tokenPlanTier: mimoMetadata.tokenPlanTier,
+                            tokenPlanBillingCycle: mimoMetadata.tokenPlanBillingCycle,
+                            authMethodID: mimoMetadata.authMethodID
                         )
                     }
                 } else {
@@ -3463,6 +3488,14 @@ struct ProviderPlanWizardView: View {
                     await daemonManager.refreshProviderCredentialSlotQuotas(providerID: providerID)
                 }
                 await refreshGatewayAdvertisementState()
+
+                if providerID == "mimo", method.id == "mimo-token-plan" {
+                    await MainActor.run {
+                        daemonManager.settingsManager.mimoTokenPlanRegion = localMimoRegion
+                        daemonManager.settingsManager.mimoTokenPlanTier = localMimoTier
+                        daemonManager.settingsManager.mimoTokenPlanBillingCycle = localMimoBillingCycle
+                    }
+                }
 
                 await MainActor.run {
                     isSaving = false
@@ -3506,6 +3539,72 @@ struct ProviderPlanWizardView: View {
             externalAccountActionMessage = "Failed to remove \(target.label): \(error.localizedDescription)"
         }
     }
+
+    private var mimoTokenPlanConnectFields: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Token Plan cluster")
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+            Picker("", selection: $localMimoRegion) {
+                Text("China").tag(ProviderEndpointRegion.cn)
+                Text("Singapore").tag(ProviderEndpointRegion.sgp)
+                Text("Europe (Amsterdam)").tag(ProviderEndpointRegion.ams)
+            }
+            .pickerStyle(.segmented)
+
+            Text("Subscription tier (for BurnBar credit tracking when vendor remains is unavailable)")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            Picker("", selection: $localMimoTier) {
+                ForEach(MimoTokenPlanTier.allCases) { tier in
+                    Text(tier.displayName).tag(tier)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("", selection: $localMimoBillingCycle) {
+                Text("Monthly").tag(MimoTokenPlanBillingCycle.monthly)
+                Text("Annual").tag(MimoTokenPlanBillingCycle.annual)
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(.top, DesignSystem.Spacing.xs)
+    }
+
+    private func mimoSlotMetadata(
+        for method: BurnBarProviderAuthMethod,
+        providerID: String
+    ) -> (
+        endpointProfileID: String?,
+        region: ProviderEndpointRegion?,
+        tokenPlanTier: MimoTokenPlanTier?,
+        tokenPlanBillingCycle: MimoTokenPlanBillingCycle?,
+        authMethodID: String?
+    ) {
+        guard providerID == "mimo" else {
+            return (nil, nil, nil, nil, nil)
+        }
+
+        switch method.id {
+        case "mimo-token-plan":
+            let profile = ProviderEndpointProfileRegistry.mimoTokenPlan(region: localMimoRegion)
+            return (
+                profile.id,
+                localMimoRegion,
+                localMimoTier,
+                localMimoBillingCycle,
+                method.id
+            )
+        case "mimo-payg":
+            let profile = ProviderEndpointProfileRegistry.mimoPayg
+            return (profile.id, .global, nil, nil, method.id)
+        default:
+            return (nil, nil, nil, nil, method.id)
+        }
+    }
 }
 
 // MARK: - Provider Configuration Helpers
@@ -3520,7 +3619,7 @@ extension OpenBurnBarDaemonProviderConfiguration {
     var hasRoutingCapability: Bool {
         let providerID = self.providerID.lowercased()
         switch providerID {
-        case "minimax", "zai", "z-ai", "ollama", "mlx",
+        case "minimax", "zai", "z-ai", "ollama", "mlx", "mimo", "xiaomi", "xiaomimimo",
              "openai", "xai", "deepseek", "mistral", "alibaba", "qwen", "meta":
             return true
         default:

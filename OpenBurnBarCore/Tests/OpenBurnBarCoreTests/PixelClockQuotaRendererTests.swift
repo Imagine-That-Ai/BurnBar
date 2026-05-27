@@ -463,6 +463,23 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertEqual(miniMax.colorHex(row: 7, column: 4), "#FF5B3F")
         XCTAssertNil(miniMax.colorHex(row: 0, column: 1))
 
+        // MiMo — orange tile with white M chevron.
+        let mimo = logo(for: .mimo)
+        XCTAssertEqual(mimo.sourceName, "MimoLogo")
+        XCTAssertEqual(mimo.rows, [
+            ".######.",
+            "########",
+            "########",
+            "###.####",
+            "###.####",
+            "########",
+            "########",
+            ".######."
+        ])
+        XCTAssertEqual(mimo.colorHex(row: 0, column: 1), "#FF6900")
+        XCTAssertEqual(mimo.colorHex(row: 2, column: 2), "#FFFFFF")
+        XCTAssertNil(mimo.colorHex(row: 0, column: 0))
+
         // Z.ai — bold slanted Z: thick top bar, 3-px diagonal stem,
         // thick bottom bar. Bottom edge of each bar is shaded with
         // the brand lavender (#C9B6FF) for a subtle drop shadow.
@@ -1230,6 +1247,7 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         case .codex: return "CodexLogo"
         case .copilot: return "CopilotLogo"
         case .minimax: return "MiniMaxLogo"
+        case .mimo: return "MimoLogo"
         case .zai: return "ZaiLogo"
         case .factory: return "FactoryLogo"
         case .cursor: return "CursorLogo"

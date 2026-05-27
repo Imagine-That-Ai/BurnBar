@@ -18,13 +18,29 @@ import type {
   ProviderAccountDeviceLinkDoc,
   ProviderAccountDoc,
 } from "./types.js";
+import { isRecord, parseProviderAccountDoc, recordOrUndefined, stringField } from "./guards.js";
 
 const SCHEMA_VERSION = 1;
 
 const VALID_CAPABILITIES: readonly DeviceLinkCapability[] = ["owner", "use", "add"];
 
 export function isDeviceLinkCapability(value: unknown): value is DeviceLinkCapability {
-  return typeof value === "string" && (VALID_CAPABILITIES as readonly string[]).includes(value);
+  switch (value) {
+    case "owner":
+    case "use":
+    case "add":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function parsePartialDeviceLinkDoc(raw: unknown): Partial<ProviderAccountDeviceLinkDoc> | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) return undefined;
+  return {
+    createdAt: typeof record.createdAt === "string" ? record.createdAt : undefined,
+  };
 }
 
 export function deviceLinkId(accountID: string, deviceID: string): string {
@@ -57,7 +73,7 @@ export async function upsertDeviceLink(params: UpsertParams): Promise<ProviderAc
   const ref = db.doc(`users/${uid}/provider_account_device_links/${id}`);
   const snap = await ref.get();
   const now = new Date().toISOString();
-  const existing = snap.exists ? snap.data() as Partial<ProviderAccountDeviceLinkDoc> : undefined;
+  const existing = snap.exists ? parsePartialDeviceLinkDoc(snap.data()) : undefined;
   const doc: ProviderAccountDeviceLinkDoc = {
     id,
     accountID,
@@ -66,7 +82,7 @@ export async function upsertDeviceLink(params: UpsertParams): Promise<ProviderAc
     capability,
     status: params.status ?? "active",
     lastObservedAt: now,
-    createdAt: existing?.createdAt ?? now,
+    createdAt: typeof existing?.createdAt === "string" ? existing.createdAt : now,
     updatedAt: now,
     schemaVersion: SCHEMA_VERSION,
   };
@@ -93,7 +109,7 @@ export async function adoptDeviceLink(params: AdoptParams): Promise<ProviderAcco
   if (!accountSnap.exists) {
     throw new HttpsError("not-found", "Provider account does not exist.");
   }
-  const account = accountSnap.data() as ProviderAccountDoc | undefined;
+  const account = parseProviderAccountDoc(accountSnap.data());
   if (!account || account.status === "deleted") {
     throw new HttpsError("failed-precondition", "Provider account is not active.");
   }
@@ -101,8 +117,8 @@ export async function adoptDeviceLink(params: AdoptParams): Promise<ProviderAcco
   const deviceDoc = await db.doc(`users/${uid}/devices/${deviceID}`).get();
   let resolvedName = params.deviceDisplayName?.trim();
   if (!resolvedName && deviceDoc.exists) {
-    const data = deviceDoc.data() as { displayName?: string } | undefined;
-    resolvedName = data?.displayName?.trim();
+    const deviceData = deviceDoc.exists ? deviceDoc.data() : undefined;
+    resolvedName = isRecord(deviceData) ? stringField(deviceData, "displayName")?.trim() : undefined;
   }
   if (!resolvedName) {
     resolvedName = deviceID;
@@ -153,7 +169,8 @@ export async function backfillUserDeviceLinks(
   const accountsSnap = await db.collection(`users/${uid}/provider_accounts`).get();
   let writes = 0;
   for (const accountDocSnap of accountsSnap.docs) {
-    const account = accountDocSnap.data() as ProviderAccountDoc;
+    const account = parseProviderAccountDoc(accountDocSnap.data());
+    if (!account) continue;
     const accountID = account.id ?? accountDocSnap.id;
     if (!accountID || account.status === "deleted") continue;
 
@@ -221,8 +238,8 @@ async function resolveDeviceName(
   try {
     const snap = await db.doc(`users/${uid}/devices/${safeIdentifier(deviceID, "device")}`).get();
     if (snap.exists) {
-      const data = snap.data() as { displayName?: string };
-      const name = data.displayName?.trim();
+      const data = snap.data();
+      const name = isRecord(data) ? stringField(data, "displayName")?.trim() : undefined;
       if (name) return name;
     }
   } catch {

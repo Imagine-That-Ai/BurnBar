@@ -109,6 +109,19 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
     shippedToday: true
   },
   {
+    id: "mimo",
+    name: "Xiaomi MiMo",
+    blurb: "Regional Token Plan credits + global PAYG routing",
+    source: "token-plan-{cn,sgp,ams}.xiaomimimo.com remains + api.xiaomimimo.com",
+    cost: "exact",
+    quota: "partial",
+    cred: "Token Plan tp-… (pick cluster) or PAYG sk-…",
+    notes:
+      "Token Plan quota uses vendor remains when available, otherwise BurnBar tier-cap ledger. PAYG balance is console-only.",
+    category: "api",
+    shippedToday: true
+  },
+  {
     id: "zai",
     name: "Z.ai (GLM)",
     blurb: "Token + MCP limits from BigModel monitor API",

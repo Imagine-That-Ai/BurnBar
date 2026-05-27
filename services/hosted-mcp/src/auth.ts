@@ -17,6 +17,55 @@ export interface AccessTokenClaims {
 
 const SAFE_CLIENT_ID = /^[A-Za-z0-9_.:-]{1,160}$/u;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isGrantMode(value: unknown): value is GrantMode {
+  return value === "sealed_only" || value === "local_decrypt_shim" || value === "remote_readable_explicit_opt_in";
+}
+
+function isEntitlementFamily(value: unknown): value is AccessTokenClaims["entitlement_family"] {
+  return value === "burnbar_pro" || value === "hosted_quota_sync";
+}
+
+function parseAccessTokenClaims(raw: unknown): AccessTokenClaims {
+  if (!isRecord(raw)) {
+    throw new HttpError(401, "Malformed OpenBurnBar MCP token claims.", "malformed_claims");
+  }
+  const sub = raw.sub;
+  const aud = raw.aud;
+  const clientId = raw.client_id;
+  const jti = raw.jti;
+  const exp = raw.exp;
+  const scopes = raw.scopes;
+  const entitlementFamily = raw.entitlement_family;
+  const grantMode = raw.grant_mode;
+  if (
+    typeof sub !== "string"
+    || typeof aud !== "string"
+    || typeof clientId !== "string"
+    || typeof jti !== "string"
+    || typeof exp !== "number"
+    || !Array.isArray(scopes)
+    || !scopes.every((scope): scope is string => typeof scope === "string")
+    || !isEntitlementFamily(entitlementFamily)
+    || !isGrantMode(grantMode)
+  ) {
+    throw new HttpError(401, "Malformed OpenBurnBar MCP token claims.", "malformed_claims");
+  }
+  return {
+    sub,
+    aud,
+    client_id: clientId,
+    scopes,
+    entitlement_family: entitlementFamily,
+    grant_mode: grantMode,
+    exp,
+    jti,
+  };
+}
+
 function base64UrlDecode(value: string): Buffer {
   return Buffer.from(value.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
@@ -58,8 +107,9 @@ export function verifyBearerToken(header: string | undefined): AccessTokenClaims
   }
   let claims: AccessTokenClaims;
   try {
-    claims = JSON.parse(base64UrlDecode(body).toString("utf8")) as AccessTokenClaims;
-  } catch {
+    claims = parseAccessTokenClaims(JSON.parse(base64UrlDecode(body).toString("utf8")));
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
     throw new HttpError(401, "Malformed OpenBurnBar MCP access token claims.", "malformed_claims");
   }
   if (!claims.sub || !claims.client_id || !claims.jti || claims.aud !== MCP_RESOURCE) {

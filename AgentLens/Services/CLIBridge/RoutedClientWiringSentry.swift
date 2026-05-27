@@ -1,4 +1,4 @@
-import Foundation
+@preconcurrency import Foundation
 
 // MARK: - Routed Client Wiring Sentry
 
@@ -60,13 +60,13 @@ final class RoutedClientWiringSentry {
 
     private weak var settingsManager: SettingsManager?
 
-    private var watchers: [RoutingClientWiringTarget: Watcher] = [:]
+    private nonisolated(unsafe) var watchers: [RoutingClientWiringTarget: Watcher] = [:]
     private var pendingRepairs: [RoutingClientWiringTarget: Task<Void, Never>] = [:]
     private var sweepTask: Task<Void, Never>?
-    private var enrollmentObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var enrollmentObserver: NSObjectProtocol?
     private var isStarted = false
 
-    private final class Watcher {
+    private final class Watcher: @unchecked Sendable {
         let descriptor: Int32
         let source: DispatchSourceFileSystemObject
 

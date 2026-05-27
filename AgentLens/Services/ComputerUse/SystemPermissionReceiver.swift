@@ -135,7 +135,7 @@ public final class SystemPermissionReceiver {
             _ = CGRequestScreenCaptureAccess()
             #endif
         case .accessibility:
-            let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+            let options: NSDictionary = ["AXTrustedCheckOptionPrompt": true]
             _ = AXIsProcessTrustedWithOptions(options)
         case .camera:
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in

@@ -121,7 +121,7 @@ struct ChatEngineBackendStrip: View {
         if backend == .hermes && controller.hermesAvailable == false {
             controller.setChatBackend(.hermes)
             Task {
-                await hermesRuntimeLauncher.openHermesAndGateway(
+                _ = await hermesRuntimeLauncher.openHermesAndGateway(
                     baseURL: resolvedHermesGatewayBaseURL,
                     bearerToken: resolvedHermesBearerToken
                 )

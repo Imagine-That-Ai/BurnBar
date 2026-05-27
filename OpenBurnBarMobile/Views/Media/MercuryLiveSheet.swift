@@ -45,6 +45,23 @@ enum PhoneControlSetupMessage {
     }
 }
 
+enum MercuryMirrorTeardownTrigger: Equatable {
+    case explicitClose
+    case signOut
+    case sheetDisappear
+    case viewerDisappear
+    case sceneInactive
+
+    var shouldSendMirrorStop: Bool {
+        switch self {
+        case .explicitClose, .signOut:
+            return true
+        case .sheetDisappear, .viewerDisappear, .sceneInactive:
+            return false
+        }
+    }
+}
+
 /// Mercury Phase 8 — the beautiful entry sheet that opens when the
 /// user taps "My Mac" in the Hermes Square pinned grid. Three actions
 /// (Ask to Mirror / Call Mac / Send File) styled with the existing
@@ -117,6 +134,7 @@ struct MercuryLiveSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     private var personalization: MercuryDevicePersonalization {
         personalizationStore.snapshot(for: connectionID)
@@ -256,12 +274,11 @@ struct MercuryLiveSheet: View {
             decodeWallpaper(newBase64)
         }
         .onDisappear {
-            if activeMirrorRequestID != nil {
-                Task { await stopActiveMirror(reason: "sheet_disappeared") }
-            }
-            // Don't permanently remove — `HermesSquareRoot` may have
-            // installed a longer-lived handler. Only clear our pending
-            // banner state.
+            // SwiftUI can call `onDisappear` when the app backgrounds,
+            // re-parents a sheet, or promotes the full-screen viewer. Those
+            // transitions are not user intent to end the Mac mirror. Keep the
+            // server-side session alive and only detach local view handlers.
+            // Explicit close paths call `stopActiveMirror(reason:)`.
             mirrorTimeoutTask?.cancel()
             mirrorTimeoutTask = nil
             cooldownTickerTask?.cancel()
@@ -271,9 +288,6 @@ struct MercuryLiveSheet: View {
             ackDismissTask?.cancel()
             ackDismissTask = nil
             awaitingRequestID = nil
-            activeMirrorSessionId = nil
-            activeMirrorViewerId = nil
-            activeMirrorViewerRole = nil
             pendingClipboardRequests.removeAll()
             controlStreamCoordinator.mirrorFrameHandler = nil
             controlStreamCoordinator.mirrorFrameV2Handler = nil
@@ -287,6 +301,10 @@ struct MercuryLiveSheet: View {
             // app-scope singleton; tearing it down would close the
             // Computer Use bi-stream that the Agent Live Stage and the
             // You-tab Agent Watch surface also depend on.
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            reinstallMirrorSurfaceAfterReturn()
         }
         .fullScreenCover(isPresented: $isShowingMirrorViewer) {
             MercuryMirrorViewerFullScreen(
@@ -374,9 +392,9 @@ struct MercuryLiveSheet: View {
                 }
             )
             .onDisappear {
-                if activeMirrorRequestID != nil {
-                    Task { await stopActiveMirror(reason: "viewer_disappeared") }
-                }
+                // Disappearing is lifecycle noise on iOS: app switch, PiP,
+                // sheet re-presentation, and transient hierarchy rebuilds can
+                // all trigger it. Only the close button ends the mirror.
             }
         }
         .fileImporter(
@@ -933,6 +951,30 @@ struct MercuryLiveSheet: View {
                 token: token,
                 requestId: activeMirrorRequestID
             )
+        }
+    }
+
+    private func reinstallMirrorSurfaceAfterReturn() {
+        installAckHandler()
+        guard let uid = uidProvider(), !uid.isEmpty else { return }
+        guard activeMirrorRequestID != nil || isShowingMirrorViewer else { return }
+        Task {
+            do {
+                try await controlStreamCoordinator.ensureResponsive(
+                    uid: uid,
+                    connectionID: connectionID,
+                    freshnessInterval: 2.0,
+                    probeTimeout: 1.0,
+                    restartTimeout: 4.0
+                )
+                await startPhoneControlIfPossible(surfaceError: false)
+            } catch {
+                await MainActor.run {
+                    phoneControlSender = nil
+                    phoneControlConnectionID = nil
+                    lastError = "Reconnected to the viewer; tap Retry if frames do not resume. \(error.localizedDescription)"
+                }
+            }
         }
     }
 

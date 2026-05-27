@@ -317,6 +317,8 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
             return "ZaiProviderLogo"
         case "minimax", "mini-max":
             return "MiniMaxLogo"
+        case "mimo", "xiaomi", "xiaomimimo":
+            return "MimoLogo"
         case "moonshot", "kimi":
             return "KimiProviderLogo"
         case "mlx":

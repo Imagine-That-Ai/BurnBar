@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "k4JhVabF4o8hdbwTRUgtEJKdvxUNzivG4ohmexf5Iwt8h5kyTbgO+ocsoebI9i4=",
+  "chunkCiphertext" : "+fiR2kBHySwGu7oykS318XWL+J8+5zHZ6VG9TZmWasunKKuF5e+KRHvWPqRqAnk=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19IiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "1kO8GNSFMjGc7\/AXs5pfOpzUtqQNlbKY1ToDSL6Gg7EQboF6HQqmPGphiESOfaubHAAclf2\/sHKjrVGWEoT6x+lcl6neKZnnugtGXfyKSOvXki6TCR8ZOVvBwZA9GX73L5mUfWdkMwW4OADex5osJWghshiFHZkYpD6Aa+taXtPaBKPjiaTIOawl7TWvwOKIbUio345c",
+  "payloadCiphertext" : "yqSpMgpIYakRIPB2Wwk\/nO0suB8E3bo+Dnr4haBvEQC9KNowhISr5sVt5if7E0\/5Ud34rfzo4yMuz3O4sK\/i5j8QvEK8+avnaZAfo4bHnUxCN\/2XSRgJiPSoejkIVoKRGVEO2POpSXBuGegYhHokg7D06QR3LfUXfCvXhpYBCedn6D4qDRCU7b2EMIoOUr8nrSd8diSp",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BBTN\/VXrYJFhA1U9mezMc+N7L4pxDjqMx\/HvWtw3LPBEClpp\/pIX3a+LTFhPGGOiFgPrixFA0+YYiCWBVgLqgK0IyhB\/myTBrXxbR1YyccXO9VO1ytl\/F7ZgDguVHu9OR1xw8A2GsKXxWqxu2mWezmiivjzfU3iR3TkOgVw="
+  "wrappedKey" : "BDIJ691Ng9tVY+4sT+yXdzXVV6Z5sylJ9byOXNxFJWW\/nxYx3+t+rMWEezqAUynrfYk0KS22S5Y+kgTuYB7FKbvgYVyZx\/SbqrihNcdaWei57OAdB2gc29vKfXevcRiRNBKn7\/+PlgykpY3dqPXKeH0e+epBMY450q7S1Z0="
 }

@@ -33,7 +33,7 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
             let candidate = UInt16.random(in: 49152...65535)
             do {
                 let ready = DispatchSemaphore(value: 0)
-                var stateError: Error?
+                let stateError = Locked<String?>(nil)
                 let parameters = NWParameters.tcp
                 parameters.requiredLocalEndpoint = .hostPort(
                     host: .ipv4(IPv4Address("127.0.0.1")!),
@@ -45,7 +45,7 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
                     case .ready:
                         ready.signal()
                     case .failed(let error):
-                        stateError = error
+                        stateError.write(error.localizedDescription)
                         ready.signal()
                     default:
                         break
@@ -64,9 +64,13 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
                     )
                     continue
                 }
-                if let stateError {
+                if let stateError = stateError.read() {
                     listener.cancel()
-                    lastError = stateError
+                    lastError = NSError(
+                        domain: "CursorConnectorSecretBroker",
+                        code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: stateError]
+                    )
                     continue
                 }
                 self.listener = listener
@@ -223,7 +227,7 @@ final class CursorConnectorManager {
             self.config = CursorConnectorConfig()
         }
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        refreshSystemHealth()
+        scheduleSystemHealthRefresh()
     }
 
     func attach(dataStore: DataStore) {
@@ -315,7 +319,7 @@ final class CursorConnectorManager {
         do {
             try validateConfiguration()
             try ensureSupportDirectory()
-            refreshSystemHealth()
+            scheduleSystemHealthRefresh()
             // Generate a fresh rotation token for each session to invalidate any
             // tokens that may have been exposed in previous sessions.
             try generateRotationToken()
@@ -370,7 +374,7 @@ final class CursorConnectorManager {
         isBusy = true
         defer {
             isBusy = false
-            refreshSystemHealth()
+            scheduleSystemHealthRefresh()
         }
 
         do {
@@ -429,9 +433,21 @@ final class CursorConnectorManager {
         }
     }
 
-    func refreshSystemHealth() {
-        health.cloudflaredInstalled = Self.findExecutable(named: "cloudflared") != nil
-        health.homebrewInstalled = Self.findHomebrew() != nil
+    func scheduleSystemHealthRefresh() {
+        Task { [weak self] in
+            await self?.refreshSystemHealth()
+        }
+    }
+
+    func refreshSystemHealth() async {
+        let snapshot = await Task.detached(priority: .utility) {
+            (
+                cloudflaredInstalled: Self.findExecutable(named: "cloudflared") != nil,
+                homebrewInstalled: Self.findHomebrew() != nil
+            )
+        }.value
+        health.cloudflaredInstalled = snapshot.cloudflaredInstalled
+        health.homebrewInstalled = snapshot.homebrewInstalled
         health.routerListening = false
         health.publicBaseURLReachable = false
     }
@@ -686,7 +702,7 @@ final class CursorConnectorManager {
 
         // Step 1: Unauthenticated request — must be rejected (401).
         // This verifies the tunnel is not publicly accessible without auth.
-        let (unauthData, unauthResponse) = try await URLSession.shared.data(from: url)
+        let (_, unauthResponse) = try await URLSession.shared.data(from: url)
         if let unauthHTTP = unauthResponse as? HTTPURLResponse, unauthHTTP.statusCode == 200 {
             // Endpoint accepted an unauthenticated request — auth is not enforced.
             throw NSError(domain: "CursorConnector", code: 9, userInfo: [
@@ -1220,7 +1236,7 @@ final class CursorConnectorManager {
         return nil
     }
 
-    private static func findExecutable(named name: String) -> String? {
+    nonisolated private static func findExecutable(named name: String) -> String? {
         if let path = runWhich(named: name) { return path }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let candidates = [
@@ -1232,7 +1248,7 @@ final class CursorConnectorManager {
         return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
     }
 
-    private static func findHomebrew() -> String? {
+    nonisolated private static func findHomebrew() -> String? {
         if let path = runWhich(named: "brew") { return path }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let candidates = [
@@ -1243,7 +1259,7 @@ final class CursorConnectorManager {
         return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
     }
 
-    private static func runWhich(named name: String) -> String? {
+    nonisolated private static func runWhich(named name: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
         process.arguments = [name]

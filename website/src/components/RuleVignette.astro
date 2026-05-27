@@ -61,6 +61,7 @@ const {
 } = Astro.props;
 
 const hasFallback = variant !== "no-fallback" && fallback != null;
+const fallbackEndpoint = hasFallback ? fallback : null;
 ---
 
 <article
@@ -115,19 +116,19 @@ const hasFallback = variant !== "no-fallback" && fallback != null;
       </li>
 
       {
-        hasFallback ? (
+        fallbackEndpoint ? (
           <li class="vignette__node vignette__node--fallback">
             <img
               class="vignette__logo"
-              src={fallback!.logo}
+              src={fallbackEndpoint.logo}
               alt=""
               width="34"
               height="34"
               loading="lazy"
             />
-            <span class="vignette__nodename mono">{fallback!.name}</span>
-            <span class="vignette__nodestate mono">{fallback!.state ?? "healthy"}</span>
-            {fallback!.auth && <span class="vignette__nodeauth mono">{fallback!.auth}</span>}
+            <span class="vignette__nodename mono">{fallbackEndpoint.name}</span>
+            <span class="vignette__nodestate mono">{fallbackEndpoint.state ?? "healthy"}</span>
+            {fallbackEndpoint.auth && <span class="vignette__nodeauth mono">{fallbackEndpoint.auth}</span>}
             <span class="vignette__okstamp mono">200 · ok</span>
           </li>
         ) : (

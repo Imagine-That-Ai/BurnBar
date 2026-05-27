@@ -243,8 +243,10 @@ data class TrendDataDigest(
 
         private fun buildProjects(usages: List<TokenUsage>): List<ProjectSlice> {
             return usages
-                .filter { !it.projectName.isNullOrBlank() }
-                .groupBy { it.projectName!! }
+                .mapNotNull { usage ->
+                    usage.projectName?.takeIf { it.isNotBlank() }?.let { projectName -> projectName to usage }
+                }
+                .groupBy(keySelector = { it.first }, valueTransform = { it.second })
                 .map { (project, list) ->
                     ProjectSlice(
                         project = project,
@@ -259,8 +261,12 @@ data class TrendDataDigest(
 
         private fun buildDevices(usages: List<TokenUsage>): List<DeviceSlice> {
             return usages
-                .filter { !(it.deviceId.isNullOrBlank() && it.sourceDeviceId.isNullOrBlank()) }
-                .groupBy { it.deviceId ?: it.sourceDeviceId!! }
+                .mapNotNull { usage ->
+                    val deviceId = usage.deviceId?.takeIf { it.isNotBlank() }
+                        ?: usage.sourceDeviceId?.takeIf { it.isNotBlank() }
+                    deviceId?.let { it to usage }
+                }
+                .groupBy(keySelector = { it.first }, valueTransform = { it.second })
                 .map { (device, list) ->
                     DeviceSlice(
                         device = device,

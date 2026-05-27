@@ -15,6 +15,7 @@ import type {
   ModelBenchmarkTaskCategory,
   ProviderID,
 } from "./types.js";
+import { errorMessage, isRecord } from "./guards.js";
 
 const SNAPSHOT_SCHEMA_VERSION = 1;
 const STATUS_SCHEMA_VERSION = 1;
@@ -31,9 +32,22 @@ export interface ModelLandscapeRefreshResult {
 }
 
 function asRecord(value: unknown): UnknownRecord | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : undefined;
+  return isRecord(value) ? value : undefined;
+}
+
+function parseModelBenchmarkTaskCategory(value: string | undefined): ModelBenchmarkTaskCategory {
+  switch (value) {
+    case "general":
+    case "coding":
+    case "terminal":
+    case "design":
+    case "agent":
+    case "analysis":
+    case "unknown":
+      return value;
+    default:
+      return "design";
+  }
 }
 
 function asArray(value: unknown): unknown[] {
@@ -253,7 +267,8 @@ export function normalizeDesignArenaFixture(
     if (!item) return [];
     const modelID = asString(item.modelID) ?? asString(item.model_id) ?? asString(item.name);
     if (!modelID) return [];
-    const category = (asString(item.taskCategory) ?? "design") as ModelBenchmarkTaskCategory;
+    const category = parseModelBenchmarkTaskCategory(asString(item.taskCategory));
+    const rankValue = asNumber(item.rank);
     return [{
       id: stableSnapshotID("design_arena", modelID, category, fetchedAt),
       source: "design_arena",
@@ -264,7 +279,7 @@ export function normalizeDesignArenaFixture(
       providerID: providerIDFromName(asString(item.providerID) ?? asString(item.provider)),
       taskCategory: category,
       score: scoreToUnit(asNumber(item.score)) ?? eloToUnit(asNumber(item.elo)),
-      rank: asNumber(item.rank) == null ? undefined : Math.trunc(asNumber(item.rank)!),
+      rank: rankValue == null ? undefined : Math.trunc(rankValue),
       confidence: clamp01(asNumber(item.confidence)) ?? 0.7,
       freshness: "manual",
       schemaVersion: SNAPSHOT_SCHEMA_VERSION,
@@ -373,7 +388,7 @@ async function fetchJSON(
   // a brief outage instead of writing a noisy `error` status to Firestore.
   const retries = options.retries ?? 3;
   const baseBackoff = options.backoffMs ?? 8_000;
-  let lastErr: Error | undefined;
+  let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const response = await fetch(url, {
@@ -393,12 +408,12 @@ async function fetchJSON(
       }
       throw new Error(`HTTP ${response.status}`);
     } catch (err) {
-      lastErr = err as Error;
+      lastErr = err;
       if (attempt >= retries) break;
       await new Promise((r) => setTimeout(r, baseBackoff * Math.pow(2, attempt)));
     }
   }
-  throw lastErr ?? new Error("fetchJSON: unknown failure");
+  throw lastErr instanceof Error ? lastErr : new Error(errorMessage(lastErr));
 }
 
 export async function collectModelLandscapeBenchmarks(
@@ -424,7 +439,7 @@ export async function collectModelLandscapeBenchmarks(
         "Artificial Analysis"
       ));
     } catch (err) {
-      statuses.push(status("artificial_analysis", "error", `Artificial Analysis refresh failed: ${(err as Error).message}`, fetchedAt));
+      statuses.push(status("artificial_analysis", "error", `Artificial Analysis refresh failed: ${errorMessage(err)}`, fetchedAt));
     }
   } else {
     statuses.push(status("artificial_analysis", "unavailable", "ARTIFICIAL_ANALYSIS_API_KEY is not configured.", fetchedAt, undefined, "Artificial Analysis"));
@@ -443,7 +458,7 @@ export async function collectModelLandscapeBenchmarks(
       "Terminal-Bench / Hugging Face"
     ));
   } catch (err) {
-    statuses.push(status("terminal_bench", "error", `Terminal-Bench refresh failed: ${(err as Error).message}`, fetchedAt, undefined, "Terminal-Bench / Hugging Face"));
+    statuses.push(status("terminal_bench", "error", `Terminal-Bench refresh failed: ${errorMessage(err)}`, fetchedAt, undefined, "Terminal-Bench / Hugging Face"));
   }
 
   const designArenaKey = env.DESIGN_ARENA_API_KEY?.trim();
@@ -471,7 +486,7 @@ export async function collectModelLandscapeBenchmarks(
         statuses.push(status(
           "design_arena",
           "error",
-          `Design Arena API refresh failed: ${(err as Error).message}`,
+          `Design Arena API refresh failed: ${errorMessage(err)}`,
           fetchedAt,
           undefined,
           "Design Arena"
@@ -496,7 +511,7 @@ export async function collectModelLandscapeBenchmarks(
         "Design Arena"
       ));
     } catch (err) {
-      statuses.push(status("design_arena", "error", `Design Arena fixture failed: ${(err as Error).message}`, fetchedAt, undefined, "Design Arena"));
+      statuses.push(status("design_arena", "error", `Design Arena fixture failed: ${errorMessage(err)}`, fetchedAt, undefined, "Design Arena"));
     }
   } else if (!designArenaStatusWritten) {
     statuses.push(status(
@@ -523,7 +538,7 @@ export async function collectModelLandscapeBenchmarks(
       snapshots.push(...normalized);
       statuses.push(status("manual_fixture", "fresh", `Normalized ${normalized.length} manual fixture rows.`, fetchedAt, fetchedAt, "Manual OpenBurnBar fixture"));
     } catch (err) {
-      statuses.push(status("manual_fixture", "error", `Manual fixture failed: ${(err as Error).message}`, fetchedAt));
+      statuses.push(status("manual_fixture", "error", `Manual fixture failed: ${errorMessage(err)}`, fetchedAt));
     }
   }
 

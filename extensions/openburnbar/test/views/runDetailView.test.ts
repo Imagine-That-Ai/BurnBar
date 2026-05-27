@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { OpenBurnBarExtensionController } from '../../src/state/controller';
+import { createSnapshotController } from '../helpers/controllerMock';
 import type { OpenBurnBarState } from '../../src/types';
 import { buildRunDetailRows, type BurnBarRunDetailRow } from '../../src/state/projections';
 
@@ -51,21 +51,8 @@ import {
 } from '../../src/views/runDetailView';
 
 // Create a mock controller
-function createMockController(partialState: Partial<OpenBurnBarState> = {}): OpenBurnBarExtensionController {
-  const defaultState: OpenBurnBarState = {
-    connectionStatus: 'connecting',
-    clientAttached: false,
-    daemonRuns: [],
-    pendingToolCalls: [],
-    recentUsage: [],
-    runs: [],
-    ...partialState
-  };
-
-  return {
-    snapshot: defaultState,
-    onDidChangeState: vi.fn().mockReturnValue({ dispose: vi.fn() })
-  } as unknown as OpenBurnBarExtensionController;
+function createMockController(partialState: Partial<OpenBurnBarState> = {}) {
+  return createSnapshotController(partialState);
 }
 
 describe('OpenBurnBarRunDetailTreeDataProvider', () => {
@@ -89,26 +76,48 @@ describe('OpenBurnBarRunDetailTreeDataProvider', () => {
   });
 
   describe('getTreeItem', () => {
-    it('should return the tree item as-is', () => {
-      const controller = createMockController();
+    it('should return the tree item as-is', async () => {
+      const controller = createMockController({
+        selectedRunId: 'run-1',
+        runs: [{
+          id: 'run-1',
+          title: 'Test Run',
+          phase: 'completed',
+          source: 'daemon',
+          updatedAt: new Date().toISOString(),
+          note: 'Test note'
+        }]
+      });
       const provider = new OpenBurnBarRunDetailTreeDataProvider(controller);
 
-      const mockItem = new vscode.TreeItem('test', 0);
-      const result = provider.getTreeItem(mockItem as any);
+      const children = await provider.getChildren();
+      expect(children.length).toBeGreaterThan(0);
+      const result = provider.getTreeItem(children[0]);
 
-      expect(result).toBe(mockItem);
+      expect(result).toBe(children[0]);
     });
   });
 
   describe('getChildren', () => {
     it('should return empty array for child elements', async () => {
-      const controller = createMockController();
+      const controller = createMockController({
+        selectedRunId: 'run-1',
+        runs: [{
+          id: 'run-1',
+          title: 'Test Run',
+          phase: 'completed',
+          source: 'daemon',
+          updatedAt: new Date().toISOString(),
+          note: 'Test note'
+        }]
+      });
       const provider = new OpenBurnBarRunDetailTreeDataProvider(controller);
 
-      const mockItem = new vscode.TreeItem('test', 0);
-      const children = await provider.getChildren(mockItem as any);
+      const children = await provider.getChildren();
+      expect(children.length).toBeGreaterThan(0);
+      const childChildren = await provider.getChildren(children[0]);
 
-      expect(children).toEqual([]);
+      expect(childChildren).toEqual([]);
     });
 
     it('should return detail rows from controller snapshot', async () => {

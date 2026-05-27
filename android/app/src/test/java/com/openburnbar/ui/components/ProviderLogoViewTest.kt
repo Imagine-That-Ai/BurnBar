@@ -1,11 +1,17 @@
 package com.openburnbar.ui.components
 
 import com.openburnbar.R
+import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.square.AgentIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ProviderLogoViewTest {
+    @Test
+    fun mimoProviderUsesDedicatedLogoAsset() {
+        assertEquals(R.drawable.mimo_logo, ProviderLogo.drawableFor(AgentProvider.MIMO))
+    }
+
     @Test
     fun pairedMacIdentityUsesDedicatedMacLogoInsteadOfHermesFallback() {
         val identity = AgentIdentity.pairedMacPlaceholder("device://paired-mac/relay-live")

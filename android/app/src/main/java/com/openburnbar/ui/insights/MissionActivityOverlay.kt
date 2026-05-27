@@ -109,8 +109,9 @@ class MissionActivityViewModel : ViewModel() {
 
     fun start() {
         if (authListener != null) return
-        authListener = FirebaseAuth.AuthStateListener { restartListListener(it.currentUser?.uid) }
-        auth.addAuthStateListener(authListener!!)
+        val listener = FirebaseAuth.AuthStateListener { restartListListener(it.currentUser?.uid) }
+        authListener = listener
+        auth.addAuthStateListener(listener)
         restartListListener(auth.currentUser?.uid)
     }
 

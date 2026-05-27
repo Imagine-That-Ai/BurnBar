@@ -94,6 +94,10 @@ final class SmartHubBridgeController {
         autoRefreshTask = nil
         settingsObserver?.cancel()
         settingsObserver = nil
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceIDSettings)
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceIDPump)
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceIDAutoRefresh)
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceIDCastWatchdog)
         castWatchdog?.cancel()
         castWatchdog = nil
         SmartHubBridgeServer.shared.stop()
@@ -144,15 +148,33 @@ final class SmartHubBridgeController {
 
     // MARK: - Settings observation
 
+    private static let cadenceIDSettings = "smarthub-bridge-settings"
+    private static let cadenceIDPump = "smarthub-bridge-snapshot-pump"
+    private static let cadenceIDAutoRefresh = "smarthub-bridge-auto-refresh"
+    private static let cadenceIDCastWatchdog = "smarthub-bridge-cast-watchdog"
+
     private func observeSettings() {
-        settingsObserver = Task { @MainActor in
-            // Poll the toggle every 2s — cheap and avoids depending on a
-            // particular reactive plumbing in SettingsManager.
-            while !Task.isCancelled {
-                applySettings()
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-            }
-        }
+        // Cadence-managed: 2 s while foreground / awake, 30 s in the
+        // background, paused while the display sleeps. Toggling the
+        // bridge from Settings still produces snappy feedback because
+        // the toggle observer (in `applySettings`) reads
+        // `settingsManager.smartHubQuotaDisplayEnabled` directly, which
+        // is a Combine-published value.
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceIDSettings,
+                activeInterval: 2,
+                backgroundInterval: 30,
+                sleepInterval: nil,
+                isEnabled: { true },
+                fireImmediately: true,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    self?.applySettings()
+                }
+            )
+        )
+        settingsObserver = Task { @MainActor in }
     }
 
     private func applySettings() {
@@ -420,14 +442,25 @@ final class SmartHubBridgeController {
     /// long-running `refreshAll` can't freeze the dashboard.
     private func startSnapshotPump() {
         heartbeat?.cancel()
-        heartbeat = Task { @MainActor in
-            while !Task.isCancelled {
-                healServerIfNeeded()
-                await pumpSnapshot()
-                let nanos = UInt64(snapshotPumpIntervalSeconds * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: nanos)
-            }
-        }
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceIDPump,
+                activeInterval: snapshotPumpIntervalSeconds,
+                backgroundInterval: 30,
+                sleepInterval: nil,
+                isEnabled: { [weak self] in
+                    self?.settingsManager.smartHubQuotaDisplayEnabled ?? false
+                },
+                fireImmediately: false,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    guard let self else { return }
+                    self.healServerIfNeeded()
+                    await self.pumpSnapshot()
+                }
+            )
+        )
+        heartbeat = Task { @MainActor in }
     }
 
     /// Slow background loop that drives provider re-fetches. Calls
@@ -438,13 +471,23 @@ final class SmartHubBridgeController {
     /// pump cadence and must not block it.
     private func startAutoRefresh() {
         autoRefreshTask?.cancel()
-        autoRefreshTask = Task { @MainActor in
-            while !Task.isCancelled {
-                await refreshIfStale()
-                let nanos = UInt64(autoRefreshIntervalSeconds * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: nanos)
-            }
-        }
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceIDAutoRefresh,
+                activeInterval: autoRefreshIntervalSeconds,
+                backgroundInterval: autoRefreshIntervalSeconds * 5,
+                sleepInterval: nil,
+                isEnabled: { [weak self] in
+                    self?.settingsManager.smartHubQuotaDisplayEnabled ?? false
+                },
+                fireImmediately: false,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.refreshIfStale()
+                }
+            )
+        )
+        autoRefreshTask = Task { @MainActor in }
     }
 
     /// Self-heal: when the user has the bridge enabled but the underlying
@@ -988,6 +1031,7 @@ final class SmartHubBridgeController {
         case .windsurf:   return "06B6D4"
         case .warp:       return "DDE4EA"
         case .xAI:        return "1A1A1A"
+        case .mimo:       return "FF6900"
         }
     }
 
@@ -1093,13 +1137,23 @@ final class SmartHubBridgeController {
 
     private func startCastWatchdog() {
         castWatchdog?.cancel()
-        castWatchdog = Task { @MainActor in
-            while !Task.isCancelled {
-                await runCastWatchdogTick()
-                let nanos = UInt64(castWatchdogIntervalSeconds * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: nanos)
-            }
-        }
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceIDCastWatchdog,
+                activeInterval: castWatchdogIntervalSeconds,
+                backgroundInterval: castWatchdogIntervalSeconds * 5,
+                sleepInterval: nil,
+                isEnabled: { [weak self] in
+                    self?.settingsManager.smartHubQuotaDisplayEnabled ?? false
+                },
+                fireImmediately: false,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.runCastWatchdogTick()
+                }
+            )
+        )
+        castWatchdog = Task { @MainActor in }
     }
 
     private func runCastWatchdogTick() async {

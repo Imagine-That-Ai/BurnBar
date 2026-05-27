@@ -6,11 +6,11 @@
 
 import { getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import type { Firestore, QueryDocumentSnapshot, Timestamp } from "firebase-admin/firestore";
+import type { Firestore } from "firebase-admin/firestore";
+import { numberField, stringField } from "./guards.js";
 import type {
   MediaFeature,
   MediaSessionDailyRollupDoc,
-  MediaSessionEventDoc,
 } from "./types.js";
 
 const ROLLUP_SCHEMA_VERSION = 1;
@@ -27,6 +27,18 @@ function utcDayWindow(date: Date) {
 function previousUtcDay(now: Date): Date {
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   return new Date(today.getTime() - 24 * 60 * 60 * 1000);
+}
+
+function buildEmptyPerFeature(): MediaSessionDailyRollupDoc["perFeature"] {
+  return {
+    fileTransfer: emptyFeatureBucket(),
+    screenShare: emptyFeatureBucket(),
+    videoCall: emptyFeatureBucket(),
+  };
+}
+
+function isMediaFeature(value: unknown): value is MediaFeature {
+  return value === "fileTransfer" || value === "screenShare" || value === "videoCall";
 }
 
 function emptyFeatureBucket(): MediaSessionDailyRollupDoc["perFeature"][MediaFeature] {
@@ -86,9 +98,7 @@ export async function rollupMediaSessionsForDay(options: RollupOptions): Promise
     .where("startedAt", "<", window.end.toISOString())
     .get();
 
-  const perFeature: MediaSessionDailyRollupDoc["perFeature"] = Object.fromEntries(
-    FEATURES.map((feature) => [feature, emptyFeatureBucket()])
-  ) as MediaSessionDailyRollupDoc["perFeature"];
+  const perFeature = buildEmptyPerFeature();
 
   const rttSamples: Record<MediaFeature, number[]> = { fileTransfer: [], screenShare: [], videoCall: [] };
   const bpsSamples: Record<MediaFeature, number[]> = { fileTransfer: [], screenShare: [], videoCall: [] };
@@ -101,33 +111,38 @@ export async function rollupMediaSessionsForDay(options: RollupOptions): Promise
 
   const uniqueUids = new Set<string>();
 
-  for (const doc of snapshot.docs as QueryDocumentSnapshot[]) {
-    const data = doc.data() as MediaSessionEventDoc;
+  for (const doc of snapshot.docs) {
+    const raw = doc.data();
     const segments = doc.ref.path.split("/");
     if (segments.length === 4 && segments[0] === "users" && segments[1]) {
       uniqueUids.add(segments[1]);
     }
-    const feature = data.feature;
-    if (!perFeature[feature]) continue;
+    const feature = stringField(raw, "feature");
+    if (!isMediaFeature(feature)) continue;
 
     const bucket = perFeature[feature];
     bucket.sessionCount += 1;
-    bucket.totalBytes += (data.byteCountInbound ?? 0) + (data.byteCountOutbound ?? 0);
+    bucket.totalBytes +=
+      (numberField(raw, "byteCountInbound") ?? 0) +
+      (numberField(raw, "byteCountOutbound") ?? 0);
 
     successesByFeature[feature].total += 1;
-    if (data.endReason === "completedSuccess") {
+    if (stringField(raw, "endReason") === "completedSuccess") {
       successesByFeature[feature].ok += 1;
     }
 
-    const rtt = bucketRtt(data.p95RoundTripMillisBucket);
+    const rtt = bucketRtt(stringField(raw, "p95RoundTripMillisBucket"));
     if (rtt !== undefined) rttSamples[feature].push(rtt);
-    const bps = bucketBitsPerSecond(data.p95BitsPerSecondBucket);
+    const bps = bucketBitsPerSecond(stringField(raw, "p95BitsPerSecondBucket"));
     if (bps !== undefined) bpsSamples[feature].push(bps);
-    if (typeof data.freezeCount === "number") freezeSamples[feature].push(data.freezeCount);
+    const freezeCount = numberField(raw, "freezeCount");
+    if (typeof freezeCount === "number") freezeSamples[feature].push(freezeCount);
 
-    if (data.startedAt && data.endedAt) {
-      const startedMs = Date.parse(data.startedAt);
-      const endedMs = Date.parse(data.endedAt);
+    const startedAt = stringField(raw, "startedAt");
+    const endedAt = stringField(raw, "endedAt");
+    if (startedAt && endedAt) {
+      const startedMs = Date.parse(startedAt);
+      const endedMs = Date.parse(endedAt);
       if (Number.isFinite(startedMs) && Number.isFinite(endedMs) && endedMs > startedMs) {
         bucket.totalSeconds += Math.round((endedMs - startedMs) / 1000);
       }

@@ -60,6 +60,19 @@ struct OpenBurnBarDaemonRuntimeSnapshot: Equatable {
     let providerConfigurations: [OpenBurnBarDaemonProviderConfiguration]
     let recentUsage: [OpenBurnBarDaemonRecentUsage]
     let ledgerRecordCount: Int
+    let importedUsages: [TokenUsage]
+
+    init(
+        providerConfigurations: [OpenBurnBarDaemonProviderConfiguration],
+        recentUsage: [OpenBurnBarDaemonRecentUsage],
+        ledgerRecordCount: Int,
+        importedUsages: [TokenUsage] = []
+    ) {
+        self.providerConfigurations = providerConfigurations
+        self.recentUsage = recentUsage
+        self.ledgerRecordCount = ledgerRecordCount
+        self.importedUsages = importedUsages
+    }
 }
 
 final class OpenBurnBarDaemonUsageSyncService {
@@ -99,7 +112,8 @@ final class OpenBurnBarDaemonUsageSyncService {
                 .sorted { $0.recordedAt > $1.recordedAt }
                 .prefix(6)
                 .map { $0 },
-            ledgerRecordCount: importedUsages.count
+            ledgerRecordCount: importedUsages.count,
+            importedUsages: importedUsages
         )
     }
 
@@ -128,7 +142,8 @@ final class OpenBurnBarDaemonUsageSyncService {
                 .sorted { $0.recordedAt > $1.recordedAt }
                 .prefix(6)
                 .map { $0 },
-            ledgerRecordCount: importedUsages.count
+            ledgerRecordCount: importedUsages.count,
+            importedUsages: importedUsages
         )
     }
 

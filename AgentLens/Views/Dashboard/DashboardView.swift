@@ -568,6 +568,7 @@ struct DashboardView: View {
     private var liveCostCurveBand: some View {
         DashboardLiveCostCurve(
             usages: dashboardUsageWindow.usages,
+            usagesRevision: dataStore.usagesVersion,
             unit: .cost,
             granularity: curveGranularityForCurrentRange,
             domain: curveDomainForCurrentRange,

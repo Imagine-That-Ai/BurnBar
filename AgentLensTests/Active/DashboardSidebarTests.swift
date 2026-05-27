@@ -21,8 +21,8 @@ final class DashboardSidebarTests: XCTestCase {
         selectedTimeRange: TimeRange = .today,
         sidebarAppeared: Bool = true,
         onNavigate: @escaping (DashboardMainRoute) -> Void = { _ in }
-    ) -> DashboardSidebar {
-        let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
+    ) throws -> DashboardSidebar {
+        let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
         return DashboardSidebar(
             viewMode: viewMode,
             mainRoute: mainRoute,
@@ -45,7 +45,7 @@ final class DashboardSidebarTests: XCTestCase {
     }
 
     func test_rendersWithoutCrashing() throws {
-        let view = makeSidebar()
+        let view = try makeSidebar()
         XCTAssertNoThrow(try view.inspect())
     }
 
@@ -63,7 +63,7 @@ final class DashboardSidebarTests: XCTestCase {
             hasEstimatedContributions: false,
             cacheEfficiency: .zero
         )
-        let view = makeSidebar(providerSummaries: [summary])
+        let view = try makeSidebar(providerSummaries: [summary])
         let sut = try view.inspect()
         XCTAssertNoThrow(sut)
     }
@@ -80,7 +80,7 @@ final class DashboardSidebarTests: XCTestCase {
             providerBreakdown: [],
             cacheEfficiency: .zero
         )
-        let view = makeSidebar(viewMode: .models, modelSummaries: [summary])
+        let view = try makeSidebar(viewMode: .models, modelSummaries: [summary])
         let sut = try view.inspect()
         XCTAssertNoThrow(sut)
     }
@@ -100,7 +100,7 @@ final class DashboardSidebarTests: XCTestCase {
             hasEstimatedContributions: false,
             cacheEfficiency: .zero
         )
-        let view = makeSidebar(
+        let view = try makeSidebar(
             providerSummaries: [summary],
             onNavigate: { navigatedRoute = $0 }
         )

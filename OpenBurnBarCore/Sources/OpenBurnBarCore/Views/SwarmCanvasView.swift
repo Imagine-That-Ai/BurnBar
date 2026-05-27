@@ -40,6 +40,8 @@ public struct SwarmCanvasView: View {
     public let isBrandTextEnabled: Bool
     public let enableSwarmSparkles: Bool
     public let excludeBrandShapesFromSwarm: Bool
+    public let maxFrameRate: Double?
+    public let rendersAsynchronously: Bool
     public let currentMode: Binding<SwarmFormationMode>?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -73,6 +75,8 @@ public struct SwarmCanvasView: View {
         isBrandTextEnabled: Bool = true,
         enableSwarmSparkles: Bool = true,
         excludeBrandShapesFromSwarm: Bool = false,
+        maxFrameRate: Double? = nil,
+        rendersAsynchronously: Bool = false,
         currentMode: Binding<SwarmFormationMode>? = nil
     ) {
         let normalizedProviderGlyphs = enabledProviderGlyphs.map(SwarmProviderGlyphSelection.normalized) ?? SwarmProviderGlyphSelection.allProviders
@@ -94,6 +98,8 @@ public struct SwarmCanvasView: View {
         self.isBrandTextEnabled = isBrandTextEnabled
         self.enableSwarmSparkles = enableSwarmSparkles
         self.excludeBrandShapesFromSwarm = excludeBrandShapesFromSwarm
+        self.maxFrameRate = maxFrameRate
+        self.rendersAsynchronously = rendersAsynchronously
         self.currentMode = currentMode
 
         let sim = SwarmSimulation(
@@ -113,9 +119,9 @@ public struct SwarmCanvasView: View {
     }
 
     public var body: some View {
-        let fps = isBatteryThrottled ? 15.0 : 60.0
+        let fps = Self.sanitizedFrameRate(maxFrameRate, fallback: isBatteryThrottled ? 15.0 : 60.0)
         TimelineView(.animation(minimumInterval: 1.0 / fps, paused: reduceMotion)) { timeline in
-            Canvas(rendersAsynchronously: false) { context, size in
+            Canvas(rendersAsynchronously: rendersAsynchronously) { context, size in
                 simulation.advance(
                     to: timeline.date,
                     bounds: size,
@@ -222,6 +228,13 @@ public struct SwarmCanvasView: View {
         }()
         #endif
         return ProcessInfo.processInfo.isLowPowerModeEnabled ? base / 2 : base
+    }
+
+    nonisolated static func sanitizedFrameRate(_ frameRate: Double?, fallback: Double) -> Double {
+        guard let frameRate, frameRate.isFinite, frameRate > 0 else {
+            return fallback
+        }
+        return frameRate.clamped(to: 1.0...120.0)
     }
 }
 
@@ -384,8 +397,16 @@ public final class SwarmSimulation {
         var tx: Double?                 // target x (shape mode)
         var ty: Double?                 // target y (shape mode)
         var role: String?               // target-shape role
+        var logoProvider: AgentProvider?
         var logoColor: RGBA?            // source logo pixel color for asset-derived provider marks
+        var resolvedLogoColor: RGBA?
+        var toneSeed: Double?
         var flowProgress: Double        // for router-flow bezier travel
+    }
+
+    private struct ResolvedGlyphTextKey: Hashable {
+        let glyph: String
+        let colorKey: Int
     }
 
     // MARK: Tunables (mirrors website BaseLayout.astro)
@@ -428,19 +449,9 @@ public final class SwarmSimulation {
     private lazy var chefHatPoints = SwarmSimulation.generateChefHatPoints()
     private lazy var chiliPoints = SwarmSimulation.generateChiliPoints()
 
-    private lazy var providerLogoPointCache: [AgentProvider: [ShapePoint]] = {
-        Dictionary(uniqueKeysWithValues: SwarmFormationMode.showcaseProviders.map { provider in
-            (
-                provider,
-                SwarmSimulation.logoPoints(
-                    for: provider,
-                    fallback: SwarmSimulation.fallbackLogoPoints(for: provider)
-                )
-            )
-        })
-    }()
-    private lazy var xAILogoPoints = SwarmSimulation.generateXAILogoPoints()
-    private lazy var grokLogoPoints = SwarmSimulation.logoPoints(named: ["GrokLogo", "xAILogo"], fallback: SwarmSimulation.generateGrokLogoPoints())
+    private static var providerLogoPointCache: [AgentProvider: [ShapePoint]] = [:]
+    private static let xAILogoPoints = SwarmSimulation.generateXAILogoPoints()
+    private static let grokLogoPoints = SwarmSimulation.logoPoints(named: ["GrokLogo", "xAILogo"], fallback: SwarmSimulation.generateGrokLogoPoints())
 
     var pointer: CGPoint?
     public var enableSwarmSparkles: Bool = true
@@ -457,6 +468,8 @@ public final class SwarmSimulation {
     var isBrandTextEnabled: Bool = true
     private var shouldResetCycleTimer = false
     private var colorDriver: SwarmColorDriver?
+    private var resolvedLogoColorPalette: SwarmColorPalette?
+    private var resolvedLogoColorScheme: ColorScheme?
     /// Previous driver's resolved colors per particle — used for smooth transition.
     private var previousColors: [RGBA?] = []
     /// Progress of the current color transition (0 = old colors, 1 = new colors).
@@ -725,6 +738,7 @@ public final class SwarmSimulation {
 
     public func draw(into ctx: GraphicsContext, size: CGSize, scheme: ColorScheme, isBatteryThrottled: Bool, uiMode: UIMode = .standard) {
         renderScheme = scheme   // drives the light/dark particle palette in colorFromKey
+        refreshResolvedLogoColorsIfNeeded(for: scheme)
 
         let shouldRenderIndividually: Bool = {
             if colorDriver != nil { return true }
@@ -784,17 +798,16 @@ public final class SwarmSimulation {
         } else {
             // Original bucket path: batch particles by color key to minimize fill calls.
             var bucketPaths: [Int: Path] = [:]
+            bucketPaths.reserveCapacity(64)
             for (index, p) in particles.enumerated() where !p.isGlyph {
                 if isBatteryThrottled && index % 2 == 1 { continue } // Skip 50% on battery
                 let key = colorKey(for: p)
-                var path = bucketPaths[key] ?? Path()
                 let inShape = (mode != .swarm && p.tx != nil)
                 let r = max(0.4, p.size * (inShape ? 1.2 : 0.85))
-                path.addEllipse(in: CGRect(
+                bucketPaths[key, default: Path()].addEllipse(in: CGRect(
                     x: p.x - r, y: p.y - r,
                     width: r * 2, height: r * 2
                 ))
-                bucketPaths[key] = path
             }
             for (key, path) in bucketPaths {
                 let baseColor = colorFromKey(key, uiMode: uiMode)
@@ -803,15 +816,40 @@ public final class SwarmSimulation {
             }
         }
 
-        // Glyphs — relatively few; resolve once per draw.
+        // Glyphs — preserve draw order, but reuse resolved text for particles
+        // with identical stable glyph/color pairs. During active color
+        // transitions or logo-derived colors, each particle keeps its exact
+        // per-particle resolve path.
+        let canReuseGlyphText = colorDriver == nil && colorTransitionProgress >= 1.0
+        var resolvedGlyphTextByKey: [ResolvedGlyphTextKey: GraphicsContext.ResolvedText] = [:]
+        resolvedGlyphTextByKey.reserveCapacity(32)
         for (index, p) in particles.enumerated() where p.isGlyph {
             if isBatteryThrottled && index % 2 == 1 { continue } // Skip 50% on battery
             let color = resolvedColor(for: p, at: index, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
-            let resolved = ctx.resolve(
-                Text(p.glyph)
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(color)
-            )
+            let resolved: GraphicsContext.ResolvedText
+            if canReuseGlyphText,
+               p.logoProvider == nil,
+               p.logoColor == nil,
+               p.resolvedLogoColor == nil {
+                let key = ResolvedGlyphTextKey(glyph: p.glyph, colorKey: colorKey(for: p))
+                if let cached = resolvedGlyphTextByKey[key] {
+                    resolved = cached
+                } else {
+                    let fresh = ctx.resolve(
+                        Text(p.glyph)
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(color)
+                    )
+                    resolvedGlyphTextByKey[key] = fresh
+                    resolved = fresh
+                }
+            } else {
+                resolved = ctx.resolve(
+                    Text(p.glyph)
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(color)
+                )
+            }
             ctx.draw(resolved, at: CGPoint(x: p.x, y: p.y), anchor: .center)
         }
     }
@@ -828,10 +866,7 @@ public final class SwarmSimulation {
         switch next {
         case .swarm:
             for i in particles.indices {
-                particles[i].tx = nil
-                particles[i].ty = nil
-                particles[i].role = nil
-                particles[i].logoColor = nil
+                clearFormationMetadata(at: i)
             }
             return
         case .shapeProviderLogo(let providers):
@@ -851,7 +886,7 @@ public final class SwarmSimulation {
             shapeRoles = burnBarLogoPoints.map { $0.role }
             progress = burnBarLogoPoints.map { $0.progress }
         case .shapeGrok:
-            assignProviderLogoFormation([(provider: .xAI, points: grokLogoPoints)])
+            assignProviderLogoFormation([(provider: .xAI, points: Self.grokLogoPoints)])
             return
         case .shapeRings:
             shapePoints = ringPoints.map { SIMD2(Double($0.point.x), Double($0.point.y)) }
@@ -935,26 +970,30 @@ public final class SwarmSimulation {
                 let pt = shapePoints[slot]
                 particles[particleIdx].tx = centerX + pt.x * scale
                 particles[particleIdx].ty = centerY + pt.y * scale
-                particles[particleIdx].role = shapeRoles[slot]
-                particles[particleIdx].logoColor = nil
-                particles[particleIdx].flowProgress = progress[slot]
+                applyFormationMetadata(
+                    at: particleIdx,
+                    role: shapeRoles[slot],
+                    flowProgress: progress[slot]
+                )
             } else {
-                particles[particleIdx].tx = nil
-                particles[particleIdx].ty = nil
-                particles[particleIdx].role = nil
-                particles[particleIdx].logoColor = nil
+                clearFormationMetadata(at: particleIdx)
             }
         }
     }
 
     private func providerLogoPoints(for provider: AgentProvider) -> [ShapePoint] {
         if provider == .xAI {
-            return xAILogoPoints
+            return Self.xAILogoPoints
         }
-        return providerLogoPointCache[provider] ?? SwarmSimulation.logoPoints(
+        if let cached = Self.providerLogoPointCache[provider] {
+            return cached
+        }
+        let points = SwarmSimulation.logoPoints(
             for: provider,
             fallback: SwarmSimulation.fallbackLogoPoints(for: provider)
         )
+        Self.providerLogoPointCache[provider] = points
+        return points
     }
 
     private func assignProviderLogoFormation(_ specs: [(provider: AgentProvider, points: [ShapePoint])]) {
@@ -962,10 +1001,7 @@ public final class SwarmSimulation {
         let count = visibleSpecs.count
         guard count > 0 else {
             for i in particles.indices {
-                particles[i].tx = nil
-                particles[i].ty = nil
-                particles[i].role = nil
-                particles[i].logoColor = nil
+                clearFormationMetadata(at: i)
             }
             return
         }
@@ -997,12 +1033,45 @@ public final class SwarmSimulation {
                 particles[particleIdx].tx = logoSlot.centerX + Double(pt.point.x) * logoSlot.scale
                 particles[particleIdx].ty = logoSlot.centerY + Double(pt.point.y) * logoSlot.scale
                 particles[particleIdx].isGlyph = false
-                particles[particleIdx].logoColor = pt.logoColor
-
-                let providerSuffix = ":\(spec.provider.persistedToken)"
-                particles[particleIdx].role = (pt.role ?? "logo-flame-inner") + providerSuffix
-                particles[particleIdx].flowProgress = pt.progress
+                applyFormationMetadata(
+                    at: particleIdx,
+                    role: pt.role ?? "logo-flame-inner",
+                    logoProvider: spec.provider,
+                    logoColor: pt.logoColor,
+                    flowProgress: pt.progress
+                )
             }
+        }
+    }
+
+    private func clearFormationMetadata(at index: Int) {
+        particles[index].tx = nil
+        particles[index].ty = nil
+        particles[index].role = nil
+        particles[index].logoProvider = nil
+        particles[index].logoColor = nil
+        particles[index].resolvedLogoColor = nil
+        particles[index].toneSeed = nil
+    }
+
+    private func applyFormationMetadata(
+        at index: Int,
+        role: String?,
+        logoProvider: AgentProvider? = nil,
+        logoColor: RGBA? = nil,
+        flowProgress: Double
+    ) {
+        particles[index].role = role
+        particles[index].logoProvider = logoProvider
+        particles[index].logoColor = logoColor
+        particles[index].flowProgress = flowProgress
+        particles[index].toneSeed = nil
+        particles[index].toneSeed = Self.flameToneSeed(for: particles[index], at: index)
+
+        if logoProvider != nil {
+            refreshResolvedLogoColor(at: index, scheme: renderScheme)
+        } else {
+            particles[index].resolvedLogoColor = nil
         }
     }
 
@@ -1061,8 +1130,7 @@ public final class SwarmSimulation {
     // BurnBar logo roles. Using a ×100 stride keeps tiers (<16) from colliding.
     private func colorKey(for p: Particle) -> Int {
         let tier = min(15, max(0, Int(p.opacity * 16)))
-        if case .shapeProviderLogo = mode, let rawRole = p.role {
-            let (role, _) = Self.parseRoleAndProvider(rawRole)
+        if case .shapeProviderLogo = mode, let role = p.role {
             switch role {
             case "logo-flame-inner": return 9 * 100 + tier
             case "logo-flame-outer": return 10 * 100 + tier
@@ -1253,6 +1321,31 @@ public final class SwarmSimulation {
         colorFromKey(colorKey(for: p), uiMode: uiMode)
     }
 
+    private func refreshResolvedLogoColorsIfNeeded(for scheme: ColorScheme) {
+        guard resolvedLogoColorPalette != colorPalette || resolvedLogoColorScheme != scheme else { return }
+        for index in particles.indices {
+            refreshResolvedLogoColor(at: index, scheme: scheme)
+        }
+        resolvedLogoColorPalette = colorPalette
+        resolvedLogoColorScheme = scheme
+    }
+
+    private func refreshResolvedLogoColor(at index: Int, scheme: ColorScheme) {
+        guard let provider = particles[index].logoProvider, let role = particles[index].role else {
+            particles[index].resolvedLogoColor = nil
+            return
+        }
+
+        particles[index].resolvedLogoColor = Self.colorForProvider(
+            provider,
+            under: colorPalette,
+            role: role,
+            toneSeed: particles[index].toneSeed ?? Self.flameToneSeed(for: particles[index], at: index),
+            colorScheme: scheme,
+            sourceLogoColor: particles[index].logoColor
+        )
+    }
+
     private func resolvedColor(for p: Particle, at index: Int, isBatteryThrottled: Bool = false, uiMode: UIMode = .standard) -> Color {
         if let providerLogoRGBA = resolvedProviderLogoRGBA(for: p, at: index) {
             var intensity = 1.0
@@ -1338,9 +1431,20 @@ public final class SwarmSimulation {
     }
 
     private static func flameToneSeed(for p: Particle, at index: Int) -> Double {
+        if let toneSeed = p.toneSeed {
+            return toneSeed
+        }
+        return flameToneSeed(
+            role: p.role,
+            flowProgress: p.flowProgress,
+            colorIndex: p.colorIndex,
+            index: index
+        )
+    }
+
+    private static func flameToneSeed(role: String?, flowProgress: Double, colorIndex: Double, index: Int) -> Double {
         let roleShift: Double
-        let cleanRole = p.role.map { parseRoleAndProvider($0).role } ?? ""
-        switch cleanRole {
+        switch role {
         case "logo-flame-inner":
             roleShift = 0.31
         case "logo-flame-spark":
@@ -1349,8 +1453,8 @@ public final class SwarmSimulation {
             roleShift = 0.13
         }
 
-        let mixed = p.flowProgress * 1.618_033_988_75
-            + p.colorIndex * 0.271_828_182_84
+        let mixed = flowProgress * 1.618_033_988_75
+            + colorIndex * 0.271_828_182_84
             + Double(index % 97) * 0.010_309_278
             + roleShift
         return mixed - floor(mixed)
@@ -1527,7 +1631,10 @@ public final class SwarmSimulation {
             baseOpacity: 0.16 + Double.random(in: 0...1) * 0.20,
             opacity: 0.16,
             tx: nil, ty: nil, role: nil,
+            logoProvider: nil,
             logoColor: nil,
+            resolvedLogoColor: nil,
+            toneSeed: nil,
             flowProgress: Double.random(in: 0...1)
         )
     }
@@ -2561,19 +2668,17 @@ public final class SwarmSimulation {
     }
 
     private func resolvedProviderLogoRGBA(for p: Particle, at index: Int) -> RGBA? {
-        guard let rawRole = p.role else { return nil }
-        let parsed = Self.parseRoleAndProvider(rawRole)
-        guard let provider = parsed.provider else { return nil }
+        guard let role = p.role, let provider = p.logoProvider else { return nil }
 
-        let color = Self.colorForProvider(
+        let color = p.resolvedLogoColor ?? Self.colorForProvider(
             provider,
             under: colorPalette,
-            role: parsed.role,
+            role: role,
             toneSeed: Self.flameToneSeed(for: p, at: index),
             colorScheme: renderScheme,
             sourceLogoColor: p.logoColor
         )
-        let opacity = Self.logoOpacity(for: p, role: parsed.role, colorScheme: renderScheme)
+        let opacity = Self.logoOpacity(for: p, role: role, colorScheme: renderScheme)
         return RGBA(r: color.r, g: color.g, b: color.b, a: opacity)
     }
 
@@ -2588,17 +2693,6 @@ public final class SwarmSimulation {
         default: multiplier = 1.36
         }
         return min(1.0, base * multiplier)
-    }
-
-    private static func parseRoleAndProvider(_ rawRole: String) -> (role: String, provider: AgentProvider?) {
-        let parts = rawRole.split(separator: ":")
-        if parts.count == 2 {
-            let role = String(parts[0])
-            let providerToken = String(parts[1])
-            let provider = AgentProvider.fromPersistedToken(providerToken)
-            return (role, provider)
-        }
-        return (rawRole, nil)
     }
 
     private static func colorForProvider(
@@ -2640,6 +2734,24 @@ public final class SwarmSimulation {
             colorScheme: colorScheme,
             sourceLogoColor: sourceLogoColor
         )
+    }
+
+    struct ParticleMetadataForTesting {
+        let role: String?
+        let logoProvider: AgentProvider?
+        let resolvedLogoColor: RGBA?
+        let toneSeed: Double?
+    }
+
+    func particleMetadataForTesting() -> [ParticleMetadataForTesting] {
+        particles.map {
+            ParticleMetadataForTesting(
+                role: $0.role,
+                logoProvider: $0.logoProvider,
+                resolvedLogoColor: $0.resolvedLogoColor,
+                toneSeed: $0.toneSeed
+            )
+        }
     }
 
     private static func paletteAwareProviderLogoBase(

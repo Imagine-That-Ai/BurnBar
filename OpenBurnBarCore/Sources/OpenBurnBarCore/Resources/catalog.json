@@ -1412,6 +1412,80 @@
       ]
     },
     {
+      "id": "mimo",
+      "displayName": "Xiaomi MiMo",
+      "baseURL": "https://api.xiaomimimo.com/v1",
+      "visibility": "public",
+      "logoKey": "MimoLogo",
+      "capabilities": ["routing", "accounting"],
+      "models": [
+        {
+          "id": "mimo-v2.5-pro-family",
+          "displayName": "MiMo V2.5 Pro",
+          "visibility": "public",
+          "aliases": ["mimo-v2.5-pro"],
+          "matchers": [
+            { "all": ["mimo", "v2.5", "pro"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "mimo-v2.5-pro",
+          "capabilityClassRank": 85,
+          "pricing": {
+            "inputPerMToken": 1,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.2
+          }
+        },
+        {
+          "id": "mimo-v2.5-family",
+          "displayName": "MiMo V2.5",
+          "visibility": "public",
+          "aliases": ["mimo-v2.5"],
+          "matchers": [
+            { "all": ["mimo", "v2.5"], "any": [], "none": ["pro"] }
+          ],
+          "capabilityClassID": "mimo-v2.5",
+          "capabilityClassRank": 65,
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 1.5,
+            "cacheReadPerMToken": 0.1
+          }
+        },
+        {
+          "id": "mimo-v2-pro-family",
+          "displayName": "MiMo V2 Pro",
+          "visibility": "public",
+          "aliases": ["mimo-v2-pro"],
+          "matchers": [
+            { "all": ["mimo", "v2", "pro"], "any": [], "none": ["v2.5"] }
+          ],
+          "capabilityClassID": "mimo-v2-pro",
+          "capabilityClassRank": 80,
+          "pricing": {
+            "inputPerMToken": 0.8,
+            "outputPerMToken": 2.4,
+            "cacheReadPerMToken": 0.16
+          }
+        },
+        {
+          "id": "mimo-v2-omni-family",
+          "displayName": "MiMo V2 Omni",
+          "visibility": "public",
+          "aliases": ["mimo-v2-omni"],
+          "matchers": [
+            { "all": ["mimo", "v2", "omni"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "mimo-v2-omni",
+          "capabilityClassRank": 60,
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 1.5,
+            "cacheReadPerMToken": 0.1
+          }
+        }
+      ]
+    },
+    {
       "id": "xai",
       "displayName": "xAI",
       "baseURL": "https://api.x.ai/v1",

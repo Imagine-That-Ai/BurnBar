@@ -40,8 +40,7 @@ struct DatabaseWorkspaceView: View {
         .background(Color.clear)
         .task { await rebuildSnapshot() }
         .task(id: atlasRefreshKey) { await refreshAtlasRowsIfNeeded() }
-        .onChange(of: dataStore.usages.count) { _, _ in scheduleSnapshotRebuild() }
-        .onChange(of: dataStore.lastRefresh) { _, _ in scheduleSnapshotRebuild() }
+        .onChange(of: dataStore.usagesVersion) { _, _ in scheduleSnapshotRebuild() }
         .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in scheduleSnapshotRebuild() }
         .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in
             scheduleSnapshotRebuild()

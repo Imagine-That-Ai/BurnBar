@@ -37,7 +37,7 @@ enum TokenExtractionUtility {
     /// plus a marker like "[Showing lines 1-50 of 317 total lines]". We add a
     /// conservative allowance for that hidden text when falling back to transcript
     /// estimation so MiniMax/Z.ai sessions do not systematically undercount.
-    private static let previewLineRegex = try! NSRegularExpression(
+    private static let previewLineRegex = try? NSRegularExpression(
         pattern: #"(?:<system-reminder>)?\[Showing lines (\d+)-(\d+) of (\d+) total lines\](?:</system-reminder>)?"#
     )
 
@@ -253,6 +253,7 @@ enum TokenExtractionUtility {
     }
 
     private static func previewAdjustedVisibleCharCount(for text: String) -> Int {
+        guard let previewLineRegex else { return text.count }
         let nsText = text as NSString
         let matches = previewLineRegex.matches(
             in: text,

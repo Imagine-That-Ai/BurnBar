@@ -177,7 +177,7 @@ public extension ProviderQuotaBucket {
     var resetsAtDisplay: (relative: String, absolute: String)? {
         guard let resetsAt = Self.displayResetDate(resetsAt, name: name, window: window) else { return nil }
         let now = Date()
-        let relative = Self.relativeResetsFormatter.localizedString(
+        let relative = Self.makeRelativeResetsFormatter().localizedString(
             for: resetsAt,
             relativeTo: now
         )
@@ -233,12 +233,12 @@ public extension ProviderQuotaBucket {
         return "\(pair.relative) · \(pair.absolute)"
     }
 
-    private static let relativeResetsFormatter: RelativeDateTimeFormatter = {
+    private static func makeRelativeResetsFormatter() -> RelativeDateTimeFormatter {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .abbreviated
         f.dateTimeStyle = .numeric
         return f
-    }()
+    }
 }
 
 public extension ProviderQuotaBucket {
@@ -508,11 +508,11 @@ public extension ProviderQuotaSnapshot {
         )
     }
 
-    public var providerToken: String {
+    var providerToken: String {
         quotaProvider?.persistedToken ?? provider.lowercased()
     }
 
-    public func customizedBuckets(
+    func customizedBuckets(
         hiddenBuckets: Set<String>,
         bucketOrders: [String: [String]]
     ) -> [ProviderQuotaBucket] {

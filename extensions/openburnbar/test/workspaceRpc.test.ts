@@ -247,8 +247,11 @@ function createFakeWorkspaceApi(options: {
       openDocuments.set(key, document);
       return document;
     },
-    async applyEdit(edit) {
-      for (const change of (edit as FakeWorkspaceEdit).changes) {
+    async applyEdit(edit: BurnBarWorkspaceEditBuilder) {
+      if (!(edit instanceof FakeWorkspaceEdit)) {
+        throw new Error("Expected FakeWorkspaceEdit");
+      }
+      for (const change of edit.changes) {
         const key = change.uri.toString();
         const current = files.get(key) ?? "";
         const document = openDocuments.get(key);

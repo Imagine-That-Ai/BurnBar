@@ -8,6 +8,10 @@ import OpenBurnBarMedia
 
 // MARK: - CloudSyncService
 
+private struct ClaimedRelayRequest: @unchecked Sendable {
+    let data: [String: Any]
+}
+
 /// Uploads unsynced local TokenUsage rows to Firestore under the authenticated user's namespace.
 ///
 /// Layout: `users/{uid}/usage/{deviceId}_{usageId}`
@@ -24,11 +28,11 @@ final class CloudSyncService {
 
     // MARK: - State
 
-    internal(set) var isSyncing = false
-    internal(set) var lastSyncDate: Date?
-    internal(set) var lastSyncError: String?
+    var isSyncing = false
+    var lastSyncDate: Date?
+    var lastSyncError: String?
     private(set) var cloudTotalCost: Double?
-    internal(set) var lastCollaborationNotice: SharedArtifactCollaborationNotice?
+    var lastCollaborationNotice: SharedArtifactCollaborationNotice?
     private var suppressedSyncUntil: Date?
 
     // MARK: - Dependencies
@@ -1031,19 +1035,38 @@ final class HermesRelayHostService {
         "relay-\(Self.safeIdentifier(accountManager.deviceId))"
     }
 
+    private static let cadenceIDHermesHeartbeat = "hermes-relay-host-heartbeat"
+
     func start() {
         guard heartbeatTask == nil else { return }
-        heartbeatTask = Task { @MainActor in
-            while !Task.isCancelled {
-                await refreshRelayHost()
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
-            }
-        }
+        // Coordinator-managed: 30 s active, 5 min in the background,
+        // paused on display sleep, gated on cloud sync being enabled.
+        // The relay host heartbeat is a Firestore write — exactly the
+        // class of background work that should not run on a sleeping
+        // laptop.
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceIDHermesHeartbeat,
+                activeInterval: 30,
+                backgroundInterval: 300,
+                sleepInterval: nil,
+                isEnabled: { [weak self] in
+                    self?.accountManager.isCloudSyncEnabled ?? false
+                },
+                fireImmediately: true,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.refreshRelayHost()
+                }
+            )
+        )
+        heartbeatTask = Task { @MainActor in }
     }
 
     func stop() {
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceIDHermesHeartbeat)
         listener?.remove()
         listener = nil
         listenerUID = nil
@@ -1260,7 +1283,8 @@ final class HermesRelayHostService {
     private func processRelayRequest(reference: DocumentReference, uid: String) async {
         var context: HermesRelayRequestContext?
         do {
-            guard let data = try await claimRelayRequest(reference: reference) else { return }
+            guard let claimedRequest = try await claimRelayRequest(reference: reference) else { return }
+            let data = claimedRequest.data
             guard let operationText = data["operation"] as? String,
                   let operation = HermesRelayOperation(rawValue: operationText) else {
                 try await failRelayRequest(reference: reference, requestID: reference.documentID, message: "Malformed relay request.")
@@ -1415,7 +1439,7 @@ final class HermesRelayHostService {
         )
     }
 
-    private func claimRelayRequest(reference: DocumentReference) async throws -> [String: Any]? {
+    private func claimRelayRequest(reference: DocumentReference) async throws -> ClaimedRelayRequest? {
         try await withCheckedThrowingContinuation { continuation in
             db.runTransaction({ transaction, errorPointer in
                 let snapshot: DocumentSnapshot
@@ -1448,7 +1472,11 @@ final class HermesRelayHostService {
                     continuation.resume(returning: nil)
                     return
                 }
-                continuation.resume(returning: result as? [String: Any])
+                guard let data = result as? [String: Any] else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: ClaimedRelayRequest(data: data))
             }
         }
     }
@@ -1749,7 +1777,7 @@ final class HermesRelayHostService {
             "updatedAt": now
         ]
         if let context {
-            try? await writeRelayChunk(
+            _ = try? await writeRelayChunk(
                 reference: reference,
                 context: context,
                 sequence: 0,
@@ -2065,19 +2093,37 @@ final class PiAgentCloudRelayHostService {
         "pi-relay-\(Self.safeIdentifier(accountManager.deviceId))"
     }
 
+    private static let cadenceIDPiHeartbeat = "pi-agent-relay-host-heartbeat"
+
     func start() {
         guard heartbeatTask == nil else { return }
-        heartbeatTask = Task { @MainActor in
-            while !Task.isCancelled {
-                await refreshRelayHost()
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
-            }
-        }
+        // Coordinator-managed cadence: 30 s active, 5 min background,
+        // paused on display sleep, gated on cloud sync. Same pattern as
+        // the Hermes relay host heartbeat — Firestore writes that have
+        // no business running while the laptop sleeps.
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceIDPiHeartbeat,
+                activeInterval: 30,
+                backgroundInterval: 300,
+                sleepInterval: nil,
+                isEnabled: { [weak self] in
+                    self?.accountManager.isCloudSyncEnabled ?? false
+                },
+                fireImmediately: true,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.refreshRelayHost()
+                }
+            )
+        )
+        heartbeatTask = Task { @MainActor in }
     }
 
     func stop() {
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceIDPiHeartbeat)
         listener?.remove()
         listener = nil
         listenerUID = nil
@@ -2296,7 +2342,8 @@ final class PiAgentCloudRelayHostService {
     private func processRelayRequest(reference: DocumentReference, uid: String) async {
         var context: PiAgentRelayRequestContext?
         do {
-            guard let data = try await claimRelayRequest(reference: reference) else { return }
+            guard let claimedRequest = try await claimRelayRequest(reference: reference) else { return }
+            let data = claimedRequest.data
             guard let operationText = data["operation"] as? String,
                   let operation = PiAgentRelayOperation(rawValue: operationText) else {
                 try await failRelayRequest(reference: reference, message: "Malformed relay request.")
@@ -2357,7 +2404,7 @@ final class PiAgentCloudRelayHostService {
         )
     }
 
-    private func claimRelayRequest(reference: DocumentReference) async throws -> [String: Any]? {
+    private func claimRelayRequest(reference: DocumentReference) async throws -> ClaimedRelayRequest? {
         try await withCheckedThrowingContinuation { continuation in
             db.runTransaction({ transaction, errorPointer in
                 let snapshot: DocumentSnapshot
@@ -2390,7 +2437,11 @@ final class PiAgentCloudRelayHostService {
                     continuation.resume(returning: nil)
                     return
                 }
-                continuation.resume(returning: result as? [String: Any])
+                guard let data = result as? [String: Any] else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: ClaimedRelayRequest(data: data))
             }
         }
     }
@@ -2584,7 +2635,7 @@ final class PiAgentCloudRelayHostService {
             "updatedAt": now
         ]
         if let context {
-            try? await writeRelayChunk(
+            _ = try? await writeRelayChunk(
                 reference: reference,
                 context: context,
                 sequence: 0,

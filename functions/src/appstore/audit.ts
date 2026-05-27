@@ -19,6 +19,7 @@ import type {
   AppStoreEnvironment,
   EntitlementEventDoc,
 } from "../types.js";
+import { errorCode, stripUndefinedObject } from "../guards.js";
 
 const SCHEMA_VERSION = 1;
 
@@ -83,20 +84,20 @@ export async function appendEntitlementEvent(
     decoded: redact(input.decoded),
     schemaVersion: SCHEMA_VERSION,
   };
-  const cleaned = stripUndefined(doc as unknown as Record<string, unknown>) as unknown as EntitlementEventDoc;
+  const cleaned = stripUndefinedObject(doc);
   const ref = db.doc(`users/${input.uid}/entitlement_events/${docId}`);
   try {
     await ref.create(cleaned);
   } catch (err) {
     // Already-exists is the success case for idempotency. Re-throw any
     // other error so operators learn about real Firestore problems.
-    if ((err as { code?: number }).code === 6) {
+    if (errorCode(err) === 6) {
       // 6 = ALREADY_EXISTS
-      return cleaned;
+      return doc;
     }
     throw err;
   }
-  return cleaned;
+  return doc;
 }
 
 /**
@@ -123,12 +124,6 @@ function redact(input: Record<string, unknown>): Record<string, unknown> {
     out[k] = v;
   }
   return out;
-}
-
-function stripUndefined<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, v]) => v !== undefined)
-  ) as T;
 }
 
 function sanitizeDocId(raw: string): string {

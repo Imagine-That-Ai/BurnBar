@@ -70,6 +70,7 @@ public final class SystemPermissionMonitor {
     private var pollTask: Task<Void, Never>?
     private var becomeActiveObserver: NSObjectProtocol?
     private var bundleIdsToAudit: Set<String> = []
+    private static let cadenceID = "system-permission-monitor"
 
     private var frameSink: FrameSink?
     private var uidProvider: UidProvider?
@@ -88,15 +89,28 @@ public final class SystemPermissionMonitor {
     }
 
     public func start(pollInterval: TimeInterval = 5.0) {
-        guard pollTask == nil else { return }
-        pollTask = Task { @MainActor [weak self] in
-            await self?.refreshAll(emitting: false)
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
-                guard !Task.isCancelled else { break }
-                await self?.refreshAll(emitting: true)
-            }
-        }
+        // The pollInterval parameter is preserved for binary compatibility,
+        // but the actual cadence is now managed by
+        // `BackgroundCadenceCoordinator` so the monitor backs off when the
+        // app is in the background and pauses entirely while the display
+        // sleeps. See `docs/architecture/background-cadence.md`.
+        Task { @MainActor in await self.refreshAll(emitting: false) }
+
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceID,
+                activeInterval: pollInterval,
+                backgroundInterval: max(pollInterval * 6, 30),
+                sleepInterval: nil,
+                isEnabled: { true },
+                fireImmediately: false,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.refreshAll(emitting: true)
+                }
+            )
+        )
+
         becomeActiveObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
@@ -107,9 +121,18 @@ public final class SystemPermissionMonitor {
         Self.log.info("system_permission_monitor_started interval=\(pollInterval, privacy: .public)")
     }
 
+    /// Force one immediate TCC read. The onboarding sheet calls this
+    /// while the user is flipping System Settings toggles so the
+    /// current card can advance from the latest macOS state instead of
+    /// waiting for whichever background cadence started the monitor.
+    public func refreshNow(emitting: Bool = true) async {
+        await refreshAll(emitting: emitting)
+    }
+
     public func stop() {
         pollTask?.cancel()
         pollTask = nil
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceID)
         if let observer = becomeActiveObserver {
             NotificationCenter.default.removeObserver(observer)
             becomeActiveObserver = nil

@@ -15,10 +15,9 @@
 
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { numberField, stringField } from "./guards.js";
 import type {
-  ComputerUseActionDoc,
   ComputerUseSessionDailyRollupDoc,
-  ComputerUseSessionDoc,
 } from "./types.js";
 
 function dayKeyUTC(date: Date): string {
@@ -60,12 +59,23 @@ export const rollupComputerUseDaily = onSchedule(
       .where("recordedAt", "<", Timestamp.fromDate(dayEnd))
       .get();
 
-    const sessions = sessionSnap.docs.map(
-      (d) => d.data() as ComputerUseSessionDoc,
-    );
-    const actions = actionSnap.docs.map(
-      (d) => d.data() as ComputerUseActionDoc,
-    );
+    const sessions = sessionSnap.docs.map((d) => {
+      const data = d.data();
+      return {
+        endReason: stringField(data, "endReason"),
+      };
+    });
+    const actions = actionSnap.docs.map((d) => {
+      const data = d.data();
+      return {
+        approvalLatencyMillis: numberField(data, "approvalLatencyMillis"),
+        status: stringField(data, "status"),
+        denyReason: stringField(data, "denyReason"),
+        visionTokensCostUSD: numberField(data, "visionTokensCostUSD"),
+        toolKind: stringField(data, "toolKind") ?? "",
+        approvedBy: stringField(data, "approvedBy"),
+      };
+    });
 
     const latencyMs = actions
       .map((a) => a.approvalLatencyMillis)

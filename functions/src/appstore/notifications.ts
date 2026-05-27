@@ -1,3 +1,4 @@
+import { errorMessage, isRecord } from "../guards.js";
 /**
  * @fileoverview Apple App Store Server Notifications V2 webhook.
  *
@@ -79,10 +80,9 @@ export const appStoreServerNotificationsV2 = onRequest(
       res.status(413).json({ error: "payload_too_large" });
       return;
     }
-    const rawSignedPayload =
-      req.body && typeof req.body === "object" && "signedPayload" in req.body
-        ? (req.body as { signedPayload?: unknown }).signedPayload
-        : undefined;
+    const rawSignedPayload = isRecord(req.body)
+      ? req.body.signedPayload
+      : undefined;
     if (typeof rawSignedPayload !== "string" || !rawSignedPayload) {
       res.status(400).json({ error: "missing signedPayload" });
       return;
@@ -103,7 +103,7 @@ export const appStoreServerNotificationsV2 = onRequest(
       notification = await verifier.verifyNotification(rawSignedPayload);
     } catch (err) {
       console.error("appstore:notifications verify failed", {
-        message: (err as Error).message,
+        message: errorMessage(err),
         kind:
           err instanceof JWSVerificationFailure
             ? `jws.${err.status}`
@@ -164,7 +164,7 @@ export const appStoreServerNotificationsV2 = onRequest(
       res.status(200).send();
     } catch (err) {
       console.error("appstore:notifications reconcile failed", {
-        message: (err as Error).message,
+        message: errorMessage(err),
         type: notification.payload.notificationType,
         subtype: notification.payload.subtype,
       });

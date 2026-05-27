@@ -3,7 +3,7 @@ package com.openburnbar
 import com.openburnbar.data.hermes.HermesAttachment
 import com.openburnbar.data.hermes.HermesAttachmentEncoder
 import com.openburnbar.data.hermes.ModelIOCapabilities
-import org.json.JSONArray
+import com.openburnbar.test.requireJsonArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -28,7 +28,7 @@ class HermesAttachmentEncoderTest {
             HermesAttachment(fileName = "note.txt", mimeType = "text/plain"),
             HermesAttachment(fileName = "snap.jpg", mimeType = "image/jpeg")
         )
-        val encoded = HermesAttachmentEncoder.encodeUserTurn("describe", attachments) as JSONArray
+        val encoded = requireJsonArray(HermesAttachmentEncoder.encodeUserTurn("describe", attachments))
         assertEquals(3, encoded.length())
         assertEquals("text", encoded.getJSONObject(0).getString("type"))
         // Both attachments lack absolutePath in this unit test, so the
@@ -42,7 +42,7 @@ class HermesAttachmentEncoderTest {
         val attachments = listOf(
             HermesAttachment(fileName = "snap.jpg", mimeType = "image/jpeg")
         )
-        val encoded = HermesAttachmentEncoder.encodeUserTurn("", attachments) as JSONArray
+        val encoded = requireJsonArray(HermesAttachmentEncoder.encodeUserTurn("", attachments))
         assertEquals(1, encoded.length())
     }
 
@@ -59,7 +59,7 @@ class HermesAttachmentEncoderTest {
             absolutePath = image.absolutePath,
             sizeBytes = pngBytes.size.toLong()
         )
-        val encoded = HermesAttachmentEncoder.encodeUserTurn("describe this image", listOf(attachment)) as JSONArray
+        val encoded = requireJsonArray(HermesAttachmentEncoder.encodeUserTurn("describe this image", listOf(attachment)))
         assertEquals(2, encoded.length())
         val imagePart = encoded.getJSONObject(1)
         assertEquals("image_url", imagePart.getString("type"))
@@ -88,11 +88,12 @@ class HermesAttachmentEncoderTest {
             maxOutputTokens = 262_142,
             acceptedInputMimeTypes = listOf("image/*")
         )
-        val encoded = HermesAttachmentEncoder.encodeUserTurn(
+        val encoded = requireJsonArray(
+            HermesAttachmentEncoder.encodeUserTurn(
             "describe",
             listOf(attachment),
             kimiK26
-        ) as JSONArray
+        ))
 
         assertEquals("image_url", encoded.getJSONObject(1).getString("type"))
     }
@@ -107,7 +108,7 @@ class HermesAttachmentEncoderTest {
             absolutePath = txt.absolutePath,
             sizeBytes = txt.length()
         )
-        val encoded = HermesAttachmentEncoder.encodeUserTurn("read this", listOf(attachment)) as JSONArray
+        val encoded = requireJsonArray(HermesAttachmentEncoder.encodeUserTurn("read this", listOf(attachment)))
         val textPart = encoded.getJSONObject(1)
         assertEquals("text", textPart.getString("type"))
         assertTrue(textPart.getString("text").contains("hello hermes"))

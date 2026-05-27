@@ -78,7 +78,9 @@ class IrohBlobKeyStore(context: Context) {
     private fun wrappingKey(): SecretKey {
         val store = keystore()
         store.getEntry(KEY_ALIAS, null)?.let { entry ->
-            return (entry as KeyStore.SecretKeyEntry).secretKey
+            val secretEntry = entry as? KeyStore.SecretKeyEntry
+                ?: error("Keystore entry $KEY_ALIAS is not a secret key")
+            return secretEntry.secretKey
         }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         val spec = KeyGenParameterSpec.Builder(

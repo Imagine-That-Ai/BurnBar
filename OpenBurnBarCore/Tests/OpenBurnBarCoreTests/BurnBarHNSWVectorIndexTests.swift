@@ -6,10 +6,10 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeTempDirectory() -> URL {
+    private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("hnsw-test-\(UUID().uuidString)", isDirectory: true)
-        try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
 
@@ -22,7 +22,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
         efConstruction: Int = 200,
         efSearch: Int = 64
     ) throws -> (BurnBarPersistentVectorIndexFiles, BurnBarHNSWVectorIndexBackend) {
-        let dir = makeTempDirectory()
+        let dir = try makeTempDirectory()
         let files = BurnBarPersistentVectorIndexFiles(directoryURL: dir)
         let backend = BurnBarHNSWVectorIndexBackend(m: m, efConstruction: efConstruction, efSearch: efSearch)
         let writer = try backend.makeWritable(dimensions: dimensions, distanceMetric: metric)
@@ -59,7 +59,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
     }
 
     func test_emptyIndex_returnsEmptyResults() throws {
-        let dir = makeTempDirectory()
+        let dir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let files = BurnBarPersistentVectorIndexFiles(directoryURL: dir)
         let backend = BurnBarHNSWVectorIndexBackend()
@@ -162,7 +162,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
         let (keysLoad, scoresLoad) = try readerLoad.search(vector: vectors[0].vector, limit: 5)
 
         // Save again and search again
-        let dir2 = makeTempDirectory()
+        let dir2 = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir2) }
         let files2 = BurnBarPersistentVectorIndexFiles(directoryURL: dir2)
 
@@ -239,7 +239,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: hnswFiles.directoryURL) }
 
         // Build exact index for ground truth
-        let exactDir = makeTempDirectory()
+        let exactDir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: exactDir) }
         let exactFiles = BurnBarPersistentVectorIndexFiles(directoryURL: exactDir)
         let exactBackend = BurnBarMappedPersistentVectorIndexBackend()
@@ -384,7 +384,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
     // MARK: - Snapshot integration
 
     func test_snapshotOpenAndCandidates() throws {
-        let dir = makeTempDirectory()
+        let dir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let files = BurnBarPersistentVectorIndexFiles(directoryURL: dir)
@@ -489,7 +489,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
             (3, [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         ]
         let backend = BurnBarHNSWVectorIndexBackend(quantization: .scalarUInt8)
-        let dir = makeTempDirectory()
+        let dir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let files = BurnBarPersistentVectorIndexFiles(directoryURL: dir)
 
@@ -525,7 +525,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
         let quantizedBackend = BurnBarHNSWVectorIndexBackend(efSearch: 200, quantization: .scalarUInt8)
         let exactBackend = BurnBarMappedPersistentVectorIndexBackend()
 
-        let qDir = makeTempDirectory()
+        let qDir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: qDir) }
         let qFiles = BurnBarPersistentVectorIndexFiles(directoryURL: qDir)
         let qWriter = try quantizedBackend.makeWritable(dimensions: dims, distanceMetric: .cosine)
@@ -535,7 +535,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
         }
         try qWriter.save(to: qFiles.indexURL)
 
-        let eDir = makeTempDirectory()
+        let eDir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: eDir) }
         let eFiles = BurnBarPersistentVectorIndexFiles(directoryURL: eDir)
         let eWriter = try exactBackend.makeWritable(dimensions: dims, distanceMetric: .cosine)
@@ -582,7 +582,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
         let floatBackend = BurnBarHNSWVectorIndexBackend(quantization: .none)
         let quantizedBackend = BurnBarHNSWVectorIndexBackend(quantization: .scalarUInt8)
 
-        let fDir = makeTempDirectory()
+        let fDir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: fDir) }
         let fFiles = BurnBarPersistentVectorIndexFiles(directoryURL: fDir)
         let fWriter = try floatBackend.makeWritable(dimensions: dims, distanceMetric: .cosine)
@@ -592,7 +592,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
         }
         try fWriter.save(to: fFiles.indexURL)
 
-        let qDir = makeTempDirectory()
+        let qDir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: qDir) }
         let qFiles = BurnBarPersistentVectorIndexFiles(directoryURL: qDir)
         let qWriter = try quantizedBackend.makeWritable(dimensions: dims, distanceMetric: .cosine)
@@ -617,7 +617,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
             (3, [0.0, 1.0, 0.0])
         ]
         let backend = BurnBarHNSWVectorIndexBackend(quantization: .none)
-        let dir = makeTempDirectory()
+        let dir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let files = BurnBarPersistentVectorIndexFiles(directoryURL: dir)
 
@@ -649,7 +649,7 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
             (3, [0.0, 1.0, 0.0])
         ]
         let backend = BurnBarHNSWVectorIndexBackend(quantization: .scalarUInt8)
-        let dir = makeTempDirectory()
+        let dir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let files = BurnBarPersistentVectorIndexFiles(directoryURL: dir)
 

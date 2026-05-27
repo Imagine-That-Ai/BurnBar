@@ -59,6 +59,7 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.PiChatMessage
 import com.openburnbar.data.hermes.PiService
 import com.openburnbar.data.hermes.PiToolCall
+import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.ui.computeruse.AgentPermissionGrantSheet
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
@@ -70,16 +71,37 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun PiAssistantView(piService: PiService) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val messages by piService.messages.collectAsState()
     val isStreaming by piService.isStreaming.collectAsState()
     val isReachable by piService.isReachable.collectAsState()
     val errorText by piService.runtimeErrorText.collectAsState()
+    val currentThreadID by piService.currentThreadID.collectAsState()
 
     var input by remember { mutableStateOf("") }
     var permissionThreadID by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) { piService.refreshRuntime() }
+
+    androidx.compose.runtime.DisposableEffect(currentThreadID) {
+        if (!currentThreadID.isNullOrBlank()) {
+            AgentReplyNotificationState.setActiveChat(
+                context = context,
+                runtime = AssistantRuntimeID.PI.token,
+                threadId = currentThreadID,
+                surface = "android_pi_chat",
+            )
+        }
+        onDispose {
+            AgentReplyNotificationState.setActiveChat(
+                context = context,
+                runtime = null,
+                threadId = null,
+                surface = null,
+            )
+        }
+    }
 
     // Pending-prompt consumer — picks up prompts stashed by the
     // "Ask Pi" widget chip via `MainActivity.stashPendingPromptFromIntent`
@@ -165,7 +187,7 @@ private fun PiMessageBubble(message: PiChatMessage) {
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (isUser) Arrangement.End as androidx.compose.foundation.layout.Arrangement.Horizontal else Arrangement.Start as androidx.compose.foundation.layout.Arrangement.Horizontal
+            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
         ) {
             if (isUser) {
                 Surface(

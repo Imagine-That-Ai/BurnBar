@@ -17,6 +17,7 @@ import { minimaxAdapter, __testing__ as minimaxTesting } from "../lib/providers/
 import { zaiAdapter, __testing__ as zaiTesting } from "../lib/providers/zai.js";
 import { factoryAdapter, __testing__ as factoryTesting } from "../lib/providers/factory.js";
 import { xaiAdapter, __testing__ as xaiTesting } from "../lib/providers/xai.js";
+import { mimoAdapter } from "../lib/providers/mimo.js";
 
 const realFetch = globalThis.fetch;
 const calls = [];
@@ -313,6 +314,53 @@ installFetch(() =>
   const result = await xaiAdapter.testCredential("xai-mgmt-bad");
   assert.equal(result.valid, false);
   assert.equal(result.errorCode, "auth_failed");
+}
+
+// ---------------------------------------------------------------------------
+// MiMo — PAYG validates against api.xiaomimimo.com
+// ---------------------------------------------------------------------------
+
+installFetch(({ url }) => {
+  assert.match(url, /api\.xiaomimimo\.com\/v1\/models/);
+  return jsonResponse({ data: [{ id: "mimo-v2.5" }] });
+});
+{
+  const result = await mimoAdapter.testCredential("sk-test-payg-key", {
+    endpointProfileID: "mimo.payg.global",
+  });
+  assert.equal(result.valid, true);
+}
+
+// ---------------------------------------------------------------------------
+// MiMo — Token Plan requires region
+// ---------------------------------------------------------------------------
+
+installFetch(() => jsonResponse({ data: [] }));
+{
+  const result = await mimoAdapter.testCredential("tp-test-key", {});
+  assert.equal(result.valid, false);
+  assert.equal(result.errorCode, "missing_region");
+}
+
+// ---------------------------------------------------------------------------
+// MiMo — tier fallback when remains is unavailable
+// ---------------------------------------------------------------------------
+
+installFetch(({ url }) => {
+  if (url.includes("/token_plan/remains")) {
+    return jsonResponse({}, { status: 404 });
+  }
+  return jsonResponse({ data: [] });
+});
+{
+  const refresh = await mimoAdapter.fetchQuota("tp-test-key", "default", {
+    region: "sgp",
+    tokenPlanTier: "standard",
+    tokenPlanBillingCycle: "monthly",
+  });
+  assert.equal(refresh.ok, true);
+  assert.equal(refresh.snapshot.buckets[0].limit, 200_000_000);
+  assert.equal(refresh.snapshot.confidence, "medium");
 }
 
 restoreFetch();

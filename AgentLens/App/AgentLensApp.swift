@@ -2,6 +2,7 @@ import AppKit
 import FirebaseAuth
 import FirebaseCore
 import FirebaseAppCheck
+import FirebaseFirestore
 import GoogleSignIn
 import OpenBurnBarCore
 import OSLog
@@ -104,6 +105,22 @@ enum OpenBurnBarRuntime {
 
     static func shouldUseTestStubScene(isRunningTests: Bool, forceLiveScene: Bool) -> Bool {
         isRunningTests && !forceLiveScene
+    }
+}
+
+private enum StartupProfiler {
+    private static let log = OSLog(subsystem: "com.openburnbar.app", category: "Startup")
+
+    static func event(_ name: StaticString) {
+        os_signpost(.event, log: log, name: name)
+    }
+
+    @discardableResult
+    static func interval<T>(_ name: StaticString, _ body: () throws -> T) rethrows -> T {
+        let id = OSSignpostID(log: log)
+        os_signpost(.begin, log: log, name: name, signpostID: id)
+        defer { os_signpost(.end, log: log, name: name, signpostID: id) }
+        return try body()
     }
 }
 
@@ -713,6 +730,7 @@ struct OpenBurnBarApp: App {
     @State private var navigationCoordinator = NavigationCoordinator()
 
     init() {
+        StartupProfiler.event("app_init_start")
         if OpenBurnBarRuntime.shouldUseTestStubScene {
             // XCTest host fast path. The developer's real `OpenBurnBar` support
             // directory frequently grows past several GB; opening the canonical
@@ -735,11 +753,20 @@ struct OpenBurnBarApp: App {
             return
         }
 
-        Self.configureFirebaseIfAvailable()
-        Self.configureSentryIfAvailable()
-        OpenBurnBarMigration.migrateUserDefaults()
+        StartupProfiler.interval("configure_firebase") {
+            Self.configureFirebaseIfAvailable()
+        }
+        StartupProfiler.interval("configure_sentry") {
+            Self.configureSentryIfAvailable()
+        }
+        StartupProfiler.interval("migrate_user_defaults") {
+            OpenBurnBarMigration.migrateUserDefaults()
+        }
 
-        _startupState = State(initialValue: Self.makeStartupState())
+        _startupState = State(initialValue: StartupProfiler.interval("make_startup_state") {
+            Self.makeStartupState()
+        })
+        StartupProfiler.event("app_init_end")
     }
 
     @MainActor
@@ -757,12 +784,22 @@ struct OpenBurnBarApp: App {
 
     @MainActor
     private static func makeRuntimeContext() throws -> OpenBurnBarRuntimeContext {
-        let initializedStore = try DataStore()
-        let settings = SettingsManager()
+        let initializedStore = try StartupProfiler.interval("datastore_open") {
+            try DataStoreCoordinator()
+        }
+        let settings = StartupProfiler.interval("settings_init") {
+            SettingsManager()
+        }
         let accountManager = AccountManager.shared
-        let quotaService = ProviderQuotaService(settingsManager: settings)
-        let daemonManager = OpenBurnBarDaemonManager(settingsManager: settings)
-        let cursorConnectorManager = CursorConnectorManager(settingsManager: settings)
+        let quotaService = StartupProfiler.interval("quota_service_init") {
+            ProviderQuotaService(settingsManager: settings)
+        }
+        let daemonManager = StartupProfiler.interval("daemon_manager_init") {
+            OpenBurnBarDaemonManager(settingsManager: settings)
+        }
+        let cursorConnectorManager = StartupProfiler.interval("cursor_connector_init") {
+            CursorConnectorManager(settingsManager: settings)
+        }
 
         // Phase 4 — wire BudgetSettings + BudgetGate so `BudgetEnforcement.shared.evaluate`
         // returns real decisions for AgentLens-plane requests. The daemon plane reads the
@@ -777,20 +814,26 @@ struct OpenBurnBarApp: App {
         let budgetGate = BudgetGate(settings: budgetSettings, ledger: budgetLedger)
         let budgetNotifications = BudgetNotificationCenter()
         let budgetForecast = BudgetForecast(dbQueue: initializedStore.dbQueue)
-        BudgetEnforcement.shared.configure(
-            gate: budgetGate,
-            notifications: budgetNotifications,
-            forecast: budgetForecast
-        )
+        StartupProfiler.interval("budget_enforcement_configure") {
+            BudgetEnforcement.shared.configure(
+                gate: budgetGate,
+                notifications: budgetNotifications,
+                forecast: budgetForecast
+            )
+        }
 
-        let controller = ChatSessionController(dataStore: initializedStore, settingsManager: settings)
-        let layer = OpenBurnBarOperatingLayer(
-            dataStore: initializedStore,
-            settingsManager: settings,
-            accountManager: accountManager,
-            daemonManager: daemonManager,
-            chatController: controller
-        )
+        let controller = StartupProfiler.interval("chat_controller_init") {
+            ChatSessionController(dataStore: initializedStore, settingsManager: settings)
+        }
+        let layer = StartupProfiler.interval("operating_layer_init") {
+            OpenBurnBarOperatingLayer(
+                dataStore: initializedStore,
+                settingsManager: settings,
+                accountManager: accountManager,
+                daemonManager: daemonManager,
+                chatController: controller
+            )
+        }
 
         let context = OpenBurnBarRuntimeContext(
             dataStore: initializedStore,
@@ -808,10 +851,8 @@ struct OpenBurnBarApp: App {
             settingsManager: settings
         )
         context.textExpansionRuntimeController = textExpansionRuntime
-        textExpansionRuntime.start()
         #endif
-        context.startRelayServices()
-        context.startSmartDisplayServices()
+        StartupProfiler.event("runtime_context_ready")
         return context
     }
 
@@ -832,6 +873,11 @@ struct OpenBurnBarApp: App {
         AppCheck.setAppCheckProviderFactory(providerFactory)
 
         FirebaseApp.configure(options: options)
+        if ProcessInfo.processInfo.environment["OPENBURNBAR_STARTUP_PROFILE"] == "1" {
+            let settings = Firestore.firestore().settings
+            settings.cacheSettings = MemoryCacheSettings()
+            Firestore.firestore().settings = settings
+        }
         didConfigureFirebase = true
         if let clientID = FirebaseApp.app()?.options.clientID {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
@@ -925,7 +971,7 @@ struct OpenBurnBarApp: App {
             options.environment = "app"
             let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
             options.releaseName = "openburnbar@\(version)"
-            options.enableTracing = false
+            options.tracesSampleRate = 0
             options.enableAutoSessionTracking = true
             #if DEBUG
             options.debug = false
@@ -1041,11 +1087,13 @@ struct OpenBurnBarApp: App {
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
 
         Task { @MainActor in
+            StartupProfiler.event("live_services_start")
             let sync: CloudSyncService
-            if let existingSync = context.cloudSyncService {
-                sync = existingSync
-            } else {
-                sync = CloudSyncService(
+            sync = StartupProfiler.interval("cloud_sync_init") {
+                if let existingSync = context.cloudSyncService {
+                    return existingSync
+                }
+                return CloudSyncService(
                     dataStore: context.dataStore,
                     accountManager: context.accountManager,
                     settingsManager: context.settingsManager
@@ -1053,23 +1101,36 @@ struct OpenBurnBarApp: App {
             }
             context.cloudSyncService = sync
 
-            context.startRelayServices()
-            context.startSmartDisplayServices()
-            context.startMercuryServices()
+            StartupProfiler.interval("relay_services_start") {
+                context.startRelayServices()
+            }
+            StartupProfiler.interval("smart_display_services_start") {
+                context.startSmartDisplayServices()
+            }
+            StartupProfiler.interval("mercury_services_start") {
+                context.startMercuryServices()
+            }
+            #if canImport(AppKit) && !DISTRIBUTION_MAS
+            StartupProfiler.interval("text_expansion_start") {
+                context.textExpansionRuntimeController?.start()
+            }
+            #endif
 
             let mirror: ICloudSessionMirrorService
-            if let existingMirror = context.iCloudSessionMirrorService {
-                mirror = existingMirror
-            } else {
-                mirror = ICloudSessionMirrorService(settingsManager: context.settingsManager)
+            mirror = StartupProfiler.interval("icloud_mirror_init") {
+                if let existingMirror = context.iCloudSessionMirrorService {
+                    return existingMirror
+                }
+                return ICloudSessionMirrorService(settingsManager: context.settingsManager)
             }
             context.iCloudSessionMirrorService = mirror
 
             let aggregator: UsageAggregator
-            if let existingAggregator = context.aggregator {
-                aggregator = existingAggregator
-            } else {
-                aggregator = UsageAggregator(
+            aggregator = StartupProfiler.interval("usage_aggregator_init") {
+                if let existingAggregator = context.aggregator {
+                    return existingAggregator
+                }
+                return UsageAggregator(
                     dataStore: context.dataStore,
                     cloudSync: sync,
                     sessionMirror: mirror,
@@ -1080,12 +1141,23 @@ struct OpenBurnBarApp: App {
             context.aggregator = aggregator
             context.operatingLayer.aggregator = aggregator
             context.operatingLayer.chatController = context.chatController
-            context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
+            StartupProfiler.interval("daemon_attach") {
+                context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
+            }
             #if !DISTRIBUTION_MAS
-            ComputerUseDaemonApprovalPresenter.shared.start(daemonManager: context.daemonManager)
+            StartupProfiler.interval("computer_use_approval_start") {
+                ComputerUseDaemonApprovalPresenter.shared.start(daemonManager: context.daemonManager)
+            }
             #endif
-            context.cursorConnectorManager.attach(dataStore: context.dataStore)
-            context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
+            StartupProfiler.interval("cursor_connector_attach") {
+                context.cursorConnectorManager.attach(dataStore: context.dataStore)
+            }
+            StartupProfiler.interval("quota_refresh_schedule") {
+                context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
+            }
+            StartupProfiler.interval("agent_reply_listener_start") {
+                MacAgentReplyNotificationListener.shared.start(chatController: context.chatController)
+            }
 
             // Inject wallpaper dependencies
             appDelegate.dataStore = context.dataStore
@@ -1093,26 +1165,31 @@ struct OpenBurnBarApp: App {
 
             if !hasShownInitialDashboard {
                 hasShownInitialDashboard = true
-                windowManager.openDashboard(
-                    dataStore: context.dataStore,
-                    aggregator: aggregator,
-                    accountManager: context.accountManager,
-                    cloudSyncService: sync,
-                    iCloudSessionMirrorService: mirror,
-                    chatController: context.chatController,
-                    operatingLayer: context.operatingLayer,
-                    navigationCoordinator: navigationCoordinator,
-                    settingsManager: context.settingsManager,
-                    runtimeContext: context
-                )
+                StartupProfiler.interval("first_dashboard_open") {
+                    windowManager.openDashboard(
+                        dataStore: context.dataStore,
+                        aggregator: aggregator,
+                        accountManager: context.accountManager,
+                        cloudSyncService: sync,
+                        iCloudSessionMirrorService: mirror,
+                        chatController: context.chatController,
+                        operatingLayer: context.operatingLayer,
+                        navigationCoordinator: navigationCoordinator,
+                        settingsManager: context.settingsManager,
+                        runtimeContext: context
+                    )
+                }
             }
+            StartupProfiler.event("first_ui_ready")
 
-            Task {
+            Task(priority: .utility) {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
                 if context.settingsManager.launchHermesWithOpenBurnBar {
                     let baseURL = URL(string: context.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
                         ?? URL(string: "http://127.0.0.1:8642")!
                     let bearerToken = context.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-                    await HermesRuntimeLauncher().openHermesAndGateway(
+                    _ = await HermesRuntimeLauncher().openHermesAndGateway(
                         baseURL: baseURL,
                         bearerToken: bearerToken.isEmpty ? nil : bearerToken
                     )
@@ -1148,8 +1225,10 @@ struct OpenBurnBarApp: App {
                 } else {
                     context.chatController.piAgentAvailable = false
                 }
+                StartupProfiler.event("startup_probe_work_start")
                 await context.daemonManager.refreshHealth()
                 await context.operatingLayer.refreshControllerRuntime()
+                StartupProfiler.event("startup_probe_work_end")
             }
 
             Task(priority: .utility) {
@@ -1177,20 +1256,37 @@ struct OpenBurnBarApp: App {
             }
 
             periodicRefreshTask?.cancel()
-            periodicRefreshTask = Task(priority: .utility) {
-                while !Task.isCancelled {
-                    let minimumRefreshInterval: TimeInterval = context.settingsManager.pixelClockConfig.enabled
-                        ? 10 * 60
-                        : 60
-                    let seconds = max(context.settingsManager.refreshInterval, minimumRefreshInterval)
-                    let nanos = UInt64(seconds * 1_000_000_000)
-                    try? await Task.sleep(nanoseconds: nanos)
-                    if Task.isCancelled { break }
-                    await aggregator.refreshAll()
-                    await context.daemonManager.refreshHealth()
-                    await context.operatingLayer.refreshControllerRuntime()
-                }
-            }
+            // Coordinator-managed cadence: same active interval as before
+            // (`max(settingsManager.refreshInterval, minimum)`), but the
+            // coordinator pauses the loop entirely while the display sleeps
+            // and stretches the interval 5× when the app is in the
+            // background. Net: no work happens while the laptop lid is
+            // closed and on idle the cadence honours the user setting.
+            let cadenceID = "agentlens-periodic-refresh"
+            BackgroundCadenceCoordinator.shared.register(
+                BackgroundCadenceCoordinator.Cadence(
+                    id: cadenceID,
+                    activeIntervalProvider: {
+                        let minimumRefreshInterval: TimeInterval = context.settingsManager.pixelClockConfig.enabled
+                            ? 10 * 60
+                            : 60
+                        return max(context.settingsManager.refreshInterval, minimumRefreshInterval)
+                    },
+                    backgroundIntervalProvider: nil,
+                    sleepIntervalProvider: { nil }, // paused on sleep
+                    isEnabled: { true },
+                    fireImmediately: false,
+                    cancellableInFlight: false,
+                    work: { [weak aggregator] in
+                        await aggregator?.refreshAll()
+                        await context.daemonManager.refreshHealth()
+                        await context.operatingLayer.refreshControllerRuntime()
+                    }
+                )
+            )
+            // Sentinel so re-entrant `startBackgroundWork()` paths leave the
+            // cadence registered exactly once.
+            periodicRefreshTask = Task { @MainActor in }
         }
     }
 

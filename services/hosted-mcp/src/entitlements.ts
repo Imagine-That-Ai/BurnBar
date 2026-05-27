@@ -1,7 +1,9 @@
+import type { Firestore } from "firebase-admin/firestore";
 import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore, type Firestore, Timestamp } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { NEGATIVE_ENTITLEMENT_CACHE_MS, POSITIVE_ENTITLEMENT_CACHE_MS, REMOTE_MCP_LAST_USED_WRITE_INTERVAL_MS } from "./config.js";
 import { HttpError } from "./errors.js";
+import type { HostedMcpFirestore, RemoteMcpClientFirestore } from "./firestoreTypes.js";
 
 export interface EntitlementState {
   active: boolean;
@@ -37,7 +39,7 @@ function isActive(data: FirebaseFirestore.DocumentData | undefined): { active: b
   return { active: true, expiresAt };
 }
 
-export async function getEntitlementState(uid: string, db: Firestore = firestore()): Promise<EntitlementState> {
+export async function getEntitlementState(uid: string, db: RemoteMcpClientFirestore = firestore()): Promise<EntitlementState> {
   const cached = cache.get(uid);
   if (cached && cached.expiresAtMs > Date.now()) return cached.state;
 
@@ -59,7 +61,7 @@ export async function getEntitlementState(uid: string, db: Firestore = firestore
   return state;
 }
 
-export async function requireActiveBurnBarPro(uid: string, db?: Firestore): Promise<EntitlementState> {
+export async function requireActiveBurnBarPro(uid: string, db: RemoteMcpClientFirestore = firestore()): Promise<EntitlementState> {
   const state = await getEntitlementState(uid, db);
   if (!state.active) {
     throw new HttpError(403, "BurnBar Pro is required for hosted remote MCP.", "burnbar_pro_required");
@@ -70,7 +72,7 @@ export async function requireActiveBurnBarPro(uid: string, db?: Firestore): Prom
 export async function requireActiveRemoteMcpClient(
   uid: string,
   clientId: string,
-  db: Firestore = firestore()
+  db: RemoteMcpClientFirestore = firestore()
 ): Promise<void> {
   const ref = db.doc(`users/${uid}/remote_mcp_clients/${clientId}`);
   const snap = await ref.get();

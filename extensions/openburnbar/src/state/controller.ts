@@ -77,6 +77,12 @@ class SimpleEventEmitter<T> {
   }
 }
 
+/** Minimal controller surface used by read-only tree views in tests and production. */
+export type OpenBurnBarControllerSnapshotSource = Pick<
+  OpenBurnBarExtensionController,
+  "snapshot" | "onDidChangeState"
+>;
+
 export class OpenBurnBarExtensionController {
   private readonly eventEmitter = new SimpleEventEmitter<void>();
   private readonly clientID: string;
@@ -493,8 +499,8 @@ export class OpenBurnBarExtensionController {
 
   workspaceCapabilitySummary(): { available: BurnBarToolKind[]; gated: BurnBarToolKind[]; trusted: boolean; hasWorkspace: boolean } {
     return {
-      available: (this.state.workspace?.availableTools ?? []) as BurnBarToolKind[],
-      gated: (this.state.workspace?.gatedTools ?? []) as BurnBarToolKind[],
+      available: this.state.workspace?.availableTools ?? [],
+      gated: this.state.workspace?.gatedTools ?? [],
       trusted: !this.state.workspace?.untrustedWorkspace,
       hasWorkspace: this.state.workspace?.hasWorkspace ?? false
     };
@@ -813,7 +819,8 @@ export class OpenBurnBarExtensionController {
       return runTerminalResultToJSON(result);
     }
     default: {
-      throw new Error(`Unknown workspace tool: ${(toolCall as { tool: string }).tool}`);
+      const unsupportedTool: never = toolCall.tool;
+      throw new Error(`Unknown workspace tool: ${unsupportedTool}`);
     }
     }
   }
@@ -916,11 +923,11 @@ function mapToolError(error: unknown, tool: BurnBarToolKind): BurnBarToolExecuti
 }
 
 function expectObject(
-  value: BurnBarJSONValue,
+  value: BurnBarJSONValue | undefined,
   label: string
 ): Record<string, BurnBarJSONValue> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, BurnBarJSONValue>;
+    return Object.fromEntries(Object.entries(value));
   }
   throw new Error(`Expected ${label} to be an object.`);
 }
@@ -955,8 +962,8 @@ function toRange(range: Record<string, BurnBarJSONValue>): {
   start: { line: number; character: number };
   end: { line: number; character: number };
 } {
-  const start = expectObject(range.start as BurnBarJSONValue, 'range.start');
-  const end = expectObject(range.end as BurnBarJSONValue, 'range.end');
+  const start = expectObject(range.start, 'range.start');
+  const end = expectObject(range.end, 'range.end');
 
   return {
     start: {

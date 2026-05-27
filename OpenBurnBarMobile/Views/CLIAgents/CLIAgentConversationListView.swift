@@ -1111,6 +1111,23 @@ struct CLIAgentChatThreadView: View {
             try? await Task.sleep(nanoseconds: 250_000_000)
             inputFocused = true
         }
+        .onAppear {
+            AgentReplyNotificationService.shared.setActiveChat(
+                runtime: runtime.rawValue,
+                threadID: chatService.threadID,
+                surface: "cli_agent_chat"
+            )
+        }
+        .onChange(of: chatService.threadID) { _, threadID in
+            AgentReplyNotificationService.shared.setActiveChat(
+                runtime: runtime.rawValue,
+                threadID: threadID,
+                surface: "cli_agent_chat"
+            )
+        }
+        .onDisappear {
+            AgentReplyNotificationService.shared.setActiveChat(runtime: nil, threadID: nil, surface: nil)
+        }
     }
 
     private var activeThread: MobileChatThread? {

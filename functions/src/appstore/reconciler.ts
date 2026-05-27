@@ -48,6 +48,11 @@ import {
   type DecodedTransaction,
   getAppleJWSVerifier,
 } from "./verifier.js";
+import {
+  parseEntitlementBindingDoc,
+  parseHostedQuotaEntitlementDoc,
+  stripUndefinedObject,
+} from "../guards.js";
 
 const ENTITLEMENT_SCHEMA_VERSION = 2;
 const VERIFICATION_VERSION = 2;
@@ -155,7 +160,7 @@ export async function reconcileEntitlement(
   const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(docRef);
     const existing = snap.exists
-      ? (snap.data() as HostedQuotaEntitlementDoc)
+      ? parseHostedQuotaEntitlementDoc(snap.data())
       : undefined;
 
     if (existing && !shouldOverwrite(existing, next)) {
@@ -168,7 +173,7 @@ export async function reconcileEntitlement(
     }
 
     const merged = mergeWithExisting(existing, next);
-    tx.set(docRef, merged, { merge: true });
+    tx.set(docRef, stripUndefinedObject(merged), { merge: true });
     tx.set(
       db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`),
       buildBurnBarProEntitlementMirror(merged),
@@ -259,7 +264,7 @@ export async function beginBinding(
   };
   await db
     .doc(`users/${uid}/entitlement_bindings/${token}`)
-    .create(stripUndefined(doc as unknown as Record<string, unknown>));
+    .create(stripUndefinedObject(doc));
   return { appAccountToken: token };
 }
 
@@ -324,7 +329,13 @@ async function consumeBindingByToken(
     const ref = db.doc(`users/${claimedUid}/entitlement_bindings/${token}`);
     const snap = await ref.get();
     if (snap.exists) {
-      const d = snap.data() as EntitlementBindingDoc;
+      const d = parseEntitlementBindingDoc(snap.data());
+      if (!d) {
+        throw new EntitlementReconcileError(
+          "binding_mismatch",
+          "binding doc is invalid"
+        );
+      }
       if (d.uid !== claimedUid) {
         throw new EntitlementReconcileError(
           "binding_mismatch",
@@ -360,7 +371,13 @@ async function consumeBindingByToken(
       `No binding for appAccountToken ${redactToken(token)}.`
     );
   }
-  const d = doc.data() as EntitlementBindingDoc;
+  const d = parseEntitlementBindingDoc(doc.data());
+  if (!d) {
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "binding doc is invalid"
+    );
+  }
   if (!d.consumedAt) {
     await doc.ref.set({ consumedAt: new Date().toISOString() }, { merge: true });
   }
@@ -491,30 +508,39 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
       p.originalTransactionId,
       "originalTransactionId"
     ),
-    expiresAt: expiresMs !== undefined ? new Date(expiresMs).toISOString() : undefined,
-    expireAt: expiresMs !== undefined ? Timestamp.fromMillis(expiresMs) : undefined,
-    revokedAt: revokedMs !== undefined ? new Date(revokedMs).toISOString() : undefined,
-    revocationReason:
-      typeof p.revocationReason === "number" ? p.revocationReason : undefined,
     environment: candidate.environment,
-    ownershipType: ownership,
-    appAccountToken:
-      typeof p.appAccountToken === "string" && p.appAccountToken
-        ? p.appAccountToken.toLowerCase()
-        : undefined,
     signedTransactionHash: createHash("sha256")
       .update(candidate.raw)
       .digest("hex"),
-    signedDateMs:
-      typeof p.signedDate === "number" ? Math.floor(p.signedDate) : undefined,
-    lastNotificationUUID: notificationUUID,
     lastVerifiedAt: now.toISOString(),
     source,
     verificationVersion: VERIFICATION_VERSION,
     schemaVersion: ENTITLEMENT_SCHEMA_VERSION,
     updatedAt: now.toISOString(),
   };
-  return stripUndefined(doc as unknown as Record<string, unknown>) as unknown as HostedQuotaEntitlementDoc;
+  if (expiresMs !== undefined) {
+    doc.expiresAt = new Date(expiresMs).toISOString();
+    doc.expireAt = Timestamp.fromMillis(expiresMs);
+  }
+  if (revokedMs !== undefined) {
+    doc.revokedAt = new Date(revokedMs).toISOString();
+  }
+  if (typeof p.revocationReason === "number") {
+    doc.revocationReason = p.revocationReason;
+  }
+  if (ownership !== undefined) {
+    doc.ownershipType = ownership;
+  }
+  if (typeof p.appAccountToken === "string" && p.appAccountToken) {
+    doc.appAccountToken = p.appAccountToken.toLowerCase();
+  }
+  if (typeof p.signedDate === "number") {
+    doc.signedDateMs = Math.floor(p.signedDate);
+  }
+  if (notificationUUID !== undefined) {
+    doc.lastNotificationUUID = notificationUUID;
+  }
+  return doc;
 }
 
 /** Reject stale events: never let an older signedDate revive a newer doc. */
@@ -543,13 +569,13 @@ function mergeWithExisting(
   if (!existing) return next;
   // Carry forward fields that legitimately change rarely (appAccountToken,
   // ownershipType) when the new JWS does not include them.
-  return stripUndefined({
+  return {
     ...existing,
     ...next,
     appAccountToken: next.appAccountToken ?? existing.appAccountToken,
     ownershipType: next.ownershipType ?? existing.ownershipType,
     environment: next.environment ?? existing.environment,
-  }) as unknown as HostedQuotaEntitlementDoc;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -600,15 +626,12 @@ function redactPayload(
   payload: JWSTransactionDecodedPayload
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(
-    payload as unknown as Record<string, unknown>
-  )) {
+  for (const [k, v] of Object.entries(payload)) {
     if (REDACTED_PAYLOAD_FIELDS.has(k)) continue;
     if (k === "appAccountToken") continue;
     out[k] = v;
   }
-  const appAccountToken = (payload as { appAccountToken?: unknown })
-    .appAccountToken;
+  const appAccountToken = payload.appAccountToken;
   if (typeof appAccountToken === "string" && appAccountToken) {
     out.appAccountTokenHash = createHash("sha256")
       .update(appAccountToken)
@@ -624,12 +647,6 @@ function redactToken(token: string): string {
 
 function uuid(): string {
   return randomUUID();
-}
-
-function stripUndefined<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, v]) => v !== undefined)
-  ) as T;
 }
 
 // ---------------------------------------------------------------------------

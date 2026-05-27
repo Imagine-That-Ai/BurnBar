@@ -104,6 +104,7 @@ import com.openburnbar.data.computeruse.AgentDesktopCapability
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.CliRuntimeModelOption
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.components.ProviderLogoStyle
 import com.openburnbar.ui.components.ProviderLogoView
@@ -256,8 +257,22 @@ fun CliAgentChatView(
         }
     }
 
-    DisposableEffect(activeThreadID) {
-        onDispose { observerJob?.cancel() }
+    DisposableEffect(runtime, activeThreadID) {
+        AgentReplyNotificationState.setActiveChat(
+            context = context,
+            runtime = runtime.token,
+            threadId = activeThreadID,
+            surface = "android_cli_agent_chat",
+        )
+        onDispose {
+            observerJob?.cancel()
+            AgentReplyNotificationState.setActiveChat(
+                context = context,
+                runtime = null,
+                threadId = null,
+                surface = null,
+            )
+        }
     }
 
     val title = activeThread.title.takeIf { it.isNotBlank() } ?: "New Chat"
@@ -1878,11 +1893,13 @@ private fun applySnapshot(
     placeholderID: String,
     snapshot: CLIAgentMissionSnapshot,
 ) {
+    val resultPreview = snapshot.resultPreview?.takeIf { it.isNotBlank() }
+    val liveSummary = snapshot.displayLiveSummary?.takeIf { it.isNotBlank() }
     val nextText = when {
-        snapshot.status == "completed" && !snapshot.resultPreview.isNullOrBlank() -> snapshot.resultPreview!!
+        snapshot.status == "completed" && resultPreview != null -> resultPreview
         snapshot.errorMessage?.isNotBlank() == true -> "Error: ${snapshot.errorMessage}"
-        !snapshot.resultPreview.isNullOrBlank() -> snapshot.resultPreview!!
-        !snapshot.displayLiveSummary.isNullOrBlank() -> snapshot.displayLiveSummary!!
+        resultPreview != null -> resultPreview
+        liveSummary != null -> liveSummary
         else -> snapshot.currentStepLabel
     }
     val isError = snapshot.status in setOf("failed", "agent_launch_failed", "unauthorized")

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { OpenBurnBarExtensionController } from '../../src/state/controller';
 import type { OpenBurnBarState } from '../../src/types';
 import { buildHealthRows, type BurnBarHealthRow } from '../../src/state/projections';
+import { createSnapshotController, createTestState } from '../helpers/controllerMock';
 
 // Mock vscode
 vi.mock('vscode', () => ({
@@ -51,30 +51,13 @@ import {
 } from '../../src/views/healthView';
 
 // Create a minimal mock state
-function createMinimalState(): Pick<OpenBurnBarState, 'connectionStatus' | 'daemonRuns' | 'recentUsage' | 'health'> {
-  return {
-    connectionStatus: 'connecting',
-    daemonRuns: [],
-    recentUsage: []
-  };
+function createMinimalState(partial: Partial<OpenBurnBarState> = {}): OpenBurnBarState {
+  return createTestState(partial);
 }
 
 // Create a mock controller
-function createMockController(partialState: Partial<OpenBurnBarState> = {}): OpenBurnBarExtensionController {
-  const defaultState: OpenBurnBarState = {
-    connectionStatus: 'connecting',
-    clientAttached: false,
-    daemonRuns: [],
-    pendingToolCalls: [],
-    recentUsage: [],
-    runs: [],
-    ...partialState
-  };
-
-  return {
-    snapshot: defaultState,
-    onDidChangeState: vi.fn().mockReturnValue({ dispose: vi.fn() })
-  } as unknown as OpenBurnBarExtensionController;
+function createMockController(partialState: Partial<OpenBurnBarState> = {}) {
+  return createSnapshotController(partialState);
 }
 
 describe('OpenBurnBarHealthTreeDataProvider', () => {
@@ -98,24 +81,23 @@ describe('OpenBurnBarHealthTreeDataProvider', () => {
   });
 
   describe('getTreeItem', () => {
-    it('should return the tree item as-is', () => {
-      const controller = createMockController();
+    it('should return the tree item as-is', async () => {
+      const controller = createMockController({ connectionStatus: 'connected', clientAttached: true });
       const provider = new OpenBurnBarHealthTreeDataProvider(controller);
-
-      const mockItem = new vscode.TreeItem('test', 0);
-      const result = provider.getTreeItem(mockItem as any);
-
+      const [mockItem] = await provider.getChildren();
+      expect(mockItem).toBeDefined();
+      const result = provider.getTreeItem(mockItem);
       expect(result).toBe(mockItem);
     });
   });
 
   describe('getChildren', () => {
     it('should return empty array for child elements', async () => {
-      const controller = createMockController();
+      const controller = createMockController({ connectionStatus: 'connected', clientAttached: true });
       const provider = new OpenBurnBarHealthTreeDataProvider(controller);
-
-      const mockItem = new vscode.TreeItem('test', 0);
-      const children = await provider.getChildren(mockItem as any);
+      const [mockItem] = await provider.getChildren();
+      expect(mockItem).toBeDefined();
+      const children = await provider.getChildren(mockItem);
 
       expect(children).toEqual([]);
     });
@@ -175,45 +157,37 @@ describe('OpenBurnBarHealthTreeDataProvider', () => {
 
 describe('Health View Integration', () => {
   it('should build health rows for connected state', () => {
-    const state = createMinimalState();
-    state.connectionStatus = 'connected';
-    state.clientAttached = true;
-
-    const rows = buildHealthRows(state as OpenBurnBarState);
+    const rows = buildHealthRows(createMinimalState({
+      connectionStatus: 'connected',
+      clientAttached: true
+    }));
 
     expect(Array.isArray(rows)).toBe(true);
   });
 
   it('should build health rows for disconnected state', () => {
-    const state = createMinimalState();
-    state.connectionStatus = 'disconnected';
-
-    const rows = buildHealthRows(state as OpenBurnBarState);
+    const rows = buildHealthRows(createMinimalState({ connectionStatus: 'disconnected' }));
 
     expect(Array.isArray(rows)).toBe(true);
   });
 
   it('should build health rows for connecting state', () => {
-    const state = createMinimalState();
-    state.connectionStatus = 'connecting';
-
-    const rows = buildHealthRows(state as OpenBurnBarState);
+    const rows = buildHealthRows(createMinimalState({ connectionStatus: 'connecting' }));
 
     expect(Array.isArray(rows)).toBe(true);
   });
 
   it('should build health rows with health data', () => {
-    const state = createMinimalState();
-    state.connectionStatus = 'connected';
-    state.clientAttached = true;
-    state.health = {
-      parserHealth: [
-        { provider: 'claude_code', healthy: true, message: 'OK' },
-        { provider: 'factory', healthy: true, message: 'OK' }
-      ]
-    };
-
-    const rows = buildHealthRows(state as OpenBurnBarState);
+    const rows = buildHealthRows(createMinimalState({
+      connectionStatus: 'connected',
+      clientAttached: true,
+      health: {
+        parserHealth: [
+          { provider: 'claude_code', healthy: true, message: 'OK' },
+          { provider: 'factory', healthy: true, message: 'OK' }
+        ]
+      }
+    }));
 
     expect(Array.isArray(rows)).toBe(true);
     // Should have pass icons for healthy parsers
@@ -222,16 +196,15 @@ describe('Health View Integration', () => {
   });
 
   it('should build health rows with unhealthy parsers', () => {
-    const state = createMinimalState();
-    state.connectionStatus = 'connected';
-    state.health = {
-      parserHealth: [
-        { provider: 'claude_code', healthy: true, message: 'OK' },
-        { provider: 'factory', healthy: false, message: 'Parser error' }
-      ]
-    };
-
-    const rows = buildHealthRows(state as OpenBurnBarState);
+    const rows = buildHealthRows(createMinimalState({
+      connectionStatus: 'connected',
+      health: {
+        parserHealth: [
+          { provider: 'claude_code', healthy: true, message: 'OK' },
+          { provider: 'factory', healthy: false, message: 'Parser error' }
+        ]
+      }
+    }));
 
     expect(Array.isArray(rows)).toBe(true);
     // Should have at least one warning
@@ -259,11 +232,10 @@ describe('Health View Integration', () => {
   });
 
   it('should handle state with lastError', () => {
-    const state = createMinimalState();
-    state.connectionStatus = 'error';
-    state.lastError = 'Connection refused';
-
-    const rows = buildHealthRows(state as OpenBurnBarState);
+    const rows = buildHealthRows(createMinimalState({
+      connectionStatus: 'error',
+      lastError: 'Connection refused'
+    }));
 
     expect(Array.isArray(rows)).toBe(true);
     // Should have warning icons for error state
@@ -272,11 +244,10 @@ describe('Health View Integration', () => {
   });
 
   it('should handle state with runError', () => {
-    const state = createMinimalState();
-    state.connectionStatus = 'connected';
-    state.runError = 'Run failed';
-
-    const rows = buildHealthRows(state as OpenBurnBarState);
+    const rows = buildHealthRows(createMinimalState({
+      connectionStatus: 'connected',
+      runError: 'Run failed'
+    }));
 
     expect(Array.isArray(rows)).toBe(true);
   });

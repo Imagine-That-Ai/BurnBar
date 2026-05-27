@@ -62,19 +62,19 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.showIndexingConsent)
     }
 
-    func test_openChatPanelIfConsented_showsCLIConsentWhenNotShown() {
+    func test_openChatPanelIfConsented_showsCLIConsentWhenNotShown() throws {
         let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
-        let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
+        let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         XCTAssertFalse(coordinator.showCLIConsentSheet)
         coordinator.openChatPanelIfConsented(chatController: controller, open: {})
         XCTAssertTrue(coordinator.showCLIConsentSheet)
     }
 
-    func test_openChatPanelIfConsented_callsOpenWhenConsented() {
+    func test_openChatPanelIfConsented_callsOpenWhenConsented() throws {
         settingsManager.cliAssistantConsentShown = true
         let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
-        let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
+        let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         var didOpen = false
         coordinator.openChatPanelIfConsented(chatController: controller, open: { didOpen = true })

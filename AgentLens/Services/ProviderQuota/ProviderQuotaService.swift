@@ -65,12 +65,92 @@ struct DaemonCredentialSlotAccountProjection {
     }
 }
 
+private final class ProviderQuotaAutomaticRefreshLifecycle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var refreshTask: Task<Void, Never>?
+    private var apiKeyObserver: NSObjectProtocol?
+
+    func replaceRefreshTask(_ task: Task<Void, Never>) {
+        let previous = lock.withLock { () -> Task<Void, Never>? in
+            let previous = refreshTask
+            refreshTask = task
+            return previous
+        }
+        previous?.cancel()
+    }
+
+    func cancelRefreshTask() {
+        let task = lock.withLock { () -> Task<Void, Never>? in
+            let task = refreshTask
+            refreshTask = nil
+            return task
+        }
+        task?.cancel()
+    }
+
+    var hasAPIKeyObserver: Bool {
+        lock.withLock { apiKeyObserver != nil }
+    }
+
+    func setAPIKeyObserver(_ observer: NSObjectProtocol) {
+        lock.withLock {
+            apiKeyObserver = observer
+        }
+    }
+
+    func removeAPIKeyObserver() {
+        let observer = lock.withLock { () -> NSObjectProtocol? in
+            let observer = apiKeyObserver
+            apiKeyObserver = nil
+            return observer
+        }
+        if let observer {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    func cancelAll() {
+        cancelRefreshTask()
+        removeAPIKeyObserver()
+    }
+}
+
+// AUDIT(@unchecked Sendable): quota adapters need synchronous plan readers while
+// running inside the quota refresh actor. The readers are immutable closures
+// installed during ProviderQuotaService initialization; their backing settings
+// storage is UserDefaults-based and thread-safe for reads.
+final class ProviderQuotaPlanReaders: @unchecked Sendable {
+    let miniMaxModeProvider: () -> MiniMaxQuotaMode
+    let factoryPlanProvider: () -> FactoryQuotaPlanTier
+    let xaiPlanProvider: () -> XAIQuotaPlanTier
+    let mimoTokenPlanRegionProvider: () -> ProviderEndpointRegion
+    let mimoTokenPlanTierProvider: () -> MimoTokenPlanTier?
+    let mimoTokenPlanBillingCycleProvider: () -> MimoTokenPlanBillingCycle
+
+    init(
+        miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode,
+        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier,
+        xaiPlanProvider: @escaping () -> XAIQuotaPlanTier,
+        mimoTokenPlanRegionProvider: @escaping () -> ProviderEndpointRegion,
+        mimoTokenPlanTierProvider: @escaping () -> MimoTokenPlanTier?,
+        mimoTokenPlanBillingCycleProvider: @escaping () -> MimoTokenPlanBillingCycle
+    ) {
+        self.miniMaxModeProvider = miniMaxModeProvider
+        self.factoryPlanProvider = factoryPlanProvider
+        self.xaiPlanProvider = xaiPlanProvider
+        self.mimoTokenPlanRegionProvider = mimoTokenPlanRegionProvider
+        self.mimoTokenPlanTierProvider = mimoTokenPlanTierProvider
+        self.mimoTokenPlanBillingCycleProvider = mimoTokenPlanBillingCycleProvider
+    }
+}
+
 // MARK: - Quota Service
 
 @Observable
 @MainActor
 final class ProviderQuotaService {
     static let shared = ProviderQuotaService()
+    private static let maxPersistedRoutingEvents = 500
 
     static var supportedProviders: [AgentProvider] {
         AgentProvider.quotaSignalProviders
@@ -86,8 +166,12 @@ final class ProviderQuotaService {
     private let miniMaxModeProvider: () -> MiniMaxQuotaMode
     private let factoryPlanProvider: () -> FactoryQuotaPlanTier
     private let xaiPlanProvider: () -> XAIQuotaPlanTier
+    private let mimoTokenPlanRegionProvider: () -> ProviderEndpointRegion
+    private let mimoTokenPlanTierProvider: () -> MimoTokenPlanTier?
+    private let mimoTokenPlanBillingCycleProvider: () -> MimoTokenPlanBillingCycle
     private let claudeCredentialsReader: any ClaudeCredentialsReading
     private let refreshProviders: [AgentProvider]
+    private let planReaders: ProviderQuotaPlanReaders
 
     private let snapshotStore: ProviderQuotaSnapshotStore
     private let bridgeManager: ClaudeQuotaBridgeManager
@@ -110,8 +194,7 @@ final class ProviderQuotaService {
     private var connectedQuotaProviderIDsCache: (fetchedAt: Date, ids: Set<ProviderID>)?
     private var suppressRoutingEventPersistence = false
     private var routingEventsDirty = false
-    private nonisolated(unsafe) var automaticRefreshTask: Task<Void, Never>?
-    private nonisolated(unsafe) var apiKeyChangeObserver: NSObjectProtocol?
+    private let automaticRefreshLifecycle = ProviderQuotaAutomaticRefreshLifecycle()
     private var claudeStatuslineWatcher: ClaudeStatuslineWatcher?
 
     init(
@@ -129,6 +212,9 @@ final class ProviderQuotaService {
         miniMaxModeProvider: (() -> MiniMaxQuotaMode)? = nil,
         factoryPlanProvider: (() -> FactoryQuotaPlanTier)? = nil,
         xaiPlanProvider: (() -> XAIQuotaPlanTier)? = nil,
+        mimoTokenPlanRegionProvider: (() -> ProviderEndpointRegion)? = nil,
+        mimoTokenPlanTierProvider: (() -> MimoTokenPlanTier?)? = nil,
+        mimoTokenPlanBillingCycleProvider: (() -> MimoTokenPlanBillingCycle)? = nil,
         claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         refreshProviders: [AgentProvider] = ProviderQuotaService.supportedProviders
     ) {
@@ -139,9 +225,26 @@ final class ProviderQuotaService {
         self.session = session
         self.environment = environment
         self.homeDirectoryURL = homeDirectoryURL
-        self.miniMaxModeProvider = miniMaxModeProvider ?? { settingsManager.miniMaxQuotaMode }
-        self.factoryPlanProvider = factoryPlanProvider ?? { settingsManager.factoryQuotaPlanTier }
-        self.xaiPlanProvider = xaiPlanProvider ?? { settingsManager.xaiQuotaPlanTier }
+        let resolvedMiniMaxModeProvider = miniMaxModeProvider ?? { settingsManager.miniMaxQuotaMode }
+        let resolvedFactoryPlanProvider = factoryPlanProvider ?? { settingsManager.factoryQuotaPlanTier }
+        let resolvedXAIPlanProvider = xaiPlanProvider ?? { settingsManager.xaiQuotaPlanTier }
+        let resolvedMimoTokenPlanRegionProvider = mimoTokenPlanRegionProvider ?? { settingsManager.mimoTokenPlanRegion }
+        let resolvedMimoTokenPlanTierProvider = mimoTokenPlanTierProvider ?? { settingsManager.mimoTokenPlanTier }
+        let resolvedMimoTokenPlanBillingCycleProvider = mimoTokenPlanBillingCycleProvider ?? { settingsManager.mimoTokenPlanBillingCycle }
+        self.miniMaxModeProvider = resolvedMiniMaxModeProvider
+        self.factoryPlanProvider = resolvedFactoryPlanProvider
+        self.xaiPlanProvider = resolvedXAIPlanProvider
+        self.mimoTokenPlanRegionProvider = resolvedMimoTokenPlanRegionProvider
+        self.mimoTokenPlanTierProvider = resolvedMimoTokenPlanTierProvider
+        self.mimoTokenPlanBillingCycleProvider = resolvedMimoTokenPlanBillingCycleProvider
+        self.planReaders = ProviderQuotaPlanReaders(
+            miniMaxModeProvider: resolvedMiniMaxModeProvider,
+            factoryPlanProvider: resolvedFactoryPlanProvider,
+            xaiPlanProvider: resolvedXAIPlanProvider,
+            mimoTokenPlanRegionProvider: resolvedMimoTokenPlanRegionProvider,
+            mimoTokenPlanTierProvider: resolvedMimoTokenPlanTierProvider,
+            mimoTokenPlanBillingCycleProvider: resolvedMimoTokenPlanBillingCycleProvider
+        )
         self.claudeCredentialsReader = claudeCredentialsReader
         self.refreshProviders = refreshProviders.filter(\.isQuotaSignalProvider)
 
@@ -163,9 +266,7 @@ final class ProviderQuotaService {
             session: session,
             environment: environment,
             homeDirectoryURL: homeDirectoryURL,
-            miniMaxModeProvider: self.miniMaxModeProvider,
-            factoryPlanProvider: self.factoryPlanProvider,
-            xaiPlanProvider: self.xaiPlanProvider,
+            planReaders: planReaders,
             claudeCredentialsReader: claudeCredentialsReader,
             refreshProviders: self.refreshProviders
         )
@@ -180,10 +281,7 @@ final class ProviderQuotaService {
     }
 
     deinit {
-        automaticRefreshTask?.cancel()
-        if let apiKeyChangeObserver {
-            NotificationCenter.default.removeObserver(apiKeyChangeObserver)
-        }
+        automaticRefreshLifecycle.cancelAll()
         // Note: claudeStatuslineWatcher cancels its dispatch source in
         // its own deinit when the strong reference drops here.
     }
@@ -467,25 +565,25 @@ final class ProviderQuotaService {
         initialDelay: Duration = .seconds(5 * 60),
         interval: Duration = .seconds(15 * 60)
     ) {
-        automaticRefreshTask?.cancel()
-        automaticRefreshTask = Task(priority: .utility) { [weak self, weak dataStore] in
+        automaticRefreshLifecycle.replaceRefreshTask(Task(priority: .utility) { [weak self, weak dataStore] in
             guard let self, let dataStore else { return }
             try? await Task.sleep(for: initialDelay)
             while !Task.isCancelled {
                 await self.refreshIfNeeded(dataStore: dataStore, maxAge: 15 * 60)
                 try? await Task.sleep(for: interval)
             }
-        }
+        })
 
         startClaudeStatuslineWatcher(dataStore: dataStore)
 
-        guard apiKeyChangeObserver == nil else { return }
-        apiKeyChangeObserver = NotificationCenter.default.addObserver(
+        guard !automaticRefreshLifecycle.hasAPIKeyObserver else { return }
+        let providerUserInfoKey = ProviderAPIKeyStore.providerUserInfoKey
+        let observer = NotificationCenter.default.addObserver(
             forName: ProviderAPIKeyStore.didChangeNotification,
             object: keyStore,
             queue: nil
         ) { [weak self, weak dataStore] notification in
-            guard let providerKey = notification.userInfo?[ProviderAPIKeyStore.providerUserInfoKey] as? String else {
+            guard let providerKey = notification.userInfo?[providerUserInfoKey] as? String else {
                 return
             }
             Task { @MainActor [weak self, weak dataStore] in
@@ -497,16 +595,13 @@ final class ProviderQuotaService {
                 }
             }
         }
+        automaticRefreshLifecycle.setAPIKeyObserver(observer)
     }
 
     func stopAutomaticRefresh() {
-        automaticRefreshTask?.cancel()
-        automaticRefreshTask = nil
+        automaticRefreshLifecycle.cancelRefreshTask()
         stopClaudeStatuslineWatcher()
-        if let apiKeyChangeObserver {
-            NotificationCenter.default.removeObserver(apiKeyChangeObserver)
-            self.apiKeyChangeObserver = nil
-        }
+        automaticRefreshLifecycle.removeAPIKeyObserver()
     }
 
     /// Arms an FS-event watcher on Claude Code's statusline snapshot file.
@@ -697,6 +792,9 @@ final class ProviderQuotaService {
             return
         }
         routingEvents.append(event)
+        if routingEvents.count > Self.maxPersistedRoutingEvents {
+            routingEvents.removeFirst(routingEvents.count - Self.maxPersistedRoutingEvents)
+        }
         routingEventsDirty = true
         if !suppressRoutingEventPersistence {
             routingEventsDirty = false
@@ -899,6 +997,9 @@ final class ProviderQuotaService {
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
             xaiPlanProvider: xaiPlanProvider,
+            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
+            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
+            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: { [weak self] cache, didChange in
@@ -980,6 +1081,8 @@ final class ProviderQuotaService {
             return "moonshot"
         case .claudeCode:
             return "anthropic"
+        case .mimo:
+            return "mimo"
         default:
             return nil
         }
@@ -1004,6 +1107,8 @@ final class ProviderQuotaService {
             identifiers.append(contentsOf: ["opencode", "open_code", "opencode_auth_json"])
         case .deepSeek:
             identifiers.append(contentsOf: ["deepseek", "deep_seek"])
+        case .mimo:
+            identifiers.append(contentsOf: ["mimo", "xiaomimimo", "xiaomi", "provider.mimo.apiKey"])
         default:
             break
         }
@@ -1235,9 +1340,10 @@ final class ProviderQuotaService {
     }
 
     private func loadPersistedRoutingEvents() {
-        switch snapshotStore.loadPersistedRoutingEvents() {
+        switch snapshotStore.loadPersistedRoutingEvents(limit: Self.maxPersistedRoutingEvents) {
         case .loaded(let events):
             routingEvents = events
+            persistRoutingEvents()
         case .failed(let target, let message):
             AppLogger.dataStore.silentFailure(
                 "ProviderQuotaService: \(target.label) load failed",
@@ -1249,7 +1355,7 @@ final class ProviderQuotaService {
     }
 
     private func persistRoutingEvents() {
-        snapshotStore.persistRoutingEvents(routingEvents)
+        snapshotStore.persistRoutingEvents(routingEvents, limit: Self.maxPersistedRoutingEvents)
     }
 
     private func loadPersistedCodexRolloutScanCache() {

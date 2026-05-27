@@ -180,25 +180,31 @@ function createMockOpenBurnBarState(overrides: Partial<OpenBurnBarState> = {}): 
   };
 }
 
-// ---------------------------------------------------------------------------
-// Message Type Guards
-// ---------------------------------------------------------------------------
-
-function isSnapshotMessage(msg: OpenBurnBarPanelHostMessage): msg is { type: "snapshot"; viewModel: OpenBurnBarPanelViewModel } {
-  return msg.type === "snapshot";
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isErrorMessage(msg: OpenBurnBarPanelHostMessage): msg is { type: "error"; message: string } {
-  return msg.type === "error";
+function isSnapshotMessage(msg: unknown): msg is { type: "snapshot"; viewModel: OpenBurnBarPanelViewModel } {
+  return isRecord(msg) && msg.type === "snapshot" && isRecord(msg.viewModel);
 }
 
-function isThemeMessage(msg: OpenBurnBarPanelHostMessage): msg is { type: "theme"; kind: "dark" | "light" | "high-contrast" } {
-  return msg.type === "theme";
+function isErrorMessage(msg: unknown): msg is { type: "error"; message: string } {
+  return isRecord(msg) && msg.type === "error" && typeof msg.message === "string";
+}
+
+function isThemeMessage(msg: unknown): msg is { type: "theme"; kind: "dark" | "light" | "high-contrast" } {
+  return isRecord(msg)
+    && msg.type === "theme"
+    && (msg.kind === "dark" || msg.kind === "light" || msg.kind === "high-contrast");
 }
 
 // Webview message type guards
-function isStartRunMessage(msg: OpenBurnBarPanelWebviewMessage): msg is { type: "startRun"; prompt: string; modelID: string; mode: "explain" | "fix" | "inspect" } {
-  return msg.type === "startRun";
+function isStartRunMessage(msg: unknown): msg is { type: "startRun"; prompt: string; modelID: string; mode: "explain" | "fix" | "inspect" } {
+  return isRecord(msg)
+    && msg.type === "startRun"
+    && typeof msg.prompt === "string"
+    && typeof msg.modelID === "string"
+    && (msg.mode === "explain" || msg.mode === "fix" || msg.mode === "inspect");
 }
 
 function isRefreshMessage(msg: OpenBurnBarPanelWebviewMessage): msg is { type: "refresh" } {
@@ -661,7 +667,7 @@ describe("WebView Message Protocol", () => {
     it("should validate required fields for each message type", () => {
       // StartRun requires prompt, modelID, and mode
       expect(() => {
-        const msg = { type: "startRun", prompt: "test", modelID: "m", mode: "explain" } as OpenBurnBarPanelWebviewMessage;
+        const msg: OpenBurnBarPanelWebviewMessage = { type: "startRun", prompt: "test", modelID: "m", mode: "explain" };
         if (msg.type === "startRun") {
           if (!msg.prompt || !msg.modelID || !msg.mode) {
             throw new Error("Missing required fields");
@@ -671,7 +677,7 @@ describe("WebView Message Protocol", () => {
 
       // SelectRun requires runId
       expect(() => {
-        const msg = { type: "selectRun", runId: "run-1" } as OpenBurnBarPanelWebviewMessage;
+        const msg: OpenBurnBarPanelWebviewMessage = { type: "selectRun", runId: "run-1" };
         if (msg.type === "selectRun") {
           if (!msg.runId) {
             throw new Error("Missing required fields");
@@ -762,10 +768,12 @@ describe("WebView Message Protocol", () => {
       };
 
       const serialized = JSON.stringify(message);
-      const deserialized = JSON.parse(serialized) as OpenBurnBarPanelHostMessage;
+      const deserialized: unknown = JSON.parse(serialized);
 
-      expect(deserialized.type).toBe("snapshot");
       expect(isSnapshotMessage(deserialized)).toBe(true);
+      if (!isSnapshotMessage(deserialized)) {
+        throw new Error("Expected snapshot message");
+      }
       expect(deserialized.viewModel.connectionStatus).toBe(viewModel.connectionStatus);
     });
 
@@ -778,10 +786,12 @@ describe("WebView Message Protocol", () => {
       };
 
       const serialized = JSON.stringify(message);
-      const deserialized = JSON.parse(serialized) as OpenBurnBarPanelWebviewMessage;
+      const deserialized: unknown = JSON.parse(serialized);
 
-      expect(deserialized.type).toBe("startRun");
       expect(isStartRunMessage(deserialized)).toBe(true);
+      if (!isStartRunMessage(deserialized)) {
+        throw new Error("Expected startRun message");
+      }
       expect(deserialized.prompt).toBe("Analyze code quality");
       expect(deserialized.mode).toBe("inspect");
     });

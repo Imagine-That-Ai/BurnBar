@@ -57,6 +57,9 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
+      - name: Check unsafe cast debt budget
+        run: ./scripts/debt/check-unsafe-cast-budget.sh
+
       - name: Inject Firebase config
         if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
         env:

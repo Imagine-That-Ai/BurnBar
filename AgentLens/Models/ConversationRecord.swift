@@ -146,11 +146,18 @@ struct ChatTranscriptPiece: Codable, Identifiable, Hashable {
 struct ChatMessageRecord: Codable, Identifiable, Hashable {
     let id: String
     let role: ChatMessageRole
-    let content: String
+    /// `var` so the streaming hot path can mutate content in-place via
+    /// `messages[idx].content = ...` instead of allocating a fresh
+    /// `ChatMessageRecord` per token chunk. Strings are copy-on-write, so
+    /// the per-chunk cost drops from a full struct + array reallocation to
+    /// just the new bytes of the content string.
+    var content: String
     let timestamp: Date
     let cliUsed: String?
-    /// Populated for assistant streams that emit tool events; empty means treat `content` as plain text.
-    let transcriptPieces: [ChatTranscriptPiece]
+    /// Populated for assistant streams that emit tool events; empty means
+    /// treat `content` as plain text. Mutable for the same hot-path reason
+    /// as `content`.
+    var transcriptPieces: [ChatTranscriptPiece]
     /// Files the user attached when sending this message. Persisted with the
     /// transcript so attachments stay visible after a chat is reopened.
     let attachments: [HermesAttachment]

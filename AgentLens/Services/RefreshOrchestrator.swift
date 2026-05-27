@@ -43,9 +43,7 @@ actor RefreshOrchestrator {
         let indexingEnabled = await MainActor.run { settingsManager.conversationIndexingEnabled }
         guard indexingEnabled else { return 0 }
         do {
-            let indexingReport = try await Task { @MainActor in
-                try await ConversationIndexer.shared.index(conversations, in: dataStore)
-            }.value
+            let indexingReport = try await ConversationIndexer.shared.index(conversations, in: dataStore)
             return indexingReport.changedRecordCount
         } catch {
             AppLogger.dataStore.error("Conversation indexing failed: \(error.localizedDescription)")
@@ -56,9 +54,7 @@ actor RefreshOrchestrator {
     func indexConversationsOffMain(_ conversations: [ConversationRecord], indexingEnabled: Bool) async -> Int {
         guard !conversations.isEmpty, indexingEnabled else { return 0 }
         do {
-            let indexingReport = try await Task { @MainActor in
-                try await ConversationIndexer.shared.index(conversations, in: dataStore)
-            }.value
+            let indexingReport = try await ConversationIndexer.shared.index(conversations, in: dataStore)
             return indexingReport.changedRecordCount
         } catch {
             AppLogger.dataStore.error("Conversation indexing failed: \(error.localizedDescription)")
@@ -106,7 +102,6 @@ actor RefreshOrchestrator {
 
         // 1. Billing reconciliation (nonisolated, runs off main thread via its own DB work)
         let actor = dataStore.actor
-        let usageStore = actor.usageStore
         let billingResult = await BillingRefreshCoordinator.reconcile(
             dataStoreActor: actor,
             usageAPIService: usageAPIService,

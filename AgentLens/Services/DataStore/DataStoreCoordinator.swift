@@ -45,6 +45,17 @@ final class DataStoreCoordinator {
     private(set) var usages: [TokenUsage] = []
     private(set) var isLoading = false
     private(set) var lastRefresh: Date?
+    /// Monotonically increasing counter bumped once per mutating write to
+    /// `usages`. Views that derive aggregations from the usage array should
+    /// `.onChange(of: dataStore.usagesVersion)` instead of observing the
+    /// `[TokenUsage]` array directly — observing the array re-evaluates the
+    /// view body whenever any element comparison wiggles, while observing the
+    /// `Int` re-evaluates exactly once per refresh. Wraparound is intentional
+    /// (`&+= 1`); SwiftUI only cares about inequality between successive
+    /// values.
+    ///
+    /// See `docs/architecture/macos-performance.md` for the migration guide.
+    private(set) var usagesVersion: Int = 0
     private var refreshGeneration = 0
 
     // MARK: - Forwarding Computed Properties (deprecated — use usageViewModel)
@@ -222,6 +233,7 @@ final class DataStoreCoordinator {
         usages = sortedUsages
         usageViewModel.replaceUsages(sortedUsages)
         lastRefresh = Date()
+        usagesVersion &+= 1
     }
 
     func replaceUsageSnapshot(_ snapshot: DashboardUsageSnapshot) {
@@ -229,6 +241,7 @@ final class DataStoreCoordinator {
         usages = sortedUsages
         usageViewModel.replaceUsageSnapshot(snapshot)
         lastRefresh = Date()
+        usagesVersion &+= 1
     }
 
     func refresh() async {

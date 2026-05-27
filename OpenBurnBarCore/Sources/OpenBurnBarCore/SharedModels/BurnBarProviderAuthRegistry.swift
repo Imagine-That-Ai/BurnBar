@@ -307,6 +307,7 @@ public enum BurnBarProviderAuthRegistry {
         anthropicDescriptor,
         googleDescriptor,
         xaiDescriptor,
+        mimoDescriptor,
         deepseekDescriptor,
         mistralDescriptor,
         cohereDescriptor,
@@ -688,6 +689,45 @@ public enum BurnBarProviderAuthRegistry {
         summary: "xAI Grok — OpenAI-compatible routing plus Management-API quota reporting (GrokBuild + SuperGrok tiers).",
         proxyHint: "Routed via api.x.ai (OpenAI-compatible).",
         quotaHint: "Add a Management Key for exact GrokBuild credit balance; SuperGrok tiers use local pacing estimates."
+    )
+
+    private static let mimoDescriptor = BurnBarProviderAuthDescriptor(
+        providerID: "mimo",
+        displayName: "Xiaomi MiMo",
+        aliasProviderIDs: ["xiaomi", "xiaomimimo"],
+        methods: [
+            BurnBarProviderAuthMethod(
+                id: "mimo-token-plan",
+                kind: .apiKey,
+                displayName: "MiMo Token Plan Key",
+                summary: "Regional Token Plan keys unlock proxy routing and quota.",
+                helperText: "Token Plan keys start with tp-…. Pick your subscription cluster (China, Singapore, or Europe) when connecting.",
+                placeholder: "tp-…",
+                prefixHint: "tp-",
+                dashboardURL: "https://platform.xiaomimimo.com/docs/en-US/tokenplan/subscription",
+                dashboardLabel: "MiMo Token Plan",
+                storage: .daemonSlot,
+                unlocksProxyRouting: true,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "mimo-payg",
+                kind: .apiKey,
+                displayName: "MiMo Pay-as-you-go Key",
+                summary: "Standard sk- keys route via api.xiaomimimo.com.",
+                helperText: "Pay-as-you-go keys start with sk-…. OpenBurnBar validates routing but balance is console-only today.",
+                placeholder: "sk-…",
+                prefixHint: "sk-",
+                dashboardURL: "https://platform.xiaomimimo.com",
+                dashboardLabel: "MiMo API keys",
+                storage: .daemonSlot,
+                unlocksProxyRouting: true,
+                unlocksQuotaRefresh: false
+            )
+        ],
+        summary: "Xiaomi MiMo — Token Plan and pay-as-you-go OpenAI-compatible routing.",
+        proxyHint: "Routed via api.xiaomimimo.com or regional token-plan hosts (OpenAI-compatible).",
+        quotaHint: "Token Plan quota uses vendor remains when available, otherwise BurnBar credit tracking against your tier."
     )
 
     private static let deepseekDescriptor = BurnBarProviderAuthDescriptor(

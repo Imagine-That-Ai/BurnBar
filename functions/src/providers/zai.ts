@@ -28,6 +28,7 @@ import type {
   QuotaRefreshResult,
   QuotaBucket,
 } from "../types.js";
+import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "zai" as const;
 
@@ -45,18 +46,18 @@ function redact(token: string): string {
   return `zai_${token.slice(0, 2)}***${token.slice(-4)}`;
 }
 
-interface ZaiFetchResult<T> {
+interface ZaiFetchResult {
   ok: boolean;
   status?: number;
-  data?: T;
+  data?: unknown;
   error?: string;
   errorCode?: string;
 }
 
-async function zaiFetch<T = unknown>(
+async function zaiFetch(
   url: string,
   token: string
-): Promise<ZaiFetchResult<T>> {
+): Promise<ZaiFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -83,7 +84,7 @@ async function zaiFetch<T = unknown>(
     return {
       ok: false,
       status: response.status,
-      data: payload as T,
+      data: payload,
       error: message,
       errorCode:
         response.status === 401 || response.status === 403
@@ -102,22 +103,22 @@ async function zaiFetch<T = unknown>(
     return {
       ok: false,
       status: response.status,
-      data: payload as T,
+      data: payload,
       error: inline,
       errorCode: code === 401 || code === 1001 ? "auth_failed" : "zai_error",
     };
   }
 
-  return { ok: true, status: response.status, data: payload as T };
+  return { ok: true, status: response.status, data: payload };
 }
 
 function inlineErrorMessage(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
-  const obj = payload as Record<string, unknown>;
+  const obj = recordOrUndefined(payload);
+  if (!obj) return undefined;
 
   // paas/v4 error shape: { error: { code, message } }
-  const error = obj.error as Record<string, unknown> | undefined;
-  if (error && typeof error === "object") {
+  const error = recordOrUndefined(obj.error);
+  if (error) {
     const message = stringFromAny(error.message ?? error.msg);
     if (message) return message;
   }
@@ -140,25 +141,25 @@ function inlineErrorMessage(payload: unknown): string | undefined {
 }
 
 function extractInlineCode(payload: unknown): number | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
-  const obj = payload as Record<string, unknown>;
+  const obj = recordOrUndefined(payload);
+  if (!obj) return undefined;
   const direct = numberFromAny(obj.code);
   if (direct !== undefined) return direct;
-  const error = obj.error as Record<string, unknown> | undefined;
-  if (error && typeof error === "object") {
+  const error = recordOrUndefined(obj.error);
+  if (error) {
     return numberFromAny(error.code ?? error.status);
   }
   return undefined;
 }
 
-async function tryEachHost<T>(
+async function tryEachHost(
   path: string,
   token: string
-): Promise<ZaiFetchResult<T>> {
-  let lastFailure: ZaiFetchResult<T> | undefined;
+): Promise<ZaiFetchResult> {
+  let lastFailure: ZaiFetchResult | undefined;
   for (const host of HOSTS) {
     const url = `${host}${path}`;
-    const result = await zaiFetch<T>(url, token);
+    const result = await zaiFetch(url, token);
     if (result.ok) return result;
     lastFailure = result;
     // Don't try the second host when the credential is rejected — we know it
@@ -214,7 +215,7 @@ export const zaiAdapter: ProviderAdapter = {
       };
     }
 
-    const result = await tryEachHost<unknown>(VALIDATE_PATH, trimmed);
+    const result = await tryEachHost(VALIDATE_PATH, trimmed);
     if (!result.ok) {
       return {
         valid: false,
@@ -241,7 +242,7 @@ export const zaiAdapter: ProviderAdapter = {
     type Confidence = "high" | "medium" | "low" | "stale";
 
     // Coding Plan keys (server-side rate windows) live under monitor/*.
-    const coding = await tryEachHost<ZaiMonitorQuotaPayload>(QUOTA_PATH, trimmed);
+    const coding = await tryEachHost(QUOTA_PATH, trimmed);
     let buckets: QuotaBucket[] = [];
     let source = "Z.ai";
     let confidence: Confidence = "high";
@@ -254,7 +255,7 @@ export const zaiAdapter: ProviderAdapter = {
 
     if (buckets.length === 0) {
       // Pay-as-you-go balance fallback.
-      const balance = await tryEachHost<ZaiBalancePayload>(BALANCE_PATH, trimmed);
+      const balance = await tryEachHost(BALANCE_PATH, trimmed);
       if (!balance.ok && !coding.ok) {
         // Both probes failed — surface the most useful error. Auth failures
         // win over generic "endpoint not found" misses.
@@ -292,23 +293,31 @@ export const zaiAdapter: ProviderAdapter = {
 };
 
 function bucketsFromMonitorQuota(
-  payload: ZaiMonitorQuotaPayload | undefined
+  payload: unknown
 ): QuotaBucket[] {
-  if (!payload) return [];
+  const record = recordOrUndefined(payload);
+  if (!record) return [];
 
   // First, try the documented shapes (`data.quotaList` / top-level
   // `quotaList`) so well-behaved deployments produce the cleanest output.
-  const list = payload.data?.quotaList ?? payload.quotaList;
+  const data = recordOrUndefined(record.data);
+  const list = Array.isArray(data?.quotaList)
+    ? data.quotaList
+    : Array.isArray(record.quotaList)
+      ? record.quotaList
+      : undefined;
   if (Array.isArray(list) && list.length > 0) {
     return list
       .map((row, index): QuotaBucket | undefined => {
-        const used = numberFromAny(row.used) ?? 0;
-        const limit = numberFromAny(row.limit) ?? -1;
+        const entry = recordOrUndefined(row);
+        if (!entry) return undefined;
+        const used = numberFromAny(entry.used) ?? 0;
+        const limit = numberFromAny(entry.limit) ?? -1;
         const remaining =
-          numberFromAny(row.remaining) ??
+          numberFromAny(entry.remaining) ??
           (limit >= 0 ? Math.max(0, limit - used) : -1);
         const window =
-          stringFromAny(row.window ?? row.windowName) ?? `window_${index + 1}`;
+          stringFromAny(entry.window ?? entry.windowName) ?? `window_${index + 1}`;
         return {
           name: window,
           used,
@@ -325,19 +334,20 @@ function bucketsFromMonitorQuota(
   // This mirrors the permissive detector the macOS adapter uses so users on
   // Z.ai Coding Plan tiers that ship newer payload shapes still see a quota
   // tile instead of a blank dashboard.
-  const harvested = harvestQuotaBuckets(payload);
+  const harvested = harvestQuotaBuckets(record);
   return harvested;
 }
 
 function bucketsFromBalance(
-  payload: ZaiBalancePayload | undefined
+  payload: unknown
 ): QuotaBucket[] {
-  if (!payload) return [];
-  const data = payload.data ?? payload;
+  const record = recordOrUndefined(payload);
+  if (!record) return [];
+  const nested = recordOrUndefined(record.data) ?? record;
 
-  const total = numberFromAny(data.total);
-  const used = numberFromAny(data.used) ?? 0;
-  const balance = numberFromAny(data.balance);
+  const total = numberFromAny(nested.total);
+  const used = numberFromAny(nested.used) ?? 0;
+  const balance = numberFromAny(nested.balance);
 
   if (total !== undefined) {
     return [
@@ -347,7 +357,7 @@ function bucketsFromBalance(
         limit: total,
         remaining: Math.max(0, total - used),
         window: "account",
-        meta: { currency: stringFromAny(data.currency) ?? "CNY" },
+        meta: { currency: stringFromAny(nested.currency) ?? "CNY" },
       },
     ];
   }
@@ -359,7 +369,7 @@ function bucketsFromBalance(
         limit: -1,
         remaining: balance,
         window: "account",
-        meta: { currency: stringFromAny(data.currency) ?? "CNY" },
+        meta: { currency: stringFromAny(nested.currency) ?? "CNY" },
       },
     ];
   }
@@ -386,7 +396,8 @@ function harvestQuotaBuckets(payload: unknown): QuotaBucket[] {
       return;
     }
 
-    const obj = node as Record<string, unknown>;
+    const obj = recordOrUndefined(node);
+    if (!obj) return;
     const candidate = bucketFromObject(obj, path);
     if (candidate) {
       const key = `${candidate.name}|${candidate.window}|${candidate.limit}|${candidate.used}`;

@@ -36,6 +36,7 @@ public struct ProviderID: RawRepresentable, Codable, Hashable, Sendable, Express
     public static let factory = ProviderID(rawValue: "factory")
     public static let antigravity = ProviderID(rawValue: "antigravity")
     public static let xAI = ProviderID(rawValue: "xai")
+    public static let mimo = ProviderID(rawValue: "mimo")
 }
 
 // MARK: - Provider Account Status
@@ -99,6 +100,11 @@ public struct ProviderAccountDoc: Codable, Identifiable, Hashable, Sendable {
     public let lastValidatedAt: Date?
     public let lastRefreshAt: Date?
     public let lastErrorCode: String?
+    public let endpointProfileID: String?
+    public let region: ProviderEndpointRegion?
+    public let tokenPlanTier: MimoTokenPlanTier?
+    public let tokenPlanBillingCycle: MimoTokenPlanBillingCycle?
+    public let authMethodID: String?
     public let schemaVersion: Int
     public let createdAt: Date
     public let updatedAt: Date
@@ -119,7 +125,12 @@ public struct ProviderAccountDoc: Codable, Identifiable, Hashable, Sendable {
         lastValidatedAt: Date? = nil,
         lastRefreshAt: Date? = nil,
         lastErrorCode: String? = nil,
-        schemaVersion: Int = 1,
+        endpointProfileID: String? = nil,
+        region: ProviderEndpointRegion? = nil,
+        tokenPlanTier: MimoTokenPlanTier? = nil,
+        tokenPlanBillingCycle: MimoTokenPlanBillingCycle? = nil,
+        authMethodID: String? = nil,
+        schemaVersion: Int = 2,
         createdAt: Date,
         updatedAt: Date
     ) {
@@ -138,9 +149,65 @@ public struct ProviderAccountDoc: Codable, Identifiable, Hashable, Sendable {
         self.lastValidatedAt = lastValidatedAt
         self.lastRefreshAt = lastRefreshAt
         self.lastErrorCode = lastErrorCode
+        self.endpointProfileID = endpointProfileID
+        self.region = region
+        self.tokenPlanTier = tokenPlanTier
+        self.tokenPlanBillingCycle = tokenPlanBillingCycle
+        self.authMethodID = authMethodID
         self.schemaVersion = schemaVersion
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+}
+
+// MARK: - Connect metadata (endpoint profiles)
+
+public struct ProviderAccountConnectMetadata: Sendable, Hashable {
+    public var endpointProfileID: String?
+    public var region: ProviderEndpointRegion?
+    public var tokenPlanTier: MimoTokenPlanTier?
+    public var tokenPlanBillingCycle: MimoTokenPlanBillingCycle?
+    public var authMethodID: String?
+
+    public init(
+        endpointProfileID: String? = nil,
+        region: ProviderEndpointRegion? = nil,
+        tokenPlanTier: MimoTokenPlanTier? = nil,
+        tokenPlanBillingCycle: MimoTokenPlanBillingCycle? = nil,
+        authMethodID: String? = nil
+    ) {
+        self.endpointProfileID = endpointProfileID
+        self.region = region
+        self.tokenPlanTier = tokenPlanTier
+        self.tokenPlanBillingCycle = tokenPlanBillingCycle
+        self.authMethodID = authMethodID
+    }
+
+    public static func mimo(
+        authMethodID: String,
+        region: ProviderEndpointRegion,
+        tier: MimoTokenPlanTier?,
+        billingCycle: MimoTokenPlanBillingCycle
+    ) -> ProviderAccountConnectMetadata {
+        switch authMethodID {
+        case "mimo-token-plan":
+            let profile = ProviderEndpointProfileRegistry.mimoTokenPlan(region: region)
+            return ProviderAccountConnectMetadata(
+                endpointProfileID: profile.id,
+                region: region,
+                tokenPlanTier: tier,
+                tokenPlanBillingCycle: billingCycle,
+                authMethodID: authMethodID
+            )
+        case "mimo-payg":
+            return ProviderAccountConnectMetadata(
+                endpointProfileID: ProviderEndpointProfileRegistry.mimoPayg.id,
+                region: .global,
+                authMethodID: authMethodID
+            )
+        default:
+            return ProviderAccountConnectMetadata(authMethodID: authMethodID)
+        }
     }
 }
 
@@ -890,16 +957,23 @@ public enum ProviderRoutingPolicy {
 
     public static func sanitizedAuditText(_ value: String) -> String {
         var result = value
-        let patterns = [
-            #"sk-[A-Za-z0-9_\-]{6,}"#,
-            #"(?i)bearer\s+[A-Za-z0-9._\-]{6,}"#,
-            #"(?i)(api[_-]?key|token|credential|secretVersionName|secret|cookie)\s*[:=]\s*[^,\s]+"#
-        ]
-        for pattern in patterns {
-            result = result.replacingOccurrences(of: pattern, with: "[redacted]", options: .regularExpression)
+        for expression in auditTextRedactionExpressions {
+            let range = NSRange(result.startIndex..<result.endIndex, in: result)
+            result = expression.stringByReplacingMatches(
+                in: result,
+                options: [],
+                range: range,
+                withTemplate: "[redacted]"
+            )
         }
         return result
     }
+
+    private static let auditTextRedactionExpressions: [NSRegularExpression] = [
+        #"sk-[A-Za-z0-9_\-]{6,}"#,
+        #"(?i)bearer\s+[A-Za-z0-9._\-]{6,}"#,
+        #"(?i)(api[_-]?key|token|credential|secretVersionName|secret|cookie)\s*[:=]\s*[^,\s]+"#
+    ].compactMap { try? NSRegularExpression(pattern: $0) }
 
     public static func normalizedCanonicalModelID(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

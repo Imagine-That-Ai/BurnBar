@@ -14,8 +14,8 @@ final class DashboardChatWorkspaceViewTests: XCTestCase {
         onPopOut: (() -> Void)? = nil,
         onRestoreFloating: (() -> Void)? = nil,
         onClose: (() -> Void)? = nil
-    ) -> DashboardChatWorkspaceView {
-        let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
+    ) throws -> DashboardChatWorkspaceView {
+        let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
         let settingsManager = makeSettingsManager()
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         return DashboardChatWorkspaceView(
@@ -32,19 +32,19 @@ final class DashboardChatWorkspaceViewTests: XCTestCase {
     }
 
     func test_inspectsWithoutCrashing_embedded() throws {
-        let view = makeWorkspace(mode: .embedded, onPopOut: {}, onRestoreFloating: {})
+        let view = try makeWorkspace(mode: .embedded, onPopOut: {}, onRestoreFloating: {})
         XCTAssertNoThrow(try view.inspect())
     }
 
     func test_inspectsWithoutCrashing_popOut() throws {
-        let view = makeWorkspace(mode: .popOut, onClose: {})
+        let view = try makeWorkspace(mode: .popOut, onClose: {})
         XCTAssertNoThrow(try view.inspect())
     }
 
-    func test_embeddedMode_exposesPopOutAndRestore() {
+    func test_embeddedMode_exposesPopOutAndRestore() throws {
         var popOutCalled = false
         var restoreCalled = false
-        let view = makeWorkspace(
+        let view = try makeWorkspace(
             mode: .embedded,
             onPopOut: { popOutCalled = true },
             onRestoreFloating: { restoreCalled = true }
@@ -59,15 +59,15 @@ final class DashboardChatWorkspaceViewTests: XCTestCase {
         XCTAssertTrue(restoreCalled)
     }
 
-    func test_popOutMode_exposesClose() {
+    func test_popOutMode_exposesClose() throws {
         var closeCalled = false
-        let view = makeWorkspace(mode: .popOut, onClose: { closeCalled = true })
+        let view = try makeWorkspace(mode: .popOut, onClose: { closeCalled = true })
         view.onClose?()
         XCTAssertTrue(closeCalled)
     }
 
-    func test_workspaceUsesEmbeddedModeByDefault() {
-        let view = makeWorkspace()
+    func test_workspaceUsesEmbeddedModeByDefault() throws {
+        let view = try makeWorkspace()
         XCTAssertEqual(view.mode, .embedded)
     }
 }

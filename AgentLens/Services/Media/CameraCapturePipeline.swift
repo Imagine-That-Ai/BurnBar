@@ -1,5 +1,5 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import OpenBurnBarMedia
 
 /// Mac webcam capture for Phase 5 video calls.
@@ -86,9 +86,18 @@ extension CameraCapturePipeline: AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        let snapshot = sampleBuffer
-        Task.detached(priority: .userInitiated) { [weak self] in
-            await self?.onFrame(snapshot)
+        let snapshot = SendableCameraSampleBuffer(sampleBuffer)
+        Task(priority: .userInitiated) { @MainActor [weak self, snapshot] in
+            guard let onFrame = self?.onFrame else { return }
+            await onFrame(snapshot.sampleBuffer)
         }
+    }
+}
+
+private struct SendableCameraSampleBuffer: @unchecked Sendable {
+    let sampleBuffer: CMSampleBuffer
+
+    init(_ sampleBuffer: CMSampleBuffer) {
+        self.sampleBuffer = sampleBuffer
     }
 }

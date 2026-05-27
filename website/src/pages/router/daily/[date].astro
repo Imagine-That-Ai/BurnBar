@@ -12,8 +12,8 @@ export async function getStaticPaths() {
   }));
 }
 
-const { rundown } = Astro.props as { rundown: RouterDailyRundown };
-const { date } = Astro.params as { date: string };
+const rundown: RouterDailyRundown = Astro.props.rundown;
+const date = Astro.params.date ?? rundown.date;
 
 const idx = ALL_RUNDOWNS.findIndex((r) => r.date === date);
 const newer = idx > 0 ? ALL_RUNDOWNS[idx - 1] : undefined;

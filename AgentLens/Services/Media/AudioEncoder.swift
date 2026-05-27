@@ -1,6 +1,28 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import OpenBurnBarMedia
+
+private final class AudioEncoderInputProvider: @unchecked Sendable {
+    private let lock = NSLock()
+    private let buffer: AVAudioPCMBuffer
+    private var didProvideInput = false
+
+    init(buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
+    }
+
+    func provide(outStatus: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didProvideInput else {
+            outStatus.pointee = .noDataNow
+            return nil
+        }
+        didProvideInput = true
+        outStatus.pointee = .haveData
+        return buffer
+    }
+}
 
 /// Audio encoder for Phase 4. Defaults to Apple's built-in Opus codec
 /// (`kAudioFormatOpus`, available macOS 12+ / iOS 16+) which is wire-
@@ -113,15 +135,9 @@ final class AudioEncoder {
     func encode(buffer: AVAudioPCMBuffer) async throws {
         let outputBuffer = AVAudioCompressedBuffer(format: outputFormat, packetCapacity: 1, maximumPacketSize: 4_000)
         var error: NSError?
-        var didProvideInput = false
+        let inputProvider = AudioEncoderInputProvider(buffer: buffer)
         let status = converter.convert(to: outputBuffer, error: &error) { _, outStatus in
-            if didProvideInput {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            didProvideInput = true
-            outStatus.pointee = .haveData
-            return buffer
+            inputProvider.provide(outStatus: outStatus)
         }
         if let error { throw Failure.encodeFailed(error.localizedDescription) }
         guard status != .error else { throw Failure.encodeFailed("status=error") }

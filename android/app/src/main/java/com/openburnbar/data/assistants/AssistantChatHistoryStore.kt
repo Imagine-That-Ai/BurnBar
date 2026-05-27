@@ -542,7 +542,6 @@ internal class AssistantChatFirestoreMirror(
         return map
     }
 
-    @Suppress("UNCHECKED_CAST")
     internal fun decodeThread(documentID: String, data: Map<String, Any?>): AssistantChatThread? {
         val runtime = data["runtime"] as? String ?: return null
         val id = (data["id"] as? String) ?: documentID
@@ -551,7 +550,7 @@ internal class AssistantChatFirestoreMirror(
         val modelName = data["modelName"] as? String
         val createdAt = (data["createdAt"] as? Timestamp)?.toDate()?.time ?: System.currentTimeMillis()
         val updatedAt = (data["updatedAt"] as? Timestamp)?.toDate()?.time ?: createdAt
-        val rawMessages = data["messages"] as? List<Map<String, Any?>> ?: emptyList()
+        val rawMessages = data["messages"].asStringAnyNullableMapList()
         val messages = rawMessages.mapNotNull(::decodeMessage)
         val customTitle = data["customTitle"] as? String
         val labelColorHex = data["labelColorHex"] as? String
@@ -573,7 +572,6 @@ internal class AssistantChatFirestoreMirror(
         )
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun decodeMessage(raw: Map<String, Any?>): AssistantChatMessage? {
         val role = raw["role"] as? String ?: return null
         val text = raw["text"] as? String ?: return null
@@ -582,10 +580,10 @@ internal class AssistantChatFirestoreMirror(
         val modelName = raw["modelName"] as? String
         val isError = (raw["isError"] as? Boolean) ?: false
 
-        val attachmentDicts = raw["attachments"] as? List<Map<String, Any?>> ?: emptyList()
+        val attachmentDicts = raw["attachments"].asStringAnyNullableMapList()
         val attachments = attachmentDicts.mapNotNull(::decodeAttachment)
 
-        val hermesDict = raw["hermes"] as? Map<String, Any?>
+        val hermesDict = raw["hermes"].asStringAnyNullableMap()
         val hermes = hermesDict?.let(::decodeHermesMetadata)
 
         return AssistantChatMessage(
@@ -618,18 +616,17 @@ internal class AssistantChatFirestoreMirror(
         )
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun decodeHermesMetadata(raw: Map<String, Any?>): AssistantChatHermesMetadata? {
         val requested = raw["requestedModelID"] as? String
         val response = raw["responseModelID"] as? String
-        val toolCallDicts = raw["toolCalls"] as? List<Map<String, Any?>> ?: emptyList()
+        val toolCallDicts = raw["toolCalls"].asStringAnyNullableMapList()
         val toolCalls = toolCallDicts.mapNotNull { tc ->
             val id = tc["id"] as? String ?: return@mapNotNull null
             val name = tc["name"] as? String ?: return@mapNotNull null
             val status = tc["status"] as? String ?: return@mapNotNull null
             AssistantChatToolCall(id, name, status)
         }
-        val usageDict = raw["usage"] as? Map<String, Any?>
+        val usageDict = raw["usage"].asStringAnyNullableMap()
         val usage = usageDict?.let { dict ->
             AssistantChatTokenUsage(
                 outputTokens = (dict["outputTokens"] as? Number)?.toInt(),
@@ -645,4 +642,18 @@ internal class AssistantChatFirestoreMirror(
         if (requested == null && response == null && toolCalls.isEmpty() && usage == null) return null
         return AssistantChatHermesMetadata(requested, response, toolCalls, usage)
     }
+}
+
+private fun Any?.asStringAnyNullableMap(): Map<String, Any?>? {
+    val raw = this as? Map<*, *> ?: return null
+    val typed = LinkedHashMap<String, Any?>(raw.size)
+    for ((key, value) in raw) {
+        typed[key as? String ?: return null] = value
+    }
+    return typed
+}
+
+private fun Any?.asStringAnyNullableMapList(): List<Map<String, Any?>> {
+    val raw = this as? List<*> ?: return emptyList()
+    return raw.mapNotNull { it.asStringAnyNullableMap() }
 }

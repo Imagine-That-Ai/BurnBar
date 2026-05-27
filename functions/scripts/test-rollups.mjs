@@ -10,8 +10,9 @@ const now = new Date();
 
 const usageDocs = [
   {
-    provider: "Kimi",
+    provider: "kimi",
     providerID: "kimi",
+    schemaVersion: 1,
     sessionId: "kimi-session-1",
     model: "chatcmpl-legacy-message-id",
     inputTokens: 1_250,
@@ -23,8 +24,9 @@ const usageDocs = [
     startTime: now.toISOString(),
   },
   {
-    provider: "Codex",
+    provider: "codex",
     providerID: "codex",
+    schemaVersion: 1,
     sessionId: "codex-session-1",
     model: "gpt-5.5",
     inputTokens: 100,
@@ -34,8 +36,9 @@ const usageDocs = [
     startTime: now.toISOString(),
   },
   {
-    provider: "Codex",
+    provider: "codex",
     providerID: "codex",
+    schemaVersion: 1,
     sessionId: "codex-session-1",
     model: "unknown",
     inputTokens: 100,
@@ -156,9 +159,9 @@ const today = rollups.today;
 assert.equal(today.totals.requests, 2);
 assert.equal(today.totals.tokens, 1_875);
 assert.equal(today.today, 1_875);
-assert.equal(today.providerSummaries.find((p) => p.provider === "Kimi")?.totalTokens, 1_750);
-assert.equal(today.modelSummaries.find((m) => m.provider === "Kimi")?.model, "kimi-for-coding");
-assert.equal(today.modelSummaries.find((m) => m.provider === "Kimi")?.tokens, 1_750);
+assert.equal(today.providerSummaries.find((p) => p.provider === "kimi")?.totalTokens, 1_750);
+assert.equal(today.modelSummaries.find((m) => m.provider === "kimi")?.model, "kimi-for-coding");
+assert.equal(today.modelSummaries.find((m) => m.provider === "kimi")?.tokens, 1_750);
 assert.equal(today.totals.costUsd, 0.00291);
 
 await applyUsageCounterDelta(db, "test-uid", "usage-1", usageDocs[1], undefined);
@@ -166,7 +169,7 @@ const repairedThenUpdated = await computeUserRollupsFromCounters(db, "test-uid")
 assert.equal(repairedThenUpdated.today.totals.requests, 2);
 assert.equal(repairedThenUpdated.today.totals.tokens, 1_875);
 assert.equal(
-  repairedThenUpdated.today.modelSummaries.find((m) => m.provider === "Codex")?.model,
+  repairedThenUpdated.today.modelSummaries.find((m) => m.provider === "codex")?.model,
   "unknown"
 );
 

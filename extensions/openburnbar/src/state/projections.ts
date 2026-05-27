@@ -10,6 +10,20 @@ import type {
 } from '../types';
 import type { BurnBarWorkspaceCapabilities } from '../workspace/types';
 
+const READINESS_REASON_CODES = new Set<string>([
+  'missing_credential',
+  'invalid_repo_branch',
+  'runtime_unavailable',
+  'insufficient_credential_permissions'
+]);
+
+const ENTERPRISE_POLICY_REASON_CODES = new Set<string>([
+  'policy_budget_hard_cap_blocked',
+  'policy_approval_required_by_mode',
+  'policy_real_integration_required',
+  'policy_configuration_invalid'
+]);
+
 export interface BurnBarHealthRow {
   id: string;
   label: string;
@@ -727,29 +741,17 @@ function extractReadinessFailure(
     return undefined;
   }
 
-  const readiness = metadata.readinessFailure as
-    | { code: string; detail: string }
-    | undefined;
+  const readiness = asObject(metadata.readinessFailure);
 
-  if (!readiness?.code || !readiness?.detail) {
-    return undefined;
-  }
-
-  // Validate that the code is one of the known reason codes
-  const validCodes: BurnBarReadinessReasonCode[] = [
-    'missing_credential',
-    'invalid_repo_branch',
-    'runtime_unavailable',
-    'insufficient_credential_permissions'
-  ];
-
-  if (!validCodes.includes(readiness.code as BurnBarReadinessReasonCode)) {
+  const code = asString(readiness?.code);
+  const detail = asString(readiness?.detail);
+  if (!code || !detail || !isReadinessReasonCode(code)) {
     return undefined;
   }
 
   return {
-    code: readiness.code as BurnBarReadinessReasonCode,
-    detail: readiness.detail
+    code,
+    detail
   };
 }
 
@@ -770,22 +772,12 @@ function extractEnterprisePolicyBlock(
 
   const reasonCode = asString(blockSource.reasonCode) ?? asString(blockSource.reason_code);
   const detail = asString(blockSource.detail);
-  if (!reasonCode || !detail) {
-    return undefined;
-  }
-
-  const validCodes: BurnBarEnterprisePolicyReasonCode[] = [
-    'policy_budget_hard_cap_blocked',
-    'policy_approval_required_by_mode',
-    'policy_real_integration_required',
-    'policy_configuration_invalid'
-  ];
-  if (!validCodes.includes(reasonCode as BurnBarEnterprisePolicyReasonCode)) {
+  if (!reasonCode || !detail || !isEnterprisePolicyReasonCode(reasonCode)) {
     return undefined;
   }
 
   return {
-    reasonCode: reasonCode as BurnBarEnterprisePolicyReasonCode,
+    reasonCode,
     detail,
     approvalMode: asString(blockSource.approvalMode) ?? asString(blockSource.approval_mode),
     budgetHardCapUSD: asNumber(blockSource.budgetHardCapUSD) ?? asNumber(blockSource.budget_hard_cap_usd),
@@ -1329,7 +1321,15 @@ function asObject(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
   }
-  return value as Record<string, unknown>;
+  return Object.fromEntries(Object.entries(value));
+}
+
+function isReadinessReasonCode(value: string): value is BurnBarReadinessReasonCode {
+  return READINESS_REASON_CODES.has(value);
+}
+
+function isEnterprisePolicyReasonCode(value: string): value is BurnBarEnterprisePolicyReasonCode {
+  return ENTERPRISE_POLICY_REASON_CODES.has(value);
 }
 
 function asString(value: unknown): string | undefined {

@@ -88,8 +88,7 @@ public final class MacAccessibilityInspector: @unchecked Sendable {
             kAXFocusedUIElementAttribute as CFString,
             &rawFocused
         )
-        guard err == .success, let focused = rawFocused else { return nil }
-        let element = focused as! AXUIElement
+        guard err == .success, let element = axElement(rawFocused) else { return nil }
         let role = attributeString(element, kAXRoleAttribute as CFString)
         let subrole = attributeString(element, kAXSubroleAttribute as CFString)
         let roleDescription = attributeString(element, kAXRoleDescriptionAttribute as CFString)
@@ -151,9 +150,9 @@ public final class MacAccessibilityInspector: @unchecked Sendable {
         let appElement = AXUIElementCreateApplication(frontmost.processIdentifier)
         var focused: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focused)
-        guard err == .success, let window = focused else { return nil }
+        guard err == .success, let window = axElement(focused) else { return nil }
         var title: CFTypeRef?
-        _ = AXUIElementCopyAttributeValue(window as! AXUIElement, kAXTitleAttribute as CFString, &title)
+        _ = AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &title)
         return title as? String
     }
 }

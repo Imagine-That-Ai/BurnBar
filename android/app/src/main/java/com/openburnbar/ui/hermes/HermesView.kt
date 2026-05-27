@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.*
+import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.ui.components.*
 import com.openburnbar.ui.computeruse.AgentPermissionGrantSheet
 import com.openburnbar.ui.navigation.HermesPendingPrompt
@@ -305,9 +306,16 @@ fun ChatView(
     threadId: String = "",
     textExpansionSnippets: List<com.openburnbar.data.text.TextExpansionSnippet> = emptyList(),
 ) {
+    val context = LocalContext.current
     androidx.compose.runtime.LaunchedEffect(threadId) {
         if (threadId.isNotEmpty()) {
             com.openburnbar.data.computeruse.SystemPermissionInboxStoreHolder.activeThreadId = threadId
+            AgentReplyNotificationState.setActiveChat(
+                context = context,
+                runtime = AssistantRuntimeID.HERMES.token,
+                threadId = threadId,
+                surface = "android_hermes_chat",
+            )
         }
     }
     androidx.compose.runtime.DisposableEffect(threadId) {
@@ -315,6 +323,12 @@ fun ChatView(
             if (com.openburnbar.data.computeruse.SystemPermissionInboxStoreHolder.activeThreadId == threadId) {
                 com.openburnbar.data.computeruse.SystemPermissionInboxStoreHolder.activeThreadId = null
             }
+            AgentReplyNotificationState.setActiveChat(
+                context = context,
+                runtime = null,
+                threadId = null,
+                surface = null,
+            )
         }
     }
     var inputText by remember { mutableStateOf("") }
@@ -323,7 +337,6 @@ fun ChatView(
     }
     var showModelPicker by remember { mutableStateOf(false) }
     var showConnectionSettings by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     var chatViewMode by remember(context) {
         mutableStateOf(
             ChatViewMode.fromKey(

@@ -10,12 +10,12 @@ import GRDB
 final class DashboardOverviewViewTests: XCTestCase {
 
     func test_rendersWithData() throws {
-        let view = makeOverviewView()
+        let view = try makeOverviewView()
         XCTAssertNoThrow(try view.inspect())
     }
 
-    private func makeOverviewView() -> some View {
-        let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), refreshOnInit: false)
+    private func makeOverviewView() throws -> some View {
+        let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), refreshOnInit: false))
         let settingsManager = makeSettingsManager()
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         let layer = OpenBurnBarOperatingLayer(dataStore: store, settingsManager: settingsManager)

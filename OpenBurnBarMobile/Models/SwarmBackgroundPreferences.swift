@@ -116,8 +116,9 @@ public final class SwarmEnvironmentMonitor: ObservableObject {
         #endif
 
         monitor.pathUpdateHandler = { [weak self] path in
-            DispatchQueue.main.async {
-                self?.isWiFiConnected = path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)
+            let isWiFiConnected = path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)
+            Task { @MainActor [weak self, isWiFiConnected] in
+                self?.isWiFiConnected = isWiFiConnected
             }
         }
         monitor.start(queue: DispatchQueue.global(qos: .background))

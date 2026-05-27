@@ -18,7 +18,8 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Test
+import com.openburnbar.test.ecPublicKey
+import com.openburnbar.test.requireClassLoaderResourceText
 
 /**
  * Cross-platform wire-format contract test. Pins the Android relay
@@ -52,9 +53,10 @@ class HermesRelayWireVectorTest {
     }
 
     private val fixture: JSONObject by lazy {
-        val raw = javaClass.classLoader!!.getResourceAsStream(
+        val raw = requireClassLoaderResourceText(
+            javaClass.classLoader,
             "hermes-relay/HermesRelayWireVector.json",
-        )!!.bufferedReader().use { it.readText() }
+        )
         JSONObject(raw)
     }
 
@@ -192,13 +194,15 @@ class HermesRelayWireVectorTest {
         // X9.63 representation in the fixture.
         val expectedPub = java.util.Base64.getDecoder().decode(fixture.getString("recipientPublicKey"))
         val derived = HermesRelayCrypto.decodeUncompressedPublicKey(expectedPub)
-            as java.security.interfaces.ECPublicKey
+            as? java.security.interfaces.ECPublicKey
+            ?: error("Expected EC public key from decoded bytes")
         assertEquals(65, expectedPub.size)
         assertTrue("derived pub matches encoded shape", derived.w != null)
         // ECPoint round-trip sanity.
         val pubFromSpec = kf.generatePublic(
             ECPublicKeySpec(derived.w, ecParams),
-        ) as java.security.interfaces.ECPublicKey
+        ) as? java.security.interfaces.ECPublicKey
+            ?: error("Expected EC public key from key spec")
         assertEquals(pubFromSpec.w.affineX, derived.w.affineX)
         return priv
     }

@@ -98,22 +98,24 @@ enum OpenBurnBarDaemonRuntimeStateSource: Equatable {
     }
 }
 
-struct OpenBurnBarDaemonDependencies {
+struct OpenBurnBarDaemonDependencies: Sendable {
     let fileManager: FileManager
-    let runProcess: (String, [String]) throws -> String
-    let resolveDaemonBinary: () -> URL?
-    let requestHealth: (URL) throws -> BurnBarHealthResponse
-    let requestConfig: (URL) throws -> BurnBarProviderConfigurationSnapshot
-    let updateConfig: (URL, BurnBarProviderConfigurationSnapshot) throws -> BurnBarProviderConfigurationSnapshot
-    let requestRecentUsage: (URL, Int) throws -> [BurnBarUsageEvent]
-    let requestControllerProjects: (URL) throws -> [BurnBarReviewProjectSnapshot]
-    let upsertControllerProject: (URL, BurnBarReviewProjectSnapshot) throws -> BurnBarReviewProjectSnapshot?
-    let recordControllerReviewRun: (URL, BurnBarReviewRunSnapshot) throws -> BurnBarControllerReviewRunRecordResponse
+    let runProcess: @Sendable (String, [String]) throws -> String
+    let resolveDaemonBinary: @Sendable () -> URL?
+    let requestHealth: @Sendable (URL) throws -> BurnBarHealthResponse
+    let requestConfig: @Sendable (URL) throws -> BurnBarProviderConfigurationSnapshot
+    let updateConfig: @Sendable (URL, BurnBarProviderConfigurationSnapshot) throws -> BurnBarProviderConfigurationSnapshot
+    let requestRecentUsage: @Sendable (URL, Int) throws -> [BurnBarUsageEvent]
+    let requestControllerProjects: @Sendable (URL) throws -> [BurnBarReviewProjectSnapshot]
+    let upsertControllerProject: @Sendable (URL, BurnBarReviewProjectSnapshot) throws -> BurnBarReviewProjectSnapshot?
+    let recordControllerReviewRun: @Sendable (URL, BurnBarReviewRunSnapshot) throws -> BurnBarControllerReviewRunRecordResponse
 
     static func live(fileManager: FileManager = .default) -> OpenBurnBarDaemonDependencies {
         OpenBurnBarDaemonDependencies(
             fileManager: fileManager,
-            runProcess: OpenBurnBarDaemonProcessRunner.run,
+            runProcess: { executable, arguments in
+                try OpenBurnBarDaemonProcessRunner.run(executable: executable, arguments: arguments)
+            },
             resolveDaemonBinary: {
                 OpenBurnBarDaemonBinaryResolver.resolve(
                     appBundleURL: Bundle.main.bundleURL,
@@ -246,6 +248,23 @@ final class OpenBurnBarDaemonManager {
         }.value
     }
 
+    /// Process launch and `waitUntilExit` are blocking Foundation calls. Keep them off the main actor.
+    func daemonProcess(_ executable: String, _ arguments: [String]) async throws -> String {
+        let runProcess = dependencies.runProcess
+        return try await Task.detached(priority: .utility) {
+            try runProcess(executable, arguments)
+        }.value
+    }
+
+    /// Daemon binary refresh checks can hash multi-megabyte build products. Keep that off the main actor.
+    func daemonNeedsRefreshCheck() async -> Bool {
+        let paths = paths
+        let dependencies = dependencies
+        return await Task.detached(priority: .utility) {
+            Self.installedDaemonBinaryNeedsRefresh(paths: paths, dependencies: dependencies)
+        }.value
+    }
+
     var socketPathDisplay: String {
         paths.socketURL.path
     }
@@ -272,7 +291,6 @@ final class OpenBurnBarDaemonManager {
             }
         }
         OpenBurnBarDaemonLocalNotificationRelay.shared.start()
-        exportControllerActivitySnapshot()
         Task {
             await refreshInstalledDaemonIfNeededForCurrentAppBuild()
             await refreshHealth()
@@ -282,7 +300,7 @@ final class OpenBurnBarDaemonManager {
 
     @discardableResult
     func refreshInstalledDaemonIfNeededForCurrentAppBuild() async -> Bool {
-        guard !isBusy, installedDaemonBinaryNeedsRefresh() else {
+        guard !isBusy, await daemonNeedsRefreshCheck() else {
             return false
         }
         lastError = "Updating the OpenBurnBar daemon to match this app build."
@@ -307,7 +325,7 @@ final class OpenBurnBarDaemonManager {
             return
         }
 
-        exportControllerActivitySnapshot()
+        exportControllerActivitySnapshotIfStale()
         status = .checking
         let socketURL = paths.socketURL
         do {
@@ -365,15 +383,7 @@ final class OpenBurnBarDaemonManager {
                 }
                 let snapshot = usageSyncService.runtimeSnapshot(
                     from: configSnapshot,
-                    usageEvents: usageEvents,
-                    insertUsages: dataStore.map { store in
-                        { usages in
-                            try store.insert(usages)
-                        }
-                    },
-                    refreshUsageCache: dataStore.map { store in
-                        { Task { await store.refresh() } }
-                    }
+                    usageEvents: usageEvents
                 )
 
                 routerMode = configSnapshot.routerMode
@@ -383,23 +393,14 @@ final class OpenBurnBarDaemonManager {
                 recentEvents = loadRecentDaemonEvents()
                 controllerProjects = projects
                 runtimeStateSource = .daemonRPC
-                await uploadImportedUsageIfNeeded(snapshot)
+                scheduleImportedUsagePersistence(snapshot.importedUsages)
                 return
             } catch {
                 runtimeStateSource = .localFallback
             }
         }
 
-        let snapshot = usageSyncService.refreshState(
-            insertUsages: dataStore.map { store in
-                { usages in
-                    try store.insert(usages)
-                }
-            },
-            refreshUsageCache: dataStore.map { store in
-                { Task { await store.refresh() } }
-            }
-        )
+        let snapshot = usageSyncService.refreshState()
 
         routerMode = .providerFamilyFailover
         providerConfigurations = snapshot.providerConfigurations
@@ -408,11 +409,26 @@ final class OpenBurnBarDaemonManager {
         recentEvents = loadRecentDaemonEvents()
         controllerProjects = []
         runtimeStateSource = .localFallback
-        await uploadImportedUsageIfNeeded(snapshot)
+        scheduleImportedUsagePersistence(snapshot.importedUsages)
     }
 
-    private func uploadImportedUsageIfNeeded(_ snapshot: OpenBurnBarDaemonRuntimeSnapshot) async {
-        guard snapshot.ledgerRecordCount > 0, let uploadPendingUsageAfterImport else { return }
+    private func scheduleImportedUsagePersistence(_ importedUsages: [TokenUsage]) {
+        guard !importedUsages.isEmpty, let dataStore else { return }
+        let actor = dataStore.actor
+
+        Task(priority: .utility) { [weak self, weak dataStore, actor, importedUsages] in
+            do {
+                try await actor.insertUsages(importedUsages)
+                await dataStore?.refresh()
+                await self?.uploadImportedUsageIfNeeded(importedUsages.count)
+            } catch {
+                AppLogger.dataStore.silentFailure("OpenBurnBarDaemonManager: Failed to import daemon usage", error: error)
+            }
+        }
+    }
+
+    private func uploadImportedUsageIfNeeded(_ importedUsageCount: Int) async {
+        guard importedUsageCount > 0, let uploadPendingUsageAfterImport else { return }
         await uploadPendingUsageAfterImport()
     }
 

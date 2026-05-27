@@ -195,7 +195,12 @@ public actor BurnBarConfigStore {
         slotID: String? = nil,
         label: String,
         apiKey: String,
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        endpointProfileID: String? = nil,
+        region: ProviderEndpointRegion? = nil,
+        tokenPlanTier: MimoTokenPlanTier? = nil,
+        tokenPlanBillingCycle: MimoTokenPlanBillingCycle? = nil,
+        authMethodID: String? = nil
     ) async throws -> BurnBarProviderCredentialSlot {
         let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard catalogSupport.isSupported(providerID: normalizedProviderID) else {
@@ -222,6 +227,28 @@ public actor BurnBarConfigStore {
         }
 
         var updatedSlot = BurnBarProviderCredentialSlot(slotID: resolvedSlotID, label: resolvedLabel, isEnabled: isEnabled, status: isEnabled ? .ready : .disabled)
+        let resolvedProfile = ProviderEndpointProfileRegistry.resolveProfileID(
+            providerID: ProviderID(rawValue: normalizedProviderID),
+            apiKey: key,
+            explicitProfileID: endpointProfileID,
+            region: region
+        )
+        if let resolvedProfile {
+            updatedSlot.endpointProfileID = resolvedProfile.id
+            updatedSlot.region = resolvedProfile.region == .global ? region : resolvedProfile.region
+            updatedSlot.authMethodID = authMethodID ?? resolvedProfile.authMethodID
+        } else if let endpointProfileID {
+            updatedSlot.endpointProfileID = endpointProfileID
+            updatedSlot.region = region
+            updatedSlot.authMethodID = authMethodID
+        }
+        if let tokenPlanTier {
+            updatedSlot.tokenPlanTier = tokenPlanTier
+        }
+        if let tokenPlanBillingCycle {
+            updatedSlot.tokenPlanBillingCycle = tokenPlanBillingCycle
+        }
+
         let updatedSettings = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
             var mutable = settings
             mutable.isEnabled = true
@@ -233,6 +260,21 @@ public actor BurnBarConfigStore {
                 existing.cooldownUntil = nil
                 existing.lastStatusMessage = nil
                 existing.updatedAt = Date()
+                if let resolvedProfile {
+                    existing.endpointProfileID = resolvedProfile.id
+                    existing.region = resolvedProfile.region == .global ? region : resolvedProfile.region
+                    existing.authMethodID = authMethodID ?? resolvedProfile.authMethodID
+                } else if let endpointProfileID {
+                    existing.endpointProfileID = endpointProfileID
+                    existing.region = region
+                    existing.authMethodID = authMethodID
+                }
+                if let tokenPlanTier {
+                    existing.tokenPlanTier = tokenPlanTier
+                }
+                if let tokenPlanBillingCycle {
+                    existing.tokenPlanBillingCycle = tokenPlanBillingCycle
+                }
                 mutable.credentialSlots[index] = existing
                 updatedSlot = existing
             } else {
@@ -702,6 +744,11 @@ public actor BurnBarConfigStore {
                 lastQuotaRemainingPercent: slot.lastQuotaRemainingPercent,
                 lastQuotaResetsAt: slot.lastQuotaResetsAt,
                 lastStatusMessage: slot.lastStatusMessage,
+                endpointProfileID: slot.endpointProfileID,
+                region: slot.region,
+                tokenPlanTier: slot.tokenPlanTier,
+                tokenPlanBillingCycle: slot.tokenPlanBillingCycle,
+                authMethodID: slot.authMethodID,
                 updatedAt: slot.updatedAt
             )
         }.filter { !$0.slotID.isEmpty }

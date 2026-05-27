@@ -94,7 +94,7 @@ enum RefreshBackgroundWork {
         let persistencePhaseStartedAt = Date()
         do {
             if !allUsages.isEmpty {
-                try dataStore.usageStore.insert(allUsages)
+                try dataStore.usageStore.insertChunked(allUsages, chunkSize: 500)
             }
         } catch {
             let message = "Failed to store imported usage rows: \(error.localizedDescription)"
@@ -148,7 +148,7 @@ enum RefreshBackgroundWork {
                 ? .empty
                 : .healthy(sessionCount: parseResult.usages.count)
 
-            try dataStore.insert(parseResult.usages)
+            try dataStore.insertChunked(parseResult.usages, chunkSize: 500)
 
             if settings.conversationIndexingEnabled {
                 do {

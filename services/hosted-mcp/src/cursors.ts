@@ -3,6 +3,37 @@ import { HttpError } from "./errors.js";
 
 const CURSOR_SECRET = () => process.env.MCP_CURSOR_HMAC_SECRET ?? process.env.MCP_TOKEN_HMAC_SECRET ?? "dev-cursor-secret";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseCursorPayload(raw: unknown): CursorPayload {
+  if (!isRecord(raw)) {
+    throw new HttpError(400, "Malformed cursor.", "malformed_cursor");
+  }
+  const uid = raw.uid;
+  const tool = raw.tool;
+  const offset = raw.offset;
+  const exp = raw.exp;
+  const resourceUri = raw.resourceUri;
+  if (
+    typeof uid !== "string"
+    || typeof tool !== "string"
+    || typeof offset !== "number"
+    || typeof exp !== "number"
+    || (resourceUri !== undefined && typeof resourceUri !== "string")
+  ) {
+    throw new HttpError(400, "Malformed cursor.", "malformed_cursor");
+  }
+  return {
+    uid,
+    tool,
+    offset,
+    exp,
+    resourceUri,
+  };
+}
+
 export interface CursorPayload {
   uid: string;
   tool: string;
@@ -25,7 +56,7 @@ export function verifyCursor(cursor: string, uid: string, tool: string): CursorP
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     throw new HttpError(400, "Cursor signature is invalid.", "cursor_tampered");
   }
-  const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as CursorPayload;
+  const payload = parseCursorPayload(JSON.parse(Buffer.from(body, "base64url").toString("utf8")));
   if (payload.uid !== uid || payload.tool !== tool || payload.exp <= Date.now()) {
     throw new HttpError(400, "Cursor is expired or does not match this request.", "cursor_scope_mismatch");
   }

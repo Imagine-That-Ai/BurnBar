@@ -651,8 +651,7 @@ object SmartHubBridgeClient {
             return@runCatching emptyList()
         }
         (data["devices"] as? List<*>).orEmpty().mapNotNull { raw ->
-            @Suppress("UNCHECKED_CAST")
-            decodeCastDevice(raw as? Map<String, Any?> ?: return@mapNotNull null)
+            decodeCastDevice(raw.asStringAnyNullableMap() ?: return@mapNotNull null)
         }
     }
 
@@ -698,8 +697,7 @@ object SmartHubBridgeClient {
     }
 
     private fun decodeConfig(documentId: String, data: Map<String, Any?>): SmartHubConfig? {
-        @Suppress("UNCHECKED_CAST")
-        val pixelClockData = data["pixelClock"] as? Map<String, Any?>
+        val pixelClockData = data["pixelClock"].asStringAnyNullableMap()
         return SmartHubConfig(
             documentId = documentId,
             enabled = data["enabled"] as? Boolean ?: false,
@@ -751,6 +749,15 @@ object SmartHubBridgeClient {
     }
 
     private fun nowIso(): String = Instant.now().toString()
+
+    private fun Any?.asStringAnyNullableMap(): Map<String, Any?>? {
+        val raw = this as? Map<*, *> ?: return null
+        val typed = LinkedHashMap<String, Any?>(raw.size)
+        for ((key, value) in raw) {
+            typed[key as? String ?: return null] = value
+        }
+        return typed
+    }
 
     private fun relativeAge(ageMs: Long): String {
         val seconds = (ageMs / 1000L).coerceAtLeast(0)

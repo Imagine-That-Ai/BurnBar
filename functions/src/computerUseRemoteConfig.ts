@@ -4,6 +4,7 @@
 
 import { getRemoteConfig, type RemoteConfigTemplate } from "firebase-admin/remote-config";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { remoteConfigStringValue } from "./remoteConfigGuards.js";
 
 const KILL_SWITCH_PARAM = "computer_use_kill_switch";
 
@@ -13,7 +14,7 @@ export async function publishComputerUseKillSwitch(enabled: boolean, reason: str
   const parameters = template.parameters ?? {};
 
   const current =
-    (parameters[KILL_SWITCH_PARAM]?.defaultValue as { value?: string } | undefined)?.value ?? "false";
+    remoteConfigStringValue(parameters[KILL_SWITCH_PARAM]?.defaultValue) ?? "false";
   const next = enabled ? "true" : "false";
   if (current === next) {
     return;

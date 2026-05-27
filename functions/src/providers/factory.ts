@@ -21,6 +21,7 @@ import type {
   QuotaRefreshResult,
   QuotaBucket,
 } from "../types.js";
+import { isRecord, stringField } from "../guards.js";
 
 const PROVIDER = "factory" as const;
 
@@ -38,18 +39,18 @@ function inferKind(token: string): "bearer" | "session" {
   return /^[a-f0-9]{32,}$/i.test(token) ? "session" : "bearer";
 }
 
-interface FactoryFetchResult<T> {
+interface FactoryFetchResult {
   ok: boolean;
   status?: number;
-  data?: T;
+  data?: unknown;
   error?: string;
   errorCode?: string;
 }
 
-async function factoryFetch<T = unknown>(
+async function factoryFetch(
   url: string,
   token: string
-): Promise<FactoryFetchResult<T>> {
+): Promise<FactoryFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -75,14 +76,13 @@ async function factoryFetch<T = unknown>(
   }
 
   if (!response.ok) {
-    const detail =
-      payload && typeof payload === "object"
-        ? stringFrom((payload as Record<string, unknown>).detail ?? (payload as Record<string, unknown>).message)
-        : undefined;
+    const detail = isRecord(payload)
+      ? stringFrom(stringField(payload, "detail") ?? stringField(payload, "message"))
+      : undefined;
     return {
       ok: false,
       status: response.status,
-      data: payload as T,
+      data: payload,
       error: detail ?? `HTTP ${response.status}`,
       errorCode:
         response.status === 401 || response.status === 403
@@ -93,7 +93,7 @@ async function factoryFetch<T = unknown>(
     };
   }
 
-  return { ok: true, status: response.status, data: payload as T };
+  return { ok: true, status: response.status, data: payload };
 }
 
 interface FactoryAuthMePayload {
@@ -139,10 +139,11 @@ export const factoryAdapter: ProviderAdapter = {
     }
 
     const kind = inferKind(trimmed);
-    const result = await factoryFetch<FactoryAuthMePayload>(
+    const result = await factoryFetch(
       `${API_HOST}${VALIDATE_PATH}`,
       trimmed
     );
+    const payload = parseFactoryAuthMePayload(result.data);
     if (!result.ok) {
       return {
         valid: false,
@@ -169,10 +170,11 @@ export const factoryAdapter: ProviderAdapter = {
     sourceId: string
   ): Promise<QuotaRefreshResult> {
     const trimmed = (credential ?? "").trim();
-    const result = await factoryFetch<FactoryUsagePayload>(
+    const result = await factoryFetch(
       `${API_HOST}${USAGE_PATH}`,
       trimmed
     );
+    const payload = parseFactoryUsagePayload(result.data);
     if (!result.ok) {
       return {
         ok: false,
@@ -181,7 +183,7 @@ export const factoryAdapter: ProviderAdapter = {
       };
     }
 
-    const usage = result.data?.usage ?? {};
+    const usage = payload?.usage ?? {};
     const buckets: QuotaBucket[] = [];
     const standard = bucketFromLane("Standard tokens", usage.standard, usage.endDate);
     if (standard) buckets.push(standard);
@@ -230,6 +232,32 @@ function bucketFromLane(
       usedRatio: ratio,
       windowEnd,
     }),
+  };
+}
+
+function parseFactoryAuthMePayload(raw: unknown): FactoryAuthMePayload | undefined {
+  return isRecord(raw) ? raw : undefined;
+}
+
+function parseFactoryUsagePayload(raw: unknown): FactoryUsagePayload | undefined {
+  if (!isRecord(raw)) return undefined;
+  const usage = raw.usage;
+  if (!isRecord(usage)) return { usage: undefined };
+  return {
+    usage: {
+      endDate: typeof usage.endDate === "string" ? usage.endDate : undefined,
+      standard: parseFactoryUsageLane(usage.standard),
+      premium: parseFactoryUsageLane(usage.premium),
+    },
+  };
+}
+
+function parseFactoryUsageLane(raw: unknown): FactoryUsageLane | undefined {
+  if (!isRecord(raw)) return undefined;
+  return {
+    userTokens: numberFrom(raw.userTokens),
+    totalAllowance: numberFrom(raw.totalAllowance),
+    usedRatio: numberFrom(raw.usedRatio),
   };
 }
 

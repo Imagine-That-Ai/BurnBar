@@ -415,18 +415,24 @@ private fun DocumentSnapshot.toRollups(): UsageRollups? {
         thirtyDays = (data["30d"] as? Number)?.toDouble() ?: 0.0,
         ninetyDays = (data["90d"] as? Number)?.toDouble() ?: 0.0,
         allTime = (data["all_time"] as? Number)?.toDouble() ?: 0.0,
-        totals = (data["totals"] as? Map<String, Any>)?.mapValues { (it.value as? Number)?.toDouble() ?: 0.0 } ?: emptyMap(),
-        providerSummaries = (data["providerSummaries"] as? List<*>)?.mapNotNull { (it as? Map<String, Any>)?.toRollupSummary() } ?: emptyList(),
-        accountSummaries = (data["accountSummaries"] as? List<*>)?.mapNotNull { (it as? Map<String, Any>)?.toRollupSummary() } ?: emptyList(),
-        modelSummaries = (data["modelSummaries"] as? List<*>)?.mapNotNull { (it as? Map<String, Any>)?.toRollupSummary() } ?: emptyList(),
-        deviceSummaries = (data["deviceSummaries"] as? List<*>)?.mapNotNull { (it as? Map<String, Any>)?.toRollupSummary() } ?: emptyList(),
-        dailyPoints = (data["dailyPoints"] as? Map<String, Any>)?.mapValues { (it.value as? Number)?.toDouble() ?: 0.0 } ?: emptyMap(),
+        totals = (data["totals"] as? Map<*, *>)
+            ?.mapNotNull { (key, value) -> (key as? String)?.let { it to ((value as? Number)?.toDouble() ?: 0.0) } }
+            ?.toMap()
+            ?: emptyMap(),
+        providerSummaries = (data["providerSummaries"] as? List<*>)?.mapNotNull { (it as? Map<*, *>)?.toRollupSummary() } ?: emptyList(),
+        accountSummaries = (data["accountSummaries"] as? List<*>)?.mapNotNull { (it as? Map<*, *>)?.toRollupSummary() } ?: emptyList(),
+        modelSummaries = (data["modelSummaries"] as? List<*>)?.mapNotNull { (it as? Map<*, *>)?.toRollupSummary() } ?: emptyList(),
+        deviceSummaries = (data["deviceSummaries"] as? List<*>)?.mapNotNull { (it as? Map<*, *>)?.toRollupSummary() } ?: emptyList(),
+        dailyPoints = (data["dailyPoints"] as? Map<*, *>)
+            ?.mapNotNull { (key, value) -> (key as? String)?.let { it to ((value as? Number)?.toDouble() ?: 0.0) } }
+            ?.toMap()
+            ?: emptyMap(),
         computedAt = data["computedAt"] as? String,
         schemaVersion = (data["schemaVersion"] as? Number)?.toInt() ?: 0
     )
 }
 
-private fun Map<String, Any>.toRollupSummary(): RollupSummary = RollupSummary(
+private fun Map<*, *>.toRollupSummary(): RollupSummary = RollupSummary(
     provider = (this["provider"] as? String) ?: (this["model"] as? String) ?: (this["deviceId"] as? String) ?: "",
     providerId = this["providerID"] as? String,
     accountId = this["accountID"] as? String,

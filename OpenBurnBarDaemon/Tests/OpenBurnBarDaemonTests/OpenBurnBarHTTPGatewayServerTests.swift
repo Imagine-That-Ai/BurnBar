@@ -3748,7 +3748,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 }
 
-private final class GatewayHarness {
+private final class GatewayHarness: @unchecked Sendable {
     let port: Int
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
@@ -4017,11 +4017,7 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         Self.lock.unlock()
 
         if response.delayNanoseconds > 0 {
-            Task {
-                try? await Task.sleep(nanoseconds: response.delayNanoseconds)
-                self.send(response)
-            }
-            return
+            Thread.sleep(forTimeInterval: TimeInterval(response.delayNanoseconds) / 1_000_000_000)
         }
         send(response)
     }

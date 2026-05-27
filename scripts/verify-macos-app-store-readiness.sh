@@ -22,6 +22,19 @@ require_entitlement_bool() {
   fi
 }
 
+require_entitlement_value() {
+  local file="$1"
+  local key="$2"
+  local expected="$3"
+  local actual
+
+  actual="$(/usr/libexec/PlistBuddy -c "Print :$key" "$file" 2>/dev/null | tr '\n' ' ' || true)"
+  if [[ "$actual" != *"$expected"* ]]; then
+    echo "ERROR: $file must include $key value '$expected'; found '${actual:-missing}'." >&2
+    exit 1
+  fi
+}
+
 if [[ ! -f "$entitlements" ]]; then
   echo "ERROR: Missing Mac App Store entitlements at $entitlements." >&2
   exit 1
@@ -29,6 +42,7 @@ fi
 
 require_entitlement_bool "$entitlements" "com.apple.security.app-sandbox" "true"
 require_entitlement_bool "$entitlements" "com.apple.security.network.client" "true"
+require_entitlement_value "$entitlements" "com.apple.developer.applesignin" "Default"
 
 if [[ -f "$direct_entitlements" ]]; then
   require_entitlement_bool "$direct_entitlements" "com.apple.security.app-sandbox" "false"

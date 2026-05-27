@@ -1,5 +1,14 @@
 import Foundation
 
+// AUDIT(@unchecked Sendable): Foundation documents `FileManager` as safe for
+// concurrent use. `UserDefaults` is thread-safe for value access/mutation, and
+// this module additionally funnels high-volume settings writes through
+// `SettingsPersistenceCoordinator`.
+extension FileManager: @retroactive @unchecked Sendable {}
+extension UserDefaults: @retroactive @unchecked Sendable {}
+extension NSDictionary: @retroactive @unchecked Sendable {}
+extension KeyPath: @retroactive @unchecked Sendable {}
+
 public struct FileSignature: Codable, Equatable, Sendable {
     public let modifiedAt: TimeInterval
     public let sizeBytes: Int64

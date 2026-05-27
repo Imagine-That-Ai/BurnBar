@@ -540,8 +540,8 @@ internal class SwarmSimulation(
                 if (p.y > height) p.y = 0.0
             }
             else -> {
-                if (mode == Mode.SHAPE_ROUTER_FLOW && uiMode != UIMode.COOKING && p.role != null) {
-                    val role = p.role!!
+                val role = p.role
+                if (mode == Mode.SHAPE_ROUTER_FLOW && uiMode != UIMode.COOKING && role != null) {
                     val centerX = width * 0.5
                     val centerY = height * 0.48
                     val scaleFactor = if (width > 960) 0.7 else 0.8

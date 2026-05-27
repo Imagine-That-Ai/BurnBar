@@ -39,9 +39,8 @@ class FunctionsRepository {
             .call(mapOf("query" to query, "limit" to limit))
             .await()
         val data = result.getData() as? Map<*, *> ?: return emptyList()
-        @Suppress("UNCHECKED_CAST")
-        return data["hits"] as? List<Map<String, Any>>
-            ?: data["results"] as? List<Map<String, Any>>
+        return data["hits"].asStringAnyMapList()
+            ?: data["results"].asStringAnyMapList()
             ?: emptyList()
     }
 
@@ -58,8 +57,7 @@ class FunctionsRepository {
                 "limit" to limit.coerceIn(1, 50)
             )
         )
-        @Suppress("UNCHECKED_CAST")
-        val hits = data["hits"] as? List<Map<String, Any>> ?: return emptyList()
+        val hits = data["hits"].asStringAnyMapList() ?: return emptyList()
         return hits.mapNotNull { it.toCloudConversationSearchHit() }
     }
 
@@ -92,16 +90,14 @@ class FunctionsRepository {
         val result = functions.getHttpsCallable("refreshQuota")
             .call(mapOf("accountId" to accountId, "providerId" to providerId))
             .await()
-        @Suppress("UNCHECKED_CAST")
-        return result.getData() as? Map<String, Any> ?: emptyMap()
+        return result.getData().asStringAnyMap() ?: emptyMap()
     }
 
     suspend fun refreshProviderAccountQuota(accountId: String): Map<String, Any> {
         val result = functions.getHttpsCallable("refreshProviderAccountQuota")
             .call(mapOf("accountID" to accountId))
             .await()
-        @Suppress("UNCHECKED_CAST")
-        return result.getData() as? Map<String, Any> ?: emptyMap()
+        return result.getData().asStringAnyMap() ?: emptyMap()
     }
 
     suspend fun deleteProviderAccount(accountId: String) {
@@ -114,8 +110,32 @@ class FunctionsRepository {
         val result = functions.getHttpsCallable("addProviderConnection")
             .call(mapOf("providerId" to providerId, "credentials" to credentials))
             .await()
-        @Suppress("UNCHECKED_CAST")
-        return result.getData() as? Map<String, Any> ?: emptyMap()
+        return result.getData().asStringAnyMap() ?: emptyMap()
+    }
+
+    suspend fun connectProviderAccount(
+        providerId: String,
+        credential: String,
+        credentialKind: String = "token",
+        label: String? = null,
+        endpointProfileId: String? = null,
+        region: String? = null,
+        tokenPlanTier: String? = null,
+        tokenPlanBillingCycle: String? = null,
+        authMethodId: String? = null
+    ): Map<String, Any> {
+        val payload = mutableMapOf<String, Any>(
+            "provider" to providerId,
+            "credential" to credential,
+            "credentialKind" to credentialKind
+        )
+        label?.takeIf { it.isNotBlank() }?.let { payload["label"] = it }
+        endpointProfileId?.takeIf { it.isNotBlank() }?.let { payload["endpointProfileID"] = it }
+        region?.takeIf { it.isNotBlank() }?.let { payload["region"] = it }
+        tokenPlanTier?.takeIf { it.isNotBlank() }?.let { payload["tokenPlanTier"] = it }
+        tokenPlanBillingCycle?.takeIf { it.isNotBlank() }?.let { payload["tokenPlanBillingCycle"] = it }
+        authMethodId?.takeIf { it.isNotBlank() }?.let { payload["authMethodID"] = it }
+        return callMap("connectProviderAccount", payload)
     }
 
     suspend fun createPiAgentPairing(
@@ -175,8 +195,7 @@ class FunctionsRepository {
 
     suspend fun listPiAgentConnections(includeRevoked: Boolean = false): List<Map<String, Any>> {
         val data = callMap("listPiAgentConnections", mapOf("includeRevoked" to includeRevoked))
-        @Suppress("UNCHECKED_CAST")
-        return data["connections"] as? List<Map<String, Any>> ?: emptyList()
+        return data["connections"].asStringAnyMapList() ?: emptyList()
     }
 
     suspend fun revokePiAgentConnection(connectionId: String, deviceId: String? = null) {
@@ -247,9 +266,23 @@ class FunctionsRepository {
 
     private suspend fun callMap(name: String, payload: Map<String, Any>): Map<String, Any> {
         val result = functions.getHttpsCallable(name).call(payload).await()
-        @Suppress("UNCHECKED_CAST")
-        return result.getData() as? Map<String, Any> ?: emptyMap()
+        return result.getData().asStringAnyMap() ?: emptyMap()
     }
+}
+
+private fun Any?.asStringAnyMap(): Map<String, Any>? {
+    val raw = this as? Map<*, *> ?: return null
+    val typed = LinkedHashMap<String, Any>(raw.size)
+    for ((key, value) in raw) {
+        val stringKey = key as? String ?: return null
+        if (value != null) typed[stringKey] = value
+    }
+    return typed
+}
+
+private fun Any?.asStringAnyMapList(): List<Map<String, Any>>? {
+    val raw = this as? List<*> ?: return null
+    return raw.mapNotNull { it.asStringAnyMap() }
 }
 
 private fun Map<String, Any>.toCloudConversationSearchHit(): CloudConversationSearchHit? {

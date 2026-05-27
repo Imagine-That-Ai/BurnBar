@@ -85,7 +85,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const response = await handleMcpRequest(db, claims, body);
   void writeAuditEvent(db, claims, {
     kind: "mcp_request",
-    toolName: typeof (body as { params?: { name?: unknown } }).params?.name === "string" ? String((body as { params: { name: unknown } }).params.name) : undefined,
+    toolName: requestToolName(body),
     latencyMs: Date.now() - started,
     ip: req.socket.remoteAddress,
     userAgent: req.headers["user-agent"]
@@ -110,6 +110,17 @@ export function createServer() {
       sendJson(res, 500, jsonRpcError(null, -32603, "Internal OpenBurnBar MCP error."));
     });
   });
+}
+
+function requestToolName(body: unknown): string | undefined {
+  if (!isRecord(body) || !isRecord(body.params) || typeof body.params.name !== "string") {
+    return undefined;
+  }
+  return body.params.name;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 if (process.env.NODE_ENV !== "test") {

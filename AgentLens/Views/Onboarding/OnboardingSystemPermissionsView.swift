@@ -128,7 +128,7 @@ private struct PermissionsCard: View {
             statusRow
             controls
             if let extra = step.bundleId {
-                Text("Targeting \(extra). The Mac will surface a native prompt the first time the agent talks to that app.")
+                Text("Targeting \(step.targetDisplayName) (\(extra)). Automation appears in System Settings under OpenBurnBar, with one toggle for each app.")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
@@ -189,11 +189,19 @@ private struct PermissionsCard: View {
         case .granted:
             summary = "Granted. Auto-advancing…"
         case .needsAccess, .unknown, .timeout:
-            summary = "Allow on your Mac. We'll trigger the system prompt and open System Settings for you."
+            if step.kind == .automation {
+                summary = "Click Request Access. If macOS does not show a prompt, open Automation and enable \(step.targetDisplayName) under OpenBurnBar."
+            } else {
+                summary = "Allow on your Mac. We'll trigger the system prompt and open System Settings for you."
+            }
         case .requesting:
             summary = "Watching for the system prompt…"
         case .denied:
-            summary = "Denied. You can still toggle it manually in System Settings."
+            if step.kind == .automation {
+                summary = "Denied. Open Automation, expand OpenBurnBar, and enable \(step.targetDisplayName)."
+            } else {
+                summary = "Denied. You can still toggle it manually in System Settings."
+            }
         }
         return Text(summary)
             .font(DesignSystem.Typography.caption)
@@ -206,7 +214,9 @@ private struct PermissionsCard: View {
                 Task { await coordinator.requestCurrent() }
             } label: {
                 Text(primaryLabel)
-                    .frame(minWidth: 140)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(minWidth: step.kind == .automation ? 112 : 140)
             }
             .buttonStyle(.borderedProminent)
             .disabled(coordinator.liveStatus(for: step) == .granted)
@@ -223,7 +233,7 @@ private struct PermissionsCard: View {
             Button {
                 coordinator.openSystemSettings(for: step)
             } label: {
-                Label("Open System Settings", systemImage: "gear")
+                Label(settingsLabel, systemImage: "gear")
                     .font(DesignSystem.Typography.caption)
             }
             .buttonStyle(.plain)
@@ -240,9 +250,13 @@ private struct PermissionsCard: View {
             case .camera, .microphone: return "Allow now"
             case .screenRecording, .accessibility: return "Prompt and open Settings"
             case .fullDiskAccess: return "Open Settings"
-            case .automation: return "Trigger Automation prompt"
+            case .automation: return "Request Access"
             }
         }
+    }
+
+    private var settingsLabel: String {
+        step.kind == .automation ? "Open Automation" : "Open System Settings"
     }
 }
 
@@ -258,6 +272,11 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
         let kind: SystemPermissionKind
         let bundleId: String?
         let titleForCard: String
+
+        var targetDisplayName: String {
+            guard let bundleId else { return kind.displayTitle }
+            return OnboardingAutomationTargets.target(bundleId: bundleId)?.displayName ?? bundleId
+        }
     }
 
     enum Resolution { case pending, granted, deferred }
@@ -323,6 +342,7 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
         pollTask?.cancel()
         pollTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
+                await SystemPermissionMonitor.shared.refreshNow(emitting: true)
                 self?.refreshSnapshots()
                 self?.advanceIfGranted()
                 try? await Task.sleep(nanoseconds: 500_000_000)
@@ -348,7 +368,7 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
             #endif
             openSystemSettings(for: step)
         case .accessibility:
-            let opts: [String: Bool] = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+            let opts: [String: Bool] = ["AXTrustedCheckOptionPrompt": true]
             _ = AXIsProcessTrustedWithOptions(opts as CFDictionary)
             openSystemSettings(for: step)
         case .fullDiskAccess:
@@ -358,6 +378,7 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
                 triggerAutomationPrompt(bundleId: bundleId)
             }
         }
+        await SystemPermissionMonitor.shared.refreshNow(emitting: true)
         refreshSnapshots()
     }
 
@@ -420,8 +441,22 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
     }
 
     private func triggerAutomationPrompt(bundleId: String) {
+        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil || bundleId == "com.apple.finder" else {
+            openSystemSettings(for: Step(id: "automation:\(bundleId)", kind: .automation, bundleId: bundleId, titleForCard: "Automation"))
+            return
+        }
         let target = NSAppleEventDescriptor(bundleIdentifier: bundleId)
-        _ = AEDeterminePermissionToAutomateTarget(target.aeDesc, typeWildCard, typeWildCard, true)
+        _ = AEDeterminePermissionToAutomateTarget(target.aeDesc, kAECoreSuite, kAEGetData, true)
+        runAutomationProbe(bundleId: bundleId)
+    }
+
+    private func runAutomationProbe(bundleId: String) {
+        let escapedBundleId = bundleId
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let source = "tell application id \"\(escapedBundleId)\" to get name"
+        var error: NSDictionary?
+        _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
     }
 }
 
@@ -438,6 +473,10 @@ enum OnboardingAutomationTargets {
         Target(bundleId: "com.apple.finder", displayName: "Finder"),
         Target(bundleId: "com.apple.Notes", displayName: "Notes")
     ]
+
+    static func target(bundleId: String) -> Target? {
+        preflightTargets.first { $0.bundleId == bundleId }
+    }
 }
 
 // MARK: - Status helpers

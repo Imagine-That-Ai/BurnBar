@@ -1,10 +1,10 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { evaluateReplayScenario } from "./replay/evaluator";
-import type { ReplayEvaluation, ReplayScenario } from "./replay/types";
+import { loadReplayEvaluation, loadReplayScenario } from "./helpers/replayFixtureLoader";
 
 const fixturesDir = join(__dirname, "replay", "fixtures");
 const fixtureNames = readdirSync(fixturesDir)
@@ -25,7 +25,7 @@ describe("OpenBurnBar replay evals", () => {
     it(`matches the golden for ${fixtureName}`, async () => {
       const inputPath = join(fixturesDir, fixtureName);
       const goldenPath = join(fixturesDir, fixtureName.replace(".input.json", ".golden.json"));
-      const scenario = loadJson<ReplayScenario>(inputPath);
+      const scenario = loadReplayScenario(inputPath);
 
       const evaluation = await evaluateReplayScenario(scenario);
 
@@ -33,11 +33,7 @@ describe("OpenBurnBar replay evals", () => {
         writeFileSync(goldenPath, `${JSON.stringify(evaluation, null, 2)}\n`, "utf8");
       }
 
-      expect(evaluation).toEqual(loadJson<ReplayEvaluation>(goldenPath));
+      expect(evaluation).toEqual(loadReplayEvaluation(goldenPath));
     });
   }
 });
-
-function loadJson<T>(filePath: string): T {
-  return JSON.parse(readFileSync(filePath, "utf8")) as T;
-}

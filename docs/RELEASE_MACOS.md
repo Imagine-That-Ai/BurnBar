@@ -39,6 +39,35 @@ scripts/build-macos-app-store-release.sh
 scripts/build-macos-website-release.sh
 ```
 
+Upload the customer-facing direct-download artifacts to Cloudflare R2 with:
+
+```bash
+scripts/setup-macos-downloads-r2.sh
+scripts/upload-macos-downloads-r2.sh
+```
+
+The setup script creates the R2 bucket and enables the public `r2.dev` URL. The
+upload script reads the current macOS release file/version from `website/src/data/site.ts`,
+uploads the DMG, ZIP, checksums, SBOM, and release metadata from
+`website/public/downloads/`, and verifies the public DMG URL. Defaults:
+
+- R2 bucket: `openburnbar-downloads`
+- Public R2 URL: `https://pub-aa5c2dab05e3407ba0813655d58a810a.r2.dev`
+
+If the bucket or host changes, override with `OPENBURNBAR_R2_BUCKET` and
+`OPENBURNBAR_R2_PUBLIC_BASE_URL`. Set `SITE.macDownloadBaseUrl` in
+`website/src/data/site.ts` only after the public R2 host returns the DMG with
+HTTP 200.
+
+For the branded `downloads.burnbar.ai` host, the `burnbar.ai` DNS zone must be
+available in Cloudflare. Then run:
+
+```bash
+OPENBURNBAR_R2_CUSTOM_DOMAIN=downloads.burnbar.ai \
+OPENBURNBAR_R2_ZONE_ID=<cloudflare-zone-id> \
+scripts/setup-macos-downloads-r2.sh
+```
+
 The direct-download path is the currently customer-downloadable Mac channel. The MAS build has passed
 these release gates and is pending Apple review:
 

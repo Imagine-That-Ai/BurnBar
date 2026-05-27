@@ -111,7 +111,8 @@ object HermesRelayCrypto {
         require(keyData.size == AES_KEY_BYTES) { "symmetric key must be 32 bytes" }
         val recipientKey = decodeUncompressedPublicKey(recipientPublicKeyX963)
         val ephemeralKeyPair = generateEphemeralKeyPair()
-        val ephemeralPub = ephemeralKeyPair.public as java.security.interfaces.ECPublicKey
+        val ephemeralPub = ephemeralKeyPair.public as? java.security.interfaces.ECPublicKey
+            ?: error("Hermes relay ephemeral keypair must use an EC public key")
         val shared = ecdh(ephemeralKeyPair.private, recipientKey)
         val wrappingKey = hkdfDeriveSymmetricKey(
             sharedSecret = shared,

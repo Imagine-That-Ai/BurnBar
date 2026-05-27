@@ -8,27 +8,30 @@ import {
 } from '../../src/workspace/companion';
 import * as apiModule from '../../src/workspace/api';
 import type { BurnBarWorkspaceApi } from '../../src/workspace/api';
+import {
+  createMockWorkspaceFolder,
+  createMockWorkspaceUriHelpers
+} from '../helpers/workspaceApiMock';
 
 // Mock the API module
 // Mock the API module
-const mockApi = {
-  hostKind: 'ui' as const,
+const uriHelpers = createMockWorkspaceUriHelpers();
+const mockApi: BurnBarWorkspaceApi = {
+  hostKind: 'ui',
   isTrusted: true,
   remoteName: 'cursor',
-  workspaceFolders: [{ uri: { fsPath: '/test/workspace' } }] as any[],
+  workspaceFolders: [createMockWorkspaceFolder('/test/workspace')],
   isWritableFileSystem: (scheme: string) => scheme === 'file',
   readFile: vi.fn(() => Promise.resolve(new Uint8Array())),
   findFiles: vi.fn(() => Promise.resolve([])),
   openTextDocument: vi.fn(() => Promise.resolve({ getText: () => 'test' })),
   applyEdit: vi.fn(() => Promise.resolve(true)),
   saveAll: vi.fn(() => Promise.resolve(true)),
-  createWorkspaceEdit: vi.fn(() => ({})),
-  createRange: vi.fn(() => ({})),
+  createWorkspaceEdit: vi.fn(() => ({ replace: vi.fn() })),
+  createRange: vi.fn(() => ({ start: { line: 0, character: 0 }, end: { line: 0, character: 0 } })),
   confirmTerminalCommand: vi.fn(() => Promise.resolve(true)),
   createTerminal: vi.fn(() => ({ name: 'OpenBurnBar', show: vi.fn(), sendText: vi.fn() })),
-  parseUri: (value: string) => ({ scheme: 'file', fsPath: value, toString: () => value } as any),
-  fileUri: (value: string) => ({ scheme: 'file', fsPath: value, toString: () => `file://${value}` } as any),
-  joinPath: (base: any, ...segments: string[]) => ({ scheme: 'file', fsPath: segments.join('/'), toString: () => `file://${segments.join('/')}` } as any)
+  ...uriHelpers
 };
 
 vi.mock('../../src/workspace/api', () => ({

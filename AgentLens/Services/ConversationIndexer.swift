@@ -51,6 +51,10 @@ final class ConversationIndexer {
             }
         }
 
+        if report.changedRecordCount > 0 {
+            SearchQueryCache.shared.clear()
+        }
+
         return report
     }
 

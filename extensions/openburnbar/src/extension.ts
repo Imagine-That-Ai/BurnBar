@@ -39,6 +39,14 @@ export interface OpenBurnBarActivationDependencies {
   remoteName?: string;
 }
 
+/** Minimal host surface required for extension activation (tests + production). */
+export interface OpenBurnBarActivationHostContext {
+  subscriptions: Array<{ dispose(): void }>;
+  globalState?: Pick<vscode.Memento, "get" | "update">;
+  extensionUri: vscode.Uri;
+  extension: Pick<vscode.Extension<unknown>, "extensionKind">;
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   await activateBurnBarExtension(context);
 }
@@ -47,7 +55,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 export function deactivate(): void {}
 
 export async function activateBurnBarExtension(
-  context: vscode.ExtensionContext,
+  context: OpenBurnBarActivationHostContext,
   dependencies: OpenBurnBarActivationDependencies = {}
 ): Promise<OpenBurnBarExtensionController | undefined> {
   const extensionKind = dependencies.extensionKind ?? context.extension.extensionKind;
@@ -445,7 +453,10 @@ async function runCursorSmoke({
       throw new Error('OpenBurnBar smoke requires a workspace file path.');
     }
 
-    const readResult = await (workspaceClient as OpenBurnBarWorkspaceRpcClient).readFile({ path: filePath });
+    if (!workspaceClient.readFile) {
+      throw new Error('OpenBurnBar smoke requires a workspace client that can read files.');
+    }
+    const readResult = await workspaceClient.readFile({ path: filePath });
     const catalog = await daemonClient.catalog();
     const fallbackModelID = catalog.providers
       .flatMap((provider) => provider.models.filter((model) => model.visibility === 'public'))
@@ -493,7 +504,7 @@ async function runCursorSmoke({
       });
     }
 
-    const afterResult = await (workspaceClient as OpenBurnBarWorkspaceRpcClient).readFile({ path: filePath });
+    const afterResult = await workspaceClient.readFile({ path: filePath });
     const fileChanged = afterResult.content !== readResult.content;
     if (!fileChanged) {
       throw new Error('OpenBurnBar smoke run completed, but the workspace file did not change.');
@@ -517,12 +528,7 @@ async function runCursorSmoke({
       'utf8'
     );
   } catch (error) {
-    const failure = error as {
-      message?: string;
-      runID?: string;
-      phase?: string;
-      runDetail?: BurnBarRunDetailResponse;
-    };
+    const failure = smokeFailureDetails(error);
     await fs.writeFile(
       safeOutputPath,
       JSON.stringify(
@@ -540,6 +546,26 @@ async function runCursorSmoke({
     );
     throw error;
   }
+}
+
+function smokeFailureDetails(error: unknown): {
+  runID?: string;
+  phase?: string;
+  runDetail?: BurnBarRunDetailResponse;
+} {
+  if (!error || typeof error !== 'object' || Array.isArray(error)) {
+    return {};
+  }
+  const rawRunDetail = 'runDetail' in error ? error.runDetail : undefined;
+  return {
+    runID: 'runID' in error && typeof error.runID === 'string' ? error.runID : undefined,
+    phase: 'phase' in error && typeof error.phase === 'string' ? error.phase : undefined,
+    runDetail: isRunDetailResponse(rawRunDetail) ? rawRunDetail : undefined
+  };
+}
+
+function isRunDetailResponse(value: unknown): value is BurnBarRunDetailResponse {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -641,13 +667,17 @@ function inferWorkflowMetadataFromPrompt(prompt: string): Record<string, BurnBar
   const replacement = buildSmokeReplacement(document.getText());
 
   return {
-    workspaceWorkflow: {
+    workspaceWorkflow: burnBarJSONObject({
       type: 'replace_string_in_file',
       path,
       from: replacement.from,
       to: replacement.to
-    } as BurnBarJSONValue
+    })
   };
+}
+
+function burnBarJSONObject(value: Record<string, BurnBarJSONValue>): BurnBarJSONValue {
+  return value;
 }
 
 function buildEditorContextMetadata(): Record<string, BurnBarJSONValue> | undefined {

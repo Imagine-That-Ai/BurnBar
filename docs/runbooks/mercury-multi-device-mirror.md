@@ -14,6 +14,13 @@ Android join as viewers over their own `media.control` streams.
   display-switch actions.
 - Reconnects: the same `viewerId` or `viewerDeviceId` replaces its stale viewer
   lease instead of consuming another slot.
+- Mobile lifecycle: app backgrounding, sheet re-parenting, full-screen-cover
+  dismissal, and activity recreation are not user intent to stop the Mac mirror.
+  iOS and Android may detach local frame handlers during those transitions, but
+  they must keep the host-side mirror alive and reinstall handlers when the
+  viewer returns.
+- Explicit stop: only the viewer close/back/finish path, sign-out, or a Mac-side
+  policy/kill path should emit `media.mirror.stop` for a normal mobile viewer.
 - Shutdown: stopping one viewer detaches only that viewer. The ScreenCaptureKit
   session stops when the last viewer leaves.
 
@@ -73,3 +80,9 @@ Physical proof should include one iOS device and one Android device connected
 at the same time. The expected result is that both devices render the same Mac
 display, the first accepted device controls the Mac, and the second accepted
 device remains read-only.
+
+Reconnect proof should also background and foreground each mobile viewer while
+the Mac is locked or at the login window. The expected result is that frames
+resume without consuming another viewer slot, and keyboard input still reaches
+the Mac so the user can enter their password after the OS unlocks the secure
+input path.

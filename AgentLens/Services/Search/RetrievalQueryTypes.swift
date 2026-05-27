@@ -124,7 +124,7 @@ struct OpenBurnBarQueryRunResult: Sendable {
 }
 
 /// A single retrieval result with source metadata and ranking scores.
-struct RetrievalResult: Identifiable {
+struct RetrievalResult: Identifiable, Sendable {
     let chunkID: String
     let documentID: String
     let sourceKind: SearchSourceKind

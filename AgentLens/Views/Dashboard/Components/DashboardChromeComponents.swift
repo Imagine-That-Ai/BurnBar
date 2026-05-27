@@ -79,41 +79,52 @@ struct StatCard: View {
 // MARK: - Cycling Provider Icon
 
 /// A compact icon that cycles through provider logos with a spring scale+fade animation.
+///
+/// Switched from `Timer.publish(... on: .main, in: .common)` to a
+/// `TimelineView(.periodic(...))` so the tick driver auto-pauses when the
+/// view is off-screen (during scrolls, or when the parent collapses to a
+/// thumbnail). The `.common` runloop variant of `Timer.publish` would fire
+/// straight through scroll events, costing one diff per tick per scroll
+/// frame across the whole dashboard.
 struct CyclingProviderIconView: View {
     let providers: [AgentProvider]
     let size: CGFloat
     let interval: TimeInterval
+    let startOffset: Int
 
+    @State private var lastTickDate: Date = .distantPast
     @State private var currentIndex: Int
-
-    private let timer: Publishers.Autoconnect<Timer.TimerPublisher>
 
     init(providers: [AgentProvider], size: CGFloat = 11, interval: TimeInterval = 2.2, startOffset: Int = 0) {
         self.providers = providers
         self.size = size
         self.interval = interval
-        self.timer = Timer.publish(every: interval, on: .main, in: .common).autoconnect()
+        self.startOffset = startOffset
         self._currentIndex = State(initialValue: providers.isEmpty ? 0 : startOffset % providers.count)
     }
 
     var body: some View {
-        ZStack {
-            if !providers.isEmpty {
-                ProviderLogoView(provider: providers[currentIndex], size: size)
-                    .id(currentIndex)
-                    .transition(
-                        .asymmetric(
-                            insertion: .scale(scale: 0.25).combined(with: .opacity),
-                            removal: .scale(scale: 1.6).combined(with: .opacity)
+        TimelineView(.periodic(from: .now, by: interval)) { context in
+            ZStack {
+                if !providers.isEmpty {
+                    ProviderLogoView(provider: providers[currentIndex], size: size)
+                        .id(currentIndex)
+                        .transition(
+                            .asymmetric(
+                                insertion: .scale(scale: 0.25).combined(with: .opacity),
+                                removal: .scale(scale: 1.6).combined(with: .opacity)
+                            )
                         )
-                    )
+                }
             }
-        }
-        .frame(width: size, height: size)
-        .animation(.spring(response: 0.28, dampingFraction: 0.68), value: currentIndex)
-        .onReceive(timer) { _ in
-            guard providers.count > 1 else { return }
-            currentIndex = (currentIndex + 1) % providers.count
+            .frame(width: size, height: size)
+            .animation(.spring(response: 0.28, dampingFraction: 0.68), value: currentIndex)
+            .onChange(of: context.date) { _, newDate in
+                guard providers.count > 1 else { return }
+                guard newDate.timeIntervalSince(lastTickDate) >= interval - 0.05 else { return }
+                lastTickDate = newDate
+                currentIndex = (currentIndex + 1) % providers.count
+            }
         }
     }
 }

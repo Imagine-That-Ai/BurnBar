@@ -94,7 +94,7 @@ struct ChatPanel: View {
         .onChange(of: controller.chatBackend) { _, _ in
             presentHermesSetupIfNeeded()
         }
-        .onChange(of: dataStore.lastRefresh) { _, _ in
+        .onChange(of: dataStore.usagesVersion) { _, _ in
             Task { @MainActor in
                 brief = controller.buildInsightBriefSnapshot(refreshRollups: false)
                 controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
@@ -169,7 +169,7 @@ struct ChatPanel: View {
     }
 
     private func openHermesRuntime() async {
-        await hermesRuntimeLauncher.openHermesAndGateway(
+        _ = await hermesRuntimeLauncher.openHermesAndGateway(
             baseURL: resolvedHermesGatewayBaseURL,
             bearerToken: resolvedHermesBearerToken
         )

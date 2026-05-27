@@ -215,7 +215,12 @@ fun LoginScreen(
                     enabled = inFlightProvider == null,
                     onClick = {
                         inFlightProvider = Provider.Apple
-                        userStore.signInWithApple(context as Activity)
+                        val activity = context as? Activity
+                        if (activity == null) {
+                            inFlightProvider = null
+                        } else {
+                            userStore.signInWithApple(activity)
+                        }
                     },
                 )
                 GoogleButton(
@@ -223,7 +228,12 @@ fun LoginScreen(
                     enabled = inFlightProvider == null,
                     onClick = {
                         inFlightProvider = Provider.Google
-                        userStore.signInWithGoogle(context as Activity)
+                        val activity = context as? Activity
+                        if (activity == null) {
+                            inFlightProvider = null
+                        } else {
+                            userStore.signInWithGoogle(activity)
+                        }
                     },
                 )
             }

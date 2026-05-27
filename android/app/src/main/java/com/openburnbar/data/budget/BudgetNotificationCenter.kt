@@ -18,7 +18,7 @@ class BudgetNotificationCenter(private val context: Context) {
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val nm = context.notificationManager() ?: return
             if (nm.getNotificationChannel(CHANNEL_ID) != null) return
             val channel = NotificationChannel(
                 CHANNEL_ID,
@@ -94,7 +94,10 @@ class BudgetNotificationCenter(private val context: Context) {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val nm = context.notificationManager() ?: return
         nm.notify(notificationId, builder.build())
     }
 }
+
+private fun Context.notificationManager(): NotificationManager? =
+    getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager

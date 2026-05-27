@@ -276,6 +276,7 @@ public struct BudgetCredentialIdentity: Hashable, Sendable {
     public static func billingMode(forSecretPrefix prefix: String) -> BudgetBillingMode {
         let lower = prefix.lowercased()
         if lower.hasPrefix("sk-ant-oat") { return .subscription }
+        if lower.hasPrefix("tp-") { return .subscription }
         if lower.hasPrefix("sk-ant-api") { return .perUsage }
         if lower.hasPrefix("sk-") { return .perUsage }
         return .unknown

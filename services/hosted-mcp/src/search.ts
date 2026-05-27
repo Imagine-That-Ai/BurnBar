@@ -113,8 +113,8 @@ async function activeCommitIDs(db: Firestore, uid: string): Promise<{ activeComm
   const manifest = await db.doc(`users/${uid}/cloud_search_index_manifest/current`).get();
   const active = new Set<string>();
   const byDevice = manifest.get("activeCommitIDsByDevice");
-  if (byDevice && typeof byDevice === "object") {
-    for (const value of Object.values(byDevice as Record<string, unknown>)) {
+  if (isRecord(byDevice)) {
+    for (const value of Object.values(byDevice)) {
       if (typeof value === "string") active.add(value);
     }
   }
@@ -219,4 +219,8 @@ export async function listFacets(db: Firestore, uid: string, kind: string) {
     if (typeof value === "string" && value.trim()) counts.set(value, (counts.get(value) ?? 0) + 1);
   }
   return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 50).map(([value, count]) => ({ value, count }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

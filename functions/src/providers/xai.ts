@@ -32,6 +32,7 @@ import type {
   QuotaRefreshResult,
   QuotaBucket,
 } from "../types.js";
+import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "xai" as const;
 
@@ -84,18 +85,18 @@ interface XAIFetchError {
   message?: string;
 }
 
-interface XAIFetchResult<T> {
+interface XAIFetchResult {
   ok: boolean;
   status?: number;
-  data?: T;
+  data?: unknown;
   error?: string;
   errorCode?: string;
 }
 
-async function xaiGet<T>(
+async function xaiGet(
   url: string,
   token: string
-): Promise<XAIFetchResult<T>> {
+): Promise<XAIFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -108,14 +109,14 @@ async function xaiGet<T>(
   } catch (err) {
     return { ok: false, error: String(err), errorCode: "network_error" };
   }
-  return parseResponse<T>(response);
+  return parseResponse(response);
 }
 
-async function xaiPost<T>(
+async function xaiPost(
   url: string,
   token: string,
   body: unknown
-): Promise<XAIFetchResult<T>> {
+): Promise<XAIFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -130,22 +131,23 @@ async function xaiPost<T>(
   } catch (err) {
     return { ok: false, error: String(err), errorCode: "network_error" };
   }
-  return parseResponse<T>(response);
+  return parseResponse(response);
 }
 
-async function parseResponse<T>(response: Response): Promise<XAIFetchResult<T>> {
-  let payload: T | XAIFetchError | undefined;
+async function parseResponse(response: Response): Promise<XAIFetchResult> {
+  let payload: unknown;
   try {
-    payload = (await response.json()) as T | XAIFetchError;
+    payload = await response.json();
   } catch {
     payload = undefined;
   }
 
   if (!response.ok) {
-    const err = payload as XAIFetchError | undefined;
+    const err = recordOrUndefined(payload);
+    const nested = recordOrUndefined(err?.error);
     const message =
-      err?.error?.message ??
-      err?.message ??
+      (typeof nested?.message === "string" ? nested.message : undefined) ??
+      (typeof err?.message === "string" ? err.message : undefined) ??
       `HTTP ${response.status}`;
     return {
       ok: false,
@@ -160,15 +162,18 @@ async function parseResponse<T>(response: Response): Promise<XAIFetchResult<T>> 
     };
   }
 
-  return { ok: true, status: response.status, data: payload as T };
+  return { ok: true, status: response.status, data: payload };
 }
 
-async function resolveTeamID(token: string): Promise<XAIFetchResult<string>> {
-  const result = await xaiGet<TeamsResponse>(TEAMS_URL, token);
+async function resolveTeamID(token: string): Promise<XAIFetchResult & { data?: string }> {
+  const result = await xaiGet(TEAMS_URL, token);
   if (!result.ok) {
     return { ok: false, status: result.status, error: result.error, errorCode: result.errorCode };
   }
-  const id = result.data?.teams?.[0]?.id?.trim();
+  const payload = recordOrUndefined(result.data);
+  const teams = Array.isArray(payload?.teams) ? payload.teams : [];
+  const firstTeam = recordOrUndefined(teams[0]);
+  const id = typeof firstTeam?.id === "string" ? firstTeam.id.trim() : "";
   if (!id) {
     return {
       ok: false,
@@ -227,13 +232,20 @@ export const xaiAdapter: ProviderAdapter = {
       };
     }
 
-    const teamID = teamResult.data!;
+    const teamID = teamResult.data;
+    if (!teamID) {
+      return {
+        ok: false,
+        errorCode: "no_team",
+        errorMessage: "xAI Management Key authenticated but no team is associated.",
+      };
+    }
     const [balance, usage] = await Promise.all([
-      xaiGet<PrepaidBalanceResponse>(
+      xaiGet(
         `${MANAGEMENT_BASE_URL}/v1/billing/teams/${encodeURIComponent(teamID)}/prepaid/balance`,
         trimmed
       ),
-      xaiPost<UsageResponse>(
+      xaiPost(
         `${MANAGEMENT_BASE_URL}/v1/billing/teams/${encodeURIComponent(teamID)}/usage`,
         trimmed,
         buildUsageBody()
@@ -241,8 +253,8 @@ export const xaiAdapter: ProviderAdapter = {
     ]);
 
     const buckets: QuotaBucket[] = [];
-    if (balance.ok) buckets.push(...extractBalanceBuckets(balance.data));
-    if (usage.ok) buckets.push(...extractUsageBuckets(usage.data));
+    if (balance.ok) buckets.push(...extractBalanceBuckets(recordOrUndefined(balance.data)));
+    if (usage.ok) buckets.push(...extractUsageBuckets(recordOrUndefined(usage.data)));
 
     if (buckets.length === 0) {
       return {
@@ -292,9 +304,10 @@ function buildUsageBody(): unknown {
 }
 
 export function extractBalanceBuckets(
-  payload: PrepaidBalanceResponse | undefined
+  payload: Record<string, unknown> | undefined
 ): QuotaBucket[] {
-  const raw = payload?.total?.val;
+  const total = recordOrUndefined(payload?.total);
+  const raw = total?.val;
   if (raw === undefined || raw === null) return [];
   const cents = Number(String(raw).trim());
   if (!Number.isFinite(cents)) return [];
@@ -312,9 +325,13 @@ export function extractBalanceBuckets(
 }
 
 export function extractUsageBuckets(
-  payload: UsageResponse | undefined
+  payload: Record<string, unknown> | undefined
 ): QuotaBucket[] {
-  const points = (payload?.timeSeries ?? []).flatMap((s) => s.dataPoints ?? []);
+  const timeSeries = Array.isArray(payload?.timeSeries) ? payload.timeSeries : [];
+  const points = timeSeries.flatMap((series) => {
+    const row = recordOrUndefined(series);
+    return Array.isArray(row?.dataPoints) ? row.dataPoints : [];
+  });
   if (points.length === 0) return [];
 
   const now = Date.now();
@@ -325,9 +342,18 @@ export function extractUsageBuckets(
   let total30d = 0;
 
   for (const point of points) {
-    const ts = point.timestamp ? Date.parse(point.timestamp) : NaN;
+    const row = recordOrUndefined(point);
+    const ts = typeof row?.timestamp === "string" ? Date.parse(row.timestamp) : NaN;
     if (!Number.isFinite(ts)) continue;
-    const usd = point.values?.find((v) => v?.name === "usd")?.value ?? 0;
+    const values = Array.isArray(row?.values) ? row.values : [];
+    let usd = 0;
+    for (const value of values) {
+      const entry = recordOrUndefined(value);
+      if (entry?.name === "usd" && typeof entry.value === "number") {
+        usd = entry.value;
+        break;
+      }
+    }
     total30d += usd;
     if (ts >= cutoff7d) total7d += usd;
     if (ts >= cutoff24h) total24h += usd;

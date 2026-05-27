@@ -34,7 +34,7 @@ final class QuotaStoreOrderTests: XCTestCase {
         store = QuotaStore()
 
         // Verify that the initial providerOrderTokens matches the default order CSV
-        let expectedDefaults = ["codex", "opencode", "claudecode", "openai", "deepseek", "copilot", "minimax", "zai", "factory", "cursor", "warp", "ollama", "kimi", "antigravity", "xai"]
+        let expectedDefaults = ["codex", "opencode", "claudecode", "openai", "deepseek", "copilot", "minimax", "zai", "factory", "cursor", "warp", "ollama", "kimi", "antigravity", "xai", "mimo"]
         XCTAssertEqual(store.providerOrderTokens, expectedDefaults)
     }
 

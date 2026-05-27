@@ -119,7 +119,7 @@ let package = Package(
         ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
-            dependencies: ["OpenBurnBarCore"]
+            dependencies: ["OpenBurnBarCore", "OpenBurnBarFirestoreModels"]
         ),
         .testTarget(
             name: "OpenBurnBarIrohRelayTests",

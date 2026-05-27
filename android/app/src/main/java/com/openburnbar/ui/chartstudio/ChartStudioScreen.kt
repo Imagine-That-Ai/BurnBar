@@ -121,7 +121,7 @@ fun ChartStudioScreen(
                             ChartStudioCanvasStore.add(context, trimmed, event.text)
                             HapticBus.success(context)
                         } else {
-                            state.error = (rendering as ChartStudioRendering.Error).message
+                            state.error = rendering.message
                             HapticBus.warning(context)
                         }
                     }
@@ -529,8 +529,9 @@ private fun AICanvasSection(
         AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
             when {
                 state.error != null -> {
+                    val errorMessage = state.error ?: return@AuroraGlassCard
                     Text(
-                        text = state.error!!,
+                        text = errorMessage,
                         style = AuroraType.body,
                         color = AuroraColors.warning
                     )
@@ -576,7 +577,8 @@ private fun AICanvasSection(
                     }
                 }
                 state.rendering != null -> {
-                    RenderingHost(state.rendering!!, onFollowUp = onFollowUp)
+                    val rendering = state.rendering ?: return@AuroraGlassCard
+                    RenderingHost(rendering, onFollowUp = onFollowUp)
                 }
             }
         }

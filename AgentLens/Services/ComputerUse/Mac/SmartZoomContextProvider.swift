@@ -389,7 +389,7 @@ public final class SmartZoomContextProvider {
 public enum SmartZoomSystemSampler {
     public static func sample(
         accessibilityTrusted: Bool? = nil,
-        clock: @Sendable () -> Date = Date.init,
+        clock: @Sendable () -> Date = { Date() },
         ignoredBundleIdentifiers: Set<String> = ["com.apple.loginwindow", "com.apple.SecurityAgent"]
     ) -> SmartZoomSampleInputs {
         let trusted = accessibilityTrusted ?? AXIsProcessTrusted()
@@ -463,9 +463,9 @@ public enum SmartZoomSystemSampler {
         let appElement = AXUIElementCreateApplication(application.processIdentifier)
         var focused: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focused)
-        guard err == .success, let window = focused else { return nil }
-        let frame = axRect(for: window as! AXUIElement, displays: displays) ?? .zero
-        let title = axString(window as! AXUIElement, kAXTitleAttribute as CFString)
+        guard err == .success, let window = axElement(focused) else { return nil }
+        let frame = axRect(for: window, displays: displays) ?? .zero
+        let title = axString(window, kAXTitleAttribute as CFString)
         let windowID: UInt32? = nil
         let appName = application.localizedName
             ?? application.bundleURL?.lastPathComponent
@@ -488,11 +488,10 @@ public enum SmartZoomSystemSampler {
         let appElement = AXUIElementCreateApplication(application.processIdentifier)
         var focused: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focused)
-        guard err == .success, let element = focused else { return nil }
-        let raw = element as! AXUIElement
-        let role = axString(raw, kAXRoleAttribute as CFString)
-        let subrole = axString(raw, kAXSubroleAttribute as CFString)
-        let frame = axRect(for: raw, displays: displays)
+        guard err == .success, let element = axElement(focused) else { return nil }
+        let role = axString(element, kAXRoleAttribute as CFString)
+        let subrole = axString(element, kAXSubroleAttribute as CFString)
+        let frame = axRect(for: element, displays: displays)
         return SmartZoomElementSnapshot(
             role: role,
             subrole: subrole,
@@ -515,14 +514,8 @@ public enum SmartZoomSystemSampler {
         guard positionErr == .success, sizeErr == .success,
               let positionRaw = positionValue,
               let sizeRaw = sizeValue else { return nil }
-        var origin = CGPoint.zero
-        var size = CGSize.zero
-        if AXValueGetType(positionRaw as! AXValue) == .cgPoint {
-            AXValueGetValue(positionRaw as! AXValue, .cgPoint, &origin)
-        }
-        if AXValueGetType(sizeRaw as! AXValue) == .cgSize {
-            AXValueGetValue(sizeRaw as! AXValue, .cgSize, &size)
-        }
+        guard let origin = axPoint(positionRaw),
+              let size = axSize(sizeRaw) else { return nil }
         guard size.width > 0, size.height > 0 else { return nil }
         // AX positions are already top-left-origin event-tap pixels.
         return CGRect(origin: origin, size: size)

@@ -82,6 +82,14 @@ final class AgentIdentityRegistryMacURITests: XCTestCase {
         )
     }
 
+    func testMercuryMirrorLifecycleOnlyExplicitStopsEndHostSession() {
+        XCTAssertTrue(MercuryMirrorTeardownTrigger.explicitClose.shouldSendMirrorStop)
+        XCTAssertTrue(MercuryMirrorTeardownTrigger.signOut.shouldSendMirrorStop)
+        XCTAssertFalse(MercuryMirrorTeardownTrigger.sheetDisappear.shouldSendMirrorStop)
+        XCTAssertFalse(MercuryMirrorTeardownTrigger.viewerDisappear.shouldSendMirrorStop)
+        XCTAssertFalse(MercuryMirrorTeardownTrigger.sceneInactive.shouldSendMirrorStop)
+    }
+
     func testPhoneControlSetupMessagePreservesSpecificNetworkFailure() {
         let error = CloudGatewayError.classified(.networkUnavailable)
 

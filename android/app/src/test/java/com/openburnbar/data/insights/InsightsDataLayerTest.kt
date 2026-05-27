@@ -63,7 +63,8 @@ class InsightsDataLayerTest {
         layout = layout.placeNew("w1", 8 to 2)
         val projected = layout.projectedTo(4)
         assertEquals(4, projected.columnCount)
-        assertTrue(projected.placements["w1"]!!.colSpan >= 1)
+        val w1 = requireNotNull(projected.placements["w1"])
+        assertTrue(w1.colSpan >= 1)
     }
 
     @Test

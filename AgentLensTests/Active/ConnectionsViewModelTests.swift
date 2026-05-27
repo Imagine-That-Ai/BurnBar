@@ -201,7 +201,7 @@ final class ConnectionsViewModelTests: XCTestCase {
         }
     }
 
-    func test_refreshProxyModelCatalog_collapsesSameProviderModelAcrossAccounts() async {
+    func test_refreshProxyModelCatalog_collapsesSameProviderModelAcrossAccounts() async throws {
         viewModel = ConnectionsViewModel(
             wiringFactory: { RoutingClientWiring(home: self.tempHome) },
             proxyCatalogFetcher: { _ in
@@ -241,7 +241,7 @@ final class ConnectionsViewModelTests: XCTestCase {
         await viewModel.refreshProxyModelCatalog(settings: settings)
 
         XCTAssertEqual(viewModel.proxyModels.count, 1)
-        let model = try! XCTUnwrap(viewModel.proxyModels.first)
+        let model = try XCTUnwrap(viewModel.proxyModels.first)
         XCTAssertEqual(model.modelID, "shared-model")
         XCTAssertEqual(model.displayName, "Shared Model")
         XCTAssertEqual(model.accountID, "auto")

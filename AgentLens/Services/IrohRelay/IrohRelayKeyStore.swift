@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import Security
@@ -94,9 +95,11 @@ struct IrohRotatingKeychainSecretStore: Sendable {
 
     func load() throws -> Data? {
         var query = baseQuery()
+        let context = LAContext()
+        context.interactionNotAllowed = true
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
-        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        query[kSecUseAuthenticationContext as String] = context
 
         var item: CFTypeRef?
         let status = withKeychainInteractionDisabled {

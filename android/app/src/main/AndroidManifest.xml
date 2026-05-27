@@ -238,5 +238,9 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name=".services.media.AgentReplyNotificationReceiver"
+            android:exported="false" />
+
     </application>
 </manifest>

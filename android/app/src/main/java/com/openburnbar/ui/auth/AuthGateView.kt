@@ -176,7 +176,7 @@ private fun SimpleAuthScreen(
                         icon = "🍎",
                         iconBg = Color.Black,
                         onClick = {
-                            userStore.signInWithApple(context as android.app.Activity)
+                            (context as? android.app.Activity)?.let(userStore::signInWithApple)
                         },
                         enabled = !isSigningIn
                     )

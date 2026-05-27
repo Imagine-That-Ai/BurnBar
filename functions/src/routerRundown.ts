@@ -29,6 +29,11 @@ import type {
   ModelBenchmarkSource,
   ModelBenchmarkTaskCategory,
 } from "./types.js";
+import {
+  isRecord,
+  parseModelBenchmarkSnapshotDoc,
+  parseModelBenchmarkSourceStatusDoc,
+} from "./guards.js";
 
 export const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
 
@@ -137,7 +142,7 @@ export const SELECTION_SCORE_TOP = 0.99;
 export const SELECTION_SCORE_STEP = 0.03;
 export const SELECTION_SCORE_FLOOR = 0.05;
 
-const FAVORITE_LADDER = [
+const FAVORITE_LADDER: FavoriteEntry[] = [
   {
     modelID: "gpt-5-5",
     rank: 1,
@@ -159,14 +164,20 @@ const FAVORITE_LADDER = [
     displayName: "GLM 5.1",
     preferredReasoningEffort: null,
   },
-] as const;
+];
 
-type FavoriteEntry = typeof FAVORITE_LADDER[number];
+type FavoriteEntry = {
+  modelID: string;
+  rank: number;
+  prior: number;
+  displayName: string;
+  preferredReasoningEffort: string | null;
+};
 const FAVORITE_BY_MODEL_ID: Map<string, FavoriteEntry> = new Map(
-  FAVORITE_LADDER.map((entry) => [entry.modelID as string, entry])
+  FAVORITE_LADDER.map((entry) => [entry.modelID, entry])
 );
 const FAVORITE_BY_RANK: Map<number, FavoriteEntry> = new Map(
-  FAVORITE_LADDER.map((entry) => [entry.rank as number, entry])
+  FAVORITE_LADDER.map((entry) => [entry.rank, entry])
 );
 const BUILT_IN_ALIASES: Record<string, string[]> = {
   "gpt-5-5": ["openai/gpt-5.5", "openai/gpt-5-5", "openai/gpt-5.5-xhigh", "openai/gpt-5-5-xhigh", "gpt-5.5", "gpt-5.5-xhigh", "gpt-5-5-xhigh"],
@@ -182,6 +193,106 @@ const REDACTION_PATTERNS = [
   /\bx-api-key\s*[:=]\s*[^\s;]{8,}/gi,
   /\bauthorization\s*[:=]\s*[^\s;]{8,}/gi,
 ];
+
+function tierMultiplier(tier: string): number {
+  switch (tier) {
+    case "flagship":
+      return TIER_MULTIPLIER.flagship;
+    case "mid":
+      return TIER_MULTIPLIER.mid;
+    case "mini":
+      return TIER_MULTIPLIER.mini;
+    case "unknown":
+      return TIER_MULTIPLIER.unknown;
+    default:
+      return TIER_MULTIPLIER.unknown;
+  }
+}
+
+function parseModelTier(value: unknown): ModelMeta["tier"] | undefined {
+  switch (value) {
+    case "flagship":
+    case "mid":
+    case "mini":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function parseModelMeta(raw: unknown): ModelMeta | undefined {
+  if (!isRecord(raw) || typeof raw.modelID !== "string") return undefined;
+  const tier = parseModelTier(raw.tier);
+  if (!tier || typeof raw.modelDisplay !== "string" || typeof raw.providerID !== "string" || typeof raw.providerDisplay !== "string" || typeof raw.providerFamily !== "string") {
+    return undefined;
+  }
+  return {
+    modelID: raw.modelID,
+    modelDisplay: raw.modelDisplay,
+    selectionDisplayName: typeof raw.selectionDisplayName === "string" ? raw.selectionDisplayName : undefined,
+    providerID: raw.providerID,
+    providerDisplay: raw.providerDisplay,
+    providerFamily: raw.providerFamily,
+    providerLogo: typeof raw.providerLogo === "string" ? raw.providerLogo : undefined,
+    tier,
+    contextWindowTokens: typeof raw.contextWindowTokens === "number" ? raw.contextWindowTokens : undefined,
+    costSignal: typeof raw.costSignal === "number" ? raw.costSignal : undefined,
+    aliases: Array.isArray(raw.aliases) ? raw.aliases.filter((item): item is string => typeof item === "string") : undefined,
+    operatorPreferenceRank: typeof raw.operatorPreferenceRank === "number" ? raw.operatorPreferenceRank : undefined,
+    operatorPreferencePrior: typeof raw.operatorPreferencePrior === "number" ? raw.operatorPreferencePrior : undefined,
+    favoritePolicyVersion: typeof raw.favoritePolicyVersion === "string" ? raw.favoritePolicyVersion : undefined,
+    preferredReasoningEffort: typeof raw.preferredReasoningEffort === "string" ? raw.preferredReasoningEffort : undefined,
+  };
+}
+
+function parseRuntimeMeta(raw: unknown): RuntimeMeta | undefined {
+  if (!isRecord(raw)) return undefined;
+  const availability = raw.availability;
+  return {
+    availability:
+      availability === "common" || availability === "limited" || availability === "unknown"
+        ? availability
+        : undefined,
+    routable: typeof raw.routable === "boolean" ? raw.routable : undefined,
+    reliability: typeof raw.reliability === "number" ? raw.reliability : undefined,
+    latencySignal: typeof raw.latencySignal === "number" ? raw.latencySignal : undefined,
+  };
+}
+
+function parsePreviousRundown(raw: unknown): RundownInput["previousRundown"] | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.taskRankings)) return undefined;
+  const taskRankings: NonNullable<RundownInput["previousRundown"]>["taskRankings"] = [];
+  for (const task of raw.taskRankings) {
+    if (!isRecord(task)) continue;
+    taskRankings.push({
+      taskID: typeof task.taskID === "string" ? task.taskID : undefined,
+      recommendations: Array.isArray(task.recommendations)
+        ? task.recommendations.flatMap((rec) => {
+            if (!isRecord(rec) || typeof rec.modelID !== "string") return [];
+            return [{
+              modelID: rec.modelID,
+              score: typeof rec.score === "number" ? rec.score : undefined,
+              signals: isRecord(rec.signals)
+                ? { benchmarkScore: typeof rec.signals.benchmarkScore === "number" ? rec.signals.benchmarkScore : rec.signals.benchmarkScore === null ? null : undefined }
+                : undefined,
+            }];
+          })
+        : undefined,
+      rejectedAlternatives: Array.isArray(task.rejectedAlternatives)
+        ? task.rejectedAlternatives.flatMap((alt) => {
+            if (!isRecord(alt) || typeof alt.modelID !== "string") return [];
+            return [{
+              modelID: alt.modelID,
+              score: typeof alt.score === "number" ? alt.score : undefined,
+              evidenceScore: typeof alt.evidenceScore === "number" ? alt.evidenceScore : undefined,
+              benchmarkScore: typeof alt.benchmarkScore === "number" ? alt.benchmarkScore : alt.benchmarkScore === null ? null : undefined,
+            }];
+          })
+        : undefined,
+    });
+  }
+  return { taskRankings };
+}
 
 function redact(text: string | undefined): string {
   if (typeof text !== "string") return "";
@@ -663,7 +774,7 @@ function buildRecommendation({
 
   const { score: rawScore, evidenceCoverage } = weightedComposite(signals);
   const tier = model.tier ?? "unknown";
-  const tierMul = TIER_MULTIPLIER[tier as keyof typeof TIER_MULTIPLIER] ?? TIER_MULTIPLIER.unknown;
+  const tierMul = tierMultiplier(tier);
   const routable = runtime?.routable !== false;
   const routeMul = routable ? ROUTABLE_MULTIPLIER.yes : ROUTABLE_MULTIPLIER.no;
   const score = clamp01(rawScore * tierMul * routeMul) ?? 0;
@@ -787,8 +898,17 @@ export async function loadRundownCatalog(db: Firestore): Promise<{
   if (snap.exists) {
     const data = snap.data() ?? {};
     return {
-      models: Array.isArray(data.models) ? (data.models as ModelMeta[]) : [],
-      runtime: typeof data.runtime === "object" && data.runtime != null ? data.runtime as Record<string, RuntimeMeta> : {},
+      models: Array.isArray(data.models)
+        ? data.models.map(parseModelMeta).filter((model): model is ModelMeta => model != null)
+        : [],
+      runtime: isRecord(data.runtime)
+        ? Object.fromEntries(
+            Object.entries(data.runtime).flatMap(([modelID, value]) => {
+              const parsed = parseRuntimeMeta(value);
+              return parsed ? [[modelID, parsed]] : [];
+            })
+          )
+        : {},
     };
   }
   return DEFAULT_CATALOG;
@@ -814,11 +934,15 @@ export async function buildAndPersistRouterRundown(db: Firestore, now: Date = ne
     db.doc("router_rundowns/latest").get(),
   ]);
 
-  const snapshots: ModelBenchmarkSnapshotDoc[] = snapshotsSnap.docs.map((d) => d.data() as ModelBenchmarkSnapshotDoc);
-  const statuses: ModelBenchmarkSourceStatusDoc[] = statusesSnap.docs.map((d) => d.data() as ModelBenchmarkSourceStatusDoc);
+  const snapshots = snapshotsSnap.docs
+    .map((d) => parseModelBenchmarkSnapshotDoc(d.data()))
+    .filter((snapshot): snapshot is ModelBenchmarkSnapshotDoc => snapshot != null);
+  const statuses = statusesSnap.docs
+    .map((d) => parseModelBenchmarkSourceStatusDoc(d.data()))
+    .filter((status): status is ModelBenchmarkSourceStatusDoc => status != null);
   const previousLatest = previousLatestSnap.exists ? previousLatestSnap.data() : undefined;
-  const previousRundown = previousLatest?.date && previousLatest.date !== date
-    ? previousLatest as RundownInput["previousRundown"]
+  const previousRundown = previousLatest && typeof previousLatest.date === "string" && previousLatest.date !== date
+    ? parsePreviousRundown(previousLatest)
     : undefined;
 
   if (catalog.models.length === 0) {

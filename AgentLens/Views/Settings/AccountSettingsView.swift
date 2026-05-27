@@ -1,6 +1,11 @@
 import SwiftUI
 import FirebaseAuth
 
+private enum AccountSettingsLegalURLs {
+    static let privacy = URL(string: "https://burnbar.ai/legal/privacy-policy")!
+    static let terms = URL(string: "https://burnbar.ai/legal/terms")!
+}
+
 // MARK: - Account Settings View
 
 /// Settings view for account management and authentication
@@ -335,31 +340,46 @@ struct AccountSettingsView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            HStack(spacing: DesignSystem.Spacing.md) {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    HStack {
-                        Text("Free Plan")
-                            .font(DesignSystem.Typography.body)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Text("Current")
-                            .font(DesignSystem.Typography.tiny)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(DesignSystem.Colors.success.opacity(0.15))
-                            .foregroundStyle(DesignSystem.Colors.success)
-                            .clipShape(Capsule())
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                HStack(spacing: DesignSystem.Spacing.md) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        HStack {
+                            Text("Free Plan")
+                                .font(DesignSystem.Typography.body)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            Text("Current")
+                                .font(DesignSystem.Typography.tiny)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(DesignSystem.Colors.success.opacity(0.15))
+                                .foregroundStyle(DesignSystem.Colors.success)
+                                .clipShape(Capsule())
+                        }
+
+                        Text("50 summaries per month")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
                     }
 
-                    Text("50 summaries per month")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Spacer()
+
+                    Button("Upgrade") { onUpgradeToPremium() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.blaze)
                 }
 
-                Spacer()
+                Text("OpenBurnBar Cloud Monthly is an optional 1 month auto-renewable subscription billed by Apple.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
 
-                Button("Upgrade") { onUpgradeToPremium() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(DesignSystem.Colors.blaze)
+                HStack(spacing: 8) {
+                    Link("Privacy Policy", destination: AccountSettingsLegalURLs.privacy)
+                    Text("·")
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Link("Terms of Use (EULA)", destination: AccountSettingsLegalURLs.terms)
+                }
+                .font(DesignSystem.Typography.tiny)
+                .accessibilityIdentifier("account.subscriptionLegalLinks")
             }
             .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.surface)

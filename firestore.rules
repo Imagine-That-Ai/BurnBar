@@ -1418,6 +1418,67 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
+    match /users/{userId}/agent_notification_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/agent_notification_replies/{replyId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "uid",
+          "eventId",
+          "threadId",
+          "runtime",
+          "sourceKind",
+          "replyText",
+          "deviceId",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.id == replyId
+        && request.resource.data.uid == userId
+        && request.resource.data.eventId is string
+        && request.resource.data.eventId.size() <= 512
+        && exists(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId))
+        && request.resource.data.threadId is string
+        && request.resource.data.threadId.size() <= 512
+        && request.resource.data.threadId == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.threadId
+        && request.resource.data.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge"]
+        && request.resource.data.runtime == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.runtime
+        && request.resource.data.sourceKind in ["cli_session", "mobile_assistant_chat"]
+        && request.resource.data.sourceKind == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.sourceKind
+        && request.resource.data.replyText is string
+        && request.resource.data.replyText.size() > 0
+        && request.resource.data.replyText.size() <= 16000
+        && (!("deviceId" in request.resource.data) || (request.resource.data.deviceId is string && request.resource.data.deviceId.size() <= 160))
+        && request.resource.data.status == "queued"
+        && request.resource.data.schemaVersion == 1;
+      allow update: if ownsUserNamespace(userId)
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.eventId == resource.data.eventId
+        && request.resource.data.threadId == resource.data.threadId
+        && request.resource.data.runtime == resource.data.runtime
+        && request.resource.data.sourceKind == resource.data.sourceKind
+        && request.resource.data.replyText == resource.data.replyText
+        && request.resource.data.status in ["processing", "sent", "failed"]
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "processorDeviceId",
+          "processedAt",
+          "errorMessage",
+          "updatedAt"
+        ])
+        && (!("processorDeviceId" in request.resource.data) || (request.resource.data.processorDeviceId is string && request.resource.data.processorDeviceId.size() <= 160))
+        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 512));
+      allow delete: if false;
+    }
+
     match /users/{userId}/quota_snapshots/{snapshotId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId);

@@ -28,11 +28,11 @@ public enum QuotaPercentageDisplayMode: String, Codable, CaseIterable, Identifia
 final class QuotaSettings {
     private let persistence: SettingsPersistenceCoordinator
 
-    var providerOrderCSV: String = "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai" {
+    var providerOrderCSV: String = "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai,mimo" {
         didSet { persistence.set(providerOrderCSV, forKey: "providerOrderCSV") }
     }
 
-    var visibleProvidersCSV: String = "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai" {
+    var visibleProvidersCSV: String = "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai,mimo" {
         didSet { persistence.set(visibleProvidersCSV, forKey: "visibleProvidersCSV") }
     }
 
@@ -109,6 +109,24 @@ final class QuotaSettings {
 
     var xaiQuotaPlanTier: XAIQuotaPlanTier = .unknown {
         didSet { persistence.set(xaiQuotaPlanTier, forKey: "xaiQuotaPlanTier") }
+    }
+
+    var mimoTokenPlanRegion: ProviderEndpointRegion = .sgp {
+        didSet { persistence.set(mimoTokenPlanRegion.rawValue, forKey: "mimoTokenPlanRegion") }
+    }
+
+    var mimoTokenPlanTier: MimoTokenPlanTier? = nil {
+        didSet {
+            if let mimoTokenPlanTier {
+                persistence.set(mimoTokenPlanTier.rawValue, forKey: "mimoTokenPlanTier")
+            } else {
+                persistence.removeObject(forKey: "mimoTokenPlanTier")
+            }
+        }
+    }
+
+    var mimoTokenPlanBillingCycle: MimoTokenPlanBillingCycle = .monthly {
+        didSet { persistence.set(mimoTokenPlanBillingCycle.rawValue, forKey: "mimoTokenPlanBillingCycle") }
     }
 
     var tokenizerAssistedFallbackEnabled: Bool = false {
@@ -229,6 +247,24 @@ final class QuotaSettings {
         } else {
             self.xaiQuotaPlanTier = .unknown
         }
+        if let regionRaw = persistence.optionalString(forKey: "mimoTokenPlanRegion"),
+           let region = ProviderEndpointRegion(rawValue: regionRaw) {
+            self.mimoTokenPlanRegion = region
+        } else {
+            self.mimoTokenPlanRegion = .sgp
+        }
+        if let tierRaw = persistence.optionalString(forKey: "mimoTokenPlanTier"),
+           let tier = MimoTokenPlanTier(rawValue: tierRaw) {
+            self.mimoTokenPlanTier = tier
+        } else {
+            self.mimoTokenPlanTier = nil
+        }
+        if let cycleRaw = persistence.optionalString(forKey: "mimoTokenPlanBillingCycle"),
+           let cycle = MimoTokenPlanBillingCycle(rawValue: cycleRaw) {
+            self.mimoTokenPlanBillingCycle = cycle
+        } else {
+            self.mimoTokenPlanBillingCycle = .monthly
+        }
         if persistence.objectExists(forKey: "tokenizerAssistedFallbackEnabled") {
             self.tokenizerAssistedFallbackEnabled = persistence.bool(forKey: "tokenizerAssistedFallbackEnabled")
         } else {
@@ -241,11 +277,11 @@ final class QuotaSettings {
         }
         self.providerOrderCSV = persistence.string(
             forKey: "providerOrderCSV",
-            defaultValue: "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai"
+            defaultValue: "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai,mimo"
         )
         self.visibleProvidersCSV = persistence.string(
             forKey: "visibleProvidersCSV",
-            defaultValue: "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai"
+            defaultValue: "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai,mimo"
         )
         if let raw = persistence.optionalString(forKey: "hiddenBucketsJSON"),
            let data = raw.data(using: .utf8),

@@ -179,6 +179,22 @@ struct ComputerUseSettingsView: View {
         }
     }
 
+    private enum Tab: String, CaseIterable, Identifiable {
+        case setup
+        case policy
+        case forensics
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .setup: return "Setup"
+            case .policy: return "Policy"
+            case .forensics: return "Forensics"
+            }
+        }
+    }
+
     @Environment(SettingsManager.self) private var settingsManager
     @StateObject private var panelModel = ComputerUseSessionPanelModel()
     @StateObject private var wizardModel = ComputerUseSetupWizardModel()
@@ -196,28 +212,26 @@ struct ComputerUseSettingsView: View {
         kind: .idle,
         message: "Enter a session id to validate, export, or notarize its local audit chain."
     )
+    @State private var selectedTab: Tab = .setup
     private let runtimeController: ComputerUseRuntimeController?
 
     init(runtimeController: ComputerUseRuntimeController? = nil) {
         self.runtimeController = runtimeController
     }
 
+    // MARK: - Body
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 18) {
                 header
-                    .padding(.bottom, 4)
 
-                readiness
+                heroStatusCard
                     .settingsAnchor(SettingsAnchor.computerUseReadiness)
 
-                actions
-                    .padding(.vertical, 4)
+                tabSwitcher
 
-                ComputerUseSessionPanel(model: activePanelModel)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                auditOperations
+                tabContent
             }
             .padding(24)
             .frame(maxWidth: 820, alignment: .leading)
@@ -276,99 +290,139 @@ struct ComputerUseSettingsView: View {
     }
     #endif
 
+    // MARK: - Header
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Computer Use")
                 .font(.system(size: 26, weight: .bold, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Text("Browser automation, Mac input, approval, panic halt, and audit-chain controls for direct-download builds.")
+            Text("Browser automation, Mac input, approvals, panic halt, and audit chain controls.")
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
         }
     }
 
-    private var readiness: some View {
+    // MARK: - Hero status card
+
+    private var heroStatusCard: some View {
         SettingsGlassCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checklist")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.ember)
-                    Text("System Readiness")
-                        .font(DesignSystem.Typography.title)
+            HStack(alignment: .center, spacing: 16) {
+                heroStatusBadge
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(heroStatusTitle)
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(heroStatusSubtitle)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Divider()
-                    .opacity(0.3)
+                Spacer(minLength: 12)
 
-                VStack(spacing: 12) {
-                    statusRow(
-                        icon: accessibilityTrusted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
-                        title: "Accessibility permission",
-                        detail: accessibilityTrusted
-                            ? "Granted. OpenBurnBar can post approved CGEvents."
-                            : "Missing. System Computer Use cannot click or type until this is granted.",
-                        color: accessibilityTrusted ? DesignSystem.Colors.success : DesignSystem.Colors.warning
-                    )
-
-                    statusRow(
-                        icon: "shield.lefthalf.filled",
-                        title: "Mac App Store build guard",
-                        detail: "Path C is compiled out when DISTRIBUTION_MAS is set.",
-                        color: DesignSystem.Colors.whimsy
-                    )
-
-                    statusRow(
-                        icon: "link",
-                        title: "Phone control stream",
-                        detail: "The iroh host now exposes a Computer Use control dispatcher for active sessions.",
-                        color: DesignSystem.Colors.amber
-                    )
-
-                    statusRow(
-                        icon: "person.crop.circle.badge.checkmark",
-                        title: "Approval presenter",
-                        detail: "Daemon-originated approvals are presented by an app-wide floating panel, not only this Settings screen.",
-                        color: DesignSystem.Colors.ember
-                    )
+                HStack(spacing: 8) {
+                    SettingsGlassButton(title: "Run Setup", icon: "wand.and.stars", style: .prominent) {
+                        showingSetupWizard = true
+                    }
+                    if runtimeController != nil {
+                        SettingsGlassButton(title: "Start Session", icon: "play.circle") {
+                            startSystemSession()
+                        }
+                    }
+                    heroRefreshButton
                 }
             }
         }
     }
 
-    private var actions: some View {
-        HStack(spacing: 10) {
-            SettingsGlassButton(title: "Run Setup", icon: "wand.and.stars", style: .prominent) {
-                showingSetupWizard = true
-            }
+    private var heroStatusBadge: some View {
+        ZStack {
+            Circle()
+                .fill(heroStatusColor.opacity(0.14))
+                .frame(width: 44, height: 44)
+            Image(systemName: heroStatusIcon)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(heroStatusColor)
+        }
+        .accessibilityHidden(true)
+    }
 
-            SettingsGlassButton(title: "Re-run Mac Permissions Setup", icon: "lock.shield") {
-                showingPermissionsWizard = true
-            }
-            .settingsAnchor(SettingsAnchor.computerUsePermissionsSetup)
+    private var heroRefreshButton: some View {
+        Button(action: refreshReadiness) {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .frame(width: 30, height: 30)
+                .background {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.75)
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .help("Refresh readiness")
+        .accessibilityLabel("Refresh readiness")
+    }
 
-            SettingsGlassButton(title: "Open Accessibility", icon: "lock.open") {
-                requestAccessibility()
-            }
+    private var heroStatusIcon: String {
+        accessibilityTrusted ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"
+    }
 
-            SettingsGlassButton(title: "Install Playwright", icon: "globe") {
-                runPlaywrightInstaller()
-            }
+    private var heroStatusColor: Color {
+        accessibilityTrusted ? DesignSystem.Colors.success : DesignSystem.Colors.warning
+    }
 
-            SettingsGlassButton(
-                title: "Start System Session",
-                icon: "play.circle",
-                isEnabled: runtimeController != nil
-            ) {
-                startSystemSession()
-            }
+    private var heroStatusTitle: String {
+        accessibilityTrusted ? "Computer Use is ready" : "Setup required"
+    }
 
-            Spacer()
+    private var heroStatusSubtitle: String {
+        let trustWord = activePanelModel.liveTrustMode.rawValue.capitalized
+        let denyCount = activePanelModel.scopeRules.filter { $0.effect == .deny }.count
+        let denyLabel = denyCount == 1 ? "1 deny rule" : "\(denyCount) deny rules"
+        let sessionPart: String
+        if let started = activePanelModel.currentSessionStartedAt {
+            sessionPart = "session active since \(heroTimeFormatter.string(from: started))"
+        } else {
+            sessionPart = "no active session"
+        }
+        return "\(trustWord) trust  ·  \(denyLabel)  ·  \(sessionPart)"
+    }
 
-            SettingsGlassButton(title: "Refresh", icon: "arrow.clockwise") {
-                refreshReadiness()
+    private let heroTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        return f
+    }()
+
+    // MARK: - Tab switcher
+
+    private var tabSwitcher: some View {
+        Picker("View", selection: $selectedTab) {
+            ForEach(Tab.allCases) { tab in
+                Text(tab.title).tag(tab)
             }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 360, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .setup:
+            setupTab
+        case .policy:
+            policyTab
+        case .forensics:
+            forensicsTab
         }
     }
 
@@ -376,51 +430,211 @@ struct ComputerUseSettingsView: View {
         runtimeController?.panelModel ?? panelModel
     }
 
-    private var auditOperations: some View {
+    // MARK: - Setup tab
+
+    private var setupTab: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            readinessSection
+            setupActionsSection
+        }
+    }
+
+    private var readinessSection: some View {
+        SettingsGlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                sectionHeader("System Readiness", icon: "checklist", iconColor: DesignSystem.Colors.ember)
+
+                Divider().opacity(0.22)
+
+                VStack(spacing: 0) {
+                    readinessRow(
+                        icon: accessibilityTrusted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                        iconColor: accessibilityTrusted ? DesignSystem.Colors.success : DesignSystem.Colors.warning,
+                        title: "Accessibility permission",
+                        detail: accessibilityTrusted
+                            ? "Granted. OpenBurnBar can post approved CGEvents."
+                            : "Not granted. System Computer Use cannot click or type until this is granted."
+                    ) {
+                        if !accessibilityTrusted {
+                            SettingsGlassButton(title: "Open", icon: "lock.open") {
+                                requestAccessibility()
+                            }
+                        }
+                    }
+
+                    readinessRowDivider
+
+                    readinessRow(
+                        icon: "checkmark.circle.fill",
+                        iconColor: DesignSystem.Colors.success,
+                        title: "Mac App Store build guard",
+                        detail: "Path C is compiled out when DISTRIBUTION_MAS is set."
+                    )
+
+                    readinessRowDivider
+
+                    readinessRow(
+                        icon: "checkmark.circle.fill",
+                        iconColor: DesignSystem.Colors.success,
+                        title: "Phone control stream",
+                        detail: "iroh host exposes a Computer Use dispatcher for active sessions."
+                    )
+
+                    readinessRowDivider
+
+                    readinessRow(
+                        icon: "checkmark.circle.fill",
+                        iconColor: DesignSystem.Colors.success,
+                        title: "Approval presenter",
+                        detail: "Daemon approvals surface in an app-wide floating panel."
+                    )
+                }
+            }
+        }
+    }
+
+    private var setupActionsSection: some View {
+        SettingsGlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                sectionHeader("Setup Actions", icon: "wand.and.stars", iconColor: DesignSystem.Colors.whimsy)
+
+                Divider().opacity(0.22)
+
+                VStack(spacing: 0) {
+                    actionRow(
+                        icon: "lock.shield",
+                        iconColor: DesignSystem.Colors.amber,
+                        title: "Mac permissions",
+                        detail: "Re-run the full permissions onboarding flow.",
+                        buttonTitle: "Re-run",
+                        buttonIcon: "arrow.clockwise"
+                    ) { showingPermissionsWizard = true }
+                    .settingsAnchor(SettingsAnchor.computerUsePermissionsSetup)
+
+                    readinessRowDivider
+
+                    actionRow(
+                        icon: "globe",
+                        iconColor: DesignSystem.Colors.teal,
+                        title: "Playwright runtime",
+                        detail: "Installs the bundled Playwright bridge for browser automation.",
+                        buttonTitle: "Install",
+                        buttonIcon: "arrow.down.circle"
+                    ) { runPlaywrightInstaller() }
+                }
+            }
+        }
+    }
+
+    private var readinessRowDivider: some View {
+        Divider()
+            .opacity(0.16)
+            .padding(.leading, 32)
+    }
+
+    private func readinessRow(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        detail: String
+    ) -> some View {
+        readinessRow(icon: icon, iconColor: iconColor, title: title, detail: detail) {
+            EmptyView()
+        }
+    }
+
+    private func readinessRow<Trailing: View>(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        detail: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(iconColor)
+                .frame(width: 20, height: 20)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(detail)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineSpacing(1.5)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            trailing()
+        }
+        .padding(.vertical, 10)
+    }
+
+    private func actionRow(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        detail: String,
+        buttonTitle: String,
+        buttonIcon: String,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(iconColor)
+                .frame(width: 20, height: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(detail)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            SettingsGlassButton(title: buttonTitle, icon: buttonIcon, isEnabled: isEnabled, action: action)
+        }
+        .padding(.vertical, 10)
+    }
+
+    // MARK: - Policy tab
+
+    private var policyTab: some View {
+        ComputerUseSessionPanel(model: activePanelModel)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Forensics tab
+
+    private var forensicsTab: some View {
         SettingsGlassCard {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.seal")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.whimsy)
-                    Text("Forensics & Notarization")
-                        .font(DesignSystem.Typography.title)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                }
+                sectionHeader(
+                    "Forensics & Notarization",
+                    icon: "checkmark.seal",
+                    iconColor: DesignSystem.Colors.whimsy
+                )
 
                 Text("Validate the local hash chain, export a signed .tar.gz archive, or notarize the terminal chain head.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-                Divider()
-                    .opacity(0.3)
+                Divider().opacity(0.22)
 
-                HStack(spacing: 12) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "key.viewfinder")
-                            .font(.system(size: 12))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                        TextField("Session id", text: $auditSessionId)
-                            .textFieldStyle(.plain)
-                            .font(DesignSystem.Typography.monoSmall)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(DesignSystem.Colors.surface.opacity(0.8))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
-                            )
-                    )
+                sessionIdField
 
-                    Toggle("Screenshots", isOn: $auditIncludeScreenshots)
-                        .toggleStyle(.checkbox)
-                        .font(DesignSystem.Typography.caption)
-                }
-
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     SettingsGlassButton(
                         title: "Validate Chain",
                         icon: "checkmark.seal",
@@ -436,54 +650,99 @@ struct ComputerUseSettingsView: View {
                     ) {
                         exportAuditArchive()
                     }
-                }
 
-                DisclosureGroup(isExpanded: $auditAdvancedExpanded) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Toggle("Allow OpenTimestamps notarization for this session", isOn: $auditNotarizationOptIn)
-                            .toggleStyle(.checkbox)
-                            .font(DesignSystem.Typography.caption)
+                    Spacer(minLength: 12)
 
-                        Text("Submits only the audit-chain root hash to OpenTimestamps and stores the returned .ots proof beside the local chain.")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                        SettingsGlassButton(
-                            title: "Notarize via OTS",
-                            icon: "clock.badge.checkmark",
-                            isEnabled: !trimmedAuditSessionId.isEmpty
-                                && auditStatus.kind != .running
-                                && auditNotarizationOptIn
-                        ) {
-                            notarizeAuditChain()
-                        }
-                    }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(DesignSystem.Colors.surface.opacity(0.4))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                            )
-                    )
-                    .padding(.top, 4)
-                } label: {
-                    Label("Advanced Notarization Options", systemImage: "wrench.and.screwdriver")
+                    Toggle("Include screenshots", isOn: $auditIncludeScreenshots)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
                         .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
 
-                Divider()
-                    .opacity(0.2)
+                advancedNotarizationDisclosure
+
+                Divider().opacity(0.18)
 
                 statusRow(
                     icon: auditStatusIcon,
-                    title: "Operation Log Feedback",
+                    title: "Operation log",
                     detail: auditStatus.message,
                     color: auditStatusColor
                 )
             }
+        }
+    }
+
+    private var sessionIdField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "key.viewfinder")
+                .font(.system(size: 12))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            TextField("Session id", text: $auditSessionId)
+                .textFieldStyle(.plain)
+                .font(DesignSystem.Typography.monoSmall)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+                )
+        }
+    }
+
+    private var advancedNotarizationDisclosure: some View {
+        DisclosureGroup(isExpanded: $auditAdvancedExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Allow OpenTimestamps notarization for this session", isOn: $auditNotarizationOptIn)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .font(DesignSystem.Typography.caption)
+
+                Text("Submits only the audit-chain root hash to OpenTimestamps and stores the returned .ots proof beside the local chain.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                SettingsGlassButton(
+                    title: "Notarize via OTS",
+                    icon: "clock.badge.checkmark",
+                    isEnabled: !trimmedAuditSessionId.isEmpty
+                        && auditStatus.kind != .running
+                        && auditNotarizationOptIn
+                ) {
+                    notarizeAuditChain()
+                }
+            }
+            .padding(12)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.4))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+                    )
+            }
+            .padding(.top, 4)
+        } label: {
+            Label("Advanced notarization options", systemImage: "wrench.and.screwdriver")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        }
+    }
+
+    // MARK: - Shared helpers
+
+    private func sectionHeader(_ title: String, icon: String, iconColor: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(iconColor)
+            Text(title)
+                .font(DesignSystem.Typography.headline)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
         }
     }
 

@@ -1,3 +1,4 @@
+import { errorMessage } from "./guards.js";
 /**
  * @fileoverview Mercury Phase 5 — n0 hosted-relay budget guardrail.
  *
@@ -15,8 +16,9 @@
 
 import { getRemoteConfig } from "firebase-admin/remote-config";
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
+import { numberField } from "./guards.js";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import type { MediaBudgetStatusDoc, MediaSessionDailyRollupDoc } from "./types.js";
+import type { MediaBudgetStatusDoc } from "./types.js";
 
 const SOFT_CAP_USD = 600;
 const HARD_CAP_USD = 1000;
@@ -71,7 +73,7 @@ async function loadBudgetTunings(): Promise<BudgetTunings> {
     }
   } catch (err) {
     console.warn(
-      `mediaBudget: Remote Config unavailable, using defaults (${(err as Error).message})`
+      `mediaBudget: Remote Config unavailable, using defaults (${errorMessage(err)})`
     );
   }
   return {
@@ -130,9 +132,13 @@ export async function evaluateBudget(now: Date = new Date()): Promise<MediaBudge
 
   let totalBytes = 0;
   for (const doc of rollups.docs) {
-    const data = doc.data() as MediaSessionDailyRollupDoc;
-    for (const feature of Object.keys(data.perFeature ?? {})) {
-      totalBytes += data.perFeature[feature as "fileTransfer" | "screenShare" | "videoCall"]?.totalBytes ?? 0;
+    const data = doc.data();
+    const perFeature = data.perFeature;
+    if (!perFeature || typeof perFeature !== "object") continue;
+    for (const feature of ["fileTransfer", "screenShare", "videoCall"] as const) {
+      const bucket = perFeature[feature];
+      if (!bucket || typeof bucket !== "object") continue;
+      totalBytes += numberField(bucket, "totalBytes") ?? 0;
     }
   }
 

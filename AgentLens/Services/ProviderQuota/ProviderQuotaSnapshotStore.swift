@@ -123,9 +123,15 @@ struct ProviderQuotaSnapshotStore {
         }
         do {
             let data = try Data(contentsOf: appPaths.providerRoutingEventsURL)
+            let dataForDecode: Data
+            if let limit {
+                dataForDecode = Self.suffixJSONObjectArrayData(from: data, limit: limit) ?? data
+            } else {
+                dataForDecode = data
+            }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            let events = try decoder.decode([ProviderRoutingDecisionEvent].self, from: data)
+            let events = try decoder.decode([ProviderRoutingDecisionEvent].self, from: dataForDecode)
             let sorted = events.sorted { $0.occurredAt < $1.occurredAt }
             if let limit {
                 return .loaded(Array(sorted.suffix(limit)))
@@ -151,6 +157,81 @@ struct ProviderQuotaSnapshotStore {
             try data.write(to: appPaths.providerRoutingEventsURL, options: .atomic)
         } catch {
             AppLogger.dataStore.silentFailure("ProviderQuotaService: Failed to persist routing events", error: error)
+        }
+    }
+
+    private static func suffixJSONObjectArrayData(from data: Data, limit: Int) -> Data? {
+        guard limit > 0 else {
+            return Data("[]".utf8)
+        }
+
+        return data.withUnsafeBytes { rawBuffer -> Data? in
+            guard let baseAddress = rawBuffer.bindMemory(to: UInt8.self).baseAddress else {
+                return Data("[]".utf8)
+            }
+
+            var ranges: [(start: Int, end: Int)] = []
+            ranges.reserveCapacity(limit)
+            var depth = 0
+            var objectStart: Int?
+            var isInsideString = false
+            var isEscaped = false
+            var sawArray = false
+            var index = 0
+
+            while index < rawBuffer.count {
+                let byte = baseAddress[index]
+                if isInsideString {
+                    if isEscaped {
+                        isEscaped = false
+                    } else if byte == UInt8(ascii: "\\") {
+                        isEscaped = true
+                    } else if byte == UInt8(ascii: "\"") {
+                        isInsideString = false
+                    }
+                    index += 1
+                    continue
+                }
+
+                if byte == UInt8(ascii: "[") {
+                    sawArray = true
+                } else if byte == UInt8(ascii: "\"") {
+                    isInsideString = true
+                } else if byte == UInt8(ascii: "{") {
+                    if depth == 0 {
+                        objectStart = index
+                    }
+                    depth += 1
+                } else if byte == UInt8(ascii: "}") {
+                    if depth > 0 {
+                        depth -= 1
+                        if depth == 0, let start = objectStart {
+                            ranges.append((start: start, end: index + 1))
+                            if ranges.count > limit {
+                                ranges.removeFirst(ranges.count - limit)
+                            }
+                            objectStart = nil
+                        }
+                    }
+                }
+
+                index += 1
+            }
+
+            guard !ranges.isEmpty || sawArray else {
+                return nil
+            }
+
+            var output = Data()
+            output.append(UInt8(ascii: "["))
+            for (rangeIndex, range) in ranges.enumerated() {
+                if rangeIndex > 0 {
+                    output.append(UInt8(ascii: ","))
+                }
+                output.append(baseAddress.advanced(by: range.start), count: range.end - range.start)
+            }
+            output.append(UInt8(ascii: "]"))
+            return output
         }
     }
 

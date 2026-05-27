@@ -1,22 +1,19 @@
 package com.openburnbar.services.media
 
 import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
+import androidx.core.app.RemoteInput
+import com.openburnbar.MainActivity
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 /**
  * High-priority FCM listener for Mercury incoming calls. iOS uses APNs +
@@ -43,21 +40,13 @@ import kotlinx.coroutines.tasks.await
  */
 class MercuryFcmService : FirebaseMessagingService() {
 
-    /**
-     * Service-scoped coroutine context. Cancelled in `onDestroy()` so a
-     * token refresh that arrives just as the service stops doesn't leak
-     * the in-flight Firestore write.
-     */
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    override fun onDestroy() {
-        scope.cancel()
-        super.onDestroy()
-    }
-
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
         val type = data["type"]
+        if (type == "agent_reply") {
+            postAgentReply(data)
+            return
+        }
         if (type != "media_incoming_call") return
         val connectionId = data["connection_id"] ?: return
         val callerName = data["caller_name"] ?: "OpenBurnBar"
@@ -71,30 +60,9 @@ class MercuryFcmService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        // Persist the FCM token under the same `users/{uid}/devices/{deviceId}/fcm_token`
-        // path the iOS APNs branch writes to. The Cloud Function reads
-        // whichever variant is present per device.
-        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        val deviceId = android.provider.Settings.Secure.getString(
-            applicationContext.contentResolver,
-            android.provider.Settings.Secure.ANDROID_ID,
-        ) ?: "android"
-        scope.launch {
-            runCatching {
-                FirebaseFirestore.getInstance()
-                    .collection("users").document(uid)
-                    .collection("devices").document(deviceId)
-                    .set(
-                        mapOf(
-                            "fcm_token" to token,
-                            "platform" to "android",
-                            "updated_at_millis" to System.currentTimeMillis(),
-                        ),
-                        com.google.firebase.firestore.SetOptions.merge(),
-                    )
-                    .await()
-            }
-        }
+        // Persist the FCM token under the same stable device document that
+        // the foreground app heartbeat updates.
+        AgentReplyNotificationState.persistToken(applicationContext, token)
     }
 
     private fun postIncomingCall(connectionId: String, callerName: String, callerInitial: String) {
@@ -151,7 +119,83 @@ class MercuryFcmService : FirebaseMessagingService() {
         }
     }
 
+    private fun postAgentReply(data: Map<String, String>) {
+        ensureAgentReplyChannel()
+        val eventId = data["event_id"] ?: return
+        val threadId = data["thread_id"] ?: return
+        val runtime = data["runtime"] ?: "hermes"
+        val title = data["title"] ?: "Agent replied"
+        val preview = data["preview"] ?: ""
+        val deepLink = data["deep_link"] ?: "burnbar://assistants/$runtime?threadId=$threadId"
+        if (AgentReplyNotificationState.shouldSuppressLocal(runtime, threadId)) return
+        val openIntent = Intent(Intent.ACTION_VIEW, Uri.parse(deepLink), this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+
+        val replyIntent = Intent(this, AgentReplyNotificationReceiver::class.java).apply {
+            action = AgentReplyNotificationReceiver.ACTION_REPLY
+            putExtra(AgentReplyNotificationReceiver.EXTRA_EVENT_ID, eventId)
+            putExtra(AgentReplyNotificationReceiver.EXTRA_THREAD_ID, threadId)
+            putExtra(AgentReplyNotificationReceiver.EXTRA_RUNTIME, runtime)
+        }
+        val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_MUTABLE else 0
+        val immutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        val openPending = PendingIntent.getActivity(
+            this,
+            eventId.hashCode(),
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or immutableFlag,
+        )
+        val replyPending = PendingIntent.getBroadcast(
+            this,
+            eventId.hashCode(),
+            replyIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag,
+        )
+        val remoteInput = RemoteInput.Builder(AgentReplyNotificationReceiver.KEY_TEXT_REPLY)
+            .setLabel("Reply to agent")
+            .build()
+        val replyAction = NotificationCompat.Action.Builder(
+            com.openburnbar.R.drawable.ic_mercury_call,
+            "Reply",
+            replyPending,
+        ).addRemoteInput(remoteInput).setAllowGeneratedReplies(true).build()
+
+        val notification = NotificationCompat.Builder(this, AGENT_REPLY_CHANNEL_ID)
+            .setSmallIcon(com.openburnbar.R.drawable.ic_mercury_call)
+            .setContentTitle(title)
+            .setContentText(preview)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(preview))
+            .setContentIntent(openPending)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .addAction(replyAction)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(this).notify(eventId.hashCode(), notification)
+        } catch (_: SecurityException) {
+            // Missing POST_NOTIFICATIONS permission — fall through silently.
+        }
+    }
+
+    private fun ensureAgentReplyChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (manager.getNotificationChannel(AGENT_REPLY_CHANNEL_ID) != null) return
+        val channel = NotificationChannel(
+            AGENT_REPLY_CHANNEL_ID,
+            "Agent replies",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Notifications when an OpenBurnBar agent replies"
+        }
+        manager.createNotificationChannel(channel)
+    }
+
     companion object {
         const val NOTIFICATION_ID = 0x4D435A02
+        const val AGENT_REPLY_CHANNEL_ID = "agent_replies"
     }
 }

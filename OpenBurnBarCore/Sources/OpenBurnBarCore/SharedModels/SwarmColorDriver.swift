@@ -171,6 +171,8 @@ public struct SwarmColorDriver: Equatable, Sendable {
             return RGBA(r: 0.36, g: 0.66, b: 1.00, a: base.a)
         case .minimax:
             return RGBA(r: 1.00, g: 0.78, b: 0.22, a: base.a)
+        case .mimo:
+            return RGBA(r: 1.00, g: 0.55, b: 0.18, a: base.a)
         case .openClaw, .rooCode:
             return RGBA(r: 1.00, g: 0.42, b: 0.52, a: base.a)
         case .forgeDev, .aider:
@@ -191,7 +193,7 @@ public struct SwarmColorDriver: Equatable, Sendable {
 
 /// Raw RGBA components for use in Canvas drawing contexts where SwiftUI `Color`
 /// cannot be used directly. Components are in `[0, 1]`.
-public struct RGBA: Equatable, Sendable {
+public struct RGBA: Hashable, Sendable {
     public let r: Double
     public let g: Double
     public let b: Double
@@ -206,6 +208,18 @@ public struct RGBA: Equatable, Sendable {
 
     public var color: Color {
         Color(red: r, green: g, blue: b).opacity(a)
+    }
+
+    /// Quantized 8-bit-per-channel bucket key. Two RGBA values that round to the
+    /// same byte triple share a bucket, which makes Canvas fill batching stable
+    /// across micro-jitter in floating-point math and keeps draw counts bounded
+    /// even when the colour driver wiggles intensities continuously.
+    public var bucketKey: UInt32 {
+        let r8 = UInt32((r.clamped(to: 0...1) * 255.0).rounded()) & 0xFF
+        let g8 = UInt32((g.clamped(to: 0...1) * 255.0).rounded()) & 0xFF
+        let b8 = UInt32((b.clamped(to: 0...1) * 255.0).rounded()) & 0xFF
+        let a8 = UInt32((a.clamped(to: 0...1) * 255.0).rounded()) & 0xFF
+        return (r8 << 24) | (g8 << 16) | (b8 << 8) | a8
     }
 }
 

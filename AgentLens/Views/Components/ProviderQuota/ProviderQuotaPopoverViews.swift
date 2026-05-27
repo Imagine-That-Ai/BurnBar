@@ -25,6 +25,9 @@ struct QuotaPopoverBar: View {
     @State private var localXaiManagementKey = ""
     @State private var localZaiKey = ""
     @State private var localCursorCookie = ""
+    @State private var localMimoRegion: ProviderEndpointRegion = .sgp
+    @State private var localMimoTier: MimoTokenPlanTier = .standard
+    @State private var localMimoBillingCycle: MimoTokenPlanBillingCycle = .monthly
 
     private let maximumCollapsedProviderRows = 4
 
@@ -389,6 +392,7 @@ struct QuotaPopoverBar: View {
             switch provider {
             case .claudeCode: claudeSetupPanel
             case .minimax: minimaxSetupPanel
+            case .mimo: mimoSetupPanel
             case .zai: zaiSetupPanel
             case .factory: factorySetupPanel
             case .xAI: xaiSetupPanel
@@ -492,6 +496,47 @@ struct QuotaPopoverBar: View {
 
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Button("Save") { Task { await saveAndRefresh(for: .minimax) } }
+                    .buttonStyle(GlassButtonStyle(prominent: true))
+                    .disabled(isWorking)
+                Button("Cancel") { expandedProvider = nil }
+            }
+            .font(DesignSystem.Typography.caption)
+        }
+    }
+
+    @ViewBuilder
+    private var mimoSetupPanel: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Token Plan cluster")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            Picker("", selection: $localMimoRegion) {
+                Text("China").tag(ProviderEndpointRegion.cn)
+                Text("Singapore").tag(ProviderEndpointRegion.sgp)
+                Text("Europe").tag(ProviderEndpointRegion.ams)
+            }
+            .pickerStyle(.segmented)
+
+            Text("Subscription tier")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            Picker("", selection: $localMimoTier) {
+                ForEach(MimoTokenPlanTier.allCases) { tier in
+                    Text(tier.displayName).tag(tier)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("", selection: $localMimoBillingCycle) {
+                Text("Monthly").tag(MimoTokenPlanBillingCycle.monthly)
+                Text("Annual").tag(MimoTokenPlanBillingCycle.annual)
+            }
+            .pickerStyle(.segmented)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button("Save") { Task { await saveAndRefresh(for: .mimo) } }
                     .buttonStyle(GlassButtonStyle(prominent: true))
                     .disabled(isWorking)
                 Button("Cancel") { expandedProvider = nil }
@@ -651,6 +696,10 @@ struct QuotaPopoverBar: View {
         case .xAI:
             localXaiTier = settingsManager.xaiQuotaPlanTier
             localXaiManagementKey = ks.apiKey(for: "xai_management_key") ?? ""
+        case .mimo:
+            localMimoRegion = settingsManager.mimoTokenPlanRegion
+            localMimoTier = settingsManager.mimoTokenPlanTier ?? .standard
+            localMimoBillingCycle = settingsManager.mimoTokenPlanBillingCycle
         default:
             break
         }
@@ -701,6 +750,10 @@ struct QuotaPopoverBar: View {
             } catch {
                 AppLogger.dataStore.silentFailure("saveAPIKey(xai_management_key)", error: error)
             }
+        case .mimo:
+            settingsManager.mimoTokenPlanRegion = localMimoRegion
+            settingsManager.mimoTokenPlanTier = localMimoTier
+            settingsManager.mimoTokenPlanBillingCycle = localMimoBillingCycle
         default:
             break
         }

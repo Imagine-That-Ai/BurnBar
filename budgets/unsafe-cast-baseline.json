@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "generatedAt": "2026-05-27T03:45:02.712Z",
+  "scanner": {
+    "tsMode": "typescript-eslint-parser",
+    "excluded": {
+      "prefixes": [
+        ".firebase/",
+        ".swiftpm/",
+        "Vendor/",
+        "artifacts/",
+        "tools/type-debt/fixtures/"
+      ],
+      "segments": [
+        ".build",
+        ".derived-data",
+        ".git",
+        ".next",
+        ".turbo",
+        ".venv",
+        ".vscode-test",
+        "Carthage",
+        "DerivedData",
+        "Generated",
+        "Pods",
+        "build",
+        "coverage",
+        "dist",
+        "lib",
+        "node_modules",
+        "uniffi"
+      ],
+      "generatedFilePatterns": [
+        "\\.generated\\.(swift|ts|tsx|js|jsx|kt|kts)$",
+        "Generated\\.(swift|ts|tsx|js|jsx|kt|kts)$"
+      ]
+    }
+  },
+  "total": 0,
+  "byLanguage": {},
+  "byKind": {},
+  "violations": []
+}

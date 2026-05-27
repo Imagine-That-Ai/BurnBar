@@ -26,6 +26,7 @@ import com.openburnbar.data.media.RetainedIrohControlTransportPool
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
 import com.openburnbar.data.text.TextExpansionSyncWorker
+import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.irohrelay.IrohDialTarget
 import com.openburnbar.irohrelay.IrohPairingPublisher
 import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
@@ -148,6 +149,7 @@ class BurnBarApplication : Application() {
         // Phase 6: register the FCM token under
         // users/{uid}/devices/{deviceId}/fcm_token so triggerVoIPCall
         // can send a Mercury push to this device.
+        AgentReplyNotificationState.installLifecycleTracking(this)
         registerFcmToken()
     }
 
@@ -374,20 +376,7 @@ class BurnBarApplication : Application() {
         applicationScope.launch {
             runCatching {
                 val token = FirebaseMessaging.getInstance().token.await()
-                val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@runCatching
-                val deviceId = resolveStableDeviceId()
-                FirebaseFirestore.getInstance()
-                    .collection("users").document(uid)
-                    .collection("devices").document(deviceId)
-                    .set(
-                        mapOf(
-                            "fcm_token" to token,
-                            "platform" to "android",
-                            "updated_at_millis" to System.currentTimeMillis(),
-                        ),
-                        com.google.firebase.firestore.SetOptions.merge(),
-                    )
-                    .await()
+                AgentReplyNotificationState.persistToken(applicationContext, token)
             }.onFailure {
                 Log.w("BurnBar", "FCM token registration failed: ${it.message}")
             }
@@ -469,7 +458,9 @@ class BurnBarApplication : Application() {
 
     private fun debugAppCheckProviderFactory(): AppCheckProviderFactory {
         val factoryClass = Class.forName("com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory")
-        return factoryClass.getMethod("getInstance").invoke(null) as AppCheckProviderFactory
+        return factoryClass.getMethod("getInstance")
+            .invoke(null) as? AppCheckProviderFactory
+            ?: error("DebugAppCheckProviderFactory.getInstance returned an unexpected type")
     }
 
     /**

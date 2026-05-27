@@ -18,6 +18,11 @@ public struct BurnBarProviderCredentialSlot: Codable, Hashable, Identifiable, Se
     public var lastQuotaRemainingPercent: Double?
     public var lastQuotaResetsAt: Date?
     public var lastStatusMessage: String?
+    public var endpointProfileID: String?
+    public var region: ProviderEndpointRegion?
+    public var tokenPlanTier: MimoTokenPlanTier?
+    public var tokenPlanBillingCycle: MimoTokenPlanBillingCycle?
+    public var authMethodID: String?
     public var updatedAt: Date
 
     public var id: String { slotID }
@@ -32,6 +37,11 @@ public struct BurnBarProviderCredentialSlot: Codable, Hashable, Identifiable, Se
         lastQuotaRemainingPercent: Double? = nil,
         lastQuotaResetsAt: Date? = nil,
         lastStatusMessage: String? = nil,
+        endpointProfileID: String? = nil,
+        region: ProviderEndpointRegion? = nil,
+        tokenPlanTier: MimoTokenPlanTier? = nil,
+        tokenPlanBillingCycle: MimoTokenPlanBillingCycle? = nil,
+        authMethodID: String? = nil,
         updatedAt: Date = Date()
     ) {
         self.slotID = slotID
@@ -43,6 +53,11 @@ public struct BurnBarProviderCredentialSlot: Codable, Hashable, Identifiable, Se
         self.lastQuotaRemainingPercent = lastQuotaRemainingPercent
         self.lastQuotaResetsAt = lastQuotaResetsAt
         self.lastStatusMessage = lastStatusMessage
+        self.endpointProfileID = endpointProfileID
+        self.region = region
+        self.tokenPlanTier = tokenPlanTier
+        self.tokenPlanBillingCycle = tokenPlanBillingCycle
+        self.authMethodID = authMethodID
         self.updatedAt = updatedAt
     }
 }
@@ -380,19 +395,34 @@ public struct BurnBarProviderCredentialSlotUpsertRequest: Codable, Hashable, Sen
     public let label: String
     public let apiKey: String
     public let isEnabled: Bool
+    public let endpointProfileID: String?
+    public let region: ProviderEndpointRegion?
+    public let tokenPlanTier: MimoTokenPlanTier?
+    public let tokenPlanBillingCycle: MimoTokenPlanBillingCycle?
+    public let authMethodID: String?
 
     public init(
         providerID: String,
         slotID: String? = nil,
         label: String,
         apiKey: String,
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        endpointProfileID: String? = nil,
+        region: ProviderEndpointRegion? = nil,
+        tokenPlanTier: MimoTokenPlanTier? = nil,
+        tokenPlanBillingCycle: MimoTokenPlanBillingCycle? = nil,
+        authMethodID: String? = nil
     ) {
         self.providerID = providerID
         self.slotID = slotID
         self.label = label
         self.apiKey = apiKey
         self.isEnabled = isEnabled
+        self.endpointProfileID = endpointProfileID
+        self.region = region
+        self.tokenPlanTier = tokenPlanTier
+        self.tokenPlanBillingCycle = tokenPlanBillingCycle
+        self.authMethodID = authMethodID
     }
 }
 

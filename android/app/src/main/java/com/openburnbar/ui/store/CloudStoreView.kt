@@ -221,8 +221,8 @@ fun CloudStoreView(
                 item { CloudComparisonCard() }
                 item { CloudTrustCard() }
 
-                if (error != null) {
-                    item { CloudErrorCard(message = error!!) }
+                error?.let { message ->
+                    item { CloudErrorCard(message = message) }
                 }
 
                 if (!isActive) {

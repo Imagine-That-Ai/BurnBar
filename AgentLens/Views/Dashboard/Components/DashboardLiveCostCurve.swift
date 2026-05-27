@@ -10,10 +10,11 @@ import OpenBurnBarCore
 
 struct DashboardLiveCostCurve: View {
 
-    enum Unit { case cost, tokens }
-    enum Granularity { case minute, hour, day }
+    enum Unit: Hashable { case cost, tokens }
+    enum Granularity: Hashable { case minute, hour, day }
 
     let usages: [TokenUsage]
+    var usagesRevision: Int = 0
     let unit: Unit
     let granularity: Granularity
     let domain: ClosedRange<Date>
@@ -22,9 +23,18 @@ struct DashboardLiveCostCurve: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
+    // The samples array is recomputed only when the input *shape* changes —
+    // not on every observable-tracked invalidation upstream. Without this
+    // cache the entire `dataStore.usages` array (up to 5 000 rows on warm
+    // launch) was being filtered + sorted inside `body` every time any
+    // `@Observable` on the dashboard data store wiggled.
+    @State private var cachedSamples: [Sample] = []
+    @State private var cachedPeak: Double = 0
+    @State private var lastCacheKey: CacheKey?
+
     var body: some View {
-        let samples = buildSamples()
-        let peak = samples.map(\.cumulative).max() ?? 0
+        let samples = cachedSamples
+        let peak = cachedPeak
         let isEmpty = peak <= 0.0001
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -72,6 +82,60 @@ struct DashboardLiveCostCurve: View {
         .shadow(color: accent.opacity(colorScheme == .dark ? 0.10 : 0.05), radius: 8, y: 4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary(peak: peak))
+        .onAppear { rebuildSamplesIfNeeded() }
+        .onChange(of: cacheKey) { _, _ in rebuildSamplesIfNeeded() }
+    }
+
+    // MARK: - Sample Cache
+
+    fileprivate struct CacheKey: Equatable {
+        let usagesRevision: Int
+        let usagesCount: Int
+        let firstStartTime: Date?
+        let lastStartTime: Date?
+        let firstCostDigest: UInt64
+        let lastCostDigest: UInt64
+        let unit: Unit
+        let granularity: Granularity
+        let domainLower: Date
+        let domainUpper: Date
+    }
+
+    fileprivate var cacheKey: CacheKey {
+        // `usages` is already sorted newest-first by the caller (DataStoreCoordinator
+        // sorts on every replace). The first/last timestamps + count are
+        // enough to detect every mutation that would change `buildSamples`'s
+        // output, without paying for a structural hash of the full array.
+        // The cost-digest fields catch the rare in-place edit case where a
+        // single row's cost is updated but its startTime is unchanged.
+        let first = usages.first
+        let last = usages.last
+        return CacheKey(
+            usagesRevision: usagesRevision,
+            usagesCount: usages.count,
+            firstStartTime: first?.startTime,
+            lastStartTime: last?.startTime,
+            firstCostDigest: first.map { UInt64(bitPattern: Int64(($0.cost * 1_000_000).rounded())) } ?? 0,
+            lastCostDigest: last.map { UInt64(bitPattern: Int64(($0.cost * 1_000_000).rounded())) } ?? 0,
+            unit: unit,
+            granularity: granularity,
+            domainLower: domain.lowerBound,
+            domainUpper: domain.upperBound
+        )
+    }
+
+    private func rebuildSamplesIfNeeded() {
+        let key = cacheKey
+        guard key != lastCacheKey else { return }
+        let samples = Self.buildSamples(
+            usages: usages,
+            unit: unit,
+            granularity: granularity,
+            domain: domain
+        )
+        cachedSamples = samples
+        cachedPeak = samples.map(\.cumulative).max() ?? 0
+        lastCacheKey = key
     }
 
     // MARK: - Header
@@ -166,12 +230,20 @@ struct DashboardLiveCostCurve: View {
 
     // MARK: - Samples
 
-    fileprivate struct Sample: Equatable {
+    struct Sample: Equatable {
         let time: Date
         let cumulative: Double
     }
 
-    private func buildSamples() -> [Sample] {
+    /// Pure, deterministic builder. Exposed `internal` so tests in
+    /// `AgentLensTests/Dashboard/DashboardLiveCostCurveCacheTests.swift` can
+    /// pin the matrix down without spinning a SwiftUI view tree.
+    static func buildSamples(
+        usages: [TokenUsage],
+        unit: Unit,
+        granularity: Granularity,
+        domain: ClosedRange<Date>
+    ) -> [Sample] {
         let lower = domain.lowerBound
         let now = Date()
         let upper = min(now, domain.upperBound)
@@ -198,7 +270,7 @@ struct DashboardLiveCostCurve: View {
         for i in 1...bucketCount {
             let edge = lower.addingTimeInterval(Double(i) * strideSec)
             while cursor < relevant.count, relevant[cursor].startTime <= edge {
-                cumulative += value(for: relevant[cursor])
+                cumulative += value(for: relevant[cursor], unit: unit)
                 cursor += 1
             }
             samples.append(Sample(time: edge, cumulative: cumulative))
@@ -206,7 +278,7 @@ struct DashboardLiveCostCurve: View {
         return samples
     }
 
-    private func value(for usage: TokenUsage) -> Double {
+    private static func value(for usage: TokenUsage, unit: Unit) -> Double {
         switch unit {
         case .cost:   return max(0, usage.cost)
         case .tokens: return Double(max(0, usage.totalTokens))

@@ -49,49 +49,47 @@ public struct ComputerUseSessionPanel: View {
                     Text("Session Trust Mode")
                         .font(DesignSystem.Typography.headline)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Spacer(minLength: 12)
+                    Text(model.liveTrustMode.rawValue.capitalized)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(DesignSystem.Colors.amber.opacity(0.14))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(DesignSystem.Colors.amber.opacity(0.45), lineWidth: 0.75)
+                                )
+                        )
+                        .foregroundStyle(DesignSystem.Colors.amber)
                 }
 
                 Text("Enforce action approval policies for the current session. Trusted mode allows the agent to drive Playwright or post CGEvents without per-step user signoff.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-                Divider()
-                    .opacity(0.3)
-
-                HStack(spacing: 0) {
+                Picker("Trust mode", selection: trustModeBinding) {
                     ForEach(ComputerUseTrustMode.allCases, id: \.self) { mode in
-                        Button(action: {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                                model.setTrustMode(mode)
-                            }
-                        }) {
-                            Text(mode.rawValue.capitalized)
-                                .font(DesignSystem.Typography.caption)
-                                .fontWeight(.semibold)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 8)
-                                .background(
-                                    mode == model.liveTrustMode
-                                        ? AnyShapeStyle(DesignSystem.Colors.primaryGradient)
-                                        : AnyShapeStyle(Color.clear)
-                                )
-                                .foregroundStyle(mode == model.liveTrustMode ? .white : DesignSystem.Colors.textSecondary)
-                        }
-                        .buttonStyle(.plain)
+                        Text(mode.rawValue.capitalized).tag(mode)
                     }
                 }
-                .padding(4)
-                .background(
-                    Capsule()
-                        .fill(DesignSystem.Colors.surface.opacity(0.6))
-                        .overlay(
-                            Capsule()
-                                .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
-                        )
-                )
-                .clipShape(Capsule())
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 360, alignment: .leading)
             }
         }
+    }
+
+    private var trustModeBinding: Binding<ComputerUseTrustMode> {
+        Binding(
+            get: { model.liveTrustMode },
+            set: { newMode in
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    model.setTrustMode(newMode)
+                }
+            }
+        )
     }
 
     private var scopeRuleList: some View {
@@ -104,79 +102,26 @@ public struct ComputerUseSessionPanel: View {
                     Text("Safety Boundary Rules")
                         .font(DesignSystem.Typography.headline)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Spacer(minLength: 12)
+                    Text("\(model.scopeRules.count) rules")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
 
                 Text("Trusted mode will only execute without approval if the active browser URL, application bundle ID, or active window title matches one of these rules.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-                Divider()
-                    .opacity(0.3)
+                Divider().opacity(0.22)
 
-                VStack(spacing: 8) {
-                    ForEach(model.scopeRules, id: \.id) { rule in
-                        HStack(spacing: 12) {
-                            // Effect Badge
-                            Text(rule.effect == .allow ? "ALLOW" : "DENY")
-                                .font(DesignSystem.Typography.monoTiny)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(
-                                    Capsule()
-                                        .fill(rule.effect == .allow ? DesignSystem.Colors.success : DesignSystem.Colors.error)
-                                )
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(rule.label)
-                                    .font(DesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                Text(rule.origin.rawValue.uppercased())
-                                    .font(DesignSystem.Typography.monoTiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                            }
-
-                            Spacer()
-
-                            if rule.origin == .user {
-                                Button(action: {
-                                    withAnimation(.easeOut(duration: 0.15)) {
-                                        model.removeRule(rule.id)
-                                    }
-                                }) {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(DesignSystem.Colors.error)
-                                        .padding(6)
-                                        .background(
-                                            Circle()
-                                                .fill(DesignSystem.Colors.error.opacity(0.08))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            } else {
-                                Text("BUILT-IN SYSTEM")
-                                    .font(DesignSystem.Typography.monoTiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.75)
-                                    )
-                            }
+                VStack(spacing: 0) {
+                    ForEach(Array(model.scopeRules.enumerated()), id: \.element.id) { index, rule in
+                        scopeRuleRow(rule)
+                        if index < model.scopeRules.count - 1 {
+                            Divider()
+                                .opacity(0.14)
+                                .padding(.leading, 22)
                         }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(DesignSystem.Colors.surface.opacity(0.4))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                                )
-                        )
                     }
                 }
 
@@ -186,6 +131,64 @@ public struct ComputerUseSessionPanel: View {
                 }
                 .padding(.top, 4)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func scopeRuleRow(_ rule: ComputerUseScopeRule) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Circle()
+                .fill(rule.effect == .allow ? DesignSystem.Colors.success : DesignSystem.Colors.error)
+                .frame(width: 8, height: 8)
+
+            Text(rule.effect == .allow ? "allow" : "deny")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(
+                    rule.effect == .allow
+                        ? DesignSystem.Colors.success
+                        : DesignSystem.Colors.error
+                )
+                .frame(width: 36, alignment: .leading)
+
+            Text(rule.label)
+                .font(DesignSystem.Typography.monoSmall)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer(minLength: 12)
+
+            Text(originLabel(for: rule.origin))
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            if rule.origin == .user {
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        model.removeRule(rule.id)
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.error)
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .help("Remove custom rule")
+            } else {
+                Color.clear.frame(width: 22, height: 22)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+    }
+
+    private func originLabel(for origin: ComputerUseScopeRule.Origin) -> String {
+        switch origin {
+        case .builtIn: return "built-in"
+        case .user: return "custom"
+        case .imported: return "imported"
         }
     }
 

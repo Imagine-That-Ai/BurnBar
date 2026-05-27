@@ -41,11 +41,11 @@ struct DeviceBreakdownCard: View {
                 .padding(DesignSystem.Spacing.md)
             }
             .onAppear { loadSummaries() }
-            .onChange(of: dataStore.lastRefresh) { _, _ in loadSummaries() }
+            .onChange(of: dataStore.usagesVersion) { _, _ in loadSummaries() }
         } else {
             EmptyView()
                 .onAppear { loadSummaries() }
-                .onChange(of: dataStore.lastRefresh) { _, _ in loadSummaries() }
+                .onChange(of: dataStore.usagesVersion) { _, _ in loadSummaries() }
         }
     }
 

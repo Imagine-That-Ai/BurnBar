@@ -169,4 +169,26 @@ class ScreenShareInputPolicyTest {
             events,
         )
     }
+
+    @Test
+    fun viewerDestroyOnlyStopsMirrorForExplicitFinish() {
+        assertTrue(
+            shouldStopMirrorOnViewerDestroy(
+                isFinishing = true,
+                isChangingConfigurations = false,
+            )
+        )
+        assertFalse(
+            shouldStopMirrorOnViewerDestroy(
+                isFinishing = false,
+                isChangingConfigurations = false,
+            )
+        )
+        assertFalse(
+            shouldStopMirrorOnViewerDestroy(
+                isFinishing = true,
+                isChangingConfigurations = true,
+            )
+        )
+    }
 }

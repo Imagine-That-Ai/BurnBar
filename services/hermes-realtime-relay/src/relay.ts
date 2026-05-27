@@ -101,19 +101,19 @@ export class HermesRealtimeRelaySession {
         assertRequestFrame(frame);
         if (frame.type === "request.start") {
           await this.quota.checkRequestStart(frame.uid, runtime);
-          await this.quota.reserveInFlight(frame.uid, frame.requestId!, runtime);
-          this.activeRequestRuntimes.set(frame.requestId!, runtime);
+          await this.quota.reserveInFlight(frame.uid, frame.requestId, runtime);
+          this.activeRequestRuntimes.set(frame.requestId, runtime);
         } else if (frame.requestId) {
           await this.releaseInFlight(frame.requestId);
         }
         {
-          await this.subscribe(respChannel(frame.uid, frame.requestId!, runtime));
+          await this.subscribe(respChannel(frame.uid, frame.requestId, runtime));
           const subscriberCount = await this.deps.bus.publish(
             reqChannel(frame.uid, frame.connectionId, runtime),
             serializeFrame(frame)
           );
           if (frame.type === "request.start" && typeof subscriberCount === "number" && subscriberCount === 0) {
-            await this.releaseInFlight(frame.requestId!, runtime);
+            await this.releaseInFlight(frame.requestId, runtime);
             this.sendError(new Error(`Realtime ${runtimeDisplayName(runtime)} host is not connected.`), frame);
           }
         }
@@ -218,7 +218,7 @@ export class HermesRealtimeRelaySession {
 
   private handleControlMessage(message: string): void {
     try {
-      const parsed = JSON.parse(message) as { type?: string; sessionID?: string };
+      const parsed = parseControlMessage(message);
       if (parsed.type === "host.replace" && parsed.sessionID && parsed.sessionID !== this.deps.sessionID) {
         this.socket.close(4000, "Hermes host replaced by a newer session.");
       }
@@ -230,7 +230,7 @@ export class HermesRealtimeRelaySession {
   private async observeOutboundFrame(message: string): Promise<void> {
     let frame: HermesRealtimeFrame;
     try {
-      frame = JSON.parse(message) as HermesRealtimeFrame;
+      frame = parseFrame(Buffer.from(message));
     } catch {
       return;
     }
@@ -301,6 +301,18 @@ export class HermesRealtimeRelaySession {
     }
     await this.quota.releaseSocket(this.deps.uid, this.deps.role, this.deps.sessionID);
   }
+
+}
+
+function parseControlMessage(message: string): { type?: string; sessionID?: string } {
+  const parsed: unknown = JSON.parse(message);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Control frame must be a JSON object.");
+  }
+  return {
+    type: "type" in parsed && typeof parsed.type === "string" ? parsed.type : undefined,
+    sessionID: "sessionID" in parsed && typeof parsed.sessionID === "string" ? parsed.sessionID : undefined,
+  };
 }
 
 export function isOpenSocket(socket: WebSocket): boolean {

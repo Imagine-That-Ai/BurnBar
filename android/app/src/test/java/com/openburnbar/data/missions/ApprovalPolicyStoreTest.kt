@@ -75,8 +75,8 @@ class ApprovalPolicyStoreTest {
         )
         store.record(policy)
         val resolved = store.resolve(agentURI = "agent://a", scopeKey = "tool::ripgrep")
-        assertNotNull(resolved)
-        assertEquals(ApprovalDecision.REMEMBER_ALLOW, resolved!!.decision)
+        val resolved = requireNotNull(store.resolve(agentURI = "agent://a", scopeKey = "tool::ripgrep"))
+        assertEquals(ApprovalDecision.REMEMBER_ALLOW, resolved.decision)
         assertEquals(1, resolved.matchCount)
     }
 

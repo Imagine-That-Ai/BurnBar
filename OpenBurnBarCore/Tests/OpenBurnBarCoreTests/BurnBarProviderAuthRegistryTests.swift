@@ -54,6 +54,29 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertFalse(openPlatform?.unlocksQuotaRefresh ?? true)
     }
 
+    func test_mimo_tokenPlanIsPrimaryAndPaygDoesNotUnlockQuota() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "mimo")
+        XCTAssertEqual(descriptor?.providerID, "mimo")
+        XCTAssertEqual(descriptor?.primaryMethod.id, "mimo-token-plan")
+        XCTAssertTrue(descriptor?.primaryMethod.unlocksQuotaRefresh ?? false)
+        XCTAssertTrue(descriptor?.primaryMethod.unlocksProxyRouting ?? false)
+
+        let payg = descriptor?.method(id: "mimo-payg")
+        XCTAssertTrue(payg?.unlocksProxyRouting ?? false)
+        XCTAssertFalse(payg?.unlocksQuotaRefresh ?? true)
+        XCTAssertEqual(payg?.prefixHint, "sk-")
+    }
+
+    func test_mimo_aliasesResolveToSameDescriptor() {
+        let viaCatalog = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "mimo")
+        let viaAlias = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "xiaomimimo")
+
+        XCTAssertNotNil(viaCatalog)
+        XCTAssertNotNil(viaAlias)
+        XCTAssertEqual(viaCatalog?.providerID, "mimo")
+        XCTAssertEqual(viaAlias?.providerID, "mimo")
+    }
+
     func test_openAI_exposesAPIKeyAdminKeyAndCodexOAuthMethods() {
         let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "openai")
         XCTAssertEqual(descriptor?.primaryMethod.id, "openai-api-key")

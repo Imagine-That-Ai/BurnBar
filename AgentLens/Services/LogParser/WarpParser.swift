@@ -509,13 +509,13 @@ private struct WarpParseContext {
         )
     }
 
-    private static let agentEventPattern = try! NSRegularExpression(
+    private static let agentEventPattern = try? NSRegularExpression(
         pattern: #"(^|[._:\-\s])([Aa][Gg][Ee][Nn][Tt])($|[._:\-\s]|[A-Z])"#
     )
 
     private static func isAgentEvent(_ event: String) -> Bool {
         let range = NSRange(event.startIndex..<event.endIndex, in: event)
-        return agentEventPattern.firstMatch(in: event, range: range) != nil
+        return agentEventPattern?.firstMatch(in: event, range: range) != nil
     }
 
     private static func string(in dictionary: [String: Any], keys: [String]) -> String? {

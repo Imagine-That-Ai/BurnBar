@@ -7,7 +7,8 @@ import type {
   BurnBarUsageEvent,
   BurnBarWorkspaceCapabilities,
   BurnBarRunPhase,
-  BurnBarMissionSnapshot
+  BurnBarMissionSnapshot,
+  BurnBarRunDetailResponse
 } from '../src/types';
 import {
   projectRuns,
@@ -50,7 +51,7 @@ function createMockState(overrides: Partial<OpenBurnBarState> = {}): OpenBurnBar
     selectedRunId: undefined,
     selectedRunDetail: undefined,
     ...overrides
-  } as OpenBurnBarState;
+  };
 }
 
 // Helper to create a mock run
@@ -60,7 +61,7 @@ function createMockRun(overrides: Partial<BurnBarRunStateSnapshot> = {}): BurnBa
     clientID: 'client-1',
     sessionID: 'session-1',
     modelID: 'claude-opus-4',
-    phase: 'completed' as BurnBarRunPhase,
+    phase: 'completed',
     updatedAt: '2024-01-15T12:00:00Z',
     errorMessage: undefined,
     ...overrides
@@ -666,9 +667,11 @@ describe('buildRunDetailRows', () => {
       updatedAt: '2024-01-15T12:00:00Z',
       source: 'daemon'
     };
-    const detail = {
+    const detail: BurnBarRunDetailResponse = {
       run: createMockRun({ runID: 'run-123' }),
       approvalRequest: {
+        approvalID: 'approval-1',
+        runID: 'run-123',
         tool: 'apply_patch',
         title: 'Review Changes',
         message: 'Please review the changes',
@@ -678,7 +681,7 @@ describe('buildRunDetailRows', () => {
     const state = createMockState({
       runs: [run],
       selectedRunId: 'run-123',
-      selectedRunDetail: detail as any
+      selectedRunDetail: detail
     });
     const rows = buildRunDetailRows(state);
 
@@ -731,7 +734,7 @@ describe('Projection Integration', () => {
 // Edge case tests
 describe('Projection Edge Cases', () => {
   it('should handle malformed phase gracefully', () => {
-    const runs = [createMockRun({ runID: 'run-1', phase: 'completed' as any })];
+    const runs = [createMockRun({ runID: 'run-1', phase: 'completed' })];
     const state = createMockState({ daemonRuns: runs });
     const result = projectRuns(state);
 
@@ -1536,7 +1539,9 @@ describe('VAL-CROSS-009: Readiness Reason Code Propagation', () => {
     const state = createMockState({ daemonMissions: [mission] });
     const rows = buildMissionRows(state);
 
-    const message = readinessDisplayMessage(rows[0].readinessFailure!);
+    const readinessFailure = rows[0].readinessFailure;
+    expect(readinessFailure).toBeDefined();
+    const message = readinessDisplayMessage(readinessFailure);
     expect(message).toBe('Runtime unavailable: Workspace service unavailable.');
   });
 

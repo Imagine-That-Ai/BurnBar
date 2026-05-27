@@ -171,13 +171,31 @@ final class SettingsManager {
 
     private func startComputerUseRemoteConfigPolling() {
         computerUseRemoteConfigTask?.cancel()
-        computerUseRemoteConfigTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.refreshComputerUseRemoteConfigOnce()
-                try? await Task.sleep(nanoseconds: 60_000_000_000)
-            }
-        }
+        // Coordinator-managed cadence: 60 s while foreground / display
+        // awake, 5 min while backgrounded, paused while the display
+        // sleeps. Remote Config is a slow-moving truth source (kill
+        // switches + feature flags) so we never want to be hitting
+        // Firebase on a sleeping laptop.
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceIDRemoteConfig,
+                activeInterval: 60,
+                backgroundInterval: 300,
+                sleepInterval: nil,
+                isEnabled: { FirebaseApp.app() != nil },
+                fireImmediately: true,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.refreshComputerUseRemoteConfigOnce()
+                }
+            )
+        )
+        // Sentinel so re-entrant calls are no-ops; the actual loop runs
+        // inside the cadence coordinator.
+        computerUseRemoteConfigTask = Task { @MainActor in }
     }
+
+    private static let cadenceIDRemoteConfig = "settings-remote-config"
 
     private func refreshComputerUseRemoteConfigOnce() async {
         guard FirebaseApp.app() != nil else { return }
@@ -904,6 +922,21 @@ final class SettingsManager {
     var xaiQuotaPlanTier: XAIQuotaPlanTier {
         get { quotas.xaiQuotaPlanTier }
         set { quotas.xaiQuotaPlanTier = newValue }
+    }
+
+    var mimoTokenPlanRegion: ProviderEndpointRegion {
+        get { quotas.mimoTokenPlanRegion }
+        set { quotas.mimoTokenPlanRegion = newValue }
+    }
+
+    var mimoTokenPlanTier: MimoTokenPlanTier? {
+        get { quotas.mimoTokenPlanTier }
+        set { quotas.mimoTokenPlanTier = newValue }
+    }
+
+    var mimoTokenPlanBillingCycle: MimoTokenPlanBillingCycle {
+        get { quotas.mimoTokenPlanBillingCycle }
+        set { quotas.mimoTokenPlanBillingCycle = newValue }
     }
 
     var tokenizerAssistedFallbackEnabled: Bool {

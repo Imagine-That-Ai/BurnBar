@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 #if canImport(AppKit)
 import AppKit
@@ -88,6 +89,9 @@ struct QuotaCommandCenter: View {
     @State private var localFactoryTier: FactoryQuotaPlanTier = .unknown
     @State private var localXaiTier: XAIQuotaPlanTier = .unknown
     @State private var localXaiManagementKey = ""
+    @State private var localMimoRegion: ProviderEndpointRegion = .sgp
+    @State private var localMimoTier: MimoTokenPlanTier = .standard
+    @State private var localMimoBillingCycle: MimoTokenPlanBillingCycle = .monthly
     @State private var localZaiKey = ""
     @State private var localCursorCookie = ""
     @State private var isWorking = false
@@ -144,6 +148,9 @@ struct QuotaCommandCenter: View {
                             localFactoryTier: $localFactoryTier,
                             localXaiTier: $localXaiTier,
                             localXaiManagementKey: $localXaiManagementKey,
+                            localMimoRegion: $localMimoRegion,
+                            localMimoTier: $localMimoTier,
+                            localMimoBillingCycle: $localMimoBillingCycle,
                             localZaiKey: $localZaiKey,
                             localCursorCookie: $localCursorCookie,
                             isWorking: isWorking,
@@ -205,6 +212,10 @@ struct QuotaCommandCenter: View {
         case .xAI:
             localXaiTier = settingsManager.xaiQuotaPlanTier
             localXaiManagementKey = ks.apiKey(for: "xai_management_key") ?? ""
+        case .mimo:
+            localMimoRegion = settingsManager.mimoTokenPlanRegion
+            localMimoTier = settingsManager.mimoTokenPlanTier ?? .standard
+            localMimoBillingCycle = settingsManager.mimoTokenPlanBillingCycle
         default:
             break
         }
@@ -264,6 +275,10 @@ struct QuotaCommandCenter: View {
             } catch {
                 // silently fail
             }
+        case .mimo:
+            settingsManager.mimoTokenPlanRegion = localMimoRegion
+            settingsManager.mimoTokenPlanTier = localMimoTier
+            settingsManager.mimoTokenPlanBillingCycle = localMimoBillingCycle
         default:
             break
         }
@@ -314,6 +329,9 @@ struct QuotaCommandRow: View {
     @Binding var localFactoryTier: FactoryQuotaPlanTier
     @Binding var localXaiTier: XAIQuotaPlanTier
     @Binding var localXaiManagementKey: String
+    @Binding var localMimoRegion: ProviderEndpointRegion
+    @Binding var localMimoTier: MimoTokenPlanTier
+    @Binding var localMimoBillingCycle: MimoTokenPlanBillingCycle
     @Binding var localZaiKey: String
     @Binding var localCursorCookie: String
     let isWorking: Bool
@@ -450,6 +468,8 @@ struct QuotaCommandRow: View {
                 factorySetup
             case .xAI:
                 xaiSetup
+            case .mimo:
+                mimoSetup
             case .cursor:
                 cursorSetup
             case .claudeCode:
@@ -622,6 +642,57 @@ struct QuotaCommandRow: View {
     }
 
     @ViewBuilder
+    private var mimoSetup: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Token Plan cluster")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            Picker("", selection: $localMimoRegion) {
+                Text("China").tag(ProviderEndpointRegion.cn)
+                Text("Singapore").tag(ProviderEndpointRegion.sgp)
+                Text("Europe").tag(ProviderEndpointRegion.ams)
+            }
+            .pickerStyle(.segmented)
+
+            Text("Subscription tier")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            Picker("", selection: $localMimoTier) {
+                ForEach(MimoTokenPlanTier.allCases) { tier in
+                    Text(tier.displayName).tag(tier)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("", selection: $localMimoBillingCycle) {
+                Text("Monthly").tag(MimoTokenPlanBillingCycle.monthly)
+                Text("Annual").tag(MimoTokenPlanBillingCycle.annual)
+            }
+            .pickerStyle(.segmented)
+
+            Text("Connect Token Plan keys in Provider Plans. These settings drive quota fallback when vendor remains is unavailable.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button("Save") {
+                    onSave()
+                }
+                .buttonStyle(GlassButtonStyle(prominent: true))
+                .disabled(isWorking)
+
+                Button("Cancel") {
+                    onToggle()
+                }
+                .buttonStyle(GlassButtonStyle(prominent: false))
+            }
+            .font(DesignSystem.Typography.caption)
+        }
+    }
+
+    @ViewBuilder
     private var xaiSetup: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             Text("Plan tier")
@@ -743,6 +814,7 @@ struct QuotaCommandRow: View {
         case .factory: return "Factory / Droid"
         case .zai: return "Z.ai"
         case .xAI: return "Grok (xAI)"
+        case .mimo: return "Xiaomi MiMo"
         default: return provider.displayName
         }
     }

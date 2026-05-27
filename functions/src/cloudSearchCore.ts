@@ -1,5 +1,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 
+import { isRecord } from "./guards.js";
+
 export interface CloudSearchManifest {
   schemaVersion: number;
   indexVersion: number;
@@ -22,6 +24,15 @@ export function boundedCloudSearchHashes(raw: unknown, max: number): string[] {
   return raw.filter(isCloudSearchHash).slice(0, max);
 }
 
+function parseStringRecord(raw: unknown): Record<string, string> {
+  if (!isRecord(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
+}
+
 export async function readCloudSearchManifest(db: Firestore, uid: string): Promise<CloudSearchManifest> {
   const current = await db.doc(`users/${uid}/cloud_search_index_manifest/current`).get();
   if (current.exists) {
@@ -29,9 +40,7 @@ export async function readCloudSearchManifest(db: Firestore, uid: string): Promi
     return {
       schemaVersion: Number(data.schemaVersion ?? 1),
       indexVersion: Number(data.indexVersion ?? 1),
-      activeCommitIDsByDevice: typeof data.activeCommitIDsByDevice === "object" && data.activeCommitIDsByDevice
-        ? data.activeCommitIDsByDevice as Record<string, string>
-        : {},
+      activeCommitIDsByDevice: parseStringRecord(data.activeCommitIDsByDevice),
       latestCommittedAt: typeof data.latestCommittedAt === "string" ? data.latestCommittedAt : undefined,
       documentCount: Number(data.documentCount ?? 0),
       chunkCount: Number(data.chunkCount ?? 0),

@@ -91,8 +91,8 @@ class MobileMissionConsoleHostTest {
     fun waiting_for_approval_yields_approval_ask() {
         val snap = snapshot(id = "m-4", status = "waiting_for_approval", approvalStatus = "pending")
         val ask = snap.toApprovalAskOrNull()
-        assertNotNull(ask)
-        assertEquals("m-4", ask!!.missionID)
+        val ask = requireNotNull(snap.toApprovalAskOrNull())
+        assertEquals("m-4", ask.missionID)
         assertTrue(ask.title.contains("Approve"))
     }
 

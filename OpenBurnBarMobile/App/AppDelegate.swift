@@ -2,6 +2,7 @@ import UIKit
 import FirebaseAuth
 import FirebaseCore
 import FirebaseAppCheck
+import FirebaseMessaging
 import GoogleSignIn
 import OpenBurnBarCore
 import OpenBurnBarMedia
@@ -18,7 +19,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         configureFirebase()
         configureMercuryFileTransfer()
+        AgentReplyNotificationService.shared.configure(application: application)
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        AgentReplyNotificationService.shared.didRegisterForRemoteNotifications(deviceToken: deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        #if DEBUG
+        print("Remote notification registration failed: \(error.localizedDescription)")
+        #endif
     }
 
     /// Mercury Phase 1b — wire the iOS file-transfer service so inbound

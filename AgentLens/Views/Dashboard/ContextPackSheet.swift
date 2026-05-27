@@ -385,7 +385,7 @@ struct ContextPackSheet: View {
             // Fetch eligible conversations
             let candidates: [ConversationRecord]
 
-            if let anchorSessionId {
+            if anchorSessionId != nil {
                 // Anchored launch (Session Detail): use project-scoped candidate assembly.
                 // anchorSessionId identifies the selected session, but the pack should include
                 // all eligible sessions from the same project (anchorProject) so that

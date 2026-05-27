@@ -109,6 +109,26 @@ LOGOS = [
         },
     ),
     LogoSource(
+        # Xiaomi MiMo — orange rounded tile with a white M chevron.
+        "mimo",
+        "MimoLogo",
+        "MimoLogo",
+        pixel_rows=(
+            ".OOOOOO.",
+            "OOOOOOOO",
+            "OOWWWOOO",
+            "OWW.WWWO",
+            "OWW.WWWO",
+            "OOWWWOOO",
+            "OOOOOOOO",
+            ".OOOOOO.",
+        ),
+        pixel_colors={
+            "O": "#FF6900",
+            "W": "#FFFFFF",
+        },
+    ),
+    LogoSource(
         # Z.ai — slanted bold "Z" matching the brand mark: thick top
         # bar, 3-pixel diagonal stem running top-right to bottom-left,
         # thick bottom bar. The bottom edge of each bar is shaded with

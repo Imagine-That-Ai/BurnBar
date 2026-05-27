@@ -258,47 +258,50 @@ private struct AdaptiveInsightsLayout: View {
     private var canvasContent: some View {
         if let analysis = store.currentAnalysis {
             ZStack(alignment: .top) {
-                ScrollView {
-                    VStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                        if let verdictModel, let verdict = verdictModel.verdict {
-                            verdictPane(model: verdictModel, verdict: verdict)
-                                .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
-                                .padding(.top, UnifiedDesignSystem.Spacing.md)
+                GeometryReader { geometry in
+                    ScrollView(.vertical) {
+                        VStack(spacing: UnifiedDesignSystem.Spacing.md) {
+                            if let verdictModel, let verdict = verdictModel.verdict {
+                                verdictPane(model: verdictModel, verdict: verdict)
+                                    .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+                                    .padding(.top, UnifiedDesignSystem.Spacing.md)
+                            }
+                            IntelligenceBriefView(
+                                result: analysis,
+                                onCitationTap: { citation in
+                                    // Convert a citation tap into a natural-language
+                                    // follow-up prompt — the composer already routes
+                                    // those into a new analysis turn with the cited
+                                    // entity scoped into the snapshot filter.
+                                    Task {
+                                        await store.compose(prompt: IntelligenceBriefCitationPrompt.prompt(for: citation))
+                                    }
+                                },
+                                onFollowUpTap: { question in
+                                    Task { await store.compose(prompt: question.question) }
+                                },
+                                onMissionLaunchTap: { question, missionKind, _, options in
+                                    store.dispatchMission(
+                                        question,
+                                        missionKind: missionKind,
+                                        requestedRuntime: options.requestedRuntime,
+                                        targetProject: options.targetProject,
+                                        depth: options.depth,
+                                        approvalMode: options.approvalMode,
+                                        commandsAllowed: options.commandsAllowed,
+                                        fileEditsAllowed: options.fileEditsAllowed,
+                                        via: hermesService
+                                    )
+                                },
+                                onPinWidget: { generated in
+                                    Task { await store.pinGeneratedWidget(generated) }
+                                },
+                                onConfigureModel: { showInspector = true },
+                                onShowAudit: nil,
+                                snapshotMode: true
+                            )
                         }
-                        IntelligenceBriefView(
-                            result: analysis,
-                            onCitationTap: { citation in
-                                // Convert a citation tap into a natural-language
-                                // follow-up prompt — the composer already routes
-                                // those into a new analysis turn with the cited
-                                // entity scoped into the snapshot filter.
-                                Task {
-                                    await store.compose(prompt: IntelligenceBriefCitationPrompt.prompt(for: citation))
-                                }
-                            },
-                            onFollowUpTap: { question in
-                                Task { await store.compose(prompt: question.question) }
-                            },
-                            onMissionLaunchTap: { question, missionKind, _, options in
-                                store.dispatchMission(
-                                    question,
-                                    missionKind: missionKind,
-                                    requestedRuntime: options.requestedRuntime,
-                                    targetProject: options.targetProject,
-                                    depth: options.depth,
-                                    approvalMode: options.approvalMode,
-                                    commandsAllowed: options.commandsAllowed,
-                                    fileEditsAllowed: options.fileEditsAllowed,
-                                    via: hermesService
-                                )
-                            },
-                            onPinWidget: { generated in
-                                Task { await store.pinGeneratedWidget(generated) }
-                            },
-                            onConfigureModel: { showInspector = true },
-                            onShowAudit: nil,
-                            snapshotMode: true
-                        )
+                        .frame(width: geometry.size.width)
                     }
                 }
                 .refreshable {

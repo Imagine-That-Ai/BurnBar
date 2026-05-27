@@ -193,7 +193,6 @@ private func configureSentryIfAvailable() {
         options.dsn = dsn
         options.environment = "daemon"
         options.releaseName = "openburnbar-daemon@\(BurnBarDaemonVersion.current)"
-        options.enableTracing = false
         options.tracesSampleRate = 0.0
         #if DEBUG
         options.debug = false

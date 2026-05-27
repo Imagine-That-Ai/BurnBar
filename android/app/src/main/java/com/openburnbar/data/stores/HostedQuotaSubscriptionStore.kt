@@ -194,7 +194,7 @@ class HostedQuotaSubscriptionStore(
                         )
                     )
                     .build()
-                val result = billingClient!!.launchBillingFlow(activity, params)
+                val result = requireBillingClient().launchBillingFlow(activity, params)
                 if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                     throw IllegalStateException(result.debugMessage.ifBlank { "Google Play Billing did not start." })
                 }
@@ -282,7 +282,7 @@ class HostedQuotaSubscriptionStore(
             )
             .build()
         val details = suspendCancellableCoroutine<ProductDetails> { continuation ->
-            billingClient!!.queryProductDetailsAsync(params, ProductDetailsResponseListener { result, products ->
+            requireBillingClient().queryProductDetailsAsync(params, ProductDetailsResponseListener { result, products ->
                 if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                     continuation.resumeWithException(
                         IllegalStateException(result.debugMessage.ifBlank { "Could not load subscription product." })
@@ -343,7 +343,7 @@ class HostedQuotaSubscriptionStore(
             .setPurchaseToken(purchase.purchaseToken)
             .build()
         suspendCancellableCoroutine<Unit> { continuation ->
-            billingClient!!.acknowledgePurchase(params) { result ->
+            requireBillingClient().acknowledgePurchase(params) { result ->
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                     continuation.resume(Unit)
                 } else {
@@ -360,7 +360,7 @@ class HostedQuotaSubscriptionStore(
             .setProductType(BillingClient.ProductType.SUBS)
             .build()
         return suspendCancellableCoroutine { continuation ->
-            billingClient!!.queryPurchasesAsync(params) { result, purchases ->
+            requireBillingClient().queryPurchasesAsync(params) { result, purchases ->
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                     continuation.resume(purchases)
                 } else {
@@ -371,4 +371,7 @@ class HostedQuotaSubscriptionStore(
             }
         }
     }
+
+    private fun requireBillingClient(): BillingClient =
+        checkNotNull(billingClient) { "Google Play Billing client is not ready." }
 }
