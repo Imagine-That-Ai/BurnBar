@@ -417,7 +417,12 @@ public actor BurnBarDaemonServer {
                     slotID: typedRequest.params.slotID,
                     label: typedRequest.params.label,
                     apiKey: typedRequest.params.apiKey,
-                    isEnabled: typedRequest.params.isEnabled
+                    isEnabled: typedRequest.params.isEnabled,
+                    endpointProfileID: typedRequest.params.endpointProfileID,
+                    region: typedRequest.params.region,
+                    tokenPlanTier: typedRequest.params.tokenPlanTier,
+                    tokenPlanBillingCycle: typedRequest.params.tokenPlanBillingCycle,
+                    authMethodID: typedRequest.params.authMethodID
                 )
                 let snapshot = try await configStore.snapshot()
                 let response = BurnBarRPCResponseEnvelope(

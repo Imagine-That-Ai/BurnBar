@@ -20,6 +20,7 @@ import { getFirestore } from "firebase-admin/firestore";
 
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
+import { parseHostedQuotaEntitlementDoc } from "../guards.js";
 import type { HostedQuotaEntitlementDoc } from "../types.js";
 
 import {
@@ -194,7 +195,13 @@ export const restoreHostedQuotaEntitlement = onCall(
           "iterating Transaction.currentEntitlements."
       );
     }
-    const existing = snap.data() as HostedQuotaEntitlementDoc;
+    const existing = parseHostedQuotaEntitlementDoc(snap.data());
+    if (!existing) {
+      throw httpsError(
+        "failed-precondition",
+        "entitlement on file is corrupt"
+      );
+    }
     const original = existing.originalTransactionID;
     if (!original) {
       throw httpsError(

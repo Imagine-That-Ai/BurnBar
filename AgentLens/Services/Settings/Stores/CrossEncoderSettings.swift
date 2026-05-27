@@ -42,8 +42,10 @@ final class CrossEncoderSettings {
             .flatMap(CrossEncoderProviderID.init(rawValue:))
             ?? .codexCLI
         self.crossEncoderProvider = loadedProvider
-        let loadedModel = persistence.string(forKey: "crossEncoderModel")
-            ?? CrossEncoderCatalog.defaultModel(for: loadedProvider)
+        let storedModel = persistence.string(forKey: "crossEncoderModel")
+        let loadedModel = storedModel.isEmpty
+            ? CrossEncoderCatalog.defaultModel(for: loadedProvider)
+            : storedModel
         self.crossEncoderModel = CrossEncoderCatalog.normalizedModel(
             loadedModel,
             provider: loadedProvider

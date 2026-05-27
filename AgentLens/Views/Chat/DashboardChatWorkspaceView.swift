@@ -89,7 +89,7 @@ struct DashboardChatWorkspaceView: View {
             controller.loadPersistedMessages()
             controller.refreshHistory()
         }
-        .onChange(of: dataStore.lastRefresh) { _, _ in
+        .onChange(of: dataStore.usagesVersion) { _, _ in
             Task { @MainActor in
                 brief = controller.buildInsightBriefSnapshot(refreshRollups: false)
                 controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)

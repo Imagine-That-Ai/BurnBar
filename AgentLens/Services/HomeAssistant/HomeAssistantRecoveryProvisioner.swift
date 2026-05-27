@@ -41,11 +41,11 @@ struct HomeAssistantRecoveryProvisioner: Sendable {
     static let automationAlias = "OpenBurnBar Smart Display Recovery"
 
     let client: HomeAssistantClient
-    let randomBytes: () -> [UInt8]
+    let randomBytes: @Sendable () -> [UInt8]
 
     init(
         client: HomeAssistantClient,
-        randomBytes: @escaping () -> [UInt8] = HomeAssistantWebhookID.defaultRandomBytes
+        randomBytes: @escaping @Sendable () -> [UInt8] = { HomeAssistantWebhookID.defaultRandomBytes() }
     ) {
         self.client = client
         self.randomBytes = randomBytes

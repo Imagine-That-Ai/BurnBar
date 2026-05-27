@@ -17,7 +17,7 @@ struct ComputerUseAuditExportSecurityKeyStore: ComputerUseAuditExportKeyStoring 
     func data(service: String, account: String) throws -> Data? {
         let context = LAContext()
         context.interactionNotAllowed = true
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,

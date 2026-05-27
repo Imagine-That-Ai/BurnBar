@@ -434,6 +434,66 @@ class MediaControlStreamCoordinatorTest {
     }
 
     @Test
+    fun ensureResponsiveReturnsTrueForFreshMacHeartbeat() = runTest {
+        val stream = RecordingStream()
+        val coordinator = MediaControlStreamCoordinator(
+            dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+            scope = backgroundScope,
+            presenceHeartbeatIntervalMillis = 60_000,
+        )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (coordinator.phase.value != MediaControlStreamCoordinator.Phase.Live) {
+                kotlinx.coroutines.yield()
+            }
+        }
+        stream.incoming.send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
+                uid = "uid-1",
+                connectionId = "conn-1",
+                media = HermesRealtimeRelayMediaPayload(
+                    presence = HermesRealtimeRelayPresenceHeartbeat(
+                        deviceDisplayName = "Alberto's Mac",
+                        capabilities = listOf("mirror.host"),
+                        sentAt = "2026-05-25T00:00:00Z",
+                    )
+                ),
+            )
+        )
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (coordinator.lastPeerHeartbeatAtMillis.value <= 0L) {
+                kotlinx.coroutines.yield()
+            }
+        }
+
+        assertTrue(coordinator.ensureResponsive(freshnessIntervalMillis = 60_000, probeTimeoutMillis = 50))
+        assertFalse(stream.closed)
+    }
+
+    @Test
+    fun ensureResponsiveClosesStaleControlStreamSoSupervisorReconnects() = runTest {
+        val stream = RecordingStream()
+        val coordinator = MediaControlStreamCoordinator(
+            dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+            scope = backgroundScope,
+            presenceHeartbeatIntervalMillis = 60_000,
+        )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (coordinator.phase.value != MediaControlStreamCoordinator.Phase.Live) {
+                kotlinx.coroutines.yield()
+            }
+        }
+
+        assertFalse(coordinator.ensureResponsive(freshnessIntervalMillis = 1, probeTimeoutMillis = 25))
+        assertTrue(stream.closed)
+        assertTrue(stream.sent.any { it.type == HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT })
+    }
+
+    @Test
     fun readLoop_routesV1ScreenFramesToMirrorFrameHandler() = runTest {
         val stream = RecordingStream()
         val coordinator = MediaControlStreamCoordinator(
@@ -678,6 +738,7 @@ class MediaControlStreamCoordinatorTest {
     private class RecordingStream : IrohRelayStream {
         val sent = mutableListOf<HermesRealtimeRelayFrame>()
         val incoming = Channel<HermesRealtimeRelayFrame?>(Channel.UNLIMITED)
+        var closed = false
 
         override suspend fun send(frame: HermesRealtimeRelayFrame) {
             sent.add(frame)
@@ -687,6 +748,7 @@ class MediaControlStreamCoordinatorTest {
             incoming.receiveCatching().getOrNull()
 
         override suspend fun close() {
+            closed = true
             incoming.close()
         }
     }

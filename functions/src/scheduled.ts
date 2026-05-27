@@ -25,7 +25,8 @@ import {
   writeModelLandscapeBenchmarks,
 } from "./modelLandscape.js";
 import { buildAndPersistRouterRundown } from "./routerRundown.js";
-import type { Provider, RollupJobDoc } from "./types.js";
+import type { Provider } from "./types.js";
+import { errorMessage, parseProvider, parseRollupJobDoc } from "./guards.js";
 
 const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
 
@@ -72,7 +73,7 @@ export const rebuildRollups = onSchedule(
         // corrupt. Fall back to a full rebuild that re-reads all raw usage
         // events and reconstructs counters from scratch.
         const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
-        const job = jobSnap.exists ? jobSnap.data() as RollupJobDoc : null;
+        const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : null;
         const needsFullRebuild = job?.lastErrorCode != null;
 
         const rollups = needsFullRebuild
@@ -83,7 +84,7 @@ export const rebuildRollups = onSchedule(
         console.error(`Rollup failed for ${uid}:`, err);
         const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
         await jobRef.set(
-          { lastErrorCode: (err as Error).message },
+          { lastErrorCode: errorMessage(err) },
           { merge: true }
         );
       }
@@ -129,7 +130,7 @@ export const refreshAllProviderQuotas = onSchedule(
         // Update account doc with error state but do NOT disconnect
         // automatically — transient failures should not punish the user.
         await doc.ref.update({
-          lastErrorCode: (err as Error).message,
+          lastErrorCode: errorMessage(err),
           lastRefreshAt: new Date().toISOString(),
         });
       }
@@ -190,7 +191,10 @@ export const refreshAllProviderQuotas = onSchedule(
       // Path: users/{uid}/provider_connections/{provider}
       const parts = doc.ref.path.split("/");
       const uid = parts[1];
-      const provider = parts[3] as Provider;
+      const provider = parseProvider(parts[3]);
+      if (!provider) {
+        continue;
+      }
       if (refreshedLegacyKeys.has(`${uid}/${provider}`)) {
         continue;
       }
@@ -200,7 +204,7 @@ export const refreshAllProviderQuotas = onSchedule(
       } catch (err) {
         console.error(`Legacy quota refresh failed for ${uid}/${provider}:`, err);
         await doc.ref.update({
-          lastErrorCode: (err as Error).message,
+          lastErrorCode: errorMessage(err),
           lastRefreshAt: new Date().toISOString(),
         });
       }

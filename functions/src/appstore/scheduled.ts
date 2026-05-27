@@ -1,3 +1,4 @@
+import { errorMessage, parseHostedQuotaEntitlementDoc } from "../guards.js";
 /**
  * @fileoverview Scheduled hosted-entitlement reconciliation.
  *
@@ -60,7 +61,8 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
     let failed = 0;
 
     for (const doc of cg.docs) {
-      const data = doc.data() as HostedQuotaEntitlementDoc;
+      const data = parseHostedQuotaEntitlementDoc(doc.data());
+      if (!data) continue;
       const original = data.originalTransactionID;
       if (!original) continue;
       try {
@@ -96,7 +98,7 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
         } else {
           console.error("appstore:scheduled reconcile error", {
             path: doc.ref.path,
-            message: (err as Error).message,
+            message: errorMessage(err),
           });
         }
       }

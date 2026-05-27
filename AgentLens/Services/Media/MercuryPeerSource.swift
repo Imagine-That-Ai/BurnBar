@@ -32,6 +32,7 @@ final class MercuryPeerSource: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var heartbeatsByConnectionID: [String: HermesRealtimeRelayPresenceHeartbeat] = [:]
     private var lastHeartbeatConnectionID: String?
+    private static let cadenceID = "mercury-peer-source"
 
     init(
         registry: MediaControlStreamRegistry,
@@ -47,19 +48,37 @@ final class MercuryPeerSource: ObservableObject {
 
     func start() {
         guard pollTask == nil else { return }
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.refresh()
-                try? await Task.sleep(
-                    nanoseconds: UInt64((self?.pollInterval ?? 2.0) * 1_000_000_000)
-                )
-            }
-        }
+        // Coordinator-managed cadence: 2 s while the app is active and no
+        // observer is delivering heartbeats, 30 s once heartbeats are
+        // arriving (the iPhone is actively present), 30 s in the
+        // background, and paused entirely while the display sleeps. The
+        // poll exists as a fallback because the control-stream-registry
+        // refresh in `MediaControlStreamRegistry` is push-driven and may
+        // miss state changes on flaky networks.
+        let interval = pollInterval
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceID,
+                activeInterval: interval,
+                backgroundInterval: 30,
+                sleepInterval: nil,
+                observerActiveInterval: 30,
+                isEnabled: { true },
+                fireImmediately: true,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.refresh()
+                }
+            )
+        )
+        // Mark `pollTask` non-nil so re-entrant `start()` calls are no-ops.
+        pollTask = Task { @MainActor in }
     }
 
     func stop() {
         pollTask?.cancel()
         pollTask = nil
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceID)
     }
 
     /// Surface a freshly-received presence heartbeat from the iPhone.
@@ -71,6 +90,7 @@ final class MercuryPeerSource: ObservableObject {
     ) {
         heartbeatsByConnectionID[connectionID] = heartbeat
         lastHeartbeatConnectionID = connectionID
+        BackgroundCadenceCoordinator.shared.observerDidEmit(id: Self.cadenceID)
         Task { @MainActor in await refresh() }
     }
 
@@ -82,6 +102,7 @@ final class MercuryPeerSource: ObservableObject {
         if lastHeartbeatConnectionID == connectionID {
             lastHeartbeatConnectionID = nil
         }
+        BackgroundCadenceCoordinator.shared.observerDidGoSilent(id: Self.cadenceID)
         Task { @MainActor in await refresh() }
     }
 

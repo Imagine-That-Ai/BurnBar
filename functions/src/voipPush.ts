@@ -25,6 +25,7 @@
 
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { isRecord, isTimestampWithToMillis, stringField } from "./guards.js";
 
 const MEDIA_ENTITLEMENT_DOC_ID = "hosted_media_sync";
 const PRO_ENTITLEMENT_DOC_ID = "burnbar_pro";
@@ -37,6 +38,24 @@ interface TriggerRequest {
   isVideo: boolean;
   voipDeviceToken?: string;
   androidDeviceId?: string;
+}
+
+function parseTriggerRequest(raw: unknown): TriggerRequest | undefined {
+  if (!isRecord(raw)) return undefined;
+  const callId = stringField(raw, "callId");
+  const connectionId = stringField(raw, "connectionId");
+  const pairedDeviceId = stringField(raw, "pairedDeviceId");
+  const displayName = stringField(raw, "displayName");
+  if (!callId || !connectionId || !pairedDeviceId || !displayName) return undefined;
+  return {
+    callId,
+    connectionId,
+    pairedDeviceId,
+    displayName,
+    isVideo: raw.isVideo === true,
+    voipDeviceToken: stringField(raw, "voipDeviceToken"),
+    androidDeviceId: stringField(raw, "androidDeviceId"),
+  };
 }
 
 interface ResolvedFanOut {
@@ -76,9 +95,9 @@ export async function resolveFanOut(args: {
     const snap = await firestore
       .doc(`users/${args.uid}/devices/${resolvedAndroidDeviceId}`)
       .get();
-    const data = snap.exists ? (snap.data() as Record<string, unknown>) : undefined;
-    fcmToken = (data?.["fcm_token"] as string | undefined)?.trim() || undefined;
-    const fcmUpdatedAt = Number(data?.["updated_at_millis"] ?? 0);
+    const data = snap.exists ? snap.data() : undefined;
+    fcmToken = isRecord(data) ? stringField(data, "fcm_token")?.trim() : undefined;
+    const fcmUpdatedAt = isRecord(data) ? Number(data.updated_at_millis ?? 0) : 0;
     if (fcmToken) {
       // If we have both, prefer the freshest one. With only an FCM
       // token, that's our channel. If FCM is older than APNs, drop it
@@ -112,8 +131,8 @@ async function macHasActiveMediaEntitlement(uid: string): Promise<boolean> {
     if (!snap.exists) continue;
     const data = snap.data() ?? {};
     if (data.active !== true) continue;
-    const expireAt = data.expireAt as Timestamp | undefined;
-    if (!expireAt) continue;
+    const expireAt = data.expireAt;
+    if (!isTimestampWithToMillis(expireAt)) continue;
     if (expireAt.toMillis() <= Date.now()) continue;
     return true;
   }
@@ -126,8 +145,8 @@ export const triggerVoIPCall = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign-in required.");
     }
-    const data = request.data as TriggerRequest;
-    if (!data?.callId || !data.connectionId || !data.pairedDeviceId) {
+    const data = parseTriggerRequest(request.data);
+    if (!data) {
       throw new HttpsError("invalid-argument", "Missing required call fields.");
     }
     if (!data.voipDeviceToken && !data.androidDeviceId) {

@@ -130,4 +130,5 @@ val AgentProvider.logoRes: Int
         AgentProvider.WARP        -> R.drawable.logo_warp
         AgentProvider.XAI         -> R.drawable.logo_grok
         AgentProvider.ANTIGRAVITY -> R.drawable.logo_antigravity
+        AgentProvider.MIMO        -> R.drawable.mimo_logo
     }

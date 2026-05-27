@@ -46,8 +46,7 @@ class MenuBarService : Service() {
         postSnapshotNotification(MenuBarController.snapshot.value)
         collectorJob = scope.launch {
             MenuBarController.snapshot.collectLatest { snap ->
-                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                nm.notify(NOTIFICATION_ID, buildNotification(this@MenuBarService, snap))
+                notificationManager()?.notify(NOTIFICATION_ID, buildNotification(this@MenuBarService, snap))
             }
         }
     }
@@ -59,15 +58,13 @@ class MenuBarService : Service() {
     override fun onDestroy() {
         collectorJob?.cancel()
         scope.cancel()
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.cancel(NOTIFICATION_ID)
+        notificationManager()?.cancel(NOTIFICATION_ID)
         super.onDestroy()
     }
 
     private fun postSnapshotNotification(snap: MenuBarSnapshot) {
         val notification = buildNotification(this, snap)
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIFICATION_ID, notification)
+        notificationManager()?.notify(NOTIFICATION_ID, notification)
     }
 
     companion object {
@@ -93,7 +90,7 @@ class MenuBarService : Service() {
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val nm = context.notificationManager() ?: return
             if (nm.getNotificationChannel(CHANNEL_ID) != null) return
             val channel = NotificationChannel(
                 CHANNEL_ID,
@@ -159,3 +156,6 @@ class MenuBarService : Service() {
         }
     }
 }
+
+private fun Context.notificationManager(): NotificationManager? =
+    getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager

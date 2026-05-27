@@ -251,6 +251,14 @@ enum LocalNetworkDiscovery {
 // official discovery path documented by the AWTRIX project — it survives DHCP
 // lease changes, IP renumbering, and per-device address shuffles that would
 // otherwise leave us pointing at a stale host.
+private final class SendableAwtrixNetServiceBox: @unchecked Sendable {
+    let service: NetService
+
+    init(_ service: NetService) {
+        self.service = service
+    }
+}
+
 @MainActor
 private final class AwtrixBonjourCoordinator: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
     private let browser = NetServiceBrowser()
@@ -291,8 +299,10 @@ private final class AwtrixBonjourCoordinator: NSObject, NetServiceBrowserDelegat
         moreComing: Bool
     ) {
         let isAwtrix = service.name.lowercased().hasPrefix("awtrix")
-        Task { @MainActor in
+        let serviceBox = SendableAwtrixNetServiceBox(service)
+        Task { @MainActor [serviceBox] in
             guard isAwtrix else { return }
+            let service = serviceBox.service
             self.pendingServices.insert(service)
             service.delegate = self
             service.resolve(withTimeout: 2)
@@ -300,7 +310,9 @@ private final class AwtrixBonjourCoordinator: NSObject, NetServiceBrowserDelegat
     }
 
     nonisolated func netServiceDidResolveAddress(_ sender: NetService) {
-        Task { @MainActor in
+        let serviceBox = SendableAwtrixNetServiceBox(sender)
+        Task { @MainActor [serviceBox] in
+            let sender = serviceBox.service
             let resolved = self.extractIPv4Addresses(from: sender)
             for ip in resolved where LocalNetworkDiscovery.isUsableLANIPv4(ip) {
                 self.hosts.append(ip)
@@ -310,7 +322,9 @@ private final class AwtrixBonjourCoordinator: NSObject, NetServiceBrowserDelegat
     }
 
     nonisolated func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        Task { @MainActor in
+        let serviceBox = SendableAwtrixNetServiceBox(sender)
+        Task { @MainActor [serviceBox] in
+            let sender = serviceBox.service
             self.pendingServices.remove(sender)
         }
     }

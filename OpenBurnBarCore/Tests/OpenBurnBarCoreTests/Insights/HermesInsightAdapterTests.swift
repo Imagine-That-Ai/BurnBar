@@ -265,7 +265,7 @@ private final class StubHermesInsightTransport: HermesInsightTransport, @uncheck
             )
         }
         let envelope = scriptedUnaryEnvelope ?? ""
-        let body = "{\"choices\":[{\"message\":{\"content\":\(jsonString(envelope))}}]}"
+        let body = "{\"choices\":[{\"message\":{\"content\":\(try jsonString(envelope))}}]}"
         return HermesInsightChatResponse(
             responseJSON: Data(body.utf8),
             usage: scriptedUnaryUsage
@@ -295,8 +295,8 @@ private final class StubHermesInsightTransport: HermesInsightTransport, @uncheck
         }
     }
 
-    private func jsonString(_ raw: String) -> String {
-        let data = try! JSONSerialization.data(withJSONObject: raw, options: .fragmentsAllowed)
+    private func jsonString(_ raw: String) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: raw, options: .fragmentsAllowed)
         return String(data: data, encoding: .utf8) ?? "\"\""
     }
 }

@@ -135,7 +135,7 @@ describe("workspace panel view model integration", () => {
     const vm = buildPanelViewModel(state);
 
     expect(vm.activeRun).toBeDefined();
-    expect(vm.activeRun!.phase).toBe("planning");
+    expect(vm.activeRun?.phase).toBe("planning");
     expect(vm.historyRuns).toHaveLength(1);
     expect(vm.historyRuns[0].phase).toBe("completed");
   });
@@ -181,8 +181,8 @@ describe("workspace panel view model integration", () => {
     const vm = buildPanelViewModel(state);
 
     expect(vm.approvalState).toBeDefined();
-    expect(vm.approvalState!.title).toBe("Apply patch to main.ts");
-    expect(vm.approvalState!.tool).toBe("apply_patch");
+    expect(vm.approvalState?.title).toBe("Apply patch to main.ts");
+    expect(vm.approvalState?.tool).toBe("apply_patch");
   });
 
   it("disables composer when no models are available", () => {
@@ -279,9 +279,9 @@ describe("workspace panel view model integration", () => {
     const vm = buildPanelViewModel(state);
 
     expect(vm.selectedRunDetail).toBeDefined();
-    expect(vm.selectedRunDetail!.summary).toContain("executing_tool");
-    expect(vm.selectedRunDetail!.usageText).toContain("z-ai");
-    expect(vm.selectedRunDetail!.loopDecisionText).toContain("read_file");
+    expect(vm.selectedRunDetail?.summary).toContain("executing_tool");
+    expect(vm.selectedRunDetail?.usageText).toContain("z-ai");
+    expect(vm.selectedRunDetail?.loopDecisionText).toContain("read_file");
   });
 });
 

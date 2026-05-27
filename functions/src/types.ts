@@ -26,6 +26,7 @@ export const SUPPORTED_PROVIDERS = [
   "opencode",
   "antigravity",
   "xai",
+  "mimo",
 ] as const;
 
 export type Provider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -39,6 +40,7 @@ export const BACKEND_REFRESH_PROVIDERS: readonly Provider[] = [
   "factory",
   "cursor",
   "xai",
+  "mimo",
 ];
 
 /** Providers that are treated as local-only (no backend refresh). */
@@ -113,6 +115,16 @@ export interface ProviderAccountDoc {
   lastValidatedAt?: string;
   lastRefreshAt?: string;
   lastErrorCode?: string;
+  /** Endpoint profile for multi-host providers (e.g. mimo.token-plan.sgp). */
+  endpointProfileID?: string;
+  /** Regional cluster for Token Plan accounts. */
+  region?: "cn" | "sgp" | "ams" | "global";
+  /** Token Plan tier when vendor quota API is unavailable. */
+  tokenPlanTier?: "lite" | "standard" | "pro" | "max";
+  /** Token Plan billing cycle for credit-cap math. */
+  tokenPlanBillingCycle?: "monthly" | "annual";
+  /** Auth wizard method id (mimo-token-plan, mimo-payg, …). */
+  authMethodID?: string;
   schemaVersion: number;
   createdAt: string;
   updatedAt: string;
@@ -1194,17 +1206,29 @@ export interface QuotaRefreshResult {
   errorMessage?: string;
 }
 
+export interface ProviderAccountConnectContext {
+  endpointProfileID?: string;
+  region?: "cn" | "sgp" | "ams" | "global";
+  tokenPlanTier?: "lite" | "standard" | "pro" | "max";
+  tokenPlanBillingCycle?: "monthly" | "annual";
+  authMethodID?: string;
+}
+
 /** Every provider adapter must satisfy this interface. */
 export interface ProviderAdapter {
   readonly provider: Provider;
 
   /** Test a raw credential without storing it. */
-  testCredential(credential: string): Promise<CredentialTestResult>;
+  testCredential(
+    credential: string,
+    accountContext?: ProviderAccountConnectContext
+  ): Promise<CredentialTestResult>;
 
   /** Fetch current quota using the decrypted credential. */
   fetchQuota(
     credential: string,
-    sourceId: string
+    sourceId: string,
+    accountContext?: ProviderAccountConnectContext
   ): Promise<QuotaRefreshResult>;
 }
 

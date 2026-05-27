@@ -119,7 +119,12 @@ extension OpenBurnBarDaemonManager {
         providerID: String,
         label: String,
         apiKey: String,
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        endpointProfileID: String? = nil,
+        region: ProviderEndpointRegion? = nil,
+        tokenPlanTier: MimoTokenPlanTier? = nil,
+        tokenPlanBillingCycle: MimoTokenPlanBillingCycle? = nil,
+        authMethodID: String? = nil
     ) async throws -> String {
         if case .healthy = status {
             // already healthy
@@ -150,7 +155,12 @@ extension OpenBurnBarDaemonManager {
                         slotID: slotID,
                         label: normalizedLabel,
                         apiKey: normalizedKey,
-                        isEnabled: isEnabled
+                        isEnabled: isEnabled,
+                        endpointProfileID: endpointProfileID,
+                        region: region,
+                        tokenPlanTier: tokenPlanTier,
+                        tokenPlanBillingCycle: tokenPlanBillingCycle,
+                        authMethodID: authMethodID
                     ),
                     at: socketURL
                 )
@@ -185,7 +195,12 @@ extension OpenBurnBarDaemonManager {
         slotID: String,
         label: String? = nil,
         isEnabled: Bool? = nil,
-        apiKey: String? = nil
+        apiKey: String? = nil,
+        endpointProfileID: String? = nil,
+        region: ProviderEndpointRegion? = nil,
+        tokenPlanTier: MimoTokenPlanTier? = nil,
+        tokenPlanBillingCycle: MimoTokenPlanBillingCycle? = nil,
+        authMethodID: String? = nil
     ) async throws {
         if case .healthy = status {
             // already healthy
@@ -223,7 +238,12 @@ extension OpenBurnBarDaemonManager {
                                     return existingSlot?.label ?? "Plan"
                                 }(),
                                 apiKey: normalizedKey,
-                                isEnabled: isEnabled ?? existingSlot?.isEnabled ?? true
+                                isEnabled: isEnabled ?? existingSlot?.isEnabled ?? true,
+                                endpointProfileID: endpointProfileID ?? existingSlot?.endpointProfileID,
+                                region: region ?? existingSlot?.region,
+                                tokenPlanTier: tokenPlanTier ?? existingSlot?.tokenPlanTier,
+                                tokenPlanBillingCycle: tokenPlanBillingCycle ?? existingSlot?.tokenPlanBillingCycle,
+                                authMethodID: authMethodID ?? existingSlot?.authMethodID
                             ),
                             at: socketURL
                         )
@@ -263,8 +283,9 @@ extension OpenBurnBarDaemonManager {
             slot.updatedAt = Date()
             settings.credentialSlots[index] = slot
             snapshot.providers[providerIndex] = settings
+            let updatedSnapshot = snapshot
             _ = try await daemonRPC {
-                try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+                try OpenBurnBarDaemonSocketClient.updateConfig(updatedSnapshot, at: socketURL)
             }
         }
     }
@@ -567,6 +588,8 @@ extension OpenBurnBarDaemonManager {
             return .ollama
         case "moonshot", "kimi":
             return .kimi
+        case "mimo", "xiaomi", "xiaomimimo":
+            return .mimo
         default:
             return nil
         }

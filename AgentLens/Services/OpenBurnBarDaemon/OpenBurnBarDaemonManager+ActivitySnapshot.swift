@@ -3,6 +3,9 @@ import OpenBurnBarCore
 
 extension OpenBurnBarDaemonManager {
 
+    private static let controllerActivitySnapshotFreshness: TimeInterval = 60
+    private static let controllerActivityConversationLimit = 80
+
     func exportControllerActivitySnapshot() {
         guard let dataStore else { return }
 
@@ -21,10 +24,19 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
+    func exportControllerActivitySnapshotIfStale() {
+        if let attributes = try? dependencies.fileManager.attributesOfItem(atPath: paths.controllerActivitySnapshotURL.path),
+           let modifiedAt = attributes[.modificationDate] as? Date,
+           Date().timeIntervalSince(modifiedAt) < Self.controllerActivitySnapshotFreshness {
+            return
+        }
+        exportControllerActivitySnapshot()
+    }
+
     func makeControllerActivitySnapshot(
         from dataStore: DataStore
     ) throws -> BurnBarControllerActivitySnapshot {
-        let conversations = try dataStore.fetchConversations(limit: 250)
+        let conversations = try dataStore.fetchConversations(limit: Self.controllerActivityConversationLimit)
         let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date().addingTimeInterval(-7 * 24 * 60 * 60)
         let recentUsages = dataStore.usages(in: start...Date())
 

@@ -2,10 +2,11 @@ import type { Firestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { verifyCursor, signCursor } from "./cursors.js";
 import { HttpError } from "./errors.js";
+import type { HostedMcpFirestore } from "./firestoreTypes.js";
 
 const RESOURCE_RE = /^burnbar:\/\/conversation\/([A-Za-z0-9_.:-]+)$/u;
 
-export async function listResources(db: Firestore, uid: string) {
+export async function listResources(db: HostedMcpFirestore, uid: string) {
   const docs = await db.collection(`users/${uid}/cloud_search_documents`).limit(50).get();
   return {
     resources: docs.docs.map((doc) => ({
@@ -18,7 +19,7 @@ export async function listResources(db: Firestore, uid: string) {
 }
 
 export async function readConversationBody(
-  db: Firestore,
+  db: HostedMcpFirestore,
   uid: string,
   args: { resourceUri?: string; maxChars?: number; cursor?: string }
 ) {

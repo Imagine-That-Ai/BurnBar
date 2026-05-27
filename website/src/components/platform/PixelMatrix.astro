@@ -38,24 +38,54 @@ interface Props {
 }
 
 const { id, layout = "providerDashboard", palette = "emberWhimsy", items } = Astro.props;
-const effectiveItems: PixelItem[] = items ?? (DEFAULT_ITEMS as PixelItem[]);
+const effectiveItems: PixelItem[] = items ?? parsePixelItems(DEFAULT_ITEMS);
 
 // Bridge to the untyped .mjs presenter — JSON-safe shape, runtime-validated.
 type PresentedFrame = {
   grid: Array<Array<{ isLit: boolean; color: string }>>;
   accessibilityLabel: string;
 };
-const frame = (buildFrame as unknown as (args: unknown) => PresentedFrame)({
+const frameInput = {
   layout,
   items: effectiveItems,
   tick: 0,
   palette
-});
+};
+const frame = parsePresentedFrame(Reflect.apply(buildFrame, undefined, [frameInput]));
 const cells = frame.grid.flat();
 
 // Serialize the items/config so the hydrator can pick them up without
 // duplicating the catalog.
 const config = JSON.stringify({ layout, palette, items: effectiveItems });
+
+function parsePixelItems(value: unknown): PixelItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is PixelItem => {
+    return isRecord(item)
+      && typeof item.providerID === "string"
+      && typeof item.percentUsed === "number"
+      && (item.providerName === undefined || typeof item.providerName === "string")
+      && (item.usageText === undefined || typeof item.usageText === "string")
+      && (item.windowLabel === undefined || typeof item.windowLabel === "string");
+  });
+}
+
+function parsePresentedFrame(value: unknown): PresentedFrame {
+  if (!isRecord(value) || typeof value.accessibilityLabel !== "string" || !Array.isArray(value.grid)) {
+    return { grid: [], accessibilityLabel: "OpenBurnBar pixel matrix" };
+  }
+  const grid = value.grid.map((row) => Array.isArray(row)
+    ? row.filter((cell): cell is { isLit: boolean; color: string } =>
+        isRecord(cell) && typeof cell.isLit === "boolean" && typeof cell.color === "string")
+    : []);
+  return { grid, accessibilityLabel: value.accessibilityLabel };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 ---
 
 <div

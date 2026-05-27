@@ -125,7 +125,7 @@ final class BurnBarScalarQuantizerTests: XCTestCase {
         XCTAssertEqual(decoded[2], -2.0, accuracy: 0.1)
     }
 
-    func test_serialization_roundTrip() {
+    func test_serialization_roundTrip() throws {
         let dimensions = 8
         var builder = BurnBarScalarQuantizerBuilder(dimensions: dimensions)
         for _ in 0..<10 {
@@ -138,11 +138,11 @@ final class BurnBarScalarQuantizerTests: XCTestCase {
         FileManager.default.createFile(atPath: tempURL.path, contents: nil)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        let handle = try! FileHandle(forWritingTo: tempURL)
-        try! quantizer.write(to: handle)
-        try! handle.close()
+        let handle = try FileHandle(forWritingTo: tempURL)
+        try quantizer.write(to: handle)
+        try handle.close()
 
-        let data = try! Data(contentsOf: tempURL)
+        let data = try Data(contentsOf: tempURL)
         guard let (readQuantizer, nextOffset) = BurnBarScalarQuantizer.read(from: data, dimensions: dimensions, offset: 0) else {
             XCTFail("Failed to read quantizer from data")
             return

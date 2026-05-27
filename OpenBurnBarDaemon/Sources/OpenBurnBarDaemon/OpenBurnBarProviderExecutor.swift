@@ -1827,7 +1827,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     private func secret(forService service: String, account: String) throws -> String? {
         let context = LAContext()
         context.interactionNotAllowed = true
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
@@ -1835,7 +1835,6 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationContext as String: context,
         ]
-        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {
             SecItemCopyMatching(query as CFDictionary, &item)

@@ -60,6 +60,20 @@ enum PixelClockProviderLogoAssets {
         ]
     )
 
+    static let mimo = PixelClockProviderLogo(
+        sourceName: "MimoLogo",
+        pixels: [
+            [nil, "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", nil],
+            ["#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900"],
+            ["#FF6900", "#FF6900", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FF6900", "#FF6900", "#FF6900"],
+            ["#FF6900", "#FFFFFF", "#FFFFFF", nil, "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FF6900"],
+            ["#FF6900", "#FFFFFF", "#FFFFFF", nil, "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FF6900"],
+            ["#FF6900", "#FF6900", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FF6900", "#FF6900", "#FF6900"],
+            ["#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900"],
+            [nil, "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", nil]
+        ]
+    )
+
     static let zai = PixelClockProviderLogo(
         sourceName: "ZaiLogo",
         pixels: [

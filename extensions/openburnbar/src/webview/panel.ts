@@ -10,12 +10,20 @@ import * as workspace from './workspace';
 /**
  * Webview panel for OpenBurnBar workspace operations.
  */
+interface OpenBurnBarPanelLike {
+  webview: vscode.Webview;
+  title: string;
+  visible: boolean;
+  onDidChangeViewState: vscode.Event<vscode.WebviewPanelOnDidChangeViewStateEvent>;
+  onDidDispose: vscode.Event<void>;
+}
+
 export class OpenBurnBarPanel {
   private readonly extensionUri: vscode.Uri;
-  private readonly webview: vscode.WebviewPanel;
+  private readonly webview: OpenBurnBarPanelLike;
   private disposables: vscode.Disposable[] = [];
 
-  constructor(extensionUri: vscode.Uri, webview: vscode.WebviewPanel) {
+  constructor(extensionUri: vscode.Uri, webview: OpenBurnBarPanelLike) {
     this.extensionUri = extensionUri;
     this.webview = webview;
 
@@ -77,31 +85,46 @@ export class OpenBurnBarPanel {
       break;
 
     case 'workspace.selectRun': {
-      const payload = message.payload as { runId: string };
+      const payload = runIDPayload(message.payload);
+      if (!payload) {
+        return;
+      }
       vscode.commands.executeCommand('openburnbar.selectRun', payload.runId);
       break;
     }
 
     case 'workspace.viewRun': {
-      const payload = message.payload as { runId: string };
+      const payload = runIDPayload(message.payload);
+      if (!payload) {
+        return;
+      }
       vscode.commands.executeCommand('openburnbar.viewRun', payload.runId);
       break;
     }
 
     case 'workspace.cancelRun': {
-      const payload = message.payload as { runId: string };
+      const payload = runIDPayload(message.payload);
+      if (!payload) {
+        return;
+      }
       vscode.commands.executeCommand('openburnbar.cancelRun', payload.runId);
       break;
     }
 
     case 'workspace.retryRun': {
-      const payload = message.payload as { runId: string };
+      const payload = runIDPayload(message.payload);
+      if (!payload) {
+        return;
+      }
       vscode.commands.executeCommand('openburnbar.retryRun', payload.runId);
       break;
     }
 
     case 'workspace.executeTool': {
-      const payload = message.payload as { tool: string; args: unknown };
+      const payload = executeToolPayload(message.payload);
+      if (!payload) {
+        return;
+      }
       vscode.commands.executeCommand('openburnbar.executeTool', payload.tool, payload.args);
       break;
     }
@@ -215,12 +238,8 @@ export function registerPanelProvider(context: vscode.ExtensionContext): void {
             title: 'OpenBurnBar',
             visible: true,
             onDidChangeViewState: new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>().event,
-            onDidDispose: new vscode.EventEmitter<void>().event,
-            show: () => {},
-            hide: () => {},
-            reveal: () => {},
-            dispose: () => {}
-          } as unknown as vscode.WebviewPanel);
+            onDidDispose: new vscode.EventEmitter<void>().event
+          });
 
           webviewView.onDidDispose(
             () => panel.dispose(),
@@ -231,4 +250,22 @@ export function registerPanelProvider(context: vscode.ExtensionContext): void {
       })()
     )
   );
+}
+
+function runIDPayload(payload: unknown): { runId: string } | undefined {
+  if (!isRecord(payload) || typeof payload.runId !== 'string') {
+    return undefined;
+  }
+  return { runId: payload.runId };
+}
+
+function executeToolPayload(payload: unknown): { tool: string; args: unknown } | undefined {
+  if (!isRecord(payload) || typeof payload.tool !== 'string') {
+    return undefined;
+  }
+  return { tool: payload.tool, args: payload.args };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

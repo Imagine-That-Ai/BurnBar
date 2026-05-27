@@ -13,9 +13,9 @@ final class DashboardToolbarTests: XCTestCase {
         navigationModel: DashboardNavigationModel = DashboardNavigationModel(),
         isScanning: Bool = false,
         canRunRecount: Bool = true
-    ) -> DashboardToolbar {
+    ) throws -> DashboardToolbar {
         let settingsManager = makeSettingsManager()
-        let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
+        let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
         let chatController = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         return DashboardToolbar(
             navigationModel: navigationModel,
@@ -38,7 +38,7 @@ final class DashboardToolbarTests: XCTestCase {
     }
 
     func test_rendersWithoutCrashing() throws {
-        let toolbar = makeToolbar()
+        let toolbar = try makeToolbar()
         let wrapped = NavigationStack {
             Color.clear
                 .toolbar { toolbar }

@@ -30,7 +30,8 @@ class MercuryAudioDatagramChannel internal constructor(
     suspend fun recv(timeoutMillis: Int): ByteArray? = withContext(dispatcher) {
         try {
             nativeHandle.javaClass.irohGeneratedMethod("recv", javaPrimitiveInt)
-                .invoke(nativeHandle, timeoutMillis) as ByteArray?
+                .invoke(nativeHandle, timeoutMillis)
+                .optionalFfiField<ByteArray>("IrohDatagramChannel.recv")
         } catch (t: Throwable) {
             throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
         }
@@ -47,7 +48,9 @@ class MercuryAudioDatagramChannel internal constructor(
 
     suspend fun maxDatagramSize(): Int = withContext(dispatcher) {
         try {
-            (nativeHandle.javaClass.irohGeneratedMethod("maxDatagramSize").invoke(nativeHandle) as Int)
+            nativeHandle.javaClass.irohGeneratedMethod("maxDatagramSize")
+                .invoke(nativeHandle)
+                .requireFfiField<Int>("IrohDatagramChannel.maxDatagramSize")
         } catch (t: Throwable) {
             throw IrohBackendError.RuntimeFailed(t.message ?: t.javaClass.simpleName)
         }

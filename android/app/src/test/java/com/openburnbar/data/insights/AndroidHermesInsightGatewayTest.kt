@@ -101,7 +101,7 @@ class AndroidHermesInsightGatewayTest {
             caught = t
         }
         assertNotNull("Expected analyze() to throw when Hermes is unreachable", caught)
-        assertTrue(caught!!.message?.contains("not reachable") == true)
+        assertTrue(requireNotNull(caught).message?.contains("not reachable") == true)
     }
 
     @Test
@@ -117,14 +117,12 @@ class AndroidHermesInsightGatewayTest {
         val chunks = gateway.stream(followUpRequest("Why did cost spike?")).toList()
         val deltas = chunks.filterIsInstance<HermesInsightChunk.Delta>().map { it.text }
         assertEquals(listOf("Hermes routed ", "two long Claude turns ", "→ cost +\$0.42."), deltas)
-        val usage = chunks.filterIsInstance<HermesInsightChunk.Usage>().firstOrNull()?.usage
-        assertNotNull(usage)
-        assertEquals(3_900, usage!!.inputTokens)
+        val usage = requireNotNull(chunks.filterIsInstance<HermesInsightChunk.Usage>().firstOrNull()?.usage)
+        assertEquals(3_900, usage.inputTokens)
         assertEquals(1_200, usage.outputTokens)
         assertEquals(0.0051, usage.estimatedCostUSD, 0.00001)
-        val completed = chunks.filterIsInstance<HermesInsightChunk.Completed>().firstOrNull()
-        assertNotNull(completed)
-        assertTrue(completed!!.fullAnswer.startsWith("Hermes routed two long Claude turns"))
+        val completed = requireNotNull(chunks.filterIsInstance<HermesInsightChunk.Completed>().firstOrNull())
+        assertTrue(completed.fullAnswer.startsWith("Hermes routed two long Claude turns"))
     }
 
     @Test

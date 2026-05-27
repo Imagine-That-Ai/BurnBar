@@ -22,11 +22,12 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { defineString } from "firebase-functions/params";
 import { enforceAuthAndAppCheck } from "./auth.js";
+import { readOpenBurnBarFunctionsConfig } from "./firebaseRuntime.js";
+import { isRecord, jsonObject, stringField } from "./guards.js";
 import type {
   ComputerUseOpenTimestampsValidationRequest,
   ComputerUseOpenTimestampsValidationResponse,
   ComputerUseOpenTimestampsValidationStatus,
-  ComputerUseSessionDoc,
 } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -101,9 +102,7 @@ function decodeBase64(
 export function parseComputerUseOpenTimestampsValidationRequest(
   raw: unknown,
 ): ComputerUseOpenTimestampsValidationRequest {
-  const data = raw && typeof raw === "object"
-    ? raw as Record<string, unknown>
-    : {};
+  const data = isRecord(raw) ? raw : {};
   return {
     uid: requiredString(data.uid, "uid"),
     sessionId: requiredString(data.sessionId, "sessionId"),
@@ -114,36 +113,30 @@ export function parseComputerUseOpenTimestampsValidationRequest(
 }
 
 function otsBinaryPath(): string | undefined {
-  const cfg =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).functions?.config?.()?.openburnbar || {};
+  const cfg = readOpenBurnBarFunctionsConfig();
   const configured = (
     process.env.OPENBURNBAR_OTS_VERIFY_BIN ??
-    cfg.ots_verify_bin
+    stringField(cfg, "ots_verify_bin")
   )?.trim();
   if (configured) return configured;
   return "ots";
 }
 
 function otsVerifierServiceURL(): string | undefined {
-  const cfg =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).functions?.config?.()?.openburnbar || {};
+  const cfg = readOpenBurnBarFunctionsConfig();
   const configured = (
     process.env.OPENBURNBAR_OTS_VERIFY_URL ??
-    cfg.ots_verify_url ??
+    stringField(cfg, "ots_verify_url") ??
     OPENBURNBAR_OTS_VERIFY_URL_PARAM.value()
   )?.trim();
   return configured && configured.length > 0 ? configured : undefined;
 }
 
 function otsVerifierServiceAudience(serviceURL: string): string | undefined {
-  const cfg =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).functions?.config?.()?.openburnbar || {};
+  const cfg = readOpenBurnBarFunctionsConfig();
   const configured = (
     process.env.OPENBURNBAR_OTS_VERIFY_AUDIENCE ??
-    cfg.ots_verify_audience ??
+    stringField(cfg, "ots_verify_audience") ??
     OPENBURNBAR_OTS_VERIFY_AUDIENCE_PARAM.value()
   )?.trim();
   if (configured && configured.length > 0) return configured;
@@ -213,7 +206,7 @@ async function runOtsVerifyViaService(
   const text = await response.text();
   let parsed: Record<string, unknown> = {};
   try {
-    parsed = text.length > 0 ? JSON.parse(text) as Record<string, unknown> : {};
+    parsed = text.length > 0 ? jsonObject(JSON.parse(text)) : {};
   } catch {
     parsed = { output: text };
   }
@@ -269,15 +262,15 @@ export async function runOtsVerify(
       otsVerifierOutput: output || "ots verify exited 0",
     };
   } catch (error) {
-    const nodeError = error as NodeJS.ErrnoException & {
-      code?: string | number;
-      stdout?: string;
-      stderr?: string;
-    };
-    if (nodeError.code === "ENOENT") {
+    const nodeError = isRecord(error) ? error : {};
+    const code = "code" in nodeError ? nodeError.code : undefined;
+    if (code === "ENOENT") {
       return { status: "ots_verifier_unavailable", verified: false };
     }
-    const output = [nodeError.stdout, nodeError.stderr, nodeError.message]
+    const stdout = typeof nodeError.stdout === "string" ? nodeError.stdout : undefined;
+    const stderr = typeof nodeError.stderr === "string" ? nodeError.stderr : undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    const output = [stdout, stderr, message]
       .filter(Boolean)
       .join("\n")
       .trim();
@@ -302,8 +295,8 @@ export async function serverHeadStatus(
   if (!doc.exists) {
     return { status: "session_not_found" };
   }
-  const session = doc.data() as ComputerUseSessionDoc;
-  const serverHead = session.auditHeadHashHex;
+  const session = doc.data();
+  const serverHead = isRecord(session) ? stringField(session, "auditHeadHashHex") : undefined;
   if (!serverHead) {
     return { status: "server_head_missing" };
   }

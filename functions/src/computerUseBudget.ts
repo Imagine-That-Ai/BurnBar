@@ -22,6 +22,8 @@ import type {
   ComputerUseSessionDailyRollupDoc,
 } from "./types.js";
 import { syncKillSwitchForBudgetLevel } from "./computerUseRemoteConfig.js";
+import { numberField } from "./guards.js";
+import { remoteConfigStringValue } from "./remoteConfigGuards.js";
 
 const SOFT_CAP_USD = 1500;
 const HARD_CAP_USD = 2500;
@@ -36,10 +38,10 @@ async function loadBudgetTunings(): Promise<BudgetTunings> {
     const template = await getRemoteConfig().getTemplate();
     const params = template.parameters ?? {};
     const soft = parseFloat(
-      (params.computer_use_budget_soft_cap_usd?.defaultValue as { value: string } | undefined)?.value ?? "",
+      remoteConfigStringValue(params.computer_use_budget_soft_cap_usd?.defaultValue) ?? "",
     );
     const hard = parseFloat(
-      (params.computer_use_budget_hard_cap_usd?.defaultValue as { value: string } | undefined)?.value ?? "",
+      remoteConfigStringValue(params.computer_use_budget_hard_cap_usd?.defaultValue) ?? "",
     );
     return {
       softCapUSD: Number.isFinite(soft) ? soft : SOFT_CAP_USD,
@@ -80,8 +82,8 @@ async function sumMonthToDate(now: Date): Promise<MonthSpend> {
 
   let total = 0;
   for (const doc of snap.docs) {
-    const data = doc.data() as ComputerUseSessionDailyRollupDoc;
-    total += data.visionModelSpendUSD ?? 0;
+    const data = doc.data();
+    total += numberField(data, "visionModelSpendUSD") ?? 0;
   }
   const elapsed = Math.max(
     1,

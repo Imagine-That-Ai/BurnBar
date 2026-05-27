@@ -9,6 +9,7 @@
 import { createHash } from "node:crypto";
 import {
   FieldValue,
+  type DocumentData,
   type Firestore,
 } from "firebase-admin/firestore";
 import type {
@@ -20,6 +21,16 @@ import type {
   DeviceSummary,
   RollupJobDoc,
 } from "./types.js";
+import {
+  isRecord,
+  isTimestampWithToDate,
+  isTimestampWithToMillis,
+  isProviderAccountStorageScope,
+  parseProvider,
+  parseUsageEventDoc,
+  recordOrUndefined,
+  stripUndefinedObject,
+} from "./guards.js";
 
 const ROLLUP_SCHEMA_VERSION = 3;
 const COUNTER_SCHEMA_VERSION = 1;
@@ -27,15 +38,6 @@ const COUNTER_SCHEMA_VERSION = 1;
 /** Window keys in ascending granularity order. */
 const WINDOW_KEYS = ["today", "7d", "30d", "90d", "all_time"] as const;
 export type WindowKey = (typeof WINDOW_KEYS)[number];
-
-type TimestampLike = {
-  toDate?: () => Date;
-  toMillis?: () => number;
-  seconds?: number;
-  nanoseconds?: number;
-  _seconds?: number;
-  _nanoseconds?: number;
-};
 
 type RollupEvent = {
   event: UsageEventDoc;
@@ -68,6 +70,22 @@ type UsageCounterCandidate = UsageCounterContribution & {
   modelRank: number;
 };
 
+function isUsageCounterCandidate(value: unknown): value is UsageCounterCandidate {
+  if (!isRecord(value)) return false;
+  return typeof value.logicalKey === "string" &&
+    typeof value.day === "string" &&
+    typeof value.provider === "string" &&
+    typeof value.providerID === "string" &&
+    typeof value.accountKey === "string" &&
+    typeof value.requests === "number" &&
+    typeof value.tokens === "number" &&
+    typeof value.costUsd === "number" &&
+    typeof value.candidateKey === "string" &&
+    typeof value.provenanceRank === "number" &&
+    typeof value.updatedMillis === "number" &&
+    typeof value.modelRank === "number";
+}
+
 type CounterWriter = {
   set(
     ref: FirebaseFirestore.DocumentReference,
@@ -86,20 +104,19 @@ function coerceDate(value: unknown): Date | undefined {
     return Number.isNaN(d.getTime()) ? undefined : d;
   }
 
-  if (typeof value === "object") {
-    const ts = value as TimestampLike;
-    if (typeof ts.toDate === "function") {
-      const d = ts.toDate();
+  if (isTimestampWithToDate(value)) {
+      const d = value.toDate();
       return Number.isNaN(d.getTime()) ? undefined : d;
-    }
-    if (typeof ts.toMillis === "function") {
-      const d = new Date(ts.toMillis());
+  }
+  if (isTimestampWithToMillis(value)) {
+      const d = new Date(value.toMillis());
       return Number.isNaN(d.getTime()) ? undefined : d;
-    }
-    const seconds = ts.seconds ?? ts._seconds;
-    const nanos = ts.nanoseconds ?? ts._nanoseconds ?? 0;
+  }
+  if (isRecord(value)) {
+    const seconds = typeof value.seconds === "number" ? value.seconds : value._seconds;
+    const nanos = typeof value.nanoseconds === "number" ? value.nanoseconds : value._nanoseconds ?? 0;
     if (typeof seconds === "number") {
-      const d = new Date(seconds * 1000 + Math.floor(nanos / 1_000_000));
+      const d = new Date(seconds * 1000 + Math.floor(Number(nanos) / 1_000_000));
       return Number.isNaN(d.getTime()) ? undefined : d;
     }
   }
@@ -295,22 +312,54 @@ function dedupeUsageEvents(events: RollupEvent[]): RollupEvent[] {
   return Array.from(deduped.values());
 }
 
-function stripUndefined<T>(value: T): T {
+function stripUndefined(value: unknown): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => stripUndefined(item)) as T;
+    return value.map((item) => stripUndefined(item));
   }
-  if (value && typeof value === "object") {
+  if (isRecord(value)) {
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) {
       return value;
     }
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
+      Object.entries(value)
         .filter(([, entryValue]) => entryValue !== undefined)
         .map(([key, entryValue]) => [key, stripUndefined(entryValue)])
-    ) as T;
+    );
   }
   return value;
+}
+
+function stripUndefinedDocument(value: object): DocumentData {
+  const stripped = stripUndefined(value);
+  if (isRecord(stripped)) {
+    const out: DocumentData = {};
+    for (const [key, item] of Object.entries(stripped)) {
+      if (item !== undefined) out[key] = item;
+    }
+    return out;
+  }
+  return stripUndefinedObject(value);
+}
+
+function requireWindowRollups(
+  partial: Partial<Record<WindowKey, UsageRollupDoc>>
+): Record<WindowKey, UsageRollupDoc> {
+  const today = partial.today;
+  const sevenDay = partial["7d"];
+  const thirtyDay = partial["30d"];
+  const ninetyDay = partial["90d"];
+  const allTime = partial.all_time;
+  if (!today || !sevenDay || !thirtyDay || !ninetyDay || !allTime) {
+    throw new Error("Usage rollup computation did not populate every window.");
+  }
+  return {
+    today,
+    "7d": sevenDay,
+    "30d": thirtyDay,
+    "90d": ninetyDay,
+    all_time: allTime,
+  };
 }
 
 function safeCounterSegment(value: string): string {
@@ -406,7 +455,7 @@ function addContributionToBucket(
 
   writer.set(
     bucketRef,
-    stripUndefined({
+    stripUndefinedDocument({
       ...bucketFields,
       requests: FieldValue.increment(deltaRequests),
       tokens: FieldValue.increment(deltaTokens),
@@ -420,7 +469,7 @@ function addContributionToBucket(
   const providerRef = bucketRef.collection("providers").doc(counterDocID(contribution.provider));
   writer.set(
     providerRef,
-    stripUndefined({
+    stripUndefinedDocument({
       provider: contribution.provider,
       providerID: contribution.providerID,
       requests: FieldValue.increment(deltaRequests),
@@ -435,7 +484,7 @@ function addContributionToBucket(
   const accountRef = bucketRef.collection("accounts").doc(counterDocID(contribution.accountKey));
   writer.set(
     accountRef,
-    stripUndefined({
+    stripUndefinedDocument({
       provider: contribution.provider,
       providerID: contribution.providerID,
       accountID: contribution.accountID,
@@ -456,7 +505,7 @@ function addContributionToBucket(
       .doc(counterDocID(`${contribution.provider}:${contribution.model}`));
     writer.set(
       modelRef,
-      stripUndefined({
+      stripUndefinedDocument({
         provider: contribution.provider,
         model: contribution.model,
         requests: FieldValue.increment(deltaRequests),
@@ -473,7 +522,7 @@ function addContributionToBucket(
     const deviceRef = bucketRef.collection("devices").doc(counterDocID(contribution.deviceId));
     writer.set(
       deviceRef,
-      stripUndefined({
+      stripUndefinedDocument({
         deviceId: contribution.deviceId,
         requests: FieldValue.increment(deltaRequests),
         tokens: FieldValue.increment(deltaTokens),
@@ -586,9 +635,10 @@ export async function applyUsageCounterDelta(
 
     for (const { logicalKey, keyRef, snap } of entries) {
       const existing = snap.exists ? snap.data() ?? {} : {};
-      const candidates = {
-        ...((existing.candidates as Record<string, UsageCounterCandidate> | undefined) ?? {}),
-      };
+      const candidates = Object.fromEntries(
+        Object.entries(recordOrUndefined(existing.candidates) ?? {})
+          .filter((entry): entry is [string, UsageCounterCandidate] => isUsageCounterCandidate(entry[1]))
+      );
       const previousWinner = selectCounterWinner(candidates);
 
       if (oldContribution?.logicalKey === logicalKey) {
@@ -610,7 +660,7 @@ export async function applyUsageCounterDelta(
 
       transaction.set(
         keyRef,
-        stripUndefined({
+        stripUndefinedDocument({
           logicalKey,
           candidates,
           winner: nextWinner,
@@ -663,7 +713,7 @@ export async function computeUserRollupsFromCounters(
   uid: string
 ): Promise<Record<WindowKey, UsageRollupDoc>> {
   const now = new Date();
-  const results = {} as Record<WindowKey, UsageRollupDoc>;
+  const results: Partial<Record<WindowKey, UsageRollupDoc>> = {};
 
   for (const key of WINDOW_KEYS) {
     const days = windowDays(key, now);
@@ -675,7 +725,7 @@ export async function computeUserRollupsFromCounters(
           bucketPaths.push(allTimePath);
           return [snap.data() ?? {}];
         })
-      : await Promise.all(days!.map((day) => db.doc(`users/${uid}/usage_counter_days/${day}`).get()))
+      : await Promise.all((days ?? []).map((day) => db.doc(`users/${uid}/usage_counter_days/${day}`).get()))
           .then((snapshots) => snapshots
           .filter((snap): snap is FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> => "exists" in snap && snap.exists)
           .map((snap) => {
@@ -713,7 +763,9 @@ export async function computeUserRollupsFromCounters(
 
     const providerMap = new Map<string, ProviderSummary>();
     for (const doc of providers) {
-      const provider = typeof doc.provider === "string" ? doc.provider : "unknown";
+      const providerName = typeof doc.provider === "string" ? doc.provider : "unknown";
+      const provider = parseProvider(providerName);
+      if (!provider) continue;
       const existing = providerMap.get(provider);
       if (existing) {
         existing.totalRequests += sumNumber(doc.requests);
@@ -721,7 +773,7 @@ export async function computeUserRollupsFromCounters(
         existing.totalCost = (existing.totalCost ?? 0) + sumNumber(doc.costUsd);
       } else {
         providerMap.set(provider, {
-          provider: provider as ProviderSummary["provider"],
+          provider,
           providerID: typeof doc.providerID === "string" ? doc.providerID : undefined,
           totalRequests: sumNumber(doc.requests),
           totalTokens: sumNumber(doc.tokens),
@@ -732,8 +784,13 @@ export async function computeUserRollupsFromCounters(
 
     const accountMap = new Map<string, ProviderAccountSummary>();
     for (const doc of accounts) {
-      const providerID = typeof doc.providerID === "string" ? doc.providerID : "unknown";
+      const providerIDRaw = typeof doc.providerID === "string" ? doc.providerID : "unknown";
+      const providerID = parseProvider(providerIDRaw) ?? providerIDRaw;
       const id = typeof doc.accountID === "string" ? doc.accountID : `${providerID}:unattributed`;
+      const storageScopeRaw = doc.storageScope;
+      const storageScope = typeof storageScopeRaw === "string" && isProviderAccountStorageScope(storageScopeRaw)
+        ? storageScopeRaw
+        : undefined;
       const existing = accountMap.get(id);
       if (existing) {
         existing.totalRequests += sumNumber(doc.requests);
@@ -742,13 +799,13 @@ export async function computeUserRollupsFromCounters(
       } else {
         accountMap.set(id, {
           id,
-          providerID: providerID as ProviderAccountSummary["providerID"],
+          providerID,
           accountID: typeof doc.accountID === "string" ? doc.accountID : undefined,
           accountLabel:
             typeof doc.accountLabel === "string"
               ? doc.accountLabel
               : "Usage not linked to an account yet",
-          storageScope: typeof doc.storageScope === "string" ? doc.storageScope as ProviderAccountSummary["storageScope"] : undefined,
+          storageScope,
           totalRequests: sumNumber(doc.requests),
           totalTokens: sumNumber(doc.tokens),
           totalCost: sumNumber(doc.costUsd),
@@ -758,7 +815,9 @@ export async function computeUserRollupsFromCounters(
 
     const modelMap = new Map<string, ModelSummary>();
     for (const doc of models) {
-      const provider = typeof doc.provider === "string" ? doc.provider : "unknown";
+      const providerName = typeof doc.provider === "string" ? doc.provider : "unknown";
+      const provider = parseProvider(providerName);
+      if (!provider) continue;
       const model = typeof doc.model === "string" ? doc.model : "";
       if (!model) continue;
       const id = `${provider}:${model}`;
@@ -769,7 +828,7 @@ export async function computeUserRollupsFromCounters(
         existing.cost = (existing.cost ?? 0) + sumNumber(doc.costUsd);
       } else {
         modelMap.set(id, {
-          provider: provider as ModelSummary["provider"],
+          provider,
           model,
           requests: sumNumber(doc.requests),
           tokens: sumNumber(doc.tokens),
@@ -824,7 +883,7 @@ export async function computeUserRollupsFromCounters(
     };
   }
 
-  return results;
+  return requireWindowRollups(results);
 }
 
 export async function rebuildUserRollupCounters(
@@ -842,7 +901,8 @@ export async function rebuildUserRollupCounters(
   const candidatesByLogicalKey = new Map<string, Record<string, UsageCounterCandidate>>();
 
   for (const doc of snapshot.docs) {
-    const event = doc.data() as UsageEventDoc;
+    const event = parseUsageEventDoc(doc.data());
+    if (!event) continue;
     const contribution = usageContribution(event, stableCounterKey(doc.id));
     if (!contribution) continue;
     const candidates = candidatesByLogicalKey.get(contribution.logicalKey) ?? {};
@@ -871,7 +931,7 @@ export async function rebuildUserRollupCounters(
       const keyRef = db.doc(`users/${uid}/usage_counter_keys/${stableCounterKey(entry.logicalKey)}`);
       batch.set(
         keyRef,
-        stripUndefined({
+        stripUndefinedDocument({
           logicalKey: entry.logicalKey,
           candidates: entry.candidates,
           winner: entry.winner,
@@ -894,7 +954,7 @@ export async function writeUserRollups(
 
   for (const key of WINDOW_KEYS) {
     const ref = db.doc(`users/${uid}/usage_rollups/${key}`);
-    batch.set(ref, stripUndefined(rollups[key]), { merge: true });
+    batch.set(ref, stripUndefinedDocument(rollups[key]), { merge: true });
   }
 
   const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);

@@ -61,6 +61,15 @@ const {
   showAdvisory = false
 } = Astro.props;
 
+const SOURCE_IDS = new Set<string>([
+  "artificial_analysis",
+  "terminal_bench",
+  "design_arena",
+  "huggingface",
+  "manual_fixture",
+  "cached_fixture"
+]);
+
 function pct(x: number): string {
   return `${Math.round(x * 100)}`;
 }
@@ -75,6 +84,14 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     default:
       return "off";
   }
+}
+
+function maybeSourceMeta(id: ScoreboardSource["source"]) {
+  return isSourceID(id) ? sourceMeta(id) : undefined;
+}
+
+function isSourceID(value: string): value is SourceID {
+  return SOURCE_IDS.has(value);
 }
 ---
 
@@ -106,7 +123,7 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
     </li>
     {
       sources.map((s, i) => {
-        const meta = sourceMeta(s.source as SourceID);
+        const meta = maybeSourceMeta(s.source);
         const tone = statusTone(s.status);
         return (
           <li class={`srcchip srcchip--${tone}`} style={`--chip-idx:${i}`}>

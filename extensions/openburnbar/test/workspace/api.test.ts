@@ -8,6 +8,7 @@ import {
   type BurnBarWorkspaceApi,
   type BurnBarWorkspaceUri
 } from '../../src/workspace/api';
+import { createEmptyWorkspaceUriApi } from '../helpers/workspaceApiMock';
 
 // Mock vscode
 vi.mock('vscode', () => ({
@@ -238,14 +239,9 @@ describe('resolveWorkspaceUri', () => {
   });
 
   it('should throw when no workspace folder is open', () => {
-    const emptyApi = {
-      workspaceFolders: undefined,
-      parseUri: (value: string) => ({ scheme: '', fsPath: '', toString: () => value } as BurnBarWorkspaceUri),
-      fileUri: (value: string) => ({ scheme: 'file', fsPath: value, toString: () => `file://${value}` } as BurnBarWorkspaceUri),
-      joinPath: (base: BurnBarWorkspaceUri, ...segments: string[]) => ({ scheme: 'file', fsPath: segments.join('/'), toString: () => `file://${segments.join('/')}` } as BurnBarWorkspaceUri)
-    };
+    const emptyApi = createEmptyWorkspaceUriApi();
 
-    expect(() => resolveWorkspaceUri(emptyApi as any, 'relative/path.txt')).toThrow('Open a workspace folder');
+    expect(() => resolveWorkspaceUri(emptyApi, 'relative/path.txt')).toThrow('Open a workspace folder');
   });
 });
 

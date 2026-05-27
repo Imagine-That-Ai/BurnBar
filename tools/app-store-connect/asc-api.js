@@ -99,6 +99,18 @@ Build ${APP.buildVersion} no longer blocks the Subscribe button on Firebase auth
 Guideline 2.3.3 accurate screenshot metadata fix:
 The 6.7-inch iPhone and 13-inch iPad App Store screenshots have been replaced with current build ${APP.buildVersion} screenshots captured from the real OpenBurnBar app using seeded App Store screenshot mode. They now show the current Pulse, Burn, and Provider Accounts views instead of the stale light-mode screenshots from the older submission.
 
+macOS Guideline 2.1(a), 2.1(b), and 3.1.2(c) fixes:
+The Mac App Store build includes the Sign in with Apple entitlement in the MAS-signed binary, so Settings -> Account -> Sign In Methods -> Sign in with Apple opens Apple's authorization flow instead of failing with AuthenticationServices.AuthorizationError error 1000.
+
+To find the macOS In-App Purchase:
+1. Open OpenBurnBar for macOS.
+2. Open Settings from the menu bar app.
+3. Choose Account -> Subscription -> Upgrade, which opens the OpenBurnBar Cloud purchase screen.
+4. Or choose OpenBurnBar Cloud directly in the Settings sidebar.
+5. The Mac purchase screen shows OpenBurnBar Cloud Monthly, the monthly price, Subscribe with App Store, Restore Purchases, Privacy Policy, and Terms of Use (EULA) links before purchase.
+
+The Account subscription card and the OpenBurnBar Cloud purchase screen both include functional Terms of Use (EULA) and Privacy Policy links in the purchase flow.
+
 Terms of Use: ${LEGAL_URLS.terms}
 Privacy Policy: ${LEGAL_URLS.privacy}
 

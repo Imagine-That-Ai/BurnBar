@@ -50,7 +50,9 @@ class OpenBurnBarIrohBlobFfiBackend(
             throw IrohBlobBackendError.PublishFailed(err.detail)
         }
         // BlobTicketBytes is a uniffi record with a `text` field.
-        ticket.javaClass.getMethod("getText").invoke(ticket) as String
+        ticket.javaClass.getMethod("getText")
+            .invoke(ticket)
+            .requireFfiField<String>("BlobTicketBytes.text")
     }
 
     override suspend fun fetchBlob(ticketText: String, destination: String): BlobTransferStats =
@@ -67,10 +69,18 @@ class OpenBurnBarIrohBlobFfiBackend(
             }
             val cls = stats.javaClass
             BlobTransferStats(
-                bytesTotal = (cls.getMethod("getBytesTotal").invoke(stats) as Long),
-                blake3Hash = cls.getMethod("getBlake3Hash").invoke(stats) as String,
-                durationMillis = (cls.getMethod("getDurationMillis").invoke(stats) as Long),
-                didResume = cls.getMethod("getDidResume").invoke(stats) as Boolean,
+                bytesTotal = cls.getMethod("getBytesTotal")
+                    .invoke(stats)
+                    .requireFfiField<Long>("BlobTransferStats.bytesTotal"),
+                blake3Hash = cls.getMethod("getBlake3Hash")
+                    .invoke(stats)
+                    .requireFfiField<String>("BlobTransferStats.blake3Hash"),
+                durationMillis = cls.getMethod("getDurationMillis")
+                    .invoke(stats)
+                    .requireFfiField<Long>("BlobTransferStats.durationMillis"),
+                didResume = cls.getMethod("getDidResume")
+                    .invoke(stats)
+                    .requireFfiField<Boolean>("BlobTransferStats.didResume"),
             )
         }
 
@@ -97,11 +107,18 @@ class OpenBurnBarIrohBlobFfiBackend(
 
     private fun mapIdentity(generated: Any): IrohEndpointIdentity {
         val cls = generated.javaClass
-        val rawPublicKey = cls.getMethod("getRawPublicKey").invoke(generated) as ByteArray
-        val nodeId = cls.getMethod("getNodeId").invoke(generated) as String
-        val relayURL = cls.getMethod("getRelayUrl").invoke(generated) as String
-        @Suppress("UNCHECKED_CAST")
-        val directAddresses = cls.getMethod("getDirectAddresses").invoke(generated) as List<String>
+        val rawPublicKey = cls.getMethod("getRawPublicKey")
+            .invoke(generated)
+            .requireFfiField<ByteArray>("IrohNodeIdentity.rawPublicKey")
+        val nodeId = cls.getMethod("getNodeId")
+            .invoke(generated)
+            .requireFfiField<String>("IrohNodeIdentity.nodeId")
+        val relayURL = cls.getMethod("getRelayUrl")
+            .invoke(generated)
+            .requireFfiField<String>("IrohNodeIdentity.relayUrl")
+        val directAddresses = cls.getMethod("getDirectAddresses")
+            .invoke(generated)
+            .requireFfiStringList("IrohNodeIdentity.directAddresses")
         return IrohEndpointIdentity(
             nodeId = nodeId,
             rawPublicKey = rawPublicKey,

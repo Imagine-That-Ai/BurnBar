@@ -1,4 +1,4 @@
-import Foundation
+@preconcurrency import Foundation
 import SwiftUI
 @preconcurrency import FirebaseAuth
 import FirebaseCore
@@ -7,11 +7,10 @@ import FirebaseCore
 // MARK: - Mac Cloud Entitlement Store
 //
 // Cross-platform parity with the Android `HostedQuotaSubscriptionStore`
-// Firestore listener and iOS `HostedQuotaSubscriptionStore`. macOS has no
-// StoreKit purchase flow yet; the canonical entitlement doc written by
-// Cloud Functions when an iOS purchase is verified is the authoritative
-// source. We listen here so the Mac UI reflects "Cloud Member" state
-// without needing a local purchase.
+// Firestore listener and iOS `HostedQuotaSubscriptionStore`. The canonical
+// entitlement doc written by Cloud Functions after a StoreKit purchase is the
+// authoritative source. We listen here so the Mac UI reflects "Cloud Member"
+// state whether the user bought on Mac, iPhone, or iPad.
 //
 // Doc path: `users/{uid}/entitlements/hosted_quota_sync`
 // Fields:
@@ -39,7 +38,7 @@ final class MacCloudEntitlementStore: ObservableObject {
     private var listener: ListenerRegistration?
     private var computerUseListener: ListenerRegistration?
     private var proMaxListener: ListenerRegistration?
-    private var authHandle: AuthStateDidChangeListenerHandle?
+    private nonisolated(unsafe) var authHandle: AuthStateDidChangeListenerHandle?
     private var started = false
     private var hostedComputerUseState: (isActive: Bool, expiresAt: Date?, purchase: Date?) = (false, nil, nil)
     private var proMaxComputerUseState: (isActive: Bool, expiresAt: Date?, purchase: Date?) = (false, nil, nil)

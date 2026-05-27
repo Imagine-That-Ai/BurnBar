@@ -25,14 +25,31 @@ final class SmartDisplayActionsListener {
         self.repairCoordinator = repairCoordinator
     }
 
+    private static let cadenceID = "smart-display-actions-listener"
+
     func start() {
         if attachTask == nil {
-            attachTask = Task { @MainActor [weak self] in
-                while !Task.isCancelled {
-                    self?.attachIfPossible()
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                }
-            }
+            // Coordinator-managed cadence: 3 s active, 30 s background,
+            // paused on display sleep. The attach itself is fast — we
+            // only do work when Firebase becomes available, otherwise
+            // the closure is a no-op.
+            BackgroundCadenceCoordinator.shared.register(
+                BackgroundCadenceCoordinator.Cadence(
+                    id: Self.cadenceID,
+                    activeInterval: 3,
+                    backgroundInterval: 30,
+                    sleepInterval: nil,
+                    isEnabled: { true },
+                    fireImmediately: false,
+                    cancellableInFlight: false,
+                    work: { [weak self] in
+                        self?.attachIfPossible()
+                    }
+                )
+            )
+            // Sentinel so re-entrant `start()` calls leave the cadence
+            // registered exactly once.
+            attachTask = Task { @MainActor in }
         }
         attachIfPossible()
     }
@@ -61,6 +78,7 @@ final class SmartDisplayActionsListener {
     func stop() {
         attachTask?.cancel()
         attachTask = nil
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceID)
         listener?.remove()
         listener = nil
         listenerUID = nil

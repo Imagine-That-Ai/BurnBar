@@ -56,6 +56,7 @@ import {
   parseHermesConnectionMode,
   parseHermesPlatform,
   randomPairingCode,
+  requireHermesPairingDoc,
   safeEqualHex,
   sanitizeHermesCapabilities,
   validateHermesEndpointURL,
@@ -67,6 +68,7 @@ import {
   parsePiAgentConnectionMode,
   parsePiAgentPlatform,
   randomPiAgentPairingCode,
+  requirePiAgentPairingDoc,
   sanitizePiAgentCapabilities,
   sanitizePiAgentInstances,
   sanitizePiAgentModels,
@@ -75,6 +77,8 @@ import {
 import { minimaxAdapter } from "./providers/minimax.js";
 import { zaiAdapter } from "./providers/zai.js";
 import { xaiAdapter } from "./providers/xai.js";
+import { mimoAdapter } from "./providers/mimo.js";
+import { kimiAdapter } from "./providers/kimi.js";
 import { factoryAdapter } from "./providers/factory.js";
 import { cursorAdapter } from "./providers/cursor.js";
 import { openaiAdapter } from "./providers/openai.js";
@@ -84,6 +88,7 @@ import type {
   SUPPORTED_PROVIDERS,
   CredentialKind,
   ProviderAccountDoc,
+  ProviderAccountConnectContext,
   ProviderAccountSecretRefDoc,
   ProviderConnectionDoc,
   QuotaSnapshotDoc,
@@ -112,6 +117,21 @@ import { latestRouterRundown } from "./routerRundown.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 import { issueRemoteMcpGrantForSignedInUser } from "./remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "./remoteMcpGrant.js";
+import {
+  errorCode,
+  errorMessage,
+  isRecord,
+  isStripeCheckoutSession,
+  isStripeSubscription,
+  isTimestampWithToMillis,
+  jsonObject,
+  optionalStringField,
+  parseProvider,
+  parseProviderAccountDoc,
+  recordOrUndefined,
+  requireProviderAccountDoc,
+  stripUndefinedObject,
+} from "./guards.js";
 export { insightsHostedAnswer } from "./insightsHostedAnswer.js";
 export { rollupIrohTransportDaily } from "./irohMonitoring.js";
 export { recomputeMediaQuotaUsage } from "./mediaQuota.js";
@@ -125,6 +145,11 @@ export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
 export { sendVoIPOutbound } from "./apnsSender.js";
 export { sendFcmOutbound } from "./fcmAndroidSender.js";
+export {
+  onCliSessionAgentReplyNotification,
+  onMobileAssistantAgentReplyNotification,
+  submitAgentNotificationReply,
+} from "./agentNotifications.js";
 
 // ---------------------------------------------------------------------------
 // Admin initialization
@@ -145,14 +170,19 @@ db.settings({ ignoreUndefinedProperties: true });
 // ---------------------------------------------------------------------------
 // Provider adapter registry
 // ---------------------------------------------------------------------------
-const ADAPTERS = {
-  openai: openaiAdapter,
-  minimax: minimaxAdapter,
-  zai: zaiAdapter,
-  factory: factoryAdapter,
-  cursor: cursorAdapter,
-  xai: xaiAdapter,
-} as const;
+function backendAdapterFor(provider: Provider) {
+  switch (provider) {
+    case "openai": return openaiAdapter;
+    case "minimax": return minimaxAdapter;
+    case "zai": return zaiAdapter;
+    case "factory": return factoryAdapter;
+    case "cursor": return cursorAdapter;
+    case "xai": return xaiAdapter;
+    case "mimo": return mimoAdapter;
+    case "kimi": return kimiAdapter;
+    default: return undefined;
+  }
+}
 
 const ALLOWED_PROVIDERS = new Set<string>([
   "openai",
@@ -165,10 +195,12 @@ const ALLOWED_PROVIDERS = new Set<string>([
   "opencode",
   "antigravity",
   "xai",
+  "mimo",
+  "kimi",
 ]);
 
 const CONNECTION_SCHEMA_VERSION = 1;
-const ACCOUNT_SCHEMA_VERSION = 1;
+const ACCOUNT_SCHEMA_VERSION = 2;
 const HERMES_SCHEMA_VERSION = 1;
 const HERMES_PAIRING_TTL_MS = 10 * 60 * 1000;
 const HERMES_PAIRING_AUDIT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -246,6 +278,18 @@ function boundedTrimmedString(
   raw: unknown,
   fieldName: string,
   maxLength: number,
+  required: true
+): string;
+function boundedTrimmedString(
+  raw: unknown,
+  fieldName: string,
+  maxLength: number,
+  required?: false
+): string | undefined;
+function boundedTrimmedString(
+  raw: unknown,
+  fieldName: string,
+  maxLength: number,
   required = false
 ): string | undefined {
   const value = optionalTrimmedString(raw);
@@ -259,16 +303,6 @@ function boundedTrimmedString(
     throw new HttpsError("invalid-argument", `${fieldName} must be ${maxLength} characters or fewer.`);
   }
   return value;
-}
-
-function stripUndefined<T extends object>(value: T): T {
-  const output = {} as T;
-  for (const [key, item] of Object.entries(value)) {
-    if (item !== undefined) {
-      (output as Record<string, unknown>)[key] = item;
-    }
-  }
-  return output;
 }
 
 function normalizedSearchTerms(raw: string): string[] {
@@ -294,7 +328,7 @@ function sha256Hex(text: string): string {
 }
 
 function safeCloudDocumentID(raw: unknown, fieldName: string): string {
-  const value = boundedTrimmedString(raw, fieldName, 512, true)!;
+  const value = boundedTrimmedString(raw, fieldName, 512, true);
   if (!/^[A-Za-z0-9_.:-]+$/u.test(value) || value.includes("..") || value.includes("/")) {
     throw new HttpsError("invalid-argument", `${fieldName} contains unsupported characters.`);
   }
@@ -302,7 +336,7 @@ function safeCloudDocumentID(raw: unknown, fieldName: string): string {
 }
 
 function requireHexDigest(raw: unknown, fieldName: string): string {
-  const value = boundedTrimmedString(raw, fieldName, 128, true)!;
+  const value = boundedTrimmedString(raw, fieldName, 128, true);
   if (!/^[a-f0-9]{32,128}$/u.test(value)) {
     throw new HttpsError("invalid-argument", `${fieldName} must be a lowercase hex digest.`);
   }
@@ -332,7 +366,7 @@ function requireRecordArray(raw: unknown, fieldName: string, maxLength: number):
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       throw new HttpsError("invalid-argument", `${fieldName}[${idx}] must be an object.`);
     }
-    return item as Record<string, unknown>;
+    return item;
   });
 }
 
@@ -375,17 +409,17 @@ function requireSearchHashes(raw: unknown, fieldName: string, required: boolean)
 }
 
 function requireSealedText(raw: unknown, fieldName: string): Record<string, unknown> {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     throw new HttpsError("invalid-argument", `${fieldName} must be an encrypted text envelope.`);
   }
-  const envelope = raw as Record<string, unknown>;
+  const envelope = raw;
   const algorithm = boundedTrimmedString(envelope.algorithm, `${fieldName}.algorithm`, 64, true);
   if (algorithm !== "AES-256-GCM") {
     throw new HttpsError("invalid-argument", `${fieldName}.algorithm must be AES-256-GCM.`);
   }
   requireBoundedNumber(envelope.keyVersion, `${fieldName}.keyVersion`, 1, 100);
   for (const key of ["nonce", "ciphertext", "tag"]) {
-    const value = boundedTrimmedString(envelope[key], `${fieldName}.${key}`, 8192, true)!;
+    const value = boundedTrimmedString(envelope[key], `${fieldName}.${key}`, 8192, true);
     if (!/^[A-Za-z0-9+/=]+$/u.test(value)) {
       throw new HttpsError("invalid-argument", `${fieldName}.${key} must be base64.`);
     }
@@ -394,7 +428,7 @@ function requireSealedText(raw: unknown, fieldName: string): Record<string, unkn
 }
 
 function requireISODateString(raw: unknown, fieldName: string): string {
-  const value = boundedTrimmedString(raw, fieldName, 64, true)!;
+  const value = boundedTrimmedString(raw, fieldName, 64, true);
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) {
     throw new HttpsError("invalid-argument", `${fieldName} must be an ISO 8601 date.`);
@@ -420,7 +454,7 @@ function requireBoundedStringArray(
     throw new HttpsError("invalid-argument", `${fieldName} can contain at most ${maxLength} items.`);
   }
   const values = raw.map((item, idx) =>
-    boundedTrimmedString(item, `${fieldName}[${idx}]`, itemMaxLength, true)!
+    boundedTrimmedString(item, `${fieldName}[${idx}]`, itemMaxLength, true)
   );
   return Array.from(new Set(values));
 }
@@ -432,10 +466,10 @@ function parseProjectMemoryFreshness(raw: unknown): ProjectMemoryFreshness {
 }
 
 function requireCloudVaultBlobEnvelope(raw: unknown, fieldName: string): CloudVaultBlobEnvelopeDoc {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     throw new HttpsError("invalid-argument", `${fieldName} must be an encrypted blob envelope.`);
   }
-  const envelope = raw as Record<string, unknown>;
+  const envelope = raw;
   const algorithm = boundedTrimmedString(envelope.algorithm, `${fieldName}.algorithm`, 64, true);
   if (algorithm !== "AES-256-GCM") {
     throw new HttpsError("invalid-argument", `${fieldName}.algorithm must be AES-256-GCM.`);
@@ -448,7 +482,7 @@ function requireCloudVaultBlobEnvelope(raw: unknown, fieldName: string): CloudVa
     `${fieldName}.sealedBoxBase64`,
     1_500_000,
     true
-  )!;
+  );
   if (!/^[A-Za-z0-9+/=]+$/u.test(sealedBoxBase64)) {
     throw new HttpsError("invalid-argument", `${fieldName}.sealedBoxBase64 must be base64.`);
   }
@@ -536,7 +570,7 @@ function serializeUsageForCallable(documentID: string, data: FirebaseFirestore.D
   const provider = typeof data.provider === "string" ? data.provider : "unknown";
   const startTime = callableDate(data.startTime) ?? new Date(0).toISOString();
   const endTime = callableDate(data.endTime) ?? startTime;
-  return stripUndefined({
+  return stripUndefinedObject({
     id: typeof data.id === "string" ? data.id : documentID,
     provider,
     sessionId: typeof data.sessionId === "string" ? data.sessionId : "",
@@ -579,7 +613,7 @@ async function writeHermesAuditEvent(
     schemaVersion: HERMES_SCHEMA_VERSION,
     expireAt,
   };
-  await db.doc(`users/${uid}/hermes_audit_events/${id}`).set(stripUndefined(doc));
+  await db.doc(`users/${uid}/hermes_audit_events/${id}`).set(stripUndefinedObject(doc));
 }
 
 async function writePiAgentAuditEvent(
@@ -595,7 +629,7 @@ async function writePiAgentAuditEvent(
     schemaVersion: PI_AGENT_SCHEMA_VERSION,
     expireAt,
   };
-  await db.doc(`users/${uid}/pi_agent_audit_events/${id}`).set(stripUndefined(doc));
+  await db.doc(`users/${uid}/pi_agent_audit_events/${id}`).set(stripUndefinedObject(doc));
 }
 
 function accountIDFor(provider: string, requestedAccountID?: string): string {
@@ -612,8 +646,9 @@ function accountIDFor(provider: string, requestedAccountID?: string): string {
 }
 
 function connectionDocFromAccount(account: ProviderAccountDoc): ProviderConnectionDoc {
+  assertProvider(account.providerID);
   return {
-    provider: account.providerID as Provider,
+    provider: account.providerID,
     status:
       account.status === "disabled" || account.status === "deleted"
         ? "disconnected"
@@ -717,11 +752,8 @@ function entitlementExpiryMillis(raw: Record<string, unknown>): number {
   if (expireAt instanceof Timestamp) {
     return expireAt.toMillis();
   }
-  if (expireAt && typeof expireAt === "object") {
-    const candidate = expireAt as { toMillis?: () => number };
-    if (typeof candidate.toMillis === "function") {
-      return candidate.toMillis();
-    }
+  if (isTimestampWithToMillis(expireAt)) {
+    return expireAt.toMillis();
   }
   if (raw.expiresAt) {
     const parsed = Date.parse(String(raw.expiresAt));
@@ -755,7 +787,7 @@ async function writeBurnBarProEntitlement(args: {
   const now = nowISO();
   const active = args.activeOverride ?? (Number.isFinite(args.expiresAtMillis) && args.expiresAtMillis > Date.now());
   const expiresAt = new Date(args.expiresAtMillis).toISOString();
-  const doc = stripUndefined({
+  const doc = stripUndefinedObject({
     id: BURNBAR_PRO_ENTITLEMENT_ID,
     active,
     productID: args.productID,
@@ -797,7 +829,7 @@ function requireConfiguredStripeWebhookSecret(): string {
 }
 
 function boundedHttpsURL(raw: unknown, fieldName: string): string {
-  const value = boundedTrimmedString(raw, fieldName, 2048, true)!;
+  const value = boundedTrimmedString(raw, fieldName, 2048, true);
   let url: URL;
   try {
     url = new URL(value);
@@ -876,7 +908,7 @@ async function applyStripeCheckoutSession(
   if (typeof session.subscription === "string") {
     subscription = await stripe.subscriptions.retrieve(session.subscription);
   } else if (session.subscription && typeof session.subscription === "object") {
-    subscription = session.subscription as Stripe.Subscription;
+    subscription = session.subscription;
   }
   if (subscription) {
     await applyStripeSubscription(stripe, subscription, uid);
@@ -955,11 +987,12 @@ function stripeCustomerID(customer: unknown): string | undefined {
 }
 
 function stripeSubscriptionPeriodEndMillis(subscription: Stripe.Subscription): number {
-  const raw = subscription as unknown as Record<string, unknown>;
+  const raw = jsonObject(subscription);
   const direct = raw.current_period_end;
   if (typeof direct === "number") return direct * 1000;
-  const items = raw.items as { data?: Array<Record<string, unknown>> } | undefined;
-  const itemEnd = items?.data?.[0]?.current_period_end;
+  const items = recordOrUndefined(raw.items);
+  const firstItem = Array.isArray(items?.data) ? recordOrUndefined(items.data[0]) : undefined;
+  const itemEnd = firstItem?.current_period_end;
   if (typeof itemEnd === "number") return itemEnd * 1000;
   return Date.now() - 1;
 }
@@ -998,8 +1031,8 @@ function sanitizeUploadedQuotaSnapshot(
   const now = nowISO();
   const bucketsRaw = Array.isArray(raw.buckets) ? raw.buckets : [];
   const buckets = bucketsRaw.slice(0, 16).flatMap((item): QuotaSnapshotDoc["buckets"] => {
-    if (!item || typeof item !== "object") return [];
-    const b = item as Record<string, unknown>;
+    const b = recordOrUndefined(item);
+    if (!b) return [];
     const name = boundedTrimmedString(b.name, "bucket.name", 80);
     if (!name) return [];
     const used = Number(b.used);
@@ -1008,26 +1041,31 @@ function sanitizeUploadedQuotaSnapshot(
     if (!Number.isFinite(used) || !Number.isFinite(limit) || !Number.isFinite(remaining)) {
       return [];
     }
-    return [stripUndefined({
+    const bucket: QuotaSnapshotDoc["buckets"][number] = {
       name,
       used,
       limit,
       remaining,
-      window: boundedTrimmedString(b.window, "bucket.window", 64),
-      meta: b.meta && typeof b.meta === "object"
-        ? Object.fromEntries(
-            Object.entries(b.meta as Record<string, unknown>)
-              .filter(([key, value]) =>
-                /^[a-zA-Z0-9_.-]{1,64}$/.test(key) &&
-                !isSecretLikeMetadataKey(key) &&
-                (typeof value === "string" ||
-                  typeof value === "number" ||
-                  typeof value === "boolean")
-              )
-              .slice(0, 16)
-          )
-        : undefined,
-    })];
+      ...(boundedTrimmedString(b.window, "bucket.window", 64)
+        ? { window: boundedTrimmedString(b.window, "bucket.window", 64) }
+        : {}),
+      ...(recordOrUndefined(b.meta)
+        ? {
+            meta: Object.fromEntries(
+              Object.entries(recordOrUndefined(b.meta) ?? {})
+                .filter(([key, value]) =>
+                  /^[a-zA-Z0-9_.-]{1,64}$/.test(key) &&
+                  !isSecretLikeMetadataKey(key) &&
+                  (typeof value === "string" ||
+                    typeof value === "number" ||
+                    typeof value === "boolean")
+                )
+                .slice(0, 16)
+            ),
+          }
+        : {}),
+    };
+    return [bucket];
   });
   if (buckets.length === 0) {
     throw new HttpsError("invalid-argument", "At least one quota bucket is required.");
@@ -1038,10 +1076,11 @@ function sanitizeUploadedQuotaSnapshot(
     raw.confidence === "stale"
     ? raw.confidence
     : "high";
-  return stripUndefined({
+  assertProvider(account.providerID);
+  const snapshot: QuotaSnapshotDoc = {
     sourceKind: "provider",
     sourceId: safeSnapshotSourceID(raw.sourceId),
-    provider: account.providerID as Provider,
+    provider: account.providerID,
     providerID: account.providerID,
     accountID: account.id,
     accountLabel: account.label,
@@ -1060,7 +1099,8 @@ function sanitizeUploadedQuotaSnapshot(
     buckets,
     schemaVersion: 2,
     updatedAt: now,
-  }) as QuotaSnapshotDoc;
+  };
+  return snapshot;
 }
 
 function isSecretLikeMetadataKey(key: string): boolean {
@@ -1101,12 +1141,24 @@ async function connectProviderAccountInternal(params: {
   isDefault?: boolean;
   sourceDeviceID?: string;
   deviceDisplayName?: string;
+  endpointProfileID?: string;
+  region?: ProviderAccountConnectContext["region"];
+  tokenPlanTier?: ProviderAccountConnectContext["tokenPlanTier"];
+  tokenPlanBillingCycle?: ProviderAccountConnectContext["tokenPlanBillingCycle"];
+  authMethodID?: string;
 }): Promise<ProviderAccountDoc> {
   const { uid, provider, credential } = params;
   const accountID = accountIDFor(provider, params.accountID);
   const label = params.label?.trim() || "Default";
+  const accountContext: ProviderAccountConnectContext = {
+    endpointProfileID: params.endpointProfileID,
+    region: params.region,
+    tokenPlanTier: params.tokenPlanTier,
+    tokenPlanBillingCycle: params.tokenPlanBillingCycle,
+    authMethodID: params.authMethodID,
+  };
 
-  const adapter = ADAPTERS[provider as keyof typeof ADAPTERS];
+  const adapter = backendAdapterFor(provider);
   if (!adapter) {
     if (provider === "codex") {
       throw new HttpsError(
@@ -1120,7 +1172,7 @@ async function connectProviderAccountInternal(params: {
     );
   }
 
-  const testResult = await adapter.testCredential(credential);
+  const testResult = await adapter.testCredential(credential, accountContext);
   if (!testResult.valid) {
     const message = testResult.errorMessage?.trim() || "We couldn't validate that credential.";
     const detail = testResult.errorCode ? `${message} (${testResult.errorCode})` : message;
@@ -1138,7 +1190,7 @@ async function connectProviderAccountInternal(params: {
     accountID,
     provider,
     secretVersionName,
-    existing.exists ? (existing.get("createdAt") as string | undefined) ?? now : now,
+    existing.exists ? optionalStringField(existing.get("createdAt")) ?? now : now,
     now
   );
 
@@ -1153,13 +1205,18 @@ async function connectProviderAccountInternal(params: {
     redactedLabel: testResult.redactedLabel,
     sourceDeviceID: boundedTrimmedString(params.sourceDeviceID, "sourceDeviceID", 128),
     linkedSwitcherProfileID: undefined,
+    endpointProfileID: params.endpointProfileID,
+    region: params.region,
+    tokenPlanTier: params.tokenPlanTier,
+    tokenPlanBillingCycle: params.tokenPlanBillingCycle,
+    authMethodID: params.authMethodID,
     isDefault: params.isDefault ?? accountID.endsWith("_default"),
     sortKey: accountID.endsWith("_default") ? 0 : Date.now(),
     lastValidatedAt: now,
     lastRefreshAt: now,
     lastErrorCode: undefined,
     schemaVersion: ACCOUNT_SCHEMA_VERSION,
-    createdAt: existing.exists ? (existing.get("createdAt") as string | undefined) ?? now : now,
+    createdAt: existing.exists ? optionalStringField(existing.get("createdAt")) ?? now : now,
     updatedAt: now,
   };
 
@@ -1209,8 +1266,8 @@ async function checkRefreshRateLimit(
   const ref = db.doc(`users/${uid}/_rate_limits/refresh_${provider}`);
   const snap = await ref.get();
   if (snap.exists) {
-    const ts = snap.get("lastRefreshAt") as FirebaseFirestore.Timestamp;
-    if (ts) {
+    const ts = snap.get("lastRefreshAt");
+    if (isTimestampWithToMillis(ts)) {
       const elapsed = Date.now() - ts.toMillis();
       if (elapsed < refreshRateLimitSeconds * 1000) {
         throw new Error(
@@ -1232,8 +1289,8 @@ async function checkHermesRateLimit(
   const ref = db.doc(`users/${uid}/_rate_limits/hermes_${action}`);
   const snap = await ref.get();
   if (snap.exists) {
-    const ts = snap.get("lastAt") as FirebaseFirestore.Timestamp | undefined;
-    if (ts) {
+    const ts = snap.get("lastAt");
+    if (isTimestampWithToMillis(ts)) {
       const elapsed = Date.now() - ts.toMillis();
       if (elapsed < windowSeconds * 1000) {
         throw new HttpsError(
@@ -1254,8 +1311,8 @@ async function checkPiAgentRateLimit(
   const ref = db.doc(`users/${uid}/_rate_limits/pi_agent_${action}`);
   const snap = await ref.get();
   if (snap.exists) {
-    const ts = snap.get("lastAt") as FirebaseFirestore.Timestamp | undefined;
-    if (ts) {
+    const ts = snap.get("lastAt");
+    if (isTimestampWithToMillis(ts)) {
       const elapsed = Date.now() - ts.toMillis();
       if (elapsed < windowSeconds * 1000) {
         throw new HttpsError(
@@ -1286,9 +1343,26 @@ export const connectProviderAccount = onCall(
       accountID?: string;
       sourceDeviceID?: string;
       deviceDisplayName?: string;
+      endpointProfileID?: string;
+      region?: ProviderAccountConnectContext["region"];
+      tokenPlanTier?: ProviderAccountConnectContext["tokenPlanTier"];
+      tokenPlanBillingCycle?: ProviderAccountConnectContext["tokenPlanBillingCycle"];
+      authMethodID?: string;
     }>
   ) => {
-    const { provider, credential, label, accountID, sourceDeviceID, deviceDisplayName } = request.data;
+    const {
+      provider,
+      credential,
+      label,
+      accountID,
+      sourceDeviceID,
+      deviceDisplayName,
+      endpointProfileID,
+      region,
+      tokenPlanTier,
+      tokenPlanBillingCycle,
+      authMethodID,
+    } = request.data;
     const uid = request.auth?.uid;
 
     if (!uid) {
@@ -1315,6 +1389,11 @@ export const connectProviderAccount = onCall(
       accountID,
       sourceDeviceID,
       deviceDisplayName,
+      endpointProfileID,
+      region,
+      tokenPlanTier,
+      tokenPlanBillingCycle,
+      authMethodID,
       isDefault: accountID == null,
     });
   }
@@ -1353,7 +1432,7 @@ export const connectProviderCredential = onCall(
 
     const accountDoc = await connectProviderAccountInternal({
       uid,
-      provider: provider as Provider,
+      provider,
       credential,
       label: "Default",
       accountID: `${provider}_default`,
@@ -1402,7 +1481,7 @@ export const connectHostedQuotaAccount = onCall(
     const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
     const existing = await accountRef.get();
     const createdAt = existing.exists
-      ? (existing.get("createdAt") as string | undefined) ?? now
+      ? optionalStringField(existing.get("createdAt")) ?? now
       : now;
     const secretVersionName = await storeCredential(uid, provider, credential, accountID);
     await writePrivateSecretRef(uid, accountID, provider, secretVersionName, createdAt, now);
@@ -1429,7 +1508,7 @@ export const connectHostedQuotaAccount = onCall(
     };
 
     await db.runTransaction(async (tx) => {
-      tx.set(accountRef, stripUndefined(accountDoc), { merge: true });
+      tx.set(accountRef, stripUndefinedObject(accountDoc), { merge: true });
       if (accountDoc.isDefault) {
         tx.set(
           db.doc(`users/${uid}/provider_connections/${provider}`),
@@ -1502,12 +1581,12 @@ export const connectSelfHostedQuotaAccount = onCall(
       lastRefreshAt: undefined,
       lastErrorCode: undefined,
       schemaVersion: ACCOUNT_SCHEMA_VERSION,
-      createdAt: existing.exists ? (existing.get("createdAt") as string | undefined) ?? now : now,
+      createdAt: existing.exists ? optionalStringField(existing.get("createdAt")) ?? now : now,
       updatedAt: now,
     };
 
     await db.runTransaction(async (tx) => {
-      tx.set(db.doc(`users/${uid}/provider_accounts/${accountID}`), stripUndefined(accountDoc), { merge: true });
+      tx.set(db.doc(`users/${uid}/provider_accounts/${accountID}`), stripUndefinedObject(accountDoc), { merge: true });
       if (accountDoc.isDefault) {
         tx.set(
           db.doc(`users/${uid}/provider_connections/${provider}`),
@@ -1557,7 +1636,7 @@ export const uploadProviderQuotaSnapshot = onCall(
     if (!accountSnap.exists) {
       throw new HttpsError("not-found", "Provider account not found.");
     }
-    const account = accountSnap.data() as ProviderAccountDoc;
+    const account = requireProviderAccountDoc(accountSnap.data());
     if (account.storageScope !== "local_only") {
       throw new HttpsError(
         "failed-precondition",
@@ -1607,14 +1686,14 @@ export const deleteHostedQuotaCredentials = onCall(
     if (!accountSnap.exists) {
       throw new HttpsError("not-found", "Provider account not found.");
     }
-    const account = accountSnap.data() as ProviderAccountDoc;
+    const account = requireProviderAccountDoc(accountSnap.data());
     if (account.storageScope !== "server_private") {
       throw new HttpsError("failed-precondition", "Account is not a hosted quota account.");
     }
     const privateRef = db.doc(providerAccountSecretRefPath(uid, accountID));
     const privateSnap = await privateRef.get();
     const secretVersionName = privateSnap.exists
-      ? (privateSnap.get("secretVersionName") as string | undefined)
+      ? optionalStringField(privateSnap.get("secretVersionName"))
       : undefined;
     if (secretVersionName) {
       await destroyCredential(secretVersionName);
@@ -1668,7 +1747,7 @@ export const updateProviderAccount = onCall(
     if (!snap.exists) {
       throw new Error("not-found: provider account does not exist.");
     }
-    const current = snap.data() as ProviderAccountDoc;
+    const current = requireProviderAccountDoc(snap.data());
     const now = nowISO();
     const next: Partial<ProviderAccountDoc> = {
       updatedAt: now,
@@ -1702,7 +1781,7 @@ export const updateProviderAccount = onCall(
     });
 
     const updatedSnap = await accountRef.get();
-    const updated = updatedSnap.data() as ProviderAccountDoc;
+    const updated = requireProviderAccountDoc(updatedSnap.data());
     if (updated.isDefault) {
       await db.doc(`users/${uid}/provider_connections/${updated.providerID}`).set(
         connectionDocFromAccount(updated),
@@ -1742,12 +1821,12 @@ export const deleteProviderAccount = onCall(
     if (!accountSnap.exists) {
       throw new Error("not-found: provider account does not exist.");
     }
-    const account = accountSnap.data() as ProviderAccountDoc;
+    const account = requireProviderAccountDoc(accountSnap.data());
 
     const privateRef = db.doc(providerAccountSecretRefPath(uid, accountID));
     const privateSnap = await privateRef.get();
     const secretVersionName = privateSnap.exists
-      ? (privateSnap.get("secretVersionName") as string | undefined)
+      ? optionalStringField(privateSnap.get("secretVersionName"))
       : undefined;
 
     if (secretVersionName) {
@@ -1875,7 +1954,7 @@ export const deleteProviderCredential = onCall(
     const privateRef = db.doc(providerAccountSecretRefPath(uid, accountID));
     const privateSnap = await privateRef.get();
     const secretVersionName = privateSnap.exists
-      ? (privateSnap.get("secretVersionName") as string | undefined)
+      ? optionalStringField(privateSnap.get("secretVersionName"))
       : undefined;
 
     // Destroy the secret payload if we know where it lives.
@@ -1984,7 +2063,7 @@ export const refreshProviderQuota = onCall(
       const errors: Array<{ accountID: string; message: string }> = [];
 
       for (const doc of accountSnapshot.docs) {
-        const account = doc.data() as ProviderAccountDoc;
+        const account = requireProviderAccountDoc(doc.data());
         if (account.storageScope !== "cloud_refreshable" && account.storageScope !== "server_private") {
           skippedAccountIDs.push(account.id);
           continue;
@@ -1998,7 +2077,7 @@ export const refreshProviderQuota = onCall(
         } catch (err) {
           errors.push({
             accountID: account.id,
-            message: (err as Error).message,
+            message: errorMessage(err),
           });
         }
       }
@@ -2021,7 +2100,8 @@ export const refreshProviderQuota = onCall(
       };
     }
 
-    const snapshot = await refreshUserProviderQuota(db, uid, provider as Provider);
+    assertProvider(provider);
+    const snapshot = await refreshUserProviderQuota(db, uid, provider);
     if (!snapshot) {
       throw new Error("failed-precondition: legacy quota refresh returned no snapshot.");
     }
@@ -2082,7 +2162,7 @@ export const createHermesPairing = onCall(
       schemaVersion: HERMES_SCHEMA_VERSION,
     };
 
-    await db.doc(`users/${uid}/hermes_pairings/${id}`).set(stripUndefined(doc));
+    await db.doc(`users/${uid}/hermes_pairings/${id}`).set(stripUndefinedObject(doc));
     await writeHermesAuditEvent(uid, {
       eventType: "pairing_created",
       pairingId: id,
@@ -2140,7 +2220,7 @@ export const completeHermesPairing = onCall(
       if (!pairingSnap.exists) {
         throw new HttpsError("not-found", "Pairing session not found.");
       }
-      const pairing = pairingSnap.data() as HermesPairingDoc;
+      const pairing = requireHermesPairingDoc(pairingSnap.data());
       if (Date.parse(pairing.expiresAt) <= Date.now() && pairing.status === "pending") {
         tx.set(pairingRef, { status: "expired", updatedAt: now }, { merge: true });
         throw new HttpsError("deadline-exceeded", "Pairing code has expired.");
@@ -2162,7 +2242,7 @@ export const completeHermesPairing = onCall(
       if (pairing.status === "completed") {
         const completedConnectionId = pairing.connectionId ?? connectionId;
         const existingSnap = await tx.get(db.doc(`users/${uid}/hermes_connections/${completedConnectionId}`));
-        const existing = existingSnap.data() as Partial<HermesConnectionDoc> | undefined;
+        const existing = recordOrUndefined(existingSnap.data());
         if (existingSnap.exists && existing && isHermesConnectionDoc(existing)) {
           return existing;
         }
@@ -2193,7 +2273,7 @@ export const completeHermesPairing = onCall(
         updatedAt: now,
         schemaVersion: HERMES_SCHEMA_VERSION,
       };
-      tx.set(connectionRef, stripUndefined(doc), { merge: true });
+      tx.set(connectionRef, stripUndefinedObject(doc), { merge: true });
       tx.set(
         pairingRef,
         { status: "completed", connectionId, updatedAt: now },
@@ -2227,7 +2307,7 @@ export const completeHermesPairing = onCall(
       detail: { mode: connection.mode },
     });
 
-    return stripUndefined(connection);
+    return stripUndefinedObject(connection);
   }
 );
 
@@ -2247,8 +2327,10 @@ export const listHermesConnections = onCall(
 
     const snap = await db.collection(`users/${uid}/hermes_connections`).get();
     const connections = snap.docs
-      .map((doc) => doc.data() as Partial<HermesConnectionDoc>)
-      .filter(isHermesConnectionDoc)
+      .flatMap((doc): HermesConnectionDoc[] => {
+        const data = recordOrUndefined(doc.data());
+        return data && isHermesConnectionDoc(data) ? [data] : [];
+      })
       .filter((doc) => request.data.includeRevoked === true || doc.status !== "revoked")
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     return { connections };
@@ -2346,11 +2428,14 @@ export const updateHermesConnectionStatus = onCall(
       if (!snap.exists) {
         throw new HttpsError("not-found", "Hermes connection not found.");
       }
-      const current = snap.data() as Partial<HermesConnectionDoc>;
+      const current = recordOrUndefined(snap.data());
+      if (!current || !isHermesConnectionDoc(current)) {
+        throw new HttpsError("failed-precondition", "Hermes connection document is invalid.");
+      }
       if (current.status === "revoked") {
         throw new HttpsError("failed-precondition", "Revoked Hermes connections cannot be reactivated.");
       }
-      tx.update(ref, stripUndefined(update));
+      tx.update(ref, update);
     });
     await writeHermesAuditEvent(uid, {
       eventType: "connection_status_updated",
@@ -2407,7 +2492,7 @@ export const createPiAgentPairing = onCall(
       schemaVersion: PI_AGENT_SCHEMA_VERSION,
     };
 
-    await db.doc(`users/${uid}/pi_agent_pairings/${id}`).set(stripUndefined(doc));
+    await db.doc(`users/${uid}/pi_agent_pairings/${id}`).set(stripUndefinedObject(doc));
     await writePiAgentAuditEvent(uid, {
       eventType: "pairing_created",
       pairingId: id,
@@ -2473,7 +2558,7 @@ export const completePiAgentPairing = onCall(
         if (!pairingSnap.exists) {
           throw new HttpsError("not-found", "Pi Agent pairing session not found.");
         }
-        const pairing = pairingSnap.data() as PiAgentPairingDoc;
+        const pairing = requirePiAgentPairingDoc(pairingSnap.data());
         if (Date.parse(pairing.expiresAt) <= Date.now() && pairing.status === "pending") {
           tx.set(pairingRef, { status: "expired", updatedAt: now }, { merge: true });
           throw new HttpsError("deadline-exceeded", "Pairing code has expired.");
@@ -2495,7 +2580,7 @@ export const completePiAgentPairing = onCall(
         if (pairing.status === "completed") {
           const completedConnectionId = pairing.connectionId ?? connectionId;
           const existingSnap = await tx.get(db.doc(`users/${uid}/pi_agent_connections/${completedConnectionId}`));
-          const existing = existingSnap.data() as Partial<PiAgentConnectionDoc> | undefined;
+          const existing = recordOrUndefined(existingSnap.data());
           if (existingSnap.exists && existing && isPiAgentConnectionDoc(existing)) {
             return existing;
           }
@@ -2534,7 +2619,7 @@ export const completePiAgentPairing = onCall(
           updatedAt: now,
           schemaVersion: PI_AGENT_SCHEMA_VERSION,
         };
-        tx.set(connectionRef, stripUndefined(doc), { merge: true });
+        tx.set(connectionRef, stripUndefinedObject(doc), { merge: true });
         tx.set(pairingRef, { status: "completed", connectionId, updatedAt: now }, { merge: true });
         return doc;
       });
@@ -2564,7 +2649,7 @@ export const completePiAgentPairing = onCall(
       detail: { mode: connection.mode },
     });
 
-    return stripUndefined(connection);
+    return stripUndefinedObject(connection);
   }
 );
 
@@ -2584,8 +2669,10 @@ export const listPiAgentConnections = onCall(
 
     const snap = await db.collection(`users/${uid}/pi_agent_connections`).get();
     const connections = snap.docs
-      .map((doc) => doc.data() as Partial<PiAgentConnectionDoc>)
-      .filter(isPiAgentConnectionDoc)
+      .flatMap((doc): PiAgentConnectionDoc[] => {
+        const data = recordOrUndefined(doc.data());
+        return data && isPiAgentConnectionDoc(data) ? [data] : [];
+      })
       .filter((doc) => request.data.includeRevoked === true || doc.status !== "revoked")
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     return { connections };
@@ -2696,11 +2783,14 @@ export const updatePiAgentConnectionStatus = onCall(
       if (!snap.exists) {
         throw new HttpsError("not-found", "Pi Agent connection not found.");
       }
-      const current = snap.data() as Partial<PiAgentConnectionDoc>;
+      const current = recordOrUndefined(snap.data());
+      if (!current || !isPiAgentConnectionDoc(current)) {
+        throw new HttpsError("failed-precondition", "Pi Agent connection document is invalid.");
+      }
       if (current.status === "revoked") {
         throw new HttpsError("failed-precondition", "Revoked Pi Agent connections cannot be reactivated.");
       }
-      tx.update(ref, stripUndefined(update));
+      tx.update(ref, update);
     });
     await writePiAgentAuditEvent(uid, {
       eventType: "connection_status_updated",
@@ -2807,7 +2897,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
     enforceAuthAndAppCheck(request, uid);
 
     const cfg = getConfig();
-    const purchaseToken = boundedTrimmedString(request.data.purchaseToken, "purchaseToken", 4096, true)!;
+    const purchaseToken = boundedTrimmedString(request.data.purchaseToken, "purchaseToken", 4096, true);
     const productID =
       boundedTrimmedString(request.data.productID, "productID", 256, false) ??
       cfg.googlePlaySubscriptionProductID;
@@ -2824,7 +2914,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       token: purchaseToken,
     });
 
-    const purchase = response.data as Record<string, unknown>;
+    const purchase = jsonObject(response.data);
     const subscriptionState =
       typeof purchase.subscriptionState === "string"
         ? purchase.subscriptionState
@@ -2846,7 +2936,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
     });
 
     await db.doc(`users/${uid}/billing/google_play_purchases/${tokenHash}`).set(
-      stripUndefined({
+      stripUndefinedObject({
         uid,
         productID: cfg.googlePlaySubscriptionProductID,
         purchaseTokenHash: tokenHash,
@@ -2897,12 +2987,16 @@ export const stripeBurnBarProWebhook = onRequest(
       switch (event.type) {
         case "checkout.session.completed":
         case "checkout.session.async_payment_succeeded":
-          await applyStripeCheckoutSession(stripe, event.data.object as Stripe.Checkout.Session);
+          if (isStripeCheckoutSession(event.data.object)) {
+            await applyStripeCheckoutSession(stripe, event.data.object);
+          }
           break;
         case "customer.subscription.created":
         case "customer.subscription.updated":
         case "customer.subscription.deleted":
-          await applyStripeSubscription(stripe, event.data.object as Stripe.Subscription);
+          if (isStripeSubscription(event.data.object)) {
+            await applyStripeSubscription(stripe, event.data.object);
+          }
           break;
         default:
           break;
@@ -2990,7 +3084,7 @@ export const getEncryptedSessionBlobDownloadUrl = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before reading session logs.");
     enforceAuthAndAppCheck(request, uid);
     await assertActiveBurnBarProEntitlement(uid);
-    const storagePath = boundedTrimmedString(request.data.storagePath, "storagePath", 1024, true)!;
+    const storagePath = boundedTrimmedString(request.data.storagePath, "storagePath", 1024, true);
     assertUserStoragePath(uid, storagePath);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     const [downloadURL] = await getStorage()
@@ -3027,7 +3121,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
     const documents = requireRecordArray(request.data.documents, "documents", 50);
     const chunks = requireRecordArray(request.data.chunks, "chunks", 300);
     const indexVersion = requireBoundedNumber(request.data.indexVersion, "indexVersion", 1, 100);
-    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 256, true)!;
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 256, true);
     const now = Timestamp.now();
     const commitID = randomBytes(16).toString("hex");
 
@@ -3039,6 +3133,10 @@ export const commitEncryptedSearchIndexBatch = onCall(
 
     for (const raw of documents) {
       const documentID = safeCloudDocumentID(raw.documentID, "document.documentID");
+      const storagePath = boundedTrimmedString(raw.storagePath, "document.storagePath", 1024, true);
+      if (!storagePath) {
+        throw new HttpsError("invalid-argument", "document.storagePath is required.");
+      }
       const doc = {
         uid,
         documentID,
@@ -3049,7 +3147,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
         provider: boundedTrimmedString(raw.provider, "document.provider", 80, false),
         projectName: boundedTrimmedString(raw.projectName, "document.projectName", 512, false),
         bodyHash: requireHexDigest(raw.bodyHash, "document.bodyHash"),
-        storagePath: boundedTrimmedString(raw.storagePath, "document.storagePath", 1024, true)!,
+        storagePath,
         sealedTitle: requireSealedText(raw.sealedTitle, "document.sealedTitle"),
         sealedBodyPreview: requireSealedText(raw.sealedBodyPreview, "document.sealedBodyPreview"),
         byteCount: requireBoundedNumber(raw.byteCount, "document.byteCount", 0, getConfig().encryptedSessionBlobMaxBytes),
@@ -3073,7 +3171,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
         bodyHash: doc.bodyHash,
         encryptedByteCount: doc.encryptedByteCount,
       });
-      writes.push((batch) => batch.set(documentsRef.doc(documentID), stripUndefined(doc), { merge: true }));
+      writes.push((batch) => batch.set(documentsRef.doc(documentID), stripUndefinedObject(doc), { merge: true }));
       writeCount += 1;
     }
 
@@ -3082,6 +3180,10 @@ export const commitEncryptedSearchIndexBatch = onCall(
       const chunkID = safeCloudDocumentID(raw.chunkID, "chunk.chunkID");
       const tokenHashes = requireTokenHashes(raw.tokenHashes, "chunk.tokenHashes");
       const semanticHashes = requireOptionalSearchHashes(raw.semanticHashes, "chunk.semanticHashes");
+      const storagePath = boundedTrimmedString(raw.storagePath, "chunk.storagePath", 1024, true);
+      if (!storagePath) {
+        throw new HttpsError("invalid-argument", "chunk.storagePath is required.");
+      }
       if (indexVersion >= 2 && semanticHashes.length === 0) {
         throw new HttpsError("invalid-argument", "chunk.semanticHashes are required for encrypted semantic search indexes.");
       }
@@ -3099,7 +3201,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
         endOffset: requireBoundedNumber(raw.endOffset, "chunk.endOffset", 0, 50_000_000),
         contentHash: requireHexDigest(raw.contentHash, "chunk.contentHash"),
         bodyHash: requireHexDigest(raw.bodyHash, "chunk.bodyHash"),
-        storagePath: boundedTrimmedString(raw.storagePath, "chunk.storagePath", 1024, true)!,
+        storagePath,
         sealedSnippet: requireSealedText(raw.sealedSnippet, "chunk.sealedSnippet"),
         tokenHashes,
         semanticHashes,
@@ -3111,14 +3213,14 @@ export const commitEncryptedSearchIndexBatch = onCall(
         schemaVersion: 1,
       };
       assertUserStoragePath(uid, chunk.storagePath, chunk.bodyHash, documentID);
-      writes.push((batch) => batch.set(chunksRef.doc(chunkID), stripUndefined(chunk), { merge: true }));
+      writes.push((batch) => batch.set(chunksRef.doc(chunkID), stripUndefinedObject(chunk), { merge: true }));
       writeCount += 1;
       for (const hash of semanticHashes) {
         const postingKey = `semantic_${hash}`;
         const edgeID = `${postingKey}_${chunkID}`;
         writes.push((batch) => batch.set(
           postingsRef.doc(edgeID),
-          stripUndefined({
+          stripUndefinedObject({
             uid,
             postingKey,
             edgeID,
@@ -3147,7 +3249,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
 
     writes.push((batch) => batch.set(
       db.doc(`users/${uid}/cloud_search_index_state/${deviceId}`),
-      stripUndefined({
+      stripUndefinedObject({
         uid,
         deviceId,
         indexVersion,
@@ -3197,7 +3299,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
       "projectDisplayName",
       240,
       true
-    )!;
+    );
     const contentHash = requireHexDigest(request.data.contentHash, "contentHash");
     const sourceSessionCount = requireBoundedNumber(
       request.data.sourceSessionCount ?? 0,
@@ -3238,7 +3340,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
       updatedAt,
     };
 
-    await db.doc(`users/${uid}/project_memory_snapshots/${projectSlug}`).set(stripUndefined(doc), { merge: true });
+    await db.doc(`users/${uid}/project_memory_snapshots/${projectSlug}`).set(stripUndefinedObject(doc), { merge: true });
     return {
       ok: true,
       projectSlug,
@@ -3272,7 +3374,7 @@ export const getEncryptedProjectMemorySnapshot = onCall(
     }
     const data = snap.data() ?? {};
     return {
-      snapshot: stripUndefined({
+      snapshot: stripUndefinedObject({
         projectSlug: data.projectSlug ?? projectSlug,
         projectDisplayName: data.projectDisplayName,
         contentHash: data.contentHash,
@@ -3315,7 +3417,7 @@ export const listEncryptedProjectMemorySnapshots = onCall(
 
     const snapshots = snapshot.docs.map((doc) => {
       const data = doc.data();
-      return stripUndefined({
+      return stripUndefinedObject({
         projectSlug: data.projectSlug ?? doc.id,
         projectDisplayName: data.projectDisplayName,
         contentHash: data.contentHash,
@@ -3583,7 +3685,7 @@ export const revokeRemoteMcpClient = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking OpenBurnBar MCP clients.");
     enforceAuthAndAppCheck(request, uid);
-    const clientId = boundedTrimmedString(request.data.clientId, "clientId", 160, true)!;
+    const clientId = boundedTrimmedString(request.data.clientId, "clientId", 160, true);
     await revokeRemoteMcpClientDoc(db, uid, clientId);
     return { ok: true, clientId };
   }
@@ -3905,6 +4007,5 @@ export const backfillProviderAccountDeviceLinksScheduled = onSchedule(
     console.log("provider_account_device_links scheduled backfill", { usersScanned, writes });
   }
 );
-import { kimiAdapter } from "./providers/kimi.js";
 // Claude Code is now supported via the hosted quota runner.
 HOSTED_QUOTA_PROVIDERS.add("claude-code");

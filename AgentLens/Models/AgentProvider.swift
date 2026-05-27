@@ -88,6 +88,8 @@ extension AgentProvider {
         // xAI (Grok) usage flows through the xAI Management API / SuperGrok
         // event log written by Hermes; there is no scanned log directory.
         case .xAI: return "~/Library/Application Support/OpenBurnBar/xai"
+        // MiMo quota is refreshed via Token Plan API; no local log directory.
+        case .mimo: return "~/.codex"
         }
     }
 
@@ -122,6 +124,7 @@ extension AgentProvider {
         case .windsurf: return "state.vscdb"
         case .warp: return "warp_network*.log"
         case .xAI: return "superGrok-events.jsonl"
+        case .mimo: return "mimo-no-local-logs"
         }
     }
 
@@ -133,6 +136,8 @@ extension AgentProvider {
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
         case .openAI, .deepSeek:
+            return .supported
+        case .mimo:
             return .supported
         case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent, .xAI:
             return .partial
@@ -149,6 +154,8 @@ extension AgentProvider {
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI, .deepSeek:
+            return .exact
+        case .mimo:
             return .exact
         case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama, .xAI:
             return .estimated

@@ -24,6 +24,7 @@ import {
   serverTimestamp,
   setDoc,
   Timestamp,
+  updateDoc,
 } from "firebase/firestore";
 
 const [host = "127.0.0.1", rawPort = "8080"] = (
@@ -1879,6 +1880,152 @@ test("runtime preferences are per device and provider device links are server-wr
       lastObservedAt: "2026-05-12T00:00:00.000Z",
       createdAt: "2026-05-12T00:00:00.000Z",
       updatedAt: "2026-05-12T00:00:00.000Z",
+      schemaVersion: 1,
+    })
+  );
+});
+
+test("agent notification events are server-written and replies are queued by owner", async () => {
+  const db = authedDb("nina");
+  const otherDb = authedDb("mallory");
+  const eventPath = "users/nina/agent_notification_events/event-1";
+  const replyPath = "users/nina/agent_notification_replies/reply-1";
+
+  await assertFails(
+    setDoc(doc(db, eventPath), {
+      id: "event-1",
+      uid: "nina",
+      threadId: "thread-1",
+      messageId: "assistant-1",
+      runtime: "codex",
+      preview: "Done.",
+    })
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), eventPath), {
+      id: "event-1",
+      uid: "nina",
+      sourceKind: "cli_session",
+      sourcePath: "users/nina/cli_sessions/thread-1",
+      threadId: "thread-1",
+      messageId: "assistant-1",
+      runtime: "codex",
+      providerLabel: "Codex",
+      title: "Codex replied",
+      preview: "Done.",
+      createdAt: serverTimestamp(),
+      createdAtMillis: Date.now(),
+      updatedAt: serverTimestamp(),
+      updatedAtMillis: Date.now(),
+      status: "pending",
+      fanoutAttemptCount: 0,
+      replyEnabled: true,
+      schemaVersion: 1,
+    });
+  });
+
+  await assertSucceeds(getDoc(doc(db, eventPath)));
+  await assertFails(getDoc(doc(otherDb, eventPath)));
+
+  await assertSucceeds(
+    setDoc(doc(db, replyPath), {
+      id: "reply-1",
+      uid: "nina",
+      eventId: "event-1",
+      threadId: "thread-1",
+      runtime: "codex",
+      sourceKind: "cli_session",
+      replyText: "Ship it.",
+      deviceId: "iphone",
+      status: "queued",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+  await assertSucceeds(
+    updateDoc(doc(db, replyPath), {
+      status: "processing",
+      processorDeviceId: "mac-host",
+      processedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    updateDoc(doc(db, replyPath), {
+      status: "sent",
+      processedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    updateDoc(doc(db, replyPath), {
+      replyText: "mutated",
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(otherDb, "users/nina/agent_notification_replies/reply-2"), {
+      id: "reply-2",
+      uid: "nina",
+      eventId: "event-1",
+      threadId: "thread-1",
+      runtime: "codex",
+      sourceKind: "cli_session",
+      replyText: "Hijack",
+      status: "queued",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/nina/agent_notification_replies/reply-3"), {
+      id: "reply-3",
+      uid: "nina",
+      eventId: "event-1",
+      threadId: "thread-1",
+      runtime: "codex",
+      sourceKind: "cli_session",
+      replyText: "",
+      status: "queued",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/nina/agent_notification_replies/reply-forged-thread"), {
+      id: "reply-forged-thread",
+      uid: "nina",
+      eventId: "event-1",
+      threadId: "different-thread",
+      runtime: "codex",
+      sourceKind: "cli_session",
+      replyText: "Send somewhere else",
+      status: "queued",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/nina/agent_notification_replies/reply-missing-event"), {
+      id: "reply-missing-event",
+      uid: "nina",
+      eventId: "missing-event",
+      threadId: "thread-1",
+      runtime: "codex",
+      sourceKind: "cli_session",
+      replyText: "No backing event",
+      status: "queued",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
       schemaVersion: 1,
     })
   );

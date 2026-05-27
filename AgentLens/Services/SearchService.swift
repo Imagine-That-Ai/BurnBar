@@ -20,8 +20,8 @@ actor SearchService {
     private let dataStore: DataStore
     private let semanticProvider: SemanticCandidateProviding?
     private let reranker: RetrievalRerankProviding?
-    private let sharedArtifactAccessContextProvider: @MainActor () -> SharedArtifactAccessContext?
-    private let nowProvider: () -> Date
+    private let sharedArtifactAccessContextProvider: @MainActor @Sendable () -> SharedArtifactAccessContext?
+    private let nowProvider: @Sendable () -> Date
 
     private var _lastHealthWriteError: String?
 
@@ -40,8 +40,8 @@ actor SearchService {
         dataStore: DataStore,
         semanticProvider: SemanticCandidateProviding? = nil,
         reranker: RetrievalRerankProviding? = nil,
-        sharedArtifactAccessContextProvider: @escaping @MainActor () -> SharedArtifactAccessContext?,
-        nowProvider: @escaping () -> Date
+        sharedArtifactAccessContextProvider: @escaping @MainActor @Sendable () -> SharedArtifactAccessContext?,
+        nowProvider: @escaping @Sendable () -> Date
     ) {
         self.dataStore = dataStore
         self.semanticProvider = semanticProvider
@@ -51,11 +51,11 @@ actor SearchService {
     }
 
     /// Tests and call sites that do not use shared artifacts may omit the provider; context resolves to `nil`.
-    convenience init(
+    init(
         dataStore: DataStore,
         semanticProvider: SemanticCandidateProviding? = nil,
         reranker: RetrievalRerankProviding? = nil,
-        nowProvider: @escaping () -> Date = { Date() }
+        nowProvider: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.init(
             dataStore: dataStore,
@@ -71,7 +71,7 @@ actor SearchService {
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
         providerAPIKeyStore: ProviderAPIKeyStore = .shared,
-        nowProvider: @escaping () -> Date = { Date() }
+        nowProvider: @escaping @Sendable () -> Date = { Date() }
     ) -> SearchService {
         let selection = resolvedEmbeddingSelection(
             dataStore: dataStore,
@@ -98,7 +98,9 @@ actor SearchService {
             dataStore: dataStore,
             semanticProvider: semanticProvider,
             reranker: reranker,
-            sharedArtifactAccessContextProvider: SearchService.defaultSharedArtifactAccessContext,
+            sharedArtifactAccessContextProvider: { @MainActor @Sendable in
+                SearchService.defaultSharedArtifactAccessContext()
+            },
             nowProvider: nowProvider
         )
     }
@@ -326,12 +328,22 @@ actor SearchService {
     }
 
     public func runBurnBarQuery(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
+        let now = nowProvider()
+        let cacheKey = CacheKey(query: query)
+        if let cachedResult = SearchQueryCache.shared.get(key: cacheKey, now: now) {
+            TelemetryService.shared.record(feature: .searchRetrieval, outcome: .success, durationMs: 0)
+            OpenBurnBarMetrics.histogram(name: "search_latency_ms", value: 0.0, labels: ["mode": cachedResult.plan.mode.rawValue])
+            return cachedResult
+        }
+
         let start = Date()
         let result = await runBurnBarQueryInGate(query)
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         let status: TelemetryOutcome = result.retrievalResults.isEmpty && result.aggregateOccurrenceCount == nil ? .degraded : .success
         TelemetryService.shared.record(feature: .searchRetrieval, outcome: status, durationMs: durationMs)
         OpenBurnBarMetrics.histogram(name: "search_latency_ms", value: Double(durationMs), labels: ["mode": result.plan.mode.rawValue])
+
+        SearchQueryCache.shared.set(key: cacheKey, result: result, now: now)
         return result
     }
 
@@ -1260,4 +1272,90 @@ private struct CandidateAccumulator {
     var lexicalRank: Double?
     var semanticScore: Double?
     var lexicalSnippet: String?
+}
+
+// MARK: - Search Query Cache
+
+extension SearchService {
+    struct CacheKey: Hashable, Sendable {
+        let text: String
+        let lexicalFTSQuery: String?
+        let provider: String?
+        let projectName: String?
+        let artifactTypes: Set<SearchSourceKind>?
+        let dateRangeLower: Date?
+        let dateRangeUpper: Date?
+        let ownership: String
+        let sourceIDs: Set<String>?
+        let conversationSources: Set<ConversationSourceType>?
+        let lexicalCandidateLimit: Int
+        let semanticCandidateLimit: Int
+        let rerankCandidateLimit: Int
+        let resultLimit: Int
+        let hybridFusionStrategy: String
+        let crossEncoderEnabled: Bool
+        let crossEncoderCandidateLimit: Int
+
+        init(query: RetrievalQuery) {
+            self.text = query.text
+            self.lexicalFTSQuery = query.lexicalFTSQuery
+            self.provider = query.filters.provider?.rawValue
+            self.projectName = query.filters.projectName
+            self.artifactTypes = query.filters.artifactTypes
+            self.dateRangeLower = query.filters.dateRange?.lowerBound
+            self.dateRangeUpper = query.filters.dateRange?.upperBound
+            self.ownership = query.filters.ownership.rawValue
+            self.sourceIDs = query.filters.sourceIDs
+            self.conversationSources = query.filters.conversationSources
+            self.lexicalCandidateLimit = query.lexicalCandidateLimit
+            self.semanticCandidateLimit = query.semanticCandidateLimit
+            self.rerankCandidateLimit = query.rerankCandidateLimit
+            self.resultLimit = query.resultLimit
+            self.hybridFusionStrategy = query.hybridFusionStrategy.rawValue
+            self.crossEncoderEnabled = query.crossEncoderEnabled
+            self.crossEncoderCandidateLimit = query.crossEncoderCandidateLimit
+        }
+    }
+
+    struct CacheEntry: Sendable {
+        let result: OpenBurnBarQueryRunResult
+        let createdAt: Date
+
+        func isValid(at date: Date, ttl: TimeInterval = 30) -> Bool {
+            return date.timeIntervalSince(createdAt) <= ttl
+        }
+    }
+}
+
+final class SearchQueryCache: @unchecked Sendable {
+    static let shared = SearchQueryCache()
+    private let lock = NSLock()
+    private var cache: [SearchService.CacheKey: SearchService.CacheEntry] = [:]
+
+    private init() {}
+
+    func get(key: SearchService.CacheKey, now: Date) -> OpenBurnBarQueryRunResult? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let entry = cache[key] else { return nil }
+        if entry.isValid(at: now) {
+            return entry.result
+        } else {
+            cache.removeValue(forKey: key)
+            return nil
+        }
+    }
+
+    func set(key: SearchService.CacheKey, result: OpenBurnBarQueryRunResult, now: Date) {
+        lock.lock()
+        defer { lock.unlock() }
+        cache[key] = SearchService.CacheEntry(result: result, createdAt: now)
+    }
+
+    func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        cache.removeAll()
+    }
 }

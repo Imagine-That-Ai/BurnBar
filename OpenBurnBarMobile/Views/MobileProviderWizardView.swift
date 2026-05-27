@@ -502,6 +502,30 @@ struct MobileProviderWizardView: View {
                 }
             }
 
+            if provider == .mimo, m.selectedAuthMethodID == "mimo-token-plan" {
+                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+                    Text("Token Plan cluster")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    Picker("", selection: $m.mimoTokenPlanRegion) {
+                        Text("China").tag(ProviderEndpointRegion.cn)
+                        Text("Singapore").tag(ProviderEndpointRegion.sgp)
+                        Text("Europe").tag(ProviderEndpointRegion.ams)
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text("Subscription tier")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    Picker("", selection: $m.mimoTokenPlanTier) {
+                        ForEach(MimoTokenPlanTier.allCases) { tier in
+                            Text(tier.displayName).tag(tier)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+
             MobileValidationChip(validation: validation)
 
             Text(.init(guide.credentialFooterMarkdown))

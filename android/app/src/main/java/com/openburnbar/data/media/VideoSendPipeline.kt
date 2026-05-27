@@ -66,7 +66,7 @@ class VideoSendPipeline(
 
     /** Set up the encoder and return the input surface the camera should draw into. */
     suspend fun start(): Surface = mutex.withLock {
-        if (inputSurface != null) return@withLock inputSurface!!
+        inputSurface?.let { return@withLock it }
         val target = pickCodec()
         val format = MediaFormat.createVideoFormat(target.mime, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)

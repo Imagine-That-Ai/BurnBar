@@ -21,6 +21,25 @@
       "kotlinHandMirror": [
         "android/app/src/main/java/com/openburnbar/data/models/TokenUsage.kt"
       ]
+    },
+    {
+      "id": "provider-account",
+      "typespec": "typespec/domains/provider-account.tsp",
+      "firestoreCollections": [
+        "users/{uid}/provider_accounts/{accountID}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/provider-account.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ProviderAccountModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ProviderAccountModels.kt"
+      },
+      "swiftHandMirror": [
+        "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderAccountTypes.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarProviderContracts.swift"
+      ],
+      "kotlinHandMirror": [
+        "android/app/src/main/java/com/openburnbar/data/models/TokenUsage.kt"
+      ]
     }
   ]
 }

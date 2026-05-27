@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.openburnbar.data.firebase.FirestoreRepository
+import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.models.ProviderAccount
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +22,8 @@ data class BurnBarProfile(
 )
 
 class AccountStore(
-    private val firestore: FirestoreRepository = FirestoreRepository()
+    private val firestore: FirestoreRepository = FirestoreRepository(),
+    private val functions: FunctionsRepository = FunctionsRepository()
 ) : ViewModel() {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 
@@ -95,6 +97,45 @@ class AccountStore(
             } catch (e: Exception) {
                 Log.e("BurnBar", "Delete provider account failed", e)
                 _error.value = e.message
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun connectProviderAccount(
+        providerId: String,
+        credential: String,
+        label: String,
+        endpointProfileId: String? = null,
+        region: String? = null,
+        tokenPlanTier: String? = null,
+        tokenPlanBillingCycle: String? = null,
+        authMethodId: String? = null,
+        onSuccess: () -> Unit = {},
+        onFailure: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                functions.connectProviderAccount(
+                    providerId = providerId,
+                    credential = credential.trim(),
+                    label = label.trim(),
+                    endpointProfileId = endpointProfileId,
+                    region = region,
+                    tokenPlanTier = tokenPlanTier,
+                    tokenPlanBillingCycle = tokenPlanBillingCycle,
+                    authMethodId = authMethodId
+                )
+                fetchConnections()
+                onSuccess()
+            } catch (e: Exception) {
+                Log.e("BurnBar", "Connect provider account failed", e)
+                val message = e.message ?: "Connect failed"
+                _error.value = message
+                onFailure(message)
             } finally {
                 _isLoading.value = false
             }

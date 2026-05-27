@@ -64,6 +64,7 @@ object ProviderLogo {
         AgentProvider.WARP         -> R.drawable.warp_logo
         AgentProvider.XAI          -> R.drawable.grok_logo
         AgentProvider.ANTIGRAVITY  -> R.drawable.antigravity_logo
+        AgentProvider.MIMO         -> R.drawable.mimo_logo
     }
 
     /// Asset for an `AssistantRuntimeID`. Maps the 5 runtimes to their

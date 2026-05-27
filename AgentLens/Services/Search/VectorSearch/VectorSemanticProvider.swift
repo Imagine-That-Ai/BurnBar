@@ -52,7 +52,10 @@ private extension EmbeddingDistanceMetric {
     }
 }
 
-final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
+// AUDIT(@unchecked Sendable): all mutable index snapshot state is updated by
+// this provider's serialized refresh/search flow. The conformance is required
+// because `SemanticCandidateProviding` can be held by async search services.
+final class VectorSemanticCandidateProvider: SemanticCandidateProviding, @unchecked Sendable {
     private struct ActiveEmbeddingSelection {
         let model: EmbeddingModelRecord
         let version: EmbeddingVersionRecord
@@ -78,7 +81,7 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
     private let backend: VectorBackendKind
     private let exactRerankEnabled: Bool
     private let exactRerankLimit: Int
-    private let nowProvider: () -> Date
+    private let nowProvider: @Sendable () -> Date
     private let storageRootURL: URL
     private let storageNamespace: String
     private let snapshotBackend: any BurnBarPersistentVectorIndexBackend
@@ -102,7 +105,7 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
         backend: VectorBackendKind = .ann,
         exactRerankEnabled: Bool = true,
         exactRerankLimit: Int = 320,
-        nowProvider: @escaping () -> Date = Date.init,
+        nowProvider: @escaping @Sendable () -> Date = { Date() },
         storageRootURL: URL = OpenBurnBarAppPaths.live().vectorIndexesRootURL,
         storageNamespace: String = "app",
         snapshotBackend: any BurnBarPersistentVectorIndexBackend = BurnBarPersistentVectorIndexFactory.defaultBackend(),

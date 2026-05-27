@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let textExpansionMacGlobalExpansionEnabledDidChange = Notification.Name("textExpansion.macGlobalExpansionEnabled.didChange")
+}
+
 @Observable
 @MainActor
 final class TextExpansionSettings {
@@ -10,7 +14,15 @@ final class TextExpansionSettings {
     }
 
     var macGlobalExpansionEnabled: Bool = false {
-        didSet { persistence.set(macGlobalExpansionEnabled, forKey: "textExpansion.macGlobalExpansionEnabled") }
+        didSet {
+            persistence.set(macGlobalExpansionEnabled, forKey: "textExpansion.macGlobalExpansionEnabled")
+            guard oldValue != macGlobalExpansionEnabled else { return }
+            NotificationCenter.default.post(
+                name: .textExpansionMacGlobalExpansionEnabledDidChange,
+                object: self,
+                userInfo: ["enabled": macGlobalExpansionEnabled]
+            )
+        }
     }
 
     var llmRewritePreviewEnabled: Bool = true {

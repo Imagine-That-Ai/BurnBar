@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 final class ProviderAccountContractTests: XCTestCase {
     private let isoDate = "2026-05-03T12:00:00Z"
@@ -47,6 +48,77 @@ final class ProviderAccountContractTests: XCTestCase {
         XCTAssertEqual(decoded.providerID, .openAI)
         XCTAssertEqual(decoded.storageScope, .cloudRefreshable)
         XCTAssertEqual(decoded.redactedLabel, "sk-***abcd")
+    }
+
+    func test_providerAccountDoc_roundTripsEndpointProfileMetadata() throws {
+        let date = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let account = ProviderAccountDoc(
+            id: "mimo_sgp",
+            providerID: .mimo,
+            label: "MiMo Token Plan",
+            identityHint: "Singapore cluster",
+            status: .connected,
+            credentialKind: .bearer,
+            storageScope: .cloudRefreshable,
+            redactedLabel: "tp-***abcd",
+            isDefault: true,
+            sortKey: 10,
+            endpointProfileID: "mimo.token-plan.sgp",
+            region: .sgp,
+            tokenPlanTier: .pro,
+            tokenPlanBillingCycle: .monthly,
+            authMethodID: "mimo-token-plan",
+            schemaVersion: 2,
+            createdAt: date,
+            updatedAt: date
+        )
+
+        let encoded = try JSONEncoder().encode(account)
+        let decoded = try JSONDecoder().decode(ProviderAccountDoc.self, from: encoded)
+
+        XCTAssertEqual(decoded.endpointProfileID, "mimo.token-plan.sgp")
+        XCTAssertEqual(decoded.region, .sgp)
+        XCTAssertEqual(decoded.tokenPlanTier, .pro)
+        XCTAssertEqual(decoded.tokenPlanBillingCycle, .monthly)
+        XCTAssertEqual(decoded.authMethodID, "mimo-token-plan")
+    }
+
+    func test_firestoreGeneratedProviderAccountDocMatchesEndpointFieldSet() throws {
+        let json = """
+        {
+          "id": "mimo",
+          "providerID": "mimo",
+          "label": "MiMo",
+          "status": "connected",
+          "credentialKind": "bearer",
+          "storageScope": "cloudRefreshable",
+          "redactedLabel": "tp-***",
+          "isDefault": true,
+          "sortKey": 0,
+          "endpointProfileID": "mimo.token-plan.sgp",
+          "region": "sgp",
+          "tokenPlanTier": "pro",
+          "tokenPlanBillingCycle": "monthly",
+          "authMethodID": "mimo-token-plan",
+          "schemaVersion": 2,
+          "createdAt": "2026-05-26T00:00:00Z",
+          "updatedAt": "2026-05-26T00:00:00Z"
+        }
+        """
+        let decoded = try JSONDecoder().decode(
+            FirestoreProviderAccountDoc.self,
+            from: Data(json.utf8)
+        )
+        let generated = Mirror(reflecting: decoded).children.compactMap(\.label)
+
+        XCTAssertEqual(decoded.endpointProfileID, "mimo.token-plan.sgp")
+        XCTAssertEqual(decoded.region, "sgp")
+        XCTAssertEqual(decoded.tokenPlanTier, "pro")
+        XCTAssertTrue(generated.contains("endpointProfileID"))
+        XCTAssertTrue(generated.contains("region"))
+        XCTAssertTrue(generated.contains("tokenPlanTier"))
+        XCTAssertTrue(generated.contains("tokenPlanBillingCycle"))
+        XCTAssertTrue(generated.contains("authMethodID"))
     }
 
     func test_quotaSnapshot_decodesLegacyProviderLevelShape() throws {

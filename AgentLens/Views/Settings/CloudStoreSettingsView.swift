@@ -1,5 +1,6 @@
-import SwiftUI
+@preconcurrency import SwiftUI
 import AppKit
+import StoreKit
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
@@ -14,15 +15,17 @@ import OpenBurnBarCore
 // `CloudBadge` as the hero brand mark, an aurora-burst member card that
 // matches the iOS YouTab certificate row exactly.
 //
-// macOS still routes purchase to the iOS App Store (universal SKU; macOS
-// purchase flow not yet wired). Members who buy on iPhone see this pane
-// in member state via the same Firestore entitlement doc.
+private enum MacCloudStoreLegalURLs {
+    static let privacy = URL(string: "https://burnbar.ai/legal/privacy-policy")!
+    static let terms = URL(string: "https://burnbar.ai/legal/terms")!
+}
 
 struct CloudStoreSettingsView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var remoteMCPClients = MacRemoteMCPClientStore()
     @StateObject private var entitlement = MacCloudEntitlementStore.shared
+    @StateObject private var purchaseStore = MacHostedQuotaPurchaseStore()
     @State private var showBadgePicker = false
 
     var body: some View {
@@ -62,7 +65,10 @@ struct CloudStoreSettingsView: View {
         .sheet(isPresented: $showBadgePicker) {
             CloudBadgePicker()
         }
-        .onAppear { entitlement.start() }
+        .onAppear {
+            entitlement.start()
+            Task { await purchaseStore.load() }
+        }
     }
 
     // MARK: - Aurora member card (active)
@@ -288,28 +294,76 @@ struct CloudStoreSettingsView: View {
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
 
-                Text("Apple-verified, billed monthly via the App Store. Manage or cancel anytime in Settings → Apple ID.")
+                Text("Apple-verified, billed monthly via the App Store. Manage or cancel anytime in Settings -> Apple ID.")
                     .font(.system(size: 12))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Button {
-                    if let url = URL(string: "https://apps.apple.com/app/id6766366964") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    Task { await purchaseStore.purchase() }
                 } label: {
-                    Label("Continue on iPhone", systemImage: "iphone")
+                    if purchaseStore.isPurchasing {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Opening App Store purchase")
+                        }
                         .font(.system(size: 14, weight: .semibold))
+                    } else {
+                        Label(purchaseButtonTitle, systemImage: "creditcard.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    }
                 }
                 .buttonStyle(AuroraPrimaryButtonStyle())
+                .disabled(purchaseStore.isPurchasing)
 
-                Link("Open pricing on burnbar.ai", destination: URL(string: "https://burnbar.ai/pricing")!)
-                    .font(.system(size: 11))
-                    .foregroundStyle(DesignSystem.Colors.ember)
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await purchaseStore.restorePurchases() }
+                    } label: {
+                        Label("Restore Purchases", systemImage: "arrow.clockwise")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .buttonStyle(AuroraSecondaryButtonStyle())
+                    .disabled(purchaseStore.isLoading || purchaseStore.isPurchasing)
+
+                    MacCloudStoreLegalLinks()
+                }
+
+                subscriptionDetails
+
+                if let error = purchaseStore.error {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("macCloudStore.purchaseError")
+                }
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var purchaseButtonTitle: String {
+        if let product = purchaseStore.product {
+            return "Subscribe for \(product.displayPrice) / month"
+        }
+        return "Subscribe with App Store"
+    }
+
+    private var subscriptionDetails: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("SUBSCRIPTION DETAILS")
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(1.8)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            Text("OpenBurnBar Cloud Monthly is an auto-renewable 1 month subscription. Each billing period includes Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, and Hermes Remote Relay. Apple bills your Apple ID and you can cancel anytime in Apple ID subscriptions.")
+                .font(.system(size: 11))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityIdentifier("macCloudStore.subscriptionDisclosure")
     }
 
     // MARK: - Capability lineup
@@ -606,6 +660,238 @@ private struct AuroraSecondaryButtonStyle: ButtonStyle {
     }
 }
 
+private struct MacCloudStoreLegalLinks: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Link("Privacy Policy", destination: MacCloudStoreLegalURLs.privacy)
+            Text("·")
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            Link("Terms of Use (EULA)", destination: MacCloudStoreLegalURLs.terms)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(DesignSystem.Colors.ember)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("macCloudStore.legalLinks")
+    }
+}
+
+@MainActor
+private final class MacHostedQuotaPurchaseStore: ObservableObject {
+    static let productID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
+    static let entitlementProductIDs: Set<String> = [
+        "com.openburnbar.hostedQuotaSync.cloud.monthly",
+        "com.openburnbar.hostedQuotaSync.monthly",
+        "com.openburnbar.computerUse.monthly",
+        "com.openburnbar.proMax.bundle.monthly",
+        "com.openburnbar.hostedComputerUseSync.monthly",
+        "com.openburnbar.proMax.monthly",
+        "com.openburnbar.pro.monthly"
+    ]
+
+    @Published private(set) var product: Product?
+    @Published private(set) var isLoading = false
+    @Published private(set) var isPurchasing = false
+    @Published private(set) var error: String?
+
+    private let functions = Functions.functions(region: "us-central1")
+    private var transactionUpdatesTask: Task<Void, Never>?
+
+    deinit {
+        transactionUpdatesTask?.cancel()
+    }
+
+    func load() async {
+        startObservingTransactionUpdates()
+        await loadProductMetadata()
+    }
+
+    func purchase() async {
+        guard !isPurchasing else { return }
+        isPurchasing = true
+        error = nil
+        defer { isPurchasing = false }
+
+        do {
+            if product == nil {
+                await loadProductMetadata()
+            }
+            guard let product else {
+                throw MacHostedQuotaPurchaseError.productUnavailable
+            }
+
+            let signedInUser = Auth.auth().currentUser.flatMap { $0.isAnonymous ? nil : $0 }
+            let purchaseOptions: Set<Product.PurchaseOption>
+            if signedInUser != nil {
+                purchaseOptions = [.appAccountToken(try await mintAppAccountToken())]
+            } else {
+                purchaseOptions = []
+            }
+
+            let result = try await product.purchase(options: purchaseOptions)
+            switch result {
+            case .success(let verification):
+                let transaction = try checked(verification)
+                if signedInUser != nil {
+                    try await verifyHostedQuotaEntitlement(
+                        signedTransactionJWS: verification.jwsRepresentation,
+                        productID: transaction.productID
+                    )
+                    await transaction.finish()
+                } else {
+                    await transaction.finish()
+                    error = "Apple purchase completed. Sign in to OpenBurnBar and tap Restore Purchases so OpenBurnBar Cloud can link this subscription to your account."
+                }
+            case .pending:
+                error = "Apple is still processing this purchase. OpenBurnBar will update when the transaction completes."
+            case .userCancelled:
+                break
+            @unknown default:
+                error = "Apple returned an unknown purchase state. Try Restore Purchases after the App Store finishes processing."
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func restorePurchases() async {
+        guard !isLoading else { return }
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+
+        do {
+            try await AppStore.sync()
+            guard Auth.auth().currentUser?.isAnonymous == false else {
+                error = "Sign in to OpenBurnBar before restoring purchases so Apple can link OpenBurnBar Cloud to your account."
+                return
+            }
+
+            if let entitlement = await findCurrentEntitlement() {
+                try await restoreHostedQuotaEntitlement(
+                    productID: entitlement.productID,
+                    signedTransactionJWS: entitlement.jws
+                )
+            } else {
+                try await restoreHostedQuotaEntitlement(
+                    productID: Self.productID,
+                    signedTransactionJWS: nil
+                )
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func loadProductMetadata() async {
+        do {
+            product = try await Product.products(for: [Self.productID]).first
+        } catch {
+            if self.error == nil {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    private func startObservingTransactionUpdates() {
+        guard transactionUpdatesTask == nil else { return }
+        transactionUpdatesTask = Task.detached { [weak self] in
+            for await update in StoreKit.Transaction.updates {
+                guard let self else { return }
+                await self.handle(transactionUpdate: update)
+            }
+        }
+    }
+
+    private func handle(transactionUpdate update: VerificationResult<StoreKit.Transaction>) async {
+        do {
+            let transaction = try checked(update)
+            guard Self.entitlementProductIDs.contains(transaction.productID) else { return }
+            guard Auth.auth().currentUser?.isAnonymous == false else { return }
+            try await verifyHostedQuotaEntitlement(
+                signedTransactionJWS: update.jwsRepresentation,
+                productID: transaction.productID
+            )
+            await transaction.finish()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func findCurrentEntitlement() async -> (productID: String, jws: String)? {
+        for await result in StoreKit.Transaction.currentEntitlements {
+            do {
+                let transaction = try checked(result)
+                guard Self.entitlementProductIDs.contains(transaction.productID) else { continue }
+                guard transaction.revocationDate == nil else { continue }
+                if let expirationDate = transaction.expirationDate, expirationDate <= Date() {
+                    continue
+                }
+                return (transaction.productID, result.jwsRepresentation)
+            } catch {
+                continue
+            }
+        }
+        return nil
+    }
+
+    private func mintAppAccountToken() async throws -> UUID {
+        let result = try await functions.httpsCallable("beginEntitlementBinding").call([
+            "productID": Self.productID,
+            "clientPlatform": "macos"
+        ])
+        guard
+            let dict = result.data as? [String: Any],
+            let rawToken = dict["appAccountToken"] as? String,
+            let token = UUID(uuidString: rawToken)
+        else {
+            throw MacHostedQuotaPurchaseError.invalidBindingToken
+        }
+        return token
+    }
+
+    private func verifyHostedQuotaEntitlement(
+        signedTransactionJWS: String,
+        productID: String
+    ) async throws {
+        _ = try await functions.httpsCallable("verifyHostedQuotaEntitlement").call([
+            "signedTransactionJWS": signedTransactionJWS,
+            "productID": productID
+        ])
+    }
+
+    private func restoreHostedQuotaEntitlement(
+        productID: String,
+        signedTransactionJWS: String?
+    ) async throws {
+        var payload: [String: Any] = ["productID": productID]
+        if let signedTransactionJWS, !signedTransactionJWS.isEmpty {
+            payload["signedTransactionJWS"] = signedTransactionJWS
+        }
+        _ = try await functions.httpsCallable("restoreHostedQuotaEntitlement").call(payload)
+    }
+
+    private func checked<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .verified(let value): return value
+        case .unverified(_, let error): throw error
+        }
+    }
+}
+
+private enum MacHostedQuotaPurchaseError: LocalizedError {
+    case productUnavailable
+    case invalidBindingToken
+
+    var errorDescription: String? {
+        switch self {
+        case .productUnavailable:
+            return "OpenBurnBar Cloud is not available from the App Store yet. Try again in a moment."
+        case .invalidBindingToken:
+            return "OpenBurnBar could not prepare the Apple purchase token. Sign in again and retry."
+        }
+    }
+}
+
 // MARK: - Remote MCP data + listener (preserved from previous design)
 //
 // The Firestore-backed model + listener for connected MCP clients. Chrome
@@ -661,8 +947,8 @@ private final class MacRemoteMCPClientStore: ObservableObject {
     @Published private(set) var error: String?
     @Published private(set) var revokingClientID: String?
 
-    private var listener: ListenerRegistration?
-    private var authHandle: AuthStateDidChangeListenerHandle?
+    private nonisolated(unsafe) var listener: ListenerRegistration?
+    private nonisolated(unsafe) var authHandle: AuthStateDidChangeListenerHandle?
 
     deinit {
         listener?.remove()

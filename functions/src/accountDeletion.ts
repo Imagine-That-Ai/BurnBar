@@ -100,10 +100,12 @@ export async function eraseUserCloudData(
   const batcher = new DeleteBatcher(db, summary);
 
   for (const doc of secretRefs.docs) {
-    const secretVersionName = doc.get("secretVersionName") as string | undefined;
-    if (secretVersionName) {
+    const secretVersionName = doc.get("secretVersionName");
+    const secretVersion =
+      typeof secretVersionName === "string" ? secretVersionName : undefined;
+    if (secretVersion) {
       try {
-        await options.destroyCredential(secretVersionName);
+        await options.destroyCredential(secretVersion);
         summary.destroyedSecrets += 1;
       } catch (error) {
         summary.failedSecretDestroys += 1;
@@ -122,8 +124,12 @@ export async function eraseUserCloudData(
 
 export function isFirebaseAuthUserNotFound(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
-  const maybe = error as { code?: unknown; errorInfo?: { code?: unknown } };
-  return maybe.code === "auth/user-not-found" || maybe.errorInfo?.code === "auth/user-not-found";
+  const code = "code" in error ? error.code : undefined;
+  const errorInfo = "errorInfo" in error && error.errorInfo && typeof error.errorInfo === "object"
+    ? error.errorInfo
+    : undefined;
+  const nestedCode = errorInfo && "code" in errorInfo ? errorInfo.code : undefined;
+  return code === "auth/user-not-found" || nestedCode === "auth/user-not-found";
 }
 
 async function deleteDocumentTree(

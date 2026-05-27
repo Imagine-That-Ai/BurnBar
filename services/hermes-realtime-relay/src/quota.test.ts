@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Redis } from "ioredis";
-import { RedisRelayQuotaStore } from "./quota.js";
+import { RedisRelayQuotaStore, type RelayRedisClient } from "./quota.js";
 import type { RelayLimitsConfig } from "./config.js";
 
-class FakeRedis {
+class FakeRedis implements RelayRedisClient {
   readonly calls: Array<{ command: string; key: string; args: unknown[] }> = [];
   private readonly zsets = new Map<string, Set<string>>();
   private readonly counters = new Map<string, number>();
@@ -69,7 +68,7 @@ const limits: RelayLimitsConfig = {
 
 test("separates global socket pressure from runtime-specific socket buckets", async () => {
   const redis = new FakeRedis();
-  const quota = new RedisRelayQuotaStore(redis as unknown as Redis, limits);
+  const quota = new RedisRelayQuotaStore(redis, limits);
 
   await quota.reserveSocket("user-1", "client", "session-1");
   await quota.reserveRuntimeSocket("user-1", "client", "session-1", "hermes");
@@ -83,7 +82,7 @@ test("separates global socket pressure from runtime-specific socket buckets", as
 
 test("keeps request, byte, and in-flight quotas isolated by relay runtime", async () => {
   const redis = new FakeRedis();
-  const quota = new RedisRelayQuotaStore(redis as unknown as Redis, limits);
+  const quota = new RedisRelayQuotaStore(redis, limits);
 
   await quota.checkFrameBytes("user-1", 10);
   await quota.checkFrameBytes("user-1", 10, "hermes");

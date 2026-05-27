@@ -464,6 +464,8 @@ enum SettingsManifest {
             keywords += ["z.ai", "z-ai", "zai"]
         case .minimax:
             keywords += ["mini max", "minimax"]
+        case .mimo:
+            keywords += ["mimo", "xiaomi", "xiaomi mimo", "token plan"]
         default:
             break
         }

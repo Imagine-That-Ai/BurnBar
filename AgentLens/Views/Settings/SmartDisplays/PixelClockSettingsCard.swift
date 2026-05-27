@@ -859,6 +859,7 @@ private struct ProviderFilterChip: View {
         case .openClaw:     return "OpenClaw"
         case .windsurf:     return "Windsurf"
         case .xAI:          return "Grok"
+        case .mimo:         return "MiMo"
         }
     }
 }

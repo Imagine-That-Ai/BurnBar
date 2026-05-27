@@ -211,6 +211,26 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
+        case .mimo:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.token, .bearer],
+                defaultKind: .bearer,
+                labelSuggestion: "MiMo",
+                dashboardURL: URL(string: "https://platform.xiaomimimo.com/docs/en-US/tokenplan/subscription"),
+                dashboardCTA: "Open MiMo Token Plan",
+                oneLineHint: "Token Plan keys (`tp-…`) need a cluster; pay-as-you-go uses `sk-…`.",
+                instructions: [
+                    GuideStep(1, "Pick your auth method", detail: "Token Plan vs pay-as-you-go use different endpoints."),
+                    GuideStep(2, "Select your cluster", detail: "Token Plan keys route through China, Singapore, or Europe — pick the region that matches your subscription."),
+                    GuideStep(3, "Paste your key", detail: "OpenBurnBar validates the key and stores endpoint profile metadata for routing.")
+                ],
+                credentialPlaceholder: "tp-… or sk-…",
+                credentialFooterMarkdown: "Token Plan quota uses vendor remains when available, otherwise BurnBar credit tracking against your selected tier.",
+                supportsHosted: false,
+                supportsSelfHosted: false
+            )
+
         case .codex:
             return ProviderSetupGuide(
                 provider: provider,

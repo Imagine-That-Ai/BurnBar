@@ -64,6 +64,11 @@ import java.time.Instant
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+internal fun shouldStopMirrorOnViewerDestroy(
+    isFinishing: Boolean,
+    isChangingConfigurations: Boolean,
+): Boolean = isFinishing && !isChangingConfigurations
+
 /**
  * Host activity for `ScreenShareViewerScreen`. Stays alive in
  * Picture-in-Picture so the user can keep glancing at the Mac while
@@ -305,8 +310,14 @@ class ScreenShareViewerActivity : FragmentActivity() {
         bindCoordinatorHandlers()
     }
 
+    override fun onResume() {
+        super.onResume()
+        bindCoordinatorHandlers()
+        reinstallMirrorSurfaceAfterReturn()
+    }
+
     override fun onDestroy() {
-        if (!isChangingConfigurations) {
+        if (shouldStopMirrorOnViewerDestroy(isFinishing, isChangingConfigurations)) {
             sendMirrorStop(reason = "activity_destroyed")
         }
         val coordinator = BurnBarApplication.mediaControlCoordinator
@@ -339,6 +350,41 @@ class ScreenShareViewerActivity : FragmentActivity() {
         val coordinator = BurnBarApplication.mediaControlCoordinator ?: return
         coordinator.mirrorFrameHandler = { frame -> pipeline.ingest(frame) }
         coordinator.mirrorFrameV2Handler = { frame -> pipeline.ingest(frame) }
+    }
+
+    private fun reinstallMirrorSurfaceAfterReturn() {
+        val coordinator = BurnBarApplication.mediaControlCoordinator ?: return
+        if (mirrorRequestID.isNullOrBlank()) return
+        controlScope.launch {
+            runCatching {
+                val responsive = coordinator.ensureResponsive(
+                    freshnessIntervalMillis = 2_000L,
+                    probeTimeoutMillis = 1_000L,
+                )
+                if (responsive) {
+                    runCatching { ensurePhoneControlSender() }
+                        .onSuccess { controlStatus.value = "Mirror reconnected" }
+                        .onFailure { controlError ->
+                            phoneControlSender = null
+                            phoneControlConnectionID = null
+                            controlStatus.value = when {
+                                controlError.message?.contains("not trusted", ignoreCase = true) == true ->
+                                    "Trust this device to type on the Mac"
+                                else -> "Mirror reconnected"
+                            }
+                        }
+                } else {
+                    phoneControlSender = null
+                    phoneControlConnectionID = null
+                    controlStatus.value = "Mirror is reconnecting..."
+                }
+            }.onFailure { error ->
+                phoneControlSender = null
+                phoneControlConnectionID = null
+                controlStatus.value = error.message?.take(80) ?: "Reconnect failed"
+                Log.w(TAG, "Android screen-share return recovery failed error=${error.message}", error)
+            }
+        }
     }
 
     private fun closeMirrorAndFinish() {
@@ -676,12 +722,14 @@ class ScreenShareViewerActivity : FragmentActivity() {
         }
 
     private fun readLocalClipboardText(): String? {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            ?: return null
         return firstPlainTextClipboardItem(clipboard.primaryClip)
     }
 
     private fun writeLocalClipboardText(text: String) {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            ?: return
         clipboard.setPrimaryClip(ClipData.newPlainText("Mac clipboard", text))
     }
 

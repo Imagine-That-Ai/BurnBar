@@ -31,17 +31,20 @@ public struct AgentInsightsRosterView: View {
 
     public var body: some View {
         let groups = groupProviders(providers)
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-                if onSelectAggregate != nil {
-                    aggregateRow
+        GeometryReader { geometry in
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
+                    if onSelectAggregate != nil {
+                        aggregateRow
+                    }
+                    ForEach(groups, id: \.label) { group in
+                        section(group: group)
+                    }
                 }
-                ForEach(groups, id: \.label) { group in
-                    section(group: group)
-                }
+                .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+                .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
+                .frame(width: geometry.size.width, alignment: .leading)
             }
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
-            .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
         }
         .background(useWebsiteBackground ? Color.clear : UnifiedDesignSystem.Colors.background)
     }

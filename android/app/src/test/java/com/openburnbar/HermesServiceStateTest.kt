@@ -42,9 +42,8 @@ class HermesServiceStateTest {
     fun `addDirectConnection appends and selects on valid URL`() = runTest {
         val service = HermesService()
         try {
-            val record = service.addDirectConnection("Test", "http://192.168.1.10:8642")
-            assertNotNull(record)
-            assertEquals(HermesConnectionMode.DIRECT_URL, record!!.mode)
+            val record = requireNotNull(service.addDirectConnection("Test", "http://192.168.1.10:8642"))
+            assertEquals(HermesConnectionMode.DIRECT_URL, record.mode)
             assertTrue(service.connections.value.any { it.id == record.id })
             assertEquals(record.id, service.selectedConnection.value.id)
         } finally {
@@ -94,9 +93,8 @@ class HermesServiceStateTest {
     fun `revokeConnection removes a direct connection and falls back to local default`() = runTest {
         val service = HermesService()
         try {
-            val record = service.addDirectConnection("Drop", "http://192.168.1.20:8642")
-            assertNotNull(record)
-            service.revokeConnection(record!!)
+            val record = requireNotNull(service.addDirectConnection("Drop", "http://192.168.1.20:8642"))
+            service.revokeConnection(record)
             assertFalse(service.connections.value.any { it.id == record.id })
             assertEquals(HermesConnectionRecord.localDefault.id, service.selectedConnection.value.id)
         } finally {
@@ -146,9 +144,8 @@ class HermesServiceStateTest {
             service.refreshRelayConnections()
 
             // It should successfully identify the fresh suggested relay (mac-relay-1 has larger updatedAt/lastSeenAt)
-            val suggested = service.suggestedRelayConnection
-            assertNotNull(suggested)
-            assertEquals("mac-relay-1", suggested!!.id)
+            val suggested = requireNotNull(service.suggestedRelayConnection)
+            assertEquals("mac-relay-1", suggested.id)
 
             // When connecting to suggested relay, selectedConnection changes to mac-relay-1
             val connected = service.connectToSuggestedRelay(refresh = false)

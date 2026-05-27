@@ -6,7 +6,25 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-internal val javaPrimitiveInt: Class<*> = Int::class.javaPrimitiveType!!
+internal val javaPrimitiveInt: Class<*> = requireNotNull(Int::class.javaPrimitiveType) {
+    "Kotlin Int primitive class is unavailable for UniFFI reflection"
+}
+
+internal inline fun <reified T : Any> Any?.requireFfiField(fieldName: String): T =
+    this as? T
+        ?: error("UniFFI field $fieldName expected ${T::class.java.name}, got ${this?.javaClass?.name ?: "null"}")
+
+internal inline fun <reified T : Any> Any?.optionalFfiField(fieldName: String): T? =
+    if (this == null) null else this.requireFfiField<T>(fieldName)
+
+internal fun Any?.requireFfiStringList(fieldName: String): List<String> {
+    val raw = this as? List<*>
+        ?: error("UniFFI field $fieldName expected List<String>, got ${this?.javaClass?.name ?: "null"}")
+    return raw.mapIndexed { index, value ->
+        value as? String
+            ?: error("UniFFI field $fieldName[$index] expected String, got ${value?.javaClass?.name ?: "null"}")
+    }
+}
 
 internal fun Class<*>.irohGeneratedMethod(
     baseName: String,
@@ -152,7 +170,10 @@ class OpenBurnBarIrohFfiBackend(
         override suspend fun recvFrame(): ByteArray? = withContext(dispatcher) {
             try {
                 reflected("IrohStream.recvFrame") {
-                    streamClass().getMethod("recvFrame").invoke(streamObject) as ByteArray?
+                    streamClass()
+                        .getMethod("recvFrame")
+                        .invoke(streamObject)
+                        .optionalFfiField<ByteArray>("IrohStream.recvFrame")
                 }
             } catch (t: Throwable) {
                 throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
@@ -173,11 +194,18 @@ class OpenBurnBarIrohFfiBackend(
 
     private fun mapIdentity(generated: Any): IrohEndpointIdentity {
         val cls = generated.javaClass
-        val rawPublicKey = cls.getMethod("getRawPublicKey").invoke(generated) as ByteArray
-        val nodeId = cls.getMethod("getNodeId").invoke(generated) as String
-        val relayURL = cls.getMethod("getRelayUrl").invoke(generated) as String
-        @Suppress("UNCHECKED_CAST")
-        val directAddresses = cls.getMethod("getDirectAddresses").invoke(generated) as List<String>
+        val rawPublicKey = cls.getMethod("getRawPublicKey")
+            .invoke(generated)
+            .requireFfiField<ByteArray>("IrohNodeIdentity.rawPublicKey")
+        val nodeId = cls.getMethod("getNodeId")
+            .invoke(generated)
+            .requireFfiField<String>("IrohNodeIdentity.nodeId")
+        val relayURL = cls.getMethod("getRelayUrl")
+            .invoke(generated)
+            .requireFfiField<String>("IrohNodeIdentity.relayUrl")
+        val directAddresses = cls.getMethod("getDirectAddresses")
+            .invoke(generated)
+            .requireFfiStringList("IrohNodeIdentity.directAddresses")
         return IrohEndpointIdentity(
             nodeId = nodeId,
             rawPublicKey = rawPublicKey,

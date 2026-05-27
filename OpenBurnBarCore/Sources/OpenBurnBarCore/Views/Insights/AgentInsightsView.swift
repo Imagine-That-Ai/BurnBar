@@ -105,57 +105,59 @@ public struct AgentInsightsView: View {
     @ViewBuilder
     private func content(bundle: AgentInsightsBundle) -> some View {
         let layout = effectivePresentation
-        ScrollView {
-            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-                AgentInsightsHeaderView(
-                    header: bundle.header,
-                    presentation: layout,
-                    onTap: actions.onPickAgent
-                )
-                AgentInsightsKPIStripView(
-                    strip: bundle.kpis,
-                    presentation: layout
-                )
-                if let brief = bundle.brief {
-                    IntelligenceBriefView(
-                        result: brief,
-                        onCitationTap: { actions.onCitationTap?($0) },
-                        onFollowUpTap: { actions.onFollowUpTap?($0) },
-                        onMissionLaunchTap: { actions.onMissionLaunchTap?($0, $1, $2, $3) },
-                        onPinWidget: { actions.onPinWidget?($0) },
-                        onConfigureModel: actions.onConfigureModel,
-                        onShowAudit: actions.onShowAudit,
-                        snapshotMode: true
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                if !bundle.missions.isEmpty {
-                    AgentInsightsMissionRailView(
-                        missions: bundle.missions,
+        GeometryReader { geometry in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
+                    AgentInsightsHeaderView(
+                        header: bundle.header,
                         presentation: layout,
-                        onTap: actions.onMissionTap
+                        onTap: actions.onPickAgent
                     )
-                }
-                if !bundle.canvases.isEmpty {
-                    AgentInsightsCanvasGridView(
-                        canvases: bundle.canvases,
-                        presentation: layout,
-                        onTap: actions.onCanvasTap
+                    AgentInsightsKPIStripView(
+                        strip: bundle.kpis,
+                        presentation: layout
                     )
+                    if let brief = bundle.brief {
+                        IntelligenceBriefView(
+                            result: brief,
+                            onCitationTap: { actions.onCitationTap?($0) },
+                            onFollowUpTap: { actions.onFollowUpTap?($0) },
+                            onMissionLaunchTap: { actions.onMissionLaunchTap?($0, $1, $2, $3) },
+                            onPinWidget: { actions.onPinWidget?($0) },
+                            onConfigureModel: actions.onConfigureModel,
+                            onShowAudit: actions.onShowAudit,
+                            snapshotMode: true
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if !bundle.missions.isEmpty {
+                        AgentInsightsMissionRailView(
+                            missions: bundle.missions,
+                            presentation: layout,
+                            onTap: actions.onMissionTap
+                        )
+                    }
+                    if !bundle.canvases.isEmpty {
+                        AgentInsightsCanvasGridView(
+                            canvases: bundle.canvases,
+                            presentation: layout,
+                            onTap: actions.onCanvasTap
+                        )
+                    }
+                    if bundle.isEmpty {
+                        AgentInsightsEmptyStateView(header: bundle.header)
+                    }
+                    if let onShowAudit = actions.onShowAudit, !bundle.auditTrail.isEmpty {
+                        auditAffordance(count: bundle.auditTrail.count, action: onShowAudit)
+                    }
+                    refreshFooter(bundle: bundle)
                 }
-                if bundle.isEmpty {
-                    AgentInsightsEmptyStateView(header: bundle.header)
-                }
-                if let onShowAudit = actions.onShowAudit, !bundle.auditTrail.isEmpty {
-                    auditAffordance(count: bundle.auditTrail.count, action: onShowAudit)
-                }
-                refreshFooter(bundle: bundle)
+                .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+                .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
+                .frame(width: geometry.size.width, alignment: .leading)
             }
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
-            .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .refreshable { await viewModel.refresh() }
         }
-        .refreshable { await viewModel.refresh() }
     }
 
     private func auditAffordance(count: Int, action: @escaping () -> Void) -> some View {

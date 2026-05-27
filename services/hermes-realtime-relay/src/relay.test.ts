@@ -6,6 +6,22 @@ import { PROTOCOL_VERSION, serializeFrame, type HermesRelayRuntime } from "./pro
 import type { RelayQuotaStore } from "./quota.js";
 import type { RelayMessageBus } from "./redisHub.js";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseSentAt(socket: { sent: string[] }, offsetFromEnd: number): Record<string, unknown> {
+  const message = socket.sent.at(offsetFromEnd);
+  if (typeof message !== "string") {
+    throw new Error(`Missing sent message at offset ${offsetFromEnd}`);
+  }
+  const parsed: unknown = JSON.parse(message);
+  if (!isRecord(parsed)) {
+    throw new Error("Sent message did not decode to an object");
+  }
+  return parsed;
+}
+
 class FakeBus implements RelayMessageBus {
   private readonly emitter = new EventEmitter();
   readonly values = new Map<string, string>();
@@ -176,7 +192,10 @@ test("routes request frames to registered host and response frames back to reque
   })));
   await flushRelay();
 
-  assert.equal(JSON.parse(client.sent.at(-2)!).payload.ciphertext, "encrypted-data");
+  const encryptedFrame = parseSentAt(client, -2);
+  const encryptedPayload = encryptedFrame.payload;
+  assert.ok(isRecord(encryptedPayload));
+  assert.equal(encryptedPayload.ciphertext, "encrypted-data");
   assert.equal(quota.inFlight.has("req-1"), false);
 
   host.close();
@@ -235,9 +254,10 @@ test("fails request.start fast when no host is subscribed and releases in-flight
   })));
   await flushRelay();
 
-  const response = JSON.parse(socket.sent.at(-1)!);
+  const response = parseSentAt(socket, -1);
   assert.equal(response.type, "response.error");
   assert.equal(response.requestId, "req-1");
+  assert.ok(isRecord(response.payload));
   assert.equal(response.payload.error, "Realtime Hermes host is not connected.");
   assert.equal(quota.inFlight.has("req-1"), false);
   socket.close();
@@ -367,7 +387,9 @@ test("rejects sockets that try to switch relay runtimes", async () => {
     await flushRelay();
   }
 
-  assert.equal(JSON.parse(socket.sent.at(-1)!).payload.error, "Relay socket runtime cannot change after registration.");
+  const runtimeErrorFrame = parseSentAt(socket, -1);
+  assert.ok(isRecord(runtimeErrorFrame.payload));
+  assert.equal(runtimeErrorFrame.payload.error, "Relay socket runtime cannot change after registration.");
   assert.equal(socket.closes.at(-1)?.code, 1008);
 });
 

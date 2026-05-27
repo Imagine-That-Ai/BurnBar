@@ -1,6 +1,6 @@
 import FirebaseAuth
 import FirebaseFirestore
-import FirebaseFunctions
+@preconcurrency import FirebaseFunctions
 import Foundation
 import CryptoKit
 import OpenBurnBarCore
@@ -627,11 +627,11 @@ final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClie
     }
 
     func commitEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws {
-        _ = try await functions.httpsCallable("commitEncryptedProjectMemorySnapshot").call(payload)
+        _ = try await functions.httpsCallable("commitEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
     }
 
     func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
-        let result = try await functions.httpsCallable("getEncryptedProjectMemorySnapshot").call(payload)
+        let result = try await functions.httpsCallable("getEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
         return result.data as? [String: Any] ?? [:]
     }
 }

@@ -123,13 +123,9 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         if !allowUserInteraction {
-            // Force Security.framework to fail fast instead of presenting a
-            // keychain prompt. Creating an LAContext for every background
-            // probe wakes CoreAuthentication and generates a surprising amount
-            // of work/log traffic when quota refreshes fan out across many
-            // credential slots, so non-interactive reads use the Security UI
-            // policy directly.
-            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            query[kSecUseAuthenticationContext as String] = context
         }
         var item: CFTypeRef?
         let status: OSStatus

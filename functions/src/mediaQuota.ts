@@ -15,11 +15,11 @@
  *   session starts from a true cumulative number.
  */
 
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import type { Firestore, QueryDocumentSnapshot, Timestamp } from "firebase-admin/firestore";
+import type { Firestore } from "firebase-admin/firestore";
+import { numberField, stringField } from "./guards.js";
 import type {
-  IrohTransportAuditEventDoc,
   MediaFeature,
   MediaQuotaUsageDoc,
 } from "./types.js";
@@ -89,22 +89,18 @@ export async function recomputeQuotaUsageForUid(options: RecomputeOptions): Prom
     videoCall: newAccumulator(),
   };
 
-  for (const doc of snapshot.docs as QueryDocumentSnapshot[]) {
-    const data = doc.data() as Partial<IrohTransportAuditEventDoc> & {
-      streamClass?: string;
-      bytesInbound?: number;
-      bytesOutbound?: number;
-      durationMillis?: number;
-    };
-    const feature = inferFeature(data.streamClass);
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    const feature = inferFeature(stringField(data, "streamClass"));
     if (!feature) continue;
     const bucket = buckets[feature];
-    bucket.bytesIn += data.bytesInbound ?? 0;
-    bucket.bytesOut += data.bytesOutbound ?? 0;
-    if (data.eventType === "iroh_stream_closed") {
+    bucket.bytesIn += numberField(data, "bytesInbound") ?? 0;
+    bucket.bytesOut += numberField(data, "bytesOutbound") ?? 0;
+    const eventType = stringField(data, "eventType");
+    if (eventType === "iroh_stream_closed") {
       bucket.sessionCount += 1;
-      bucket.secondsUsed += Math.round((data.durationMillis ?? 0) / 1000);
-    } else if (data.eventType === "iroh_stream_failed") {
+      bucket.secondsUsed += Math.round((numberField(data, "durationMillis") ?? 0) / 1000);
+    } else if (eventType === "iroh_stream_failed") {
       bucket.failureCount += 1;
     }
   }
@@ -132,11 +128,7 @@ export async function recomputeQuotaUsageForUid(options: RecomputeOptions): Prom
 }
 
 function nowTimestamp(): Timestamp {
-  // Late binding so unit tests can swap in a fake admin SDK.
-  // Using `getFirestore` to defer initialization.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const admin = require("firebase-admin/firestore") as typeof import("firebase-admin/firestore");
-  return admin.Timestamp.now();
+  return Timestamp.now();
 }
 
 /**

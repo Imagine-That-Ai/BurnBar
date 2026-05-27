@@ -23,10 +23,10 @@ function redact(token: string): string {
   return `openai_${token.slice(0, 3)}***${token.slice(-4)}`;
 }
 
-async function openAIFetch<T>(
+async function openAIFetch(
   url: string,
   token: string
-): Promise<{ ok: boolean; data?: T; status?: number; error?: string }> {
+): Promise<{ ok: boolean; data?: unknown; status?: number; error?: string }> {
   try {
     const res = await fetch(url, {
       method: "GET",
@@ -39,7 +39,7 @@ async function openAIFetch<T>(
     if (!res.ok) {
       return { ok: false, status: res.status, error: `HTTP ${res.status}` };
     }
-    return { ok: true, status: res.status, data: (await res.json()) as T };
+    return { ok: true, status: res.status, data: await res.json() };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -89,7 +89,7 @@ export const openaiAdapter: ProviderAdapter = {
       };
     }
 
-    const result = await openAIFetch<Record<string, unknown>>(MODELS_URL, credential);
+    const result = await openAIFetch(MODELS_URL, credential);
     if (!result.ok) {
       return {
         valid: false,
@@ -114,7 +114,7 @@ export const openaiAdapter: ProviderAdapter = {
     credential: string,
     sourceId: string
   ): Promise<QuotaRefreshResult> {
-    const result = await openAIFetch<OpenAIUsagePayload>(usageURL(30), credential);
+    const result = await openAIFetch(usageURL(30), credential);
     if (!result.ok) {
       return {
         ok: false,
@@ -131,12 +131,21 @@ export const openaiAdapter: ProviderAdapter = {
     let cachedTokens = 0;
     let requests = 0;
 
-    for (const bucket of result.data?.data ?? []) {
-      for (const row of bucket.results ?? []) {
-        inputTokens += row.input_tokens ?? 0;
-        outputTokens += row.output_tokens ?? 0;
-        cachedTokens += row.input_cached_tokens ?? 0;
-        requests += row.num_model_requests ?? 0;
+    const payload = result.data;
+    const dataRows = payload && typeof payload === "object" && "data" in payload && Array.isArray(payload.data)
+      ? payload.data
+      : [];
+
+    for (const bucket of dataRows) {
+      const results = bucket && typeof bucket === "object" && "results" in bucket && Array.isArray(bucket.results)
+        ? bucket.results
+        : [];
+      for (const row of results) {
+        if (!row || typeof row !== "object") continue;
+        inputTokens += "input_tokens" in row && typeof row.input_tokens === "number" ? row.input_tokens : 0;
+        outputTokens += "output_tokens" in row && typeof row.output_tokens === "number" ? row.output_tokens : 0;
+        cachedTokens += "input_cached_tokens" in row && typeof row.input_cached_tokens === "number" ? row.input_cached_tokens : 0;
+        requests += "num_model_requests" in row && typeof row.num_model_requests === "number" ? row.num_model_requests : 0;
       }
     }
 

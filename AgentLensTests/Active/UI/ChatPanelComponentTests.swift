@@ -58,14 +58,14 @@ final class ChatPanelComponentTests: XCTestCase {
     // MARK: - ChatInlineContextRibbon
 
     func test_inlineContextRibbon_rendersWhereLeftOff() throws {
-        let controller = makeMinimalChatController()
+        let controller = try makeMinimalChatController()
         let brief = ViewTestFixtures.makeInsightBrief(whereLeftOff: "Working on auth module")
         let view = ChatInlineContextRibbon(controller: controller, brief: brief)
         XCTAssertNoThrow(try view.inspect())
     }
 
     func test_inlineContextRibbon_rendersHeaviestTask() throws {
-        let controller = makeMinimalChatController()
+        let controller = try makeMinimalChatController()
         let brief = ViewTestFixtures.makeInsightBrief(
             heaviestTaskTitle: "Auth refactor",
             heaviestTaskCost: 2.50,
@@ -98,8 +98,8 @@ final class ChatPanelComponentTests: XCTestCase {
         )
     }
 
-    private func makeMinimalChatController() -> ChatSessionController {
-        let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), refreshOnInit: false)
+    private func makeMinimalChatController() throws -> ChatSessionController {
+        let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), refreshOnInit: false))
         return ChatSessionController(dataStore: store)
     }
 }

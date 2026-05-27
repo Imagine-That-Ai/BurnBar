@@ -1,3 +1,4 @@
+import { errorCode, errorMessage, isRecord, stringValue } from "./guards.js";
 /**
  * @fileoverview Mercury Phase 6 — Android FCM data-message sender.
  *
@@ -85,17 +86,17 @@ export async function pushAndroidFcm(args: {
     const messageId = await send(message);
     return { status: "sent", messageId };
   } catch (err) {
-    const code = (err as { code?: string })?.code;
-    const reason = (err as Error)?.message;
+    const code = errorCode(err);
+    const reason = errorMessage(err);
     if (
       code === "messaging/registration-token-not-registered" ||
       code === "messaging/invalid-registration-token" ||
       code === "messaging/invalid-argument" ||
       code === "messaging/mismatched-credential"
     ) {
-      return { status: "rejected", errorCode: code, reason };
+      return { status: "rejected", errorCode: typeof code === "string" ? code : undefined, reason };
     }
-    return { status: "retry", errorCode: code, reason };
+    return { status: "retry", errorCode: typeof code === "string" ? code : undefined, reason };
   }
 }
 
@@ -110,9 +111,9 @@ export const sendFcmOutbound = onDocumentCreated(
   },
   async (event) => {
     const data = event.data?.data();
-    if (!data) return;
+    if (!isRecord(data)) return;
     if (data.status && data.status !== "pending") return;
-    const fcmToken = data.fcmToken as string | undefined;
+    const fcmToken = stringValue(data.fcmToken);
     if (!fcmToken) {
       await event.data?.ref.update({
         status: "rejected",
@@ -122,9 +123,17 @@ export const sendFcmOutbound = onDocumentCreated(
       return;
     }
 
+    const payload = isRecord(data.payload)
+      ? Object.fromEntries(
+          Object.entries(data.payload).flatMap(([key, value]) =>
+            typeof value === "string" ? [[key, value]] : []
+          )
+        )
+      : {};
+
     const result = await pushAndroidFcm({
       fcmToken,
-      data: (data.payload as Record<string, string>) ?? {},
+      data: payload,
       documentId: event.params.docId,
     });
 
@@ -150,7 +159,7 @@ export const sendFcmOutbound = onDocumentCreated(
           lastAttemptAt: Timestamp.now(),
           lastFailureReason: result.reason ?? null,
           retryAt: Timestamp.fromMillis(Date.now() + 30_000),
-          attemptCount: (data.attemptCount ?? 0) + 1,
+          attemptCount: (typeof data.attemptCount === "number" ? data.attemptCount : 0) + 1,
         });
         return;
     }

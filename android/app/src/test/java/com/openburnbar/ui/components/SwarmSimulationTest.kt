@@ -171,8 +171,10 @@ class SwarmSimulationTest {
         simulation.instantlySettle()
 
         targeted.forEach { p ->
-            org.junit.Assert.assertEquals(p.tx!!, p.x, 0.0001)
-            org.junit.Assert.assertEquals(p.ty!!, p.y, 0.0001)
+            val tx = requireNotNull(p.tx)
+            val ty = requireNotNull(p.ty)
+            org.junit.Assert.assertEquals(tx, p.x, 0.0001)
+            org.junit.Assert.assertEquals(ty, p.y, 0.0001)
             org.junit.Assert.assertEquals(0.0, p.vx, 0.0001)
             org.junit.Assert.assertEquals(0.0, p.vy, 0.0001)
         }
@@ -202,8 +204,10 @@ class SwarmSimulationTest {
         simulation.isRewinding = true
         // Set particle slightly off target to have non-zero dx/dy
         val p = simulation.particles.first { it.tx != null }
-        p.x = p.tx!! - 5.0
-        p.y = p.ty!!
+        val tx = requireNotNull(p.tx)
+        val ty = requireNotNull(p.ty)
+        p.x = tx - 5.0
+        p.y = ty
 
         // Advance simulation
         simulation.advance(System.nanoTime(), pointer = null)

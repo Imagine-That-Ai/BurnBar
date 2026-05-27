@@ -16,6 +16,7 @@
 import { randomBytes, createCipheriv, createDecipheriv } from "crypto";
 import { google } from "googleapis";
 import { getConfig } from "./config.js";
+import { errorCode, isRecord, stringField } from "./guards.js";
 
 const AES_KEY_LEN = 32;
 const AES_IV_LEN = 12;
@@ -106,7 +107,7 @@ async function encryptEnvelope(plaintext: string): Promise<string> {
   const dek = randomBytes(AES_KEY_LEN);
   const iv = randomBytes(AES_IV_LEN);
   const cipher = createCipheriv(AES_ALG, dek, iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const cipherText = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
 
   const kms = await getKms();
@@ -114,9 +115,13 @@ async function encryptEnvelope(plaintext: string): Promise<string> {
     name: kmsKeyName,
     requestBody: { plaintext: dek.toString("base64") },
   });
-  const encryptedDek = Buffer.from(data!.ciphertext!, "base64");
+  const encryptedDekB64 = stringField(data, "ciphertext");
+  if (!encryptedDekB64) {
+    throw new Error("KMS encrypt response missing ciphertext.");
+  }
+  const encryptedDek = Buffer.from(encryptedDekB64, "base64");
 
-  return packEnvelope(encryptedDek, iv, ciphertext, tag);
+  return packEnvelope(encryptedDek, iv, cipherText, tag);
 }
 
 /**
@@ -138,7 +143,11 @@ async function decryptEnvelope(envelope: string): Promise<string> {
     name: kmsKeyName,
     requestBody: { ciphertext: encryptedDek.toString("base64") },
   });
-  const dek = Buffer.from(data!.plaintext!, "base64");
+  const plaintextB64 = stringField(data, "plaintext");
+  if (!plaintextB64) {
+    throw new Error("KMS decrypt response missing plaintext.");
+  }
+  const dek = Buffer.from(plaintextB64, "base64");
 
   const decipher = createDecipheriv(AES_ALG, dek, iv);
   decipher.setAuthTag(tag);
@@ -192,8 +201,7 @@ export async function storeCredential(
   try {
     await sm.projects.secrets.get({ name: secretName });
   } catch (err: unknown) {
-    const code = (err as { code?: number }).code;
-    if (code === 404) {
+    if (errorCode(err) === 404) {
       await sm.projects.secrets.create({
         parent,
         secretId,
@@ -222,7 +230,11 @@ export async function storeCredential(
     },
   });
 
-  return data!.name!;
+  const versionName = stringField(data, "name");
+  if (!versionName) {
+    throw new Error("Secret Manager addVersion response missing name.");
+  }
+  return versionName;
 }
 
 /**
@@ -236,7 +248,12 @@ export async function retrieveCredential(secretVersionName: string): Promise<str
   const { data } = await sm.projects.secrets.versions.access({
     name: secretVersionName,
   });
-  const envelope = Buffer.from(data!.payload!.data!, "base64").toString("utf8");
+  const payload = isRecord(data?.payload) ? data.payload : undefined;
+  const payloadData = payload && typeof payload.data === "string" ? payload.data : undefined;
+  if (!payloadData) {
+    throw new Error("Secret Manager access response missing payload data.");
+  }
+  const envelope = Buffer.from(payloadData, "base64").toString("utf8");
   return decryptEnvelope(envelope);
 }
 

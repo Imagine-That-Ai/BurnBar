@@ -854,7 +854,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     now: Date()
                 )
                 let request = try AgentCapabilityGrantRequest(wire: wireRequest)
-                receipt = await AgentCapabilityGrantStore.shared.apply(request)
+                receipt = AgentCapabilityGrantStore.shared.apply(request)
             } catch let error as PhoneControlAuthorityValidator.ValidationError {
                 receipt = Self.agentGrantReceipt(
                     for: wireRequest,

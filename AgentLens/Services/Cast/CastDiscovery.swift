@@ -199,38 +199,47 @@ final class CastDiscovery {
             model: model,
             serviceName: serviceName
         )
+        let serviceSnapshot = PendingCastServiceResolution(
+            serviceName: serviceName,
+            friendlyName: friendlyName,
+            model: model,
+            identifier: identifier,
+            supportsDisplay: supportsDisplay
+        )
 
         // Open a transient NWConnection just long enough to learn the
         // resolved host:port, then cancel. NWBrowser doesn't directly
         // surface IPs without a connection on macOS 14, so this is the
         // sanctioned path.
         resolverTasks[serviceName]?.cancel()
-        let task = Task<Void, Never> { [weak self] in
+        let task = Task<Void, Never> { @MainActor [weak self, serviceSnapshot] in
             guard let self else { return }
             let connection = NWConnection(to: result.endpoint, using: .tcp)
             await withCheckedContinuation { continuation in
-                var resumed = false
+                let resumeGate = ContinuationResumeGate()
                 connection.stateUpdateHandler = { state in
                     switch state {
                     case .ready:
                         if let endpoint = connection.currentPath?.remoteEndpoint,
                            case let .hostPort(host, port) = endpoint {
-                            Task { @MainActor in
-                                self.recordResolved(
-                                    serviceName: serviceName,
-                                    friendlyName: friendlyName,
-                                    model: model,
-                                    identifier: identifier,
-                                    host: hostString(host),
-                                    port: Int(port.rawValue),
-                                    supportsDisplay: supportsDisplay
+                            let hostValue = hostString(host)
+                            let portValue = Int(port.rawValue)
+                            Task { @MainActor [weak self, serviceSnapshot, hostValue, portValue] in
+                                self?.recordResolved(
+                                    serviceName: serviceSnapshot.serviceName,
+                                    friendlyName: serviceSnapshot.friendlyName,
+                                    model: serviceSnapshot.model,
+                                    identifier: serviceSnapshot.identifier,
+                                    host: hostValue,
+                                    port: portValue,
+                                    supportsDisplay: serviceSnapshot.supportsDisplay
                                 )
                             }
                         }
                         connection.cancel()
-                        if !resumed { resumed = true; continuation.resume() }
+                        resumeGate.resume(continuation)
                     case .failed, .cancelled:
-                        if !resumed { resumed = true; continuation.resume() }
+                        resumeGate.resume(continuation)
                     default:
                         break
                     }
@@ -277,6 +286,35 @@ final class CastDiscovery {
 
 // MARK: - NetService fallback
 
+private struct PendingCastServiceResolution: Sendable {
+    let serviceName: String
+    let friendlyName: String
+    let model: String
+    let identifier: String
+    let supportsDisplay: Bool
+}
+
+private final class ContinuationResumeGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didResume = false
+
+    func resume(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didResume else { return }
+        didResume = true
+        continuation.resume()
+    }
+}
+
+private final class SendableNetServiceBox: @unchecked Sendable {
+    let service: NetService
+
+    init(_ service: NetService) {
+        self.service = service
+    }
+}
+
 @MainActor
 private final class CastNetServiceDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
     private let browser = NetServiceBrowser()
@@ -314,7 +352,9 @@ private final class CastNetServiceDiscovery: NSObject, NetServiceBrowserDelegate
         didFind service: NetService,
         moreComing: Bool
     ) {
-        Task { @MainActor in
+        let serviceBox = SendableNetServiceBox(service)
+        Task { @MainActor [serviceBox] in
+            let service = serviceBox.service
             self.pendingServices.insert(service)
             service.delegate = self
             service.resolve(withTimeout: 3)
@@ -322,14 +362,18 @@ private final class CastNetServiceDiscovery: NSObject, NetServiceBrowserDelegate
     }
 
     nonisolated func netServiceDidResolveAddress(_ sender: NetService) {
-        Task { @MainActor in
+        let serviceBox = SendableNetServiceBox(sender)
+        Task { @MainActor [serviceBox] in
+            let sender = serviceBox.service
             self.record(sender)
             self.pendingServices.remove(sender)
         }
     }
 
     nonisolated func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        Task { @MainActor in
+        let serviceBox = SendableNetServiceBox(sender)
+        Task { @MainActor [serviceBox] in
+            let sender = serviceBox.service
             self.pendingServices.remove(sender)
         }
     }

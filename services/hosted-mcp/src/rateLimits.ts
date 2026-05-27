@@ -1,6 +1,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 import { HttpError } from "./errors.js";
+import type { HostedMcpFirestore } from "./firestoreTypes.js";
 
 const LIMITS: Record<string, { windowMs: number; max: number }> = {
   "search:standard": { windowMs: 60_000, max: 60 },
@@ -8,7 +9,7 @@ const LIMITS: Record<string, { windowMs: number; max: number }> = {
   "metadata:standard": { windowMs: 60_000, max: 120 }
 };
 
-export async function enforceRateLimit(db: Firestore, uid: string, clientId: string, bucket: string): Promise<void> {
+export async function enforceRateLimit(db: HostedMcpFirestore, uid: string, clientId: string, bucket: string): Promise<void> {
   const spec = LIMITS[bucket] ?? LIMITS["metadata:standard"];
   const windowStart = Math.floor(Date.now() / spec.windowMs) * spec.windowMs;
   const id = `${clientId}_${bucket}_${windowStart}`.replace(/[^A-Za-z0-9_.:-]/g, "_");

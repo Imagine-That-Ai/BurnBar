@@ -44,15 +44,14 @@ class HermesRelayDiscoverySchemaTest {
             ),
         )
 
-        assertNotNull(descriptor)
-        descriptor!!
-        assertEquals("relay-123", descriptor.id)
-        assertEquals("Alberto's MacBook Pro Hermes Relay", descriptor.displayName)
-        assertEquals("relay-public-key", descriptor.relayPublicKey)
-        assertEquals(1, descriptor.relayKeyVersion)
-        assertEquals("minimax-m2.7-highspeed", descriptor.advertisedModel)
-        assertEquals(listOf("chat_completions", "remote_relay", "realtime_relay"), descriptor.capabilities)
-        assertEquals(Instant.parse("2026-05-17T02:11:39.164Z").toEpochMilli(), descriptor.updatedAt)
+        val resolved = requireNotNull(descriptor)
+        assertEquals("relay-123", resolved.id)
+        assertEquals("Alberto's MacBook Pro Hermes Relay", resolved.displayName)
+        assertEquals("relay-public-key", resolved.relayPublicKey)
+        assertEquals(1, resolved.relayKeyVersion)
+        assertEquals("minimax-m2.7-highspeed", resolved.advertisedModel)
+        assertEquals(listOf("chat_completions", "remote_relay", "realtime_relay"), resolved.capabilities)
+        assertEquals(Instant.parse("2026-05-17T02:11:39.164Z").toEpochMilli(), resolved.updatedAt)
     }
 
     @Test
@@ -69,13 +68,12 @@ class HermesRelayDiscoverySchemaTest {
             ),
         )
 
-        assertNotNull(descriptor)
-        descriptor!!
-        assertEquals("legacy-relay", descriptor.id)
-        assertEquals("Legacy relay", descriptor.displayName)
-        assertEquals("legacy-public-key", descriptor.relayPublicKey)
-        assertEquals("deepseek-v4-flash", descriptor.advertisedModel)
-        assertEquals(1778983899164L, descriptor.updatedAt)
+        val resolved = requireNotNull(descriptor)
+        assertEquals("legacy-relay", resolved.id)
+        assertEquals("Legacy relay", resolved.displayName)
+        assertEquals("legacy-public-key", resolved.relayPublicKey)
+        assertEquals("deepseek-v4-flash", resolved.advertisedModel)
+        assertEquals(1778983899164L, resolved.updatedAt)
     }
 
     @Test
@@ -119,16 +117,15 @@ class HermesRelayDiscoverySchemaTest {
             ),
         )
 
-        assertNotNull(record)
-        record!!
-        assertEquals("firebase-uid", record.uid)
-        assertEquals("relay-123", record.connectionId)
-        assertEquals("host-node", record.nodeId)
-        assertEquals("https://relay.example.test/", record.relayURL)
-        assertEquals(listOf("addr-b", "addr-a"), record.directAddresses)
-        assertEquals(1778983899164L, record.publishedAtMillis)
-        assertEquals(1, record.protocolVersion)
-        assertEquals("signature-base64", record.signature)
+        val resolved = requireNotNull(record)
+        assertEquals("firebase-uid", resolved.uid)
+        assertEquals("relay-123", resolved.connectionId)
+        assertEquals("host-node", resolved.nodeId)
+        assertEquals("https://relay.example.test/", resolved.relayURL)
+        assertEquals(listOf("addr-b", "addr-a"), resolved.directAddresses)
+        assertEquals(1778983899164L, resolved.publishedAtMillis)
+        assertEquals(1, resolved.protocolVersion)
+        assertEquals("signature-base64", resolved.signature)
     }
 
     @Test

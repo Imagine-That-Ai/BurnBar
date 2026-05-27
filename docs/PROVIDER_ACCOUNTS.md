@@ -81,6 +81,72 @@ Mac proxy can route Grok traffic, which also populates the pacing log
 
 See [grok.com/plans](https://grok.com/plans) for current tier pricing.
 
+## Endpoint profiles
+
+Some providers expose multiple inference clusters or billing lanes behind
+different API key prefixes. OpenBurnBar models these as **endpoint profiles**
+(`endpointProfileID` on provider accounts and daemon credential slots).
+
+| Field | Purpose |
+|---|---|
+| `endpointProfileID` | Stable profile id (e.g. `mimo.token-plan.sgp`) |
+| `region` | Cluster selector (`cn`, `sgp`, `ams`, `global`) |
+| `authMethodID` | Connect wizard lane (`mimo-token-plan`, `mimo-payg`, …) |
+| `tokenPlanTier` / `tokenPlanBillingCycle` | Quota fallback when vendor remains are unavailable |
+
+Resolution order:
+
+1. Explicit `endpointProfileID` on the account or slot (connect wizard / mobile payload)
+2. Key-prefix inference (`tp-` vs `sk-` for MiMo)
+3. Explicit `region` for Token Plan keys
+
+The daemon router uses `ProviderRouteEndpointResolver` so failover stays within
+the same profile. Quota adapters read the profile’s `quotaRemainsURL` when present.
+
+Profiles are registered in `OpenBurnBarCore` (`ProviderEndpointProfileRegistry`).
+
+### MiniMax
+
+MiniMax is catalog provider `minimax` with two endpoint profiles:
+
+| Profile ID | Key prefix | Inference base | Quota remains |
+|---|---|---|---|
+| `minimax.token-plan` | `sk-cp-…` | `https://api.minimax.io/v1` | `https://www.minimax.io/v1/token_plan/remains` (Coding Plan fallback: `…/api/openplatform/coding_plan/remains`) |
+| `minimax.payg` | `sk-api-…` | `https://api.minimax.io/v1` | Routing + validation only |
+
+The daemon router and macOS quota adapter resolve profiles through
+`ProviderRouteEndpointResolver`. Cloud Functions try Token Plan remains first,
+then fall back to the Coding Plan endpoint for legacy `sk-cp-…` keys.
+
+## Xiaomi MiMo
+
+MiMo is catalog provider `mimo` (`AgentProvider.mimo`, display **Xiaomi MiMo**).
+
+| Lane | Key prefix | Inference base | Quota |
+|---|---|---|---|
+| Token Plan | `tp-…` | `https://token-plan-{cn,sgp,ams}.xiaomimimo.com/v1` | L1 `GET …/token_plan/remains`; L2 tier cap ledger; L3 unavailable |
+| Pay-as-you-go | `sk-…` | `https://api.xiaomimimo.com/v1` | Routing + validation only (no balance API) |
+
+### Connect (Mac daemon slot)
+
+1. Open **Settings → Providers → MiMo** (plan wizard).
+2. Choose **Token Plan** or **Pay-as-you-go**.
+3. For Token Plan, pick cluster (`cn` / `sgp` / `ams`) and subscription tier.
+4. Paste the API key. Token Plan saves `endpointProfileID`, `region`, tier, and billing cycle on the slot.
+
+Global (`region: global`) is rejected for Token Plan connect — pick a regional cluster.
+
+### Connect (mobile cloud account)
+
+iOS and Android call `connectProviderAccount` with the same metadata fields as
+Mac slots. Hosted OAuth is not used for MiMo (API key only).
+
+### Quota settings sync
+
+Mac quota command center mirrors Token Plan region / tier / billing cycle into
+`QuotaSettings` so `MimoQuotaAdapter` can fall back to tier caps when the vendor
+remains endpoint returns no buckets.
+
 ## Routing Policy
 
 Provider accounts are the router inventory. Quota snapshots are health signals,

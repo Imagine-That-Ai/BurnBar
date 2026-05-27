@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { OpenBurnBarExtensionController } from '../src/state/controller';
-import type { OpenBurnBarState } from '../src/state/controller';
-import type { BurnBarRunProjection } from '../src/types';
+import type { OpenBurnBarControllerSnapshotSource } from '../../src/state/controller';
+import type { BurnBarRunProjection } from '../../src/types';
+import { createSnapshotController } from '../helpers/controllerMock';
+import { themeIconId } from '../helpers/vscodeTestHelpers';
 
 // Mock vscode
 vi.mock('vscode', () => ({
@@ -94,7 +95,7 @@ describe('OpenBurnBarRunTreeItem', () => {
       const item = new OpenBurnBarRunTreeItem(run);
 
       expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-      expect((item.iconPath as vscode.ThemeIcon).id).toBe('pass');
+      expect(themeIconId(item.iconPath)).toBe('pass');
     });
 
     it('should map failed phase to warning icon', () => {
@@ -102,7 +103,7 @@ describe('OpenBurnBarRunTreeItem', () => {
       const item = new OpenBurnBarRunTreeItem(run);
 
       expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-      expect((item.iconPath as vscode.ThemeIcon).id).toBe('warning');
+      expect(themeIconId(item.iconPath)).toBe('warning');
     });
 
     it('should map waiting_on_companion phase to clock icon', () => {
@@ -110,7 +111,7 @@ describe('OpenBurnBarRunTreeItem', () => {
       const item = new OpenBurnBarRunTreeItem(run);
 
       expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-      expect((item.iconPath as vscode.ThemeIcon).id).toBe('clock');
+      expect(themeIconId(item.iconPath)).toBe('clock');
     });
 
     it('should map planning phase to pulse icon', () => {
@@ -118,7 +119,7 @@ describe('OpenBurnBarRunTreeItem', () => {
       const item = new OpenBurnBarRunTreeItem(run);
 
       expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-      expect((item.iconPath as vscode.ThemeIcon).id).toBe('pulse');
+      expect(themeIconId(item.iconPath)).toBe('pulse');
     });
 
     it('should map model_streaming phase to pulse icon', () => {
@@ -126,7 +127,7 @@ describe('OpenBurnBarRunTreeItem', () => {
       const item = new OpenBurnBarRunTreeItem(run);
 
       expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-      expect((item.iconPath as vscode.ThemeIcon).id).toBe('pulse');
+      expect(themeIconId(item.iconPath)).toBe('pulse');
     });
 
     it('should map executing_tool phase to pulse icon', () => {
@@ -134,7 +135,7 @@ describe('OpenBurnBarRunTreeItem', () => {
       const item = new OpenBurnBarRunTreeItem(run);
 
       expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-      expect((item.iconPath as vscode.ThemeIcon).id).toBe('pulse');
+      expect(themeIconId(item.iconPath)).toBe('pulse');
     });
 
     it('should map cancelled phase to circle-slash icon', () => {
@@ -142,7 +143,7 @@ describe('OpenBurnBarRunTreeItem', () => {
       const item = new OpenBurnBarRunTreeItem(run);
 
       expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-      expect((item.iconPath as vscode.ThemeIcon).id).toBe('circle-slash');
+      expect(themeIconId(item.iconPath)).toBe('circle-slash');
     });
 
     it('should map awaiting_approval phase to question icon', () => {
@@ -150,7 +151,7 @@ describe('OpenBurnBarRunTreeItem', () => {
       const item = new OpenBurnBarRunTreeItem(run);
 
       expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-      expect((item.iconPath as vscode.ThemeIcon).id).toBe('question');
+      expect(themeIconId(item.iconPath)).toBe('question');
     });
 
     it('should map idle phase to circle-large-outline icon', () => {
@@ -158,7 +159,7 @@ describe('OpenBurnBarRunTreeItem', () => {
       const item = new OpenBurnBarRunTreeItem(run);
 
       expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-      expect((item.iconPath as vscode.ThemeIcon).id).toBe('circle-large-outline');
+      expect(themeIconId(item.iconPath)).toBe('circle-large-outline');
     });
   });
 
@@ -200,14 +201,11 @@ describe('OpenBurnBarRunTreeItem', () => {
 });
 
 describe('OpenBurnBarRunListTreeDataProvider', () => {
-  let mockController: OpenBurnBarExtensionController;
+  let mockController: OpenBurnBarControllerSnapshotSource;
   let provider: OpenBurnBarRunListTreeDataProvider;
 
   beforeEach(() => {
-    mockController = {
-      onDidChangeState: vi.fn(() => ({ dispose: vi.fn() })),
-      snapshot: createMockState([])
-    } as any;
+    mockController = createSnapshotController({ runs: [] });
 
     provider = new OpenBurnBarRunListTreeDataProvider(mockController);
   });

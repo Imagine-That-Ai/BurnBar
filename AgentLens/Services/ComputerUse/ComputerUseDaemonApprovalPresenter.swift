@@ -22,46 +22,56 @@ final class ComputerUseDaemonApprovalPresenter {
 
     private init() {}
 
+    private static let cadenceID = "computer-use-daemon-approval-poll"
+
     func start(daemonManager: OpenBurnBarDaemonManager) {
         self.daemonManager = daemonManager
         guard pollTask == nil else { return }
-        pollTask = Task { [weak self] in
-            await self?.pollLoop()
-        }
+        // Coordinator-managed cadence: 750 ms active, 5 s background,
+        // paused on display sleep. Approvals are user-facing — the
+        // moment a request shows up we want the panel up — but the
+        // poll has zero cost when the laptop sleeps. The cadence
+        // gates itself behind daemon health so we never spam the
+        // bridge while the daemon is restarting.
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceID,
+                activeInterval: 0.75,
+                backgroundInterval: 5,
+                sleepInterval: nil,
+                isEnabled: { [weak self] in
+                    guard let daemonManager = self?.daemonManager else { return false }
+                    if case .healthy = daemonManager.status { return true }
+                    return false
+                },
+                fireImmediately: false,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.pollOnce()
+                }
+            )
+        )
+        pollTask = Task { @MainActor in }
     }
 
     func stop() {
         pollTask?.cancel()
         pollTask = nil
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceID)
         closePanel()
     }
 
-    private func pollLoop() async {
-        while !Task.isCancelled {
-            guard let daemonManager else {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                continue
+    private func pollOnce() async {
+        guard let daemonManager else { return }
+        guard activeApprovalId == nil else { return }
+        do {
+            let response = try await daemonManager.pendingComputerUseApprovals()
+            if let request = response.requests.first {
+                present(request, daemonManager: daemonManager)
             }
-
-            guard case .healthy = daemonManager.status else {
-                lastError = nil
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                continue
-            }
-
-            if activeApprovalId == nil {
-                do {
-                    let response = try await daemonManager.pendingComputerUseApprovals()
-                    if let request = response.requests.first {
-                        present(request, daemonManager: daemonManager)
-                    }
-                    lastError = nil
-                } catch {
-                    lastError = error.localizedDescription
-                }
-            }
-
-            try? await Task.sleep(nanoseconds: 750_000_000)
+            lastError = nil
+        } catch {
+            lastError = error.localizedDescription
         }
     }
 

@@ -1,5 +1,5 @@
 import Foundation
-import GRDB
+@preconcurrency import GRDB
 import OpenBurnBarCore
 
 // MARK: - DataStoreActor
@@ -60,6 +60,10 @@ actor DataStoreActor {
 
     func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
         try usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
+    }
+
+    func insertUsages(_ usages: [TokenUsage]) async throws {
+        try usageStore.insert(usages)
     }
 
     func deleteAll() async throws {
@@ -204,20 +208,21 @@ actor DataStoreActor {
             allArgs.append(contentsOf: baseArgs)
         }
         let unionSQL = "SELECT COALESCE(SUM(cnt), 0) FROM (\(unionParts.joined(separator: " UNION ALL ")))"
+        let unionArguments = allArgs
 
         return try await dbQueue.read { db -> Int in
-            let value = try Int64.fetchOne(db, sql: unionSQL, arguments: StatementArguments(allArgs)) ?? 0
+            let value = try Int64.fetchOne(db, sql: unionSQL, arguments: StatementArguments(unionArguments)) ?? 0
             return Int(value)
         }
     }
 }
 
-// MARK: - DataStore (deprecated typealias)
+// MARK: - DataStore compatibility typealias
 //
 // The DataStore class has been renamed to DataStoreCoordinator and moved to
-// AgentLens/Services/DataStore/DataStoreCoordinator.swift. All existing code
-// that imports this module will continue to work via the typealias below.
-// TODO(1.0): Remove this typealias and update all import sites.
+// AgentLens/Services/DataStore/DataStoreCoordinator.swift. The compatibility
+// name remains intentionally warning-free until the migration can land as a
+// focused call-site rename instead of drowning Swift 6 diagnostics in duplicate
+// deprecation noise.
 
-@available(*, deprecated, message: "DataStore is renamed to DataStoreCoordinator. Update your import to use DataStoreCoordinator instead.")
 typealias DataStore = DataStoreCoordinator

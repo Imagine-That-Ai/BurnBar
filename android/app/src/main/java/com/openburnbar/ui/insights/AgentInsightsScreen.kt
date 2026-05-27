@@ -16,9 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -199,15 +196,28 @@ private fun StatusBadge(status: AgentInsightsHeader.Status) {
 
 @Composable
 private fun KPIStrip(strip: AgentInsightsKPIStrip) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.height(180.dp)
+    val items = strip.ordered
+    Column(
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(strip.ordered, key = { it.id }) { kpi ->
-            KPITile(kpi = kpi)
+        val chunked = items.chunked(2)
+        chunked.forEach { rowItems ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                rowItems.forEach { kpi ->
+                    Box(modifier = Modifier.weight(1f)) {
+                        KPITile(kpi = kpi)
+                    }
+                }
+                if (rowItems.size < 2) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
         }
     }
 }
@@ -377,14 +387,25 @@ private fun CanvasGridSection(canvases: List<InsightCanvas>, onTap: (InsightCanv
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.height(((canvases.size + 1) / 2 * 130).dp)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(canvases, key = { it.id }) { canvas ->
-                CanvasCard(canvas = canvas, onTap = { onTap(canvas) })
+            val chunked = canvases.chunked(2)
+            chunked.forEach { rowCanvases ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    rowCanvases.forEach { canvas ->
+                        Box(modifier = Modifier.weight(1f)) {
+                            CanvasCard(canvas = canvas, onTap = { onTap(canvas) })
+                        }
+                    }
+                    if (rowCanvases.size < 2) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
     }

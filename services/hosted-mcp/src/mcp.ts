@@ -8,6 +8,8 @@ import { callTool, listMcpTools } from "./toolRegistry.js";
 import { jsonRpcError, McpError } from "./errors.js";
 import { truncateJson } from "./redaction.js";
 import { listResources, readConversationBody } from "./resources.js";
+import type { HostedMcpFirestore } from "./firestoreTypes.js";
+import { isFullFirestore } from "./firestoreTypes.js";
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -16,9 +18,9 @@ interface JsonRpcRequest {
   params?: Record<string, unknown>;
 }
 
-export async function handleMcpRequest(db: Firestore, claims: AccessTokenClaims, input: unknown) {
-  const req = input as JsonRpcRequest;
-  if (!req || req.jsonrpc !== "2.0" || typeof req.method !== "string") {
+export async function handleMcpRequest(db: HostedMcpFirestore, claims: AccessTokenClaims, input: unknown) {
+  const req = parseJsonRpcRequest(input);
+  if (!req) {
     return jsonRpcError(null, -32600, "Invalid JSON-RPC request.");
   }
   try {
@@ -30,7 +32,7 @@ export async function handleMcpRequest(db: Firestore, claims: AccessTokenClaims,
   }
 }
 
-async function dispatch(db: Firestore, claims: AccessTokenClaims, req: JsonRpcRequest): Promise<unknown> {
+async function dispatch(db: HostedMcpFirestore, claims: AccessTokenClaims, req: JsonRpcRequest): Promise<unknown> {
   switch (req.method) {
     case "initialize":
       return {
@@ -43,9 +45,12 @@ async function dispatch(db: Firestore, claims: AccessTokenClaims, req: JsonRpcRe
       return listMcpTools();
     case "tools/call": {
       const name = typeof req.params?.name === "string" ? req.params.name : "";
-      const args = req.params?.arguments && typeof req.params.arguments === "object"
-        ? req.params.arguments as Record<string, unknown>
+      const args = isRecord(req.params?.arguments)
+        ? req.params.arguments
         : {};
+      if (!isFullFirestore(db)) {
+        throw new McpError(-32603, "Tool execution requires a full Firestore client.");
+      }
       return callTool({ db, claims }, name, args);
     }
     case "resources/list":
@@ -61,7 +66,23 @@ async function dispatch(db: Firestore, claims: AccessTokenClaims, req: JsonRpcRe
   }
 }
 
-async function requireResourceAccess(db: Firestore, claims: AccessTokenClaims, scope: string, rateLimitBucket: string) {
+function parseJsonRpcRequest(input: unknown): JsonRpcRequest | undefined {
+  if (!isRecord(input) || input.jsonrpc !== "2.0" || typeof input.method !== "string") {
+    return undefined;
+  }
+  return {
+    jsonrpc: "2.0",
+    id: typeof input.id === "string" || typeof input.id === "number" || input.id === null ? input.id : undefined,
+    method: input.method,
+    params: isRecord(input.params) ? input.params : undefined,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function requireResourceAccess(db: HostedMcpFirestore, claims: AccessTokenClaims, scope: string, rateLimitBucket: string) {
   requireScope(claims, scope);
   await requireActiveRemoteMcpClient(claims.sub, claims.client_id, db);
   await requireActiveBurnBarPro(claims.sub, db);

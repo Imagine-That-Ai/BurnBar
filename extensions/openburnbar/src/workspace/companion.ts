@@ -97,7 +97,7 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
     default: {
       // Exhaustiveness check - this should never be reached
       const exhaustiveCheck: never = request;
-      return Promise.reject(new Error(`Unknown method: ${(exhaustiveCheck as { method: string }).method}`));
+      return Promise.reject(new Error(`Unknown workspace method: ${String(exhaustiveCheck)}`));
     }
     }
   }

@@ -14,7 +14,7 @@ import SwiftUI
 ///    highlights briefly, and focuses the bound `@FocusState` if a `focusID`
 ///    was supplied.
 @Observable
-final class SettingsRouter {
+final class SettingsRouter: @unchecked Sendable {
 
     /// Current search query. Empty string means "no search active".
     var query: String = ""

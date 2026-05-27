@@ -99,7 +99,7 @@ final class ProviderConnectionStore {
         snapshots.compactMap { $0.filteringToDisplayableQuotaSignal() }
     }
 
-    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
+    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?, metadata: ProviderAccountConnectMetadata? = nil) async -> ProviderAccountDoc? {
         connectingProvider = providerID.rawValue
         error = nil
         defer { connectingProvider = nil }
@@ -109,7 +109,8 @@ final class ProviderConnectionStore {
                 providerID: providerID,
                 credential: credential,
                 kind: kind,
-                label: label
+                label: label,
+                metadata: metadata
             )
             await load()
             return doc

@@ -9,6 +9,7 @@
 import * as functions from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { getConfig } from "./config.js";
+import { isRecord } from "./guards.js";
 
 /**
  * Assert that the request carries a valid Firebase Auth token and that the
@@ -23,10 +24,17 @@ export function assertOwnership(
   expectedUid: string
 ): void {
   assertAuth(request);
-  if (request.auth!.uid !== expectedUid) {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new functions.HttpsError(
+      "unauthenticated",
+      "Request must be authenticated with Firebase Auth."
+    );
+  }
+  if (uid !== expectedUid) {
     throw new functions.HttpsError(
       "permission-denied",
-      `Caller UID ${request.auth!.uid} does not own namespace ${expectedUid}.`
+      `Caller UID ${uid} does not own namespace ${expectedUid}.`
     );
   }
 }
@@ -57,10 +65,9 @@ export function assertAuth(request: CallableRequest): void {
 export function assertAppCheck(request: CallableRequest): void {
   if (!getConfig().enforceAppCheck) return;
 
-  // In v2 callable functions, App Check info is available on the request.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const appCheck = (request as any).app;
-  if (!appCheck || appCheck.appId == null) {
+  const appCheck = "app" in request ? request.app : undefined;
+  const appId = isRecord(appCheck) ? appCheck.appId : undefined;
+  if (appId == null) {
     throw new functions.HttpsError(
       "unauthenticated",
       "App Check attestation is required."

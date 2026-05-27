@@ -38,6 +38,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.random.Random
@@ -200,6 +201,64 @@ class MediaControlStreamCoordinator(
     suspend fun send(frame: HermesRealtimeRelayFrame) {
         val stream = awaitLiveStream()
         stream.send(frame)
+    }
+
+    suspend fun ensureResponsive(
+        freshnessIntervalMillis: Long = 2_000L,
+        probeTimeoutMillis: Long = 1_000L,
+    ): Boolean {
+        val now = System.currentTimeMillis()
+        val lastHeartbeat = _lastPeerHeartbeatAtMillis.value
+        if (_phase.value == Phase.Live && lastHeartbeat > 0L && now - lastHeartbeat <= freshnessIntervalMillis) {
+            return true
+        }
+
+        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val stream = mutex.withLock { currentStream }
+        if (stream == null) {
+            _phase.value = Phase.Reconnecting(nextAttemptInMillis = initialBackoffMillis)
+            return false
+        }
+
+        val beforeProbe = _lastPeerHeartbeatAtMillis.value
+        return try {
+            val sentAtMillis = System.currentTimeMillis()
+            stream.send(makePresenceHeartbeat(uid = uid, connectionID = connectionID))
+            pendingHeartbeatSentAtMillis = sentAtMillis
+
+            val replied = withTimeoutOrNull(probeTimeoutMillis.coerceAtLeast(1L)) {
+                while (_lastPeerHeartbeatAtMillis.value <= beforeProbe) {
+                    delay(25)
+                }
+                true
+            } == true
+
+            if (replied) {
+                true
+            } else {
+                mutex.withLock {
+                    if (currentStream === stream) {
+                        currentStream = null
+                    }
+                }
+                stream.runCatching { close() }
+                _phase.value = Phase.Reconnecting(nextAttemptInMillis = initialBackoffMillis)
+                false
+            }
+        } catch (t: CancellationException) {
+            throw t
+        } catch (t: Throwable) {
+            mutex.withLock {
+                if (currentStream === stream) {
+                    currentStream = null
+                }
+            }
+            stream.runCatching { close() }
+            _phase.value = Phase.Reconnecting(nextAttemptInMillis = initialBackoffMillis)
+            logWarning("Mercury control responsiveness probe failed connectionID=$connectionID error=${t.message}", t)
+            false
+        }
     }
 
     suspend fun requestMirror(

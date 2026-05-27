@@ -7,7 +7,9 @@ enum OpenBurnBarDaemonSocketClient {
         legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
     )
     private static let daemonSocketAuthTokenLock = NSLock()
-    private static var cachedDaemonSocketAuthToken: String?
+    // AUDIT(nonisolated): all reads/writes go through
+    // `daemonSocketAuthTokenLock`; the raw storage is never accessed directly.
+    nonisolated(unsafe) private static var cachedDaemonSocketAuthToken: String?
 
     static func cacheDaemonSocketAuthToken(_ token: String?) {
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)

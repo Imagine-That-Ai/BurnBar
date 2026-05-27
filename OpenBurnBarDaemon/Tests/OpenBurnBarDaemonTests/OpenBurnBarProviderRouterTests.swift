@@ -1189,6 +1189,73 @@ final class BurnBarProviderRouterTests: XCTestCase {
                        "Must not report blocked exact-model routes when every route serves the required canonical model.")
     }
 
+    func testRouterResolvesMimoTokenPlanRegionalBaseURL() async throws {
+        let harness = try makeHarness(name: "mimo-token-plan-profile")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "mimo",
+                isEnabled: true,
+                baseURL: "https://api.xiaomimimo.com/v1",
+                preferredModelIDs: ["mimo-v2.5"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "mimo",
+            slotID: "tp-sgp",
+            label: "MiMo TP SGP",
+            apiKey: "tp-test-key",
+            region: .sgp,
+            authMethodID: "mimo-token-plan"
+        )
+
+        let route = try await harness.router.route(modelName: "mimo-v2.5")
+        XCTAssertEqual(route.providerID, "mimo")
+        XCTAssertEqual(route.endpointProfileID, "mimo.token-plan.sgp")
+        XCTAssertEqual(route.baseURL, "https://token-plan-sgp.xiaomimimo.com/v1")
+    }
+
+    func testRouterResolvesMiniMaxTokenPlanProfile() async throws {
+        let harness = try makeHarness(name: "minimax-token-plan-profile")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "minimax",
+                isEnabled: true,
+                baseURL: "https://api.minimax.io/v1",
+                preferredModelIDs: ["minimax-m2.7-highspeed"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "minimax",
+            slotID: "cp-default",
+            label: "MiniMax Coding Plan",
+            apiKey: "sk-cp-test-key",
+            authMethodID: "minimax-coding-plan"
+        )
+
+        let route = try await harness.router.route(modelName: "minimax-m2.7-highspeed")
+        XCTAssertEqual(route.providerID, "minimax")
+        XCTAssertEqual(route.endpointProfileID, "minimax.token-plan")
+        XCTAssertEqual(route.baseURL, "https://api.minimax.io/v1")
+    }
+
+    func testRouterResolvesMiniMaxPaygProfileForLegacySecret() async throws {
+        let harness = try makeHarness(name: "minimax-payg-legacy")
+        try await harness.configStore.setSecret("sk-api-test-key", for: "minimax")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "minimax",
+                isEnabled: true,
+                baseURL: "https://api.minimax.io/v1",
+                preferredModelIDs: ["minimax-m2.7-highspeed"]
+            )
+        )
+
+        let route = try await harness.router.route(modelName: "MiniMax-M2.7-highspeed")
+        XCTAssertEqual(route.providerID, "minimax")
+        XCTAssertEqual(route.endpointProfileID, "minimax.payg")
+        XCTAssertEqual(route.baseURL, "https://api.minimax.io/v1")
+    }
+
     private func makeHarness(
         name: String,
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog

@@ -166,7 +166,7 @@ final class BurnBarHostedAdapterWireTests: XCTestCase {
         let url = URL(string: "https://us-central1-burnbar.test/insightsHostedAnswer")!
         let session = StubURLProtocol.makeSession()
         StubURLProtocol.handler = { _ in
-            let body = try! JSONSerialization.data(withJSONObject: [
+            let body = try JSONSerialization.data(withJSONObject: [
                 "error": [
                     "status": "PERMISSION_DENIED",
                     "message": "Active BurnBar Pro subscription required for hosted Intelligence Brief answers.",
@@ -200,7 +200,7 @@ final class BurnBarHostedAdapterWireTests: XCTestCase {
         let url = URL(string: "https://us-central1-burnbar.test/insightsHostedAnswer")!
         let session = StubURLProtocol.makeSession()
         StubURLProtocol.handler = { _ in
-            let body = try! JSONSerialization.data(withJSONObject: [
+            let body = try JSONSerialization.data(withJSONObject: [
                 "error": [
                     "status": "UNAUTHENTICATED",
                     "message": "Request must be authenticated with Firebase Auth."
@@ -252,7 +252,7 @@ final class BurnBarHostedAdapterWireTests: XCTestCase {
         let url = URL(string: "https://us-central1-burnbar.test/insightsHostedAnswer")!
         let session = StubURLProtocol.makeSession()
         StubURLProtocol.handler = { _ in
-            let body = try! JSONSerialization.data(withJSONObject: [
+            let body = try JSONSerialization.data(withJSONObject: [
                 "error": [
                     "status": "INTERNAL",
                     "message": "OpenRouter returned non-JSON: <html>503 upstream</html>"

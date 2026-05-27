@@ -156,6 +156,21 @@ data class ProviderAccount(
     @PropertyName("schemaVersion")
     val schemaVersion: Int = 0,
 
+    @PropertyName("endpointProfileID")
+    val endpointProfileId: String? = null,
+
+    @PropertyName("region")
+    val region: String? = null,
+
+    @PropertyName("tokenPlanTier")
+    val tokenPlanTier: String? = null,
+
+    @PropertyName("tokenPlanBillingCycle")
+    val tokenPlanBillingCycle: String? = null,
+
+    @PropertyName("authMethodID")
+    val authMethodId: String? = null,
+
     @PropertyName("createdAt")
     val createdAt: String? = null,
 

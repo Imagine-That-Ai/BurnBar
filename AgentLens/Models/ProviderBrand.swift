@@ -114,6 +114,8 @@ extension ProviderBrand {
             candidates.append(contentsOf: ["ZaiLogo", "ZaiProviderLogo"])
         case "minimax", "mini-max":
             candidates.append("MiniMaxLogo")
+        case "mimo", "xiaomi", "xiaomimimo":
+            candidates.append("MimoLogo")
         case "moonshot", "kimi":
             candidates.append(contentsOf: ["KimiLogo", "MoonshotLogo", "KimiProviderLogo"])
         case "mlx":
@@ -164,6 +166,8 @@ extension ProviderBrand {
         case "alibaba":     return Color(hex: "FF6A00")
         case "zai":         return Color(hex: "8B5CF6")
         case "minimax":     return Color(hex: "F59E0B")
+        case "mimo", "xiaomi", "xiaomimimo":
+            return Color(hex: "FF6900")
         case "ollama":      return Color(hex: "8B8589")
         case "moonshot":    return Color(hex: "6366F1")
         case "misc":        return DesignSystem.Colors.textSecondary

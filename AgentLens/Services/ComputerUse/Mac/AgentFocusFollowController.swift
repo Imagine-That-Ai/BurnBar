@@ -239,9 +239,9 @@ final class AgentFocusFollowController {
         let appElement = AXUIElementCreateApplication(processIdentifier)
         var focused: CFTypeRef?
         let focusedErr = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focused)
-        guard focusedErr == .success, let window = focused else { return nil }
+        guard focusedErr == .success, let window = axElement(focused) else { return nil }
         var title: CFTypeRef?
-        let titleErr = AXUIElementCopyAttributeValue(window as! AXUIElement, kAXTitleAttribute as CFString, &title)
+        let titleErr = AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &title)
         guard titleErr == .success else { return nil }
         return (title as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmptyForFocusFollow
     }

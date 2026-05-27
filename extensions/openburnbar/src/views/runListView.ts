@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import type { OpenBurnBarExtensionController } from '../state/controller';
+import type { OpenBurnBarControllerSnapshotSource } from '../state/controller';
 import type { BurnBarRunProjection } from '../types';
 
 export class OpenBurnBarRunTreeItem extends vscode.TreeItem {
@@ -18,7 +18,7 @@ export class OpenBurnBarRunListTreeDataProvider implements vscode.TreeDataProvid
   private readonly eventEmitter = new vscode.EventEmitter<OpenBurnBarRunTreeItem | undefined | null | void>();
   private readonly stateSubscription: vscode.Disposable;
 
-  constructor(private readonly controller: OpenBurnBarExtensionController) {
+  constructor(private readonly controller: OpenBurnBarControllerSnapshotSource) {
     this.stateSubscription = controller.onDidChangeState(() => this.eventEmitter.fire());
   }
 

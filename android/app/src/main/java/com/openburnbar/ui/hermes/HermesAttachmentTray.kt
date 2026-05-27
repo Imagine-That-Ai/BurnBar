@@ -123,9 +123,10 @@ private fun AttachmentChip(
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
                 .padding(AuroraSpacing.sm.dp)
         ) {
-            if (thumbnail != null) {
+            val previewThumbnail = thumbnail
+            if (previewThumbnail != null) {
                 Image(
-                    bitmap = thumbnail!!,
+                    bitmap = previewThumbnail,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

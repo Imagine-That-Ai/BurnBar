@@ -14,12 +14,12 @@ import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.IrohRelayTransport
 import com.openburnbar.irohrelay.LoopbackIrohRelayRendezvous
 import com.openburnbar.irohrelay.LoopbackIrohRelayTransport
+import com.openburnbar.test.ecPublicKey
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import java.security.KeyPair
-import java.security.interfaces.ECPublicKey
 import java.util.Base64
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -54,7 +54,7 @@ class HermesIrohRelayTransportTest {
     private val pairingPublicKeyRaw: ByteArray
     private val relayKeyPair: KeyPair = HermesRelayCrypto.generateEphemeralKeyPair()
     private val relayPublicX963: ByteArray =
-        HermesRelayCrypto.encodeUncompressedPublicKey(relayKeyPair.public as ECPublicKey)
+        HermesRelayCrypto.encodeUncompressedPublicKey(ecPublicKey(relayKeyPair.public))
     private val rendezvous = LoopbackIrohRelayRendezvous()
 
     init {

@@ -17,6 +17,7 @@ final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendabl
     private var cachedSnippets: [TextExpansionSnippet] = []
     private var lastSnippetLoad = Date.distantPast
     private var suppressEventsUntil = Date.distantPast
+    private var observers: [NSObjectProtocol] = []
 
     init(
         dataStore: DataStoreCoordinator,
@@ -32,6 +33,55 @@ final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendabl
 
     @MainActor
     func start() {
+        installObserversIfNeeded()
+        reconcileEventTap()
+    }
+
+    @MainActor
+    func stop() {
+        stopEventTap()
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        observers = []
+    }
+
+    @MainActor
+    private func installObserversIfNeeded() {
+        guard observers.isEmpty else { return }
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(
+            forName: .textExpansionMacGlobalExpansionEnabledDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reconcileEventTap()
+            }
+        })
+        observers.append(center.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reconcileEventTap()
+            }
+        })
+    }
+
+    @MainActor
+    private func reconcileEventTap() {
+        guard settingsManager.textExpansion.macGlobalExpansionEnabled,
+              inputController.isAccessibilityTrusted() else {
+            stopEventTap()
+            return
+        }
+        startEventTapIfNeeded()
+    }
+
+    @MainActor
+    private func startEventTapIfNeeded() {
         guard eventTap == nil else { return }
         let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
@@ -53,7 +103,7 @@ final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendabl
     }
 
     @MainActor
-    func stop() {
+    private func stopEventTap() {
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
@@ -112,9 +162,15 @@ final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendabl
         }
 
         let boundary = match.boundary.map(String.init) ?? ""
+        let typedToken: String
+        if match.boundary == nil {
+            typedToken = String(match.token.dropLast(chars.count))
+        } else {
+            typedToken = match.token
+        }
         setSuppressEvents(for: 1.5)
         DispatchQueue.main.async { [weak self] in
-            self?.replaceTypedToken(token: match.token, replacement: match.snippet.body + boundary)
+            self?.replaceTypedToken(token: typedToken, replacement: match.snippet.body + boundary)
         }
         return nil
     }
@@ -157,8 +213,7 @@ final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendabl
             in: buffer,
             snippets: snippets,
             surface: .macGlobal,
-            bundleIdentifier: bundleIdentifier,
-            expandWhenUnambiguous: false
+            bundleIdentifier: bundleIdentifier
         )
     }
 

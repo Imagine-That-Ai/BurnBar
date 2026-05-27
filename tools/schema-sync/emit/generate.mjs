@@ -162,6 +162,123 @@ data class FirestoreQuotaSnapshotDoc(
       },
     },
   },
+  "provider-account": {
+    models: {
+      ProviderAccountDoc: {
+        ts: `export interface ProviderAccountDoc {
+  id: string;
+  providerID: string;
+  label: string;
+  identityHint?: string;
+  status: string;
+  credentialKind: string;
+  storageScope: string;
+  redactedLabel: string;
+  sourceDeviceID?: string;
+  linkedSwitcherProfileID?: string;
+  isDefault: boolean;
+  sortKey: number;
+  lastValidatedAt?: string;
+  lastRefreshAt?: string;
+  lastErrorCode?: string;
+  endpointProfileID?: string;
+  region?: "cn" | "sgp" | "ams" | "global";
+  tokenPlanTier?: "lite" | "standard" | "pro" | "max";
+  tokenPlanBillingCycle?: "monthly" | "annual";
+  authMethodID?: string;
+  schemaVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}`,
+        swift: `/// Firestore: users/{uid}/provider_accounts/{accountID}
+public struct FirestoreProviderAccountDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var providerID: String
+    public var label: String
+    public var identityHint: String?
+    public var status: String
+    public var credentialKind: String
+    public var storageScope: String
+    public var redactedLabel: String
+    public var sourceDeviceID: String?
+    public var linkedSwitcherProfileID: String?
+    public var isDefault: Bool
+    public var sortKey: Int
+    public var lastValidatedAt: String?
+    public var lastRefreshAt: String?
+    public var lastErrorCode: String?
+    public var endpointProfileID: String?
+    public var region: String?
+    public var tokenPlanTier: String?
+    public var tokenPlanBillingCycle: String?
+    public var authMethodID: String?
+    public var schemaVersion: Int
+    public var createdAt: String
+    public var updatedAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreProviderAccountDoc(
+    val id: String = "",
+    @get:PropertyName("providerID") @set:PropertyName("providerID")
+    var providerId: String = "",
+    val label: String = "",
+    val identityHint: String? = null,
+    val status: String = "",
+    val credentialKind: String = "",
+    val storageScope: String = "",
+    val redactedLabel: String = "",
+    @get:PropertyName("sourceDeviceID") @set:PropertyName("sourceDeviceID")
+    var sourceDeviceId: String? = null,
+    @get:PropertyName("linkedSwitcherProfileID") @set:PropertyName("linkedSwitcherProfileID")
+    var linkedSwitcherProfileId: String? = null,
+    @get:PropertyName("isDefault") @set:PropertyName("isDefault")
+    var isDefault: Boolean = false,
+    val sortKey: Long = 0,
+    val lastValidatedAt: String? = null,
+    val lastRefreshAt: String? = null,
+    val lastErrorCode: String? = null,
+    @get:PropertyName("endpointProfileID") @set:PropertyName("endpointProfileID")
+    var endpointProfileId: String? = null,
+    val region: String? = null,
+    val tokenPlanTier: String? = null,
+    val tokenPlanBillingCycle: String? = null,
+    @get:PropertyName("authMethodID") @set:PropertyName("authMethodID")
+    var authMethodId: String? = null,
+    val schemaVersion: Long = 0,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)`,
+      },
+      ProviderAccountConnectContext: {
+        ts: `export interface ProviderAccountConnectContext {
+  endpointProfileID?: string;
+  region?: "cn" | "sgp" | "ams" | "global";
+  tokenPlanTier?: "lite" | "standard" | "pro" | "max";
+  tokenPlanBillingCycle?: "monthly" | "annual";
+  authMethodID?: string;
+}`,
+        swift: `public struct FirestoreProviderAccountConnectContext: Codable, Sendable, Equatable {
+    public var endpointProfileID: String?
+    public var region: String?
+    public var tokenPlanTier: String?
+    public var tokenPlanBillingCycle: String?
+    public var authMethodID: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreProviderAccountConnectContext(
+    @get:PropertyName("endpointProfileID") @set:PropertyName("endpointProfileID")
+    var endpointProfileId: String? = null,
+    val region: String? = null,
+    val tokenPlanTier: String? = null,
+    val tokenPlanBillingCycle: String? = null,
+    @get:PropertyName("authMethodID") @set:PropertyName("authMethodID")
+    var authMethodId: String? = null,
+)`,
+      },
+    },
+  },
 };
 
 function emitTypeScript(domainId, models) {

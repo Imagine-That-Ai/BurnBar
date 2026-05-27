@@ -1,5 +1,5 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import OpenBurnBarMedia
 
 /// Mac mic capture for Phase 4 audio. AVAudioEngine + Voice-Processing
@@ -68,9 +68,10 @@ final class MicrophoneCapturePipeline {
             }
             if status == .error || error != nil { return }
 
-            let snapshot = converted
-            Task.detached(priority: .userInitiated) { [weak self] in
-                await self?.onPCMFrame(snapshot)
+            let snapshot = SendableAudioPCMBuffer(converted)
+            Task(priority: .userInitiated) { @MainActor [weak self, snapshot] in
+                guard let onPCMFrame = self?.onPCMFrame else { return }
+                await onPCMFrame(snapshot.buffer)
             }
         }
 
@@ -85,5 +86,13 @@ final class MicrophoneCapturePipeline {
     func stop() {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+    }
+}
+
+private struct SendableAudioPCMBuffer: @unchecked Sendable {
+    let buffer: AVAudioPCMBuffer
+
+    init(_ buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
     }
 }

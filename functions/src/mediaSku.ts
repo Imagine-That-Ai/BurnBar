@@ -15,6 +15,7 @@
 
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { isRecord, numberField, stringField } from "./guards.js";
 
 const MEDIA_SKU = "com.openburnbar.hostedMediaSync.monthly";
 const PRO_SKU = "com.openburnbar.pro.monthly";
@@ -82,8 +83,9 @@ export const grantMediaGrandfather = onCall(
       const mediaRef = firestore.doc(`users/${uid}/entitlements/${MEDIA_ENTITLEMENT_DOC_ID}`);
       const existing = await mediaRef.get();
       if (existing.exists) {
-        const data = existing.data() as Partial<MediaEntitlementDoc>;
-        if (data.grantedBy && data.grantedBy !== "grandfather") {
+        const data = existing.data();
+        const grantedBy = isRecord(data) ? stringField(data, "grantedBy") : undefined;
+        if (grantedBy && grantedBy !== "grandfather") {
           skipped += 1;
           continue;
         }
@@ -115,6 +117,15 @@ interface ValidateRequest {
   expireAtMillis: number;
 }
 
+function parseValidateRequest(raw: unknown): ValidateRequest | undefined {
+  if (!isRecord(raw)) return undefined;
+  const productID = stringField(raw, "productID");
+  const appleTransactionId = stringField(raw, "appleTransactionId");
+  const expireAtMillis = numberField(raw, "expireAtMillis");
+  if (!productID || !appleTransactionId || expireAtMillis === undefined) return undefined;
+  return { productID, appleTransactionId, expireAtMillis };
+}
+
 /**
  * Validates an Apple StoreKit transaction (already verified by the
  * client / receipt server) and writes the canonical
@@ -127,8 +138,8 @@ export const validateMediaPurchase = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign-in required.");
     }
-    const data = request.data as ValidateRequest;
-    if (!data?.productID || (data.productID !== MEDIA_SKU && data.productID !== PRO_SKU)) {
+    const data = parseValidateRequest(request.data);
+    if (!data || (data.productID !== MEDIA_SKU && data.productID !== PRO_SKU)) {
       throw new HttpsError("invalid-argument", "Unsupported product.");
     }
     if (!Number.isFinite(data.expireAtMillis) || data.expireAtMillis < Date.now()) {

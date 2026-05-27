@@ -246,6 +246,16 @@ const PROVIDER_LOGOS = Object.freeze({
     ["#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F"],
     ["#FF5B3F", null, null, "#FF5B3F", "#FF5B3F", null, null, "#FF5B3F"],
   ],
+  mimo: [
+    [null, "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", null],
+    ["#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900"],
+    ["#FF6900", "#FF6900", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FF6900", "#FF6900", "#FF6900"],
+    ["#FF6900", "#FFFFFF", "#FFFFFF", null, "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FF6900"],
+    ["#FF6900", "#FFFFFF", "#FFFFFF", null, "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FF6900"],
+    ["#FF6900", "#FF6900", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FF6900", "#FF6900", "#FF6900"],
+    ["#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900"],
+    [null, "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", "#FF6900", null],
+  ],
   zai: [
     ["#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", null],
     ["#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", null],
@@ -335,6 +345,7 @@ function logoFor(item) {
   if (token.includes("kimi") || token.includes("moonshot")) return PROVIDER_LOGOS.kimi;
   if (token.includes("ollama")) return PROVIDER_LOGOS.ollama;
   if (token.includes("minimax")) return PROVIDER_LOGOS.miniMax;
+  if (token.includes("mimo") || token.includes("xiaomi")) return PROVIDER_LOGOS.mimo;
   if (token.includes("z.ai") || token.includes("zai")) return PROVIDER_LOGOS.zai;
   if (token.includes("grok") || token.includes("xai") || token.includes("x.ai")) return PROVIDER_LOGOS.xAI;
   return monogramLogoFor(item);

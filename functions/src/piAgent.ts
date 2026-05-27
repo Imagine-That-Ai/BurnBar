@@ -8,6 +8,7 @@ import type {
   PiAgentInstanceDoc,
   PiAgentRuntimeModelDoc,
 } from "./types.js";
+import { recordOrUndefined, isRecord, isFirestoreTimestamp } from "./guards.js";
 
 export function randomPiAgentPairingCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -63,8 +64,8 @@ export function sanitizePiAgentInstances(raw: unknown): PiAgentInstanceDoc[] {
     return [];
   }
   return raw.flatMap((item): PiAgentInstanceDoc[] => {
-    if (!item || typeof item !== "object") return [];
-    const value = item as Record<string, unknown>;
+    if (!isRecord(item)) return [];
+    const value = item;
     const id = boundedTrimmedString(value.id, "instance.id", 128);
     const displayName = boundedTrimmedString(value.displayName, "instance.displayName", 120);
     if (!id || !displayName) return [];
@@ -87,8 +88,8 @@ export function sanitizePiAgentModels(raw: unknown): PiAgentRuntimeModelDoc[] {
     return [];
   }
   return raw.flatMap((item): PiAgentRuntimeModelDoc[] => {
-    if (!item || typeof item !== "object") return [];
-    const value = item as Record<string, unknown>;
+    if (!isRecord(item)) return [];
+    const value = item;
     const modelID = boundedTrimmedString(value.modelID, "model.modelID", 160);
     const providerID = boundedTrimmedString(value.providerID, "model.providerID", 80) ?? "pi";
     if (!modelID) return [];
@@ -128,20 +129,72 @@ export function validatePiAgentEndpointURL(raw: unknown, mode: PiAgentConnection
   throw new HttpsError("invalid-argument", "Use HTTPS, or HTTP only for localhost/private LAN Pi Agent hosts.");
 }
 
-export function isPiAgentConnectionDoc(doc: Partial<PiAgentConnectionDoc>): doc is PiAgentConnectionDoc {
-  return typeof doc.id === "string"
-    && typeof doc.displayName === "string"
-    && (doc.mode === "local" || doc.mode === "directURL" || doc.mode === "relayLink")
-    && (doc.status === "pending"
-      || doc.status === "online"
-      || doc.status === "offline"
-      || doc.status === "unauthorized"
-      || doc.status === "revoked"
-      || doc.status === "degraded")
-    && Array.isArray(doc.capabilities)
-    && typeof doc.createdAt === "string"
-    && typeof doc.updatedAt === "string"
-    && typeof doc.schemaVersion === "number";
+export function isPiAgentConnectionDoc(doc: unknown): doc is PiAgentConnectionDoc {
+  const record = recordOrUndefined(doc);
+  if (!record) return false;
+  return typeof record.id === "string"
+    && typeof record.displayName === "string"
+    && (record.mode === "local" || record.mode === "directURL" || record.mode === "relayLink")
+    && (record.status === "pending"
+      || record.status === "online"
+      || record.status === "offline"
+      || record.status === "unauthorized"
+      || record.status === "revoked"
+      || record.status === "degraded")
+    && Array.isArray(record.capabilities)
+    && typeof record.createdAt === "string"
+    && typeof record.updatedAt === "string"
+    && typeof record.schemaVersion === "number";
+}
+
+export function parsePiAgentPairingDoc(raw: unknown): PiAgentPairingDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) return undefined;
+  if (
+    typeof record.id !== "string" ||
+    typeof record.codeHash !== "string" ||
+    typeof record.expiresAt !== "string" ||
+    (record.status !== "pending" &&
+      record.status !== "completed" &&
+      record.status !== "expired" &&
+      record.status !== "revoked") ||
+    typeof record.createdAt !== "string" ||
+    typeof record.updatedAt !== "string" ||
+    typeof record.schemaVersion !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    id: record.id,
+    codeHash: record.codeHash,
+    expiresAt: record.expiresAt,
+    status: record.status,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    schemaVersion: record.schemaVersion,
+    displayName: typeof record.displayName === "string" ? record.displayName : undefined,
+    connectionId: typeof record.connectionId === "string" ? record.connectionId : undefined,
+    failedAttempts: typeof record.failedAttempts === "number" ? record.failedAttempts : undefined,
+    requestedByDeviceId:
+      typeof record.requestedByDeviceId === "string" ? record.requestedByDeviceId : undefined,
+    requestedByPlatform:
+      record.requestedByPlatform === "ios" ||
+      record.requestedByPlatform === "ipados" ||
+      record.requestedByPlatform === "android" ||
+      record.requestedByPlatform === "macos" ||
+      record.requestedByPlatform === "web"
+        ? record.requestedByPlatform
+        : undefined,
+    expireAt: isFirestoreTimestamp(record.expireAt) ? record.expireAt : undefined,
+  };
+}
+
+export function requirePiAgentPairingDoc(raw: unknown): PiAgentPairingDoc {
+  const doc = parsePiAgentPairingDoc(raw);
+  if (!doc) {
+    throw new HttpsError("internal", "Corrupt Pi Agent pairing document.");
+  }
+  return doc;
 }
 
 function parseOptionalPiAgentStatus(raw: unknown): PiAgentConnectionDoc["status"] | undefined {

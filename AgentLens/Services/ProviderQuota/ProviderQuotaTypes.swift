@@ -260,7 +260,7 @@ extension ProviderQuotaBucket {
     var resetsAtDisplay: (relative: String, absolute: String)? {
         guard let resetsAt = Self.displayResetDate(resetsAt, windowKind: windowKind) else { return nil }
         let now = Date()
-        let relative = Self.relativeResetsFormatter.localizedString(
+        let relative = Self.makeRelativeResetsFormatter().localizedString(
             for: resetsAt,
             relativeTo: now
         )
@@ -305,12 +305,12 @@ extension ProviderQuotaBucket {
         return candidate > now ? candidate : candidate.addingTimeInterval(interval)
     }
 
-    private static let relativeResetsFormatter: RelativeDateTimeFormatter = {
+    private static func makeRelativeResetsFormatter() -> RelativeDateTimeFormatter {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .abbreviated
         f.dateTimeStyle = .numeric
         return f
-    }()
+    }
 }
 
 struct ProviderQuotaSnapshot: Codable, Hashable {

@@ -40,9 +40,7 @@ actor QuotaRefreshActor {
     let session: URLSession
     let environment: [String: String]
     let homeDirectoryURL: URL
-    let miniMaxModeProvider: () -> MiniMaxQuotaMode
-    let factoryPlanProvider: () -> FactoryQuotaPlanTier
-    let xaiPlanProvider: () -> XAIQuotaPlanTier
+    let planReaders: ProviderQuotaPlanReaders
     let claudeCredentialsReader: any ClaudeCredentialsReading
     let adapters: [AgentProvider: any ProviderQuotaAdapter]
     let refreshProviders: [AgentProvider]
@@ -58,9 +56,7 @@ actor QuotaRefreshActor {
         session: URLSession,
         environment: [String: String],
         homeDirectoryURL: URL,
-        miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode,
-        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier,
-        xaiPlanProvider: @escaping () -> XAIQuotaPlanTier,
+        planReaders: ProviderQuotaPlanReaders,
         claudeCredentialsReader: any ClaudeCredentialsReading,
         refreshProviders: [AgentProvider]
     ) {
@@ -71,9 +67,7 @@ actor QuotaRefreshActor {
         self.session = session
         self.environment = environment
         self.homeDirectoryURL = homeDirectoryURL
-        self.miniMaxModeProvider = miniMaxModeProvider
-        self.factoryPlanProvider = factoryPlanProvider
-        self.xaiPlanProvider = xaiPlanProvider
+        self.planReaders = planReaders
         self.claudeCredentialsReader = claudeCredentialsReader
         self.refreshProviders = refreshProviders
 
@@ -92,6 +86,7 @@ actor QuotaRefreshActor {
             .kimi: KimiQuotaAdapter(),
             .antigravity: AntigravityQuotaAdapter(),
             .xAI: XAIQuotaAdapter(),
+            .mimo: MimoQuotaAdapter(),
         ]
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -184,9 +179,12 @@ actor QuotaRefreshActor {
             dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider,
-            xaiPlanProvider: xaiPlanProvider,
+            miniMaxModeProvider: planReaders.miniMaxModeProvider,
+            factoryPlanProvider: planReaders.factoryPlanProvider,
+            xaiPlanProvider: planReaders.xaiPlanProvider,
+            mimoTokenPlanRegionProvider: planReaders.mimoTokenPlanRegionProvider,
+            mimoTokenPlanTierProvider: planReaders.mimoTokenPlanTierProvider,
+            mimoTokenPlanBillingCycleProvider: planReaders.mimoTokenPlanBillingCycleProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: currentCache,
             updateCodexRolloutScanCache: { [self] cache, didChange in
@@ -776,6 +774,11 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
             "xai_api_key",
             "xai_management_key",
             "xai-management-key"
+        ])
+    case .mimo:
+        identifiers.append(contentsOf: [
+            "mimo",
+            "provider.mimo.apiKey"
         ])
     default:
         break

@@ -48,5 +48,7 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenBurnBar uses the local network to connect this Mac to your trusted iPhone, iPad, Android devices, and local smart displays for pairing, Hermes relay, Mercury media sessions, and screen sharing.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>OpenBurnBar uses Apple Events only when you choose to let trusted computer-use sessions automate Cursor, Safari, Chrome, or Finder.</string>
 </dict>
 </plist>

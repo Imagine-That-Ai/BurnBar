@@ -4,6 +4,14 @@ import CoreMedia
 import VideoToolbox
 import OpenBurnBarMedia
 
+private final class SendableVideoSampleBuffer: @unchecked Sendable {
+    let sampleBuffer: CMSampleBuffer
+
+    init(_ sampleBuffer: CMSampleBuffer) {
+        self.sampleBuffer = sampleBuffer
+    }
+}
+
 /// HEVC (H.265) video encoder for the Mac side of Phase 3 + 5.
 /// `VTCompressionSession`-backed. Falls back to H.264 when HEVC hardware
 /// encode isn't available (pre-Skylake Intel Macs).
@@ -146,8 +154,9 @@ final class VideoEncoder {
             infoFlagsOut: &infoFlags
         ) { [weak self] (status: OSStatus, _: VTEncodeInfoFlags, sampleBuffer: CMSampleBuffer?) in
             guard let self, status == noErr, let sampleBuffer else { return }
-            Task.detached { [weak self] in
-                await self?.handleEncodedSampleBuffer(sampleBuffer)
+            let snapshot = SendableVideoSampleBuffer(sampleBuffer)
+            Task.detached { [weak self, snapshot] in
+                await self?.handleEncodedSampleBuffer(snapshot.sampleBuffer)
             }
         }
         if status != noErr {

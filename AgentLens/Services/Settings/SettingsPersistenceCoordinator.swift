@@ -10,9 +10,36 @@ import Foundation
 /// `didSet` triggered an unconditional 60-key atomic write.
 @MainActor
 final class SettingsPersistenceCoordinator {
+    private enum PendingWrite: Sendable {
+        case bool(Bool)
+        case int(Int)
+        case double(Double)
+        case string(String)
+        case date(Date)
+        case rawString(String)
+        case remove
+
+        func apply(to defaults: UserDefaults, forKey key: String) {
+            switch self {
+            case .bool(let value):
+                defaults.set(value, forKey: key)
+            case .int(let value):
+                defaults.set(value, forKey: key)
+            case .double(let value):
+                defaults.set(value, forKey: key)
+            case .string(let value), .rawString(let value):
+                defaults.set(value, forKey: key)
+            case .date(let value):
+                defaults.set(value, forKey: key)
+            case .remove:
+                defaults.removeObject(forKey: key)
+            }
+        }
+    }
+
     private let defaults: UserDefaults
     private var dirtyKeys: Set<String> = []
-    private var pendingWrites: [String: () -> Void] = [:]
+    private var pendingWrites: [String: PendingWrite] = [:]
     private var pendingFlushTask: Task<Void, Never>?
     private let flushDelayNanoseconds: UInt64
 
@@ -31,7 +58,7 @@ final class SettingsPersistenceCoordinator {
     deinit {
         // Synchronously flush any pending writes on deallocation to avoid data loss.
         for key in dirtyKeys {
-            pendingWrites.removeValue(forKey: key)?()
+            pendingWrites.removeValue(forKey: key)?.apply(to: defaults, forKey: key)
         }
         dirtyKeys.removeAll()
     }
@@ -39,43 +66,43 @@ final class SettingsPersistenceCoordinator {
     // MARK: - Typed Writers
 
     func set(_ value: Bool, forKey key: String) {
-        pendingWrites[key] = { [defaults] in defaults.set(value, forKey: key) }
+        pendingWrites[key] = .bool(value)
         dirtyKeys.insert(key)
         scheduleFlush()
     }
 
     func set(_ value: Int, forKey key: String) {
-        pendingWrites[key] = { [defaults] in defaults.set(value, forKey: key) }
+        pendingWrites[key] = .int(value)
         dirtyKeys.insert(key)
         scheduleFlush()
     }
 
     func set(_ value: Double, forKey key: String) {
-        pendingWrites[key] = { [defaults] in defaults.set(value, forKey: key) }
+        pendingWrites[key] = .double(value)
         dirtyKeys.insert(key)
         scheduleFlush()
     }
 
     func set(_ value: String, forKey key: String) {
-        pendingWrites[key] = { [defaults] in defaults.set(value, forKey: key) }
+        pendingWrites[key] = .string(value)
         dirtyKeys.insert(key)
         scheduleFlush()
     }
 
     func set(_ value: Date, forKey key: String) {
-        pendingWrites[key] = { [defaults] in defaults.set(value, forKey: key) }
+        pendingWrites[key] = .date(value)
         dirtyKeys.insert(key)
         scheduleFlush()
     }
 
     func set<T: RawRepresentable>(_ value: T, forKey key: String) where T.RawValue == String {
-        pendingWrites[key] = { [defaults] in defaults.set(value.rawValue, forKey: key) }
+        pendingWrites[key] = .rawString(value.rawValue)
         dirtyKeys.insert(key)
         scheduleFlush()
     }
 
     func removeObject(forKey key: String) {
-        pendingWrites[key] = { [defaults] in defaults.removeObject(forKey: key) }
+        pendingWrites[key] = .remove
         dirtyKeys.insert(key)
         scheduleFlush()
     }
@@ -123,7 +150,7 @@ final class SettingsPersistenceCoordinator {
     /// avoid waiting for the debounce interval.
     func flush() {
         for key in dirtyKeys {
-            pendingWrites.removeValue(forKey: key)?()
+            pendingWrites.removeValue(forKey: key)?.apply(to: defaults, forKey: key)
         }
         dirtyKeys.removeAll()
         pendingFlushTask = nil
@@ -140,9 +167,9 @@ final class SettingsPersistenceCoordinator {
             return
         }
         guard pendingFlushTask == nil else { return }
-        pendingFlushTask = Task { [weak self] in
+        pendingFlushTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: self?.flushDelayNanoseconds ?? 100_000_000)
-            await self?.flush()
+            self?.flush()
         }
     }
 }

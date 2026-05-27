@@ -6,6 +6,7 @@ import type {
   HermesConnectionMode,
   HermesPairingDoc,
 } from "./types.js";
+import { isRecord, recordOrUndefined } from "./guards.js";
 
 export function randomPairingCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -80,20 +81,70 @@ export function validateHermesEndpointURL(raw: unknown, mode: HermesConnectionMo
   throw new HttpsError("invalid-argument", "Use HTTPS, or HTTP only for localhost/private LAN Hermes hosts.");
 }
 
-export function isHermesConnectionDoc(doc: Partial<HermesConnectionDoc>): doc is HermesConnectionDoc {
-  return typeof doc.id === "string"
-    && typeof doc.displayName === "string"
-    && (doc.mode === "local" || doc.mode === "directURL" || doc.mode === "relayLink")
-    && (doc.status === "pending"
-      || doc.status === "online"
-      || doc.status === "offline"
-      || doc.status === "unauthorized"
-      || doc.status === "revoked"
-      || doc.status === "degraded")
-    && Array.isArray(doc.capabilities)
-    && typeof doc.createdAt === "string"
-    && typeof doc.updatedAt === "string"
-    && typeof doc.schemaVersion === "number";
+export function isHermesConnectionDoc(doc: unknown): doc is HermesConnectionDoc {
+  const record = recordOrUndefined(doc);
+  if (!record) return false;
+  return typeof record.id === "string"
+    && typeof record.displayName === "string"
+    && (record.mode === "local" || record.mode === "directURL" || record.mode === "relayLink")
+    && (record.status === "pending"
+      || record.status === "online"
+      || record.status === "offline"
+      || record.status === "unauthorized"
+      || record.status === "revoked"
+      || record.status === "degraded")
+    && Array.isArray(record.capabilities)
+    && typeof record.createdAt === "string"
+    && typeof record.updatedAt === "string"
+    && typeof record.schemaVersion === "number";
+}
+
+export function parseHermesPairingDoc(raw: unknown): HermesPairingDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) return undefined;
+  if (
+    typeof record.id !== "string" ||
+    typeof record.codeHash !== "string" ||
+    typeof record.expiresAt !== "string" ||
+    (record.status !== "pending" &&
+      record.status !== "completed" &&
+      record.status !== "expired" &&
+      record.status !== "revoked") ||
+    typeof record.createdAt !== "string" ||
+    typeof record.updatedAt !== "string" ||
+    typeof record.schemaVersion !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    id: record.id,
+    codeHash: record.codeHash,
+    expiresAt: record.expiresAt,
+    status: record.status,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    schemaVersion: record.schemaVersion,
+    displayName: typeof record.displayName === "string" ? record.displayName : undefined,
+    connectionId: typeof record.connectionId === "string" ? record.connectionId : undefined,
+    failedAttempts: typeof record.failedAttempts === "number" ? record.failedAttempts : undefined,
+    requestedByDeviceId:
+      typeof record.requestedByDeviceId === "string" ? record.requestedByDeviceId : undefined,
+    requestedByPlatform:
+      record.requestedByPlatform === "ios" ||
+      record.requestedByPlatform === "ipados" ||
+      record.requestedByPlatform === "macos" ||
+      record.requestedByPlatform === "web"
+        ? record.requestedByPlatform
+        : undefined,
+  };
+}
+
+export function requireHermesPairingDoc(raw: unknown): HermesPairingDoc {
+  const doc = parseHermesPairingDoc(raw);
+  if (!doc) {
+    throw new HttpsError("internal", "Corrupt Hermes pairing document.");
+  }
+  return doc;
 }
 
 function optionalTrimmedString(raw: unknown): string | undefined {

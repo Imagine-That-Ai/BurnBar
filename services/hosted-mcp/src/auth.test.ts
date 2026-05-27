@@ -7,6 +7,7 @@ import { requireActiveRemoteMcpClient } from "./entitlements.js";
 import { handleMcpRequest } from "./mcp.js";
 import { redact } from "./redaction.js";
 import { listMcpTools } from "./toolRegistry.js";
+import type { HostedMcpFirestore, McpTransaction, RemoteMcpClientFirestore } from "./firestoreTypes.js";
 
 test("verifies HMAC bearer token claims and rejects wrong audience", () => {
   process.env.MCP_TOKEN_HMAC_SECRET = "unit-secret";
@@ -73,7 +74,7 @@ test("registry exposes required tool surface and redaction strips raw content", 
 
 test("remote MCP client revocation fails closed", async () => {
   const writes: unknown[] = [];
-  const db = {
+  const db: RemoteMcpClientFirestore = {
     doc(path: string) {
       return {
         async get() {
@@ -92,16 +93,16 @@ test("remote MCP client revocation fails closed", async () => {
     }
   };
 
-  await requireActiveRemoteMcpClient("user-1", "active-client", db as never);
+  await requireActiveRemoteMcpClient("user-1", "active-client", db);
   assert.equal(writes.length, 1);
-  await requireActiveRemoteMcpClient("user-1", "active-client", db as never);
+  await requireActiveRemoteMcpClient("user-1", "active-client", db);
   assert.equal(writes.length, 1);
   await assert.rejects(
-    () => requireActiveRemoteMcpClient("user-1", "revoked-client", db as never),
+    () => requireActiveRemoteMcpClient("user-1", "revoked-client", db),
     /revoked/
   );
   await assert.rejects(
-    () => requireActiveRemoteMcpClient("user-1", "missing-client", db as never),
+    () => requireActiveRemoteMcpClient("user-1", "missing-client", db),
     /not found/
   );
 });
@@ -118,7 +119,7 @@ test("MCP resources enforce scope, entitlement, and client revocation gates", as
     jti: "resource-jti"
   };
 
-  const db = {
+  const db: HostedMcpFirestore = {
     doc(path: string) {
       return {
         async get() {
@@ -152,8 +153,8 @@ test("MCP resources enforce scope, entitlement, and client revocation gates", as
         }
       };
     },
-    async runTransaction(fn: (tx: unknown) => Promise<void>) {
-      await fn({
+    async runTransaction<T>(fn: (tx: McpTransaction) => Promise<T>): Promise<T> {
+      return fn({
         async get() {
           return { get: () => 0 };
         },
@@ -162,16 +163,21 @@ test("MCP resources enforce scope, entitlement, and client revocation gates", as
     }
   };
 
-  const listed = await handleMcpRequest(db as never, claims, {
+  const listed: unknown = await handleMcpRequest(db, claims, {
     jsonrpc: "2.0",
     id: 1,
     method: "resources/list",
     params: {}
-  }) as { result: { resources: Array<{ uri: string }> } };
-  assert.equal(listed.result.resources[0]?.uri, "burnbar://conversation/doc-1");
+  });
+  assert.ok(isRecord(listed));
+  assert.ok(isRecord(listed.result));
+  const resources = listed.result.resources;
+  assert.ok(Array.isArray(resources));
+  assert.ok(isRecord(resources[0]));
+  assert.equal(resources[0].uri, "burnbar://conversation/doc-1");
 
   await assert.rejects(
-    () => handleMcpRequest(db as never, { ...claims, scopes: ["search:read"] }, {
+    () => handleMcpRequest(db, { ...claims, scopes: ["search:read"] }, {
       jsonrpc: "2.0",
       id: 2,
       method: "resources/read",
@@ -180,7 +186,7 @@ test("MCP resources enforce scope, entitlement, and client revocation gates", as
     /Missing required scope conversation:read/
   );
 
-  const revokedDb = {
+  const revokedDb: HostedMcpFirestore = {
     doc(path: string) {
       return {
         async get() {
@@ -191,10 +197,21 @@ test("MCP resources enforce scope, entitlement, and client revocation gates", as
         },
         async set() {}
       };
+    },
+    collection() {
+      throw new Error("collection should not be called");
+    },
+    async runTransaction<T>(fn: (tx: McpTransaction) => Promise<T>): Promise<T> {
+      return fn({
+        async get() {
+          return { get: () => 0 };
+        },
+        set() {}
+      });
     }
   };
   await assert.rejects(
-    () => handleMcpRequest(revokedDb as never, claims, {
+    () => handleMcpRequest(revokedDb, claims, {
       jsonrpc: "2.0",
       id: 3,
       method: "resources/list",
@@ -203,3 +220,7 @@ test("MCP resources enforce scope, entitlement, and client revocation gates", as
     /revoked/
   );
 });
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

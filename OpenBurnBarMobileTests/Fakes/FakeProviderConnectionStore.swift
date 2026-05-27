@@ -17,6 +17,7 @@ final class FakeProviderConnectionStore: ProviderConnectionProviding {
         let credential: String
         let kind: CredentialKind
         let label: String?
+        let metadata: ProviderAccountConnectMetadata?
     }
     var connectCalls: [ConnectCall] = []
 
@@ -31,18 +32,18 @@ final class FakeProviderConnectionStore: ProviderConnectionProviding {
 
     func load() async {}
 
-    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
-        connectCalls.append(ConnectCall(providerID: providerID, credential: credential, kind: kind, label: label))
+    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?, metadata: ProviderAccountConnectMetadata?) async -> ProviderAccountDoc? {
+        connectCalls.append(ConnectCall(providerID: providerID, credential: credential, kind: kind, label: label, metadata: metadata))
         return _connectResult
     }
 
     func connectHosted(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
-        connectCalls.append(ConnectCall(providerID: providerID, credential: credential, kind: kind, label: label))
+        connectCalls.append(ConnectCall(providerID: providerID, credential: credential, kind: kind, label: label, metadata: nil))
         return _connectHostedResult
     }
 
     func connectSelfHosted(providerID: ProviderID, label: String?) async -> ProviderAccountDoc? {
-        connectCalls.append(ConnectCall(providerID: providerID, credential: "", kind: .token, label: label))
+        connectCalls.append(ConnectCall(providerID: providerID, credential: "", kind: .token, label: label, metadata: nil))
         return _connectSelfHostedResult
     }
 

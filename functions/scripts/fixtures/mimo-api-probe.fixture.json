@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "description": "Redacted MiMo API probe fixture for parser and endpoint regression tests. Contains no secrets.",
+  "generatedAt": "2026-05-26T00:00:00.000Z",
+  "hosts": {
+    "payg": "https://api.xiaomimimo.com/v1",
+    "regions": {
+      "cn": "https://token-plan-cn.xiaomimimo.com/v1",
+      "sgp": "https://token-plan-sgp.xiaomimimo.com/v1",
+      "ams": "https://token-plan-ams.xiaomimimo.com/v1"
+    }
+  },
+  "probes": [
+    {
+      "label": "payg.models",
+      "url": "https://api.xiaomimimo.com/v1/models",
+      "status": 200,
+      "ok": true,
+      "shape": ["data", "object"]
+    },
+    {
+      "label": "sgp.models",
+      "url": "https://token-plan-sgp.xiaomimimo.com/v1/models",
+      "status": 200,
+      "ok": true,
+      "shape": ["data", "object"]
+    },
+    {
+      "label": "sgp.token_plan.remains",
+      "url": "https://token-plan-sgp.xiaomimimo.com/v1/token_plan/remains",
+      "status": 200,
+      "ok": true,
+      "shape": ["data"]
+    }
+  ],
+  "responseSamples": {
+    "payg.models": {
+      "data": [
+        { "id": "mimo-v2.5", "object": "model" },
+        { "id": "mimo-v2.5-pro", "object": "model" }
+      ],
+      "object": "list"
+    },
+    "sgp.token_plan.remains": {
+      "data": {
+        "remains": [
+          {
+            "name": "credits",
+            "used": 100,
+            "limit": 1000,
+            "remaining": 900
+          }
+        ]
+      }
+    },
+    "sgp.token_plan.remains.modelRows": {
+      "data": {
+        "model_remains": [
+          {
+            "model_name": "mimo-v2.5",
+            "period": "monthly",
+            "used": 1200,
+            "total": 5000,
+            "remains": 3800
+          }
+        ]
+      }
+    }
+  }
+}

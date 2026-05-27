@@ -20,6 +20,8 @@ func providerQuotaManagementURL(
         "https://code.claude.com/docs/en/statusline"
     case .minimax:
         "https://platform.minimax.io/docs/token-plan/faq"
+    case .mimo:
+        "https://platform.xiaomimimo.com/docs/en-US/tokenplan/subscription"
     case .zai:
         "https://bigmodel.cn/usercenter/glm-coding/usage"
     case .factory:

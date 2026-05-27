@@ -17,7 +17,7 @@ import OpenBurnBarCore
 /// For production use, `SettingsManager.shared` conforms to this protocol.
 /// For testing, inject a mock implementation.
 @MainActor
-protocol SettingsManagerProtocol: AnyObject {
+protocol SettingsManagerProtocol: AnyObject, Sendable {
 
     // MARK: - Appearance
 
@@ -265,6 +265,9 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Factory quota plan tier.
     var factoryQuotaPlanTier: FactoryQuotaPlanTier { get set }
     var xaiQuotaPlanTier: XAIQuotaPlanTier { get set }
+    var mimoTokenPlanRegion: ProviderEndpointRegion { get set }
+    var mimoTokenPlanTier: MimoTokenPlanTier? { get set }
+    var mimoTokenPlanBillingCycle: MimoTokenPlanBillingCycle { get set }
 
     /// Whether the smart hub quota display integration is enabled.
     var smartHubQuotaDisplayEnabled: Bool { get set }
@@ -363,4 +366,4 @@ protocol SettingsManagerProtocol: AnyObject {
 
 // MARK: - SettingsManager Extension
 
-extension SettingsManager: SettingsManagerProtocol {}
+extension SettingsManager: SettingsManagerProtocol, @unchecked Sendable {}

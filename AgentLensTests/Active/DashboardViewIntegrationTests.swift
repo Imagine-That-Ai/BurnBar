@@ -11,8 +11,13 @@ final class DashboardViewIntegrationTests: XCTestCase {
 
     private func makeDashboardView(
         dataStore: DataStoreCoordinator? = nil
-    ) -> DashboardView {
-        let store = dataStore ?? (try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
+    ) throws -> DashboardView {
+        let store: DataStoreCoordinator
+        if let dataStore {
+            store = dataStore
+        } else {
+            store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
+        }
         let settingsManager = makeSettingsManager()
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         let layer = OpenBurnBarOperatingLayer(dataStore: store, settingsManager: settingsManager)
@@ -27,42 +32,42 @@ final class DashboardViewIntegrationTests: XCTestCase {
         return DashboardView(context: context)
     }
 
-    func test_initialRouteIsOverview() {
-        let view = makeDashboardView()
+    func test_initialRouteIsOverview() throws {
+        let view = try makeDashboardView()
         XCTAssertEqual(view.navigationModel.mainRoute, .overview)
     }
 
-    func test_testTriggerNavigate_changesRoute() {
-        let view = makeDashboardView()
+    func test_testTriggerNavigate_changesRoute() throws {
+        let view = try makeDashboardView()
         view.testTriggerNavigate(to: .database)
         XCTAssertEqual(view.navigationModel.mainRoute, .database)
     }
 
-    func test_testTriggerGoBack_returnsToOverview() {
-        let view = makeDashboardView()
+    func test_testTriggerGoBack_returnsToOverview() throws {
+        let view = try makeDashboardView()
         view.testTriggerNavigate(to: .database)
         view.testTriggerGoBack()
         XCTAssertEqual(view.navigationModel.mainRoute, .overview)
     }
 
-    func test_viewModeDefaultsToAgents() {
-        let view = makeDashboardView()
+    func test_viewModeDefaultsToAgents() throws {
+        let view = try makeDashboardView()
         XCTAssertEqual(view.navigationModel.viewMode, .agents)
     }
 
-    func test_settingsSheetStartsClosed() {
-        let view = makeDashboardView()
+    func test_settingsSheetStartsClosed() throws {
+        let view = try makeDashboardView()
         XCTAssertFalse(view.showingSettings)
     }
 
-    func test_navigateToChatRoute() {
-        let view = makeDashboardView()
+    func test_navigateToChatRoute() throws {
+        let view = try makeDashboardView()
         view.testTriggerNavigate(to: .chat)
         XCTAssertEqual(view.navigationModel.mainRoute, .chat)
     }
 
-    func test_sidebarRouteOrderIncludesChat() {
-        let view = makeDashboardView()
+    func test_sidebarRouteOrderIncludesChat() throws {
+        let view = try makeDashboardView()
         let order = view.navigationModel.sidebarRouteOrder(
             providerSummaries: [],
             modelSummaries: []
@@ -70,8 +75,8 @@ final class DashboardViewIntegrationTests: XCTestCase {
         XCTAssertTrue(order.contains(.chat))
     }
 
-    func test_routeTitleForChat() {
-        let view = makeDashboardView()
+    func test_routeTitleForChat() throws {
+        let view = try makeDashboardView()
         XCTAssertEqual(view.navigationModel.routeTitle(.chat), "Chat")
     }
 }

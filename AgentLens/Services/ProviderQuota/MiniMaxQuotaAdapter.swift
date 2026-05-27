@@ -1,7 +1,13 @@
 import Foundation
+import OpenBurnBarCore
 
 @MainActor
 struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
+    private enum QuotaEndpoint {
+        static let tokenPlan = ProviderEndpointProfileRegistry.minimaxTokenPlan.quotaRemainsURL
+            ?? "https://www.minimax.io/v1/token_plan/remains"
+        static let codingPlan = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains"
+    }
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard context.miniMaxModeProvider() == .tokenPlan else {
             return unavailableSnapshot(
@@ -27,28 +33,19 @@ struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        guard let url = URL(string: "https://www.minimax.io/v1/api/openplatform/coding_plan/remains") else {
-            throw QuotaServiceError.invalidResponse("MiniMax coding-plan URL is invalid.")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let (data, response) = try await context.session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw QuotaServiceError.invalidResponse("MiniMax returned a non-HTTP response.")
-        }
-
-        if http.statusCode == 401 || http.statusCode == 403 {
+        let fetchResult = try await fetchMiniMaxRemains(apiKey: apiKey, session: context.session)
+        if fetchResult.authRejected {
             return unavailableSnapshot(
                 for: .minimax,
                 source: .officialAPI,
                 message: "MiniMax rejected the configured key. Token Plan quota requires a Token Plan API key, not a pay-as-you-go Open Platform key."
             )
         }
-        guard (200..<300).contains(http.statusCode) else {
-            throw QuotaServiceError.httpStatus(provider: .minimax, code: http.statusCode)
+        guard let data = fetchResult.data else {
+            if let statusCode = fetchResult.httpStatusCode {
+                throw QuotaServiceError.httpStatus(provider: .minimax, code: statusCode)
+            }
+            throw QuotaServiceError.invalidResponse("MiniMax returned a non-HTTP response.")
         }
 
         let object = try JSONSerialization.jsonObject(with: data)
@@ -88,6 +85,60 @@ struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
     }
 
     // MARK: - MiniMax Helpers
+
+    private struct MiniMaxRemainsFetchResult {
+        let data: Data?
+        let httpStatusCode: Int?
+        let authRejected: Bool
+    }
+
+    private func fetchMiniMaxRemains(
+        apiKey: String,
+        session: URLSession
+    ) async throws -> MiniMaxRemainsFetchResult {
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isCodingPlan = trimmed.lowercased().hasPrefix("sk-cp-")
+
+        if isCodingPlan {
+            let codingResult = try await fetchMiniMaxRemains(from: QuotaEndpoint.codingPlan, apiKey: trimmed, session: session)
+            if codingResult.data != nil || codingResult.authRejected {
+                return codingResult
+            }
+            return try await fetchMiniMaxRemains(from: QuotaEndpoint.tokenPlan, apiKey: trimmed, session: session)
+        }
+
+        let tokenPlanResult = try await fetchMiniMaxRemains(from: QuotaEndpoint.tokenPlan, apiKey: trimmed, session: session)
+        if tokenPlanResult.data != nil || tokenPlanResult.authRejected {
+            return tokenPlanResult
+        }
+        return try await fetchMiniMaxRemains(from: QuotaEndpoint.codingPlan, apiKey: trimmed, session: session)
+    }
+
+    private func fetchMiniMaxRemains(
+        from urlString: String,
+        apiKey: String,
+        session: URLSession
+    ) async throws -> MiniMaxRemainsFetchResult {
+        guard let url = URL(string: urlString) else {
+            throw QuotaServiceError.invalidResponse("MiniMax quota URL is invalid: \(urlString)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            return MiniMaxRemainsFetchResult(data: nil, httpStatusCode: nil, authRejected: false)
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            return MiniMaxRemainsFetchResult(data: nil, httpStatusCode: http.statusCode, authRejected: true)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            return MiniMaxRemainsFetchResult(data: nil, httpStatusCode: http.statusCode, authRejected: false)
+        }
+        return MiniMaxRemainsFetchResult(data: data, httpStatusCode: http.statusCode, authRejected: false)
+    }
 
     private func resolveMiniMaxAPIKey(context: ProviderQuotaAdapterContext) -> String? {
         quotaNonEmpty(context.resolvedAPIKeys["minimax"] ?? nil)

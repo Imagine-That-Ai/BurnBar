@@ -123,6 +123,7 @@ enum DesignSystem {
             case .windsurf:   return Color(hex: "06B6D4")
             case .warp:       return Color(hex: "DDE4EA")
             case .xAI:        return Color(hex: "1A1A1A")
+            case .mimo:       return Color(hex: "FF6900")
             }
         }
 
@@ -155,6 +156,7 @@ enum DesignSystem {
             case .windsurf:   return Color(hex: "22D3EE")
             case .warp:       return Color(hex: "111111")
             case .xAI:        return Color(hex: "4A4A4A")
+            case .mimo:       return Color(hex: "FF8533")
             }
         }
 

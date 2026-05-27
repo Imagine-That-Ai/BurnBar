@@ -263,95 +263,95 @@ export class OpenBurnBarDaemonClient implements OpenBurnBarDaemonClientLike {
 
     try {
       return await new Promise<Result>((resolve, reject) => {
-      const socket = createConnection(this.socketPath);
-      let responseBuffer = '';
-      let settled = false;
+        const socket = createConnection(this.socketPath);
+        let responseBuffer = '';
+        let settled = false;
 
-      const timeout = setTimeout(() => {
-        socket.destroy();
-        fail(new OpenBurnBarDaemonClientError(`Timed out waiting for OpenBurnBar daemon on ${this.socketPath}.`));
-      }, this.timeoutMs);
+        const timeout = setTimeout(() => {
+          socket.destroy();
+          fail(new OpenBurnBarDaemonClientError(`Timed out waiting for OpenBurnBar daemon on ${this.socketPath}.`));
+        }, this.timeoutMs);
 
-      const cleanup = () => {
-        clearTimeout(timeout);
-        socket.removeAllListeners();
-      };
+        const cleanup = () => {
+          clearTimeout(timeout);
+          socket.removeAllListeners();
+        };
 
-      const fail = (error: Error) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        cleanup();
-        reject(error);
-      };
-
-      socket.setEncoding('utf8');
-
-      socket.on('connect', () => {
-        socket.write(payload);
-      });
-
-      socket.on('data', (chunk: string) => {
-        responseBuffer += chunk;
-        const newlineIndex = responseBuffer.indexOf('\n');
-        if (newlineIndex === -1) {
-          return;
-        }
-
-        const line = responseBuffer.slice(0, newlineIndex).trim();
-        if (!line) {
-          fail(new OpenBurnBarDaemonClientError('OpenBurnBar daemon returned an empty response.'));
-          return;
-        }
-
-        try {
-          const envelope = JSON.parse(line) as BurnBarRPCResponseEnvelope<Result>;
-          if (envelope.error) {
-            fail(new OpenBurnBarDaemonClientError(envelope.error.message));
+        const fail = (error: Error) => {
+          if (settled) {
             return;
           }
-
-          if (!envelope.result) {
-            fail(new OpenBurnBarDaemonClientError('OpenBurnBar daemon returned no result payload.'));
-            return;
-          }
-
-          if (envelope.protocolVersion !== BURNBAR_PROTOCOL_VERSION) {
-            fail(
-              new OpenBurnBarDaemonClientError(
-                `OpenBurnBar protocol mismatch. Expected ${BURNBAR_PROTOCOL_VERSION}, received ${envelope.protocolVersion}.`
-              )
-            );
-            return;
-          }
-
           settled = true;
           cleanup();
-          resolve(envelope.result);
-          socket.end();
-        } catch (error) {
+          reject(error);
+        };
+
+        socket.setEncoding('utf8');
+
+        socket.on('connect', () => {
+          socket.write(payload);
+        });
+
+        socket.on('data', (chunk: string) => {
+          responseBuffer += chunk;
+          const newlineIndex = responseBuffer.indexOf('\n');
+          if (newlineIndex === -1) {
+            return;
+          }
+
+          const line = responseBuffer.slice(0, newlineIndex).trim();
+          if (!line) {
+            fail(new OpenBurnBarDaemonClientError('OpenBurnBar daemon returned an empty response.'));
+            return;
+          }
+
+          try {
+            const envelope: BurnBarRPCResponseEnvelope<Result> = JSON.parse(line);
+            if (envelope.error) {
+              fail(new OpenBurnBarDaemonClientError(envelope.error.message));
+              return;
+            }
+
+            if (!envelope.result) {
+              fail(new OpenBurnBarDaemonClientError('OpenBurnBar daemon returned no result payload.'));
+              return;
+            }
+
+            if (envelope.protocolVersion !== BURNBAR_PROTOCOL_VERSION) {
+              fail(
+                new OpenBurnBarDaemonClientError(
+                  `OpenBurnBar protocol mismatch. Expected ${BURNBAR_PROTOCOL_VERSION}, received ${envelope.protocolVersion}.`
+                )
+              );
+              return;
+            }
+
+            settled = true;
+            cleanup();
+            resolve(envelope.result);
+            socket.end();
+          } catch (error) {
+            fail(
+              error instanceof Error
+                ? error
+                : new OpenBurnBarDaemonClientError('Failed to parse OpenBurnBar daemon response.')
+            );
+          }
+        });
+
+        socket.on('error', (error) => {
           fail(
-            error instanceof Error
-              ? error
-              : new OpenBurnBarDaemonClientError('Failed to parse OpenBurnBar daemon response.')
+            new OpenBurnBarDaemonClientError(
+              `Unable to reach the local OpenBurnBar daemon on ${this.socketPath}: ${error.message}`
+            )
           );
-        }
-      });
+        });
 
-      socket.on('error', (error) => {
-        fail(
-          new OpenBurnBarDaemonClientError(
-            `Unable to reach the local OpenBurnBar daemon on ${this.socketPath}: ${error.message}`
-          )
-        );
-      });
-
-      socket.on('end', () => {
-        if (!settled && responseBuffer.trim().length === 0) {
-          fail(new OpenBurnBarDaemonClientError('OpenBurnBar daemon closed the connection before replying.'));
-        }
-      });
+        socket.on('end', () => {
+          if (!settled && responseBuffer.trim().length === 0) {
+            fail(new OpenBurnBarDaemonClientError('OpenBurnBar daemon closed the connection before replying.'));
+          }
+        });
       });
     } finally {
       this.inFlight -= 1;

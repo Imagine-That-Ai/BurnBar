@@ -37,7 +37,8 @@ class HermesRelayKeyStore(context: Context) {
 
     fun clientPublicKeyX963(): ByteArray {
         val kp = loadOrCreateClientKeyPair()
-        val publicKey = kp.public as java.security.interfaces.ECPublicKey
+        val publicKey = kp.public as? java.security.interfaces.ECPublicKey
+            ?: error("Hermes relay client keypair must use an EC public key")
         return HermesRelayCrypto.encodeUncompressedPublicKey(publicKey)
     }
 
@@ -76,8 +77,10 @@ class HermesRelayKeyStore(context: Context) {
         val kp = HermesRelayCrypto.generateEphemeralKeyPair()
         val privateBytes = kp.private.encoded
             ?: throw IllegalStateException("EC private key has no PKCS#8 encoding")
+        val publicKey = kp.public as? java.security.interfaces.ECPublicKey
+            ?: error("Hermes relay generated keypair must use an EC public key")
         val publicBytes = HermesRelayCrypto.encodeUncompressedPublicKey(
-            kp.public as java.security.interfaces.ECPublicKey
+            publicKey
         )
         prefs.edit()
             .putString(KEY_PRIVATE_PKCS8, Base64.encodeToString(privateBytes, Base64.NO_WRAP))

@@ -1,6 +1,7 @@
 package com.openburnbar
 
 import com.openburnbar.data.hermes.relay.HermesRelayCrypto
+import com.openburnbar.test.ecPublicKey
 import io.mockk.every
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
@@ -107,7 +108,7 @@ class HermesRelayCryptoTest {
     fun `wrapSymmetricKey envelope round-trips via the recipient private key`() {
         val recipient = HermesRelayCrypto.generateEphemeralKeyPair()
         val recipientPubX963 = HermesRelayCrypto.encodeUncompressedPublicKey(
-            recipient.public as java.security.interfaces.ECPublicKey,
+            ecPublicKey(recipient.public),
         )
         val keyData = HermesRelayCrypto.generateSymmetricKey()
         val aad = HermesRelayCrypto.keyAAD("u1", "c1", "r1")
@@ -120,7 +121,7 @@ class HermesRelayCryptoTest {
     fun `unwrapSymmetricKey rejects mismatched AAD`() {
         val recipient = HermesRelayCrypto.generateEphemeralKeyPair()
         val recipientPubX963 = HermesRelayCrypto.encodeUncompressedPublicKey(
-            recipient.public as java.security.interfaces.ECPublicKey,
+            ecPublicKey(recipient.public),
         )
         val keyData = HermesRelayCrypto.generateSymmetricKey()
         val sealAad = HermesRelayCrypto.keyAAD("u1", "c1", "r1")
@@ -133,7 +134,7 @@ class HermesRelayCryptoTest {
     fun `wrapSymmetricKey envelope is at least ephemeralPub + nonce + ciphertext + tag bytes`() {
         val recipient = HermesRelayCrypto.generateEphemeralKeyPair()
         val recipientPubX963 = HermesRelayCrypto.encodeUncompressedPublicKey(
-            recipient.public as java.security.interfaces.ECPublicKey,
+            ecPublicKey(recipient.public),
         )
         val keyData = HermesRelayCrypto.generateSymmetricKey()
         val aad = HermesRelayCrypto.keyAAD("u1", "c1", "r1")
@@ -149,7 +150,7 @@ class HermesRelayCryptoTest {
         val a = HermesRelayCrypto.generateEphemeralKeyPair()
         val b = HermesRelayCrypto.generateEphemeralKeyPair()
         val pubA = HermesRelayCrypto.encodeUncompressedPublicKey(
-            a.public as java.security.interfaces.ECPublicKey,
+            ecPublicKey(a.public),
         )
         val keyData = HermesRelayCrypto.generateSymmetricKey()
         val aad = HermesRelayCrypto.keyAAD("u1", "c1", "r1")
@@ -166,13 +167,13 @@ class HermesRelayCryptoTest {
     fun `x963 round-trip encodes a 65-byte uncompressed point`() {
         val pair = HermesRelayCrypto.generateEphemeralKeyPair()
         val encoded = HermesRelayCrypto.encodeUncompressedPublicKey(
-            pair.public as java.security.interfaces.ECPublicKey,
+            ecPublicKey(pair.public),
         )
         assertEquals(65, encoded.size)
         assertEquals(0x04.toByte(), encoded[0])
         val decoded = HermesRelayCrypto.decodeUncompressedPublicKey(encoded)
-        val pubA = pair.public as java.security.interfaces.ECPublicKey
-        val pubB = decoded as java.security.interfaces.ECPublicKey
+        val pubA = ecPublicKey(pair.public)
+        val pubB = ecPublicKey(decoded)
         assertEquals(pubA.w.affineX, pubB.w.affineX)
         assertEquals(pubA.w.affineY, pubB.w.affineY)
     }
@@ -193,7 +194,7 @@ class HermesRelayCryptoTest {
     fun `two wraps of the same key produce distinct envelopes`() {
         val recipient = HermesRelayCrypto.generateEphemeralKeyPair()
         val recipientPubX963 = HermesRelayCrypto.encodeUncompressedPublicKey(
-            recipient.public as java.security.interfaces.ECPublicKey,
+            ecPublicKey(recipient.public),
         )
         val keyData = HermesRelayCrypto.generateSymmetricKey()
         val aad = HermesRelayCrypto.keyAAD("u1", "c1", "r1")

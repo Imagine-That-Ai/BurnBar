@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — type safety (unsafe cast zero-lock)
+- Burned down all hand-written unsafe casts and force unwraps across TypeScript
+  (`functions/`, extension/service tests, website), Kotlin (Android tests and
+  FFI bridges), and Swift (already at zero) to **0** live violations.
+- Added shared runtime guards/decoders in `functions/src/guards.ts`,
+  `firebaseRuntime.ts`, and `remoteConfigGuards.ts`; typed test fixtures in
+  extension helpers and `HermesRunAssertions.kt`.
+- CI now gates on `budgets/unsafe-cast-baseline.json` via
+  `scripts/debt/check-unsafe-cast-budget.sh` (see `docs/TYPE_DEBT.md`).
+
+### Changed — macOS performance sweep
+- Capped the wallpaper swarm canvas at 30 fps with asynchronous rendering and
+  batched all data-driven particle fills by quantized color bucket
+  (`RGBA.bucketKey`), dropping per-frame fill counts from hundreds to a
+  handful while preserving visual fidelity.
+- Replaced the 1 s / 3 s wallpaper space-change polls with
+  `NSWorkspace.activeSpaceDidChangeNotification` plus a 30 s defensive
+  backstop, and added a 30 Hz pointer-coalescing window (4 pt movement
+  gate) so high-rate `mouseMoved` events stop re-evaluating the canvas
+  body.
+- Added `DataStoreCoordinator.usagesVersion: Int`, bumped on every
+  `replaceUsages` / `replaceUsageSnapshot`, and migrated six dashboard
+  surfaces (`MenuBarPopoverView`, `DatabaseWorkspaceView`,
+  `DashboardChatWorkspaceView`, `ChatPanel`, `DashboardDeviceBreakdownCard`,
+  `DashboardLiveCostCurve`, `ProjectsView`) from observing `lastRefresh`
+  (Date) and `usages.count` to the integer ticker.
+- Cached `DashboardLiveCostCurve.buildSamples` and
+  `ProjectsView.computeMergedProjects` behind versioned cache keys so the
+  expensive aggregation only runs when the underlying data actually
+  changes. Both functions are now pure static and unit-tested.
+- Switched `ChatMessageRecord.content` and `.transcriptPieces` to `var`
+  and rewrote the streaming hot path in `ChatSessionController` to
+  mutate the active message in place, eliminating per-token struct
+  + array reallocations. Subscribers should observe `streamingTick` for
+  view updates.
+- Introduced `BackgroundCadenceCoordinator` — the single home for all
+  timer-driven background work. Migrated `SystemPermissionMonitor`,
+  `MercuryPeerSource`, `SettingsManager` (Computer Use Remote Config),
+  `AgentLensApp.periodicRefreshTask`, `SmartHubBridgeController` (four
+  loops), `SmartDisplayActionsListener`, `HermesRelayHostService`,
+  `PiAgentCloudRelayHostService`, and `ComputerUseDaemonApprovalPresenter`
+  to it. Every cadence now backs off when the app is in the background
+  and pauses entirely while the display sleeps, with observer-coalescing
+  for the Mercury peer poll (push heartbeat ⇒ poll stretches to 30 s).
+- Replaced `Timer.publish` in `CyclingProviderIconView` with a
+  `TimelineView(.periodic(...))` so the dashboard's provider-logo cycler
+  auto-suspends when the view is off-screen.
+- Documented the new contract in `docs/architecture/background-cadence.md`
+  and the broader sweep in `docs/architecture/macos-performance.md`.
+- Added `BackgroundCadenceCoordinatorTests`, `SwarmCanvasFrameRateTests`,
+  `DataStoreUsagesVersionTests`, `DashboardLiveCostCurveCacheTests`,
+  `ProjectsMergedProjectsCacheTests`, and `ChatStreamingMessageMutationTests`
+  (44 new tests, all green).
+
+### Added — Xiaomi MiMo first-class provider
+- Added `mimo` as a first-class provider with endpoint profiles for regional Token Plan
+  (`tp-…` → `cn` / `sgp` / `ams`) and global pay-as-you-go (`sk-…`), router failover
+  constrained to matching profiles, tiered quota (vendor remains → BurnBar credit ledger →
+  unavailable), and cross-platform cloud connect metadata.
+- Added Mac quota/settings UI, mobile connect payloads, Cloud Functions adapter, probe
+  scripts, and documentation updates in `docs/PROVIDERS.md`.
+- Added dedicated `MimoLogo` assets on Mac (`AgentLens`), iOS (`OpenBurnBarMobile`), and
+  Android (`mimo_logo.xml`), replacing the OpenCode placeholder across provider avatars,
+  catalog `logoKey`, and brand resolution.
+- Added schema-sync domain `provider-account.tsp` with TS/Swift/Kotlin emitters for
+  `ProviderAccountDoc` and connect-context metadata (`endpointProfileID`, region, token-plan
+  tier/cycle, `authMethodID`).
+- Retrofit MiniMax legacy single-key routing through `ProviderRouteEndpointResolver` so
+  `sk-cp-…` resolves `minimax.token-plan` and `sk-api-…` resolves `minimax.payg`.
+- Committed redacted MiMo API probe fixture (`functions/scripts/fixtures/mimo-api-probe.fixture.json`)
+  with `--validate-fixture` and `test-mimo-probe-fixture.mjs` wired into `npm run test:providers`.
+
+### Hardened — MiMo / endpoint-profile follow-through
+- Added schema-sync hand-mirror guard (`tools/schema-sync/check-hand-mirror.mjs`) and
+  `functions/scripts/test-provider-account-schema.mjs` so generated provider-account fields
+  cannot drift from Swift/Kotlin/TS hand mirrors unnoticed.
+- Aligned MiniMax macOS quota adapter with registry + Cloud Functions dual-endpoint fallback;
+  added `MiniMaxQuotaAdapterTests`, `ProviderRouteEndpointResolverTests`, MiMo auth-registry tests,
+  Android `MimoConnectMetadataTest`, and MiMo logo unit coverage.
+- Added MiMo PixelClock stencil + website presenter port; quota popover/setup/search parity on Mac/iOS.
+
+### Added — Agent reply notifications
+- Added Cloud-owned agent reply notifications across CLI and mobile assistant
+  chat mirrors, with deterministic event documents, FCM/APNs fanout,
+  active-thread suppression, stale-token cleanup, and Firestore rules for
+  durable inline reply commands.
+- Added iOS/iPadOS, Android, and macOS notification handling with native inline
+  reply actions, assistant deep links, mobile FCM token/device heartbeats, Mac
+  event-stream notifications, Mac-host processing of queued phone/tablet reply
+  commands, and immediate local reply routing where the runtime is available.
+- Hardened the notification audit path with Android data-only FCM delivery for
+  background direct replies, Mac event timestamp indexing, and Firestore reply
+  rules that bind every queued reply to its server-created notification event.
+- Documented Apple APNs and Firebase Cloud Messaging setup plus verification in
+  `docs/AGENT_REPLY_NOTIFICATIONS.md`.
+
 ### Added — Remote Unlock certification
 - Added a machine-bound Remote Unlock certification report so Macs advertise
   locked-screen unlock only after a fresh hardware proof matches the current

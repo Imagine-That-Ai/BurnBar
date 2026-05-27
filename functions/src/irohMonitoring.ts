@@ -9,10 +9,8 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
-import type {
-  IrohTransportAuditEventDoc,
-  IrohTransportDailyRollupDoc,
-} from "./types.js";
+import type { IrohTransportAuditEventDoc, IrohTransportDailyRollupDoc } from "./types.js";
+import { isRecord, numberField, recordField, stringField } from "./guards.js";
 
 const IROH_ROLLUP_SCHEMA_VERSION = 1;
 const IROH_AUDIT_COLLECTION = "iroh_audit_events";
@@ -46,12 +44,46 @@ const TRANSPORTS: IrohTransport[] = [
   "firestore",
 ];
 
+function isIrohAuditEventType(value: unknown): value is IrohAuditEventType {
+  return EVENT_TYPES.some((eventType) => eventType === value);
+}
+
+function isIrohTransport(value: unknown): value is IrohTransport {
+  return TRANSPORTS.some((transport) => transport === value);
+}
+
 function emptyEventCounts(): Record<IrohAuditEventType, number> {
-  return Object.fromEntries(EVENT_TYPES.map((eventType) => [eventType, 0])) as Record<IrohAuditEventType, number>;
+  const counts: Partial<Record<IrohAuditEventType, number>> = {};
+  for (const eventType of EVENT_TYPES) {
+    counts[eventType] = 0;
+  }
+  if (!isCompleteEventCounts(counts)) {
+    throw new Error("Failed to initialize iroh event counts.");
+  }
+  return counts;
+}
+
+function isCompleteEventCounts(
+  value: Partial<Record<IrohAuditEventType, number>>,
+): value is Record<IrohAuditEventType, number> {
+  return EVENT_TYPES.every((eventType) => typeof value[eventType] === "number");
 }
 
 function emptyTransportCounts(): Record<IrohTransport, number> {
-  return Object.fromEntries(TRANSPORTS.map((transport) => [transport, 0])) as Record<IrohTransport, number>;
+  const counts: Partial<Record<IrohTransport, number>> = {};
+  for (const transport of TRANSPORTS) {
+    counts[transport] = 0;
+  }
+  if (!isCompleteTransportCounts(counts)) {
+    throw new Error("Failed to initialize iroh transport counts.");
+  }
+  return counts;
+}
+
+function isCompleteTransportCounts(
+  value: Partial<Record<IrohTransport, number>>,
+): value is Record<IrohTransport, number> {
+  return TRANSPORTS.every((transport) => typeof value[transport] === "number");
 }
 
 function percentile(sorted: number[], percentileValue: number): number | undefined {
@@ -150,22 +182,20 @@ function uidFromPath(path: string): string {
 }
 
 function eventFromSnapshot(doc: QueryDocumentSnapshot): IrohAuditRollupInput | null {
-  const data = doc.data() as Partial<IrohTransportAuditEventDoc>;
-  if (
-    typeof data.connectionId !== "string"
-    || !EVENT_TYPES.includes(data.eventType as IrohAuditEventType)
-  ) {
+  const data = doc.data();
+  const connectionId = stringField(data, "connectionId");
+  const eventType = recordField(data, "eventType");
+  if (!connectionId || !isIrohAuditEventType(eventType)) {
     return null;
   }
-  const transport = TRANSPORTS.includes(data.transport as IrohTransport)
-    ? data.transport as IrohTransport
-    : undefined;
+  const transportRaw = recordField(data, "transport");
+  const transport = isIrohTransport(transportRaw) ? transportRaw : undefined;
   return {
     uid: uidFromPath(doc.ref.path),
-    connectionId: data.connectionId,
-    eventType: data.eventType as IrohAuditEventType,
+    connectionId,
+    eventType,
     transport,
-    rttMillis: data.rttMillis,
+    rttMillis: numberField(data, "rttMillis"),
   };
 }
 

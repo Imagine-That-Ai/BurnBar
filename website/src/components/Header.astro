@@ -101,7 +101,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
       }
     });
     mobile.addEventListener("click", (e) => {
-      if ((e.target as HTMLElement).tagName === "A") {
+      if (e.target instanceof HTMLAnchorElement) {
         toggle.setAttribute("aria-expanded", "false");
         mobile.setAttribute("hidden", "");
       }

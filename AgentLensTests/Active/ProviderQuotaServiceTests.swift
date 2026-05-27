@@ -4078,6 +4078,31 @@ final class ProviderQuotaServiceTests: XCTestCase {
         }
     }
 
+    func test_providerRoutingEventLimitedReadbackDecodesOnlyRecentTail() throws {
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
+        let events = (0..<20).map { index in
+            ProviderRoutingDecisionEvent(
+                occurredAt: Date(timeIntervalSince1970: TimeInterval(index)),
+                modelID: nil,
+                selected: nil,
+                nextFallback: nil,
+                reason: index == 18 ? #"route-{18}-\"quoted\""# : "route-\(index)",
+                skipped: []
+            )
+        }
+
+        store.persistRoutingEvents(events)
+
+        switch store.loadPersistedRoutingEvents(limit: 2) {
+        case .loaded(let displayWindow):
+            XCTAssertEqual(displayWindow.map(\.reason), [#"route-{18}-\"quoted\""#, "route-19"])
+        default:
+            XCTFail("Expected limited routing event readback to reload from the JSON tail")
+        }
+    }
+
     func test_miniMaxRefresh_rejectsStandardAPIKeysBeforeNetworkCall() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

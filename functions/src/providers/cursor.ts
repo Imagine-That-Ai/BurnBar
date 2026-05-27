@@ -17,6 +17,7 @@ import type {
   QuotaRefreshResult,
   QuotaBucket,
 } from "../types.js";
+import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "cursor" as const;
 const DASHBOARD_URL = "https://www.cursor.com/api/dashboard";
@@ -26,10 +27,10 @@ function redact(token: string): string {
   return `cursor_${token.slice(0, 3)}***${token.slice(-4)}`;
 }
 
-async function cursorFetch<T>(
+async function cursorFetch(
   url: string,
   cookie: string
-): Promise<{ ok: boolean; data?: T; error?: string }> {
+): Promise<{ ok: boolean; data?: unknown; error?: string }> {
   try {
     const res = await fetch(url, {
       method: "GET",
@@ -43,7 +44,7 @@ async function cursorFetch<T>(
     if (!res.ok) {
       return { ok: false, error: `HTTP ${res.status}` };
     }
-    return { ok: true, data: (await res.json()) as T };
+    return { ok: true, data: await res.json() };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -76,7 +77,7 @@ export const cursorAdapter: ProviderAdapter = {
       };
     }
 
-    const result = await cursorFetch<CursorDashPayload>(DASHBOARD_URL, credential);
+    const result = await cursorFetch(DASHBOARD_URL, credential);
     if (!result.ok) {
       return {
         valid: false,
@@ -101,8 +102,8 @@ export const cursorAdapter: ProviderAdapter = {
     credential: string,
     sourceId: string
   ): Promise<QuotaRefreshResult> {
-    const result = await cursorFetch<CursorDashPayload>(DASHBOARD_URL, credential);
-    if (!result.ok) {
+    const result = await cursorFetch(DASHBOARD_URL, credential);
+    if (!result.ok || !result.data) {
       return {
         ok: false,
         errorCode: "fetch_failed",
@@ -111,10 +112,11 @@ export const cursorAdapter: ProviderAdapter = {
       };
     }
 
-    const data = result.data!;
-    const usage = data.usage || {};
+    const data = recordOrUndefined(result.data);
+    const usage = recordOrUndefined(data?.usage) ?? {};
     const used = typeof usage.used === "number" ? usage.used : 0;
     const limit = typeof usage.limit === "number" ? usage.limit : -1;
+    const subscription = recordOrUndefined(data?.subscription);
 
     const buckets: QuotaBucket[] = [];
     buckets.push({
@@ -122,8 +124,8 @@ export const cursorAdapter: ProviderAdapter = {
       used,
       limit,
       remaining: limit >= 0 ? Math.max(0, limit - used) : -1,
-      window: usage.window || "monthly",
-      meta: { tier: data.subscription?.tier, status: data.subscription?.status },
+      window: typeof usage.window === "string" ? usage.window : "monthly",
+      meta: { tier: subscription?.tier, status: subscription?.status },
     });
 
     return {

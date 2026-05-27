@@ -21,4 +21,7 @@ if ! git diff --quiet -- \
   exit 1
 fi
 
+echo "==> Checking hand-maintained schema mirrors…"
+node tools/schema-sync/check-hand-mirror.mjs
+
 echo "==> Schema sync check passed ==="

@@ -7,3 +7,7 @@ export type {
   QuotaSnapshotDoc,
   QuotaBucket,
 } from "./usage-quota.js";
+export type {
+  ProviderAccountDoc as GeneratedProviderAccountDoc,
+  ProviderAccountConnectContext as GeneratedProviderAccountConnectContext,
+} from "./provider-account.js";

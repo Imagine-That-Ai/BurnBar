@@ -132,8 +132,9 @@ fun PulseView(
             }
         }
 
+        val currentRollups = rollups
         when {
-            isLoading && rollups == null -> {
+            isLoading && currentRollups == null -> {
                 Column(
                     modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 80.dp, start = AuroraSpacing.lg.dp, end = AuroraSpacing.lg.dp),
                     verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
@@ -143,7 +144,7 @@ fun PulseView(
                     ShimmerCard(height = 120)
                 }
             }
-            error != null && rollups == null -> {
+            error != null && currentRollups == null -> {
                 ErrorStateView(
                     icon = Icons.Filled.Error,
                     title = "Couldn't Load Dashboard",
@@ -151,7 +152,7 @@ fun PulseView(
                     onRetry = { dashboardStore.refresh() }
                 )
             }
-            rollups == null -> {
+            currentRollups == null -> {
                 EmptyStateView(
                     icon = Icons.Filled.ShowChart,
                     title = "No Usage Data",
@@ -160,7 +161,7 @@ fun PulseView(
             }
             else -> {
                 Content(
-                    rollups = rollups!!,
+                    rollups = currentRollups,
                     displayMode = displayMode,
                     timelineScope = timelineScope,
                     nowMillis = liveNowMillis,
@@ -616,7 +617,8 @@ fun VelocityForecastCard(
     // over, resetting the rollup to ~$0). Supplementing with live data
     // ensures the forecast always reflects reality.
     val startOfDayMillis = calendar.clone().let { cal ->
-        (cal as java.util.Calendar).apply {
+        check(cal is java.util.Calendar) { "Calendar.clone returned ${cal::class.java.name}" }
+        cal.apply {
             set(java.util.Calendar.HOUR_OF_DAY, 0)
             set(java.util.Calendar.MINUTE, 0)
             set(java.util.Calendar.SECOND, 0)

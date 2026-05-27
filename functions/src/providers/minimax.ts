@@ -28,6 +28,7 @@ import type {
   QuotaRefreshResult,
   QuotaBucket,
 } from "../types.js";
+import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "minimax" as const;
 
@@ -66,7 +67,7 @@ interface MiniMaxRemainsPayload {
 interface MiniMaxFetchResult {
   ok: boolean;
   status?: number;
-  data?: MiniMaxRemainsPayload;
+  data?: unknown;
   /** Logical error message extracted from `base_resp` or HTTP status. */
   error?: string;
   /** Stable error code suitable for callers (e.g. `auth_failed`). */
@@ -90,15 +91,16 @@ async function minimaxFetch(
     return { ok: false, error: String(err), errorCode: "network_error" };
   }
 
-  let payload: MiniMaxRemainsPayload | undefined;
+  let payload: unknown;
   try {
-    payload = (await response.json()) as MiniMaxRemainsPayload;
+    payload = await response.json();
   } catch {
     payload = undefined;
   }
 
+  const body = recordOrUndefined(payload);
   if (!response.ok) {
-    const baseMessage = payload?.base_resp?.status_msg;
+    const baseMessage = recordOrUndefined(body?.base_resp)?.status_msg;
     return {
       ok: false,
       status: response.status,
@@ -116,14 +118,14 @@ async function minimaxFetch(
   // MiniMax always returns 200 with an inline status_code; treat anything
   // other than `0` (or omitted, which means success on some endpoints) as a
   // logical failure.
-  const baseResp = payload?.base_resp ?? {};
+  const baseResp = recordOrUndefined(body?.base_resp) ?? {};
   if (
     typeof baseResp.status_code === "number" &&
     baseResp.status_code !== 0 &&
     baseResp.status_code !== 200
   ) {
     const code = baseResp.status_code;
-    const msg = baseResp.status_msg || `MiniMax error ${code}`;
+    const msg = typeof baseResp.status_msg === "string" ? baseResp.status_msg : `MiniMax error ${code}`;
     return {
       ok: false,
       status: response.status,
@@ -238,11 +240,12 @@ export const minimaxAdapter: ProviderAdapter = {
  * Plan (`data.model_remains`), and any flat `{used, total, remains}` payload.
  */
 export function extractBuckets(
-  payload: MiniMaxRemainsPayload | undefined
+  payload: unknown
 ): QuotaBucket[] {
-  if (!payload) return [];
+  const root = recordOrUndefined(payload);
+  if (!root) return [];
 
-  const rows = collectModelRows(payload);
+  const rows = collectModelRows(root);
   if (rows.length > 0) {
     return rows.map((row, index) => {
       const used = numberFrom(row.used);
@@ -266,9 +269,9 @@ export function extractBuckets(
   // Some Coding Plan deployments return a flat object with `used`, `total`,
   // `remains` at the top level. Fall back to that shape if `model_remains` is
   // missing.
-  const top = numberFrom(payload.used);
-  const limit = numberFrom(payload.total);
-  const remaining = numberFrom(payload.remains, limit !== undefined && top !== undefined ? Math.max(0, limit - top) : undefined);
+  const top = numberFrom(root.used);
+  const limit = numberFrom(root.total);
+  const remaining = numberFrom(root.remains, limit !== undefined && top !== undefined ? Math.max(0, limit - top) : undefined);
   if (top !== undefined || limit !== undefined || remaining !== undefined) {
     return [
       {
@@ -328,7 +331,8 @@ function harvestMiniMaxBuckets(payload: unknown): QuotaBucket[] {
       return;
     }
 
-    const obj = node as Record<string, unknown>;
+    const obj = recordOrUndefined(node);
+    if (!obj) return;
     const candidate = miniMaxBucketFromObject(obj, path);
     if (candidate) {
       const key = `${candidate.name}|${candidate.window}|${candidate.limit}|${candidate.used}`;
@@ -404,15 +408,15 @@ function miniMaxBucketFromObject(
 }
 
 function collectModelRows(
-  payload: MiniMaxRemainsPayload
-): NonNullable<MiniMaxRemainsPayload["model_remains"]> {
+  payload: Record<string, unknown>
+): Array<Record<string, unknown>> {
   if (Array.isArray(payload.model_remains)) {
-    return payload.model_remains;
+    return payload.model_remains.filter(recordOrUndefined);
   }
   // Coding Plan responses sometimes wrap the rows under `data.model_remains`.
-  const data = (payload as { data?: { model_remains?: unknown } }).data;
+  const data = recordOrUndefined(payload.data);
   if (data && Array.isArray(data.model_remains)) {
-    return data.model_remains as NonNullable<MiniMaxRemainsPayload["model_remains"]>;
+    return data.model_remains.filter(recordOrUndefined);
   }
   return [];
 }

@@ -29,6 +29,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     WINDSURF("windsurf", "Windsurf", 0xFF06B6D4, 0xFF22D3EE),
     WARP("warp", "Warp", 0xFFDDE4EA, 0xFF111111),
     XAI("xai", "xAI", 0xFF1A1A1A, 0xFF4A4A4A),
+    MIMO("mimo", "MiMo", 0xFFFF6900, 0xFFFF8533),
     ANTIGRAVITY("antigravity", "Antigravity", 0xFF6C63FF, 0xFF8F8AFF);
 
     companion object {
@@ -46,6 +47,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
             MINIMAX,
             ZAI,
             XAI,
+            MIMO,
             CURSOR,
             COPILOT,
             KIMI,
@@ -130,6 +132,9 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
             "xai"           to XAI,
             "grok"          to XAI,
             "supergrok"     to XAI,
+            "mimo"          to MIMO,
+            "xiaomi"        to MIMO,
+            "xiaomimimo"    to MIMO,
         )
 
         fun chartPalette(provider: AgentProvider): List<Color> {

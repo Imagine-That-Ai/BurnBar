@@ -1,6 +1,11 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
+
+const macDownloadBaseUrl = SITE.macDownloadBaseUrl.replace(/\/$/, "");
+const macDownloadHref = macDownloadBaseUrl
+  ? `${macDownloadBaseUrl}/${SITE.macReleaseFile}`
+  : `/downloads/${SITE.macReleaseFile}`;
 ---
 
 <BaseLayout
@@ -35,7 +40,7 @@ import { SITE } from "@data/site";
         </div>
         <a
           class="btn btn--ember dlsec__primary"
-          href={`/downloads/${SITE.macReleaseFile}`}
+          href={macDownloadHref}
         >
           Download DMG · {SITE.macReleaseLatest}
           <span class="btn-arrow" aria-hidden="true">↓</span>
@@ -48,9 +53,9 @@ import { SITE } from "@data/site";
           <div class="step__body">
             <h3>Download &amp; open the DMG</h3>
             <p>
-              Latest direct-download release is served from this site. Each direct-download release
-              ships Developer ID signed, notarized, stapled, with SHA-256 and SHA-512 checksums next
-              to it.
+              Latest direct-download release is served from OpenBurnBar's download host. Each
+              direct-download release ships Developer ID signed, notarized, stapled, with SHA-256
+              and SHA-512 checksums next to it.
             </p>
           </div>
         </li>

@@ -32,6 +32,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case windsurf = "Windsurf"
     case warp = "Warp"
     case xAI = "xAI"
+    case mimo = "MiMo"
 
     public var id: String { rawValue }
 
@@ -52,6 +53,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .minimax,
         .zai,
         .xAI,
+        .mimo,
         .cursor,
         .copilot,
         .kimi,
@@ -87,6 +89,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .kimi,
         .antigravity,
         .xAI,
+        .mimo,
     ]
 
     public var isQuotaSignalProvider: Bool {
@@ -111,6 +114,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .kimi,
         .antigravity,
         .xAI,
+        .mimo,
     ]
 
     /// A stable, lowercased, space-stripped token for persisting provider identifiers.
@@ -246,6 +250,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .rooCode
         case "xai", "x-ai", "x.ai", "grok":
             return .xAI
+        case "mimo", "xiaomi", "xiaomimimo":
+            return .mimo
         default:
             if let direct = fromPersistedToken(normalized) {
                 return direct
@@ -284,6 +290,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .warp:       return "WarpLogo"
         case .openCode:   return "OpenCodeLogo"
         case .xAI:        return "GrokLogo"
+        case .mimo:       return "MimoLogo"
         }
     }
 
@@ -317,6 +324,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .warp: return "terminal.fill"
         case .openCode: return "chevron.left.forwardslash.chevron.right"
         case .xAI: return "bolt.fill"
+        case .mimo: return "sparkles"
         }
     }
 

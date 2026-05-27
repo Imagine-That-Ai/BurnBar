@@ -511,6 +511,14 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         manager.dataStore = store
         await manager.refreshHealth()
 
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            if uploadCalls == 1, try store.fetchUnsynced().count == 2 {
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
         XCTAssertEqual(uploadCalls, 1)
         XCTAssertEqual(try store.fetchUnsynced().count, 2)
     }

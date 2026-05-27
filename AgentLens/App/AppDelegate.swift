@@ -1,6 +1,7 @@
 import AppKit
 import Carbon
 import GoogleSignIn
+import QuartzCore
 import SwiftUI
 import IOKit.ps
 import OpenBurnBarCore
@@ -53,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var batteryTimer: Timer?
     private var wallpaperActivityTimer: Timer?
     private var wallpaperAgentStatusObserver: NSObjectProtocol?
+    private var wallpaperSpaceChangeObserver: NSObjectProtocol?
     private var wallpaperColorDriverTask: Task<Void, Never>?
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -771,18 +773,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func configureWallpaperActivityPolling() {
+        // The legacy 3 s `wallpaperActivityTimer` and 1 s `wallpaperPollTimer`
+        // burned cycles every second on every machine that ever enabled the
+        // live wallpaper, even when the desktop and agents were idle. They
+        // were replaced with three observer-driven sources that fire only on
+        // actual state changes, plus a defensive 30 s reconcile so we still
+        // catch desktop wallpaper changes that NSWorkspace didn't notify us
+        // about (rare, but possible when a third-party tool writes the
+        // preferences plist directly).
+        //
+        //   - `pixelClockAgentStatusStore` already posts
+        //     `didChangeNotification` whenever an agent process flips state;
+        //     `observeWallpaperAgentStatuses()` (called above) listens to it.
+        //   - `NSWorkspace.shared.notificationCenter` posts
+        //     `activeSpaceDidChangeNotification` when the user switches
+        //     Spaces, which is the most common cause of a wallpaper change.
+        //   - `NSApplication.didChangeScreenParametersNotification` covers
+        //     resolution / display changes.
+        //   - A 30 s `Timer` is the defensive backstop and still runs 30×
+        //     less often than the old 1 s poller.
         wallpaperActivityTimer?.invalidate()
         wallpaperActivityTimer = nil
         wallpaperPollTimer?.invalidate()
         wallpaperPollTimer = nil
+        if let observer = wallpaperSpaceChangeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            wallpaperSpaceChangeObserver = nil
+        }
 
         guard SettingsManager.shared.appearance.enableDesktopWallpaper else { return }
-        wallpaperActivityTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+
+        wallpaperSpaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
             Task { @MainActor in
-                self?.syncWallpaperColorDriver()
+                self?.checkForSystemWallpaperChanges()
             }
         }
-        wallpaperPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+
+        // Defensive backstop. 30 s is invisible to humans because the only
+        // observable side-effect is re-applying the themed fallback if the
+        // captured original wallpaper changed — which the observers above
+        // already catch in the common case.
+        wallpaperPollTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.checkForSystemWallpaperChanges()
             }
@@ -846,6 +881,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let wallpaperAgentStatusObserver {
             NotificationCenter.default.removeObserver(wallpaperAgentStatusObserver)
             self.wallpaperAgentStatusObserver = nil
+        }
+        if let wallpaperSpaceChangeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wallpaperSpaceChangeObserver)
+            self.wallpaperSpaceChangeObserver = nil
         }
         dataStoreObservation = nil
         daemonObservation = nil
@@ -1174,7 +1213,13 @@ struct SwarmWallpaperView: View {
             isAutoCyclingEnabled: autoCyclesShapes,
             enabledProviderGlyphs: providerGlyphs,
             enableSwarmSparkles: enableSparkles,
-            excludeBrandShapesFromSwarm: excludeBrandShapes
+            excludeBrandShapesFromSwarm: excludeBrandShapes,
+            // The wallpaper is an ambient surface that sits behind every
+            // window and icon — capping at 30 fps + rendering the Canvas
+            // asynchronously halves CPU work with no perceptible change in
+            // the ambient field.
+            maxFrameRate: 30.0,
+            rendersAsynchronously: true
         )
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 0.18), value: background)
@@ -1208,10 +1253,22 @@ struct SwarmWallpaperView: View {
 /// A stationary, click-through transparent NSPanel floating behind desktop folders and icons
 /// that hosts the dynamic AI usage ember swarm simulation.
 public class BurnBarWallpaperPanel: NSPanel {
-    private var mouseMonitor: Any?
-    private var clickMonitor: Any?
+    private nonisolated(unsafe) var mouseMonitor: Any?
+    private nonisolated(unsafe) var clickMonitor: Any?
     private let viewModel: SwarmWallpaperViewModel
     private let targetScreen: NSScreen
+
+    /// Last pointer position written to the view-model. We coalesce raw HID
+    /// events through a 30 Hz throttle (`pointerCommitInterval`) and a 4 pt
+    /// movement gate, so micro-jitter no longer causes 60–120 `@Observable`
+    /// writes per second — at idle desktop usage the pointer pipeline is now
+    /// essentially zero-cost.
+    private var lastCommittedPointer: CGPoint?
+    private var pendingPointer: CGPoint?
+    private var lastPointerCommitTime: TimeInterval = 0
+    private nonisolated(unsafe) var pointerCoalesceTimer: DispatchSourceTimer?
+    private static let pointerCommitInterval: TimeInterval = 1.0 / 30.0
+    private static let pointerMovementThreshold: CGFloat = 4.0
 
     public init(screen: NSScreen, viewModel: SwarmWallpaperViewModel) {
         self.viewModel = viewModel
@@ -1250,17 +1307,19 @@ public class BurnBarWallpaperPanel: NSPanel {
         hostingView.autoresizingMask = [.width, .height]
         self.contentView = hostingView
 
-        // Global mouse tracking monitor to feed cursor position to the canvas without window focus
-        self.mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+        // Global mouse tracking monitor to feed cursor position to the canvas without window focus.
+        // We coalesce raw events through `enqueuePointerSample` so the
+        // `@Observable` view-model is written at most ~30 times/sec instead
+        // of at the raw HID rate (≥ 60 Hz on macOS).
+        self.mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
             guard let self = self, !self.viewModel.isPaused else { return }
             let globalPoint = NSEvent.mouseLocation
 
-            // Check if mouse is on this screen
             if self.targetScreen.frame.contains(globalPoint) {
                 let localPoint = self.convertScreenPointToLocal(globalPoint)
-                self.viewModel.pointer = localPoint
+                self.enqueuePointerSample(localPoint)
             } else {
-                self.viewModel.pointer = nil
+                self.enqueuePointerSample(nil)
             }
         }
 
@@ -1269,6 +1328,62 @@ public class BurnBarWallpaperPanel: NSPanel {
         self.clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             self?.scheduleDesktopClickCycleIfNeeded()
         }
+    }
+
+    /// Coalesces raw HID-rate pointer events into a 30 Hz commit stream with
+    /// a sub-threshold movement gate. The visible swarm consumes pointer
+    /// position only at frame boundaries, so committing 60+ times/sec is
+    /// pure waste — at the new cadence the field tracks the cursor within
+    /// one frame visually while paying ½× to ¼× the `@Observable` write
+    /// cost.
+    private func enqueuePointerSample(_ point: CGPoint?) {
+        // `nil` means the cursor left the screen — commit immediately so the
+        // swarm doesn't keep pushing against a stale phantom pointer.
+        if point == nil {
+            pendingPointer = nil
+            commitPendingPointer()
+            return
+        }
+
+        // Movement gate: if the new sample is within `pointerMovementThreshold`
+        // points of the last committed value, drop it.
+        if let new = point, let last = lastCommittedPointer {
+            let dx = abs(new.x - last.x)
+            let dy = abs(new.y - last.y)
+            if dx < Self.pointerMovementThreshold && dy < Self.pointerMovementThreshold {
+                return
+            }
+        }
+
+        pendingPointer = point
+
+        let now = CACurrentMediaTime()
+        if now - lastPointerCommitTime >= Self.pointerCommitInterval {
+            commitPendingPointer()
+            return
+        }
+
+        // Already armed — let the existing timer flush the pending sample.
+        guard pointerCoalesceTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        let delay = Self.pointerCommitInterval - (now - lastPointerCommitTime)
+        timer.schedule(deadline: .now() + max(0, delay))
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.commitPendingPointer()
+        }
+        pointerCoalesceTimer = timer
+        timer.resume()
+    }
+
+    private func commitPendingPointer() {
+        pointerCoalesceTimer?.cancel()
+        pointerCoalesceTimer = nil
+        let next = pendingPointer
+        pendingPointer = nil
+        lastCommittedPointer = next
+        lastPointerCommitTime = CACurrentMediaTime()
+        viewModel.pointer = next
     }
 
     private func scheduleDesktopClickCycleIfNeeded() {
@@ -1309,5 +1424,7 @@ public class BurnBarWallpaperPanel: NSPanel {
         if let clickMonitor {
             NSEvent.removeMonitor(clickMonitor)
         }
+        pointerCoalesceTimer?.cancel()
+        pointerCoalesceTimer = nil
     }
 }

@@ -30,7 +30,7 @@ DAEMON_CORE_DYLIB := libOpenBurnBarCore.dylib
 # Built .app location inside DerivedData
 APP_BUNDLE = $(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)
 
-.PHONY: preflight build build-signed release-mas release-website install uninstall clean test test-full lint ci release-checksums sbom
+.PHONY: preflight build build-signed release-mas release-website install uninstall clean test test-full lint debt-check ci release-checksums sbom
 
 preflight:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "ERROR: xcodebuild not found. Install Xcode 16+ command line tools first."; exit 1; }
@@ -191,7 +191,10 @@ lint: ## Run SwiftLint
 		echo "WARNING: swiftlint not found; skipping lint."; \
 	fi
 
-ci: lint test-full ## Full CI check (matches GitHub PR harness intent)
+debt-check: ## Enforce unsafe cast debt budget
+	@./scripts/debt/check-unsafe-cast-budget.sh
+
+ci: debt-check lint test-full ## Full CI check (matches GitHub PR harness intent)
 
 release-checksums: ## Compute SHA256/SHA512 checksums for release artifacts
 	@APP_PATH="$(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)"; \

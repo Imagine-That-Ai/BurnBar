@@ -76,14 +76,11 @@ struct ProviderLogoView: View {
             )
     }
 
-    @ViewBuilder
     private var bundledImage: Image? {
         let name = provider.bundledLogoName
         // Verify the asset exists at runtime; fall back gracefully if missing
-        if NSImage(named: name) != nil {
-            return Image(name)
-        }
-        return nil
+        guard NSImage(named: name) != nil else { return nil }
+        return Image(name)
     }
 
     @ViewBuilder

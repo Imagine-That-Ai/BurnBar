@@ -943,26 +943,46 @@
   let stepIndex = 0;
   let isPlaying = true;
   let speed = 1.0;
-  let currentTimeout: any = null;
+  let currentTimeout: ReturnType<typeof setTimeout> | null = null;
   let isTransitioning = false;
 
   // Elements
-  const avatar = document.getElementById("walking-avatar") as HTMLElement | null;
-  const avatarCore = document.getElementById("walking-avatar-core") as HTMLElement | null;
-  const consoleBody = document.getElementById("console-body") as HTMLElement | null;
-  const consoleStatus = document.getElementById("console-status") as HTMLElement | null;
-  const speedSlider = document.getElementById("speed-slider") as HTMLInputElement | null;
-  const speedVal = document.getElementById("speed-val") as HTMLElement | null;
-  const btnPlayPause = document.getElementById("btn-play-pause") as HTMLButtonElement | null;
-  const iconPause = btnPlayPause?.querySelector(".icon-pause") as HTMLElement | null;
-  const iconPlay = btnPlayPause?.querySelector(".icon-play") as HTMLElement | null;
-  const btnPlayText = btnPlayPause?.querySelector(".sim-action__text") as HTMLElement | null;
+  const avatar = htmlElementById("walking-avatar");
+  const avatarCore = htmlElementById("walking-avatar-core");
+  const consoleBody = htmlElementById("console-body");
+  const consoleStatus = htmlElementById("console-status");
+  const speedSlider = inputElementById("speed-slider");
+  const speedVal = htmlElementById("speed-val");
+  const btnPlayPause = buttonElementById("btn-play-pause");
+  const iconPause = htmlQuery(btnPlayPause, ".icon-pause");
+  const iconPlay = htmlQuery(btnPlayPause, ".icon-play");
+  const btnPlayText = htmlQuery(btnPlayPause, ".sim-action__text");
 
   // Scenarios tabs
-  const tabLoop = document.getElementById("btn-scenario-loop") as HTMLButtonElement | null;
-  const tabOutage = document.getElementById("btn-scenario-outage") as HTMLButtonElement | null;
-  const tabAuth = document.getElementById("btn-scenario-auth") as HTMLButtonElement | null;
+  const tabLoop = buttonElementById("btn-scenario-loop");
+  const tabOutage = buttonElementById("btn-scenario-outage");
+  const tabAuth = buttonElementById("btn-scenario-auth");
   const tabs = [tabLoop, tabOutage, tabAuth];
+
+  function htmlElementById(id: string): HTMLElement | null {
+    const element = document.getElementById(id);
+    return element instanceof HTMLElement ? element : null;
+  }
+
+  function inputElementById(id: string): HTMLInputElement | null {
+    const element = document.getElementById(id);
+    return element instanceof HTMLInputElement ? element : null;
+  }
+
+  function buttonElementById(id: string): HTMLButtonElement | null {
+    const element = document.getElementById(id);
+    return element instanceof HTMLButtonElement ? element : null;
+  }
+
+  function htmlQuery(root: ParentNode | null, selector: string): HTMLElement | null {
+    const element = root?.querySelector(selector);
+    return element instanceof HTMLElement ? element : null;
+  }
 
   // Initialize simulation
   function init(startPlayback = false) {
@@ -1005,14 +1025,13 @@
     });
 
     // Highlight Legend Card inside scroll container, preventing main window scrolling
-    const listContainer = document.querySelector(".lcsm__list") as HTMLElement | null;
+    const listContainer = htmlQuery(document, ".lcsm__list");
     document.querySelectorAll(".legend-card").forEach((card) => {
       card.classList.remove("is-active");
       if (card.getAttribute("data-card") === stateId) {
         card.classList.add("is-active");
-        if (shouldScroll && listContainer) {
-          const cardHtml = card as HTMLElement;
-          const relativeTop = cardHtml.offsetTop - listContainer.offsetTop;
+        if (shouldScroll && listContainer && card instanceof HTMLElement) {
+          const relativeTop = card.offsetTop - listContainer.offsetTop;
           listContainer.scrollTo({
             top: relativeTop - 8,
             behavior: "smooth"
@@ -1220,8 +1239,8 @@
 
   // Speed slider listener
   speedSlider?.addEventListener("input", (e) => {
-    const target = e.target as HTMLInputElement;
-    if (target) {
+    const target = e.target;
+    if (target instanceof HTMLInputElement) {
       updateSpeed(target.value);
     }
   });

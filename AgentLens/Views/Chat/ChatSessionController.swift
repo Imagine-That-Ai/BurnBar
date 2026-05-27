@@ -5,7 +5,7 @@ import OpenBurnBarComputerUseCore
 
 
 
-protocol ChatSessionSearchProviding {
+protocol ChatSessionSearchProviding: Sendable {
     func search(query: String) async -> [SearchResult]
 }
 
@@ -1116,8 +1116,9 @@ final class ChatSessionController {
         let queryRevisionAtStart = searchQueryRevision
         activeSearchQuery = q
         isSearching = true
-        searchTask = Task { [searchService] in
-            let results = await searchService.search(query: q)
+        let service = searchService
+        searchTask = Task { [service] in
+            let results = await service.search(query: q)
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
@@ -1713,15 +1714,16 @@ final class ChatSessionController {
                     let snapshot = pieces
                     await Task { @MainActor in
                         if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                            let old = self.messages[idx]
-                            self.messages[idx] = ChatMessageRecord(
-                                id: old.id,
-                                role: old.role,
-                                content: joined,
-                                timestamp: old.timestamp,
-                                cliUsed: old.cliUsed,
-                                transcriptPieces: snapshot
-                            )
+                            // Per-token mutation: assigning `content` and
+                            // `transcriptPieces` in place avoids allocating a
+                            // fresh `ChatMessageRecord` per chunk. The
+                            // `streamingTick` bump remains the single
+                            // observation broadcast for views that mirror
+                            // the in-flight content without reading
+                            // `messages` directly (e.g.
+                            // `ProjectMemoryInsightController`).
+                            self.messages[idx].content = joined
+                            self.messages[idx].transcriptPieces = snapshot
                             self.streamingTick &+= 1
                         }
                     }.value
@@ -1783,15 +1785,9 @@ final class ChatSessionController {
                         }
                     }
                     if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                        let old = self.messages[idx]
-                        self.messages[idx] = ChatMessageRecord(
-                            id: old.id,
-                            role: old.role,
-                            content: old.content.isEmpty ? (self.streamError ?? "Error") : old.content,
-                            timestamp: old.timestamp,
-                            cliUsed: old.cliUsed,
-                            transcriptPieces: old.transcriptPieces
-                        )
+                        if self.messages[idx].content.isEmpty {
+                            self.messages[idx].content = self.streamError ?? "Error"
+                        }
                     }
                 }.value
             }

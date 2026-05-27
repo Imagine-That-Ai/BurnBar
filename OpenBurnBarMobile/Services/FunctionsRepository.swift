@@ -83,7 +83,8 @@ final class FunctionsRepository {
         label: String?,
         accountID: String? = nil,
         sourceDeviceID: String? = nil,
-        deviceDisplayName: String? = nil
+        deviceDisplayName: String? = nil,
+        metadata: ProviderAccountConnectMetadata? = nil
     ) async throws -> ProviderAccountDoc {
         let callable = functions.httpsCallable("connectProviderAccount")
         var payload: [String: Any] = [
@@ -102,6 +103,23 @@ final class FunctionsRepository {
         }
         if let deviceDisplayName, deviceDisplayName.isEmpty == false {
             payload["deviceDisplayName"] = deviceDisplayName
+        }
+        if let metadata {
+            if let endpointProfileID = metadata.endpointProfileID {
+                payload["endpointProfileID"] = endpointProfileID
+            }
+            if let region = metadata.region {
+                payload["region"] = region.rawValue
+            }
+            if let tier = metadata.tokenPlanTier {
+                payload["tokenPlanTier"] = tier.rawValue
+            }
+            if let cycle = metadata.tokenPlanBillingCycle {
+                payload["tokenPlanBillingCycle"] = cycle.rawValue
+            }
+            if let authMethodID = metadata.authMethodID {
+                payload["authMethodID"] = authMethodID
+            }
         }
         let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
         guard let data = result.data as? [String: Any],

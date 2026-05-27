@@ -58,12 +58,13 @@ final class FirestoreRepository {
     /// Returns `true` when a string matches ISO-8601 instant format.
     /// Used by `sanitizeForJSON` so Cloud Function date strings convert
     /// to the Double epoch that `JSONDecoder.deferredToDate` expects.
-    nonisolated private static let isoDateRegex = try! NSRegularExpression(
+    nonisolated private static let isoDateRegex = try? NSRegularExpression(
         pattern: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"#
     )
     private nonisolated static func isISODateString(_ s: String) -> Bool {
+        guard let isoDateRegex else { return false }
         let range = NSRange(s.startIndex..., in: s)
-        return Self.isoDateRegex.firstMatch(in: s, range: range) != nil
+        return isoDateRegex.firstMatch(in: s, range: range) != nil
     }
 
     // MARK: - Firestore → JSON Bridge

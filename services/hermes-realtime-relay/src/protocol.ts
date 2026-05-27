@@ -24,12 +24,12 @@ export type HermesRelaySocketRole = "host" | "client";
 // namespaced and a single host cannot accidentally cross-mount the other
 // runtime's traffic. Missing runtime defaults to `hermes` for back-compat.
 export type HermesRelayRuntime = "hermes" | "pi";
-const RELAY_RUNTIMES = new Set<HermesRelayRuntime>(["hermes", "pi"]);
+const RELAY_RUNTIMES = new Set<string>(["hermes", "pi"]);
 export const DEFAULT_RELAY_RUNTIME: HermesRelayRuntime = "hermes";
 
 export function normalizeRuntime(value: unknown): HermesRelayRuntime {
-  return typeof value === "string" && RELAY_RUNTIMES.has(value as HermesRelayRuntime)
-    ? (value as HermesRelayRuntime)
+  return isRelayRuntime(value)
+    ? value
     : DEFAULT_RELAY_RUNTIME;
 }
 
@@ -71,7 +71,7 @@ export interface HermesRealtimeFrame {
   payload?: HermesRealtimePayload;
 }
 
-const FRAME_TYPES = new Set<HermesRealtimeFrameType>([
+const FRAME_TYPES = new Set<string>([
   "host.register",
   "host.ready",
   "request.start",
@@ -83,7 +83,7 @@ const FRAME_TYPES = new Set<HermesRealtimeFrameType>([
   "pong",
 ]);
 
-const RELAY_OPERATIONS = new Set<HermesRelayOperation>([
+const RELAY_OPERATIONS = new Set<string>([
   "chatCompletions",
   "models",
   "sessions",
@@ -92,7 +92,7 @@ const RELAY_OPERATIONS = new Set<HermesRelayOperation>([
   "jobs",
 ]);
 
-const RELAY_CHUNK_KINDS = new Set<HermesRelayChunkKind>(["sse", "data", "error"]);
+const RELAY_CHUNK_KINDS = new Set<string>(["sse", "data", "error"]);
 const RELAY_METHODS = new Set(["GET", "POST"]);
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
 const BASE64ISH_PATTERN = /^[A-Za-z0-9+/=_-]+$/;
@@ -142,23 +142,31 @@ export function parseFrame(
 
   const text = Array.isArray(raw)
     ? Buffer.concat(raw).toString("utf8")
-    : Buffer.from(raw as Buffer).toString("utf8");
-  let parsed: Partial<HermesRealtimeFrame>;
+    : Buffer.from(raw).toString("utf8");
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(text) as Partial<HermesRealtimeFrame>;
+    parsed = JSON.parse(text);
   } catch {
     throw new Error("Frame must be valid JSON.");
   }
-  if (!parsed || typeof parsed !== "object") throw new Error("Frame must be a JSON object.");
+  if (!isRecord(parsed)) throw new Error("Frame must be a JSON object.");
   if (!isAllowedFrameType(parsed.type)) throw new Error("Unsupported realtime relay frame type.");
   assertSafeIdentifier(parsed.uid, "uid");
   assertSafeIdentifier(parsed.connectionId, "connectionId");
   if (parsed.requestId !== undefined) assertSafeIdentifier(parsed.requestId, "requestId");
   if (parsed.protocolVersion !== PROTOCOL_VERSION) throw new Error("Unsupported realtime relay protocol version.");
-  if (parsed.runtime !== undefined && !RELAY_RUNTIMES.has(parsed.runtime as HermesRelayRuntime)) {
+  if (parsed.runtime !== undefined && !isRelayRuntime(parsed.runtime)) {
     throw new Error("Unsupported relay runtime discriminator.");
   }
-  const frame = parsed as HermesRealtimeFrame;
+  const frame: HermesRealtimeFrame = {
+    type: parsed.type,
+    uid: parsed.uid,
+    connectionId: parsed.connectionId,
+    protocolVersion: parsed.protocolVersion,
+    requestId: parsed.requestId,
+    runtime: parsed.runtime,
+    payload: parsePayload(parsed.payload),
+  };
   assertFrameShape(frame);
   return frame;
 }
@@ -193,7 +201,9 @@ export function assertRoleCanSend(frame: HermesRealtimeFrame, role: HermesRelayS
   }
 }
 
-export function assertRequestFrame(frame: HermesRealtimeFrame): void {
+export function assertRequestFrame(
+  frame: HermesRealtimeFrame
+): asserts frame is HermesRealtimeFrame & { requestId: string } {
   if (!frame.requestId) throw new Error("requestId is required.");
   if (frame.type === "request.start") {
     if (!frame.payload?.operation || !RELAY_OPERATIONS.has(frame.payload.operation)) {
@@ -292,5 +302,48 @@ function isBoundedInteger(value: unknown, min: number, max: number): value is nu
 }
 
 function isAllowedFrameType(value: unknown): value is HermesRealtimeFrameType {
-  return typeof value === "string" && FRAME_TYPES.has(value as HermesRealtimeFrameType);
+  return typeof value === "string" && FRAME_TYPES.has(value);
+}
+
+function isRelayRuntime(value: unknown): value is HermesRelayRuntime {
+  return typeof value === "string" && RELAY_RUNTIMES.has(value);
+}
+
+function isRelayOperation(value: unknown): value is HermesRelayOperation {
+  return typeof value === "string" && RELAY_OPERATIONS.has(value);
+}
+
+function isRelayChunkKind(value: unknown): value is HermesRelayChunkKind {
+  return typeof value === "string" && RELAY_CHUNK_KINDS.has(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parsePayload(value: unknown): HermesRealtimePayload | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error("Frame payload is invalid.");
+  return {
+    operation: isRelayOperation(value.operation) ? value.operation : undefined,
+    method: typeof value.method === "string" ? value.method : undefined,
+    payloadCiphertext: typeof value.payloadCiphertext === "string" ? value.payloadCiphertext : undefined,
+    wrappedKey: typeof value.wrappedKey === "string" ? value.wrappedKey : undefined,
+    relayEncryption: typeof value.relayEncryption === "string" ? value.relayEncryption : undefined,
+    relayKeyVersion: typeof value.relayKeyVersion === "number" ? value.relayKeyVersion : undefined,
+    sequence: typeof value.sequence === "number" ? value.sequence : undefined,
+    kind: isRelayChunkKind(value.kind) ? value.kind : undefined,
+    ciphertext: typeof value.ciphertext === "string" ? value.ciphertext : undefined,
+    error: typeof value.error === "string" ? value.error : undefined,
+    chunkCount: typeof value.chunkCount === "number" ? value.chunkCount : undefined,
+    capabilities: parseCapabilities(value.capabilities),
+  };
+}
+
+function parseCapabilities(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error("capabilities are invalid.");
+  }
+  return value;
 }

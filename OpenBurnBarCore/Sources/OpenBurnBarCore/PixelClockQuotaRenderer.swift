@@ -795,6 +795,9 @@ public enum PixelClockQuotaRenderer {
         if token.contains("minimax") {
             return PixelClockProviderLogoAssets.miniMax
         }
+        if token.contains("mimo") || token.contains("xiaomi") {
+            return PixelClockProviderLogoAssets.mimo
+        }
         if token.contains("z.ai") || token.contains("zai") {
             return PixelClockProviderLogoAssets.zai
         }

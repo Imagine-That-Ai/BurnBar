@@ -192,6 +192,7 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
     /// requests never get routed to OpenAI-compatible upstreams and vice
     /// versa.
     public let formatFamily: BurnBarProviderFormatFamily
+    public let endpointProfileID: String?
 
     public init(
         providerID: String,
@@ -205,7 +206,8 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
         apiKey: String,
         pricing: BurnBarModelPricing,
         modelCapabilityClassID: String? = nil,
-        formatFamily: BurnBarProviderFormatFamily = .openaiCompat
+        formatFamily: BurnBarProviderFormatFamily = .openaiCompat,
+        endpointProfileID: String? = nil
     ) {
         self.providerID = providerID
         self.providerDisplayName = providerDisplayName
@@ -221,6 +223,7 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
             modelCapabilityClassID ?? resolvedModelID
         )
         self.formatFamily = formatFamily
+        self.endpointProfileID = endpointProfileID
     }
 
     private static func normalizedCapabilityClassID(_ value: String) -> String {
@@ -697,20 +700,31 @@ public struct BurnBarProviderRouter: Sendable {
                     ) else {
                         continue
                     }
+                    let resolvedEndpoint = ProviderRouteEndpointResolver.resolve(
+                        providerID: configuration.provider.id,
+                        apiKey: key,
+                        defaultBaseURL: configuration.settings.baseURL,
+                        slot: ProviderRouteEndpointResolver.SlotContext(
+                            endpointProfileID: slot.slot.endpointProfileID,
+                            region: slot.slot.region,
+                            authMethodID: slot.slot.authMethodID
+                        )
+                    )
                     routes.append(
                         BurnBarProviderRoute(
                             providerID: configuration.provider.id,
                             providerDisplayName: configuration.provider.displayName,
                             credentialSlotID: slot.slot.slotID,
                             credentialSlotLabel: slot.slot.label,
-                            baseURL: configuration.settings.baseURL,
+                            baseURL: resolvedEndpoint.baseURL,
                             requestedModel: modelName,
                             resolvedModelID: resolvedModel.id,
                             canonicalModelID: resolvedModel.canonicalModelID,
                             apiKey: key,
                             pricing: resolvedModel.pricing,
                             modelCapabilityClassID: resolvedModel.capabilityClassID,
-                            formatFamily: formatFamily
+                            formatFamily: formatFamily,
+                            endpointProfileID: resolvedEndpoint.endpointProfileID
                         )
                     )
                 }
@@ -718,18 +732,25 @@ public struct BurnBarProviderRouter: Sendable {
             }
 
             if let apiKey = effectiveAPIKey(for: configuration) {
+                let resolvedEndpoint = ProviderRouteEndpointResolver.resolve(
+                    providerID: configuration.provider.id,
+                    apiKey: apiKey,
+                    defaultBaseURL: configuration.settings.baseURL,
+                    slot: ProviderRouteEndpointResolver.SlotContext()
+                )
                 routes.append(
                     BurnBarProviderRoute(
                         providerID: configuration.provider.id,
                         providerDisplayName: configuration.provider.displayName,
-                        baseURL: configuration.settings.baseURL,
+                        baseURL: resolvedEndpoint.baseURL,
                         requestedModel: modelName,
                         resolvedModelID: resolvedModel.id,
                         canonicalModelID: resolvedModel.canonicalModelID,
                         apiKey: apiKey,
                         pricing: resolvedModel.pricing,
                         modelCapabilityClassID: resolvedModel.capabilityClassID,
-                        formatFamily: formatFamily
+                        formatFamily: formatFamily,
+                        endpointProfileID: resolvedEndpoint.endpointProfileID
                     )
                 )
             }
@@ -1182,6 +1203,25 @@ public struct BurnBarProviderRouter: Sendable {
         }
         return selected.canonicalModelID == requiredCanonicalModelID
     }
+
+    private func restrictFailoverToMatchingEndpointProfile(_ ranked: [BurnBarRankedRoute]) -> [BurnBarRankedRoute] {
+        guard let winner = ranked.first,
+              let profileID = winner.route.endpointProfileID,
+              !profileID.isEmpty,
+              !profileID.hasPrefix("legacy.") else {
+            return ranked
+        }
+
+        var result: [BurnBarRankedRoute] = [winner]
+        for entry in ranked.dropFirst() {
+            if entry.route.providerID != winner.route.providerID {
+                result.append(entry)
+            } else if entry.route.endpointProfileID == profileID {
+                result.append(entry)
+            }
+        }
+        return result
+    }
 }
 
 // MARK: - Router Scorecard
@@ -1344,6 +1384,8 @@ extension BurnBarProviderRouter {
             let rhsSlot = rhs.breakdown.slotID ?? "legacy"
             return lhsSlot < rhsSlot
         }
+
+        rankedRoutes = restrictFailoverToMatchingEndpointProfile(rankedRoutes)
 
         return BurnBarRouteRankingResult(
             rankedRoutes: rankedRoutes,

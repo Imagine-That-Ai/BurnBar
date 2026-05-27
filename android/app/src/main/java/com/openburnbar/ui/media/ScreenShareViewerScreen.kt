@@ -455,9 +455,10 @@ fun ScreenShareViewerScreen(
             }
         }
 
-        if (controlMode == ScreenMirrorControlMode.COPILOT && coPilotTarget != null && standardControlEnabled) {
+        val activeCoPilotTarget = coPilotTarget
+        if (controlMode == ScreenMirrorControlMode.COPILOT && activeCoPilotTarget != null && standardControlEnabled) {
             CoPilotTargetOverlay(
-                coPilotTarget = coPilotTarget!!,
+                coPilotTarget = activeCoPilotTarget,
                 coPilotRuntime = coPilotRuntime,
                 activeDisplayId = activeDisplayId,
                 onRuntimeChange = { coPilotRuntime = it },

@@ -1366,6 +1366,6 @@ private final class PopoverSwitcherProfileAdapter: SwitcherProfileStoreAdapter, 
     }
 
     func updateProfile(_ profile: SwitcherProfileRecord) {
-        try? store.update(profile)
+        _ = try? store.update(profile)
     }
 }

@@ -68,7 +68,8 @@ object OpusCodec {
     class Encoder internal constructor(private val cls: Class<*>, private val instance: Any) : AutoCloseable {
         fun encode(pcm: ByteArray): ByteArray {
             return cls.getMethod("encode", ByteArray::class.java)
-                .invoke(instance, pcm) as ByteArray
+                .invoke(instance, pcm) as? ByteArray
+                ?: error("Opus encoder returned an unexpected value")
         }
 
         override fun close() {
@@ -79,7 +80,8 @@ object OpusCodec {
     class Decoder internal constructor(private val cls: Class<*>, private val instance: Any) : AutoCloseable {
         fun decode(packet: ByteArray): ByteArray {
             return cls.getMethod("decode", ByteArray::class.java)
-                .invoke(instance, packet) as ByteArray
+                .invoke(instance, packet) as? ByteArray
+                ?: error("Opus decoder returned an unexpected value")
         }
 
         override fun close() {

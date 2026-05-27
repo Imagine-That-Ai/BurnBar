@@ -1,7 +1,16 @@
-import type { Redis } from "ioredis";
 import type { RelayLimitsConfig } from "./config.js";
 import { RelayLimitError } from "./errors.js";
 import { DEFAULT_RELAY_RUNTIME, type HermesRelayRuntime, type HermesRelaySocketRole } from "./protocol.js";
+
+export type RelayRedisClient = {
+  zremrangebyscore(key: string, min: number, max: number): Promise<number>;
+  zadd(key: string, score: number, member: string): Promise<number>;
+  expire(key: string, seconds: number): Promise<number>;
+  zcard(key: string): Promise<number>;
+  zrem(key: string, member: string): Promise<number>;
+  incrby(key: string, bytes: number): Promise<number>;
+  incr(key: string): Promise<number>;
+};
 
 export interface RelayQuotaStore {
   reserveSocket(uid: string, role: HermesRelaySocketRole, sessionID: string): Promise<void>;
@@ -33,7 +42,7 @@ export interface RelayQuotaStore {
 
 export class RedisRelayQuotaStore implements RelayQuotaStore {
   constructor(
-    private readonly redis: Redis,
+    private readonly redis: RelayRedisClient,
     private readonly limits: RelayLimitsConfig
   ) {}
 

@@ -1,5 +1,6 @@
-import { getFirestore, type Firestore, type Timestamp } from "firebase-admin/firestore";
+import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { RelayHttpError } from "./errors.js";
+import type { EntitlementFirestore } from "./firestoreTypes.js";
 
 export interface EntitlementCheck {
   productID: string;
@@ -24,7 +25,7 @@ export interface FirestoreEntitlementVerifierOptions {
   entitlementIDs?: string[];
   cacheTTLSeconds: number;
   negativeCacheTTLSeconds: number;
-  firestore?: Pick<Firestore, "doc">;
+  firestore?: EntitlementFirestore;
 }
 
 export class FirestoreEntitlementVerifier implements EntitlementVerifier {
@@ -33,7 +34,7 @@ export class FirestoreEntitlementVerifier implements EntitlementVerifier {
   private readonly cacheTTLMillis: number;
   private readonly negativeCacheTTLMillis: number;
   private readonly cache = new Map<string, EntitlementCacheEntry>();
-  private readonly firestore: Pick<Firestore, "doc">;
+  private readonly firestore: EntitlementFirestore;
 
   constructor(options: FirestoreEntitlementVerifierOptions) {
     this.productIDs = new Set(options.productIDs);
@@ -107,12 +108,18 @@ function entitlementProductID(entitlementID: string, data: Record<string, unknow
 }
 
 function entitlementExpiryMillis(data: Record<string, unknown>): number {
-  const expireAt = data.expireAt as Timestamp | undefined;
-  if (expireAt && typeof expireAt.toMillis === "function") {
-    return expireAt.toMillis();
+  if (hasMillisTimestamp(data.expireAt)) {
+    return data.expireAt.toMillis();
   }
   if (typeof data.expiresAt === "string") {
     return Date.parse(data.expiresAt);
   }
   return Number.NaN;
+}
+
+function hasMillisTimestamp(value: unknown): value is { toMillis(): number } {
+  return typeof value === "object"
+    && value !== null
+    && "toMillis" in value
+    && typeof value.toMillis === "function";
 }

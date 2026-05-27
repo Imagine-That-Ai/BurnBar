@@ -130,9 +130,9 @@ class RuleBasedVerdictEngineTest {
     @Test
     fun anomalyAtOrAboveZThresholdIsSurfaced() {
         val v = engine.produce(digest = makeDigest(anomalyZ = 2.5), window = VerdictWindow.today)
-        assertNotNull(v.anomaly)
-        assertEquals(2.5, v.anomaly!!.zScore, 0.0001)
-        assertEquals(VerdictAcceptAction.Intent.investigate, v.anomaly!!.acceptAction?.intent)
+        val anomaly = requireNotNull(v.anomaly)
+        assertEquals(2.5, anomaly.zScore, 0.0001)
+        assertEquals(VerdictAcceptAction.Intent.investigate, anomaly.acceptAction?.intent)
     }
 
     @Test

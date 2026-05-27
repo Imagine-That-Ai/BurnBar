@@ -369,6 +369,7 @@ These are high-leverage improvements that can be done in 1–2 days each and sho
 | DaemonManager test coverage | 0% | 50% | 80% |
 | MissionControl test coverage | 0% | 20% | 50% |
 | `try?` in `AgentLens/Services/` | ~180 | 120 | 50 |
+| Unsafe casts / force unwraps | **0** (zero-lock, `budgets/unsafe-cast-baseline.json`) | 0 | 0 |
 | SwiftUI imports in Services/ | 6+ | 3 | 0 |
 | Release smoke test pass rate | N/A | 100% | 100% |
 | CI flaky test rate | Unknown | <5% | <1% |

@@ -1464,7 +1464,7 @@ enum OpenBurnBarOperatingComposer {
             }
         }
 
-        if projectUsages.reduce(0) { $0 + $1.cost } >= 3 || Set(projectUsages.map(\.sessionId)).count >= 2 {
+        if projectUsages.reduce(0, { $0 + $1.cost }) >= 3 || Set(projectUsages.map(\.sessionId)).count >= 2 {
             record(weight: 1, "Recent burn is concentrated in active sessions for the lead project.")
         }
 

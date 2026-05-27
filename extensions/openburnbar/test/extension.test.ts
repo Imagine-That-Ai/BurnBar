@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createExtensionContextMock } from "./helpers/extensionContextMock";
 
 const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
 const createdViews: string[] = [];
@@ -178,14 +179,8 @@ describe("activateBurnBarExtension", () => {
   it("registers OpenBurnBar views and commands during activation", async () => {
     const { activateBurnBarExtension } = await import("../src/extension");
 
-    const context = {
-      subscriptions: [] as Array<{ dispose(): void }>,
-      globalState: {
-        get: () => undefined,
-        update: () => Promise.resolve()
-      }
-    };
-    await activateBurnBarExtension(context as never, {
+    const context = createExtensionContextMock();
+    await activateBurnBarExtension(context, {
       controllerDependencies: {
         client: {
           health: vi.fn().mockResolvedValue({
@@ -273,14 +268,8 @@ describe("activateBurnBarExtension", () => {
   it("surfaces repair failures through the warning channel", async () => {
     const { activateBurnBarExtension } = await import("../src/extension");
 
-    const context = {
-      subscriptions: [] as Array<{ dispose(): void }>,
-      globalState: {
-        get: () => undefined,
-        update: () => Promise.resolve()
-      }
-    };
-    await activateBurnBarExtension(context as never, {
+    const context = createExtensionContextMock();
+    await activateBurnBarExtension(context, {
       controllerDependencies: {
         client: {
           health: vi.fn().mockResolvedValue({
@@ -352,14 +341,8 @@ describe("activateBurnBarExtension", () => {
   it("skips local companion registration on the remote UI host", async () => {
     const { activateBurnBarExtension } = await import("../src/extension");
 
-    const context = {
-      subscriptions: [] as Array<{ dispose(): void }>,
-      globalState: {
-        get: () => undefined,
-        update: () => Promise.resolve()
-      }
-    };
-    await activateBurnBarExtension(context as never, {
+    const context = createExtensionContextMock();
+    await activateBurnBarExtension(context, {
       controllerDependencies: {
         client: {
           health: vi.fn().mockResolvedValue({
@@ -445,17 +428,9 @@ describe("activateBurnBarExtension", () => {
   it("registers only the workspace companion on the workspace host", async () => {
     const { activateBurnBarExtension } = await import("../src/extension");
 
-    const context = {
-      extension: {
-        extensionKind: 2
-      },
-      globalState: {
-        get: () => undefined,
-        update: () => Promise.resolve()
-      },
-      subscriptions: [] as Array<{ dispose(): void }>
-    };
-    const result = await activateBurnBarExtension(context as never, {
+    const context = createExtensionContextMock();
+    context.extension.extensionKind = 2;
+    const result = await activateBurnBarExtension(context, {
       extensionKind: 2,
       remoteName: "ssh-remote"
     });

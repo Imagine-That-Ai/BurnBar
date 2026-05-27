@@ -501,4 +501,4 @@ private struct ArtifactDiscoveryHealthDetails: Codable {
     }
 }
 
-extension SettingsManager: ArtifactDiscoverySettingsProviding {}
+extension SettingsManager: @preconcurrency ArtifactDiscoverySettingsProviding {}

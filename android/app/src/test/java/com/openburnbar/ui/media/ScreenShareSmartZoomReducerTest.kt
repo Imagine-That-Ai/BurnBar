@@ -235,7 +235,7 @@ class ScreenShareSmartZoomReducerTest {
     fun normalizedPoint_inverseMapsPositionThroughSmartZoom() {
         val root = IntSize(width = 1000, height = 1000)
         val aspect = 1f
-        val bounds = ScreenMirrorInputPolicy.surfaceBounds(root, ScreenMirrorFit.FIT, aspect)!!
+        val bounds = requireNotNull(ScreenMirrorInputPolicy.surfaceBounds(root, ScreenMirrorFit.FIT, aspect))
         val scale = 2f
         // Translation moves the rendered content so that the top-left
         // corner ends up at the viewport center.

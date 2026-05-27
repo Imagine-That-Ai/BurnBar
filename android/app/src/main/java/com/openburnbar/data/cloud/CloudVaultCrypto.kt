@@ -169,7 +169,9 @@ object CloudVaultCrypto {
 
     fun unwrapVaultKey(ciphertext: ByteArray, privateKey: PrivateKey): ByteArray {
         require(ciphertext.size > 65) { "Invalid wrapped vault key" }
-        val ephemeralPublic = publicKeyFromX963(ciphertext.copyOfRange(0, 65), (privateKey as ECPrivateKey).params)
+        val ecPrivateKey = privateKey as? ECPrivateKey
+            ?: throw IllegalArgumentException("Vault key unwrap requires an EC private key")
+        val ephemeralPublic = publicKeyFromX963(ciphertext.copyOfRange(0, 65), ecPrivateKey.params)
         val sharedSecret = KeyAgreement.getInstance("ECDH").run {
             init(privateKey)
             doPhase(ephemeralPublic, true)
@@ -183,7 +185,8 @@ object CloudVaultCrypto {
     }
 
     fun publicKeyX963(publicKey: PublicKey): ByteArray {
-        val ec = publicKey as ECPublicKey
+        val ec = publicKey as? ECPublicKey
+            ?: throw IllegalArgumentException("X9.63 encoding requires an EC public key")
         return byteArrayOf(0x04) + fixed32(ec.w.affineX) + fixed32(ec.w.affineY)
     }
 

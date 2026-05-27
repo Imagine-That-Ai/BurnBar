@@ -30,9 +30,9 @@ extension OpenBurnBarDaemonManager {
         await performBusyWork {
             try installFilesIfNeeded()
             try writeLaunchAgentPlist()
-            try bootoutIfNeeded()
-            try runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
-            try runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
+            try await bootoutIfNeeded()
+            try await runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
+            try await runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
             supervisionState = OpenBurnBarDaemonSupervisor.resetAfterRepair()
             try await awaitHealthy()
         }
@@ -42,17 +42,23 @@ extension OpenBurnBarDaemonManager {
         await performBusyWork {
             try installFilesIfNeeded()
             try writeLaunchAgentPlist()
-            try bootoutIfNeeded()
-            try runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
-            try runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
+            try await bootoutIfNeeded()
+            try await runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
+            try await runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
             supervisionState = OpenBurnBarDaemonSupervisor.resetAfterRepair()
             try await awaitHealthy()
         }
     }
 
     func installedDaemonBinaryNeedsRefresh() -> Bool {
-        guard let sourceBinaryURL = dependencies.resolveDaemonBinary() else { return false }
+        Self.installedDaemonBinaryNeedsRefresh(paths: paths, dependencies: dependencies)
+    }
 
+    nonisolated static func installedDaemonBinaryNeedsRefresh(
+        paths: OpenBurnBarDaemonRuntimePaths,
+        dependencies: OpenBurnBarDaemonDependencies
+    ) -> Bool {
+        guard let sourceBinaryURL = dependencies.resolveDaemonBinary() else { return false }
         let sourceURL = sourceBinaryURL.standardizedFileURL
         let installedURL = paths.installedBinaryURL.standardizedFileURL
         guard sourceURL != installedURL else { return false }
@@ -84,7 +90,7 @@ extension OpenBurnBarDaemonManager {
 
     func uninstall() async {
         await performBusyWork {
-            try bootoutIfNeeded()
+            try await bootoutIfNeeded()
             if dependencies.fileManager.fileExists(atPath: paths.launchAgentPlistURL.path) {
                 try dependencies.fileManager.removeItem(at: paths.launchAgentPlistURL)
             }
@@ -144,7 +150,7 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
-    private func daemonBinaryDigest(at url: URL) throws -> Data {
+    nonisolated private static func daemonBinaryDigest(at url: URL) throws -> Data {
         let data = try Data(contentsOf: url, options: [.mappedIfSafe])
         return Data(SHA256.hash(data: data))
     }
@@ -222,17 +228,17 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
-    func bootoutIfNeeded() throws {
+    func bootoutIfNeeded() async throws {
         do {
-            _ = try dependencies.runProcess("/bin/launchctl", ["bootout", launchctlDomain, paths.launchAgentPlistURL.path])
+            _ = try await daemonProcess("/bin/launchctl", ["bootout", launchctlDomain, paths.launchAgentPlistURL.path])
         } catch {
             // Ignore if the service was not loaded yet.
         }
     }
 
-    func runLaunchctl(_ arguments: [String]) throws {
+    func runLaunchctl(_ arguments: [String]) async throws {
         do {
-            _ = try dependencies.runProcess("/bin/launchctl", arguments)
+            _ = try await daemonProcess("/bin/launchctl", arguments)
         } catch {
             throw OpenBurnBarDaemonManagerError.launchctlFailed(error.localizedDescription)
         }

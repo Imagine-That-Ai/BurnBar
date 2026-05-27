@@ -43,6 +43,9 @@ final class MobileProviderWizardModel {
     var revealCredential: Bool = false
     var runnerURL: String = ""
     var runnerSecret: String = ""
+    var mimoTokenPlanRegion: ProviderEndpointRegion = .sgp
+    var mimoTokenPlanTier: MimoTokenPlanTier = .standard
+    var mimoTokenPlanBillingCycle: MimoTokenPlanBillingCycle = .monthly
 
     // MARK: - Model-owned outputs (view reads only)
 
@@ -391,6 +394,7 @@ final class MobileProviderWizardModel {
         let guide = ProviderSetupGuide.registryEnrichedGuide(for: provider)
         let labelToUse = trimmedLabel.isEmpty ? guide.labelSuggestion : trimmedLabel
         let kind: CredentialKind = resolvedCredentialKind
+        let connectMetadata = resolvedConnectMetadata(for: provider)
         let created: ProviderAccountDoc?
 
         switch syncMode {
@@ -399,7 +403,8 @@ final class MobileProviderWizardModel {
                 providerID: provider.providerID,
                 credential: trimmedCredential,
                 kind: kind,
-                label: labelToUse
+                label: labelToUse,
+                metadata: connectMetadata
             )
             if Task.isCancelled { return }
         case .hosted:
@@ -460,5 +465,30 @@ final class MobileProviderWizardModel {
             errorMessage = connectionStore.error ?? "We couldn't validate your credentials."
             advance(to: .failed)
         }
+    }
+
+    private func resolvedConnectMetadata(for provider: AgentProvider) -> ProviderAccountConnectMetadata? {
+        guard provider == .mimo else { return nil }
+        guard let authMethodID = selectedAuthMethodID else { return nil }
+        if authMethodID == "mimo-token-plan", mimoTokenPlanRegion == .global {
+            return nil
+        }
+        if authMethodID == "mimo-token-plan" {
+            return .mimo(
+                authMethodID: authMethodID,
+                region: mimoTokenPlanRegion,
+                tier: mimoTokenPlanTier,
+                billingCycle: mimoTokenPlanBillingCycle
+            )
+        }
+        if authMethodID == "mimo-payg" {
+            return .mimo(
+                authMethodID: authMethodID,
+                region: .global,
+                tier: nil,
+                billingCycle: .monthly
+            )
+        }
+        return ProviderAccountConnectMetadata(authMethodID: authMethodID)
     }
 }

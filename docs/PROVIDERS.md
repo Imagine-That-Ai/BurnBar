@@ -11,6 +11,7 @@
 | **Claude Code** | `ClaudeQuotaAdapter.swift` | `.exact` | Bridge → JSONL → estimate | Bridge: rate-limit %. JSONL: token counts. |
 | **Copilot** | `CopilotQuotaAdapter.swift` | `.exact` | `POST api.github.com/copilot_internal/user` | Premium + Chat rate windows |
 | **MiniMax** | `MiniMaxQuotaAdapter.swift` | `.exact` | `GET .../coding_plan/remains` | Token plan remaining counts |
+| **MiMo (Xiaomi)** | `MimoQuotaAdapter.swift` | `.exact` / `.estimated` | `GET .../token_plan/remains` (Token Plan); tier cap fallback | Token Plan credits; PAYG balance unavailable |
 | **Z.ai** | `ZAIQuotaAdapter.swift` | `.exact` | `GET api.z.ai/api/monitor/usage/quota/limit` | Token + MCP limits |
 | **Factory** | `FactoryQuotaAdapter.swift` | `.exact` / `.estimated` | `POST app.factory.ai/api/.../usage` | Standard + Premium token buckets |
 | **Cursor** | `CursorQuotaAdapter.swift` | `.exact` / `.estimated` | `GET cursor.com/api/usage-summary` | Included + on-demand usage |
@@ -38,6 +39,7 @@
 | **Factory** | Browser cookie + Bearer | Session cookie + `access-token` from cookie | `Cookie: {cookie}` + `Authorization: Bearer {token}` | WorkOS-based auth. Cookie extracted from Safari/Chrome for `app.factory.ai`. |
 | **Warp** | API key | `wk-...` | `Authorization: Bearer {key}` + `User-Agent: Warp/1.0` | Created at warp.dev. Spoofed UA required (HTTP 429 otherwise). |
 | **MiniMax** | Coding Plan API key | `sk-cp-...` | `Authorization: Bearer {key}` | Standard `sk-api-...` keys are rejected. |
+| **MiMo (Xiaomi)** | Token Plan or PAYG API key | `tp-...` (regional) / `sk-...` (global PAYG) | `Authorization: Bearer {key}` or `api-key: {key}` | Token Plan keys require explicit cluster (`cn`, `sgp`, `ams`). Routed via endpoint profiles. |
 | **Z.ai** | API key | (no fixed prefix) | `Authorization: Bearer {key}` | From Z.ai dashboard. Coding plan or API quota access. |
 | **Ollama** | None for localhost; API key for Ollama Cloud | `ollama` local placeholder or Ollama API key | `Authorization: Bearer {key}` for `https://ollama.com/api` | Local inventory needs `ollama serve`; cloud routing uses explicit Keychain-backed provider-plan slots. |
 | **OpenAI (usage)** | Admin API key | `sk-...` | `Authorization: Bearer {key}` | Requires organization admin key for `/v1/organization/usage/completions`. |
@@ -56,6 +58,8 @@
 | Factory | `POST https://api.factory.ai/api/organization/subscription/usage` | HTTP | `{"usage":{"standard":{"userTokens":...,"totalAllowance":...},"premium":{...}}}` |
 | Warp | `POST https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo` | GraphQL | `{"data":{"workspace":{"requestLimit":...,"requestsUsedSinceLastRefresh":...,"bonusGrants":[...]}}}` |
 | MiniMax | `GET https://www.minimax.io/v1/api/openplatform/coding_plan/remains` | HTTP | `{"model_remains":[{"model_name":"...","current_interval_usage_count":...,"current_interval_total_count":...,"resets_at":"..."}]}` |
+| MiMo Token Plan | `GET https://token-plan-{cn,sgp,ams}.xiaomimimo.com/v1/token_plan/remains` | HTTP | Vendor-specific remains payload (probe-backed); falls back to tier cap ledger |
+| MiMo PAYG | `GET https://api.xiaomimimo.com/v1/models` | HTTP | Validation only; no balance API |
 | Z.ai | `GET https://api.z.ai/api/monitor/usage/quota/limit` | HTTP | `[{"type":"TOKENS_LIMIT","unit":3,"number":5,"currentValue":...,"remaining":...,"percentage":...}]` |
 | Ollama | `GET http://localhost:11434/api/tags`; `POST https://ollama.com/api/chat`; `GET https://ollama.com/api/tags` | HTTP | Local/cloud model list plus native chat response with `message.content`, `prompt_eval_count`, and `eval_count` |
 | OpenAI | `GET https://api.openai.com/v1/organization/usage/completions?start_time=...&end_time=...&bucket_width=1d` | HTTP | `{"data":[{"results":[{"input_tokens":...,"output_tokens":...,"input_cached_tokens":...,"num_model_requests":...}]}]}` |
@@ -69,6 +73,8 @@
 | Claude (JSONL) | Within 5 min of API call | None |
 | Copilot | Real-time | GitHub OAuth token or PAT |
 | MiniMax | On refresh (polled) | `sk-cp-...` Coding Plan key |
+| MiMo Token Plan | On refresh (polled) | `tp-...` + selected cluster |
+| MiMo PAYG | On connect / route validation | `sk-...` |
 | Z.ai | On refresh (polled) | API key |
 | Factory | On refresh (polled) | Browser cookie |
 | Cursor | On refresh (polled) | Browser cookie |

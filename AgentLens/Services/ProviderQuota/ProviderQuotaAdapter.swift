@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 import SQLite3
 
 
@@ -6,7 +7,11 @@ protocol ProviderQuotaAdapter: Sendable {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot
 }
 
-struct ProviderQuotaAdapterContext {
+// AUDIT(@unchecked Sendable): This is an immutable adapter payload assembled on
+// the main actor before quota work is dispatched. Reference-typed members are
+// either read-only service handles or have their own synchronization/actor
+// boundary. Closures are used only as configuration readers.
+struct ProviderQuotaAdapterContext: @unchecked Sendable {
     let appPaths: OpenBurnBarAppPaths
     let fileManager: FileManager
     let session: URLSession
@@ -18,6 +23,9 @@ struct ProviderQuotaAdapterContext {
     let miniMaxModeProvider: () -> MiniMaxQuotaMode
     let factoryPlanProvider: () -> FactoryQuotaPlanTier
     let xaiPlanProvider: () -> XAIQuotaPlanTier
+    let mimoTokenPlanRegionProvider: () -> ProviderEndpointRegion
+    let mimoTokenPlanTierProvider: () -> MimoTokenPlanTier?
+    let mimoTokenPlanBillingCycleProvider: () -> MimoTokenPlanBillingCycle
     let claudeBridgeStatus: ClaudeQuotaBridgeStatus
     let codexRolloutScanCache: CodexRolloutScanCache
     let updateCodexRolloutScanCache: (CodexRolloutScanCache, Bool) -> Void
@@ -30,9 +38,6 @@ struct ProviderQuotaAdapterContext {
     /// Pre-resolved API keys (read from ProviderAPIKeyStore on the main actor before dispatch).
     let resolvedAPIKeys: [String: String?]
 }
-
-// All properties are value types (Sendable); no @unchecked needed.
-extension ProviderQuotaAdapterContext: Sendable {}
 
 extension ProviderQuotaAdapterContext {
     func withResolvedAPIKeys(_ resolvedAPIKeys: [String: String?]) -> ProviderQuotaAdapterContext {
@@ -48,6 +53,9 @@ extension ProviderQuotaAdapterContext {
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
             xaiPlanProvider: xaiPlanProvider,
+            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
+            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
+            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
@@ -70,6 +78,9 @@ extension ProviderQuotaAdapterContext {
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
             xaiPlanProvider: xaiPlanProvider,
+            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
+            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
+            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
@@ -92,6 +103,9 @@ extension ProviderQuotaAdapterContext {
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
             xaiPlanProvider: xaiPlanProvider,
+            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
+            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
+            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,

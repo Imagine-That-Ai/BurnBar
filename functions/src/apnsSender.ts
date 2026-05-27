@@ -1,3 +1,4 @@
+import { errorMessage, isRecord, stringValue } from "./guards.js";
 /**
  * @fileoverview Mercury Phase 5 APNs sender.
  *
@@ -127,7 +128,7 @@ export async function pushToAPNs(args: {
     } catch (err) {
       resolve({
         status: "retry",
-        reason: `http2 connect: ${(err as Error).message}`,
+        reason: `http2 connect: ${errorMessage(err)}`,
       });
       return;
     }
@@ -218,9 +219,9 @@ export const sendVoIPOutbound = onDocumentCreated(
   },
   async (event) => {
     const data = event.data?.data();
-    if (!data) return;
+    if (!isRecord(data)) return;
     if (data.status && data.status !== "pending") return;
-    const deviceToken = data.voipDeviceToken as string | undefined;
+    const deviceToken = stringValue(data.voipDeviceToken);
     if (!deviceToken) {
       await event.data?.ref.update({
         status: "rejected",
@@ -232,7 +233,7 @@ export const sendVoIPOutbound = onDocumentCreated(
 
     const result = await pushToAPNs({
       deviceTokenHex: deviceToken,
-      payload: (data.payload as Record<string, unknown>) ?? {},
+      payload: isRecord(data.payload) ? data.payload : {},
       documentId: event.params.docId,
     });
 
@@ -258,7 +259,7 @@ export const sendVoIPOutbound = onDocumentCreated(
           lastAttemptAt: Timestamp.now(),
           lastFailureReason: result.reason ?? null,
           retryAt: Timestamp.fromMillis(Date.now() + 30_000),
-          attemptCount: (data.attemptCount ?? 0) + 1,
+          attemptCount: (typeof data.attemptCount === "number" ? data.attemptCount : 0) + 1,
         });
         return;
     }

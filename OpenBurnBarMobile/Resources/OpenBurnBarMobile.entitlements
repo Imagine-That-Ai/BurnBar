@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Standard APNs alert pushes for agent reply notifications. The value is
+         supplied by the active provisioning profile for Debug/TestFlight/App Store. -->
+    <key>aps-environment</key>
+    <string>$(APS_ENVIRONMENT)</string>
+
     <!-- Required for `SignInWithAppleButton` and `ASAuthorizationAppleIDProvider`.
          Without this, Apple sign-in fails at runtime. -->
     <key>com.apple.developer.applesignin</key>

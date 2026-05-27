@@ -72,10 +72,10 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     isTrusted: vscode.workspace.isTrusted,
     workspaceFolders: vscode.workspace.workspaceFolders,
     isWritableFileSystem: (scheme) => vscode.workspace.fs.isWritableFileSystem(scheme),
-    readFile: (uri) => vscode.workspace.fs.readFile(uri as vscode.Uri),
+    readFile: (uri) => vscode.workspace.fs.readFile(toVSCodeUri(uri)),
     findFiles: (include, exclude, maxResults) => vscode.workspace.findFiles(include, exclude, maxResults),
-    openTextDocument: (uri) => vscode.workspace.openTextDocument(uri as vscode.Uri),
-    applyEdit: (edit) => vscode.workspace.applyEdit(edit as vscode.WorkspaceEdit),
+    openTextDocument: (uri) => vscode.workspace.openTextDocument(toVSCodeUri(uri)),
+    applyEdit: (edit) => vscode.workspace.applyEdit(toWorkspaceEdit(edit)),
     saveAll: (includeUntitled) => vscode.workspace.saveAll(includeUntitled),
     createWorkspaceEdit: () => new vscode.WorkspaceEdit(),
     createRange: (startLine, startCharacter, endLine, endCharacter) =>
@@ -94,8 +94,22 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     createTerminal: (options) => vscode.window.createTerminal(options),
     parseUri: (value) => vscode.Uri.parse(value),
     fileUri: (value) => vscode.Uri.file(value),
-    joinPath: (base, ...segments) => vscode.Uri.joinPath(base as vscode.Uri, ...segments)
+    joinPath: (base, ...segments) => vscode.Uri.joinPath(toVSCodeUri(base), ...segments)
   };
+}
+
+function toVSCodeUri(uri: BurnBarWorkspaceUri): vscode.Uri {
+  if (uri instanceof vscode.Uri) {
+    return uri;
+  }
+  return uri.scheme === 'file' ? vscode.Uri.file(uri.fsPath) : vscode.Uri.parse(uri.toString());
+}
+
+function toWorkspaceEdit(edit: BurnBarWorkspaceEditBuilder): vscode.WorkspaceEdit {
+  if (edit instanceof vscode.WorkspaceEdit) {
+    return edit;
+  }
+  throw new OpenBurnBarWorkspaceRpcError('APPLY_EDIT_FAILED', 'OpenBurnBar could not apply an incompatible workspace edit.');
 }
 
 export function resolveWorkspaceUri(api: Pick<BurnBarWorkspaceApi, 'workspaceFolders' | 'parseUri' | 'fileUri' | 'joinPath'>, target: string): BurnBarWorkspaceUri {

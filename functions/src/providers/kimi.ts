@@ -25,6 +25,7 @@ import type {
   QuotaRefreshResult,
   QuotaBucket,
 } from "../types.js";
+import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "kimi" as const;
 
@@ -44,18 +45,18 @@ function redact(token: string): string {
 // HTTP helper
 // ---------------------------------------------------------------------------
 
-interface KimiFetchResult<T> {
+interface KimiFetchResult {
   ok: boolean;
   status?: number;
-  data?: T;
+  data?: unknown;
   error?: string;
   errorCode?: string;
 }
 
-async function kimiFetch<T = unknown>(
+async function kimiFetch(
   url: string,
   token: string
-): Promise<KimiFetchResult<T>> {
+): Promise<KimiFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -81,7 +82,7 @@ async function kimiFetch<T = unknown>(
     return {
       ok: false,
       status: response.status,
-      data: payload as T,
+      data: payload,
       error: message,
       errorCode:
         response.status === 401 || response.status === 403
@@ -92,16 +93,16 @@ async function kimiFetch<T = unknown>(
     };
   }
 
-  return { ok: true, status: response.status, data: payload as T };
+  return { ok: true, status: response.status, data: payload };
 }
 
 function inlineErrorMessage(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
-  const obj = payload as Record<string, unknown>;
+  const obj = recordOrUndefined(payload);
+  if (!obj) return undefined;
 
   // OpenAI-compatible error shape: { error: { message, code, type } }
-  const error = obj.error as Record<string, unknown> | undefined;
-  if (error && typeof error === "object") {
+  const error = recordOrUndefined(obj.error);
+  if (error) {
     const message = stringFromAny(error.message ?? error.msg);
     if (message) return message;
   }
@@ -117,14 +118,14 @@ function inlineErrorMessage(payload: unknown): string | undefined {
 // Multi-host fallback (mirrors zai adapter pattern)
 // ---------------------------------------------------------------------------
 
-async function tryEachHost<T>(
+async function tryEachHost(
   path: string,
   token: string
-): Promise<KimiFetchResult<T>> {
-  let lastFailure: KimiFetchResult<T> | undefined;
+): Promise<KimiFetchResult> {
+  let lastFailure: KimiFetchResult | undefined;
   for (const host of HOSTS) {
     const url = `${host}${path}`;
-    const result = await kimiFetch<T>(url, token);
+    const result = await kimiFetch(url, token);
     if (result.ok) return result;
     lastFailure = result;
     // Auth failures mean the key is bad — no point trying another host.
@@ -165,7 +166,7 @@ export const kimiAdapter: ProviderAdapter = {
       };
     }
 
-    const result = await tryEachHost<KimiModelsPayload>(VALIDATE_PATH, trimmed);
+    const result = await tryEachHost(VALIDATE_PATH, trimmed);
     if (!result.ok) {
       return {
         valid: false,
@@ -177,7 +178,8 @@ export const kimiAdapter: ProviderAdapter = {
     }
 
     // Extract model count for the warning message.
-    const modelCount = result.data?.data?.length ?? 0;
+    const payload = recordOrUndefined(result.data);
+    const modelCount = Array.isArray(payload?.data) ? payload.data.length : 0;
 
     return {
       valid: true,
@@ -197,7 +199,7 @@ export const kimiAdapter: ProviderAdapter = {
     const trimmed = (credential ?? "").trim();
 
     // Validate the credential via /v1/models first.
-    const result = await tryEachHost<KimiModelsPayload>(VALIDATE_PATH, trimmed);
+    const result = await tryEachHost(VALIDATE_PATH, trimmed);
     if (!result.ok) {
       return {
         ok: false,
@@ -206,7 +208,8 @@ export const kimiAdapter: ProviderAdapter = {
       };
     }
 
-    const modelCount = result.data?.data?.length ?? 0;
+    const payload = recordOrUndefined(result.data);
+    const modelCount = Array.isArray(payload?.data) ? payload.data.length : 0;
     const buckets: QuotaBucket[] = [];
 
     // Attempt the /v1/users/me/balance endpoint. Moonshot exposes account
@@ -222,13 +225,14 @@ export const kimiAdapter: ProviderAdapter = {
     let statusMessage =
       "Kimi credential validated; balance endpoint unavailable — usage limits are unknown.";
 
-    const balanceResult = await tryEachHost<KimiBalancePayload>(
+    const balanceResult = await tryEachHost(
       "/v1/users/me/balance",
       trimmed
     );
 
     if (balanceResult.ok && balanceResult.data) {
-      const balance = balanceResult.data;
+      const balance = recordOrUndefined(balanceResult.data);
+      if (balance) {
       const available = finiteNumber(balance.available_balance ?? balance.availableBalance ?? balance.balance);
       const used = finiteNumber(balance.used_balance ?? balance.usedBalance ?? balance.used);
       const total = finiteNumber(balance.total_balance ?? balance.totalBalance ?? balance.total);
@@ -258,6 +262,7 @@ export const kimiAdapter: ProviderAdapter = {
         confidence = "medium";
         source = "Kimi balance API";
         statusMessage = "Fetched remaining balance from Kimi; total limit unavailable.";
+      }
       }
     }
 

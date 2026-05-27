@@ -9,7 +9,7 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { getFirestore } from "firebase-admin/firestore";
 import { applyUsageCounterDelta } from "./rollups.js";
-import type { RollupJobDoc, UsageEventDoc } from "./types.js";
+import { errorMessage, parseRollupJobDoc, parseUsageEventDoc } from "./guards.js";
 
 /**
  * Firestore trigger: whenever a usage event is created, updated, or deleted,
@@ -32,10 +32,10 @@ export const onUsageWritten = onDocumentWritten(
     const db = getFirestore();
     const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
     const before = event.data?.before.exists
-      ? (event.data.before.data() as UsageEventDoc)
+      ? parseUsageEventDoc(event.data.before.data())
       : undefined;
     const after = event.data?.after.exists
-      ? (event.data.after.data() as UsageEventDoc)
+      ? parseUsageEventDoc(event.data.after.data())
       : undefined;
 
     // Mark dirty BEFORE attempting the counter delta so that even if the
@@ -44,7 +44,7 @@ export const onUsageWritten = onDocumentWritten(
     // whatever counter state exists.
     const now = new Date().toISOString();
     const snap = await jobRef.get();
-    const existing = snap.exists ? (snap.data() as RollupJobDoc) : null;
+    const existing = snap.exists ? parseRollupJobDoc(snap.data()) : null;
     if (!existing?.dirty) {
       await jobRef.set({ dirty: true, dirtiedAt: now }, { merge: true });
     }
@@ -58,7 +58,7 @@ export const onUsageWritten = onDocumentWritten(
       );
       await jobRef.set(
         {
-          lastErrorCode: (err as Error).message,
+          lastErrorCode: errorMessage(err),
         },
         { merge: true }
       );
