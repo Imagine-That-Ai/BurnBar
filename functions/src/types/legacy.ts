@@ -138,18 +138,13 @@ export interface ProviderAccountDoc {
 export type DeviceLinkCapability = "owner" | "use" | "add";
 export type DeviceLinkStatus = "active" | "revoked";
 
-export interface ProviderAccountDeviceLinkDoc {
-  id: string;
-  accountID: string;
-  deviceID: string;
-  deviceDisplayName: string;
+export type ProviderAccountDeviceLinkDoc = Omit<
+  import("./generated/device-links.js").ProviderAccountDeviceLinkDoc,
+  "capability" | "status"
+> & {
   capability: DeviceLinkCapability;
   status: DeviceLinkStatus;
-  lastObservedAt: string;
-  createdAt: string;
-  updatedAt: string;
-  schemaVersion: number;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Firestore: runtime_connection_preferences/{deviceID}_{runtimeKind}
@@ -938,39 +933,23 @@ export type ModelBenchmarkFreshness =
   | "cached"
   | "manual";
 
-export interface ModelBenchmarkSnapshotDoc {
-  id: string;
+export type ModelBenchmarkSnapshotDoc = Omit<
+  import("./generated/model-benchmarks.js").ModelBenchmarkSnapshotDoc,
+  "source" | "taskCategory" | "freshness" | "providerID"
+> & {
   source: ModelBenchmarkSource;
-  sourceURL?: string;
-  attribution?: string;
-  fetchedAt: string;
-  modelID: string;
   providerID?: ProviderID;
   taskCategory: ModelBenchmarkTaskCategory;
-  score?: number;
-  rank?: number;
-  costSignal?: number;
-  inputCostPerMtoken?: number;
-  outputCostPerMtoken?: number;
-  blendedCostPerMtoken?: number;
-  latencySignal?: number;
-  contextWindowTokens?: number;
-  reliabilitySignal?: number;
-  confidence?: number;
   freshness: ModelBenchmarkFreshness;
-  schemaVersion: number;
-  updatedAt: string;
-}
+};
 
-export interface ModelBenchmarkSourceStatusDoc {
+export type ModelBenchmarkSourceStatusDoc = Omit<
+  import("./generated/model-benchmarks.js").ModelBenchmarkSourceStatusDoc,
+  "source" | "status"
+> & {
   source: ModelBenchmarkSource;
   status: "fresh" | "stale" | "unavailable" | "error";
-  fetchedAt?: string;
-  message: string;
-  attribution?: string;
-  schemaVersion: number;
-  updatedAt: string;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Firestore: usage_rollups/{windowKey}

@@ -14,7 +14,7 @@ import {
   backfillUserDeviceLinks,
   isDeviceLinkCapability,
   revokeDeviceLink,
-} from "../providerAccountDeviceLinks.js";
+} from "../domains/device-links/index.js";
 
 // ---------------------------------------------------------------------------
 // Callable: adoptProviderAccountForDevice

@@ -157,6 +157,31 @@
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MediaAnalyticsModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/MediaAnalyticsModels.kt"
       }
+    },
+    {
+      "id": "device-links",
+      "typespec": "typespec/domains/device-links.tsp",
+      "firestoreCollections": [
+        "users/{uid}/provider_account_device_links/{linkId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/device-links.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/DeviceLinkModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/DeviceLinkModels.kt"
+      }
+    },
+    {
+      "id": "model-benchmarks",
+      "typespec": "typespec/domains/model-benchmarks.tsp",
+      "firestoreCollections": [
+        "model_benchmark_snapshots/{snapshotId}",
+        "model_benchmark_source_status/{source}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/model-benchmarks.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ModelBenchmarkModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ModelBenchmarkModels.kt"
+      }
     }
   ]
 }
