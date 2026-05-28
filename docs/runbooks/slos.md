@@ -10,7 +10,7 @@ OpenBurnBar uses **three complementary layers** (no single Prometheus cluster on
 |-------|---------|--------|-------------|
 | **Structured logs** | macOS `AppLogger`, daemon `BurnBarDaemonLogger`, Functions `logging.ts` | JSON lines with `trace_id`, `event`, domain metadata | Incident correlation |
 | **Local aggregates** | `LocalMetricsAggregator` + `retrieval_health` table | In-memory snapshot + SQLite health rows | Search/sync/parser SLOs on device |
-| **Scrape / export stubs** | Daemon gateway `GET /metrics`, future `metrics.jsonl` | JSON document (Prometheus text optional later) | Loopback automation, CI smoke |
+| **Scrape / export stubs** | Daemon gateway `GET /metrics`; Mac app `metrics.jsonl` rotation | JSON document (Prometheus text optional later) | Loopback automation, CI smoke |
 
 **Correlation contract** (all surfaces):
 
@@ -89,6 +89,7 @@ When adding a new critical path, ship **one structured log event** and **one cou
 | `counters.heartbeat_stale` | `0` when heartbeat age `< 20s` |
 | `counters.rpc_requests_total` | Monotonic RPC request count (socket + gateway) |
 | `counters.rpc_errors_total` | RPC responses with error codes (auth, rate limit, decode) |
+| `counters.rpc_latency_ms_p95` | Rolling p95 of local socket/gateway RPC latency (ms); omitted until samples exist |
 | `heartbeat.updatedAt` | ISO8601 last write (when present) |
 
 **Playbook:**
