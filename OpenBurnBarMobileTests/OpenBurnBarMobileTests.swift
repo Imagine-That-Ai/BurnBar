@@ -112,6 +112,29 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertTrue(transport.isMediaControlReceiverInstalledForTesting)
     }
 
+    func testMercuryReceiverCanInstallWithoutBlobBackend() async throws {
+        let receiver = iOSFileTransferService(service: nil, settingsProvider: { true })
+
+        do {
+            _ = try await receiver.bootstrapBlobEndpoint()
+            XCTFail("Expected backendUnavailable")
+        } catch {
+            guard case iOSFileTransferService.Failure.backendUnavailable = error else {
+                return XCTFail("Expected backendUnavailable, got \(error)")
+            }
+        }
+
+        let transport = HermesIrohRelayTransport(
+            directory: InMemoryIrohPairingDirectory(),
+            pairingPublicKeyProvider: MobileFakeIrohPairingPublicKeyProvider(),
+            auditLogger: MobileNoopIrohTransportAuditLogger(),
+            transportFactory: { _ in MobileNoopIrohRelayTransport() }
+        )
+        transport.installMediaControlStream(into: receiver)
+
+        XCTAssertTrue(transport.isMediaControlReceiverInstalledForTesting)
+    }
+
     // MARK: - Stream Session Projection
 
     func testActivityStoreSummarizesRawUsageRowsBySession() throws {
