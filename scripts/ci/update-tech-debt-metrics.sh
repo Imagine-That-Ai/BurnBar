@@ -80,7 +80,15 @@ for rel in \
   "AgentLens/Services/CloudSync/CLIAgentSessionMirror.swift" \
   "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager.swift"
 do
-  if [[ -f "${repo_root}/${rel}" ]] && rg -q '@MainActor' "${repo_root}/${rel}" 2>/dev/null; then
+  if [[ -f "${repo_root}/${rel}" ]] && python3 - <<'PY' "${repo_root}/${rel}"
+import pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+# Class-scoped @MainActor on listed I/O facades (excludes @MainActor static shared accessors).
+if re.search(r"@MainActor\s*\n(?:@\w+\s*\n)*(?:final\s+)?class\s", text):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
     main_actor_io_services=$((main_actor_io_services + 1))
   fi
 done

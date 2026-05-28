@@ -210,32 +210,13 @@ final class CloudSyncCoordinator {
 
     // MARK: - Memory Boundary
 
-    @MainActor
-    static func currentMemorySyncBoundary(
-        settingsManager: any SettingsManagerProtocol = SettingsManager.shared,
-        accountManager: any AccountManaging = AccountManager.shared
-    ) -> OpenBurnBarMemorySyncBoundarySnapshot {
-        OpenBurnBarMemorySyncBoundarySnapshot(
-            mode: .localFirstOptionalCloud,
-            canonicalAuthority: .localSQLite,
-            cloudMetadataBackupEnabled: accountManager.isCloudSyncEnabled && settingsManager.conversationCloudBackupEnabled,
-            cloudSessionLogBackupEnabled: accountManager.isCloudSyncEnabled && settingsManager.sessionLogCloudBackupEnabled,
-            iCloudMirrorEnabled: settingsManager.iCloudSessionMirrorEnabled,
-            collaborationUsesCloudHead: accountManager.isCloudSyncEnabled,
-            notes: [
-                "SQLite and daemon state remain canonical on-device.",
-                "Firestore is an optional replication and collaboration plane, not the serving authority.",
-                "iCloud mirroring copies files for convenience but does not become the canonical memory graph."
-            ]
-        )
-    }
-
-    @MainActor
-    func memorySyncBoundarySnapshot() -> OpenBurnBarMemorySyncBoundarySnapshot {
-        Self.currentMemorySyncBoundary(
-            settingsManager: context.settingsManager,
-            accountManager: context.accountManager
-        )
+    func memorySyncBoundarySnapshot() async -> OpenBurnBarMemorySyncBoundarySnapshot {
+        await MainActor.run {
+            CloudSyncMemoryBoundary.currentSnapshot(
+                settingsManager: context.settingsManager,
+                accountManager: context.accountManager
+            )
+        }
     }
 
     // MARK: - Error Propagation Helpers

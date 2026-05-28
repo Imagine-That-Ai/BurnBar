@@ -5,14 +5,12 @@ import Foundation
 
 /// Abstract gateway for Firestore operations used by CloudSync domain services.
 /// Enables deterministic testing with an in-memory fake backend.
-@MainActor
-protocol CloudSyncFirestoreGateway: AnyObject {
+protocol CloudSyncFirestoreGateway: AnyObject, Sendable {
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway
     func batch() -> CloudSyncWriteBatchGateway
 }
 
-@MainActor
-protocol CloudSyncCollectionGateway: AnyObject {
+protocol CloudSyncCollectionGateway: AnyObject, Sendable {
     func document(_ documentPath: String) -> CloudSyncDocumentGateway
     func whereField(_ field: String, isGreaterThan value: Any) -> CloudSyncQueryGateway
     func whereField(_ field: String, isEqualTo value: Any) -> CloudSyncQueryGateway
@@ -21,15 +19,13 @@ protocol CloudSyncCollectionGateway: AnyObject {
     func getDocuments() async throws -> CloudSyncQuerySnapshotGateway
 }
 
-@MainActor
-protocol CloudSyncDocumentGateway: AnyObject {
+protocol CloudSyncDocumentGateway: AnyObject, Sendable {
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway
     func getData() async throws -> [String: Any]?
     func setData(_ data: [String: Any], merge: Bool) async throws
 }
 
-@MainActor
-protocol CloudSyncQueryGateway: AnyObject {
+protocol CloudSyncQueryGateway: AnyObject, Sendable {
     func whereField(_ field: String, isGreaterThan value: Any) -> CloudSyncQueryGateway
     func whereField(_ field: String, isEqualTo value: Any) -> CloudSyncQueryGateway
     func order(by field: String, descending: Bool) -> CloudSyncQueryGateway
@@ -37,19 +33,16 @@ protocol CloudSyncQueryGateway: AnyObject {
     func getDocuments() async throws -> CloudSyncQuerySnapshotGateway
 }
 
-@MainActor
-protocol CloudSyncWriteBatchGateway: AnyObject {
+protocol CloudSyncWriteBatchGateway: AnyObject, Sendable {
     func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool)
     func commit() async throws
 }
 
-@MainActor
-protocol CloudSyncQuerySnapshotGateway: AnyObject {
+protocol CloudSyncQuerySnapshotGateway: AnyObject, Sendable {
     var documents: [CloudSyncDocumentSnapshotGateway] { get }
 }
 
-@MainActor
-protocol CloudSyncDocumentSnapshotGateway: AnyObject {
+protocol CloudSyncDocumentSnapshotGateway: AnyObject, Sendable {
     var documentID: String { get }
     func data() -> [String: Any]
 }
@@ -57,8 +50,7 @@ protocol CloudSyncDocumentSnapshotGateway: AnyObject {
 // MARK: - Live Implementations
 
 /// Thin wrapper around real Firebase Firestore SDK.
-@MainActor
-final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway {
+final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
     private let firestore: Firestore
 
     init(firestore: Firestore = Firestore.firestore()) {
@@ -74,8 +66,7 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway {
     }
 }
 
-@MainActor
-final class CloudSyncCollectionLiveGateway: CloudSyncCollectionGateway {
+final class CloudSyncCollectionLiveGateway: CloudSyncCollectionGateway, @unchecked Sendable {
     private let reference: CollectionReference
 
     init(reference: CollectionReference) {
@@ -108,8 +99,7 @@ final class CloudSyncCollectionLiveGateway: CloudSyncCollectionGateway {
     }
 }
 
-@MainActor
-final class CloudSyncDocumentLiveGateway: CloudSyncDocumentGateway {
+final class CloudSyncDocumentLiveGateway: CloudSyncDocumentGateway, @unchecked Sendable {
     let reference: DocumentReference
 
     init(reference: DocumentReference) {
@@ -129,8 +119,7 @@ final class CloudSyncDocumentLiveGateway: CloudSyncDocumentGateway {
     }
 }
 
-@MainActor
-final class CloudSyncQueryLiveGateway: CloudSyncQueryGateway {
+final class CloudSyncQueryLiveGateway: CloudSyncQueryGateway, @unchecked Sendable {
     private let query: Query
 
     init(query: Query) {
@@ -159,8 +148,7 @@ final class CloudSyncQueryLiveGateway: CloudSyncQueryGateway {
     }
 }
 
-@MainActor
-final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway {
+final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway, @unchecked Sendable {
     private let batch: WriteBatch
 
     init(batch: WriteBatch) {
@@ -183,8 +171,7 @@ final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway {
     }
 }
 
-@MainActor
-final class CloudSyncQuerySnapshotLiveGateway: CloudSyncQuerySnapshotGateway {
+final class CloudSyncQuerySnapshotLiveGateway: CloudSyncQuerySnapshotGateway, @unchecked Sendable {
     private let snapshot: QuerySnapshot
 
     init(snapshot: QuerySnapshot) {
@@ -196,8 +183,7 @@ final class CloudSyncQuerySnapshotLiveGateway: CloudSyncQuerySnapshotGateway {
     }
 }
 
-@MainActor
-final class CloudSyncDocumentSnapshotLiveGateway: CloudSyncDocumentSnapshotGateway {
+final class CloudSyncDocumentSnapshotLiveGateway: CloudSyncDocumentSnapshotGateway, @unchecked Sendable {
     private let document: DocumentSnapshot
 
     init(document: DocumentSnapshot) {

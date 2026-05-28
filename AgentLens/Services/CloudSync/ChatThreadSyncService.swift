@@ -14,8 +14,7 @@ import Foundation
 /// Uses existing DataStore APIs:
 ///   - `fetchChatThreadSummaries(limit:)` → `[ChatThreadSummary]`
 ///   - `fetchChatMessages(threadID:)` → `[ChatMessageRecord]`
-@MainActor
-final class ChatThreadSyncService: CloudSyncDomain {
+final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
 
     private(set) var isSyncing = false
@@ -30,10 +29,11 @@ final class ChatThreadSyncService: CloudSyncDomain {
     /// Uses `fetchChatThreadSummaries` and `fetchChatMessages` — no unsynced-tracking needed
     /// since chat threads are idempotently written with merge.
     func sync() async {
-        guard context.accountManager.isFirebaseAvailable,
-              context.accountManager.isSignedIn,
-              context.accountManager.isCloudSyncEnabled,
-              let uid = context.currentUID else { return }
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              gate.account.isCloudSyncEnabled,
+              let uid = gate.account.uid else { return }
 
         isSyncing = true
         lastSyncError = nil
@@ -47,14 +47,14 @@ final class ChatThreadSyncService: CloudSyncDomain {
                 return
             }
 
-            let deviceId = context.deviceId
+            let deviceId = gate.account.deviceId
             let batch = context.firestoreGateway.batch()
             let collectionRef = context.firestoreGateway
                 .collection("users")
                 .document(uid)
                 .collection("chat_threads")
 
-            let includeContent = context.settingsManager.chatThreadContentCloudBackupEnabled
+            let includeContent = gate.settings.chatThreadContentCloudBackupEnabled
             for thread in threads {
                 let messages = includeContent
                     ? ((try? context.dataStore.fetchChatMessages(threadID: thread.id)) ?? [])

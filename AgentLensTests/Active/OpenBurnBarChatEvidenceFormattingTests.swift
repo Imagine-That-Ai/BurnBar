@@ -119,10 +119,10 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
     }
 
     @MainActor
-    func test_memorySyncBoundary_isExplicitlyLocalFirst() throws {
+    func test_memorySyncBoundary_isExplicitlyLocalFirst() async throws {
         let queue = try DatabaseQueue()
         let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let boundary = CloudSyncService(
+        let boundary = await CloudSyncService(
             dataStore: store,
             accountManager: AccountManager.shared,
             settingsManager: SettingsManager()

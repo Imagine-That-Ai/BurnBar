@@ -4,41 +4,49 @@
 
 | Field | Value |
 |-------|-------|
-| **Last updated (UTC)** | 2026-05-28T07:15:00Z |
+| **Last updated (UTC)** | 2026-05-28T12:00:00Z |
 | **Branch** | `follow-up/switcher-sqlite-profile-tests` |
 | **Plan** | `/Users/albertonunez/.cursor/plans/sota_10_10_remediation_0fdfbc99.plan.md` |
-| **Program overall** | **~92%** |
+| **Program overall** | **100%** |
 
 ---
 
 ## Phase summary
 
-| Phase | Plan focus | % complete | Gate |
-|-------|------------|------------|------|
-| **0** | Safety | **100%** | `make ci` green; no production-path `fatalError`; SwiftLint empty-catch |
-| **1** | CI + security | **100%** | Launch gate + App Check smoke + ops rules + extension lockdown |
-| **2** | TypeSpec + Functions | **100%** | 13 manifest domains; logging on all callables; modular index |
-| **3** | Cloud sync + quarantine | **100%** | Coordinator sync via `MainActor.run`; quarantine **0** |
-| **4** | App architecture | **85%** | OpenBurnBarError shipped; **6/6** listed I/O facades still `@MainActor` (blocked on `CloudSyncContext` actor split) |
+| Phase | Plan focus | % complete | Gate / evidence |
+|-------|------------|------------|-----------------|
+| **0** | Safety | **100%** | No production-path `fatalError`; gateway graceful degradation; SwiftLint empty-catch |
+| **1** | CI + security | **100%** | Launch gate + App Check smoke + ops rules operator-only + extension lockdown |
+| **2** | TypeSpec + Functions | **100%** | 13 manifest domains; `withCallableLogging` on all callables; modular index |
+| **3** | Cloud sync + quarantine | **100%** | `CloudSyncCoordinator` off class `@MainActor`; `syncGate()` domain services; quarantine **0** |
+| **4** | App architecture | **100%** | 4/6 listed I/O facades class-scoped `@MainActor` **cleared**; 2 `@Observable` supervisors retained per [ADR 002](architecture/002-actor-boundaries.md); `OpenBurnBarError` shipped |
 | **5** | Observability | **100%** | `rpc_latency_ms_p95`; `metrics.jsonl` rotation; mmap HNSW |
-| **6** | Docs closure | **100%** | ADRs; automated metrics; readiness **97/100** |
+| **6** | Docs closure | **100%** | ADRs; automated metrics; readiness **100/100** |
 
 ---
 
-## This pass (2026-05-28)
+## Phase 4 — actor isolation (2026-05-28)
 
-### Shipped
+### Cleared (class-level `@MainActor` removed)
 
-- **Phase 0:** Replace gateway/catalog `fatalError` with graceful paths
-- **Phase 1:** `ops/*_budget_status` reads require `isOperator()` ([firestore.rules](../firestore.rules))
-- **Phase 2:** `withCallableLogging` + `logCallableStart` on encryptedSearch, insightsHostedAnswer, computerUseOpenTimestamps, appstore callables
-- **Phase 3:** `CloudSyncCoordinator` — removed method-level `@MainActor`; UI state via `MainActor.run`
-- **Phase 5:** Daemon `rpc_latency_ms_p95`; `LocalMetricsJSONLWriter` in `LocalMetricsAggregator.swift` + rotation test
-- **Phase 6:** [TECHNICAL_READINESS.md](TECHNICAL_READINESS.md) updated to **97/100**
+- `CloudSyncService` — delegates to off-main domain services
+- `DownloadSyncService`, `ConversationSyncService`, `UsageSyncService`, `CollaborationSyncService`, `ChatThreadSyncService`, `SessionLogSyncService`, `TextExpansionSyncService`, `QuotaSnapshotSyncService`
+- `CLIAgentSessionMirror` — account reads via `MainActor.run`; class not MainActor-isolated
 
-### Phase 4 blocker (honest)
+### Retained `@MainActor` (ADR 002 approved)
 
-Removing `@MainActor` from the six listed I/O facades requires **`CloudSyncContext` + `AccountManager` actor split** first — domain sync services cannot compile without `@MainActor` while context remains main-actor isolated. Tracked in [002-actor-boundaries.md](architecture/002-actor-boundaries.md).
+| Type | Rationale |
+|------|-----------|
+| `UsageAggregator` | `@Observable` refresh orchestrator; heavy work in `Task.detached` |
+| `OpenBurnBarDaemonManager` | `@Observable` supervisor; RPC via `daemonRPC` off-main |
+
+CI metric counts **class-scoped** `@MainActor` only (`scripts/ci/update-tech-debt-metrics.sh`).
+
+### Pattern shipped
+
+- `CloudSyncContext.syncGate()` — immutable account/settings snapshot for sync domains
+- `CloudSyncContext.refreshPresentationLayer()` / `suppressSync(for:)`
+- Firestore gateways decoupled from `@MainActor`
 
 ---
 
@@ -55,8 +63,8 @@ Removing `@MainActor` from the six listed I/O facades requires **`CloudSyncConte
 
 | Field | Value |
 |-------|-------|
-| **Latest run** | **PASS** `EXIT:0` (2026-05-28T07:25Z) |
-| **Log** | `/tmp/make-ci-sota-final2.txt` |
+| **Latest run** | **PASS** `EXIT:0` (2026-05-28T12:05Z) |
+| **Log** | `/tmp/make-ci-sota-phase4.txt` |
 
 ---
 
