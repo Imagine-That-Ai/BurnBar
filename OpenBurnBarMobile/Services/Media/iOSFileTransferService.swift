@@ -85,7 +85,7 @@ final class iOSFileTransferService: ObservableObject {
         let localURL: URL?
     }
 
-    private let service: MediaFileTransferService
+    private let service: MediaFileTransferService?
     private let settingsProvider: @MainActor () -> Bool
     /// Long-lived media control stream owner. Set via
     /// `attachControlStream(_:)` once iOS auth + Hermes connection
@@ -103,7 +103,7 @@ final class iOSFileTransferService: ObservableObject {
     var onTransferCompleted: ((TransferCompletion) -> Void)?
 
     init(
-        service: MediaFileTransferService,
+        service: MediaFileTransferService?,
         settingsProvider: @escaping @MainActor () -> Bool
     ) {
         self.service = service
@@ -122,7 +122,8 @@ final class iOSFileTransferService: ObservableObject {
     }
 
     func bootstrapBlobEndpoint() async throws -> IrohEndpointIdentity {
-        try await service.bootstrap()
+        guard let service else { throw Failure.backendUnavailable }
+        return try await service.bootstrap()
     }
 
     /// Phase 1 receive entry point. iOS sees a `media.blob.advertise` on
@@ -146,6 +147,7 @@ final class iOSFileTransferService: ObservableObject {
         var reason: String?
 
         do {
+            guard let service else { throw Failure.backendUnavailable }
             let (destination, stats) = try await service.fetch(
                 ticketText: ticket,
                 manifest: manifest
@@ -223,7 +225,11 @@ final class iOSFileTransferService: ObservableObject {
         let publishStart = Date()
         let publish: MediaFileTransferService.PublishResult
         do {
+            guard let service else { throw Failure.backendUnavailable }
             publish = try await service.publish(localFile: fileURL, peerDeviceID: peerDeviceID)
+        } catch let failure as Failure {
+            lastError = failure
+            throw failure
         } catch let serviceError as MediaFileTransferService.ServiceError {
             let failure = Failure.publishFailed(String(describing: serviceError))
             lastError = failure
