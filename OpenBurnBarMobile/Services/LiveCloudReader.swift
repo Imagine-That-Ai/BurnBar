@@ -35,6 +35,20 @@ enum MobileDeviceIdentity {
     }
 }
 
+enum CloudDeviceActivityDateResolver {
+    static func date(from data: [String: Any]) -> Date? {
+        firestoreDate(data["lastActiveAt"])
+            ?? firestoreDate(data["lastSeenAt"])
+            ?? firestoreDate(data["updatedAt"])
+    }
+
+    private static func firestoreDate(_ value: Any?) -> Date? {
+        if let timestamp = value as? Timestamp { return timestamp.dateValue() }
+        if let date = value as? Date { return date }
+        return nil
+    }
+}
+
 /// Production CloudReader + DeviceTrustGateway + EscrowGateway.
 /// Reads Firestore, manages device trust state, handles encrypted credential import.
 @MainActor
@@ -60,13 +74,15 @@ final class LiveCloudReader: CloudReader {
             // Find the primary Mac device to read its sync status
             let devicesSnap = try await db.collection("users/\(uid)/devices")
                 .whereField("platform", isEqualTo: "macOS")
-                .order(by: "lastActiveAt", descending: true)
-                .limit(to: 1)
                 .getDocuments()
 
             let macDeviceId: String
             let macName: String
-            if let macDoc = devicesSnap.documents.first {
+            if let macDoc = devicesSnap.documents.max(by: { lhs, rhs in
+                let left = CloudDeviceActivityDateResolver.date(from: lhs.data()) ?? .distantPast
+                let right = CloudDeviceActivityDateResolver.date(from: rhs.data()) ?? .distantPast
+                return left < right
+            }) {
                 let d = macDoc.data()
                 macDeviceId = d["deviceId"] as? String ?? macDoc.documentID
                 macName = d["deviceName"] as? String ?? "Mac"
@@ -126,7 +142,7 @@ final class LiveCloudReader: CloudReader {
                 id: did, displayName: d["deviceName"] as? String ?? "Unknown",
                 platform: d["platform"] as? String ?? "unknown",
                 appVersion: d["appVersion"] as? String,
-                lastSeen: (d["lastActiveAt"] as? Timestamp)?.dateValue(),
+                lastSeen: CloudDeviceActivityDateResolver.date(from: d),
                 trustState: did == deviceId ? .current : .trusted,
                 approvedAt: nil, keyVersion: nil,
                 isCurrentDevice: did == deviceId
@@ -156,7 +172,7 @@ final class LiveCloudReader: CloudReader {
                 deviceMap[did] = DeviceRecord(
                     id: existing.id, displayName: existing.displayName,
                     platform: existing.platform, appVersion: existing.appVersion,
-                    lastSeen: existing.lastSeen ?? (d["lastActiveAt"] as? Timestamp)?.dateValue(),
+                    lastSeen: existing.lastSeen ?? CloudDeviceActivityDateResolver.date(from: d),
                     trustState: trustState, approvedAt: approvedAt,
                     keyVersion: keyVersion, isCurrentDevice: existing.isCurrentDevice
                 )
@@ -165,7 +181,7 @@ final class LiveCloudReader: CloudReader {
                     id: did, displayName: d["deviceName"] as? String ?? "Unknown",
                     platform: d["platform"] as? String ?? "unknown",
                     appVersion: d["appVersion"] as? String,
-                    lastSeen: (d["lastActiveAt"] as? Timestamp)?.dateValue(),
+                    lastSeen: CloudDeviceActivityDateResolver.date(from: d),
                     trustState: trustState, approvedAt: approvedAt,
                     keyVersion: keyVersion, isCurrentDevice: did == deviceId
                 )
@@ -395,6 +411,7 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
                                               "revokedAt": FieldValue.serverTimestamp()], merge: true)
         }
     }
+
 }
 
 // MARK: - LiveEscrowGateway

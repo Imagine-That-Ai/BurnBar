@@ -1,5 +1,6 @@
 import XCTest
 import CryptoKit
+import FirebaseFirestore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -145,6 +146,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertTrue(rootNavigation.contains(#".init("ShowSettings")"#))
         XCTAssertTrue(rootNavigation.contains("openSettingsRoute()"))
         XCTAssertTrue(rootNavigation.contains("selection = .settings"))
+    }
+
+    func testLiveCloudReaderUsesMacLastSeenHeartbeatAsActivityDate() throws {
+        let lastSeen = Date(timeIntervalSince1970: 1_800_000_000)
+        let updated = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let activity = CloudDeviceActivityDateResolver.date(from: [
+            "lastSeenAt": Timestamp(date: lastSeen),
+            "updatedAt": Timestamp(date: updated)
+        ])
+
+        let unwrappedActivity = try XCTUnwrap(activity)
+        XCTAssertEqual(unwrappedActivity.timeIntervalSince1970, lastSeen.timeIntervalSince1970, accuracy: 0.001)
     }
 
     // MARK: - Stream Session Projection
