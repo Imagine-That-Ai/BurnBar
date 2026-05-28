@@ -84,6 +84,34 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
     }
 
+    func testMercuryReceiverInstallIsRetainedByRelayTransport() {
+        let transport = HermesIrohRelayTransport(
+            directory: InMemoryIrohPairingDirectory(),
+            pairingPublicKeyProvider: MobileFakeIrohPairingPublicKeyProvider(),
+            auditLogger: MobileNoopIrohTransportAuditLogger(),
+            transportFactory: { _ in MobileNoopIrohRelayTransport() }
+        )
+
+        do {
+            let receiver = iOSFileTransferService(
+                service: MediaFileTransferService(
+                    backend: MobileFakeIrohBlobBackend(),
+                    configuration: MediaFileTransferService.Configuration(
+                        storeDirectoryURL: FileManager.default.temporaryDirectory
+                            .appendingPathComponent(UUID().uuidString, isDirectory: true),
+                        inboxDirectoryURL: FileManager.default.temporaryDirectory
+                            .appendingPathComponent(UUID().uuidString, isDirectory: true),
+                        secretKeyProvider: { Data(repeating: 0x7, count: 32) }
+                    )
+                ),
+                settingsProvider: { true }
+            )
+            transport.installMediaControlStream(into: receiver)
+        }
+
+        XCTAssertTrue(transport.isMediaControlReceiverInstalledForTesting)
+    }
+
     // MARK: - Stream Session Projection
 
     func testActivityStoreSummarizesRawUsageRowsBySession() throws {
@@ -1126,6 +1154,73 @@ private final class AgentWatchFakeSigningKeyStore: PhoneControlSigningKeyProvidi
     func peerNodeId(for key: Curve25519SigningKey) -> String {
         "ios-phone-test-\(key.privateKey.publicKey.rawRepresentation.prefix(4).map { String(format: "%02x", $0) }.joined())"
     }
+}
+
+private struct MobileFakeIrohPairingPublicKeyProvider: IrohPairingPublicKeyProviding {
+    func fetchPublicKey(uid: String) async throws -> Data {
+        Data(repeating: 0x1, count: 32)
+    }
+}
+
+private struct MobileNoopIrohTransportAuditLogger: IrohTransportAuditLogging {
+    func record(
+        event: IrohTransportAuditEvent,
+        uid: String,
+        connectionId: String,
+        transport: IrohTransportSelection?,
+        rttMillis: Int?,
+        detail: [String: String]
+    ) async {}
+}
+
+private final class MobileNoopIrohRelayTransport: IrohRelayTransport, @unchecked Sendable {
+    func start() async throws -> IrohEndpointIdentity {
+        IrohEndpointIdentity(
+            nodeId: "noop-node",
+            rawPublicKey: Data(repeating: 0x2, count: 32)
+        )
+    }
+
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohBackendError.connectFailed("noop")
+    }
+
+    func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohBackendError.acceptFailed("noop")
+    }
+
+    func shutdown() async {}
+}
+
+private final class MobileFakeIrohBlobBackend: IrohBlobBackend, @unchecked Sendable {
+    func bootstrap(
+        secret: Data,
+        storeDirectoryPath: String,
+        relayURL: String?
+    ) async throws -> IrohEndpointIdentity {
+        IrohEndpointIdentity(
+            nodeId: "blob-node",
+            rawPublicKey: Data(repeating: 0x3, count: 32),
+            relayURL: relayURL
+        )
+    }
+
+    func publishBlob(localPath: String) async throws -> String {
+        "blob-ticket"
+    }
+
+    func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {
+        BlobTransferStats(bytesTotal: 0, blake3Hash: "0", durationMillis: 0, didResume: false)
+    }
+
+    func identity() async throws -> IrohEndpointIdentity {
+        IrohEndpointIdentity(
+            nodeId: "blob-node",
+            rawPublicKey: Data(repeating: 0x3, count: 32)
+        )
+    }
+
+    func shutdown() async {}
 }
 
 @MainActor
