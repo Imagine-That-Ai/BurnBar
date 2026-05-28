@@ -4,6 +4,9 @@ import GRDB
 @testable import OpenBurnBarCore
 
 final class AntigravityQuotaAdapterTests: XCTestCase {
+    /// Fixed reference clock so history window math does not depend on wall time.
+    private static let referenceEpochMs: Double = 1_750_000_000_000
+
     var tempDirectoryURL: URL!
     var fileManager: FileManager!
 
@@ -32,7 +35,9 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             appPaths: appPaths,
             fileManager: fileManager,
             session: session,
-            environment: [:],
+            environment: [
+                AntigravityQuotaAdapter.referenceDateEnvironmentKey: String(format: "%.0f", Self.referenceEpochMs),
+            ],
             homeDirectoryURL: tempDirectoryURL,
             dataStoreActor: dataStoreActor,
             snapshotStore: store,
@@ -87,7 +92,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
     func testFetch_whenHistoryExists_producesPerModelBuckets() async throws {
         let adapter = AntigravityQuotaAdapter()
 
-        let nowMs = Date().timeIntervalSince1970 * 1000.0
+        let nowMs = Self.referenceEpochMs
         let hourInMs = 60.0 * 60.0 * 1000.0
 
         // 2 events inside 5h window, 1 outside, 1 invalid
@@ -159,7 +164,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
     func testFetch_whenSettingsMissing_defaultsToClaudeOpus() async throws {
         let adapter = AntigravityQuotaAdapter()
 
-        let nowMs = Date().timeIntervalSince1970 * 1000.0
+        let nowMs = Self.referenceEpochMs
         let hourInMs = 60.0 * 60.0 * 1000.0
 
         // One event inside 5h window
@@ -202,13 +207,13 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
     func testFetch_whenDifferentModelSelected_thatModelIsActive() async throws {
         let adapter = AntigravityQuotaAdapter()
 
-        let nowMs = floor(Date().timeIntervalSince1970 * 1000.0)
+        let nowMs = Self.referenceEpochMs
         let hourInMs = 60.0 * 60.0 * 1000.0
 
         let mockLines = [
-            "{\"display\":\"R1\",\"timestamp\":\(Int(nowMs - (1.0 * hourInMs))),\"workspace\":\"/mock/ws\"}",
-            "{\"display\":\"R2\",\"timestamp\":\(Int(nowMs - (2.0 * hourInMs))),\"workspace\":\"/mock/ws\"}",
-            "{\"display\":\"R3\",\"timestamp\":\(Int(nowMs - (3.0 * hourInMs))),\"workspace\":\"/mock/ws\"}"
+            "{\"display\":\"R1\",\"timestamp\":\(nowMs - (1.0 * hourInMs)),\"workspace\":\"/mock/ws\"}",
+            "{\"display\":\"R2\",\"timestamp\":\(nowMs - (2.0 * hourInMs)),\"workspace\":\"/mock/ws\"}",
+            "{\"display\":\"R3\",\"timestamp\":\(nowMs - (3.0 * hourInMs)),\"workspace\":\"/mock/ws\"}"
         ]
 
         try writeHistory(lines: mockLines)
