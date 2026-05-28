@@ -32,6 +32,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isOperator() {
+      return isSignedIn() && request.auth.token.get('burnbarOperator', false) == true;
+    }
+
     function requestWithinBasicLimits() {
       return request.resource.size() < 1048576
         && request.resource.data.keys().size() < 80;
@@ -1968,7 +1972,7 @@ service cloud.firestore {
       allow write: if false;
     }
     match /ops/computer_use_session_daily_rollups/days/{day} {
-      allow read: if request.auth != null;
+      allow read: if isOperator();
       allow write: if false;
     }
 
@@ -2504,7 +2508,7 @@ service cloud.firestore {
     }
 
     match /ops/media_session_daily_rollups/{document=**} {
-      allow read: if request.auth != null;
+      allow read: if isOperator();
       allow write: if false;
     }
   }

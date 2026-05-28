@@ -81,6 +81,21 @@ public struct BurnBarProviderCatalogSupport: Sendable {
         }
     }
 
+    /// Exact catalog identity lookup for user-defined alias validation. Unlike
+    /// `model(id:providerID:)`, this ignores fuzzy family matchers so alias ids
+    /// such as `my-claude-coder` are not rejected just because they contain
+    /// provider substrings.
+    public func exactCatalogModel(id: String, providerID: String) -> BurnBarCatalogModel? {
+        let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+        return provider(id: providerID)?.models.first { model in
+            model.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+                || model.aliases.contains {
+                    $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+                }
+        }
+    }
+
     public func preferredModels(
         providerID: String,
         preferredModelIDs: [String]

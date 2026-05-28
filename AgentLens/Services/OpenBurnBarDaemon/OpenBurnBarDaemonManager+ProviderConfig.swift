@@ -415,6 +415,68 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
+    @discardableResult
+    func setProviderModelAlias(
+        providerID: String,
+        alias: BurnBarModelAlias
+    ) async -> Bool {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before model aliases can be updated."
+                return false
+            }
+        }
+
+        do {
+            try await performRequiredBusyWork {
+                let socketURL = paths.socketURL
+                _ = try await daemonRPC {
+                    try OpenBurnBarDaemonSocketClient.upsertProviderModelAlias(
+                        BurnBarProviderModelAliasUpsertRequest(
+                            providerID: providerID,
+                            alias: alias
+                        ),
+                        at: socketURL
+                    )
+                }
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func removeProviderModelAlias(
+        providerID: String,
+        aliasID: String
+    ) async {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before model aliases can be updated."
+                return
+            }
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.removeProviderModelAlias(
+                    BurnBarProviderModelAliasRemoveRequest(
+                        providerID: providerID,
+                        aliasID: aliasID
+                    ),
+                    at: socketURL
+                )
+            }
+        }
+    }
+
     func setPreferredProviderCredentialSlot(
         providerID: String,
         slotID: String?
@@ -518,7 +580,15 @@ extension OpenBurnBarDaemonManager {
                     do {
                         let quotaSnapshot = try await fetchSnapshot(quotaProvider, apiKey)
                         let bucket = quotaSnapshot.primaryDisplayableBucket
-                        slot.lastQuotaRemainingPercent = bucket?.remainingPercent
+                        if quotaProvider == .xAI,
+                           bucket?.key == "xai-prepaid-credit-balance",
+                           let remainingDollars = bucket?.remainingValue {
+                            slot.lastQuotaRemainingPercent = remainingDollars <= 0
+                                ? 0
+                                : (remainingDollars <= 5 ? 15 : 100)
+                        } else {
+                            slot.lastQuotaRemainingPercent = bucket?.remainingPercent
+                        }
                         slot.lastQuotaResetsAt = bucket?.resetsAt
                         slot.lastStatusMessage = quotaSnapshot.statusMessage
                         if slot.isEnabled {

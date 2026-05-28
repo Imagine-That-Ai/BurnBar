@@ -22,6 +22,12 @@ import OpenBurnBarCore
 public struct ComputerUsePhoneControlSigner: Sendable {
     public init() {}
 
+    private static func canonicalRelayDateString(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+
     /// Canonical signing payload — exposed for cross-implementation
     /// compatibility tests.
     public func signablePayload(
@@ -154,8 +160,8 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             let intent: HermesRealtimeRelayRemoteUnlockSession.Intent
             let requesterDisplayName: String
             let viewerDeviceId: String?
-            let requestedAt: Date
-            let expiresAt: Date
+            let requestedAt: String
+            let expiresAt: String
             let localAuthenticationSatisfied: Bool
             let requestedLockState: HermesRealtimeRelayMacLockState?
             let requestedBackend: HermesRealtimeRelayRemoteUnlockBackend?
@@ -166,8 +172,8 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             intent: session.intent,
             requesterDisplayName: session.requesterDisplayName,
             viewerDeviceId: session.viewerDeviceId,
-            requestedAt: session.requestedAt,
-            expiresAt: session.expiresAt,
+            requestedAt: Self.canonicalRelayDateString(session.requestedAt),
+            expiresAt: Self.canonicalRelayDateString(session.expiresAt),
             localAuthenticationSatisfied: session.localAuthenticationSatisfied,
             requestedLockState: session.requestedLockState,
             requestedBackend: session.requestedBackend
@@ -187,8 +193,8 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             let ciphertextBase64: String
             let aadBase64: String
             let redactedByteCount: Int
-            let requestedAt: Date
-            let expiresAt: Date
+            let requestedAt: String
+            let expiresAt: String
         }
         return try canonicalIntentHashHex(intent: SignableRemoteUnlockCredential(
             requestId: credential.requestId,
@@ -200,8 +206,8 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             ciphertextBase64: credential.ciphertextBase64,
             aadBase64: credential.aadBase64,
             redactedByteCount: credential.redactedByteCount,
-            requestedAt: credential.requestedAt,
-            expiresAt: credential.expiresAt
+            requestedAt: Self.canonicalRelayDateString(credential.requestedAt),
+            expiresAt: Self.canonicalRelayDateString(credential.expiresAt)
         ))
     }
 

@@ -34,7 +34,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 |------|----------|--------|
 | **Core** | macOS app (`AgentLens/`), `OpenBurnBarCore`, local daemon (`OpenBurnBarDaemon/`), Cursor/VS Code extension (`extensions/openburnbar/`), `OpenBurnBarCLI` | Built and exercised in CI where configured; local-first + daemon RPC are the product spine. |
 | **Experimental** | Optional Firestore sync, iCloud mirroring, Cursor connector + tunnel, optional cloud collaboration | Best-effort; opt-in; not canonical vs local SQLite/daemon state. |
-| **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper plus opt-in hosted encrypted semantic search), [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/) (BurnBar Pro hosted Remote MCP stdio shim) | Developer convenience; not required to run OpenBurnBar. |
+| **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper, BurnBar Resume, plus opt-in hosted encrypted semantic search), [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/) (BurnBar Pro hosted Remote MCP stdio shim) | Developer convenience; not required to run OpenBurnBar. |
 | **Quarantined tests** | `AgentLensTests/Quarantine/` | Stale suites kept as migration reference only; **not compiled** in the active `OpenBurnBarTests` bundle until fixed and moved back to `Active/` — see [AgentLensTests/README.md](AgentLensTests/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md). |
 
 **Cursor deep dives** (for humans and agents):
@@ -43,11 +43,16 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - [Claude / agent mirror (CLAUDE.md)](CLAUDE.md) — same bar for tools that prioritize `CLAUDE.md`
 - [OpenBurnBar Mission](docs/MISSION.md)
 - [OpenBurnBar Direction](docs/DIRECTION.md)
+- [BurnBar Resume](docs/BURNBAR_RESUME.md)
 - [OpenBurnBar Roadmap](docs/ROADMAP.md)
 - [OpenBurnBar + Cursor Agent Onboarding](docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md)
 - [OpenBurnBar Current Release Architecture](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md)
 - [Threat Model and Permission Model](docs/THREAT_MODEL.md)
 - [Governance and Maintainer Expectations](docs/GOVERNANCE.md)
+- [Technical readiness & diligence scorecard](docs/TECHNICAL_READINESS.md)
+- [Tech debt strategy & metrics](docs/TECH_DEBT_STRATEGY.md) · [live snapshot](docs/TECH_DEBT_METRICS.md)
+- [Observability contract](docs/OBSERVABILITY.md) · [SLO runbook](docs/runbooks/slos.md)
+- [Architecture ADRs](docs/ARCHITECTURE/README.md)
 
 ---
 

@@ -3,6 +3,9 @@ import OpenBurnBarCore
 #if canImport(AppKit)
 import AppKit
 import ApplicationServices
+#if !DISTRIBUTION_MAS
+import OpenBurnBarComputerUseCore
+#endif
 #endif
 
 struct TextExpansionSettingsView: View {
@@ -252,6 +255,10 @@ struct TextExpansionSettingsView: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             SettingsSectionHeader(title: "Runtime Settings")
 
+            #if !DISTRIBUTION_MAS
+            globalMacExpansionCard
+            #endif
+
             VStack(spacing: 1) {
                 SettingsToggle(
                     title: "Expand inside OpenBurnBar chat",
@@ -259,20 +266,6 @@ struct TextExpansionSettingsView: View {
                     icon: "bubble.left.and.text.bubble.right.fill",
                     isOn: binding(\.inAppExpansionEnabled)
                 )
-
-                #if !DISTRIBUTION_MAS
-                Divider().padding(.leading, 48)
-                SettingsToggle(
-                    title: "Expand in other Mac apps",
-                    subtitle: "Requires Accessibility permission. Secure fields are ignored.",
-                    icon: "keyboard",
-                    isOn: binding(\.macGlobalExpansionEnabled)
-                )
-                if settingsManager.textExpansion.macGlobalExpansionEnabled && !accessibilityTrusted {
-                    Divider().padding(.leading, 48)
-                    accessibilityPermissionCallout
-                }
-                #endif
 
                 Divider().padding(.leading, 48)
                 SettingsToggle(
@@ -306,7 +299,127 @@ struct TextExpansionSettingsView: View {
             )
         }
         .settingsAnchor(SettingsAnchor.textExpansionRuntime)
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        .onChange(of: settingsManager.textExpansion.macGlobalExpansionEnabled) { _, enabled in
+            guard enabled, !accessibilityTrusted else { return }
+            requestAccessibilityPermission()
+        }
+        #endif
     }
+
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    private var globalMacExpansionCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            globalMacExpansionStatusBanner
+
+            SettingsToggle(
+                title: "Expand in other Mac apps",
+                subtitle: "Required for TextEdit, Mail, Safari, and every app outside OpenBurnBar.",
+                icon: "keyboard",
+                isOn: binding(\.macGlobalExpansionEnabled)
+            )
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs)
+
+            if settingsManager.textExpansion.macGlobalExpansionEnabled && !accessibilityTrusted {
+                accessibilityPermissionCallout
+            }
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .background(globalMacExpansionCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(globalMacExpansionCardBorder, lineWidth: settingsManager.textExpansion.macGlobalExpansionEnabled ? 0.75 : 1.25)
+        )
+    }
+
+    @ViewBuilder
+    private var globalMacExpansionStatusBanner: some View {
+        if settingsManager.textExpansion.macGlobalExpansionEnabled {
+            if accessibilityTrusted {
+                globalMacExpansionBanner(
+                    icon: "checkmark.circle.fill",
+                    iconColor: DesignSystem.Colors.success,
+                    title: "Other Mac apps: On",
+                    message: "&& triggers expand in TextEdit, Mail, Safari, and other apps.",
+                    background: DesignSystem.Colors.success.opacity(0.10),
+                    showEnableButton: false
+                )
+            }
+        } else {
+            globalMacExpansionBanner(
+                icon: "macbook.and.arrow.down",
+                iconColor: DesignSystem.Colors.warning,
+                title: "Other Mac apps: Off",
+                message: "Snippets only work inside OpenBurnBar chat right now. Flip the switch below to expand && triggers everywhere on your Mac.",
+                background: DesignSystem.Colors.warning.opacity(0.12),
+                showEnableButton: true
+            )
+        }
+    }
+
+    private func globalMacExpansionBanner(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        message: String,
+        background: Color,
+        showEnableButton: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(iconColor)
+                .frame(width: 32, height: 32)
+                .background(iconColor.opacity(0.14), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(DesignSystem.Typography.caption.weight(.bold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(message)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if showEnableButton {
+                    Button {
+                        settingsManager.textExpansion.macGlobalExpansionEnabled = true
+                    } label: {
+                        Label("Enable for other Mac apps", systemImage: "switch.2")
+                            .font(DesignSystem.Typography.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.ember)
+                    .controlSize(.small)
+                    .padding(.top, 4)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .background(background)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var globalMacExpansionCardBackground: Color {
+        if settingsManager.textExpansion.macGlobalExpansionEnabled {
+            return DesignSystem.Colors.surfaceElevated.opacity(0.7)
+        }
+        return DesignSystem.Colors.warning.opacity(0.05)
+    }
+
+    private var globalMacExpansionCardBorder: Color {
+        if settingsManager.textExpansion.macGlobalExpansionEnabled {
+            return accessibilityTrusted
+                ? DesignSystem.Colors.success.opacity(0.35)
+                : DesignSystem.Colors.borderSubtle
+        }
+        return DesignSystem.Colors.warning.opacity(0.45)
+    }
+    #endif
 
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     private var accessibilityPermissionCallout: some View {
@@ -321,14 +434,14 @@ struct TextExpansionSettingsView: View {
                 Text("Accessibility permission needed")
                     .font(DesignSystem.Typography.caption.weight(.semibold))
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("Grant permission, then return here. Expansion starts automatically.")
+                Text("Open System Settings → Privacy & Security → Accessibility, then turn on OpenBurnBar.")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
 
             Spacer()
 
-            Button("Open") {
+            Button("Open System Settings") {
                 requestAccessibilityPermission()
             }
             .buttonStyle(.bordered)
@@ -338,9 +451,7 @@ struct TextExpansionSettingsView: View {
     }
 
     private func requestAccessibilityPermission() {
-        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
-        accessibilityTrusted = AXIsProcessTrusted()
+        accessibilityTrusted = MacAccessibilityPermissionRequester.promptAndOpenSettings()
     }
     #endif
 

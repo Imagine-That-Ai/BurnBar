@@ -97,21 +97,12 @@ struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
         session: URLSession
     ) async throws -> MiniMaxRemainsFetchResult {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isCodingPlan = trimmed.lowercased().hasPrefix("sk-cp-")
 
-        if isCodingPlan {
-            let codingResult = try await fetchMiniMaxRemains(from: QuotaEndpoint.codingPlan, apiKey: trimmed, session: session)
-            if codingResult.data != nil || codingResult.authRejected {
-                return codingResult
-            }
-            return try await fetchMiniMaxRemains(from: QuotaEndpoint.tokenPlan, apiKey: trimmed, session: session)
+        let codingResult = try await fetchMiniMaxRemains(from: QuotaEndpoint.codingPlan, apiKey: trimmed, session: session)
+        if codingResult.data != nil || codingResult.authRejected {
+            return codingResult
         }
-
-        let tokenPlanResult = try await fetchMiniMaxRemains(from: QuotaEndpoint.tokenPlan, apiKey: trimmed, session: session)
-        if tokenPlanResult.data != nil || tokenPlanResult.authRejected {
-            return tokenPlanResult
-        }
-        return try await fetchMiniMaxRemains(from: QuotaEndpoint.codingPlan, apiKey: trimmed, session: session)
+        return try await fetchMiniMaxRemains(from: QuotaEndpoint.tokenPlan, apiKey: trimmed, session: session)
     }
 
     private func fetchMiniMaxRemains(

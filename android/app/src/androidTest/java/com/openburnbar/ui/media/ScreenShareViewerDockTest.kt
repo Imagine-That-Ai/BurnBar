@@ -66,6 +66,8 @@ class ScreenShareViewerDockTest {
                         smartZoomAutoFollowing = false,
                         onSelectSmartZoomMode = {},
                         onSelectControlMode = {},
+                        autoKeyboardOnTextFocus = false,
+                        onAutoKeyboardOnTextFocusChange = {},
                         onToggleTyping = {},
                         onScrollUp = {},
                         onScrollDown = {},

@@ -1,5 +1,6 @@
 import XCTest
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBar
@@ -19,6 +20,7 @@ final class MercuryRouterTests: XCTestCase {
         applyFocusFollowMode: MercuryRouter.FocusFollowModeApplier? = nil,
         startScreenShare: MercuryRouter.ScreenShareStarter? = nil,
         maxMirrorViewers: Int = 3,
+        remoteUnlockReadiness: MacRemoteUnlockReadinessService? = nil,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink) {
         let scoped = makeRouterWithConsentStore(
@@ -28,6 +30,7 @@ final class MercuryRouterTests: XCTestCase {
             applyFocusFollowMode: applyFocusFollowMode,
             startScreenShare: startScreenShare,
             maxMirrorViewers: maxMirrorViewers,
+            remoteUnlockReadiness: remoteUnlockReadiness,
             clock: clock
         )
         return (scoped.router, scoped.sink)
@@ -40,6 +43,7 @@ final class MercuryRouterTests: XCTestCase {
         applyFocusFollowMode: MercuryRouter.FocusFollowModeApplier? = nil,
         startScreenShare: MercuryRouter.ScreenShareStarter? = nil,
         maxMirrorViewers: Int = 3,
+        remoteUnlockReadiness: MacRemoteUnlockReadinessService? = nil,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink, consentStore: MercuryConsentStore) {
         let registry = MediaControlStreamRegistry()
@@ -62,6 +66,9 @@ final class MercuryRouterTests: XCTestCase {
             applyFocusFollowMode: applyFocusFollowMode,
             startScreenShare: startScreenShare,
             maxMirrorViewers: maxMirrorViewers,
+            remoteUnlockReadiness: remoteUnlockReadiness ?? makeRemoteUnlockReadinessService(
+                lockStateProvider: { .unlocked }
+            ),
             cooldownSeconds: cooldownSeconds,
             clock: clock
         )
@@ -104,7 +111,8 @@ final class MercuryRouterTests: XCTestCase {
         focusFollowMode: String? = nil,
         viewerID: String? = nil,
         viewerDeviceID: String? = nil,
-        controlAuthorityPeerNodeID: String? = nil
+        controlAuthorityPeerNodeID: String? = nil,
+        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil
     ) -> HermesRealtimeRelayFrame {
         let req = HermesRealtimeRelayMirrorRequest(
             requestId: requestID,
@@ -115,7 +123,8 @@ final class MercuryRouterTests: XCTestCase {
             focusFollowMode: focusFollowMode,
             viewerId: viewerID,
             viewerDeviceId: viewerDeviceID,
-            controlAuthorityPeerNodeId: controlAuthorityPeerNodeID
+            controlAuthorityPeerNodeId: controlAuthorityPeerNodeID,
+            remoteUnlockSession: remoteUnlockSession
         )
         return HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -147,15 +156,13 @@ final class MercuryRouterTests: XCTestCase {
         )
     }
 
-    func testAcceptMirrorEnsuresComputerUseSessionBeforeAcceptedAck() async {
-        var events: [String] = []
+    func testAcceptMirrorAcksBeforeScreenCaptureStartupCompletes() async throws {
+        var didFinishCaptureStartup = false
         let (router, sink) = makeRouter(
             consent: true,
-            ensureComputerUseSession: {
-                events.append("computer-use")
-            },
             startScreenShare: { _, _, _, _, _, _, _, _ in
-                events.append("screen-share")
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                didFinishCaptureStartup = true
             }
         )
 
@@ -163,7 +170,11 @@ final class MercuryRouterTests: XCTestCase {
 
         let frames = await sink.frames
         XCTAssertEqual(frames.first?.media?.mirrorAck?.decision, .accepted)
-        XCTAssertEqual(events, ["screen-share", "computer-use"])
+        XCTAssertFalse(
+            didFinishCaptureStartup,
+            "The accepted ack must not wait for ScreenCaptureKit startup."
+        )
+        await router.stopMirror()
     }
 
     func testRegularScreenMirrorForcesFocusFollowOffBeforeComputerUseSession() async {
@@ -449,22 +460,17 @@ final class MercuryRouterTests: XCTestCase {
     func testConsentToggleSkipsRingingAndAutoAccepts() async {
         let (router, sink) = makeRouter(consent: true)
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
-        // With consent on, no ringing phase — router goes straight to
-        // starting (and either lands in `.streaming` if the test host
-        // can capture the screen, or `.idle` with an `unsupported` ack
-        // otherwise). Either way: pending request is cleared, an ack
-        // was emitted, and the phase is no longer `.ringing`.
+        // With consent on, no ringing phase — router admits the viewer
+        // immediately. Host capture may fail later on machines without
+        // ScreenCaptureKit permission, but the phone must not wait for
+        // that startup before receiving the admission ack.
         XCTAssertNil(router.pendingRequest)
         if case .ringing = router.phase {
             XCTFail("consent toggle must skip ringing, got \(router.phase)")
         }
         let frames = await sink.frames
-        XCTAssertEqual(frames.count, 1)
-        let decision = frames[0].media?.mirrorAck?.decision
-        XCTAssertTrue(
-            decision == .accepted || decision == .unsupported,
-            "consent fast-path must emit an ack; got \(String(describing: decision))"
-        )
+        XCTAssertGreaterThanOrEqual(frames.count, 1)
+        XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .accepted)
     }
 
     func testAcceptMirrorPersistsConsentForFutureAutoAccept() async {
@@ -976,6 +982,359 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertNotNil(ack?.controlOwnerViewerId)
     }
 
+    func testRemoteUnlockMirrorRestartsNormalCaptureWhenHostUnlocks() async throws {
+        let now = Date()
+        var lockState = HermesRealtimeRelayMacLockState.loginWindow
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState })
+        var startCount = 0
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+            },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(
+                requestID: "remote-unlock-mirror",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            replySender: sink.sender
+        )
+        XCTAssertEqual(startCount, 0)
+        XCTAssertEqual(try extractStreaming(from: router.phase), "remote-unlock-mirror")
+
+        await sink.reset()
+        lockState = .unlocked
+        await router.handleHostAuthGateOpenedForTesting(reason: "unit_unlock")
+
+        XCTAssertEqual(startCount, 1, "locked Remote Unlock mirrors start capture only after the host unlocks")
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        let ack = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .accepted)
+        XCTAssertEqual(ack.detail, "Mac unlocked; normal mirror resumed.")
+        XCTAssertEqual(ack.remoteUnlockState?.lockState, .unlocked)
+    }
+
+    func testRemoteUnlockCredentialResultPollsUntilHostUnlocksAndResumesCapture() async throws {
+        let now = Date()
+        var lockState = HermesRealtimeRelayMacLockState.loginWindow
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState })
+        var startCount = 0
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+            },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(
+                requestID: "remote-unlock-mirror",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            replySender: sink.sender
+        )
+        XCTAssertEqual(startCount, 0)
+
+        await sink.reset()
+        router.handleRemoteUnlockCredentialResult(
+            HermesRealtimeRelayRemoteUnlockResult(
+                requestId: "credential-request",
+                sessionId: "unlock-session",
+                status: .accepted,
+                lockState: .loginWindow,
+                detail: "credential_submitted",
+                completedAt: now
+            )
+        )
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let framesBeforeUnlock = await sink.frames
+        XCTAssertTrue(framesBeforeUnlock.isEmpty)
+
+        lockState = .unlocked
+        for _ in 0..<30 {
+            if startCount == 1 { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        XCTAssertEqual(startCount, 1, "credential result polling should start capture after the host unlocks")
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        let ack = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .accepted)
+        XCTAssertEqual(ack.detail, "Mac unlocked; normal mirror resumed.")
+        XCTAssertEqual(ack.remoteUnlockState?.lockState, .unlocked)
+    }
+
+    func testLockedMirrorWithoutRemoteUnlockSessionRequestsSignedRetry() async throws {
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
+        var startCount = 0
+        let (router, sink, consentStore) = makeRouterWithConsentStore(
+            consent: false,
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+            },
+            remoteUnlockReadiness: readiness
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(
+                requestID: "locked-without-session",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer"
+            ),
+            replySender: sink.sender
+        )
+
+        let frames = await sink.frames
+        let ack = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .unsupported)
+        XCTAssertEqual(ack.detail, "remote_unlock_session_required")
+        XCTAssertEqual(ack.remoteUnlockState?.lockState, .loginWindow)
+        XCTAssertEqual(startCount, 0)
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(router.phase, .idle)
+        XCTAssertFalse(consentStore.alwaysAllow)
+    }
+
+    func testSignedRemoteUnlockSessionAutoAcceptsWhileMacLocked() async throws {
+        let now = Date()
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
+        var startCount = 0
+        let (router, sink, consentStore) = makeRouterWithConsentStore(
+            consent: false,
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+            },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(
+                requestID: "locked-with-session",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            replySender: sink.sender
+        )
+
+        let frames = await sink.frames
+        let ack = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .accepted)
+        XCTAssertEqual(ack.remoteUnlockState?.lockState, .loginWindow)
+        XCTAssertEqual(ack.remoteUnlockState?.sessionId, "unlock-session")
+        XCTAssertEqual(startCount, 0)
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(try extractStreaming(from: router.phase), "locked-with-session")
+        XCTAssertFalse(consentStore.alwaysAllow)
+    }
+
+    func testSignedRemoteUnlockSessionDoesNotWaitForLockedScreenCaptureBeforeAck() async throws {
+        let now = Date()
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
+        var startCount = 0
+        let (router, sink) = makeRouter(
+            consent: false,
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+            },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(
+                requestID: "locked-hanging-capture",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            replySender: sink.sender
+        )
+
+        let frames = await sink.frames
+        let ack = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .accepted)
+        XCTAssertEqual(ack.requestId, "locked-hanging-capture")
+        XCTAssertEqual(ack.remoteUnlockState?.lockState, .loginWindow)
+        XCTAssertEqual(startCount, 0, "locked Remote Unlock acceptance must not depend on ScreenCaptureKit")
+        XCTAssertEqual(try extractStreaming(from: router.phase), "locked-hanging-capture")
+    }
+
+    func testRemoteUnlockSessionSurvivesTransientControlStreamClose() async throws {
+        let now = Date()
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
+        let (router, sink) = makeRouter(
+            consent: false,
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(
+                requestID: "locked-with-session",
+                connectionID: "phone-connection",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            replySender: sink.sender
+        )
+
+        XCTAssertTrue(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+
+        await router.handleControlStreamClosed(connectionID: "phone-connection")
+
+        XCTAssertTrue(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            ),
+            "transient stream churn must not invalidate a password prompt already shown on the phone"
+        )
+    }
+
+    func testRemoteUnlockSessionRevokesWhenViewerExplicitlyStopsMirror() async throws {
+        let now = Date()
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
+        let (router, sink) = makeRouter(
+            consent: false,
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(
+                requestID: "locked-with-session",
+                connectionID: "phone-connection",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            replySender: sink.sender
+        )
+
+        let frames = await sink.frames
+        let accepted = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        await router.handleFrame(
+            mirrorStopFrame(
+                requestID: "locked-with-session",
+                connectionID: "phone-connection",
+                sessionID: accepted.sessionId
+            ),
+            replySender: sink.sender
+        )
+
+        XCTAssertFalse(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+    }
+
+    func testRemoteUnlockSessionIsIgnoredWhenMirrorStartsWhileAlreadyUnlocked() async throws {
+        let now = Date()
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .unlocked })
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await router.handleFrame(
+            mirrorRequestFrame(
+                requestID: "unlocked-mirror",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            replySender: sink.sender
+        )
+
+        let acceptedFrames = await sink.frames
+        let ack = try XCTUnwrap(acceptedFrames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .accepted)
+        XCTAssertEqual(ack.remoteUnlockState?.lockState, .unlocked)
+
+        await sink.reset()
+        await router.handleHostAuthGateClosedForTesting(reason: "unit_lock")
+
+        let frames = await sink.frames
+        XCTAssertEqual(frames.first?.media?.mirrorAck?.decision, .denied)
+        XCTAssertEqual(router.phase, .idle)
+    }
+
     func testSiblingControlStreamWithSameConnectionIDJoinsAsWatcherDuringActiveMirror() async throws {
         var startCount = 0
         let activeStreamID = UUID()
@@ -1174,6 +1533,63 @@ final class MercuryRouterTests: XCTestCase {
             .decode(reassembled)
             .frame
         XCTAssertEqual(decoded, source)
+    }
+
+    private func makeRemoteUnlockReadinessService(
+        lockStateProvider: @escaping @MainActor @Sendable () -> HermesRealtimeRelayMacLockState
+    ) -> MacRemoteUnlockReadinessService {
+        MacRemoteUnlockReadinessService(
+            defaults: makeIsolatedDefaults(),
+            snapshotProvider: {
+                RemoteUnlockReadinessSnapshot(
+                    featureFlagEnabled: true,
+                    directDownloadBuild: true,
+                    daemonInstalled: true,
+                    systemScreenSharingAvailable: true,
+                    loopbackOnlyFirewallActive: true,
+                    generatedCredentialInSystemKeychain: true,
+                    backendCertificationFresh: true,
+                    currentOSBuild: "test-os-build",
+                    certifiedOSBuild: "test-os-build",
+                    certifiedAt: Date(timeIntervalSince1970: 1_774_000_000),
+                    fileVaultEnabled: false,
+                    fileVaultSSHSupported: false,
+                    lastLockScreenProbeSucceeded: true,
+                    lastCredentialInputProbeSucceeded: true,
+                    lastUnlockProbeSucceeded: true,
+                    credentialRecipientKeyId: "test-recipient-key",
+                    credentialRecipientPublicKeyBase64: "test-recipient-public-key"
+                )
+            },
+            lockStateProvider: lockStateProvider
+        )
+    }
+
+    private func remoteUnlockSession(
+        sessionId: String,
+        peerNodeId: String,
+        viewerDeviceId: String,
+        issuedAt: Date = Date()
+    ) -> HermesRealtimeRelayRemoteUnlockSession {
+        return HermesRealtimeRelayRemoteUnlockSession(
+            requestId: "remote-unlock-request",
+            sessionId: sessionId,
+            intent: .request,
+            requesterDisplayName: "Alberto's iPhone",
+            viewerDeviceId: viewerDeviceId,
+            requestedAt: issuedAt,
+            expiresAt: issuedAt.addingTimeInterval(RemoteUnlockPolicy.default.sessionTTLSeconds),
+            localAuthenticationSatisfied: true,
+            requestedLockState: nil,
+            requestedBackend: .appleScreenSharingLoopback,
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: peerNodeId,
+                counter: 1,
+                timestamp: issuedAt,
+                intentHashBlake3: "hash",
+                signatureEd25519: "signature"
+            )
+        )
     }
 
     private func extractStreaming(from phase: MercuryRouter.Phase) throws -> String {

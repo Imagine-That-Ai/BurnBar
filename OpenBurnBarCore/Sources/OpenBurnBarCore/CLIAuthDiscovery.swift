@@ -212,6 +212,29 @@ public enum CLIAuthDiscovery {
                 configDirectory: exists ? configDir : normalizedNonEmpty(primaryConfigDir),
                 accountDescription: exists ? "Antigravity local profile" : nil
             )
+        case .grok:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.grok"
+            )
+            let sessionsDir = "\(configDir)/sessions"
+            let hasConfig = FileManager.default.fileExists(atPath: configDir)
+            let hasSessions = FileManager.default.fileExists(atPath: sessionsDir)
+            let hasAPIKey = !(ProcessInfo.processInfo.environment["XAI_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            let authState: CLIAuthState = {
+                if executablePath == nil { return .notInstalled }
+                if hasAPIKey { return .apiKeyPresent }
+                if hasConfig || hasSessions { return .authenticated(lastRefresh: nil) }
+                return .notAuthenticated
+            }()
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: hasSessions ? "Grok Build local sessions" : nil
+            )
         }
         #endif
     }

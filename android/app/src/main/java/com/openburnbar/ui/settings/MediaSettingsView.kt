@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.media.AndroidMediaCapabilityGate
+import com.openburnbar.data.media.MercuryAutoKeyboardPreference
 import com.openburnbar.data.media.MediaPartnerSavePreferenceStore
 import com.openburnbar.data.square.MercuryPairedMacTilePreference
 import com.openburnbar.ui.theme.AuroraColors
@@ -63,6 +64,9 @@ fun MediaSettingsView(
     val scope = rememberCoroutineScope()
     var showPairedMacTile by remember(context) {
         mutableStateOf(MercuryPairedMacTilePreference.isEnabled(context))
+    }
+    var autoKeyboardOnTextFocus by remember(context) {
+        mutableStateOf(MercuryAutoKeyboardPreference.isEnabled(context))
     }
 
     var killSwitchReason by remember { mutableStateOf<String?>(null) }
@@ -117,6 +121,57 @@ fun MediaSettingsView(
                     }
                 }
             }
+        }
+
+        item {
+            Text(
+                text = "Calls & screen share",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = AuroraColors.darkTextSecondary,
+            )
+        }
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AuroraColors.darkSurfaceElevated.copy(alpha = 0.64f))
+                    .border(1.dp, AuroraColors.darkBorderSubtle, RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Auto keyboard on text focus",
+                        fontWeight = FontWeight.SemiBold,
+                        color = AuroraColors.darkTextPrimary,
+                    )
+                    Text(
+                        text = "Opens the phone keyboard when your Mac focuses a text field. Smart Zoom still controls framing.",
+                        color = AuroraColors.darkTextSecondary,
+                        fontSize = 12.sp,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(
+                    checked = autoKeyboardOnTextFocus,
+                    onCheckedChange = { enabled ->
+                        autoKeyboardOnTextFocus = enabled
+                        MercuryAutoKeyboardPreference.setEnabled(context, enabled)
+                    },
+                )
+            }
+        }
+
+        item {
+            Text(
+                text = "Mercury",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = AuroraColors.darkTextSecondary,
+            )
         }
 
         item {

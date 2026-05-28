@@ -1,5 +1,7 @@
 import XCTest
+import OpenBurnBarCore
 import OpenBurnBarIrohRelay
+import OpenBurnBarMedia
 @testable import OpenBurnBar
 
 final class IrohRelayRequestHandlerTests: XCTestCase {
@@ -212,6 +214,82 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
             message,
             "Hermes upstream model 'gpt-5.5' returned HTTP 429: insufficient quota"
         )
+    }
+
+    @MainActor
+    func test_mediaControlClassifyTransfersUsingFrameConnectionIDWhenRouteDrifts() async throws {
+        let suiteName = "iroh.handler.media-control.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(defaults: defaults, flushDelayNanoseconds: 0)
+        let stream = HandlerRecordingIrohStream(frames: [
+            HermesRealtimeRelayFrame(
+                type: .mediaClassify,
+                uid: "uid-1",
+                connectionId: "relay-persisted-phone-route",
+                media: HermesRealtimeRelayMediaPayload(
+                    streamClass: MediaStreamClass.control.rawValue
+                )
+            )
+        ])
+        let registrar = MediaControlRegistrarRecorder()
+        let handler = IrohRelayRequestHandler(
+            relayKeyStore: HermesRelayKeyStore(),
+            urlSession: .shared,
+            settingsManager: settings,
+            mediaControlRegistrar: { stream, uid, connectionID in
+                await registrar.record(stream: stream, uid: uid, connectionID: connectionID)
+            }
+        )
+
+        let disposition = try await handler.serve(
+            stream: stream,
+            uid: "uid-1",
+            connectionID: "relay-current-mac-route"
+        )
+
+        XCTAssertEqual(disposition, .transferredStreamOwnership)
+        let registrations = await registrar.registrations
+        XCTAssertEqual(registrations.map(\.uid), ["uid-1"])
+        XCTAssertEqual(registrations.map(\.connectionID), ["relay-persisted-phone-route"])
+        let closeCount = await stream.closeCount
+        XCTAssertEqual(closeCount, 0)
+    }
+}
+
+private actor MediaControlRegistrarRecorder {
+    struct Registration: Sendable {
+        let uid: String
+        let connectionID: String
+    }
+
+    private(set) var registrations: [Registration] = []
+
+    func record(stream _: any IrohRelayStream, uid: String, connectionID: String) {
+        registrations.append(Registration(uid: uid, connectionID: connectionID))
+    }
+}
+
+private actor HandlerRecordingIrohStream: IrohRelayStream {
+    private var frames: [HermesRealtimeRelayFrame]
+    private(set) var sentFrames: [HermesRealtimeRelayFrame] = []
+    private(set) var closeCount = 0
+
+    init(frames: [HermesRealtimeRelayFrame]) {
+        self.frames = frames
+    }
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {
+        sentFrames.append(frame)
+    }
+
+    func receive() async throws -> HermesRealtimeRelayFrame? {
+        guard !frames.isEmpty else { return nil }
+        return frames.removeFirst()
+    }
+
+    func close() async {
+        closeCount += 1
     }
 }
 

@@ -96,7 +96,8 @@ for (const collection of ["pi_agent_pairings", "pi_agent_audit_events"]) {
   assert.doesNotMatch(rules, /match \/users\/\{userId\}\/pi_agent_relay_requests\/\{requestId\}[\s\S]*relayRequestWrite\(userId, requestId\)/);
 }
 {
-  const functionsSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  const indexSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  const piAgentSource = readFileSync(new URL("../src/callables/piAgent.ts", import.meta.url), "utf8");
   for (const exportedName of [
     "createPiAgentPairing",
     "completePiAgentPairing",
@@ -104,12 +105,13 @@ for (const collection of ["pi_agent_pairings", "pi_agent_audit_events"]) {
     "revokePiAgentConnection",
     "updatePiAgentConnectionStatus",
   ]) {
-    const start = functionsSource.indexOf(`export const ${exportedName}`);
-    assert.notEqual(start, -1, `${exportedName} must exist`);
-    const block = functionsSource.slice(start, functionsSource.indexOf("\n);\n", start) + 4);
+    assert.match(indexSource, new RegExp(`\\b${exportedName}\\b`), `${exportedName} must be exported from index`);
+    const start = piAgentSource.indexOf(`export const ${exportedName}`);
+    assert.notEqual(start, -1, `${exportedName} must exist in callables/piAgent.ts`);
+    const block = piAgentSource.slice(start, piAgentSource.indexOf("\n);\n", start) + 4);
     assert.match(block, /await assertActiveHostedQuotaEntitlement\(uid\);/, `${exportedName} must be premium-gated`);
   }
-  assert.match(functionsSource, /pi_agent_create_pairing|pi_agent_\$\{action\}|pi_agent_/);
+  assert.match(piAgentSource, /pi_agent_create_pairing|pi_agent_\$\{action\}|pi_agent_/);
 }
 
 console.log("Pi Agent contract and Firestore rule invariants passed");

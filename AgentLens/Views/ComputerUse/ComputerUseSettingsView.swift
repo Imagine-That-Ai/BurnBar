@@ -842,10 +842,7 @@ struct ComputerUseSettingsView: View {
     }
 
     private func requestAccessibility() {
-        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        }
+        _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
         refreshReadiness()
     }
 

@@ -83,10 +83,10 @@ final class ConversationStore: Sendable {
                     messageCount, userWordCount, assistantWordCount,
                     keyFiles, keyCommands, keyTools,
                     inferredTaskTitle, lastAssistantMessage, fullText,
-                    indexedAt, fileModifiedAt, summary, conversationSyncedAt,
+                    indexedAt, workingDirectory, fileModifiedAt, summary, conversationSyncedAt,
                     sourceType, logSyncedAt, summaryTitle, summaryUpdatedAt, summaryAttemptedAt,
                     summaryProvider, summaryModel
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     record.id,
@@ -105,6 +105,7 @@ final class ConversationStore: Sendable {
                     record.lastAssistantMessage,
                     record.fullText,
                     record.indexedAt,
+                    record.workingDirectory,
                     record.fileModifiedAt,
                     summaryOut,
                     conversationSyncedAt,
@@ -202,7 +203,7 @@ final class ConversationStore: Sendable {
                     keyFiles, keyCommands, keyTools,
                     inferredTaskTitle, lastAssistantMessage,
                     '' AS fullText,
-                    indexedAt, fileModifiedAt, summary, summaryTitle, summaryUpdatedAt,
+                    indexedAt, workingDirectory, fileModifiedAt, summary, summaryTitle, summaryUpdatedAt,
                     summaryProvider, summaryModel, sourceType, sourceDeviceId, sourceDeviceName, isRemote
                 FROM conversations
                 ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
@@ -441,9 +442,9 @@ final class ConversationStore: Sendable {
                         messageCount, userWordCount, assistantWordCount,
                         keyFiles, keyCommands, keyTools,
                         inferredTaskTitle, lastAssistantMessage, fullText,
-                        indexedAt, fileModifiedAt, sourceType,
+                        indexedAt, workingDirectory, fileModifiedAt, sourceType,
                         sourceDeviceId, sourceDeviceName, isRemote, conversationSyncedAt
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                     """,
                 arguments: [
                     record.id, record.provider.rawValue, record.sessionId,
@@ -453,7 +454,7 @@ final class ConversationStore: Sendable {
                     OpenBurnBarDatabase.encodeJSONStringArray(record.keyCommands),
                     OpenBurnBarDatabase.encodeJSONStringArray(record.keyTools),
                     record.inferredTaskTitle, record.lastAssistantMessage, record.fullText,
-                    record.indexedAt, record.fileModifiedAt, record.sourceType.rawValue,
+                    record.indexedAt, record.workingDirectory, record.fileModifiedAt, record.sourceType.rawValue,
                     record.sourceDeviceId, record.sourceDeviceName, Date()
                 ]
             )
@@ -939,6 +940,7 @@ final class ConversationStore: Sendable {
             lastAssistantMessage: lastAssistantMessage,
             fullText: fullText,
             indexedAt: indexedAt,
+            workingDirectory: row["workingDirectory"] as? String,
             fileModifiedAt: fileModifiedAt,
             summary: row["summary"] as? String,
             summaryTitle: row["summaryTitle"] as? String,

@@ -77,6 +77,8 @@ enum CLIAgentMissionRuntimePlanner {
                 return CLIAgentMissionBackend(chatBackend: .forge)
             case "antigravity", "agy", "google-antigravity", "googleantigravity":
                 return CLIAgentMissionBackend(chatBackend: .antigravity)
+            case "grok", "grok-build", "xai", "grok-agent":
+                return CLIAgentMissionBackend(rawValue: "grok", displayName: "Grok Build")
             case "opencode":
                 return CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode")
             case "ollama":
@@ -431,6 +433,7 @@ enum CLIAgentMissionRuntimePlanner {
         case "droid", "factory": return .droid
         case "forge": return .forge
         case "antigravity", "agy", "google-antigravity": return .antigravity
+        case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "pi", "piagent", "pi-agent": return .pi
         default: return .codex
         }

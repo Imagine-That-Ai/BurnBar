@@ -59,6 +59,9 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         case .antigravity:
             _ = try await executable(named: "agy")
             options = try Self.defaultProfileRows(for: runtime)
+        case .grok:
+            _ = try await executable(named: "grok")
+            options = try Self.defaultProfileRows(for: runtime)
         case .hermes, .pi, .openClaw:
             throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(request.runtime)
         }
@@ -254,7 +257,7 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
         }
     }
 
-    static func backend(for runtime: String) -> ChatBackendID? {
+    nonisolated static func backend(for runtime: String) -> ChatBackendID? {
         switch runtime.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "codex":
             return .codex

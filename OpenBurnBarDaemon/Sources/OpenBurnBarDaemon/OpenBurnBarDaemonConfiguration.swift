@@ -71,6 +71,12 @@ public enum BurnBarDaemonPaths {
     public static var defaultBrowserToolingURL: URL {
         supportDirectoryURL.appendingPathComponent("browser-tooling.json", isDirectory: false)
     }
+
+    public static var defaultHeartbeatURL: URL {
+        supportDirectoryURL
+            .appendingPathComponent("daemon", isDirectory: true)
+            .appendingPathComponent("openburnbar-daemon.heartbeat.json", isDirectory: false)
+    }
 }
 
 public enum BurnBarDaemonVersion {

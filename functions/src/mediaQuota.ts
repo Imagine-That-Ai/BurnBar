@@ -19,6 +19,7 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
+import { logError } from "./logging.js";
 import type {
   MediaFeature,
   MediaQuotaUsageDoc,
@@ -167,7 +168,11 @@ export const recomputeMediaQuotaUsage = onSchedule(
       try {
         await recomputeQuotaUsageForUid({ uid, dateUTC: today, firestore });
       } catch (err) {
-        console.error(`recomputeMediaQuotaUsage failed for uid=${uid}`, err);
+        logError({
+          event: "media.quota.recompute_failed",
+          uid,
+          error: String(err),
+        });
       }
     }
   }

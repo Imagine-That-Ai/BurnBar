@@ -114,4 +114,50 @@ final class FactoryDroidParserTests: XCTestCase {
         XCTAssertEqual(ModelPricing.lookup(model: usage.model, providerID: "factory").cacheReadPerMToken, 0)
         XCTAssertEqual(usage.costUSD, 0, accuracy: 0.000001)
     }
+
+    func testCacheOnlySettingsUsageDoesNotFallBackToTranscriptEstimate() async throws {
+        let fileManager = FileManager.default
+        let tempRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-factory-parser-tests-\(UUID().uuidString)", isDirectory: true)
+        let sessionsRoot = tempRoot.appendingPathComponent("sessions", isDirectory: true)
+        let supportRoot = tempRoot.appendingPathComponent("support", isDirectory: true)
+        let projectDir = sessionsRoot.appendingPathComponent("-Users-alberto-Project", isDirectory: true)
+        try fileManager.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: tempRoot) }
+
+        let sessionID = "factory-cache-only"
+        let settings = """
+        {
+          "model": "gpt-5.5",
+          "tokenUsage": {
+            "cacheReadTokens": 2000000
+          }
+        }
+        """
+        try settings.write(
+            to: projectDir.appendingPathComponent("\(sessionID).settings.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        {"type":"message","timestamp":"2026-05-04T22:48:32.605Z","message":{"role":"user","content":[{"type":"text","text":"This transcript should not become estimated billable input."}]}}
+        """.write(
+            to: projectDir.appendingPathComponent("\(sessionID).jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let parser = FactoryDroidParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.inputTokens, 0)
+        XCTAssertEqual(usage.outputTokens, 0)
+        XCTAssertEqual(usage.cacheCreationTokens, 0)
+        XCTAssertEqual(usage.cacheReadTokens, 2_000_000)
+        XCTAssertEqual(usage.costUSD, 1.0, accuracy: 0.000001)
+    }
 }

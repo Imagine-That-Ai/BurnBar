@@ -337,9 +337,10 @@ final class BackgroundCadenceCoordinator {
             let sleepInterval = interval ?? 60.0
             do {
                 try await Task.sleep(nanoseconds: UInt64(sleepInterval * 1_000_000_000))
-            } catch {
-                return
-            }
+        } catch {
+            AppLogger.metrics.error("background_cadence_tick_failed", metadata: ["error": error.localizedDescription])
+            return
+        }
             if Task.isCancelled { return }
             guard effectiveInterval(for: boxes[id]) != nil else {
                 // Paused since the sleep window was chosen — skip the actual

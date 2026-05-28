@@ -18,6 +18,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Test
 import com.openburnbar.test.ecPublicKey
 import com.openburnbar.test.requireClassLoaderResourceText
 

@@ -5,6 +5,11 @@ import Foundation
 import XCTest
 
 final class BurnBarHTTPGatewayServerTests: XCTestCase {
+    override func setUp() {
+        GatewayUpstreamURLProtocol.reset()
+        super.setUp()
+    }
+
     override func tearDown() {
         GatewayUpstreamURLProtocol.reset()
         super.tearDown()
@@ -83,6 +88,25 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             request: oversizedRequest
         )
         XCTAssertEqual(status, 413)
+    }
+
+    func testGatewayMetricsReturnsLiveSnapshot() async throws {
+        let harness = try GatewayHarness()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/metrics"
+        )
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertEqual(response.value(forHTTPHeaderField: "Content-Type"), "application/json")
+
+        let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        XCTAssertEqual(json?["gatewayEnabled"] as? Bool, true)
+        XCTAssertNotNil(json?["daemonVersion"])
+        XCTAssertNotNil(json?["counters"])
     }
 
     func testGatewayCORSAllowsLoopbackOriginsOnly() async throws {
@@ -731,6 +755,281 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/search", "/search", "/search"])
     }
 
+    func testGatewayModelsListsCustomAliasWireID() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureAnthropicProviderForGateway()
+        _ = try await harness.configStore.upsertModelAlias(
+            providerID: "anthropic",
+            alias: BurnBarModelAlias(
+                aliasID: "my-fast-coder",
+                baseModelID: "claude-sonnet-4-6",
+                displayName: "My Claude"
+            )
+        )
+
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let alias = try XCTUnwrap(data.first { ($0["id"] as? String) == "my-fast-coder" })
+        XCTAssertEqual(alias["provider_id"] as? String, "anthropic")
+        XCTAssertEqual(alias["source_kind"] as? String, "user_model_alias")
+        XCTAssertTrue((alias["display_name"] as? String ?? "").contains("My Claude"))
+    }
+
+    func testGatewayModelsHidesBaseWhenAliasHidesOriginal() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureAnthropicProviderForGateway()
+        _ = try await harness.configStore.upsertModelAlias(
+            providerID: "anthropic",
+            alias: BurnBarModelAlias(
+                aliasID: "my-fast-coder",
+                baseModelID: "claude-sonnet-4-6",
+                displayName: "My Claude",
+                hidesBaseModel: true
+            )
+        )
+
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (publicResponse, publicBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(publicResponse.statusCode, 200)
+        let publicObject = try XCTUnwrap(JSONSerialization.jsonObject(with: publicBody) as? [String: Any])
+        let publicData = try XCTUnwrap(publicObject["data"] as? [[String: Any]])
+        let publicIDs = Set(publicData.compactMap { $0["id"] as? String })
+        XCTAssertTrue(publicIDs.contains("my-fast-coder"))
+        XCTAssertFalse(publicIDs.contains("claude-sonnet-4-6"))
+
+        let (catalogResponse, catalogBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models/catalog"
+        )
+        XCTAssertEqual(catalogResponse.statusCode, 200)
+        let catalogObject = try XCTUnwrap(JSONSerialization.jsonObject(with: catalogBody) as? [String: Any])
+        let catalogData = try XCTUnwrap(catalogObject["data"] as? [[String: Any]])
+        let catalogIDs = Set(catalogData.compactMap { $0["id"] as? String })
+        XCTAssertTrue(catalogIDs.contains("claude-sonnet-4-6"))
+        XCTAssertTrue(catalogIDs.contains("my-fast-coder"))
+    }
+
+    func testGatewayChatCompletionsAcceptsAliasWireID() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_alias_bridge",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "hello via alias"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 4,
+                "output_tokens": 2,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        _ = try await harness.configStore.upsertModelAlias(
+            providerID: "anthropic",
+            alias: BurnBarModelAlias(
+                aliasID: "my-fast-coder",
+                baseModelID: "claude-sonnet-4-6",
+                displayName: "My Claude"
+            )
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"my-fast-coder","messages":[{"role":"user","content":"hi"}],"max_tokens":8}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
+        XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-sonnet-4-6""#), upstreamRequest.body)
+    }
+
+    func testGatewayRejectsDisabledAliasWith503() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureAnthropicProviderForGateway()
+        _ = try await harness.configStore.upsertModelAlias(
+            providerID: "anthropic",
+            alias: BurnBarModelAlias(
+                aliasID: "my-fast-coder",
+                baseModelID: "claude-sonnet-4-6",
+                displayName: "My Claude"
+            )
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        var settings = try XCTUnwrap(snapshot.providerSettings(id: "anthropic"))
+        settings.setModelAdvertisement(modelID: "my-fast-coder", isEnabled: false)
+        _ = try await harness.configStore.upsertProvider(settings)
+
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"my-fast-coder","messages":[{"role":"user","content":"hello"}]}"#.utf8)
+        )
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("No eligible route for my-fast-coder"), "body was: \(bodyText)")
+    }
+
+    func testGatewayMessagesRejectsDisabledAliasWith503() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureAnthropicProviderForGateway()
+        _ = try await harness.configStore.upsertModelAlias(
+            providerID: "anthropic",
+            alias: BurnBarModelAlias(
+                aliasID: "my-fast-coder",
+                baseModelID: "claude-sonnet-4-6",
+                displayName: "My Claude"
+            )
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        var settings = try XCTUnwrap(snapshot.providerSettings(id: "anthropic"))
+        settings.setModelAdvertisement(modelID: "my-fast-coder", isEnabled: false)
+        _ = try await harness.configStore.upsertProvider(settings)
+
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"{"model":"my-fast-coder","max_tokens":8,"messages":[{"role":"user","content":"hello"}]}"#.utf8
+            )
+        )
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("No eligible route for my-fast-coder"), "body was: \(bodyText)")
+    }
+
+    func testGatewayResponsesAcceptsAliasWireID() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "resp_alias_bridge",
+              "object": "response",
+              "status": "completed",
+              "model": "claude-sonnet-4-6",
+              "output": [
+                {
+                  "type": "message",
+                  "role": "assistant",
+                  "content": [{"type": "output_text", "text": "hello via alias"}]
+                }
+              ],
+              "usage": {"input_tokens": 4, "output_tokens": 2}
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        _ = try await harness.configStore.upsertModelAlias(
+            providerID: "anthropic",
+            alias: BurnBarModelAlias(
+                aliasID: "my-fast-coder",
+                baseModelID: "claude-sonnet-4-6",
+                displayName: "My Claude"
+            )
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/responses",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"{"model":"my-fast-coder","input":"hi","max_output_tokens":8}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let upstreamRequest = try XCTUnwrap(
+            GatewayUpstreamURLProtocol.recordedRequests().first {
+                $0.path.contains("messages") || $0.path.contains("responses")
+            }
+        )
+        XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-sonnet-4-6""#), upstreamRequest.body)
+    }
+
+    func testGatewayModelsCatalogIncludesHideBaseFlagForAlias() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureAnthropicProviderForGateway()
+        _ = try await harness.configStore.upsertModelAlias(
+            providerID: "anthropic",
+            alias: BurnBarModelAlias(
+                aliasID: "my-fast-coder",
+                baseModelID: "claude-sonnet-4-6",
+                displayName: "My Claude",
+                hidesBaseModel: true
+            )
+        )
+
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models/catalog"
+        )
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let alias = try XCTUnwrap(data.first { ($0["id"] as? String) == "my-fast-coder" })
+        XCTAssertEqual(alias["hides_base_model"] as? Bool, true)
+        XCTAssertEqual(alias["base_model_id"] as? String, "claude-sonnet-4-6")
+    }
+
     func testGatewayModelsUsesOllamaCloudCatalogPageWhenBaseURLOmitsAPIPath() async throws {
         enqueueOllamaCloudCatalog(["kimi-k2.6"])
         let harness = try GatewayHarness()
@@ -1180,7 +1479,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerID: "minimax",
             slotID: "default",
             label: "MiniMax API",
-            apiKey: "sk-cp-minimax-route-key"
+            apiKey: "minimax-gateway-route-test-key"
         )
         try await harness.start()
         defer { Task { await harness.stop() } }
@@ -2961,6 +3260,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     func testGatewayMessagesReturns503WhenOnlyOpenAICompatProvidersConfigured() async throws {
+        GatewayUpstreamURLProtocol.reset()
         let harness = try GatewayHarness()
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
@@ -2976,12 +3276,15 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         XCTAssertEqual(response.statusCode, 503)
         let bodyText = String(decoding: body, as: UTF8.self)
-        XCTAssertTrue(bodyText.contains("Anthropic"), "body was: \(bodyText)")
-        XCTAssertTrue(bodyText.contains("v1") && bodyText.contains("messages"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("No eligible route for claude-sonnet-4-6"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("Add or enable an account") && bodyText.contains("provider"), "body was: \(bodyText)")
 
-        // No upstream calls should have happened — pool isolation rejects
-        // the request before it ever leaves the daemon.
-        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().count, 0)
+        // Live catalog probes may hit configured OpenAI-compatible providers, but
+        // Anthropic /v1/messages must fail closed before any proxy attempt.
+        XCTAssertTrue(
+            GatewayUpstreamURLProtocol.recordedRequests().allSatisfy { $0.path == "/v1/models" },
+            "unexpected upstream paths: \(GatewayUpstreamURLProtocol.recordedRequests().map(\.path))"
+        )
     }
 
     func testGatewayChatCompletionsReturns503WhenOnlyAnthropicProvidersConfigured() async throws {
@@ -4017,7 +4320,11 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         Self.lock.unlock()
 
         if response.delayNanoseconds > 0 {
-            Thread.sleep(forTimeInterval: TimeInterval(response.delayNanoseconds) / 1_000_000_000)
+            let delay = TimeInterval(response.delayNanoseconds) / 1_000_000_000
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + delay) { [self] in
+                self.send(response)
+            }
+            return
         }
         send(response)
     }

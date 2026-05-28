@@ -37,6 +37,10 @@ final class ForgeDevParser: LogParser, Sendable {
                 do {
                     result = try parseDatabase(at: dbPath)
                 } catch {
+                    AppLogger.parser.error(
+                        "forgedev_log_read_failed",
+                        metadata: ["path": dbPath, "error": error.localizedDescription]
+                    )
                     continue
                 }
                 parsedReadableDatabase = true
@@ -200,6 +204,7 @@ final class ForgeDevParser: LogParser, Sendable {
                     title: title ?? summary.firstUser ?? projectName,
                     summary: summary,
                     keyFiles: collectFilePaths(from: metricsJSON),
+                    workingDirectory: projectPath,
                     startTime: startTime,
                     endTime: endTime,
                     fileModifiedAt: nil
@@ -455,6 +460,7 @@ final class ForgeDevParser: LogParser, Sendable {
         title: String,
         summary: ForgeSummary,
         keyFiles: [String],
+        workingDirectory: String? = nil,
         startTime: Date?,
         endTime: Date?,
         fileModifiedAt: Date?
@@ -478,6 +484,7 @@ final class ForgeDevParser: LogParser, Sendable {
             lastAssistantMessage: summary.lastAssistant,
             fullText: summary.fullText,
             indexedAt: Date(),
+            workingDirectory: workingDirectory,
             fileModifiedAt: fileModifiedAt,
             summary: nil
         )

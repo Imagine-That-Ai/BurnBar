@@ -1,7 +1,7 @@
-# Quarantine Manifest
+# Quarantine / Archive Manifest
 
-This document tracks every quarantined test in `AgentLensTests/Quarantine/`.
-Quarantined tests are excluded from compilation and do not run in CI.
+This document tracks every archived test in `AgentLensTests/Archive/` (moved from `Quarantine/` on 2026-05-27).
+Archived tests are excluded from compilation and do not run in CI.
 Revival requires updating the test to current public/`@testable` APIs and proving
 it with `./scripts/test-openburnbar-app.sh`.
 
@@ -20,7 +20,7 @@ it with `./scripts/test-openburnbar-app.sh`.
 
 ## Wave 2 — Stale Contract / Environmental Quarantines
 
-**2026-05-25 remediation:** `CloudSyncCoordinator` routes download sync through `DownloadSyncService`, cloud totals through `DownloadSyncService.fetchCloudTotal()`, and session-log manifest reads through `SessionLogSyncService.fetchCloudSessionLogs()`. Collaboration (`syncSharedArtifacts`) still delegates to `CloudSyncService` until the extension is lifted to a standalone engine.
+**2026-05-27 remediation:** `CollaborationSyncService` is a standalone `CloudSyncDomain` service. `CloudSyncCoordinator` routes collaboration directly (no legacy `CloudSyncService` delegate) and is no longer `@MainActor` at the type level. `CloudSyncService` upload/download paths delegate to extracted domain services via a thin shim.
 
 | Test Name | Reason | Owner | Source Subsystem | Revival Criteria | Target Date |
 |-----------|--------|-------|------------------|------------------|-------------|
@@ -29,11 +29,11 @@ it with `./scripts/test-openburnbar-app.sh`.
 | `test_watermark_doesNotAdvanceOnFailure` | ~~Stale contract~~ **Revived 2026-05-25** → `AgentLensTests/Active/OfflineOnlineMergeTests.swift` | CloudSync | Offline/Online Merge | — | Done |
 | `test_circuitBreaker_halfOpenToClosed_recovery` | Stale contract — circuit breaker state machine refactor needed | CloudSync | Offline/Online Merge | Fake gateway must surface retry failures to breaker | 2026-05-24 |
 | `test_runMigrationsSafely_integrityCheckFails_throws` | Stale contract — integrity check error path now handled before migrations dispatch | Database | Database Migration | Rebuild test against pre-migration integrity-check dispatch | 2026-05-17 |
-| `test_conversationUpload_writesToFirestoreAndMarksSynced` | Stale contract — Firestore mock surface drifted | CloudSync | Conversation Sync | Rebuild fakeStore writers against current conversation sync contract | 2026-05-17 |
+| `test_conversationUpload_writesToFirestoreAndMarksSynced` | ~~Stale contract~~ **Revived 2026-05-27** → `AgentLensTests/Active/ConversationSyncRoundTripTests.swift` | CloudSync | Conversation Sync | — | Done |
 | `test_refreshAll_storesUsagesInDataStore` | Stale contract — UsageAggregator refresh now scans live provider directories | UsageAggregation | Usage Aggregator | Add hermetic FS sandbox so aggregator does not scan host machine | 2026-05-17 |
 | `test_refresh_providerWithNoParser_doesNothing` | Stale contract — UsageAggregator refresh now scans live provider directories | UsageAggregation | Usage Aggregator | Add hermetic FS sandbox so aggregator does not scan host machine | 2026-05-17 |
-| `test_syncStateStore_recordsConflictedState` | Stale contract — sync state schema rewrote conflict-status columns | CloudSync | Shared Artifact Conflict Resolution | Update schema and assertions to match new conflict-status columns | 2026-05-17 |
-| `test_syncStateStore_conflictToResolved` | Stale contract — sync state schema rewrote conflict-status columns | CloudSync | Shared Artifact Conflict Resolution | Update schema and assertions to match new conflict-status columns | 2026-05-17 |
+| `test_syncStateStore_recordsConflictedState` | ~~Stale contract~~ **Archived — revived in Active** | CloudSync | Shared Artifact Conflict Resolution | — | Done |
+| `test_syncStateStore_conflictToResolved` | ~~Stale contract~~ **Archived — revived in Active** | CloudSync | Shared Artifact Conflict Resolution | — | Done |
 | `test_sessionLogUpload_writesManifestAndChunks` | Stale contract — session-log chunk manifest format drifted | CloudSync | Session Log Sync | Rebuild fakeStore writers against current chunk manifest format | 2026-05-17 |
 | `test_send_hermesProviderRankingQuery_returnsTopProviderAndAlignedTargets` | Stale contract — provider ranking heuristics changed | Search | Chat Session Search | Rebuild harness fixtures against current provider ranking heuristics | 2026-05-17 |
 | `test_factoryRefresh_estimatesRemainingFromPlanTierAndMonthlyUsage` | Stale contract — Factory plan-tier limits updated | ProviderQuota | Provider Quota Service | Refresh fixture totals against current Factory plan-tier limits | 2026-05-17 |
@@ -53,15 +53,16 @@ it with `./scripts/test-openburnbar-app.sh`.
 
 | Test Name | Reason | Owner | Source Subsystem | Revival Criteria | Target Date |
 |-----------|--------|-------|------------------|------------------|-------------|
-| `ParserTests` (monolithic) | Legacy parser internals and removed helper types | AgentLens | Log Parsers | Rewrite against current per-provider parser public APIs | Archive |
-| `PerformanceTests` (suite) | Legacy `XCTPerformanceMetric` APIs and removed data-store contracts | AgentLens | Performance | Rewrite against current GRDB/performance contracts | Archive |
+| `ParserTests` (monolithic) | Legacy parser internals and removed helper types | AgentLens | Log Parsers | Archived — see `docs/adr/2026-05-27-archive-legacy-parser-performance-tests.md` | Archive |
+| `PerformanceTests` (suite) | Legacy `XCTPerformanceMetric` APIs and removed data-store contracts | AgentLens | Performance | Archived — see `docs/adr/2026-05-27-archive-legacy-parser-performance-tests.md` | Archive |
 
 ---
 
 ## Totals
 
-- **Wave 2 quarantined:** 22 tests (2 revived to Active on 2026-05-25; circuit breaker remains skipped in Active)
-- **Legacy quarantined:** 2 suites
+- **Wave 2 archived:** 18 tests (6 revived to Active; circuit breaker remains skipped in Active)
+- **Legacy archived:** 2 suites (under `AgentLensTests/Archive/`)
+- **Quarantine directory:** empty of Swift sources (pointer README only)
 - **Fixed to passing:** 2 tests (`testParseEmptyDirectory`, `testWrongDeviceDecryptionFails` env-gate)
 - **Deleted:** 0 tests
 

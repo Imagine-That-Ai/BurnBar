@@ -34,6 +34,7 @@ import {
   parseModelBenchmarkSnapshotDoc,
   parseModelBenchmarkSourceStatusDoc,
 } from "./guards.js";
+import { logError, logWarn } from "./logging.js";
 
 export const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
 
@@ -946,7 +947,9 @@ export async function buildAndPersistRouterRundown(db: Firestore, now: Date = ne
     : undefined;
 
   if (catalog.models.length === 0) {
-    console.warn("[routerRundown] router_rundown_catalog/current is empty; rundown will be empty until populated.");
+    logWarn({
+      event: "router_rundown.catalog_empty",
+    });
   }
 
   const rundown = buildRouterRundown({
@@ -1002,7 +1005,7 @@ export const latestRouterRundown = onRequest(
       res.set("Cache-Control", "public, max-age=300, s-maxage=300");
       res.status(200).json(snap.data());
     } catch (err) {
-      console.error("[latestRouterRundown] failed", err);
+      logError({ event: "router_rundown.latest_failed", error: String(err) });
       res.status(500).json({ error: "internal" });
     }
   }

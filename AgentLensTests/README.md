@@ -7,9 +7,9 @@ The Xcode unit-test target **`OpenBurnBarTests`** is generated from [`project.ym
 - `AgentLensTests/Active/` — active XCTest suites compiled in `OpenBurnBarTests`
 - `AgentLensTests/Support/` — shared harnesses, helpers, and fixtures used by active suites
 - `AgentLensTests/Fixtures/` — fixtures shared by active/support code
-- `AgentLensTests/Quarantine/` — stale suites kept as migration reference only; not compiled until fixed and moved back to `Active/`
+- `AgentLensTests/Archive/` — stale suites kept as migration reference only; not compiled until fixed and moved to `Active/`
 
-The active target compiles `Active/**` plus `Support/**`. Files should not sit under `Active/` unless they compile against current app contracts. If a suite needs API alignment work, move it to `Quarantine/` with a short note instead of hiding it behind a target exclude.
+The active target compiles `Active/**` plus `Support/**`. Files should not sit under `Active/` unless they compile against current app contracts. If a suite needs API alignment work, move it to `Archive/` with a short note and a manifest entry instead of hiding it behind a target exclude.
 
 ## Active bundle
 
@@ -24,6 +24,6 @@ xcodebuild -scheme OpenBurnBar -project OpenBurnBar.xcodeproj -destination 'plat
 
 Representative active suites now live under `AgentLensTests/Active/`, including the replay golden tests, discovery/retrieval coverage, settings secret-storage coverage, cloud-sync consent coverage, UI tests, and the smaller standalone app test files.
 
-## Quarantine
+## Archive
 
-`AgentLensTests/Quarantine/` is the only supported parking lot for broken test source. To revive a quarantined suite, fix it against current production APIs, move it back under `AgentLensTests/Active/`, run `xcodegen generate`, and prove it with `./scripts/test-openburnbar-app.sh` or a targeted `xcodebuild test` invocation.
+`AgentLensTests/Archive/` holds stale suites outside the compiled target. To revive, fix against current production APIs, move back under `AgentLensTests/Active/`, run `xcodegen generate`, and prove with `./scripts/test-openburnbar-app.sh`.

@@ -33,6 +33,7 @@ struct DashboardView: View {
     @State private var showSessionLogCloudConsent = false
     @State var sessionLogJumpTarget: ConversationJumpTarget?
     @State var dashboardCanvasSize: CGSize = .zero
+    @State private var overviewUsesStackedLanes = false
     @State var didAutoExpandEmptyTimeRange = false
     @State var showContextPackSheet = false
     @AppStorage("dashboardChatPreferMaximized") var preferMaximizedChat = false
@@ -494,7 +495,7 @@ struct DashboardView: View {
                 DashboardDepthBackdrop()
                     .ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
                         LazyVGrid(
                             columns: [
                                 GridItem(
@@ -527,7 +528,13 @@ struct DashboardView: View {
                         }
                         liveCostCurveBand
                         NarrativeCardView(dataStore: dataStore)
-                        ViewThatFits(in: .horizontal) {
+                        if overviewUsesStackedLanes {
+                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                                providerLane
+                                modelLane
+                                activityLane
+                            }
+                        } else {
                             HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
                                 VStack(spacing: DesignSystem.Spacing.xl) {
                                     providerLane
@@ -536,17 +543,21 @@ struct DashboardView: View {
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                                 activityLane
                             }
-
-                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                                providerLane
-                                modelLane
-                                activityLane
-                            }
                         }
                     }
                     .padding(DesignSystem.Spacing.xl)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onAppear {
+                                    updateOverviewLaneLayout(width: proxy.size.width)
+                                }
+                                .onChange(of: proxy.size.width) { _, width in
+                                    updateOverviewLaneLayout(width: width)
+                                }
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .scrollContentBackground(.hidden)
@@ -591,6 +602,15 @@ struct DashboardView: View {
         let start = cal.startOfDay(for: now)
         let end = cal.date(byAdding: .day, value: 1, to: start) ?? now
         return start...end
+    }
+
+    private func updateOverviewLaneLayout(width: CGFloat) {
+        guard width > 0 else { return }
+        // Match the old ViewThatFits break point without asking SwiftUI to build
+        // and measure both expensive lane trees on every scroll/layout pass.
+        let shouldStack = width < 920
+        guard shouldStack != overviewUsesStackedLanes else { return }
+        overviewUsesStackedLanes = shouldStack
     }
 
     private var liveCostCurveAccent: Color {

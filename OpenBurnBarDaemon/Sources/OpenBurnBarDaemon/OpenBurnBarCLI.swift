@@ -12,6 +12,12 @@ public protocol BurnBarCLIClient: Sendable {
     func approveMission(id: BurnBarMissionID, note: String?) throws -> BurnBarMissionSnapshot
     func simulatorRuns(projectSlug: String?) throws -> [BurnBarSimulatorRunSnapshot]
     func simulatorReplay(runID: BurnBarSimulatorRunID) throws -> BurnBarSimulatorRunSnapshot
+    func runResume(
+        sessionID: String,
+        targetHarness: String?,
+        targetModel: String?,
+        mode: BurnBarResumeMode
+    ) throws -> BurnBarRunResumeResponse
 }
 
 public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
@@ -124,6 +130,26 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
             )
         )
         return response.run
+    }
+
+    public func runResume(
+        sessionID: String,
+        targetHarness: String?,
+        targetModel: String?,
+        mode: BurnBarResumeMode
+    ) throws -> BurnBarRunResumeResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .runResume,
+                authToken: authToken,
+                params: BurnBarRunResumeRequest(
+                    sessionID: sessionID,
+                    targetHarness: targetHarness,
+                    targetModel: targetModel,
+                    mode: mode
+                )
+            )
+        )
     }
 
     private func unwrap<Response>(_ envelope: BurnBarRPCResponseEnvelope<Response>) throws -> Response {
@@ -346,6 +372,9 @@ public struct BurnBarCLIRunner {
             }
             let run = try client.simulatorReplay(runID: BurnBarSimulatorRunID(rawValue: effectiveArguments[1]))
             return "Replayed \(run.scenarioName) (\(run.id.rawValue)) with \(run.emittedEvents.count) event(s)."
+        case "resume":
+            let (response, mode) = try runResumeCommand(effectiveArguments)
+            return Self.formatRunResumeResponse(response, mode: mode)
         case "remote-unlock-certification":
             return try handleRemoteUnlockCertification(Array(effectiveArguments.dropFirst()))
         default:
@@ -377,7 +406,31 @@ public struct BurnBarCLIRunner {
             return BurnBarCLIInvocationResult(output: output, exitCode: EXIT_SUCCESS)
         }
 
+        if effectiveArguments.first == "resume" {
+            let (response, mode) = try runResumeCommand(effectiveArguments)
+            return BurnBarCLIInvocationResult(
+                output: Self.formatRunResumeResponse(response, mode: mode),
+                exitCode: response.kind == "error" ? EXIT_FAILURE : EXIT_SUCCESS
+            )
+        }
+
         return BurnBarCLIInvocationResult(output: try run(arguments: arguments), exitCode: EXIT_SUCCESS)
+    }
+
+    private func runResumeCommand(_ effectiveArguments: [String]) throws -> (BurnBarRunResumeResponse, BurnBarResumeMode) {
+        guard effectiveArguments.count >= 2 else {
+            throw BurnBarCLIError.missingArgument("Usage: openburnbar resume <sessionId> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]")
+        }
+        let mode: BurnBarResumeMode = effectiveArguments.contains("--copy")
+            ? .copy
+            : effectiveArguments.contains("--open") ? .open : effectiveArguments.contains("--spawn") ? .spawn : .print
+        let response = try client.runResume(
+            sessionID: effectiveArguments[1],
+            targetHarness: try Self.resumeOptionValue("--as", in: effectiveArguments),
+            targetModel: try Self.resumeOptionValue("--model", in: effectiveArguments),
+            mode: mode
+        )
+        return (response, mode)
     }
 
     public static let usageText = """
@@ -392,6 +445,7 @@ public struct BurnBarCLIRunner {
       mission-approve <missionID> [note]
       simulator-runs [projectSlug]
       simulator-replay <runID>
+      resume <sessionId> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]
       remote-unlock-certification <status|record-hardware-proof|reset>
       exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
       install-shell-shims
@@ -409,6 +463,7 @@ public struct BurnBarCLIRunner {
         "mission-approve",
         "simulator-runs",
         "simulator-replay",
+        "resume",
         "remote-unlock-certification",
         "exec",
         "install-shell-shims"
@@ -510,6 +565,50 @@ public struct BurnBarCLIRunner {
         return runs.map { run in
             "\(run.id.rawValue) [\(run.status.rawValue)] \(run.scenarioName)"
         }.joined(separator: "\n")
+    }
+
+    public static func formatRunResumeResponse(_ response: BurnBarRunResumeResponse, mode: BurnBarResumeMode) -> String {
+        switch response.kind {
+        case "native":
+            let command = (response.argv ?? []).joined(separator: " ")
+            let cwdLine = response.workingDirectory.map { "# Run from: \($0)\n" } ?? ""
+            return "\(cwdLine)\(command)"
+        case "ported":
+            let prefix = response.note.map { "# note: \($0)\n" } ?? ""
+            switch mode {
+            case .print:
+                return "\(prefix)\(response.briefingMD ?? "")"
+            case .copy:
+                return ""
+            case .open:
+                return response.briefingPath ?? ""
+            case .spawn:
+                return response.briefingPath ?? response.briefingMD ?? ""
+            }
+        case "error":
+            let code = response.errorCode ?? "unknown"
+            let recovery = response.errorRecovery ?? ""
+            return "error: \(code)\n\(recovery)"
+        case "spawned":
+            let pid = response.pid.map(String.init) ?? "unknown"
+            let target = response.targetHarness ?? "unknown"
+            let cleanup = response.cleanupAfterSeconds.map { " cleanup_after_seconds=\($0)" } ?? ""
+            return "spawned \(target) pid=\(pid)\(cleanup)"
+        default:
+            return "error: unknown response kind '\(response.kind)'"
+        }
+    }
+
+    private static func resumeOptionValue(_ name: String, in arguments: [String]) throws -> String? {
+        guard let index = arguments.firstIndex(of: name) else { return nil }
+        guard arguments.indices.contains(index + 1) else {
+            throw BurnBarCLIError.missingArgument("\(name) requires a value")
+        }
+        let value = arguments[index + 1]
+        guard !value.hasPrefix("--") else {
+            throw BurnBarCLIError.missingArgument("\(name) requires a value")
+        }
+        return value
     }
 
     private func handleRemoteUnlockCertification(_ arguments: [String]) throws -> String {

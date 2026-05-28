@@ -14,10 +14,26 @@ extension AccountSwitcherSettingsView {
             let state = try dataStore.switcherStore.validateAndRecoverActiveProfile()
             activeProfileID = resolvedActiveProfileID(from: state, profiles: profiles)
             activeProfileState = state
+            drainTargets = (try? dataStore.switcherStore.fetchAllActiveDrainTargets()) ?? [:]
         } catch {
             self.error = "Failed to load profiles: \(error.localizedDescription)"
         }
         isLoading = false
+    }
+
+    /// Promotes `profile` to the drain target for `provider`, leaving other
+    /// providers' drain targets untouched.
+    func setDrainTarget(_ profile: SwitcherProfileRecord, provider: AgentProvider) {
+        let providerKey = provider.providerID.rawValue
+        guard drainTargets[providerKey] != profile.id else { return }
+        do {
+            try dataStore.switcherStore.setActiveProfile(profile.id, for: provider.providerID)
+            withAnimation(DesignSystem.Animation.snappy) {
+                drainTargets[providerKey] = profile.id
+            }
+        } catch {
+            self.error = "Failed to set drain target: \(error.localizedDescription)"
+        }
     }
 
     func enrichAndReload() {
@@ -35,7 +51,7 @@ extension AccountSwitcherSettingsView {
 
     func refreshLiveCLIAuthStates() {
         var next: [SwitcherCLIProfileType: CLIAuthInfo] = [:]
-        for cliType in [SwitcherCLIProfileType.claude, .codex, .opencode, .droid, .forge, .antigravity] {
+        for cliType in [SwitcherCLIProfileType.claude, .codex, .opencode, .droid, .forge, .antigravity, .grok] {
             next[cliType] = CLIAuthDiscovery.discoverAuthState(for: cliType)
         }
         liveCLIAuthStates = next
@@ -198,7 +214,7 @@ extension AccountSwitcherSettingsView {
         switch group.cliType {
         case .codex, .claude:
             await addCLIAccount(for: group)
-        case .opencode, .droid, .forge, .antigravity:
+        case .opencode, .droid, .forge, .antigravity, .grok:
             editFormTargetKind = .cli
             editFormCLIType = group.cliType ?? .opencode
             showingCreateSheet = true
@@ -628,7 +644,7 @@ extension AccountSwitcherSettingsView {
             return .openAI
         case .claude:
             return .claude
-        case .opencode, .droid, .forge, .antigravity, .none:
+        case .opencode, .droid, .forge, .antigravity, .grok, .none:
             return nil
         }
     }

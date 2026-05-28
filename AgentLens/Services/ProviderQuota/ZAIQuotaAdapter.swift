@@ -59,9 +59,10 @@ struct ZAIQuotaAdapter: ProviderQuotaAdapter {
                     lastInlineError = message
                 }
                 continue
-            } catch {
-                continue
-            }
+                } catch {
+                    AppLogger.sync.error("zai_quota_parse_failed", metadata: ["error": error.localizedDescription])
+                    continue
+                }
         }
 
         if let lastInlineError {

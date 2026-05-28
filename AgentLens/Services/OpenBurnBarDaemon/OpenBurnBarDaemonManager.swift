@@ -26,6 +26,10 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
         supportDirectory.appendingPathComponent("controller-activity-snapshot.json", isDirectory: false)
     }
 
+    var heartbeatURL: URL {
+        daemonDirectory.appendingPathComponent("openburnbar-daemon.heartbeat.json", isDirectory: false)
+    }
+
     static func live(fileManager: FileManager = .default) -> OpenBurnBarDaemonRuntimePaths {
         let supportDirectory = (try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager))
             ?? OpenBurnBarAppPaths.live(fileManager: fileManager).supportDirectory
@@ -155,6 +159,7 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
     case daemonSocketAuthTokenUnavailable
     case emptyResponse
     case rpcError(String)
+    case rpcTimedOut(seconds: Int)
 
     var errorDescription: String? {
         switch self {
@@ -182,6 +187,8 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
             return "OpenBurnBarDaemon returned an empty response."
         case .rpcError(let message):
             return "OpenBurnBarDaemon RPC error: \(message)"
+        case .rpcTimedOut(let seconds):
+            return "OpenBurnBarDaemon RPC timed out after \(seconds) seconds."
         }
     }
 }
@@ -279,8 +286,21 @@ final class OpenBurnBarDaemonManager {
             let protocolNote = snapshot.versionMismatch ? "Protocol mismatch" : "Protocol \(snapshot.protocolVersion)"
             return "Daemon \(snapshot.daemonVersion) is responding on \(snapshot.socketPath). \(protocolNote)."
         case .unhealthy(let message):
+            if supervisionState.isCrashLoop {
+                return "Daemon crash loop detected (\(supervisionState.consecutiveFailures) failures in \(Int(Self.supervisorConfig.failureDetectionWindow))s). \(message)"
+            }
             return message
         }
+    }
+
+    var isDaemonHeartbeatStale: Bool {
+        OpenBurnBarDaemonHeartbeatReader.isStale(
+            snapshot: readDaemonHeartbeatSnapshot()
+        )
+    }
+
+    func readDaemonHeartbeatSnapshot() -> OpenBurnBarDaemonHeartbeatSnapshot? {
+        OpenBurnBarDaemonHeartbeatReader.readSnapshot(from: paths.heartbeatURL)
     }
 
     func attach(dataStore: DataStore, cloudSyncService: CloudSyncService? = nil) {
@@ -306,6 +326,33 @@ final class OpenBurnBarDaemonManager {
         lastError = "Updating the OpenBurnBar daemon to match this app build."
         await repair()
         return true
+    }
+
+    func runResume(
+        sessionID: String,
+        targetHarness: String?,
+        targetModel: String? = nil,
+        mode: BurnBarResumeMode = .open
+    ) async throws -> BurnBarRunResumeResponse {
+        if case .healthy = status {
+            // Keep the current health snapshot.
+        } else {
+            await forceRefreshHealth()
+        }
+        guard case .healthy = status else {
+            throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before resuming a session.")
+        }
+
+        let socketURL = paths.socketURL
+        let request = BurnBarRunResumeRequest(
+            sessionID: sessionID,
+            targetHarness: targetHarness,
+            targetModel: targetModel,
+            mode: mode
+        )
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.runResume(request, at: socketURL)
+        }
     }
 
     /// Force a health re-probe even if the supervisor is in crash-loop backoff.
@@ -354,7 +401,10 @@ final class OpenBurnBarDaemonManager {
                 if await refreshInstalledDaemonIfNeededForCurrentAppBuild() {
                     return
                 }
-                status = .unhealthy(error.localizedDescription)
+                let heartbeatDetail = isDaemonHeartbeatStale
+                    ? "Daemon heartbeat is stale."
+                    : "Daemon heartbeat is current."
+                status = .unhealthy("\(error.localizedDescription) \(heartbeatDetail)")
                 lastError = error.localizedDescription
                 supervisionState = OpenBurnBarDaemonSupervisor.advance(
                     from: supervisionState,

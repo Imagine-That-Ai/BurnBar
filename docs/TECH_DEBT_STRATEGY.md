@@ -6,6 +6,8 @@
 **Lines of Swift:** ~31,000 (AgentLens: ~20K, Daemon: ~11K, Core: ~11K)  
 **Test Files:** 88 active XCTest suites + 12 daemon tests + 12 core tests  
 
+**Status note, 2026-05-27:** Phase 5–6 SOTA remediation landed SLO runbook, Architecture ADRs, CI tech-debt metrics snapshot, and daemon `GET /metrics` stub. This document remains the debt register; live counts are in [TECH_DEBT_METRICS.md](TECH_DEBT_METRICS.md).
+
 **Status note, 2026-04-30:** This document is still the debt register, but several release-critical findings have moved since the original audit. The release workflow now uploads build artifacts before smoke/publish, smokes the downloaded DMG, and publishes the same downloaded assets. Daemon socket auth is required across app, extension, CLI, and smoke scripts. Stale app tests now belong in `AgentLensTests/Quarantine/`, not hidden under `Active/` excludes.
 
 ---
@@ -307,7 +309,7 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 
 | Workstream | Specific Work | Why Now |
 |---|---|---|
-| **P4-1: Observability** | Add `metrics.jsonl` with counters for `datastore_init_failures`, `daemon_crash_count`, `sync_error_count_by_code`, `rpc_latency_ms`. Expose `/metrics` on gateway. | Enables data-driven incident response. |
+| **P4-1: Observability** | Add `metrics.jsonl` with counters for `datastore_init_failures`, `daemon_crash_count`, `sync_error_count_by_code`, `rpc_latency_ms`. Expose `/metrics` on gateway. | Enables data-driven incident response. **Partial (2026-05-27):** [runbooks/slos.md](runbooks/slos.md), `GET /metrics` JSON stub, `LocalMetricsAggregator` + structured logs; `metrics.jsonl` file sink still open. |
 | **P4-2: Fix flaky tests** | Replace `Task.sleep` timing in `ChatSessionControllerSearchStateTests` with deterministic test doubles. Remove CI retry loop in `test-openburnbar-app.sh`. | Restores CI trust. |
 | **P4-3: Golden test tolerance** | Separate structural golden tests from score golden tests. Allow score tolerances in assertions. | Reduces noise from algorithm tweaks. |
 | **P4-4: Vague assertions** | Replace 81× `XCTAssertTrue(isEmpty)` with `XCTAssertEqual(array, [])`. | Improves debuggability. |
@@ -383,8 +385,8 @@ These are high-leverage improvements that can be done in 1–2 days each and sho
    - `Task.detached` (warning)
    - `import SwiftUI` in `Services/` or `DataStore/` (error)
 3. **Test Coverage Policy** — Any new service >200 lines requires tests before merge. Any refactor of a service >500 lines requires tests of the behavior being changed.
-4. **Architecture Decision Records (ADRs)** — Document naming conventions, actor boundaries, and error handling patterns in `docs/ARCHITECTURE/`.
-5. **Monthly Debt Audit** — Re-run complexity metrics and test coverage reports. Track trends in a `TECH_DEBT_METRICS.md` file.
+4. **Architecture Decision Records (ADRs)** — Document naming conventions, actor boundaries, and error handling patterns in [`docs/ARCHITECTURE/`](ARCHITECTURE/README.md) (**done 2026-05-27**).
+5. **Monthly Debt Audit** — Re-run `./scripts/ci/update-tech-debt-metrics.sh` and review [`TECH_DEBT_METRICS.md`](TECH_DEBT_METRICS.md) trends.
 
 ---
 

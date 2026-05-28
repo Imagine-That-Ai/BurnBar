@@ -28,6 +28,8 @@ struct AccountSwitcherSettingsView: View {
 
     @State var profiles: [SwitcherProfileRecord] = []
     @State var activeProfileID: String?
+    /// Per-provider drain targets: providerID raw value → profile id burning quota.
+    @State var drainTargets: [String: String] = [:]
     @State var activeProfileState: SwitcherActiveProfileState = .init(activeProfileID: nil)
     @State var isLoading = true
     @State var error: String?

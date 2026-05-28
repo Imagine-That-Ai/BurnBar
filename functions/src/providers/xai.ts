@@ -50,7 +50,7 @@ interface TeamRecord {
   name?: string;
 }
 
-interface TeamsResponse {
+export interface TeamsResponse {
   teams?: TeamRecord[];
 }
 
@@ -58,7 +58,7 @@ interface ValWrapper {
   val?: string;
 }
 
-interface PrepaidBalanceResponse {
+export interface PrepaidBalanceResponse {
   total?: ValWrapper;
   changes?: Array<{
     createTime?: string;
@@ -76,11 +76,11 @@ interface UsageTimeSeries {
   dataPoints?: UsageDataPoint[];
 }
 
-interface UsageResponse {
+export interface UsageResponse {
   timeSeries?: UsageTimeSeries[];
 }
 
-interface XAIFetchError {
+export interface XAIFetchError {
   error?: { message?: string; code?: string };
   message?: string;
 }

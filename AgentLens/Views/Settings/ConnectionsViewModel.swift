@@ -53,6 +53,9 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
     let baseModelID: String?
     /// `BurnBarThinkingLevel.rawValue` for variant rows, nil otherwise.
     let thinkingLevel: String?
+    /// When this row is a user-defined alias, whether the base model is hidden
+    /// from public `/v1/models`.
+    let hidesBaseModel: Bool
 
     init(
         modelID: String,
@@ -70,7 +73,8 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         capabilities: [String],
         lastError: String?,
         baseModelID: String? = nil,
-        thinkingLevel: String? = nil
+        thinkingLevel: String? = nil,
+        hidesBaseModel: Bool = false
     ) {
         self.modelID = modelID
         self.displayName = displayName
@@ -88,10 +92,19 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         self.lastError = lastError
         self.baseModelID = baseModelID
         self.thinkingLevel = thinkingLevel
+        self.hidesBaseModel = hidesBaseModel
     }
 
     var isThinkingLevelVariant: Bool {
         baseModelID != nil && thinkingLevel != nil
+    }
+
+    var isUserModelAlias: Bool {
+        sourceKind == "user_model_alias"
+    }
+
+    var isBaseCatalogRow: Bool {
+        !isThinkingLevelVariant && !isUserModelAlias
     }
 }
 
@@ -533,7 +546,8 @@ final class ConnectionsViewModel {
             capabilities: capabilities,
             lastError: rows.compactMap(\.lastError).first,
             baseModelID: rows.compactMap(\.baseModelID).first,
-            thinkingLevel: rows.compactMap(\.thinkingLevel).first
+            thinkingLevel: rows.compactMap(\.thinkingLevel).first,
+            hidesBaseModel: representative.hidesBaseModel
         )
     }
 
@@ -625,6 +639,7 @@ private struct ProxyModelRow: Decodable {
     let lastError: String?
     let baseModelID: String?
     let thinkingLevel: String?
+    let hidesBaseModel: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -645,6 +660,7 @@ private struct ProxyModelRow: Decodable {
         case lastError = "last_error"
         case baseModelID = "base_model_id"
         case thinkingLevel = "thinking_level"
+        case hidesBaseModel = "hides_base_model"
     }
 }
 
@@ -670,6 +686,7 @@ private extension ProxyAdvertisedModel {
         self.lastError = row.lastError
         self.baseModelID = (row.baseModelID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
         self.thinkingLevel = (row.thinkingLevel?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        self.hidesBaseModel = row.hidesBaseModel ?? false
     }
 }
 

@@ -34,6 +34,7 @@ MAC_FILES = [
     "AgentLens/Services/ComputerUse/ComputerUsePanicHaltCoordinator.swift",
     "AgentLens/Services/ComputerUse/MacActionDispatcher.swift",
     "AgentLens/Services/ComputerUse/Mac/MacAccessibilityInspector.swift",
+    "AgentLens/Services/ComputerUse/Mac/MacAccessibilityPermissionRequester.swift",
     "AgentLens/Services/ComputerUse/Mac/MacComputerUseDenyRegions.swift",
     "AgentLens/Services/ComputerUse/Mac/MacInputController.swift",
     "AgentLens/Services/ComputerUse/Mac/MacScreenshotService.swift",

@@ -48,7 +48,6 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorDisplaySelection
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
-import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCertificationStatus
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
@@ -593,10 +592,8 @@ class ScreenShareViewerActivity : FragmentActivity() {
                     ?: throw IllegalStateException("Remote Unlock recipient key is missing.")
                 val algorithm = capabilities.credentialEnvelopeAlgorithm
                     ?: throw IllegalStateException("Remote Unlock envelope algorithm is missing.")
-                if (!capabilities.enabled ||
-                    capabilities.certificationStatus != HermesRealtimeRelayRemoteUnlockCertificationStatus.CERTIFIED
-                ) {
-                    throw IllegalStateException("Remote Unlock is not certified on this Mac.")
+                if (!capabilities.enabled || !capabilities.allowsCredentialPaste) {
+                    throw IllegalStateException("Remote Unlock is not ready on this Mac.")
                 }
                 if (algorithm != RemoteUnlockCredentialEnvelopeCrypto.ALGORITHM) {
                     throw IllegalStateException("Remote Unlock needs an app update on this Android.")

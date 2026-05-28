@@ -40,6 +40,123 @@
       "kotlinHandMirror": [
         "android/app/src/main/java/com/openburnbar/data/models/TokenUsage.kt"
       ]
+    },
+    {
+      "id": "hermes-relay",
+      "typespec": "typespec/domains/hermes-relay.tsp",
+      "firestoreCollections": [
+        "users/{uid}/hermes_relay_requests/{requestId}",
+        "users/{uid}/hermes_relay_requests/{requestId}/chunks/{chunkId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/hermes-relay.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesRelayModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesRelayModels.kt"
+      }
+    },
+    {
+      "id": "iroh-pairing",
+      "typespec": "typespec/domains/iroh-pairing.tsp",
+      "firestoreCollections": [
+        "users/{uid}/iroh_pairings/{pairingId}",
+        "users/{uid}/device_links/{linkId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/iroh-pairing.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/IrohPairingModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/IrohPairingModels.kt"
+      }
+    },
+    {
+      "id": "pi-agent-relay",
+      "typespec": "typespec/domains/pi-agent-relay.tsp",
+      "firestoreCollections": [
+        "users/{uid}/pi_agent_connections/{connectionId}",
+        "users/{uid}/pi_agent_pairings/{pairingId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/pi-agent-relay.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/PiAgentRelayModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/PiAgentRelayModels.kt"
+      }
+    },
+    {
+      "id": "computer-use",
+      "typespec": "typespec/domains/computer-use.tsp",
+      "firestoreCollections": [
+        "users/{uid}/computer_use_phone_authorities/{deviceId}",
+        "users/{uid}/computer_use_audit_signers/{signerId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/computer-use.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ComputerUseModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ComputerUseModels.kt"
+      }
+    },
+    {
+      "id": "hosted-quota",
+      "typespec": "typespec/domains/hosted-quota.tsp",
+      "firestoreCollections": [
+        "users/{uid}/entitlement_bindings/{bindingId}",
+        "users/{uid}/entitlement_events/{eventId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/hosted-quota.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HostedQuotaModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HostedQuotaModels.kt"
+      }
+    },
+    {
+      "id": "entitlements",
+      "typespec": "typespec/domains/entitlements.tsp",
+      "firestoreCollections": [
+        "users/{uid}/escrow_devices/{deviceId}",
+        "users/{uid}/escrow_envelopes/{envelopeId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/entitlements.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/EntitlementModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/EntitlementModels.kt"
+      }
+    },
+    {
+      "id": "insights",
+      "typespec": "typespec/domains/insights.tsp",
+      "firestoreCollections": [
+        "users/{uid}/insight_canvases/{canvasId}",
+        "users/{uid}/insight_widgets/{widgetId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/insights.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/InsightModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/InsightModels.kt"
+      }
+    },
+    {
+      "id": "missions",
+      "typespec": "typespec/domains/missions.tsp",
+      "firestoreCollections": [
+        "users/{uid}/mission_dispatches/{missionId}",
+        "users/{uid}/approval_policies/{policyId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/missions.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MissionModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/MissionModels.kt"
+      }
+    },
+    {
+      "id": "media-analytics",
+      "typespec": "typespec/domains/media-analytics.tsp",
+      "firestoreCollections": [
+        "users/{uid}/media_quota_usage/{day}",
+        "ops/media_session_daily_rollups/{document=**}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/media-analytics.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MediaAnalyticsModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/MediaAnalyticsModels.kt"
+      }
     }
   ]
 }

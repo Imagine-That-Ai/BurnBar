@@ -538,6 +538,41 @@ final class ConnectionsViewModelTests: XCTestCase {
             ] : []
         )
     }
+
+    func test_refreshProxyModelCatalog_decodesUserModelAliasMetadata() async {
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { _ in
+                [
+                    ProxyAdvertisedModel(
+                        modelID: "my-fast-coder",
+                        displayName: "My Claude",
+                        providerID: "anthropic",
+                        providerName: "Anthropic",
+                        accountID: "default",
+                        accountLabel: "Default",
+                        sourceID: "anthropic#default::alias::my-fast-coder",
+                        sourceKind: "user_model_alias",
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["anthropic", "routing"],
+                        lastError: nil,
+                        baseModelID: "claude-sonnet-4-6",
+                        hidesBaseModel: true
+                    )
+                ]
+            }
+        )
+
+        await viewModel.refreshProxyModelCatalog(settings: settings)
+
+        let alias = viewModel.proxyModels.first
+        XCTAssertNotNil(alias)
+        XCTAssertEqual(alias?.modelID, "my-fast-coder")
+        XCTAssertEqual(alias?.baseModelID, "claude-sonnet-4-6")
+        XCTAssertTrue(alias?.isUserModelAlias ?? false)
+        XCTAssertTrue(alias?.hidesBaseModel ?? false)
+    }
 }
 
 private enum ProxyCatalogTestError: LocalizedError {

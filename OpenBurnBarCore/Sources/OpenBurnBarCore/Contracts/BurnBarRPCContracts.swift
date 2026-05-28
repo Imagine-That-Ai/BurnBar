@@ -19,6 +19,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case providerCredentialSlotRemove = "daemon.provider.credential_slot.remove"
     case providerModelVariantUpsert = "daemon.provider.model_variant.upsert"
     case providerModelVariantRemove = "daemon.provider.model_variant.remove"
+    case providerModelAliasUpsert = "daemon.provider.model_alias.upsert"
+    case providerModelAliasRemove = "daemon.provider.model_alias.remove"
     case usageRecord = "daemon.usage.record"
     case usageRecent = "daemon.usage.recent"
     case connectorPlaneGet = "daemon.connector.plane.get"
@@ -76,6 +78,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case clientDetach = "client.detach"
     /// Planner-backed lexical + aggregate search over the local OpenBurnBar SQLite index (daemon must have DB path).
     case searchQuery = "daemon.search.query"
+    case runResume = "run.resume"
 }
 
 public struct BurnBarRPCRequestEnvelope: Codable, Hashable, Sendable {
@@ -150,6 +153,90 @@ public struct BurnBarRPCResponseEnvelope<Result: Codable & Sendable>: Codable, S
         self.protocolVersion = protocolVersion
         self.result = result
         self.error = error
+    }
+}
+
+public enum BurnBarResumeMode: String, Codable, Sendable, Hashable {
+    case print
+    case copy
+    case open
+    case spawn
+}
+
+public struct BurnBarRunResumeRequest: Codable, Sendable, Hashable {
+    public let sessionID: String
+    public let targetHarness: String?
+    public let targetModel: String?
+    public let mode: BurnBarResumeMode
+
+    public init(
+        sessionID: String,
+        targetHarness: String? = nil,
+        targetModel: String? = nil,
+        mode: BurnBarResumeMode = .print
+    ) {
+        self.sessionID = sessionID
+        self.targetHarness = targetHarness
+        self.targetModel = targetModel
+        self.mode = mode
+    }
+}
+
+public struct BurnBarRunResumeResponse: Codable, Sendable, Hashable {
+    public let kind: String
+    public let argv: [String]?
+    public let targetHarness: String?
+    public let targetArgv: [String]?
+    public let briefingMD: String?
+    public let briefingPath: String?
+    public let workingDirectory: String?
+    public let note: String?
+    public let pid: Int?
+    public let cleanupAfterSeconds: Int?
+    public let errorCode: String?
+    public let errorRecovery: String?
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case argv
+        case targetHarness = "target_harness"
+        case targetArgv = "target_argv"
+        case briefingMD = "briefing_md"
+        case briefingPath = "briefing_path"
+        case workingDirectory = "working_directory"
+        case note
+        case pid
+        case cleanupAfterSeconds = "cleanup_after_seconds"
+        case errorCode = "code"
+        case errorRecovery = "recovery"
+    }
+
+    public init(
+        kind: String,
+        argv: [String]? = nil,
+        targetHarness: String? = nil,
+        targetArgv: [String]? = nil,
+        briefingMD: String? = nil,
+        briefingPath: String? = nil,
+        workingDirectory: String? = nil,
+        note: String? = nil,
+        pid: Int? = nil,
+        cleanupAfterSeconds: Int? = nil,
+        errorCode: String? = nil,
+        errorRecovery: String? = nil
+    ) {
+        self.kind = kind
+        self.argv = argv
+        self.targetHarness = targetHarness
+        self.targetArgv = targetArgv
+        self.briefingMD = briefingMD
+        self.briefingPath = briefingPath
+        self.workingDirectory = workingDirectory
+        self.note = note
+        self.pid = pid
+        self.cleanupAfterSeconds = cleanupAfterSeconds
+        self.errorCode = errorCode
+        self.errorRecovery = errorRecovery
     }
 }
 

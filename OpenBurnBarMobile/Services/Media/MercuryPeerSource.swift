@@ -79,7 +79,7 @@ final class MercuryPeerSource: ObservableObject {
         let connectionID = await currentConnectionID()
         let displayName = resolveDisplayName()
         let capabilities = resolveCapabilities()
-        let lastSeen = isOnline ? clock() : (peer?.lastSeenAt ?? clock())
+        let lastSeen = resolveLastSeen(isOnline: isOnline)
         let next = MercuryPeer(
             connectionID: connectionID,
             displayName: displayName,
@@ -92,6 +92,19 @@ final class MercuryPeerSource: ObservableObject {
         if next != peer {
             peer = next
         }
+    }
+
+    private func resolveLastSeen(isOnline: Bool) -> Date {
+        if let heartbeat = lastHeartbeat {
+            return heartbeat.sentAt
+        }
+        if isOnline {
+            if peer?.isOnline == true, let existing = peer?.lastSeenAt {
+                return existing
+            }
+            return clock()
+        }
+        return peer?.lastSeenAt ?? clock()
     }
 
     private func currentConnectionID() async -> String {

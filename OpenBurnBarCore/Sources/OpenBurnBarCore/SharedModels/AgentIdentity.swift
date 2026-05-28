@@ -458,6 +458,11 @@ extension AgentIdentity {
             tagline = "Google Antigravity via your Mac."
             capabilities = [.fullCLI, .codeExecution, .mcpUI]
             dispatchTransport = .macRelay(runtime: "antigravity")
+        case .grok:
+            paletteHex = "111111"
+            tagline = "xAI Grok Build via your Mac."
+            capabilities = [.fullCLI, .codeExecution, .mcpUI]
+            dispatchTransport = .macRelay(runtime: "grok")
         }
 
         return AgentIdentity(

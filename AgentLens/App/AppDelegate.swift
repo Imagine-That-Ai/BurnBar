@@ -27,6 +27,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     public var dataStore: DataStore? = nil {
         didSet {
             setupWallpaperObservers()
+            if let dataStore {
+                let database = dataStore.database
+                Task.detached(priority: .background) {
+                    await WorkingDirectoryBackfillService().runIfNeeded(database: database)
+                }
+            }
         }
     }
     public var daemonManager: OpenBurnBarDaemonManager? = nil {
@@ -457,6 +463,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             captureOriginalDesktopImageIfNeeded(for: screen, displayID: displayID)
 
             do {
+                if installedDesktopFallbackByScreenID[displayID] == background,
+                   currentDesktopImageIsOpenBurnBarFallback(for: screen) {
+                    continue
+                }
+
                 let fallbackURL = try renderDesktopFallbackImage(for: background, screen: screen, displayID: displayID)
                 try NSWorkspace.shared.setDesktopImageURL(
                     fallbackURL,
@@ -568,6 +579,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             "\(background.rawValue)-\(displayID)-\(pixelWidth)x\(pixelHeight).png",
             isDirectory: false
         )
+
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            return fileURL
+        }
 
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,

@@ -46,6 +46,12 @@ struct AgentsModelsView: View {
                         },
                         onRemoveThinkingVariant: { variantModel in
                             removeThinkingVariant(variantModel)
+                        },
+                        onUpsertModelAlias: { model, alias in
+                            await upsertModelAlias(model, alias: alias)
+                        },
+                        onRemoveModelAlias: { aliasModel in
+                            removeModelAlias(aliasModel)
                         }
                     )
                     .settingsAnchor(SettingsAnchor.agentsModels)
@@ -103,6 +109,11 @@ struct AgentsModelsView: View {
                 title: "hidden",
                 tint: DesignSystem.Colors.textSecondary,
                 detail: "Kept in Settings but removed from the public /v1/models list, direct routing, and Droid sync."
+            )
+            legendRow(
+                title: "custom alias",
+                tint: DesignSystem.Colors.ember,
+                detail: "A user-chosen wire id that routes to a canonical model. Optionally hides the original row from public /v1/models."
             )
             legendRow(
                 title: "source kind",
@@ -223,6 +234,30 @@ struct AgentsModelsView: View {
             await daemonManager.removeProviderModelVariant(
                 providerID: variantModel.providerID,
                 variantID: variantModel.modelID
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private func upsertModelAlias(_ model: ProxyAdvertisedModel, alias: BurnBarModelAlias) async -> String? {
+        let saved = await daemonManager.setProviderModelAlias(
+            providerID: model.providerID,
+            alias: alias
+        )
+        guard saved else {
+            return daemonManager.lastError ?? "Could not save the custom model alias."
+        }
+        await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+        await viewModel.refreshWiringState(settings: settingsManager)
+        return nil
+    }
+
+    private func removeModelAlias(_ aliasModel: ProxyAdvertisedModel) {
+        Task {
+            await daemonManager.removeProviderModelAlias(
+                providerID: aliasModel.providerID,
+                aliasID: aliasModel.modelID
             )
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)
             await viewModel.refreshWiringState(settings: settingsManager)

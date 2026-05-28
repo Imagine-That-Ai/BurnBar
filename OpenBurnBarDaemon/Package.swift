@@ -13,6 +13,14 @@ let package = Package(
         .executable(
             name: "OpenBurnBarCLI",
             targets: ["OpenBurnBarCLI"]
+        ),
+        .executable(
+            name: "OpenBurnBarRemoteAccessAgent",
+            targets: ["OpenBurnBarRemoteAccessAgent"]
+        ),
+        .library(
+            name: "OpenBurnBarRemoteAccessAgentCore",
+            targets: ["OpenBurnBarRemoteAccessAgentCore"]
         )
     ],
     dependencies: [
@@ -40,9 +48,22 @@ let package = Package(
             name: "OpenBurnBarCLI",
             dependencies: ["OpenBurnBarDaemon"]
         ),
+        .target(
+            name: "OpenBurnBarRemoteAccessAgentCore",
+            dependencies: []
+        ),
+        .executableTarget(
+            name: "OpenBurnBarRemoteAccessAgent",
+            dependencies: ["OpenBurnBarRemoteAccessAgentCore"],
+            linkerSettings: [.unsafeFlags(["-framework", "ApplicationServices"])]
+        ),
         .testTarget(
             name: "OpenBurnBarDaemonTests",
             dependencies: ["OpenBurnBarDaemon"]
+        ),
+        .testTarget(
+            name: "OpenBurnBarRemoteAccessAgentCoreTests",
+            dependencies: ["OpenBurnBarRemoteAccessAgentCore"]
         )
     ]
 )

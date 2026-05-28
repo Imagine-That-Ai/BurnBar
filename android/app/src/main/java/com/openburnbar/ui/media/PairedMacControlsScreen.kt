@@ -116,6 +116,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 private const val REMOTE_UNLOCK_SESSION_TTL_SECONDS = 600L
+private const val REMOTE_UNLOCK_SESSION_REQUIRED = "remote_unlock_session_required"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -188,8 +189,8 @@ fun PairedMacControlsScreen(
                     },
                 )
                 val info = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Allow Remote Unlock")
-                    .setSubtitle("Confirm this Android before requesting a locked Mac mirror.")
+                    .setTitle("Trust Remote Unlock")
+                    .setSubtitle("This Android will stay trusted for future locked Mac mirrors.")
                     .setAllowedAuthenticators(authenticators)
                     .build()
                 continuation.invokeOnCancellation { prompt.cancelAuthentication() }
@@ -198,25 +199,33 @@ fun PairedMacControlsScreen(
         }
     }
 
+    suspend fun ensureRemoteUnlockTrustedDevice(
+        uid: String,
+        activity: FragmentActivity,
+        registry: AndroidEscrowDeviceRegistry = AndroidEscrowDeviceRegistry(),
+    ): com.openburnbar.data.cloud.AndroidEscrowDeviceRegistration {
+        var device = registry.registerSelf(uid = uid)
+        if (device.trustState == AndroidEscrowDeviceRegistry.TRUSTED) {
+            return device
+        }
+        authenticateForRemoteUnlock(activity)
+        device = registry.trustSelf(uid = uid)
+        return device
+    }
+
     suspend fun buildRemoteUnlockSession(
         targetCoordinator: MediaControlStreamCoordinator,
         requesterDisplayName: String,
     ): HermesRealtimeRelayRemoteUnlockSession? {
-        if (!peerCapabilities.contains("remote_unlock.host")) return null
         val activity = context as? FragmentActivity
             ?: throw IllegalStateException("Remote Unlock requires an activity-backed Android session.")
-        authenticateForRemoteUnlock(activity)
         val pair = targetCoordinator.activePair.value
             ?: throw IllegalStateException("Mercury control stream is not paired yet.")
         val keyStore = PhoneControlSigningKeyStore(context.applicationContext)
         val publicKey = keyStore.publicKey()
         val privateKeySeed = keyStore.privateKeySeed()
         val peerNodeId = keyStore.peerNodeId()
-        var device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
-        if (device.trustState != AndroidEscrowDeviceRegistry.TRUSTED) {
-            AndroidEscrowDeviceRegistry().trustSelf(uid = pair.uid)
-            device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
-        }
+        val device = ensureRemoteUnlockTrustedDevice(uid = pair.uid, activity = activity)
         val authority = PhoneControlAuthorityDocumentFactory.document(
             connectionId = pair.connectionID,
             deviceId = device.deviceId,
@@ -358,6 +367,33 @@ fun PairedMacControlsScreen(
         val requestID = pendingRequestID ?: return@LaunchedEffect
         val currentAck = ack ?: return@LaunchedEffect
         if (currentAck.requestId == requestID) {
+            if (
+                currentAck.decision == HermesRealtimeRelayMirrorAck.Decision.UNSUPPORTED &&
+                currentAck.detail == REMOTE_UNLOCK_SESSION_REQUIRED
+            ) {
+                val targetCoordinator = coordinator ?: run {
+                    pendingRequestID = null
+                    statusMessage = "Mercury is not ready for Remote Unlock yet."
+                    return@LaunchedEffect
+                }
+                val name = FirebaseAuth.getInstance().currentUser?.displayName
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Android"
+                statusMessage = "Confirm this Android to unlock your Mac."
+                runCatching {
+                    targetCoordinator.requestMirror(
+                        requesterDisplayName = name,
+                        remoteUnlockSession = buildRemoteUnlockSession(targetCoordinator, name),
+                    )
+                }.onSuccess { retryRequestID ->
+                    pendingRequestID = retryRequestID
+                    statusMessage = "Remote Unlock request sent."
+                }.onFailure { error ->
+                    pendingRequestID = null
+                    statusMessage = "Remote Unlock unavailable: ${error.localizedMessage ?: error.javaClass.simpleName}"
+                }
+                return@LaunchedEffect
+            }
             pendingRequestID = null
             statusMessage = currentAck.userMessage()
             if (
@@ -585,10 +621,7 @@ fun PairedMacControlsScreen(
                                     }
                                     coordinator = targetCoordinator
                                     withTimeout(20_000L) {
-                                        targetCoordinator.requestMirror(
-                                            requesterDisplayName = name,
-                                            remoteUnlockSession = buildRemoteUnlockSession(targetCoordinator, name),
-                                        )
+                                        targetCoordinator.requestMirror(requesterDisplayName = name)
                                     }
                                 }
                                     .onSuccess { requestID ->

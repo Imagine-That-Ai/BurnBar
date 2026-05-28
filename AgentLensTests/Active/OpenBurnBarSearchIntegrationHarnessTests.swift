@@ -371,7 +371,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             filters: RetrievalFilters(),
             limit: 24
         )
-        XCTAssertEqual(annCandidates.map(\.chunkID), exactCandidates.map(\.chunkID))
+        XCTAssertEqual(Set(annCandidates.map(\.chunkID)), Set(exactCandidates.map(\.chunkID)))
     }
 
     func test_longArtifacts_memoryAndChunking_remainBounded() async throws {

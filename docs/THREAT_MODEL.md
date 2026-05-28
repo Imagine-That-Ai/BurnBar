@@ -82,12 +82,14 @@ A sidebar extension that talks to the daemon over the same UNIX socket. It does 
 
 ### Permissions it requests
 
-The extension declares `untrustedWorkspaces.supported: true` in `package.json`, meaning it activates even in restricted mode. However, it gates capabilities by trust level:
+The extension declares `untrustedWorkspaces.supported: false` in `package.json`, meaning it **does not activate** in restricted/untrusted workspaces. VS Code/Cursor will refuse to load the extension until the user trusts the workspace — eliminating the prior restricted-mode activation surface.
+
+When the extension is active (trusted workspace only), it still gates destructive tools by trust level:
 
 | Workspace state | Available tools | Gated tools |
 |---|---|---|
 | Trusted local workspace | `read_file`, `search_workspace`, `apply_patch`, `run_terminal` | — |
-| Untrusted / restricted workspace | `read_file`, `search_workspace` | `apply_patch`, `run_terminal` |
+| Untrusted / restricted workspace | *(extension inactive — no daemon connection)* | All tools |
 | Read-only workspace | `read_file`, `search_workspace` | `apply_patch` |
 | Virtual workspace | `read_file`, `search_workspace` | `run_terminal` |
 | No workspace open | — | All workspace tools |
@@ -104,7 +106,7 @@ The extension declares `untrustedWorkspaces.supported: true` in `package.json`, 
 | Threat | Mitigation | Residual risk |
 |---|---|---|
 | Extension displays stale/misleading daemon state | Refresh and reconnect actions are explicit. Health view shows daemon version and protocol mismatch. | A compromised daemon could send false state. |
-| Workspace trust bypass | Tool gating is enforced in `capabilities.ts` based on VS Code's `isTrusted` API. | If VS Code itself is compromised, trust decisions are unreliable. |
+| Workspace trust bypass | Extension refuses to load in untrusted workspaces (`untrustedWorkspaces.supported: false`). Tool gating in `capabilities.ts` applies only after trust is established. | If VS Code itself is compromised, trust decisions are unreliable. |
 
 ## macOS App
 
@@ -193,8 +195,21 @@ All network requests except provider logos are opt-in and require explicit user 
 2. Processes running as the same user are equally trusted (UNIX socket model).
 3. macOS Keychain protects secrets at rest.
 4. Cloud features are opt-in and do not replace local state.
-5. The extension trusts VS Code's workspace trust API for tool gating.
+5. The extension requires a trusted workspace before activation; destructive tools remain gated by VS Code workspace trust when active.
 6. External API calls use provider-specific auth (API keys, bearer tokens, OAuth) — OpenBurnBar does not proxy credentials through its own servers.
+
+## Operator plane (`ops/*`)
+
+Cloud Functions write budget rollups and observability documents under top-level `ops/` collections. Firestore rules enforce a split read model:
+
+| Collection | Read access | Write access |
+|---|---|---|
+| `ops/computer_use_budget_status/**` | Any signed-in user (envelope display) | Server only |
+| `ops/computer_use_session_daily_rollups/**` | `burnbarOperator` custom claim | Server only |
+| `ops/media_budget_status/**` | Any signed-in user (Mercury budget envelope) | Server only |
+| `ops/media_session_daily_rollups/**` | `burnbarOperator` custom claim | Server only |
+
+The `burnbarOperator` claim is minted only by trusted backend paths — never by client SDKs. Operator reads expose aggregate session rollups for on-call dashboards; they do not grant access to user chat content or provider credentials.
 
 ## Mobile Escrow & Device Trust
 

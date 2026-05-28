@@ -364,6 +364,16 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
             ])
     }
 
+    func isSelfTrustedForComputerUseControl() async throws -> Bool {
+        guard let uid else { throw CloudGatewayError.classified(.notAuthenticated) }
+        await registerSelfIfNeeded()
+        let snapshot = try await db.collection("users").document(uid)
+            .collection("escrow_devices")
+            .document(deviceId)
+            .getDocument()
+        return (snapshot.data()?["trustState"] as? String) == EscrowDeviceTrustState.trusted.rawValue
+    }
+
     func renameSelf(_ newName: String) async throws {
         guard let uid else { throw CloudGatewayError.classified(.notAuthenticated) }
         try await db.collection("users").document(uid).collection("escrow_devices")

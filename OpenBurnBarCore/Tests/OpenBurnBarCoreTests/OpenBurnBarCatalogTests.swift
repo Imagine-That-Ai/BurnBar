@@ -224,4 +224,15 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(BurnBarCatalogProvider.bundledLogoName(forProviderID: "Kimi"), "KimiProviderLogo")
         XCTAssertEqual(BurnBarCatalogProvider.bundledLogoName(forProviderID: "bedrock"), "AmazonProviderLogo")
     }
+
+    func test_bundledCatalog_resolvesGrokBuildCanonicalID() {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "grok-build-0.1"), "grok-build-0.1")
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "grok-build"), "grok-build-0.1")
+    }
+
+    func test_bundledCatalog_grokCodeFastAliasResolvesToCanonicalModel() {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "grok-code-fast-1"), "grok-code-fast-1")
+    }
 }

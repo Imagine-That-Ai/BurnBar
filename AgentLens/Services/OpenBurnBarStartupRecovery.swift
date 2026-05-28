@@ -600,6 +600,9 @@ final class OpenBurnBarRuntimeContext {
                 self.computerUseRuntimeController?.setPhoneControlAuthorizedPeerNodeProvider { [weak self] in
                     self?.mercuryRouter?.activeMirrorControlAuthorityPeerNodeID
                 }
+                self.computerUseRuntimeController?.setRemoteUnlockResultHandler { [weak self] result in
+                    self?.mercuryRouter?.handleRemoteUnlockCredentialResult(result)
+                }
                 self.computerUseRuntimeController?.attachFocusFollow(mediaSessionCoordinator: session)
                 _ = try await self.computerUseRuntimeController?.ensureSystemSession(trustMode: .manual)
             },

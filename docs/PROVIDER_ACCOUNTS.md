@@ -81,6 +81,26 @@ Mac proxy can route Grok traffic, which also populates the pacing log
 
 See [grok.com/plans](https://grok.com/plans) for current tier pricing.
 
+### Grok Build CLI (Mac Switcher + gateway wiring)
+
+Grok Build is the **CLI product surface** for xAI on Mac. OpenBurnBar keeps a single
+vendor identity (`AgentProvider.xAI`, catalog id `xai`) and adds a Switcher CLI profile
+(`SwitcherCLIProfileType.grok`, UI label **Grok Build**).
+
+1. Install the official `grok` CLI and sign in (or set `XAI_API_KEY`).
+2. In **Settings → Connections**, connect **Grok Build**. OpenBurnBar writes an
+   `[model.openburnbar]` block to `~/.grok/config.toml` pointing at the local
+   OpenBurnBar HTTP gateway (`127.0.0.1:8642` by default).
+3. Session usage is parsed from `~/.grok/sessions/<encoded-cwd>/<uuid>/` via
+   `GrokParser` (`signals.json` → `contextTokensUsed`, with `chat_history.jsonl`
+   for conversations).
+4. Routed xAI gateway traffic emits SuperGrok pacing events; GrokBuild prepaid balance
+   ≤ $5 maps to routing **pressure**, ≤ $0 to **exhausted**. Live catalog marks xAI
+   slots below 20% remaining as **cooling down** and excludes them from proactive routing.
+
+CLI sessions sync to Firestore as **archive-only** (`CLIAgentRuntime.grok`); native
+resume (`grok -r`) is not yet in `native_eligible`.
+
 ## Endpoint profiles
 
 Some providers expose multiple inference clusters or billing lanes behind

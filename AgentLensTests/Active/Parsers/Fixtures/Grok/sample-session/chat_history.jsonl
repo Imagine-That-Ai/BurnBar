@@ -1,0 +1,4 @@
+{"type":"user","content":"Implement Grok Build parser"}
+{"type":"assistant","content":"I'll add GrokParser and wire it through ParserRegistry.","model_id":"grok-build"}
+{"type":"user","content":"Add tests with fixtures"}
+{"type":"assistant","content":"Created fixture-backed parser tests.","model_id":"grok-build"}

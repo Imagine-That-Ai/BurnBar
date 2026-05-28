@@ -16,6 +16,7 @@ enum ParserRegistry {
         parsers[.zai] = ModelFilterParser(modelPattern: "zai", provider: .zai)
         parsers[.minimax] = ModelFilterParser(modelPattern: "minimax", provider: .minimax)
         parsers[.kimi] = KimiParser()
+        parsers[.xAI] = GrokParser()
         parsers[.cline] = ClineFormatParser(provider: .cline, storagePaths: clineStoragePaths())
         parsers[.kiloCode] = ClineFormatParser(provider: .kiloCode, storagePaths: kiloCodeStoragePaths())
         parsers[.rooCode] = ClineFormatParser(provider: .rooCode, storagePaths: rooCodeStoragePaths())

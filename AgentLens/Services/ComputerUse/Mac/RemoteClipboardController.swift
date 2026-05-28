@@ -1,5 +1,6 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import AppKit
+import Darwin
 import Foundation
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
@@ -536,11 +537,12 @@ final class RemoteUnlockCredentialController {
             return result(.denied, detail: "control_owned_by_other_viewer")
         }
 
+        let validationNow = Date()
         do {
             _ = try context.validator.validate(
                 envelope: credential.authority,
                 remoteUnlockCredential: credential,
-                now: Date()
+                now: validationNow
             )
         } catch let error as PhoneControlAuthorityValidator.ValidationError {
             return result(.denied, detail: validationDetail(for: error))
@@ -548,7 +550,15 @@ final class RemoteUnlockCredentialController {
             return result(.denied, detail: "signature_failure")
         }
 
-        switch policy.validate(credential: credential, sessionId: context.activeSessionId?.rawValue ?? "", now: Date()) {
+        guard context.readiness.isRemoteUnlockSessionActive(
+            sessionId: credential.sessionId,
+            peerNodeId: credential.authority.peerNodeId,
+            now: validationNow
+        ) else {
+            return result(.denied, detail: "session_mismatch")
+        }
+
+        switch policy.validate(credential: credential, sessionId: credential.sessionId, now: validationNow) {
         case .allowed:
             break
         case .denied(let reason):
@@ -570,9 +580,18 @@ final class RemoteUnlockCredentialController {
             return result(.failed, detail: "credential_decryption_failed")
         }
 
+        let lockState = context.readiness.currentState(
+            sessionId: credential.sessionId,
+            controlOwnerViewerId: context.authorizedPeerNodeId
+        ).lockState
+
         do {
-            _ = try inputController.type(text: password)
-            _ = try inputController.key("Return")
+            if lockState == .unlocked {
+                _ = try inputController.type(text: password)
+                _ = try inputController.key("Return")
+            } else {
+                try await RemoteAccessAgentClient().typeCredential(password)
+            }
         } catch {
             return result(.failed, detail: remoteUnlockInputDetail(for: error))
         }
@@ -583,6 +602,13 @@ final class RemoteUnlockCredentialController {
             controlOwnerViewerId: context.authorizedPeerNodeId
         )
         let unlocked = state.lockState == .unlocked
+        if unlocked, let keyMaterial = try? keyStore.copyOrCreateKeyMaterial() {
+            context.readiness.recordCertification(
+                fileVaultSSHSupported: state.capabilities.fileVaultSSHSupported,
+                credentialRecipientKeyId: keyMaterial.keyId,
+                credentialRecipientPublicKeyBase64: keyMaterial.publicKeyBase64
+            )
+        }
         return result(
             unlocked ? .unlocked : .accepted,
             detail: unlocked ? "unlocked" : "credential_submitted",
@@ -611,7 +637,110 @@ final class RemoteUnlockCredentialController {
             case .unknownKey: return "unknown_key"
             }
         }
+        if let daemonError = error as? RemoteAccessAgentClientError {
+            switch daemonError {
+            case .daemonRejected(let detail): return detail
+            case .daemonUnavailable: return "remote_access_daemon_unavailable"
+            case .readFailed: return "remote_access_daemon_read_failed"
+            case .responseTooLarge: return "remote_access_daemon_response_too_large"
+            case .socketPathTooLong: return "remote_access_daemon_socket_path_too_long"
+            case .socketUnavailable: return "remote_access_daemon_socket_unavailable"
+            case .writeFailed: return "remote_access_daemon_write_failed"
+            }
+        }
         return "credential_input_failed"
     }
+}
+
+private struct RemoteAccessAgentClient {
+    private static let socketPath = "/var/run/openburnbar-remote-access-agent.sock"
+    private static let maximumResponseBytes = 16 * 1024
+
+    func typeCredential(_ password: String) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try Self.send(
+                RemoteAccessAgentRequest(operation: "typeCredential", password: password)
+            )
+        }.value
+    }
+
+    private static func send(_ request: RemoteAccessAgentRequest) throws {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw RemoteAccessAgentClientError.socketUnavailable }
+        defer { close(fd) }
+
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        try Self.socketPath.withCString { path in
+            let capacity = MemoryLayout.size(ofValue: address.sun_path)
+            guard strlen(path) < capacity else { throw RemoteAccessAgentClientError.socketPathTooLong }
+            withUnsafeMutablePointer(to: &address.sun_path) { pointer in
+                pointer.withMemoryRebound(to: CChar.self, capacity: capacity) { destination in
+                    _ = strncpy(destination, path, capacity - 1)
+                }
+            }
+        }
+
+        let connected = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                connect(fd, rebound, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard connected == 0 else { throw RemoteAccessAgentClientError.daemonUnavailable }
+
+        var payload = try JSONEncoder().encode(request)
+        payload.append(0x0A)
+        try payload.withUnsafeBytes { rawBuffer in
+            guard let base = rawBuffer.bindMemory(to: UInt8.self).baseAddress else { return }
+            var offset = 0
+            while offset < payload.count {
+                let written = Darwin.write(fd, base.advanced(by: offset), payload.count - offset)
+                guard written >= 0 else {
+                    if errno == EINTR { continue }
+                    throw RemoteAccessAgentClientError.writeFailed
+                }
+                offset += written
+            }
+        }
+
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        var data = Data()
+        while true {
+            let count = Darwin.read(fd, &buffer, buffer.count)
+            if count == 0 { break }
+            guard count > 0 else {
+                if errno == EINTR { continue }
+                throw RemoteAccessAgentClientError.readFailed
+            }
+            data.append(buffer, count: count)
+            if data.count > Self.maximumResponseBytes { throw RemoteAccessAgentClientError.responseTooLarge }
+            if data.last == 0x0A { break }
+        }
+
+        let response = try JSONDecoder().decode(RemoteAccessAgentResponse.self, from: data)
+        guard response.ok else {
+            throw RemoteAccessAgentClientError.daemonRejected(response.error ?? "remote_access_daemon_rejected")
+        }
+    }
+}
+
+private struct RemoteAccessAgentRequest: Encodable, Sendable {
+    var operation: String
+    var password: String
+}
+
+private struct RemoteAccessAgentResponse: Decodable {
+    var ok: Bool
+    var error: String?
+}
+
+private enum RemoteAccessAgentClientError: Error {
+    case daemonRejected(String)
+    case daemonUnavailable
+    case readFailed
+    case responseTooLarge
+    case socketPathTooLong
+    case socketUnavailable
+    case writeFailed
 }
 #endif

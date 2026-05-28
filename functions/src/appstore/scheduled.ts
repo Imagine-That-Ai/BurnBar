@@ -1,4 +1,5 @@
 import { errorMessage, parseHostedQuotaEntitlementDoc } from "../guards.js";
+import { logError, logInfo, logWarn } from "../logging.js";
 /**
  * @fileoverview Scheduled hosted-entitlement reconciliation.
  *
@@ -12,8 +13,6 @@ import { errorMessage, parseHostedQuotaEntitlementDoc } from "../guards.js";
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getFirestore } from "firebase-admin/firestore";
-
-import type { HostedQuotaEntitlementDoc } from "../types.js";
 
 import {
   APP_STORE_SECRETS,
@@ -88,7 +87,8 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
           err instanceof JWSVerificationFailure ||
           err instanceof EntitlementReconcileError
         ) {
-          console.warn("appstore:scheduled reconcile soft-failed", {
+          logWarn({
+            event: "appstore.scheduled.reconcile_soft_failed",
             path: doc.ref.path,
             code:
               err instanceof EntitlementReconcileError
@@ -96,7 +96,8 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
                 : "jws_invalid",
           });
         } else {
-          console.error("appstore:scheduled reconcile error", {
+          logError({
+            event: "appstore.scheduled.reconcile_error",
             path: doc.ref.path,
             message: errorMessage(err),
           });
@@ -104,7 +105,8 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
       }
     }
 
-    console.info("appstore:scheduled reconcile run", {
+    logInfo({
+      event: "appstore.scheduled.reconcile_run",
       considered: cg.size,
       ok,
       updated,

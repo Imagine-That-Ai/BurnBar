@@ -129,6 +129,7 @@ final class ThreadInboxStore {
             case .droid:    runtime = .droid
             case .forge:    runtime = .forge
             case .antigravity: runtime = .antigravity
+            case .grok: runtime = .grok
             }
             return ThreadInboxItem(
                 id: "cli:\(record.id)",
@@ -172,6 +173,7 @@ final class ThreadInboxStore {
         case "droid", "factory", "factory-droid", "factorydroid": return .droid
         case "forge", "forge-dev", "forgedev": return .forge
         case "antigravity", "agy", "google-antigravity", "googleantigravity": return .antigravity
+        case "grok", "grok-build", "xai", "grok-agent": return .grok
         default: return nil
         }
     }

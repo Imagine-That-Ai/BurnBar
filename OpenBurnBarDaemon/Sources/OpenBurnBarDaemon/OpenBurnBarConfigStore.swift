@@ -59,6 +59,10 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
     case unsupportedModel(providerID: String, modelID: String)
     case missingCredential(providerID: String)
     case credentialReadbackFailed(providerID: String, slotID: String)
+    case invalidModelAliasID(String)
+    case duplicateModelAlias(aliasID: String)
+    case modelAliasConflictsWithVariant(aliasID: String)
+    case modelAliasConflictsWithCatalogModel(aliasID: String, baseModelID: String)
 
     public var errorDescription: String? {
         switch self {
@@ -72,6 +76,14 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
             return "Provider '\(providerID)' needs a non-empty credential before it can be routed."
         case .credentialReadbackFailed(let providerID, let slotID):
             return "Provider '\(providerID)' credential slot '\(slotID)' was not readable after saving."
+        case .invalidModelAliasID(let aliasID):
+            return "Model alias '\(aliasID)' is invalid. Use letters, numbers, and . _ - : / only."
+        case .duplicateModelAlias(let aliasID):
+            return "Model alias '\(aliasID)' is already in use."
+        case .modelAliasConflictsWithVariant(let aliasID):
+            return "Model alias '\(aliasID)' conflicts with an existing thinking-level variant."
+        case .modelAliasConflictsWithCatalogModel(let aliasID, let baseModelID):
+            return "Model alias '\(aliasID)' conflicts with a catalog model and cannot route to '\(baseModelID)'."
         }
     }
 }
@@ -382,6 +394,61 @@ public actor BurnBarConfigStore {
         _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
             var mutable = settings
             _ = mutable.removeModelVariant(variantID: variantID)
+            return mutable
+        }
+    }
+
+    @discardableResult
+    public func upsertModelAlias(
+        providerID: String,
+        alias: BurnBarModelAlias
+    ) throws -> BurnBarModelAlias {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedAlias = BurnBarModelAlias(
+            aliasID: alias.aliasID.trimmingCharacters(in: .whitespacesAndNewlines),
+            baseModelID: alias.baseModelID.trimmingCharacters(in: .whitespacesAndNewlines),
+            displayName: BurnBarModelAlias.normalizedDisplayName(
+                aliasID: alias.aliasID,
+                displayName: alias.displayName
+            ),
+            hidesBaseModel: alias.hidesBaseModel,
+            createdAt: alias.createdAt,
+            updatedAt: Date()
+        )
+
+        guard BurnBarModelAlias.isValidAliasID(normalizedAlias.aliasID) else {
+            throw BurnBarConfigStoreError.invalidModelAliasID(normalizedAlias.aliasID)
+        }
+        guard !normalizedAlias.baseModelID.isEmpty,
+              normalizedAlias.aliasID.caseInsensitiveCompare(normalizedAlias.baseModelID) != .orderedSame,
+              catalogSupport.supportsModelID(normalizedAlias.baseModelID, providerID: normalizedProviderID) else {
+            throw BurnBarConfigStoreError.unsupportedModel(
+                providerID: normalizedProviderID,
+                modelID: normalizedAlias.baseModelID
+            )
+        }
+
+        let snapshot = try snapshot()
+        try validateModelAlias(normalizedAlias, providerID: normalizedProviderID, snapshot: snapshot)
+
+        let updated = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            mutable.upsertModelAlias(normalizedAlias)
+            return mutable
+        }
+        return updated.modelAliases.first(where: {
+            $0.aliasID.caseInsensitiveCompare(normalizedAlias.aliasID) == .orderedSame
+        }) ?? normalizedAlias
+    }
+
+    public func removeModelAlias(
+        providerID: String,
+        aliasID: String
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            _ = mutable.removeModelAlias(aliasID: aliasID)
             return mutable
         }
     }
@@ -767,8 +834,30 @@ public actor BurnBarConfigStore {
             rawBaseURL: settings.baseURL
         )
 
+        if catalogSupport.supportsRouting(providerID: settings.providerID) {
+            let trimmedBase = normalizedBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let scheme = URL(string: trimmedBase)?.scheme?.lowercased() {
+                let blockedSchemes: Set<String> = ["file", "javascript", "data"]
+                if blockedSchemes.contains(scheme) {
+                    throw BurnBarConfigStoreError.invalidBaseURL(settings.providerID)
+                }
+                if scheme == "http" || scheme == "https" {
+                    do {
+                        _ = try BurnBarProviderExecutorError.validatedProviderBaseURL(trimmedBase)
+                    } catch {
+                        throw BurnBarConfigStoreError.invalidBaseURL(settings.providerID)
+                    }
+                }
+            } else if trimmedBase.isEmpty == false {
+                throw BurnBarConfigStoreError.invalidBaseURL(settings.providerID)
+            }
+        }
+
         let supportedVariants = settings.modelVariants.filter { variant in
             catalogSupport.supportsModelID(variant.baseModelID, providerID: settings.providerID)
+        }
+        let supportedAliases = settings.modelAliases.filter { alias in
+            catalogSupport.supportsModelID(alias.baseModelID, providerID: settings.providerID)
         }
 
         return BurnBarProviderSettings(
@@ -779,8 +868,44 @@ public actor BurnBarConfigStore {
             disabledAdvertisedModelIDs: settings.disabledAdvertisedModelIDs,
             preferredCredentialSlotID: preferredSlotID,
             credentialSlots: normalizedSlots,
-            modelVariants: supportedVariants
+            modelVariants: supportedVariants,
+            modelAliases: supportedAliases
         )
+    }
+
+    private func validateModelAlias(
+        _ alias: BurnBarModelAlias,
+        providerID: String,
+        snapshot: BurnBarProviderConfigurationSnapshot
+    ) throws {
+        let normalizedAliasID = alias.aliasID.lowercased()
+        for provider in snapshot.providers {
+            if provider.modelVariants.contains(where: {
+                $0.variantID.caseInsensitiveCompare(alias.aliasID) == .orderedSame
+            }) {
+                throw BurnBarConfigStoreError.modelAliasConflictsWithVariant(aliasID: alias.aliasID)
+            }
+            if provider.modelAliases.contains(where: {
+                $0.aliasID.caseInsensitiveCompare(alias.aliasID) == .orderedSame
+                    && provider.providerID.caseInsensitiveCompare(providerID) != .orderedSame
+            }) {
+                throw BurnBarConfigStoreError.duplicateModelAlias(aliasID: alias.aliasID)
+            }
+        }
+
+        if let catalogModel = catalogSupport.exactCatalogModel(id: alias.aliasID, providerID: providerID) {
+            let catalogBase = catalogModel.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let requestedBase = alias.baseModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let aliasMatchesBase = catalogModel.aliases.contains {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == requestedBase
+            }
+            if catalogBase != requestedBase, !aliasMatchesBase {
+                throw BurnBarConfigStoreError.modelAliasConflictsWithCatalogModel(
+                    aliasID: alias.aliasID,
+                    baseModelID: alias.baseModelID
+                )
+            }
+        }
     }
 
     private func normalizedBaseURL(providerID: String, rawBaseURL: String) -> String {

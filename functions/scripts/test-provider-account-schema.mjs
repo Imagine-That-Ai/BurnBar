@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Guardrail: hand-maintained functions/src/types.ts must stay aligned with
+ * Guardrail: hand-maintained functions/src/types/legacy.ts must stay aligned with
  * schema-sync generated provider-account contracts.
  */
 
@@ -28,7 +28,7 @@ const generated = readFileSync(
   "utf8"
 );
 const handMaintained = readFileSync(
-  join(repoRoot, "functions/src/types.ts"),
+  join(repoRoot, "functions/src/types/legacy.ts"),
   "utf8"
 );
 
@@ -47,7 +47,7 @@ function assertSuperset(label, generatedFields, handFields) {
   const missing = [...generatedFields].filter((field) => !handFields.has(field));
   if (missing.length > 0) {
     throw new Error(
-      `${label} missing in functions/src/types.ts: ${missing.join(", ")}`
+      `${label} missing in functions/src/types/legacy.ts: ${missing.join(", ")}`
     );
   }
 }

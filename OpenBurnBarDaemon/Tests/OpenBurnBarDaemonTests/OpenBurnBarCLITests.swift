@@ -116,6 +116,63 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertTrue(output.contains("Replayed Daily Review"))
         XCTAssertTrue(output.contains("1 event"))
     }
+
+    func testResumeCommandParsingAndNativeOutput() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.run(arguments: ["resume", "codex-session", "--as", "Codex", "--model", "gpt-5.1"])
+
+        XCTAssertTrue(output.contains("# Run from: /tmp/fixture"))
+        XCTAssertTrue(output.contains("codex resume codex-session"))
+    }
+
+    func testResumeAsRequiresValue() {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+
+        XCTAssertThrowsError(try runner.run(arguments: ["resume", "session", "--as"])) { error in
+            XCTAssertTrue(error.localizedDescription.contains("--as requires a value"))
+        }
+        XCTAssertThrowsError(try runner.run(arguments: ["resume", "session", "--as", "--copy"])) { error in
+            XCTAssertTrue(error.localizedDescription.contains("--as requires a value"))
+        }
+    }
+
+    func testResumeFormatterHandlesPortedAndErrors() {
+        let ported = BurnBarCLIRunner.formatRunResumeResponse(
+            BurnBarRunResumeResponse(
+                kind: "ported",
+                briefingMD: "# Briefing",
+                note: "native_handle_invalid_fell_back_to_port"
+            ),
+            mode: .print
+        )
+        let error = BurnBarCLIRunner.formatRunResumeResponse(
+            BurnBarRunResumeResponse(kind: "error", errorCode: "target_required", errorRecovery: "Pass --as."),
+            mode: .print
+        )
+
+        XCTAssertTrue(ported.contains("# note: native_handle_invalid_fell_back_to_port"))
+        XCTAssertTrue(ported.contains("# Briefing"))
+        XCTAssertTrue(error.contains("error: target_required"))
+    }
+
+    func testResumeErrorResponseExitsFailure() async throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let result = try await runner.invoke(
+            arguments: ["resume", "missing"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        )
+
+        XCTAssertEqual(result.exitCode, EXIT_FAILURE)
+        XCTAssertTrue(result.output?.contains("error: session_not_found") == true)
+    }
+
+    func testResumeSpawnModeFormatsSpawnedResponse() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.run(arguments: ["resume", "codex-session", "--as", "Codex", "--spawn"])
+
+        XCTAssertTrue(output.contains("spawned Codex"))
+        XCTAssertTrue(output.contains("pid=4242"))
+    }
 }
 
 struct FakeCLIClient: BurnBarCLIClient {
@@ -232,6 +289,37 @@ struct FakeCLIClient: BurnBarCLIClient {
                 )
             ],
             summary: "Replay complete."
+        )
+    }
+
+    func runResume(
+        sessionID: String,
+        targetHarness: String?,
+        targetModel: String?,
+        mode: BurnBarResumeMode
+    ) throws -> BurnBarRunResumeResponse {
+        if mode == .spawn {
+            return BurnBarRunResumeResponse(
+                kind: "spawned",
+                targetHarness: targetHarness,
+                targetArgv: ["codex", "resume", sessionID],
+                workingDirectory: "/tmp/fixture",
+                pid: 4242,
+                cleanupAfterSeconds: 600
+            )
+        }
+        if sessionID == "missing" {
+            return BurnBarRunResumeResponse(
+                kind: "error",
+                errorCode: "session_not_found",
+                errorRecovery: "Run burnbar_list_resumable_conversations to find a valid sessionId."
+            )
+        }
+        return BurnBarRunResumeResponse(
+            kind: "native",
+            argv: ["codex", "resume", sessionID],
+            targetHarness: targetHarness,
+            workingDirectory: "/tmp/fixture"
         )
     }
 }

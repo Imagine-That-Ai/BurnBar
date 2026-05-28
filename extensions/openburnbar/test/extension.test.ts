@@ -1,59 +1,89 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createExtensionContextMock } from "./helpers/extensionContextMock";
 
-const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
-const createdViews: string[] = [];
-const registeredWebviewProviders = new Map<string, unknown>();
-const infoMessages: string[] = [];
-const warningMessages: string[] = [];
-const inputPrompts: string[] = [];
-const quickPickPrompts: string[] = [];
+const {
+  registeredCommands,
+  createdViews,
+  registeredWebviewProviders,
+  infoMessages,
+  warningMessages,
+  inputPrompts,
+  quickPickPrompts,
+  MockDisposable,
+  MockEventEmitter,
+  MockTreeItem,
+  MockThemeIcon,
+  windowStateEmitter
+} = vi.hoisted(() => {
+  const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
+  const createdViews: string[] = [];
+  const registeredWebviewProviders = new Map<string, unknown>();
+  const infoMessages: string[] = [];
+  const warningMessages: string[] = [];
+  const inputPrompts: string[] = [];
+  const quickPickPrompts: string[] = [];
 
-class MockDisposable {
-  constructor(private readonly callback: () => void = () => undefined) {}
+  class MockDisposable {
+    constructor(private readonly callback: () => void = () => undefined) {}
 
-  dispose(): void {
-    this.callback();
-  }
-}
-
-class MockEventEmitter<T> {
-  private listeners = new Set<(value: T) => void>();
-
-  readonly event = (listener: (value: T) => void): MockDisposable => {
-    this.listeners.add(listener);
-    return new MockDisposable(() => this.listeners.delete(listener));
-  };
-
-  fire(value: T): void {
-    for (const listener of this.listeners) {
-      listener(value);
+    dispose(): void {
+      this.callback();
     }
   }
 
-  dispose(): void {
-    this.listeners.clear();
+  class MockEventEmitter<T> {
+    private listeners = new Set<(value: T) => void>();
+
+    readonly event = (listener: (value: T) => void): MockDisposable => {
+      this.listeners.add(listener);
+      return new MockDisposable(() => this.listeners.delete(listener));
+    };
+
+    fire(value: T): void {
+      for (const listener of this.listeners) {
+        listener(value);
+      }
+    }
+
+    dispose(): void {
+      this.listeners.clear();
+    }
   }
-}
 
-class MockTreeItem {
-  label: string;
-  description?: string;
-  tooltip?: string;
-  iconPath?: unknown;
-  contextValue?: string;
-  id?: string;
+  class MockTreeItem {
+    label: string;
+    description?: string;
+    tooltip?: string;
+    iconPath?: unknown;
+    contextValue?: string;
+    id?: string;
 
-  constructor(label: string) {
-    this.label = label;
+    constructor(label: string) {
+      this.label = label;
+    }
   }
-}
 
-class MockThemeIcon {
-  constructor(readonly id: string) {}
-}
+  class MockThemeIcon {
+    constructor(readonly id: string) {}
+  }
 
-const windowStateEmitter = new MockEventEmitter<{ focused: boolean }>();
+  const windowStateEmitter = new MockEventEmitter<{ focused: boolean }>();
+
+  return {
+    registeredCommands,
+    createdViews,
+    registeredWebviewProviders,
+    infoMessages,
+    warningMessages,
+    inputPrompts,
+    quickPickPrompts,
+    MockDisposable,
+    MockEventEmitter,
+    MockTreeItem,
+    MockThemeIcon,
+    windowStateEmitter
+  };
+});
 
 vi.mock("vscode", () => {
   return {
@@ -160,6 +190,11 @@ vi.mock("vscode", () => {
       One: 1
     },
     Uri: {
+      file: (path: string) => ({
+        scheme: "file",
+        fsPath: path,
+        toString: () => `file://${path}`
+      }),
       joinPath: (...parts: unknown[]) => parts.join("/")
     }
   };

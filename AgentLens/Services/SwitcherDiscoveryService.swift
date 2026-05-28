@@ -11,6 +11,7 @@ enum DiscoverySource: Equatable {
     case claudeCode(executablePath: String, isAuthenticated: Bool, accountDescription: String?, configDirectory: String?)
     case opencode(executablePath: String?)
     case droid(executablePath: String?, configDirectory: String?)
+    case grok(executablePath: String?, configDirectory: String?)
     case forge(executablePath: String?, configDirectory: String?)
     case antigravity(executablePath: String?, configDirectory: String?)
 }
@@ -168,6 +169,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .opencode(executablePath: cliInfo.executablePath)
             case .droid:
                 source = .droid(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .grok:
+                source = .grok(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .forge:
                 source = .forge(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .antigravity:
@@ -302,6 +305,18 @@ final class SwitcherDiscoveryService: ObservableObject {
                 ),
                 sortKey: 0
             )
+        case .grok(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .grok,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Grok Build",
+                    configDirectory: configDirectory,
+                    accountDescription: "Grok Build local profile"
+                ),
+                sortKey: 0
+            )
         case .forge(_, let configDirectory):
             record = SwitcherProfileRecord(
                 targetKind: .cli,
@@ -346,6 +361,7 @@ final class SwitcherDiscoveryService: ObservableObject {
 
             return saved
         } catch {
+            AppLogger.sync.error("switcher_discovery_failed", metadata: ["error": error.localizedDescription])
             return nil
         }
     }
@@ -759,6 +775,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .forge(executablePath: CLILaunchAdapter.executablePath(for: .forge), configDirectory: nil)
         case .antigravity:
             return .antigravity(executablePath: CLILaunchAdapter.executablePath(for: .antigravity), configDirectory: nil)
+        case .grok:
+            return .grok(executablePath: CLILaunchAdapter.executablePath(for: .grok), configDirectory: nil)
         }
     }
 
@@ -783,7 +801,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
@@ -793,6 +811,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             case .droid: cliType = .droid
             case .forge: cliType = .forge
             case .antigravity: cliType = .antigravity
+            case .grok: cliType = .grok
             default: cliType = .codex
             }
             let execPath = CLILaunchAdapter.executablePath(for: cliType)
@@ -859,6 +878,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .forgeDev
         case .antigravity:
             return .antigravity
+        case .grok:
+            return .xAI
         }
     }
 
@@ -956,6 +977,7 @@ extension DiscoverySource {
         case .droid: return .droid
         case .forge: return .forge
         case .antigravity: return .antigravity
+        case .grok: return .grok
         default: return nil
         }
     }

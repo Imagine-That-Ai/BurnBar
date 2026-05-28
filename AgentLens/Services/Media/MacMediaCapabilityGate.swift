@@ -1,5 +1,6 @@
-import Foundation
 import AppKit
+import Darwin
+import Foundation
 import CryptoKit
 import CoreGraphics
 import OpenBurnBarCore
@@ -267,6 +268,13 @@ struct MediaQuotaUsageSnapshot: Sendable, Equatable {
 final class MacRemoteUnlockReadinessService {
     static let shared = MacRemoteUnlockReadinessService()
 
+    private struct ActiveRemoteUnlockSession {
+        let sessionId: String
+        let peerNodeId: String
+        let viewerDeviceId: String?
+        let expiresAt: Date
+    }
+
     private enum Keys {
         static let featureEnabled = "mercury_remote_unlock_enabled"
         static let certifiedAt = "remote_unlock.certified_at"
@@ -285,15 +293,24 @@ final class MacRemoteUnlockReadinessService {
     private let defaults: UserDefaults
     private let policy: RemoteUnlockPolicy
     private let certificationStore: RemoteUnlockCertificationReportStore
+    private let snapshotProvider: (@MainActor @Sendable () -> RemoteUnlockReadinessSnapshot?)?
+    private let lockStateProvider: @MainActor @Sendable () -> HermesRealtimeRelayMacLockState
+    private var activeRemoteUnlockSessions: [String: ActiveRemoteUnlockSession] = [:]
 
     init(
         defaults: UserDefaults = .standard,
         policy: RemoteUnlockPolicy = .default,
-        certificationStore: RemoteUnlockCertificationReportStore = RemoteUnlockCertificationReportStore()
+        certificationStore: RemoteUnlockCertificationReportStore = RemoteUnlockCertificationReportStore(),
+        snapshotProvider: (@MainActor @Sendable () -> RemoteUnlockReadinessSnapshot?)? = nil,
+        lockStateProvider: @escaping @MainActor @Sendable () -> HermesRealtimeRelayMacLockState = {
+            MacRemoteUnlockReadinessService.currentHostLockState()
+        }
     ) {
         self.defaults = defaults
         self.policy = policy
         self.certificationStore = certificationStore
+        self.snapshotProvider = snapshotProvider
+        self.lockStateProvider = lockStateProvider
     }
 
     func capabilities() -> HermesRealtimeRelayRemoteUnlockCapabilities {
@@ -307,7 +324,7 @@ final class MacRemoteUnlockReadinessService {
         let capabilities = capabilities()
         return HermesRealtimeRelayRemoteUnlockState(
             sessionId: sessionId,
-            lockState: currentLockState(),
+            lockState: lockStateProvider(),
             backend: capabilities.activeBackend,
             capabilities: capabilities,
             controlOwnerViewerId: controlOwnerViewerId,
@@ -322,7 +339,59 @@ final class MacRemoteUnlockReadinessService {
         policy.validate(session: session, capabilities: capabilities(), now: now)
     }
 
+    func recordRemoteUnlockSession(
+        _ session: HermesRealtimeRelayRemoteUnlockSession,
+        now: Date = Date()
+    ) {
+        pruneExpiredRemoteUnlockSessions(now: now)
+        guard let sessionId = normalizedRemoteUnlockIdentifier(session.sessionId),
+              let peerNodeId = normalizedRemoteUnlockIdentifier(session.authority.peerNodeId),
+              session.expiresAt > now else {
+            return
+        }
+        activeRemoteUnlockSessions[sessionId] = ActiveRemoteUnlockSession(
+            sessionId: sessionId,
+            peerNodeId: peerNodeId,
+            viewerDeviceId: normalizedRemoteUnlockIdentifier(session.viewerDeviceId),
+            expiresAt: session.expiresAt
+        )
+    }
+
+    func isRemoteUnlockSessionActive(
+        sessionId: String,
+        peerNodeId: String,
+        viewerDeviceId: String? = nil,
+        now: Date = Date()
+    ) -> Bool {
+        pruneExpiredRemoteUnlockSessions(now: now)
+        guard let normalizedSessionId = normalizedRemoteUnlockIdentifier(sessionId),
+              let normalizedPeerNodeId = normalizedRemoteUnlockIdentifier(peerNodeId),
+              let active = activeRemoteUnlockSessions[normalizedSessionId],
+              active.expiresAt > now,
+              active.peerNodeId == normalizedPeerNodeId else {
+            return false
+        }
+        if let viewerDeviceId = normalizedRemoteUnlockIdentifier(viewerDeviceId),
+           let activeViewerDeviceId = active.viewerDeviceId,
+           activeViewerDeviceId != viewerDeviceId {
+            return false
+        }
+        return true
+    }
+
+    func revokeRemoteUnlockSession(sessionId: String?) {
+        guard let normalizedSessionId = normalizedRemoteUnlockIdentifier(sessionId) else { return }
+        activeRemoteUnlockSessions.removeValue(forKey: normalizedSessionId)
+    }
+
+    func revokeAllRemoteUnlockSessions() {
+        activeRemoteUnlockSessions.removeAll()
+    }
+
     func snapshot() -> RemoteUnlockReadinessSnapshot {
+        if let snapshot = snapshotProvider?() {
+            return snapshot
+        }
         let keyMaterial = try? RemoteUnlockCredentialKeyStore.shared.copyOrCreateKeyMaterial()
         if let keyMaterial {
             defaults.set(keyMaterial.keyId, forKey: Keys.credentialRecipientKeyId)
@@ -335,7 +404,8 @@ final class MacRemoteUnlockReadinessService {
         ) || FileManager.default.fileExists(
             atPath: "/System/Library/CoreServices/Applications/Screen Sharing.app"
         )
-        let daemonInstalled = FileManager.default.fileExists(
+        let agentHealthy = RemoteAccessAgentHealthProbe.isHealthy()
+        let daemonInstalled = agentHealthy || FileManager.default.fileExists(
             atPath: "/Library/LaunchDaemons/com.openburnbar.remote-access-agent.plist"
         )
         let report = try? certificationStore.load()
@@ -414,13 +484,21 @@ final class MacRemoteUnlockReadinessService {
         #endif
     }
 
-    private func currentLockState() -> HermesRealtimeRelayMacLockState {
+    nonisolated static func currentHostLockState() -> HermesRealtimeRelayMacLockState {
+        if let session = CGSessionCopyCurrentDictionary() as? [String: Any] {
+            if session["CGSSessionScreenIsLocked"] as? Bool == true {
+                return .screenLocked
+            }
+            if let loginDone = session["kCGSessionLoginDoneKey"] as? Bool,
+               !loginDone {
+                return .loginWindow
+            }
+        }
+
         guard let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
             return .unknown
         }
         switch frontmost {
-        case "com.apple.loginwindow":
-            return .loginWindow
         case "com.apple.SecurityAgent", "com.apple.SecurityAgentHelper":
             return .securityAgent
         default:
@@ -436,6 +514,102 @@ final class MacRemoteUnlockReadinessService {
         let profiles = "/Library/Preferences/com.apple.fdesetup.plist"
         return FileManager.default.fileExists(atPath: profiles)
     }
+
+    private func pruneExpiredRemoteUnlockSessions(now: Date) {
+        activeRemoteUnlockSessions = activeRemoteUnlockSessions.filter { _, session in
+            session.expiresAt > now
+        }
+    }
+
+    private func normalizedRemoteUnlockIdentifier(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+}
+
+private enum RemoteAccessAgentHealthProbe {
+    private static let socketPath = "/var/run/openburnbar-remote-access-agent.sock"
+    private static let maximumResponseBytes = 16 * 1024
+
+    static func isHealthy() -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+
+        var timeout = timeval(tv_sec: 0, tv_usec: 200_000)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        do {
+            try socketPath.withCString { path in
+                let capacity = MemoryLayout.size(ofValue: address.sun_path)
+                guard strlen(path) < capacity else { throw POSIXError(.ENAMETOOLONG) }
+                _ = withUnsafeMutablePointer(to: &address.sun_path) { pointer in
+                    pointer.withMemoryRebound(to: CChar.self, capacity: capacity) { destination in
+                        strncpy(destination, path, capacity - 1)
+                    }
+                }
+            }
+        } catch {
+            AppLogger.network.error("mac_media_capability_gate_failed", metadata: ["error": error.localizedDescription])
+            return false
+        }
+
+        let connected = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                connect(fd, rebound, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard connected == 0 else { return false }
+
+        let request = #"{"operation":"health","password":""}"# + "\n"
+        guard writeAll(request.data(using: .utf8) ?? Data(), to: fd) else { return false }
+
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        var data = Data()
+        while true {
+            let count = Darwin.read(fd, &buffer, buffer.count)
+            if count == 0 { break }
+            guard count > 0 else {
+                if errno == EINTR { continue }
+                return false
+            }
+            data.append(buffer, count: count)
+            if data.count > maximumResponseBytes { return false }
+            if data.last == 0x0A { break }
+        }
+        guard !data.isEmpty,
+              let response = try? JSONDecoder().decode(RemoteAccessAgentHealthResponse.self, from: data) else {
+            return false
+        }
+        return response.ok && response.version == "1"
+    }
+
+    private static func writeAll(_ data: Data, to fd: Int32) -> Bool {
+        data.withUnsafeBytes { rawBuffer in
+            guard let base = rawBuffer.bindMemory(to: UInt8.self).baseAddress else { return true }
+            var offset = 0
+            while offset < data.count {
+                let written = Darwin.write(fd, base.advanced(by: offset), data.count - offset)
+                guard written >= 0 else {
+                    if errno == EINTR { continue }
+                    return false
+                }
+                offset += written
+            }
+            return true
+        }
+    }
+}
+
+private struct RemoteAccessAgentHealthResponse: Decodable {
+    var ok: Bool
+    var version: String
 }
 
 struct RemoteUnlockCredentialKeyMaterial: Sendable {

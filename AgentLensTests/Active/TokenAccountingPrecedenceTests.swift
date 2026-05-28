@@ -611,4 +611,135 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         XCTAssertEqual(inputTokens, 2000, "Equal confidence with different values should update")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "high_confidence_estimate")
     }
+
+    // MARK: - Duplicate Repairs
+
+    func test_factoryRoutedProviderMirror_isSuppressedWhenFactoryRowExists() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+        let now = Date()
+        let sessionId = "factory-routed-minimax"
+
+        try store.insert(TokenUsage(
+            provider: .factory,
+            sessionId: sessionId,
+            projectName: "FactoryProject",
+            model: "minimax-m2.7",
+            inputTokens: 1_000,
+            outputTokens: 500,
+            costUSD: 0,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        ))
+
+        try store.insert(TokenUsage(
+            provider: .minimax,
+            sessionId: sessionId,
+            projectName: "FactoryProject",
+            model: "minimax-m2.7",
+            inputTokens: 1_000,
+            outputTokens: 500,
+            costUSD: 0.02,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        ))
+
+        let rows = try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT provider, cost FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
+        }
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?["provider"] as? String, AgentProvider.factory.rawValue)
+        XCTAssertEqual((rows.first?["cost"] as? Double) ?? -1, 0, accuracy: 0.000001)
+    }
+
+    func test_factoryRowDeletesExistingRoutedProviderMirror() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+        let now = Date()
+        let sessionId = "factory-replaces-zai-mirror"
+
+        try store.insert(TokenUsage(
+            provider: .zai,
+            sessionId: sessionId,
+            projectName: "FactoryProject",
+            model: "glm-5",
+            inputTokens: 2_000,
+            outputTokens: 800,
+            costUSD: 0.03,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        ))
+
+        try store.insert(TokenUsage(
+            provider: .factory,
+            sessionId: sessionId,
+            projectName: "FactoryProject",
+            model: "glm-5",
+            inputTokens: 2_000,
+            outputTokens: 800,
+            costUSD: 0,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        ))
+
+        let rows = try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT provider, cost FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
+        }
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?["provider"] as? String, AgentProvider.factory.rawValue)
+    }
+
+    func test_lateExactWithCorrectedModelDeletesLowerConfidenceModelRow() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+        let now = Date()
+        let sessionId = "model-correction"
+
+        try store.insert(TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "unknown",
+            inputTokens: 5_000,
+            outputTokens: 2_000,
+            costUSD: 0.10,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "char-ratio-v1"
+        ))
+
+        try store.insert(TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 3_000,
+            outputTokens: 1_000,
+            costUSD: 0.04,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        ))
+
+        let rows = try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT model, provenanceConfidence FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
+        }
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?["model"] as? String, "claude-4-sonnet")
+        XCTAssertEqual(rows.first?["provenanceConfidence"] as? String, "exact")
+    }
 }

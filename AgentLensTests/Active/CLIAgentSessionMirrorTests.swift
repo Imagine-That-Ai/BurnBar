@@ -14,6 +14,53 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertNil(CLIAgentSessionMirror.cliAgent(for: .piAgent))
     }
 
+    func test_archivedAgent_mapsXAIToGrokBuildArchiveOnly() {
+        XCTAssertEqual(CLIAgentSessionMirror.archivedAgent(for: .xAI), .grok)
+        XCTAssertFalse(CLIAgentSessionMirror.canResume(agent: .grok))
+    }
+
+    func testWriteResumeHintUsesEditorSpecificOwnerOnlyFiles() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-resume-hint-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let cursorURL = try OpenBurnBarChatWorkspaceConfigurator.writeResumeHint(
+            in: workspaceURL,
+            targetHarness: "Cursor",
+            briefingMarkdown: "# BurnBar Resume\n"
+        )
+        XCTAssertEqual(
+            cursorURL.path,
+            workspaceURL.appendingPathComponent(".cursor/burnbar-resume.md").path
+        )
+        XCTAssertEqual(try String(contentsOf: cursorURL, encoding: .utf8), "# BurnBar Resume\n")
+        XCTAssertEqual(try posixPermissions(at: cursorURL), 0o600)
+        XCTAssertEqual(try posixPermissions(at: cursorURL.deletingLastPathComponent()), 0o700)
+
+        let windsurfURL = try OpenBurnBarChatWorkspaceConfigurator.writeResumeHint(
+            in: workspaceURL,
+            targetHarness: "windsurf",
+            briefingMarkdown: "handoff"
+        )
+        XCTAssertEqual(
+            windsurfURL.path,
+            workspaceURL.appendingPathComponent(".windsurf/burnbar-resume.md").path
+        )
+        XCTAssertEqual(try posixPermissions(at: windsurfURL), 0o600)
+
+        let fallbackURL = try OpenBurnBarChatWorkspaceConfigurator.writeResumeHint(
+            in: workspaceURL,
+            targetHarness: "unknown-gui",
+            briefingMarkdown: "fallback"
+        )
+        XCTAssertEqual(
+            fallbackURL.path,
+            workspaceURL.appendingPathComponent(".openburnbar/burnbar-resume.md").path
+        )
+        XCTAssertEqual(try posixPermissions(at: fallbackURL), 0o600)
+    }
+
     func test_build_convertsMessagesAndDerivesMetadata() throws {
         let started = Date(timeIntervalSince1970: 1_730_000_000)
         let user = ChatMessageRecord(
@@ -330,6 +377,11 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "factory-droid"), .droid)
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "forge"), .forge)
         XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "unknown"))
+    }
+
+    private func posixPermissions(at url: URL) throws -> Int {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return (attributes[.posixPermissions] as? NSNumber)?.intValue ?? -1
     }
 
     func test_missionRuntimePlanner_selectsMissionKindFallbacksFromEnabledBackends() {

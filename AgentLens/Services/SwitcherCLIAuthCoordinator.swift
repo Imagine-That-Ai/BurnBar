@@ -204,7 +204,7 @@ final class SwitcherCLIAuthCoordinator {
             return false
         case .opencode:
             return false
-        case .droid, .forge, .antigravity:
+        case .droid, .forge, .antigravity, .grok:
             if case .authenticated = authInfo.authState {
                 return true
             }
@@ -391,7 +391,7 @@ final class SwitcherCLIAuthCoordinator {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity:
+        case .opencode, .droid, .forge, .antigravity, .grok:
             candidates = []
         }
 
@@ -414,6 +414,8 @@ final class SwitcherCLIAuthCoordinator {
             return ["FORGE_HOME", "FORGE_CONFIG_HOME"]
         case .antigravity:
             return ["AGY_CONFIG_HOME", "ANTIGRAVITY_HOME", "GEMINI_HOME"]
+        case .grok:
+            return ["GROK_HOME", "XAI_API_KEY"]
         }
     }
 
@@ -550,6 +552,8 @@ final class SwitcherCLIAuthCoordinator {
             installHint = "Reinstall Forge, then retry Add Account."
         case .antigravity:
             installHint = "Reinstall Google Antigravity, then retry Add Account."
+        case .grok:
+            installHint = "Reinstall Grok Build CLI, then retry Add Account."
         }
 
         let reason: String

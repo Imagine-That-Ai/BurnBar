@@ -82,6 +82,13 @@ public enum CLIQuotaExhaustionClassifier {
                 "gemini quota",
                 "google ai quota",
             ]
+        case .grok:
+            cliSpecificPatterns = [
+                "grok quota",
+                "xai quota",
+                "supergrok limit",
+                "grok build limit",
+            ]
         }
 
         if genericPatterns.contains(where: normalized.contains) {

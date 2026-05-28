@@ -17,6 +17,13 @@ export default [
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
+      "no-console": "error",
+    },
+  },
+  {
+    files: ["src/logging.ts"],
+    rules: {
+      "no-console": "off",
     },
   },
 ];
