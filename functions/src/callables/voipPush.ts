@@ -7,7 +7,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 
 import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
-import { logInfo } from "../logging.js";
+import { logInfo, wrapCallableHandler } from "../logging.js";
 import {
   macHasActiveMediaEntitlement,
   parseTriggerRequest,
@@ -16,7 +16,7 @@ import {
 
 export const triggerVoIPCall = onCall(
   { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
-  async (request) => {
+  wrapCallableHandler("triggerVoIPCall", async (request) => {
     assertAppCheck(request);
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign-in required.");
@@ -121,4 +121,4 @@ export const triggerVoIPCall = onCall(
       },
     };
   }
-);
+));

@@ -22,7 +22,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { defineString } from "firebase-functions/params";
 import { enforceAuthAndAppCheck } from "./auth.js";
-import { logCallableStart, traceIdFromCallableRequest } from "./logging.js";
+import { logCallableStart, traceIdFromCallableRequest, wrapCallableHandler } from "./logging.js";
 import { readOpenBurnBarFunctionsConfig } from "./firebaseRuntime.js";
 import { isRecord, jsonObject, stringField } from "./guards.js";
 import type {
@@ -368,7 +368,7 @@ export const validateOpenTimestampsProof = onCall(
     timeoutSeconds: 60,
     memory: "512MiB",
   },
-  async (
+  wrapCallableHandler("validateOpenTimestampsProof", async (
     request: CallableRequest,
   ): Promise<ComputerUseOpenTimestampsValidationResponse> => {
     const parsed = parseComputerUseOpenTimestampsValidationRequest(request.data);
@@ -376,4 +376,4 @@ export const validateOpenTimestampsProof = onCall(
     enforceAuthAndAppCheck(request, parsed.uid);
     return validateComputerUseOpenTimestampsProofForRequest(parsed);
   },
-);
+));

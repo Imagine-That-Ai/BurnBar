@@ -14,6 +14,27 @@ function assertHttpsError(fn, code) {
   assert.throws(fn, (err) => err?.code === code);
 }
 
+function callableExportBlock(source, exportName) {
+  const start = source.indexOf(`export const ${exportName}`);
+  assert.notEqual(start, -1, `${exportName} must exist`);
+  const onCallIndex = source.indexOf("onCall(", start);
+  assert.notEqual(onCallIndex, -1, `${exportName} must use onCall`);
+  const openParen = source.indexOf("(", onCallIndex);
+  let depth = 0;
+  for (let i = openParen; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        const end = source[i + 1] === ";" ? i + 2 : i + 1;
+        return source.slice(start, end);
+      }
+    }
+  }
+  throw new Error(`Could not find end of ${exportName} onCall export`);
+}
+
 const code = randomPairingCode();
 assert.match(code, /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
 assert.equal(pairingCodeDigest("ab12-cd34"), pairingCodeDigest("AB12CD34"));
@@ -155,7 +176,7 @@ assert.match(readFileSync(new URL("../src/callables/hermes.ts", import.meta.url)
     assert.match(indexSource, new RegExp(`\\b${exportedName}\\b`), `${exportedName} must be exported from index`);
     const start = hermesSource.indexOf(`export const ${exportedName}`);
     assert.notEqual(start, -1, `${exportedName} must exist in callables/hermes.ts`);
-    const block = hermesSource.slice(start, hermesSource.indexOf("\n);\n", start) + 4);
+    const block = callableExportBlock(hermesSource, exportedName);
     assert.match(block, /await assertActiveHostedQuotaEntitlement\(uid\);/, `${exportedName} must be premium-gated`);
   }
 }

@@ -7,7 +7,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { logInfo } from "../logging.js";
+import { logInfo, wrapCallableHandler } from "../logging.js";
 import {
   REMOTE_MCP_TOKEN_HMAC_SECRET,
   boundedTrimmedString,
@@ -27,7 +27,7 @@ export const issueRemoteMcpGrant = onCall(
     maxInstances: 50,
     secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET],
   },
-  async (
+  wrapCallableHandler("issueRemoteMcpGrant", async (
     request: CallableRequest<{
       clientId?: unknown;
       displayName?: unknown;
@@ -73,7 +73,7 @@ export const issueRemoteMcpGrant = onCall(
     });
     return result;
   }
-);
+));
 
 export const revokeRemoteMcpClient = onCall(
   {
@@ -81,7 +81,7 @@ export const revokeRemoteMcpClient = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
-  async (request: CallableRequest<{ clientId?: unknown }>) => {
+  wrapCallableHandler("revokeRemoteMcpClient", async (request: CallableRequest<{ clientId?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking OpenBurnBar MCP clients.");
     enforceAuthAndAppCheck(request, uid);
@@ -90,7 +90,7 @@ export const revokeRemoteMcpClient = onCall(
     logInfo({ event: "callable_info", message: "remote_mcp_client_revoked", client_id: clientId });
     return { ok: true, clientId };
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: searchStreams
@@ -102,7 +102,7 @@ export const searchStreams = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ query?: unknown; limit?: unknown }>) => {
+  wrapCallableHandler("searchStreams", async (request: CallableRequest<{ query?: unknown; limit?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before searching streams.");
@@ -187,5 +187,5 @@ export const searchStreams = onCall(
 
     return { hits };
   }
-);
+));
 

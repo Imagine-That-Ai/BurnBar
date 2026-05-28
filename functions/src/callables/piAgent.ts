@@ -8,7 +8,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { logInfo } from "../logging.js";
+import { logInfo, wrapCallableHandler } from "../logging.js";
 import {
   PI_AGENT_SCHEMA_VERSION,
   PI_AGENT_PAIRING_TTL_MS,
@@ -48,7 +48,7 @@ export const createPiAgentPairing = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("createPiAgentPairing", async (
     request: CallableRequest<{
       deviceId?: string;
       platform?: "ios" | "ipados" | "android" | "macos" | "web";
@@ -93,7 +93,7 @@ export const createPiAgentPairing = onCall(
     logInfo({ event: "callable_info", message: "pi_agent_pairing_created", pairing_id: id });
     return { id, code, expiresAt };
   }
-);
+));
 
 export const completePiAgentPairing = onCall(
   {
@@ -101,7 +101,7 @@ export const completePiAgentPairing = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("completePiAgentPairing", async (
     request: CallableRequest<{
       pairingId: string;
       code: string;
@@ -249,7 +249,7 @@ export const completePiAgentPairing = onCall(
     });
     return stripUndefinedObject(connection);
   }
-);
+));
 
 export const listPiAgentConnections = onCall(
   {
@@ -257,7 +257,7 @@ export const listPiAgentConnections = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ includeRevoked?: boolean }>) => {
+  wrapCallableHandler("listPiAgentConnections", async (request: CallableRequest<{ includeRevoked?: boolean }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before listing Pi Agent connections.");
@@ -275,7 +275,7 @@ export const listPiAgentConnections = onCall(
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     return { connections };
   }
-);
+));
 
 export const revokePiAgentConnection = onCall(
   {
@@ -283,7 +283,7 @@ export const revokePiAgentConnection = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ connectionId: string; deviceId?: string }>) => {
+  wrapCallableHandler("revokePiAgentConnection", async (request: CallableRequest<{ connectionId: string; deviceId?: string }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before revoking a Pi Agent connection.");
@@ -310,7 +310,7 @@ export const revokePiAgentConnection = onCall(
     logInfo({ event: "callable_info", message: "pi_agent_connection_revoked", connection_id: connectionId });
     return { success: true, connectionId };
   }
-);
+));
 
 export const updatePiAgentConnectionStatus = onCall(
   {
@@ -318,7 +318,7 @@ export const updatePiAgentConnectionStatus = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("updatePiAgentConnectionStatus", async (
     request: CallableRequest<{
       connectionId: string;
       status: PiAgentConnectionDoc["status"];
@@ -399,5 +399,5 @@ export const updatePiAgentConnectionStatus = onCall(
     });
     return { success: true, connectionId };
   }
-);
+));
 

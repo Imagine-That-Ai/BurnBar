@@ -33,7 +33,7 @@ import { randomBytes } from "node:crypto";
 import type { DocumentData, DocumentSnapshot, QuerySnapshot, WriteBatch } from "firebase-admin/firestore";
 import type { ProjectMemorySnapshotDoc } from "../types.js";
 import { stripUndefinedObject } from "../guards.js";
-import { withCallableLogging } from "../logging.js";
+import { wrapCallableHandler } from "../logging.js";
 
 // ---------------------------------------------------------------------------
 // Callable: encrypted hosted session logs + cloud search
@@ -45,7 +45,7 @@ export const beginEncryptedSessionBlobUpload = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("beginEncryptedSessionBlobUpload", async (
     request: CallableRequest<{
       documentID?: unknown;
       bodyHash?: unknown;
@@ -55,8 +55,7 @@ export const beginEncryptedSessionBlobUpload = onCall(
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before uploading session logs.");
-    return withCallableLogging("beginEncryptedSessionBlobUpload", request, uid, async () => {
-    enforceAuthAndAppCheck(request, uid);
+        enforceAuthAndAppCheck(request, uid);
     await assertActiveBurnBarProEntitlement(uid);
 
     const documentID = safeCloudDocumentID(request.data.documentID, "documentID");
@@ -93,8 +92,7 @@ export const beginEncryptedSessionBlobUpload = onCall(
       maxBytes: getConfig().encryptedSessionBlobMaxBytes,
       acceptedByteCount: encryptedByteCount,
     };
-    });
-  }
+  })
 );
 
 export const getEncryptedSessionBlobDownloadUrl = onCall(
@@ -103,7 +101,7 @@ export const getEncryptedSessionBlobDownloadUrl = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("getEncryptedSessionBlobDownloadUrl", async (
     request: CallableRequest<{
       storagePath?: unknown;
     }>
@@ -125,7 +123,7 @@ export const getEncryptedSessionBlobDownloadUrl = onCall(
       });
     return { downloadURL, expiresAt: expiresAt.toISOString() };
   }
-);
+));
 
 export const commitEncryptedSearchIndexBatch = onCall(
   {
@@ -133,7 +131,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("commitEncryptedSearchIndexBatch", async (
     request: CallableRequest<{
       documents?: unknown;
       chunks?: unknown;
@@ -295,7 +293,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
     await commitBatchedWrites(writes);
     return { ok: true, writeCount, documentCount: documents.length, chunkCount: chunks.length, commitID };
   }
-);
+));
 
 export const commitEncryptedProjectMemorySnapshot = onCall(
   {
@@ -303,7 +301,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("commitEncryptedProjectMemorySnapshot", async (
     request: CallableRequest<{
       projectSlug?: unknown;
       projectDisplayName?: unknown;
@@ -377,7 +375,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
       updatedAt,
     };
   }
-);
+));
 
 export const getEncryptedProjectMemorySnapshot = onCall(
   {
@@ -385,7 +383,7 @@ export const getEncryptedProjectMemorySnapshot = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("getEncryptedProjectMemorySnapshot", async (
     request: CallableRequest<{
       projectSlug?: unknown;
     }>
@@ -418,7 +416,7 @@ export const getEncryptedProjectMemorySnapshot = onCall(
       }),
     };
   }
-);
+));
 
 export const listEncryptedProjectMemorySnapshots = onCall(
   {
@@ -426,7 +424,7 @@ export const listEncryptedProjectMemorySnapshots = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("listEncryptedProjectMemorySnapshots", async (
     request: CallableRequest<{
       limit?: unknown;
     }>
@@ -461,7 +459,7 @@ export const listEncryptedProjectMemorySnapshots = onCall(
 
     return { snapshots };
   }
-);
+));
 
 export const searchEncryptedConversationIndex = onCall(
   {
@@ -469,7 +467,7 @@ export const searchEncryptedConversationIndex = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("searchEncryptedConversationIndex", async (
     request: CallableRequest<{
       tokenHashes?: unknown;
       semanticHashes?: unknown;
@@ -653,5 +651,5 @@ export const searchEncryptedConversationIndex = onCall(
     }
     return { hits };
   }
-);
+));
 
