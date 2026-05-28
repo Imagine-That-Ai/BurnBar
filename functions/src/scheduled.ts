@@ -27,6 +27,7 @@ import {
 import { buildAndPersistRouterRundown } from "./routerRundown.js";
 import type { Provider } from "./types.js";
 import { errorMessage, parseProvider, parseRollupJobDoc } from "./guards.js";
+import { logError } from "./logging.js";
 
 const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
 
@@ -81,7 +82,7 @@ export const rebuildRollups = onSchedule(
           : await computeUserRollupsFromCounters(db, uid);
         await writeUserRollups(db, uid, rollups);
       } catch (err) {
-        console.error(`Rollup failed for ${uid}:`, err);
+        logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
         const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
         await jobRef.set(
           { lastErrorCode: errorMessage(err) },
@@ -126,7 +127,12 @@ export const refreshAllProviderQuotas = onSchedule(
       try {
         await refreshUserProviderAccountQuota(db, uid, accountID);
       } catch (err) {
-        console.error(`Quota refresh failed for ${uid}/${accountID}:`, err);
+        logError({
+          event: "quota.refresh_account_failed",
+          uid,
+          account_id: accountID,
+          error: errorMessage(err),
+        });
         // Update account doc with error state but do NOT disconnect
         // automatically — transient failures should not punish the user.
         await doc.ref.update({
@@ -202,7 +208,12 @@ export const refreshAllProviderQuotas = onSchedule(
       try {
         await refreshUserProviderQuota(db, uid, provider);
       } catch (err) {
-        console.error(`Legacy quota refresh failed for ${uid}/${provider}:`, err);
+        logError({
+          event: "quota.refresh_legacy_failed",
+          uid,
+          provider,
+          error: errorMessage(err),
+        });
         await doc.ref.update({
           lastErrorCode: errorMessage(err),
           lastRefreshAt: new Date().toISOString(),

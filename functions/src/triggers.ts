@@ -10,6 +10,7 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { getFirestore } from "firebase-admin/firestore";
 import { applyUsageCounterDelta } from "./rollups.js";
 import { errorMessage, parseRollupJobDoc, parseUsageEventDoc } from "./guards.js";
+import { logError } from "./logging.js";
 
 /**
  * Firestore trigger: whenever a usage event is created, updated, or deleted,
@@ -52,10 +53,12 @@ export const onUsageWritten = onDocumentWritten(
     try {
       await applyUsageCounterDelta(db, uid, event.params.usageDoc, before, after);
     } catch (err) {
-      console.error(
-        `Counter delta failed for ${uid}/${event.params.usageDoc}:`,
-        err
-      );
+      logError({
+        event: "usage.counter_delta_failed",
+        uid,
+        usage_doc: event.params.usageDoc,
+        error: errorMessage(err),
+      });
       await jobRef.set(
         {
           lastErrorCode: errorMessage(err),

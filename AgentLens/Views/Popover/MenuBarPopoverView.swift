@@ -31,11 +31,18 @@ struct MenuBarPopoverView: View {
     @State private var smartHubCastStatusMessage: String?
     @State private var resizingStartSize: CGSize?
     @State private var hoveredSectionID: String? = nil
+    @State private var intrinsicTraySectionHeights: [String: CGFloat] = [:]
+    @State private var activeTrayResizeSection: String? = nil
+    @State private var activeTrayResizeStartHeight: CGFloat = 0
 
     @AppStorage("popoverTrayWidth") private var storedPopoverTrayWidth = 340.0
     @AppStorage("popoverTrayHeight") private var storedPopoverTrayHeight = 540.0
     @AppStorage("popoverTraySectionOrder") private var storedPopoverTraySectionOrder = ""
+    @AppStorage("popoverTraySectionHeights") private var storedPopoverTraySectionHeightsJSON = "{}"
     @AppStorage("hasResetScrambledPopoverLayoutV2") private var hasResetScrambledPopoverLayoutV2 = false
+
+    private static let minTraySectionHeight: CGFloat = 80
+    private static let maxTraySectionHeight: CGFloat = 720
 
     private var isScanning: Bool { aggregator?.isRefreshing ?? false }
 
@@ -240,6 +247,10 @@ struct MenuBarPopoverView: View {
             let sections = orderedTraySections
             ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
                 traySection(section)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: customTrayHeight(for: section), alignment: .top)
+                    .clipped()
+                    .background(traySectionIntrinsicMeasurement(for: section))
                     .contentShape(Rectangle())
                     .onHover { hovering in
                         withAnimation(.easeInOut(duration: 0.12)) {
@@ -252,9 +263,7 @@ struct MenuBarPopoverView: View {
                                 .transition(.opacity)
                         }
                     }
-                if index < sections.count - 1 {
-                    Divider().background(DesignSystem.Colors.border)
-                }
+                resizableTrayDivider(for: section, showsLine: index < sections.count - 1)
             }
         }
         .animation(DesignSystem.Animation.snappy, value: orderedTraySections)
@@ -348,6 +357,18 @@ struct MenuBarPopoverView: View {
             .disabled(index >= totalCount - 1)
             .accessibilityLabel("Move \(section.accessibilityLabel) down")
             .popoverTooltip("Move \(section.accessibilityLabel) down")
+
+            if customTrayHeight(for: section) != nil {
+                Button {
+                    withAnimation(DesignSystem.Animation.snappy) {
+                        setCustomTrayHeight(nil, for: section)
+                    }
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .accessibilityLabel("Reset \(section.accessibilityLabel) height")
+                .popoverTooltip("Reset \(section.accessibilityLabel) height")
+            }
         }
         .font(.system(size: 9, weight: .semibold))
         .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.72))
@@ -428,6 +449,92 @@ struct MenuBarPopoverView: View {
         let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
         let maxHeight = min(max(screenHeight * 0.86, 500), 760)
         return min(max(height, 500), maxHeight)
+    }
+
+
+    // MARK: - Per-section resize
+
+    private var traySectionHeights: [String: CGFloat] {
+        guard let data = storedPopoverTraySectionHeightsJSON.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String: Double].self, from: data) else {
+            return [:]
+        }
+        var result: [String: CGFloat] = [:]
+        for (key, value) in decoded {
+            result[key] = CGFloat(value)
+        }
+        return result
+    }
+
+    private func customTrayHeight(for section: PopoverTraySection) -> CGFloat? {
+        traySectionHeights[section.rawValue].map { clampTraySectionHeight($0) }
+    }
+
+    private func setCustomTrayHeight(_ height: CGFloat?, for section: PopoverTraySection) {
+        var dict: [String: Double] = [:]
+        for (key, value) in traySectionHeights {
+            dict[key] = Double(value)
+        }
+        if let height {
+            dict[section.rawValue] = Double(clampTraySectionHeight(height))
+        } else {
+            dict.removeValue(forKey: section.rawValue)
+        }
+        if let data = try? JSONEncoder().encode(dict),
+           let json = String(data: data, encoding: .utf8) {
+            storedPopoverTraySectionHeightsJSON = json
+        }
+    }
+
+    private func clampTraySectionHeight(_ height: CGFloat) -> CGFloat {
+        min(max(height, Self.minTraySectionHeight), Self.maxTraySectionHeight)
+    }
+
+    private func resizeStartHeight(for section: PopoverTraySection) -> CGFloat {
+        customTrayHeight(for: section)
+            ?? intrinsicTraySectionHeights[section.rawValue]
+            ?? 200
+    }
+
+    @ViewBuilder
+    private func traySectionIntrinsicMeasurement(for section: PopoverTraySection) -> some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear {
+                    let measured = proxy.size.height
+                    guard measured > 0, customTrayHeight(for: section) == nil else { return }
+                    intrinsicTraySectionHeights[section.rawValue] = measured
+                }
+                .onChange(of: proxy.size.height) { _, newHeight in
+                    guard newHeight > 0, customTrayHeight(for: section) == nil else { return }
+                    intrinsicTraySectionHeights[section.rawValue] = newHeight
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func resizableTrayDivider(for section: PopoverTraySection, showsLine: Bool) -> some View {
+        ResizableTraySectionDivider(
+            showsLine: showsLine,
+            hasCustomHeight: customTrayHeight(for: section) != nil,
+            sectionLabel: section.accessibilityLabel,
+            onResizeChanged: { translationY in
+                if activeTrayResizeSection != section.rawValue {
+                    activeTrayResizeSection = section.rawValue
+                    activeTrayResizeStartHeight = resizeStartHeight(for: section)
+                }
+                let newHeight = clampTraySectionHeight(activeTrayResizeStartHeight + translationY)
+                setCustomTrayHeight(newHeight, for: section)
+            },
+            onResizeEnded: {
+                activeTrayResizeSection = nil
+            },
+            onReset: {
+                withAnimation(DesignSystem.Animation.snappy) {
+                    setCustomTrayHeight(nil, for: section)
+                }
+            }
+        )
     }
 
     // MARK: - Header
@@ -1084,6 +1191,102 @@ private enum PopoverTraySection: String, CaseIterable, Identifiable {
             return "Chat"
         case .quickSwitch:
             return "Quick Switch"
+        }
+    }
+}
+
+
+private struct ResizableTraySectionDivider: View {
+    var showsLine: Bool
+    var hasCustomHeight: Bool
+    var sectionLabel: String
+    var onResizeChanged: (CGFloat) -> Void
+    var onResizeEnded: () -> Void
+    var onReset: () -> Void
+
+    @State private var isHovered = false
+    @State private var isDragging = false
+    @State private var cursorPushed = false
+
+    var body: some View {
+        ZStack {
+            if showsLine {
+                Rectangle()
+                    .fill(DesignSystem.Colors.border)
+                    .frame(height: 1)
+            }
+            if isHovered || isDragging {
+                Capsule()
+                    .fill(handleColor)
+                    .frame(width: 36, height: 3)
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 8)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+            updateCursor(showResize: hovering)
+        }
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    if !isDragging {
+                        isDragging = true
+                        updateCursor(showResize: true)
+                    }
+                    onResizeChanged(value.translation.height)
+                }
+                .onEnded { _ in
+                    isDragging = false
+                    onResizeEnded()
+                    if !isHovered {
+                        updateCursor(showResize: false)
+                    }
+                }
+        )
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                if hasCustomHeight {
+                    onReset()
+                }
+            }
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Resize \(sectionLabel) section")
+        .accessibilityHint(hasCustomHeight
+            ? "Drag to resize. Double-tap to reset to natural height."
+            : "Drag to resize.")
+        .popoverTooltip(hasCustomHeight
+            ? "Drag to resize • Double-click to reset"
+            : "Drag to resize")
+        .onDisappear {
+            if cursorPushed {
+                NSCursor.pop()
+                cursorPushed = false
+            }
+        }
+    }
+
+    private var handleColor: Color {
+        let base = DesignSystem.Colors.textMuted
+        return isDragging ? base.opacity(0.85) : base.opacity(0.55)
+    }
+
+    private func updateCursor(showResize: Bool) {
+        if showResize {
+            if !cursorPushed {
+                NSCursor.resizeUpDown.push()
+                cursorPushed = true
+            }
+        } else {
+            if cursorPushed {
+                NSCursor.pop()
+                cursorPushed = false
+            }
         }
     }
 }

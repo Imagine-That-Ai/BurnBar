@@ -84,6 +84,7 @@ extension OpenBurnBarDaemonManager {
         do {
             return try daemonBinaryDigest(at: sourceURL) != daemonBinaryDigest(at: installedURL)
         } catch {
+            AppLogger.network.error("daemon_launchctl_loaded_check_failed", metadata: ["error": error.localizedDescription])
             return true
         }
     }
@@ -232,7 +233,7 @@ extension OpenBurnBarDaemonManager {
         do {
             _ = try await daemonProcess("/bin/launchctl", ["bootout", launchctlDomain, paths.launchAgentPlistURL.path])
         } catch {
-            // Ignore if the service was not loaded yet.
+            AppLogger.network.error("daemon_launchctl_bootout_skipped", metadata: ["error": error.localizedDescription])
         }
     }
 

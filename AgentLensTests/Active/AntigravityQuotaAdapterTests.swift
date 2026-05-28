@@ -22,15 +22,16 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeContext() throws -> ProviderQuotaAdapterContext {
-        let appPaths = OpenBurnBarAppPaths.live()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         let dbQueue = try DatabaseQueue()
         let dataStoreActor = try DataStoreActor(databaseQueue: dbQueue)
+        let session = URLSession(configuration: .ephemeral)
 
         return ProviderQuotaAdapterContext(
             appPaths: appPaths,
             fileManager: fileManager,
-            session: URLSession.shared,
+            session: session,
             environment: [:],
             homeDirectoryURL: tempDirectoryURL,
             dataStoreActor: dataStoreActor,
@@ -201,13 +202,13 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
     func testFetch_whenDifferentModelSelected_thatModelIsActive() async throws {
         let adapter = AntigravityQuotaAdapter()
 
-        let nowMs = Date().timeIntervalSince1970 * 1000.0
+        let nowMs = floor(Date().timeIntervalSince1970 * 1000.0)
         let hourInMs = 60.0 * 60.0 * 1000.0
 
         let mockLines = [
-            "{\"display\":\"R1\",\"timestamp\":\(nowMs - (1.0 * hourInMs)),\"workspace\":\"/mock/ws\"}",
-            "{\"display\":\"R2\",\"timestamp\":\(nowMs - (2.0 * hourInMs)),\"workspace\":\"/mock/ws\"}",
-            "{\"display\":\"R3\",\"timestamp\":\(nowMs - (4.0 * hourInMs)),\"workspace\":\"/mock/ws\"}"
+            "{\"display\":\"R1\",\"timestamp\":\(Int(nowMs - (1.0 * hourInMs))),\"workspace\":\"/mock/ws\"}",
+            "{\"display\":\"R2\",\"timestamp\":\(Int(nowMs - (2.0 * hourInMs))),\"workspace\":\"/mock/ws\"}",
+            "{\"display\":\"R3\",\"timestamp\":\(Int(nowMs - (3.0 * hourInMs))),\"workspace\":\"/mock/ws\"}"
         ]
 
         try writeHistory(lines: mockLines)

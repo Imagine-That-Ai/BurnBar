@@ -24,6 +24,7 @@ import Foundation
 ///   - `.droid` — Factory Droid custom-model overrides in
 ///     `~/.factory/settings.local.json`, `~/.factory/settings.json`, and
 ///     `~/.factory/config.json` (`customModels` / `custom_models` entries).
+///   - `.grok` — Grok Build custom model block in `~/.grok/config.toml`.
 ///   - `.antigravity` — Google Antigravity profile switching. The CLI is
 ///     launched through profile-scoped config directories; it does not expose
 ///     a file-based OpenAI-compatible routing config that OpenBurnBar can
@@ -34,6 +35,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     case opencode
     case forge
     case droid
+    case grok
     case antigravity
 
     var id: String { rawValue }
@@ -45,6 +47,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         case .opencode: return "OpenCode CLI"
         case .forge: return "Forge CLI"
         case .droid: return "Droid CLI"
+        case .grok: return "Grok Build CLI"
         case .antigravity: return "Antigravity CLI"
         }
     }
@@ -53,7 +56,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     var poolDisplayName: String {
         switch self {
         case .claudeCode: return "Anthropic Messages"
-        case .codex, .opencode, .forge, .droid: return "OpenAI-style gateway"
+        case .codex, .opencode, .forge, .droid, .grok: return "OpenAI-style gateway"
         case .antigravity: return "Profile-scoped Antigravity"
         }
     }
@@ -310,6 +313,8 @@ struct RoutingClientWiring {
             return try wireForge(gateway: gateway)
         case .droid:
             return try wireDroid(gateway: gateway, advertisedModels: advertisedModels)
+        case .grok:
+            return try wireGrok(gateway: gateway)
         case .antigravity:
             throw RoutingClientWiringError.gatewayMisconfigured(
                 detail: "Antigravity profile switching is supported, but Antigravity does not expose a file-based OpenAI-compatible routing config for OpenBurnBar to rewrite yet."
@@ -329,6 +334,8 @@ struct RoutingClientWiring {
             try unwireForge()
         case .droid:
             try unwireDroid()
+        case .grok:
+            try unwireGrok()
         case .antigravity:
             throw RoutingClientWiringError.notEnabled
         }
@@ -348,6 +355,8 @@ struct RoutingClientWiring {
             return home.appendingPathComponent("forge/.forge.toml")
         case .droid:
             return home.appendingPathComponent(".factory/settings.local.json")
+        case .grok:
+            return home.appendingPathComponent(".grok/config.toml")
         case .antigravity:
             return home.appendingPathComponent(".gemini/antigravity-cli/settings.json")
         }
@@ -418,6 +427,11 @@ struct RoutingClientWiring {
             return text.contains(Self.sentinelStart)
                 || (text.contains(#"id = "openburnbar""#) && text.contains(":8317"))
                 || text.range(of: #"url\s*=\s*"https?://(127\.0\.0\.1|localhost):8317(/v1)?/chat/completions""#, options: .regularExpression) != nil
+        case .grok:
+            guard fileManager.fileExists(atPath: url.path),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+            return text.contains(Self.sentinelStart)
+                || (text.contains("[model.openburnbar]") && text.contains("base_url"))
         case .antigravity:
             return false
         }
@@ -441,7 +455,7 @@ struct RoutingClientWiring {
                 return .stale(installedModelIDs: installed, expectedModelIDs: expected)
             }
             return .current(modelIDs: installed)
-        case .claudeCode, .codex, .opencode, .forge:
+        case .claudeCode, .codex, .opencode, .forge, .grok:
             return isWired(target: target) ? .current(modelIDs: []) : .notWired
         case .antigravity:
             return .notWired
@@ -511,6 +525,13 @@ struct RoutingClientWiring {
             export OPENAI_BASE_URL=\(openAIBaseURL)
             export OPENAI_API_KEY=\(token)
             """
+        case .grok:
+            return """
+            # OpenBurnBar — wire Grok Build CLI through the local gateway
+            # Settings -> Agents -> CLIs writes [model.openburnbar] into ~/.grok/config.toml.
+            export XAI_API_KEY=\(token)
+            export OPENBURNBAR_GATEWAY_TOKEN=\(token)
+            """
         case .antigravity:
             return """
             # OpenBurnBar — Antigravity currently uses profile-scoped config
@@ -567,6 +588,7 @@ struct RoutingClientWiring {
             }
             return Self.logicalProviderModelCatalog(models)
         } catch {
+            AppLogger.network.error("routing_client_probe_models_failed", metadata: ["error": error.localizedDescription])
             return []
         }
     }
@@ -700,7 +722,7 @@ struct RoutingClientWiring {
                 "input": "ping",
                 "max_output_tokens": 1,
             ]
-        case .opencode, .forge, .droid:
+        case .opencode, .forge, .droid, .grok:
             let models = advertisedModels.isEmpty
                 ? await self.advertisedModels(gateway: gateway, session: session, timeoutSeconds: timeoutSeconds)
                 : advertisedModels
@@ -768,7 +790,7 @@ struct RoutingClientWiring {
             return base?.appending(path: "v1/messages")
         case .codex:
             return base?.appending(path: "v1/responses")
-        case .opencode, .forge, .droid:
+        case .opencode, .forge, .droid, .grok:
             return base?.appending(path: "v1/chat/completions")
         }
     }
@@ -854,6 +876,58 @@ struct RoutingClientWiring {
             _ = try? backupIfExists(url: url)
             try writeText(next, to: url)
         }
+    }
+
+    // MARK: - Grok Build (~/.grok/config.toml)
+
+    private func wireGrok(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+        let url = configURL(for: .grok)
+        let existing = readText(at: url) ?? ""
+        let stripped = stripSentinelBlock(in: existing)
+        let block = grokTOMLBlock(gateway: gateway)
+        let separator = stripped.isEmpty || stripped.hasSuffix("\n") ? "" : "\n"
+        let next = stripped + separator + block + "\n"
+
+        let backupURL = try backupIfExists(url: url)
+        try writeText(next, to: url)
+        return RoutingClientWiringChange(
+            target: .grok,
+            configURL: url,
+            backupURL: backupURL,
+            appliedAt: now()
+        )
+    }
+
+    private func unwireGrok() throws {
+        let url = configURL(for: .grok)
+        guard let existing = readText(at: url) else {
+            throw RoutingClientWiringError.notEnabled
+        }
+        guard existing.contains(Self.sentinelStart) else {
+            throw RoutingClientWiringError.notEnabled
+        }
+        let next = stripSentinelBlock(in: existing)
+        if next.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            try? fileManager.removeItem(at: url)
+        } else {
+            _ = try? backupIfExists(url: url)
+            try writeText(next, to: url)
+        }
+    }
+
+    private func grokTOMLBlock(gateway: RoutingClientGateway) -> String {
+        """
+        \(Self.sentinelStart)
+        # Managed by OpenBurnBar. Edit Settings -> Agents -> CLIs to change.
+        # Select the `openburnbar` custom model in Grok Build, or set
+        # [models] default = "openburnbar" when you want it session-wide.
+        [model.openburnbar]
+        model = "openburnbar-gateway"
+        base_url = "\(gateway.baseURL)/v1"
+        name = "OpenBurnBar Gateway"
+        env_key = "XAI_API_KEY"
+        \(Self.sentinelEnd)
+        """
     }
 
     private func codexTOMLBlock(

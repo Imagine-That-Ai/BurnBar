@@ -29,6 +29,8 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
     let lastAssistantMessage: String
     let fullText: String
     let indexedAt: Date
+    /// Best-effort workspace directory used by resume and handoff surfaces.
+    let workingDirectory: String?
     /// Source log file modification time; used to skip unchanged files.
     let fileModifiedAt: Date?
     /// Populated after on-demand CLI summarization in Session detail.
@@ -66,6 +68,7 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
         lastAssistantMessage: String,
         fullText: String,
         indexedAt: Date = Date(),
+        workingDirectory: String? = nil,
         fileModifiedAt: Date?,
         summary: String? = nil,
         summaryTitle: String? = nil,
@@ -93,6 +96,7 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
         self.lastAssistantMessage = lastAssistantMessage
         self.fullText = fullText
         self.indexedAt = indexedAt
+        self.workingDirectory = workingDirectory
         self.fileModifiedAt = fileModifiedAt
         self.summary = summary
         self.summaryTitle = summaryTitle

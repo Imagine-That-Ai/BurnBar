@@ -1,6 +1,11 @@
 import XCTest
 
 final class MacAppStoreReviewComplianceTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Static source-scan tests; fail fast if the XCTest host wedges.
+        executionTimeAllowance = 30
+    }
     func testMASEntitlementsIncludeSandboxAndSignInWithApple() throws {
         let entitlementsURL = repoRoot()
             .appendingPathComponent("AgentLens")
@@ -65,20 +70,18 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         let source = try String(contentsOf: ascURL, encoding: .utf8)
 
         XCTAssertTrue(source.contains("macOS Guideline 2.1(a), 2.1(b), and 3.1.2(c) fixes"))
-        XCTAssertTrue(source.contains("Settings -> Account -> Subscription -> Upgrade"))
+        XCTAssertTrue(source.contains("Account -> Subscription -> Upgrade"))
         XCTAssertTrue(source.contains("Subscribe with App Store"))
         XCTAssertTrue(source.contains("Terms of Use (EULA)"))
-        XCTAssertTrue(source.contains("AuthenticationServices error 1000"))
+        XCTAssertTrue(source.contains("AuthenticationServices.AuthorizationError error 1000"))
     }
 
     private func repoRoot(file: StaticString = #filePath) -> URL {
-        var url = URL(fileURLWithPath: "\(file)").deletingLastPathComponent()
-        while url.path != "/" {
-            if FileManager.default.fileExists(atPath: url.appendingPathComponent("project.yml").path) {
-                return url
-            }
-            url.deleteLastPathComponent()
-        }
-        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        // AgentLensTests/Active/<this file> → repo root (no filesystem walk; avoids
+        // rare hangs when FileManager probes network-backed paths under xcodebuild).
+        URL(fileURLWithPath: "\(file)")
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
     }
 }

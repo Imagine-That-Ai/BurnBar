@@ -131,6 +131,8 @@ final class AgentIdentityRegistry {
                 availability = runtimeAvailabilityByID["forge"] ?? existing.availability
             case .antigravity:
                 availability = runtimeAvailabilityByID["antigravity"] ?? existing.availability
+            case .grok:
+                availability = runtimeAvailabilityByID["grok"] ?? existing.availability
             case .none:
                 availability = existing.availability
             }

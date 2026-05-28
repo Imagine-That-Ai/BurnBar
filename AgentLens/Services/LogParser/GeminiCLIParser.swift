@@ -227,8 +227,10 @@ final class GeminiCLIParser: LogParser, Sendable {
         var inputTokens = acc.inputTokens
         var outputTokens = acc.outputTokens
 
+        let hasUsage = inputTokens > 0 || outputTokens > 0 || acc.cacheReadTokens > 0
+
         // Fallback estimation
-        if inputTokens == 0 && outputTokens == 0 {
+        if !hasUsage {
             guard acc.userChars + acc.assistantChars > 0 else { return nil }
             let estimated = TokenExtractionUtility.estimateFallbackTokens(
                 userVisibleChars: acc.userChars,
@@ -241,7 +243,7 @@ final class GeminiCLIParser: LogParser, Sendable {
             outputTokens = estimated.output
         }
 
-        guard inputTokens > 0 || outputTokens > 0 else { return nil }
+        guard inputTokens > 0 || outputTokens > 0 || acc.cacheReadTokens > 0 else { return nil }
 
         let model = acc.model ?? "gemini"
         let pricing = ModelPricing.lookup(model: model)

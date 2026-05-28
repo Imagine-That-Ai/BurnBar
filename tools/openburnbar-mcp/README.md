@@ -120,15 +120,29 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_semantic_search_conversations` | Local deterministic semantic search over indexed conversation chunks; returns structured `unavailable` when semantic tables or compatible embeddings are absent |
 | `burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search over the user's cloud session-log index; derives opaque query hashes locally and decrypts snippets locally |
 | `burnbar_cloud_get_conversation_body` | Download and decrypt a full hosted session body returned by cloud semantic search |
+| `burnbar_list_project_memory` | List project memory snapshots with source counts and freshness |
+| `burnbar_get_project_memory` | Read one project memory snapshot by slug |
+| `burnbar_cloud_sync_project_memory` | Sync a local project memory snapshot through the encrypted cloud path |
 | `burnbar_get_conversation` | Full row + `fullText` for one id |
 | `burnbar_recent_usage` | Recent `token_usage` rows |
 | `burnbar_project_summary` | Per-project cost + session aggregation over a rolling window |
 | `burnbar_chat_messages` | In-app `chat_messages` tail |
 | `burnbar_record_hermes_usage` | **Write** an idempotent row to the OpenBurnBar daemon usage ledger |
 | `burnbar_resolve_usage_ledger_path` | Show the ledger path the writer will use |
+| `burnbar_query_spend` | Query spend by provider, model, project, account, and time window |
+| `burnbar_budget_status` | Summarize active budget gates and current burn state |
+| `burnbar_spend_forecast` | Forecast spend against configured budget limits |
+| `burnbar_budget_audit` | Read budget gate audit events for recent enforcement decisions |
+| `burnbar_set_budget_limit` | **Write** a daemon-backed budget limit |
+| `burnbar_pause_budget_gate` | **Write** a pause window for one budget gate |
+| `burnbar_resume_budget_gate` | **Write** a previously paused budget gate back into enforcement |
+| `burnbar_org_spend` | Aggregate organization spend and usage over a bounded window |
+| `burnbar_list_resumable_conversations` | Return recent conversations eligible for native or ported resume |
+| `burnbar_resume_conversation` | Compose a native command hint or deterministic cross-harness briefing |
+| `burnbar_spawn_resume` | Spawn the selected native or ported resume command after an explicit tool call |
 
-`burnbar_record_hermes_usage` is the single write tool. It never touches the
-SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is
+Write-capable tools are explicit and daemon-scoped. `burnbar_record_hermes_usage`
+never touches the SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is
 reachable on its UNIX socket
 (`~/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock`) it sends
 the row through the `daemon.usage.record` RPC so the daemon's in-memory
@@ -149,6 +163,11 @@ export OPENBURNBAR_CLOUD_VAULT_KEY_BASE64="<32-byte vault key, base64>"
 The MCP process keeps the plaintext query and vault key local. Firebase
 receives only keyed token/semantic hashes, returns encrypted result envelopes,
 and this MCP process decrypts titles, snippets, and requested bodies on-device.
+
+`burnbar_resume_conversation` is print-only by default and returns either a
+native command hint, a rendered cross-harness briefing, or a structured error.
+`burnbar_spawn_resume` is intentionally separate so agents must make an explicit
+second tool call before launching a process.
 
 The `BurnBarUsageEvent` JSON shape matches Swift's default `JSONEncoder`
 output exactly:

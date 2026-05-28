@@ -143,7 +143,7 @@ export const factoryAdapter: ProviderAdapter = {
       `${API_HOST}${VALIDATE_PATH}`,
       trimmed
     );
-    const payload = parseFactoryAuthMePayload(result.data);
+    void parseFactoryAuthMePayload(result.data);
     if (!result.ok) {
       return {
         valid: false,

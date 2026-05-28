@@ -249,3 +249,10 @@ cyclomatic_complexity:
 warning_threshold: 10
 
 reporter: xcode
+
+custom_rules:
+  empty_catch_block:
+    name: "Empty Catch Block"
+    regex: 'catch\s*\{\s*(\/\*.*?\*\/\s*)?\}'
+    message: "Empty catch blocks swallow errors; log with AppLogger.error or propagate."
+    severity: error

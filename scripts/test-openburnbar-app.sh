@@ -284,7 +284,14 @@ is_xcode_false_negative_pass() {
     grep -Fq "Test Suite 'Selected tests' passed" "$log_path" || return 1
     grep -Eq "Executed [1-9][0-9]* tests, with ([0-9]+ tests skipped and )?0 failures" "$log_path" || return 1
 
-    if grep -Eq "Test Case '-\\[[^]]+\\]' failed|Failing tests:|with [1-9][0-9]* failures" "$log_path"; then
+    # Reject when xcodebuild lists concrete failing tests or XCTest logged failures.
+    if grep -Eq "Test Case '-\\[[^]]+\\]' failed" "$log_path"; then
+        return 1
+    fi
+    if grep -A40 "^Failing tests:" "$log_path" | tail -n +2 | grep -qE '^[[:space:]]*[A-Za-z0-9_]+Tests\\.'; then
+        return 1
+    fi
+    if awk "/Test Suite 'Selected tests'/{found=1} found && /Executed [0-9]+ tests/ && /with .*[^0] failures/" "$log_path" | grep -q .; then
         return 1
     fi
 

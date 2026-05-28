@@ -11,6 +11,16 @@ import XCTest
 /// what we lock down here.
 final class AnthropicCredentialProbeTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        MockURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        MockURLProtocol.reset()
+        super.tearDown()
+    }
+
     // MARK: - detectShape
 
     func test_detectShape_consoleAPIKey() {
@@ -52,101 +62,94 @@ final class AnthropicCredentialProbeTests: XCTestCase {
         XCTAssertTrue(label.hasSuffix("ABCD"))
     }
 
-    // MARK: - verdict classification (via private probe path)
+    // MARK: - verdict classification
 
-    /// 200-class responses should land on `.ok(model:)` regardless of body
-    /// (the probe model name is the source of truth).
-    func test_classify_okOn200() async {
-        let probe = makeMockedProbe(status: 200, body: #"{"id":"msg_01"}"#)
-        let result = await probe.probe(credential: "sk-ant-api03-fake")
-        XCTAssertEqual(result.verdict, .ok(model: AnthropicCredentialProbe.defaultProbeModel))
-        XCTAssertTrue(result.isHealthy)
-        XCTAssertEqual(result.shape, .consoleAPIKey)
+    private func makeClassifier() -> AnthropicCredentialProbe {
+        AnthropicCredentialProbe(clock: { Date(timeIntervalSince1970: 1_700_000_000) })
     }
 
-    func test_classify_authFailedOn401() async {
-        let probe = makeMockedProbe(status: 401, body: #"{"error":"invalid auth"}"#)
-        let result = await probe.probe(credential: "sk-ant-api03-bad")
-        XCTAssertEqual(result.verdict, .authFailed)
-        XCTAssertFalse(result.isHealthy)
+    func test_classify_okOn200() {
+        let probe = makeClassifier()
+        XCTAssertEqual(
+            probe.classify(status: 200, body: #"{"id":"msg_01"}"#),
+            .ok(model: AnthropicCredentialProbe.defaultProbeModel)
+        )
     }
 
-    func test_classify_quotaExhaustedOn402() async {
-        let probe = makeMockedProbe(status: 402, body: #"{"error":"out of quota"}"#)
-        let result = await probe.probe(credential: "sk-ant-api03-fake")
-        XCTAssertEqual(result.verdict, .quotaExhausted)
+    func test_classify_authFailedOn401() {
+        let probe = makeClassifier()
+        XCTAssertEqual(probe.classify(status: 401, body: #"{"error":"invalid auth"}"#), .authFailed)
     }
 
-    func test_classify_rateLimitedOn429WithoutQuotaText() async {
-        let probe = makeMockedProbe(status: 429, body: #"{"error":"rate limited"}"#)
-        let result = await probe.probe(credential: "sk-ant-api03-fake")
-        XCTAssertEqual(result.verdict, .rateLimited)
+    func test_classify_quotaExhaustedOn402() {
+        let probe = makeClassifier()
+        XCTAssertEqual(probe.classify(status: 402, body: #"{"error":"out of quota"}"#), .quotaExhausted)
     }
 
-    func test_classify_quotaExhaustedOn429WithQuotaText() async {
-        let probe = makeMockedProbe(status: 429, body: #"{"error":"quota exhausted for the month"}"#)
-        let result = await probe.probe(credential: "sk-ant-api03-fake")
-        XCTAssertEqual(result.verdict, .quotaExhausted)
+    func test_classify_rateLimitedOn429WithoutQuotaText() {
+        let probe = makeClassifier()
+        XCTAssertEqual(probe.classify(status: 429, body: #"{"error":"rate limited"}"#), .rateLimited)
     }
 
-    func test_classify_modelUnavailableOn404() async {
-        let probe = makeMockedProbe(status: 404, body: #"{"error":"model not found"}"#)
-        let result = await probe.probe(credential: "sk-ant-api03-fake")
-        if case .modelUnavailable = result.verdict { } else {
-            XCTFail("expected .modelUnavailable, got \(result.verdict)")
+    func test_classify_quotaExhaustedOn429WithQuotaText() {
+        let probe = makeClassifier()
+        XCTAssertEqual(probe.classify(status: 429, body: #"{"error":"quota exhausted for the month"}"#), .quotaExhausted)
+    }
+
+    func test_classify_modelUnavailableOn404() {
+        let probe = makeClassifier()
+        let verdict = probe.classify(status: 404, body: #"{"error":"model not found"}"#)
+        if case .modelUnavailable = verdict { } else {
+            XCTFail("expected .modelUnavailable, got \(verdict)")
         }
     }
 
-    func test_classify_unexpectedOn500() async {
-        let probe = makeMockedProbe(status: 500, body: "internal server error")
-        let result = await probe.probe(credential: "sk-ant-api03-fake")
-        if case .unexpected(let status, _) = result.verdict {
+    func test_classify_unexpectedOn500() {
+        let probe = makeClassifier()
+        let verdict = probe.classify(status: 500, body: "internal server error")
+        if case .unexpected(let status, _) = verdict {
             XCTAssertEqual(status, 500)
         } else {
-            XCTFail("expected .unexpected, got \(result.verdict)")
+            XCTFail("expected .unexpected, got \(verdict)")
         }
     }
 
-    func test_classify_truncatesLongBodyMessages() async {
+    func test_classify_truncatesLongBodyMessages() {
+        let probe = makeClassifier()
         let longBody = String(repeating: "X", count: 1024)
-        let probe = makeMockedProbe(status: 503, body: longBody)
-        let result = await probe.probe(credential: "sk-ant-api03-fake")
-        if case .unexpected(_, let message) = result.verdict {
+        let verdict = probe.classify(status: 503, body: longBody)
+        if case .unexpected(_, let message) = verdict {
             XCTAssertLessThanOrEqual(message.count, 200)
             XCTAssertTrue(message.hasSuffix("…"))
         } else {
-            XCTFail("expected .unexpected, got \(result.verdict)")
+            XCTFail("expected .unexpected, got \(verdict)")
         }
     }
 
     // MARK: - probe header dispatch
 
-    func test_probe_sendsConsoleAPIKeyHeader_forSkAntAPIKeyPrefix() async throws {
-        let recorder = RequestRecorder()
-        let probe = makeMockedProbe(status: 200, body: "{}", recorder: recorder)
-        _ = await probe.probe(credential: "sk-ant-api03-recorded")
-        let recorded = recorder.last
-        XCTAssertNotNil(recorded)
-        XCTAssertEqual(recorded?.value(forHTTPHeaderField: "x-api-key"), "sk-ant-api03-recorded")
-        XCTAssertNil(recorded?.value(forHTTPHeaderField: "Authorization"))
+    func test_probe_sendsConsoleAPIKeyHeader_forSkAntAPIKeyPrefix() throws {
+        let probe = AnthropicCredentialProbe()
+        let built = try probe.buildProbeRequest(credential: "sk-ant-api03-recorded")
+        XCTAssertEqual(built.request.value(forHTTPHeaderField: "x-api-key"), "sk-ant-api03-recorded")
+        XCTAssertNil(built.request.value(forHTTPHeaderField: "Authorization"))
     }
 
-    func test_probe_sendsBearerHeader_forOAuthCredential() async throws {
-        let recorder = RequestRecorder()
-        let probe = makeMockedProbe(status: 200, body: "{}", recorder: recorder)
-        _ = await probe.probe(credential: "sk-ant-oat01-oauth-bearer-token")
-        let recorded = recorder.last
-        XCTAssertEqual(recorded?.value(forHTTPHeaderField: "Authorization"), "Bearer sk-ant-oat01-oauth-bearer-token")
-        XCTAssertNil(recorded?.value(forHTTPHeaderField: "x-api-key"))
-    }
-
-    func test_probe_alwaysPinsAnthropicVersionHeader() async {
-        let recorder = RequestRecorder()
-        let probe = makeMockedProbe(status: 200, body: "{}", recorder: recorder)
-        _ = await probe.probe(credential: "sk-ant-api03-test")
-        let recorded = recorder.last
+    func test_probe_sendsBearerHeader_forOAuthCredential() throws {
+        let probe = AnthropicCredentialProbe()
+        let built = try probe.buildProbeRequest(credential: "sk-ant-oat01-oauth-bearer-token")
         XCTAssertEqual(
-            recorded?.value(forHTTPHeaderField: "anthropic-version"),
+            built.request.value(forHTTPHeaderField: "Authorization"),
+            "Bearer sk-ant-oat01-oauth-bearer-token"
+        )
+        XCTAssertNil(built.request.value(forHTTPHeaderField: "x-api-key"))
+    }
+
+    func test_probe_alwaysPinsAnthropicVersionHeader() throws {
+        let probe = AnthropicCredentialProbe()
+        let built = try probe.buildProbeRequest(credential: "sk-ant-api03-test")
+        XCTAssertEqual(
+            built.request.value(forHTTPHeaderField: "anthropic-version"),
             AnthropicCredentialProbe.defaultAnthropicVersion
         )
     }
@@ -158,10 +161,9 @@ final class AnthropicCredentialProbeTests: XCTestCase {
         body: String,
         recorder: RequestRecorder? = nil
     ) -> AnthropicCredentialProbe {
-        let probeID = UUID().uuidString
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
-        MockURLProtocol.registerResponder(id: probeID) { request in
+        MockURLProtocol.registerResponder { request in
             recorder?.record(request)
             let http = HTTPURLResponse(
                 url: request.url!,
@@ -174,7 +176,7 @@ final class AnthropicCredentialProbeTests: XCTestCase {
         let session = URLSession(configuration: configuration)
         return AnthropicCredentialProbe(
             session: session,
-            baseURL: URL(string: "https://api.anthropic.test/v1/\(probeID)")!,
+            baseURL: URL(string: "https://api.anthropic.test/v1")!,
             clock: { Date(timeIntervalSince1970: 1_700_000_000) }
         )
     }
@@ -201,25 +203,31 @@ private final class RequestRecorder: @unchecked Sendable {
 
 private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
-    private nonisolated(unsafe) static var responders: [String: (URLRequest) -> (HTTPURLResponse, Data)] = [:]
+    private nonisolated(unsafe) static var responder: ((URLRequest) -> (HTTPURLResponse, Data))?
 
-    static func registerResponder(id: String, responder: @escaping (URLRequest) -> (HTTPURLResponse, Data)) {
+    static func registerResponder(_ responder: @escaping (URLRequest) -> (HTTPURLResponse, Data)) {
         lock.lock()
-        responders[id] = responder
+        self.responder = responder
         lock.unlock()
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
+    static func reset() {
+        lock.lock()
+        responder = nil
+        lock.unlock()
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.host?.caseInsensitiveCompare("api.anthropic.test") == .orderedSame
+    }
+
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        guard let responder = Self.responder(for: request) else {
+        guard let responder = Self.responder else {
             client?.urlProtocol(self, didFailWithError: URLError(.cannotLoadFromNetwork))
             return
         }
-        // URLSession strips the body before handing us a request, so reach
-        // through `urlRequest` for the body when we need to inspect it. The
-        // tests only inspect headers, which are preserved.
         let (response, data) = responder(request)
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
@@ -227,11 +235,4 @@ private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() {}
-
-    private static func responder(for request: URLRequest) -> ((URLRequest) -> (HTTPURLResponse, Data))? {
-        guard let id = request.url?.pathComponents.dropFirst().dropFirst().first else { return nil }
-        lock.lock()
-        defer { lock.unlock() }
-        return responders[id]
-    }
 }

@@ -570,15 +570,19 @@ protocol SessionLogEncryptedCloudClient {
 
 @MainActor
 final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
-    private let functions: Functions
+    private let injectedFunctions: Functions?
     private let urlSession: URLSession
 
     init(
-        functions: Functions = Functions.functions(region: "us-central1"),
+        functions: Functions? = nil,
         urlSession: URLSession = .shared
     ) {
-        self.functions = functions
+        self.injectedFunctions = functions
         self.urlSession = urlSession
+    }
+
+    private var functions: Functions {
+        injectedFunctions ?? Functions.functions(region: "us-central1")
     }
 
     func beginEncryptedSessionBlobUpload(

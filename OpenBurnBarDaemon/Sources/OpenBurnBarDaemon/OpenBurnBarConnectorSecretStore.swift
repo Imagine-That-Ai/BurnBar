@@ -46,6 +46,7 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
             kSecUseAuthenticationContext as String: context
         ]
         var item: CFTypeRef?

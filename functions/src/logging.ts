@@ -29,3 +29,12 @@ export function logError(fields: LogFields & { error?: string }): void {
   };
   console.error(JSON.stringify(payload));
 }
+
+export function logWarn(fields: LogFields): void {
+  const payload = {
+    severity: "WARNING",
+    trace_id: fields.trace_id ?? randomUUID(),
+    ...fields,
+  };
+  console.warn(JSON.stringify(payload));
+}

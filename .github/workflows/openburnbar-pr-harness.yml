@@ -44,12 +44,6 @@ jobs:
       - name: Check schema sync drift
         run: ./tools/schema-sync/check-drift.sh
 
-      - name: App Check config smoke
-        if: env.INTERNAL_RUN == 'true'
-        env:
-          INTERNAL_RUN: ${{ env.INTERNAL_RUN }}
-        run: bash ./scripts/ci/app-check-smoke.sh
-
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -60,12 +54,28 @@ jobs:
       - name: Check unsafe cast debt budget
         run: ./scripts/debt/check-unsafe-cast-budget.sh
 
+      - name: Refresh tech debt metrics snapshot
+        run: |
+          set -euo pipefail
+          ./scripts/ci/update-tech-debt-metrics.sh
+          if ! git diff --quiet -- docs/TECH_DEBT_METRICS.md; then
+            echo "docs/TECH_DEBT_METRICS.md is out of date. Run ./scripts/ci/update-tech-debt-metrics.sh and commit." >&2
+            git diff -- docs/TECH_DEBT_METRICS.md >&2 || true
+            exit 1
+          fi
+
       - name: Inject Firebase config
         if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
         run: bash ./scripts/ci/inject-firebase-config.sh
+
+      - name: App Check config smoke
+        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
+        env:
+          INTERNAL_RUN: ${{ env.INTERNAL_RUN }}
+        run: bash ./scripts/ci/app-check-smoke.sh
 
       - name: Skip Firebase config injection for fork PRs
         if: env.INTERNAL_RUN != 'true'
@@ -100,18 +110,29 @@ jobs:
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
 
       - name: Run OpenBurnBar mobile unit tests
+        # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
       - name: Extract code coverage
-        if: always() && hashFiles('.derived-data/OpenBurnBar_TestCoverage.xcresult/**') != ''
-        run: ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
+        if: always() && env.INTERNAL_RUN == 'true'
+        run: |
+          set -euo pipefail
+          xcresult="$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
+          if [[ ! -d "$xcresult" ]]; then
+            echo "Missing xcresult at $xcresult — app tests must emit coverage on internal PRs." >&2
+            exit 1
+          fi
+          ./scripts/extract-coverage.sh "$xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
 
       - name: Compute diff coverage
-        if: github.event_name == 'pull_request' && hashFiles('openburnbar-coverage.json') != ''
-        run: ./scripts/diff-coverage-all.sh origin/main
+        if: github.event_name == 'pull_request' && env.INTERNAL_RUN == 'true'
+        run: |
+          set -euo pipefail
+          test -f "$GITHUB_WORKSPACE/openburnbar-coverage.json"
+          ./scripts/diff-coverage-all.sh origin/main
 
       - name: Post coverage summary
         if: always()
@@ -237,6 +258,12 @@ jobs:
       - name: Run supply chain audit
         run: ./scripts/supply-chain-audit.sh
 
+      - name: Commercial launch gate (internal)
+        if: env.INTERNAL_RUN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/commercial-launch-gate.mjs
+
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
@@ -260,3 +287,106 @@ jobs:
       - name: Clean up Firebase config
         if: always() && env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
         run: bash ./scripts/ci/cleanup-firebase-config.sh
+
+  path-filter:
+    runs-on: ubuntu-latest
+    outputs:
+      hermes_iroh: ${{ steps.filter.outputs.hermes_iroh }}
+      computer_use: ${{ steps.filter.outputs.computer_use }}
+      mercury_media: ${{ steps.filter.outputs.mercury_media }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: filter
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            CHANGED="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          else
+            CHANGED="$(git diff --name-only HEAD~1 HEAD || true)"
+          fi
+          echo "$CHANGED" > /tmp/changed-paths.txt
+          match() { grep -Eq "$1" /tmp/changed-paths.txt; }
+          if match '^OpenBurnBarCore/|^android/.*/hermes/|^functions/src/hermes|^functions/src/.*iroh|^OpenBurnBarMobile/.*iroh|^scripts/e2e/.*iroh'; then
+            echo "hermes_iroh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "hermes_iroh=false" >> "$GITHUB_OUTPUT"
+          fi
+          if match '^OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/|^OpenBurnBarDaemon/.*ComputerUse|^OpenBurnBarDaemon/Resources/PlaywrightBridge/|^scripts/test-computer-use|^scripts/install-playwright'; then
+            echo "computer_use=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "computer_use=false" >> "$GITHUB_OUTPUT"
+          fi
+          if match '^OpenBurnBarMobile/.*[Mm]edia|^OpenBurnBarMobile/.*[Mm]ercury|^android/.*/media/|^AgentLens/Services/Media/|^functions/src/media'; then
+            echo "mercury_media=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "mercury_media=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  hermes-iroh-e2e:
+    needs: [openburnbar-pr, path-filter]
+    if: needs.path-filter.outputs.hermes_iroh == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Hermes relay unit tests (Functions)
+        run: npm ci --prefix functions && node functions/scripts/test-hermes.mjs
+      - name: Hermes core Swift tests
+        run: |
+          cd OpenBurnBarCore
+          swift test --filter OpenBurnBarCoreTests/Hermes
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          java-version: "21"
+          distribution: temurin
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Android iroh-relay JVM tests
+        run: cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon
+
+  computer-use-e2e:
+    needs: [openburnbar-pr, path-filter]
+    if: needs.path-filter.outputs.computer_use == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - name: Computer Use core tests
+        run: |
+          cd OpenBurnBarCore
+          swift test --filter OpenBurnBarComputerUseCoreTests
+      - name: Install Playwright (pinned)
+        run: bash scripts/install-playwright.sh
+      - name: Playwright bridge loopback smoke
+        env:
+          OPENBURNBAR_PLAYWRIGHT_BRIDGE: ${{ github.workspace }}/OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js
+        run: bash scripts/test-computer-use-loopback.sh
+
+  mercury-media-e2e:
+    needs: [openburnbar-pr, path-filter]
+    if: needs.path-filter.outputs.mercury_media == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          java-version: "21"
+          distribution: temurin
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Android media JVM tests
+        run: |
+          cd android
+          ./gradlew :app:testDebugUnitTest --tests "com.openburnbar.ui.media.*" --tests "com.openburnbar.data.media.*" --no-daemon
+      - name: iOS Mercury/media unit tests
+        # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
+        run: ./scripts/test-openburnbar-mobile.sh

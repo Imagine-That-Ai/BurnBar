@@ -253,7 +253,7 @@ public enum AssistantModelCatalog {
     public static func appliesNextSession(_ runtime: AssistantRuntimeID) -> Bool {
         switch runtime {
         case .hermes, .pi: return false
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity: return true
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok: return true
         }
     }
 
@@ -411,7 +411,7 @@ public enum CLIAgentModelPreferences {
 private extension AssistantRuntimeID {
     var usesDynamicMacCLICatalog: Bool {
         switch self {
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok:
             return true
         case .hermes, .pi, .openClaw:
             return false

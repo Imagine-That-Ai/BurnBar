@@ -15,6 +15,10 @@ function vaultKey(): Buffer | undefined {
   return key.length === 32 ? key : undefined;
 }
 
+export function hasVaultKey(): boolean {
+  return vaultKey() !== undefined;
+}
+
 export function decryptSealedText(envelope: unknown): string | undefined {
   const key = vaultKey();
   if (!key || !envelope || typeof envelope !== "object") return undefined;

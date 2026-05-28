@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarCore
 
 // MARK: - Refresh Result Types
 
@@ -11,6 +12,7 @@ struct FullRefreshResult: Sendable {
     var errors: [AgentProvider: String] = [:]
     var allUsages: [TokenUsage] = []
     var persistenceErrorMessage: String?
+    var typedPersistenceError: OpenBurnBarError?
     var healthWriteError: String?
     var parsePhaseDuration: TimeInterval = 0
     var persistencePhaseDuration: TimeInterval = 0
@@ -51,67 +53,31 @@ enum RefreshBackgroundWork {
             postPersistence: PostPersistenceResult()
         )
 
-        // ── Parse Phase ──────────────────────────────────────────────
-        let parsePhaseStartedAt = Date()
-        var allUsages: [TokenUsage] = []
-        var allConversations: [ConversationRecord] = []
-        var provisionalUsageMap = Dictionary(uniqueKeysWithValues: existingUsages.map { ($0.id, $0) })
-
-        let parserEntries = parsers.sorted { $0.key.rawValue < $1.key.rawValue }
-        for (provider, parser) in parserEntries {
-            do {
-                let parseResult = try await parser.parse()
-                let usages = parseResult.usages
-                let providerHealth: ParserHealth = usages.isEmpty
-                    ? .empty
-                    : .healthy(sessionCount: usages.count)
-                allUsages.append(contentsOf: usages)
-                if settings.conversationIndexingEnabled {
-                    allConversations.append(contentsOf: parseResult.conversations)
-                }
-                result.parserHealth[provider] = providerHealth
-
-                if !usages.isEmpty {
-                    for usage in usages {
-                        provisionalUsageMap[usage.id] = usage
-                    }
-                }
-            } catch {
-                result.parserHealth[provider] = .failed(error: error.localizedDescription)
-                result.errors[provider] = error.localizedDescription
-            }
-        }
-        result.allUsages = allUsages
-        result.parsePhaseDuration = Date().timeIntervalSince(parsePhaseStartedAt)
-
-        // ── Index Conversations ──────────────────────────────────────
-        result.indexedConversationChanges = await orchestrator.indexConversationsOffMain(
-            allConversations,
-            indexingEnabled: settings.conversationIndexingEnabled
+        let pipeline = UsageRefreshPipeline(
+            parsers: parsers,
+            dataStore: dataStore,
+            orchestrator: orchestrator,
+            existingUsages: existingUsages,
+            settings: settings
         )
 
-        // ── Persistence Phase ────────────────────────────────────────
-        let persistencePhaseStartedAt = Date()
-        do {
-            if !allUsages.isEmpty {
-                try dataStore.usageStore.insertChunked(allUsages, chunkSize: 500)
-            }
-        } catch {
-            let message = "Failed to store imported usage rows: \(error.localizedDescription)"
-            result.persistenceErrorMessage = message
-        }
-        result.persistencePhaseDuration = Date().timeIntervalSince(persistencePhaseStartedAt)
+        // discover → parse → reconcile → persist
+        let discovery = pipeline.discover()
+        let parsed = await pipeline.parse(from: discovery)
+        let reconciled = await pipeline.reconcile(parsed: parsed)
+        let persisted = pipeline.persist(parsed: parsed)
 
-        // ── Parser Health Persistence ────────────────────────────────
+        result.parserHealth = parsed.parserHealth
+        result.errors = parsed.errors
+        result.allUsages = parsed.allUsages
+        result.parsePhaseDuration = parsed.duration
+        result.indexedConversationChanges = reconciled.indexedConversationChanges
+        result.persistenceErrorMessage = persisted.persistenceErrorMessage
+        result.typedPersistenceError = persisted.typedPersistenceError
+        result.persistencePhaseDuration = persisted.duration
+
         do {
-            try Self.writeParserImportHealth(
-                parserHealth: result.parserHealth,
-                parsers: parsers,
-                dataStore: dataStore,
-                importedUsageCount: allUsages.count,
-                persistenceError: result.persistenceErrorMessage,
-                conversationIndexingEnabled: settings.conversationIndexingEnabled
-            )
+            try pipeline.writeParserHealth(parsed: parsed, persist: persisted)
         } catch {
             result.healthWriteError = "Failed to persist parser/import health: \(error.localizedDescription)"
         }
@@ -121,9 +87,9 @@ enum RefreshBackgroundWork {
             await orchestrator.runScheduledBackfillIfNeeded(parsers: parsers)
         }
 
-        // ── Post-Persistence Phase ───────────────────────────────────
+        // ── Post-Persistence Phase (API reconcile + quota) ───────────
         result.postPersistence = await orchestrator.runPostPersistencePhaseOffMain(
-            allUsages: allUsages,
+            allUsages: parsed.allUsages,
             snapshotAPIs: settings.snapshotAPIs
         )
 

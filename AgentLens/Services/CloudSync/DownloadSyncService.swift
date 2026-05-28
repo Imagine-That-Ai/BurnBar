@@ -72,7 +72,7 @@ final class DownloadSyncService: CloudSyncDomain {
                 doc.data()["cost"] as? Double
             }.reduce(0, +)
         } catch {
-            // Non-fatal: aggregate failing doesn't break local experience
+            AppLogger.sync.error("download_sync_aggregate_failed", metadata: ["error": error.localizedDescription])
         }
     }
 
@@ -102,7 +102,9 @@ final class DownloadSyncService: CloudSyncDomain {
                     "hardwareModel": DeviceHardwareIcon.localHardwareModel
                 ], merge: true)
             }
-        } catch { /* non-fatal */ }
+        } catch {
+            AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
+        }
 
         do {
             let snapshot = try await withCloudSyncRetry(
@@ -125,7 +127,9 @@ final class DownloadSyncService: CloudSyncDomain {
                 )
                 try context.dataStore.upsertDevice(device)
             }
-        } catch { /* non-fatal */ }
+        } catch {
+            AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
+        }
     }
 
     // MARK: - Provider Account Download
@@ -156,7 +160,9 @@ final class DownloadSyncService: CloudSyncDomain {
                 let accountForLocalStore = try appendSafeRemoteAccount(account, localDeviceId: localDeviceId)
                 try context.dataStore.providerAccountStore.upsert(accountForLocalStore)
             }
-        } catch { /* non-fatal */ }
+        } catch {
+            AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
+        }
     }
 
     private func appendSafeRemoteAccount(
@@ -270,6 +276,7 @@ final class DownloadSyncService: CloudSyncDomain {
                 collectionKind: .usage
             )
         } catch {
+            AppLogger.sync.error("download_usage_watermark_fetch_failed", metadata: ["error": error.localizedDescription])
             watermark = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
         }
 
@@ -355,7 +362,9 @@ final class DownloadSyncService: CloudSyncDomain {
                 }
             }
             completedDownload = true
-        } catch { /* non-fatal */ }
+        } catch {
+            AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
+        }
     }
 
     // MARK: - Conversation Download
@@ -372,6 +381,7 @@ final class DownloadSyncService: CloudSyncDomain {
                 collectionKind: .conversations
             )
         } catch {
+            AppLogger.sync.error("download_conversation_watermark_fetch_failed", metadata: ["error": error.localizedDescription])
             watermark = Date.distantPast
         }
 
@@ -435,7 +445,9 @@ final class DownloadSyncService: CloudSyncDomain {
                     inferredTaskTitle: data["inferredTaskTitle"] as? String ?? "",
                     lastAssistantMessage: data["lastAssistantMessage"] as? String ?? "",
                     fullText: "",
-                    indexedAt: Date(), fileModifiedAt: nil,
+                    indexedAt: Date(),
+                    workingDirectory: data["workingDirectory"] as? String,
+                    fileModifiedAt: nil,
                     summary: data["summary"] as? String,
                     sourceType: ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog,
                     sourceDeviceId: remoteDeviceId, sourceDeviceName: deviceName, isRemote: true
@@ -448,7 +460,9 @@ final class DownloadSyncService: CloudSyncDomain {
                 }
             }
             completedDownload = true
-        } catch { /* non-fatal */ }
+        } catch {
+            AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
+        }
         return insertedIds
     }
 
@@ -488,7 +502,9 @@ final class DownloadSyncService: CloudSyncDomain {
 
                     try context.dataStore.updateConversationFullText(id: stableId, fullText: body)
                 }
-            } catch { /* non-fatal */ }
+            } catch {
+            AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
+        }
         }
     }
 

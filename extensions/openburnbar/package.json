@@ -42,8 +42,8 @@
   ],
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true,
-      "description": "OpenBurnBar stays available in restricted mode, but apply_patch and run_terminal remain gated until the workspace is trusted. The sidebar explains any gated workspace features."
+      "supported": false,
+      "description": "OpenBurnBar requires a trusted workspace before connecting to the local daemon or running repair flows."
     }
   },
   "activationEvents": [

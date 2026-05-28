@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Grok Build first-class CLI harness
+- **`GrokParser`** — reads `~/.grok/sessions/` (`summary.json`, `signals.json`, `chat_history.jsonl`, optional `updates.jsonl`) under `AgentProvider.xAI` with exact token confidence.
+- **Catalog** — `grok-build-0.1` model family; `grok-code-fast-1` retains `grok-build-0.1` alias for retirement migration.
+- **Switcher** — `SwitcherCLIProfileType.grok` discovery, Connections wiring, and `RoutingClientWiringTarget.grok` TOML block in `~/.grok/config.toml`.
+- **Quota / failover** — daemon gateway emits `XAISuperGrokPacingLog` on xAI routes; GrokBuild low prepaid balance → routing pressure; live catalog deprioritizes xAI slots ≤ 20% remaining.
+- **Session mirror** — `CLIAgentRuntime.grok` archive mapping; `Grok Build` in MCP `eligible_providers.json` `all_known` (not `native_eligible` until resume verified).
+- **Docs** — [docs/PROVIDERS.md](docs/PROVIDERS.md), [docs/PROVIDER_ACCOUNTS.md](docs/PROVIDER_ACCOUNTS.md).
+
+### Fixed — SOTA remediation CI stability
+- **`UsageRefreshPipelineTests`** — mark suite `@MainActor` to match `SettingsManager` / `DataStore` isolation.
+- **`NSAppleEventsUsageDescription`** — declare Automation usage in `OpenBurnBar-Info.plist` for Computer Use onboarding compliance test.
+- **`CLILaunchInvokerTests`** — use injected `launchHandler` for repeated quota-exhaustion launches (eliminates process-timing flake).
+- **`BurnBarHTTPGatewayServerTests`** — align `/v1/messages` pool-isolation expectations with generic `No eligible route` responses and live-catalog probe behavior.
+- **Quarantine → Archive** — move stale suites to `AgentLensTests/Archive/`; quarantine directory is pointer-only.
+
+### Added — Custom proxy model aliases
+- **Gateway model aliases** — Settings → Agents → Models can expose any route-ready model under a custom wire id (optional display name, per-alias “hide original model in /v1/models”). Clients call the alias in `/v1/models` and chat requests; routing still uses the canonical upstream model. Re-sync Droid after alias changes.
+
+### Added — Phase 5–6 SOTA remediation (observability & governance)
+- **SLO runbook** — [docs/runbooks/slos.md](docs/runbooks/slos.md) defines latency, availability, and error-budget targets for macOS app, daemon, and Cloud Functions, aligned with [OBSERVABILITY.md](docs/OBSERVABILITY.md) trace fields and log-based metrics patterns.
+- **Architecture ADRs** — [docs/ARCHITECTURE/](docs/ARCHITECTURE/README.md): naming conventions, actor isolation, error taxonomy, schema ownership, sync ownership.
+- **Tech debt metrics CI** — `./scripts/ci/update-tech-debt-metrics.sh` refreshes [docs/TECH_DEBT_METRICS.md](docs/TECH_DEBT_METRICS.md) (quarantine count, MainActor I/O facades, empty catches, service LOC, schema barrel vs legacy, unsafe-cast budget).
+- **Daemon metrics endpoint** — `GET /metrics` on the loopback HTTP gateway returns JSON snapshot (uptime, heartbeat, stub counters) for local SLO verification.
+
+### Added — BurnBar Resume
+- Added cross-harness conversation resume across the local MCP server, hosted
+  Remote MCP shim, daemon RPC/CLI, and Mac session-log UI. Native Claude Code
+  and Codex handles are delegated only after on-disk validation; all other
+  targets receive a deterministic local briefing.
+- Added explicit resume spawning via `burnbar_spawn_resume` and
+  `openburnbar resume --spawn`, with detached stdio, working-directory launch,
+  delayed temp-briefing cleanup, and GUI editor hint files under `.cursor`,
+  `.windsurf`, or `.openburnbar`.
+- Added `conversations.workingDirectory` with lazy background backfill from
+  absolute key-file paths, plus parser/cloud-sync passthroughs so resume can run
+  from the right project without blocking app launch.
+- Documented the privacy contract: hosted resume returns sealed envelopes,
+  the local shim checks vault-key availability before network access, and
+  plaintext briefings stay on-device or in 0600 temp files.
+
+### Fixed — Mercury mirror reconnect loops
+- Accepted first-frame `media.control` classification when a phone connects
+  through a still-signed persisted route whose `connectionId` differs from the
+  Mac's freshly published relay document. The Mac now registers the stream under
+  the frame's route id, audits the drift, and keeps subsequent presence/mirror
+  traffic flowing instead of leaving iOS/iPadOS/Android stuck in
+  "connecting / reconnecting".
+
+### Added — Mercury auto keyboard on text focus
+- **Added opt-in Auto keyboard on text focus for Mercury screen share.** iOS,
+  iPadOS, and Android now expose a persisted **Auto keyboard on text focus**
+  toggle in Media settings and in the mirror dock customize panel. When enabled,
+  the phone keyboard opens when the Mac reports a focused text field over
+  Mercury focus context; Smart Zoom still controls viewport framing on its own.
+  Default is off. Manual **Type on Mac** remains available when auto-type is
+  disabled or after the user dismisses the keyboard.
+- **Fixed Android manual-dismiss cooldown applying when auto-type was off**, and
+  **CoPilot mode leaving the IME open**; iOS now re-evaluates auto-type when
+  interaction mode or remote-unlock state changes (parity with Android's reactive
+  effects).
+
 ### Changed — type safety (unsafe cast zero-lock)
 - Burned down all hand-written unsafe casts and force unwraps across TypeScript
   (`functions/`, extension/service tests, website), Kotlin (Android tests and

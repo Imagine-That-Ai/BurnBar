@@ -763,6 +763,8 @@ public enum CLILaunchAdapter {
             return ["FORGE_HOME", "FORGE_CONFIG_HOME"]
         case .antigravity:
             return ["AGY_CONFIG_HOME", "ANTIGRAVITY_HOME", "GEMINI_HOME"]
+        case .grok:
+            return ["GROK_HOME", "XAI_API_KEY"]
         }
     }
 }
@@ -1004,6 +1006,44 @@ public struct CLILaunchInvoker {
             return finish(.failure(.launchSpawnFailed(CLILaunchRedactor.redactSensitiveData(detail))))
         }
 
+        func classifyObservedOutput() -> String? {
+            let combinedOutput = supervisor.snapshot()
+            return quotaRecorder.snapshot()
+                ?? CLIQuotaExhaustionClassifier.classify(for: cliType, in: combinedOutput)
+        }
+
+        /// Gives dispatch observers a brief window to deliver fast-failing stderr before classification.
+        func settleStartupOutput(maxAttempts: Int = 40) async -> String? {
+            for attempt in 0..<maxAttempts {
+                if let detail = classifyObservedOutput() {
+                    return detail
+                }
+                if attempt + 1 == maxAttempts {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 25_000_000)
+            }
+            return classifyObservedOutput()
+        }
+
+        func finishAfterProcessExit() async -> Result<Void, CLILaunchError> {
+            process.waitUntilExit()
+            if let detail = await settleStartupOutput() {
+                return finish(.failure(.quotaExhausted(CLILaunchRedactor.redactSensitiveData(detail))))
+            }
+            if process.terminationStatus == 0 {
+                return finish(.success(()))
+            }
+
+            let trimmedOutput = supervisor.snapshot().trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = trimmedOutput.isEmpty
+                ? (process.terminationStatus == 127
+                    ? "\(cliType.displayName) command not found in app PATH (exit 127). Install \(cliType.displayName) or ensure its runtime dependencies are available."
+                    : "\(cliType.displayName) exited during startup with status \(process.terminationStatus).")
+                : trimmedOutput
+            return finish(.failure(.launchFailed(CLILaunchRedactor.redactSensitiveData(detail))))
+        }
+
         let deadline = Date().addingTimeInterval(startupObservationTimeout)
         while true {
             if let detail = quotaRecorder.snapshot() {
@@ -1015,25 +1055,14 @@ public struct CLILaunchInvoker {
             }
 
             if !process.isRunning {
-                let combinedOutput = supervisor.snapshot()
-                if let detail = quotaRecorder.snapshot()
-                    ?? CLIQuotaExhaustionClassifier.classify(for: cliType, in: combinedOutput) {
-                    return finish(.failure(.quotaExhausted(CLILaunchRedactor.redactSensitiveData(detail))))
-                }
-                if process.terminationStatus == 0 {
-                    return finish(.success(()))
-                }
-
-                let trimmedOutput = combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-                let detail = trimmedOutput.isEmpty
-                    ? (process.terminationStatus == 127
-                        ? "\(cliType.displayName) command not found in app PATH (exit 127). Install \(cliType.displayName) or ensure its runtime dependencies are available."
-                        : "\(cliType.displayName) exited during startup with status \(process.terminationStatus).")
-                    : trimmedOutput
-                return finish(.failure(.launchFailed(CLILaunchRedactor.redactSensitiveData(detail))))
+                return await finishAfterProcessExit()
             }
 
             if Date() >= deadline {
+                if !process.isRunning {
+                    return await finishAfterProcessExit()
+                }
+
                 Task.detached(priority: .utility) {
                     while true {
                         if let detail = quotaRecorder.snapshot() {
@@ -1047,9 +1076,7 @@ public struct CLILaunchInvoker {
                         }
 
                         if !process.isRunning {
-                            let combinedOutput = supervisor.snapshot()
-                            if let detail = quotaRecorder.snapshot()
-                                ?? CLIQuotaExhaustionClassifier.classify(for: cliType, in: combinedOutput) {
+                            if let detail = await settleStartupOutput() {
                                 postLaunchQuotaObserver?(CLILaunchRedactor.redactSensitiveData(detail))
                             }
                             cleanup.perform()
@@ -1268,6 +1295,23 @@ public final class SwitcherCLILAunchService: Sendable {
 
         // Launch using the active profile ID
         return await launchCLI(for: activeProfileID)
+    }
+
+    /// Launches the CLI using the per-provider drain target — the account the
+    /// user has chosen to burn quota from for `providerID`. Returns
+    /// `.noActiveProfile` if no drain target is set for that provider.
+    ///
+    /// This is the per-provider counterpart to `launchUsingActiveProfile()`:
+    /// switching the Claude drain target never disturbs the Codex one.
+    public func launchUsingDrainTarget(for providerID: ProviderID) async -> CLILaunchOutcome {
+        guard let drainProfileID = profileStore.fetchActiveProfileID(for: providerID) else {
+            return CLILaunchOutcome(
+                success: false,
+                error: .noActiveProfile
+            )
+        }
+
+        return await launchCLI(for: drainProfileID)
     }
 
     // MARK: - Availability Checking

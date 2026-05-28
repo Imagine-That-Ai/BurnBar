@@ -1,21 +1,18 @@
 /**
- * @fileoverview Mercury media SKU lifecycle.
+ * @fileoverview Mercury media SKU lifecycle callables.
  *
- * Two callable Functions and one helper:
- *
- * - `grantMediaGrandfather` — runs once per existing
- *   `hosted_quota_sync` subscriber to grant a 90-day grandfather
- *   `hosted_media_sync` entitlement covering file transfer (Phase 2 SKU
- *   rollout). Implements Decision 5 in
- *   `plans/2026-05-15-mercury-media-master-plan.md`.
- * - `validateMediaPurchase` — verifies an Apple StoreKit transaction for
- *   `com.openburnbar.hostedMediaSync.monthly` and writes the entitlement
- *   doc the Firestore rules + Mac capability gate consume.
+ * - `grantMediaGrandfather` — one-shot grandfather for existing hosted_quota_sync
+ *   subscribers (90-day hosted_media_sync entitlement).
+ * - `validateMediaPurchase` — verifies StoreKit purchase and writes entitlement doc.
  */
 
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { isRecord, numberField, stringField } from "./guards.js";
+
+import { assertAppCheck } from "../auth.js";
+import { getConfig } from "../config.js";
+import { isRecord, numberField, stringField } from "../guards.js";
+import { logInfo } from "../logging.js";
 
 const MEDIA_SKU = "com.openburnbar.hostedMediaSync.monthly";
 const PRO_SKU = "com.openburnbar.pro.monthly";
@@ -43,19 +40,10 @@ function nowPlusDays(days: number): Timestamp {
   return Timestamp.fromMillis(millis);
 }
 
-/**
- * One-shot Function to grandfather every existing `hosted_quota_sync`
- * subscriber into media file-transfer access for 90 days. Idempotent:
- * if the user already has a `hosted_media_sync` doc with a `grantedBy`
- * other than `grandfather`, leaves it alone.
- *
- * Caller must be authenticated and admin (App Check + custom claim
- * `mediaSkuAdmin: true`). The Function is intended to be invoked once at
- * Phase 2 cutover by the operator.
- */
 export const grantMediaGrandfather = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
   async (request) => {
+    assertAppCheck(request);
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign-in required.");
     }
@@ -73,7 +61,6 @@ export const grantMediaGrandfather = onCall(
     let skipped = 0;
 
     for (const doc of subs.docs) {
-      // Path: users/{uid}/entitlements/{entitlementId}
       const segments = doc.ref.path.split("/");
       if (segments.length !== 4 || segments[0] !== "users") continue;
       const uid = segments[1];
@@ -107,6 +94,12 @@ export const grantMediaGrandfather = onCall(
       granted += 1;
     }
 
+    logInfo({
+      event: "callable_info",
+      message: "media_sku_grandfather_complete",
+      granted,
+      skipped,
+    });
     return { granted, skipped };
   }
 );
@@ -126,15 +119,10 @@ function parseValidateRequest(raw: unknown): ValidateRequest | undefined {
   return { productID, appleTransactionId, expireAtMillis };
 }
 
-/**
- * Validates an Apple StoreKit transaction (already verified by the
- * client / receipt server) and writes the canonical
- * `hosted_media_sync` entitlement document. Idempotent under the same
- * `appleTransactionId`.
- */
 export const validateMediaPurchase = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
   async (request) => {
+    assertAppCheck(request);
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign-in required.");
     }
@@ -165,6 +153,11 @@ export const validateMediaPurchase = onCall(
       schemaVersion: SCHEMA_VERSION,
     };
     await ref.set(grant, { merge: true });
+    logInfo({
+      event: "callable_info",
+      message: "media_purchase_validated",
+      product_id: data.productID,
+    });
     return { active: true, productID: data.productID };
   }
 );

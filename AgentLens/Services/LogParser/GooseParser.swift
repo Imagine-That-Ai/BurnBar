@@ -139,7 +139,7 @@ final class GooseParser: LogParser, Sendable {
                 let cacheReadTokens = integerValue(row, column: "cache_read_tokens")
                 let cacheWriteTokens = integerValue(row, column: "cache_write_tokens")
 
-                if inputTokens == 0 && outputTokens == 0 {
+                if inputTokens == 0 && outputTokens == 0 && cacheReadTokens == 0 && cacheWriteTokens == 0 {
                     let total = firstNonZero(
                         integerValue(row, column: "accumulated_total_tokens"),
                         integerValue(row, column: "total_tokens"),
@@ -294,6 +294,8 @@ final class GooseParser: LogParser, Sendable {
 
         var inputTokens = 0
         var outputTokens = 0
+        var cacheCreationTokens = 0
+        var cacheReadTokens = 0
         var model = "goose"
         var usedFallback = false
         var startTime: Date?
@@ -327,12 +329,16 @@ final class GooseParser: LogParser, Sendable {
                 let extracted = TokenExtractionUtility.extractUsageTokens(usage)
                 inputTokens += extracted.input
                 outputTokens += extracted.output
+                cacheCreationTokens += extracted.cacheCreation
+                cacheReadTokens += extracted.cacheRead
             }
             if let message = json["message"] as? [String: Any],
                let usage = message["usage"] as? [String: Any] {
                 let extracted = TokenExtractionUtility.extractUsageTokens(usage)
                 inputTokens += extracted.input
                 outputTokens += extracted.output
+                cacheCreationTokens += extracted.cacheCreation
+                cacheReadTokens += extracted.cacheRead
             }
 
             let role = (json["role"] as? String ?? (json["message"] as? [String: Any])?["role"] as? String ?? "").lowercased()
@@ -357,7 +363,9 @@ final class GooseParser: LogParser, Sendable {
             }
         }
 
-        if inputTokens == 0 && outputTokens == 0 {
+        let hasUsage = inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0
+
+        if !hasUsage {
             guard userChars + assistantChars > 0 else { return nil }
             let estimated = TokenExtractionUtility.estimateFallbackTokens(
                 userVisibleChars: userChars,
@@ -371,10 +379,15 @@ final class GooseParser: LogParser, Sendable {
             usedFallback = true
         }
 
-        guard inputTokens > 0 || outputTokens > 0 else { return nil }
+        guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(inputTokens: inputTokens, outputTokens: outputTokens)
+        let cost = pricing.cost(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens
+        )
 
         let usage = TokenUsage(
             provider: .goose,
@@ -383,6 +396,8 @@ final class GooseParser: LogParser, Sendable {
             model: model,
             inputTokens: inputTokens,
             outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
             costUSD: cost,
             startTime: startTime ?? Date(),
             endTime: endTime ?? Date(),

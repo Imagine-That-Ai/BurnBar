@@ -47,6 +47,10 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         queue.sync { peerPublicKeys[nodeId] = publicKey }
     }
 
+    public func hasPeer(nodeId: String) -> Bool {
+        queue.sync { peerPublicKeys[nodeId] != nil }
+    }
+
     public func deregisterPeer(nodeId: String) {
         queue.sync {
             peerPublicKeys.removeValue(forKey: nodeId)

@@ -116,4 +116,17 @@ final class BurnBarModelVariantExecutorTests: XCTestCase {
         )
         XCTAssertEqual(body["max_tokens"] as? Int, 64_000)
     }
+
+    func testValidatedProviderBaseURLRejectsNonHttpSchemes() {
+        for blocked in ["file:///etc/passwd", "javascript:alert(1)", "data:text/html,hi", ""] {
+            XCTAssertThrowsError(
+                try BurnBarProviderExecutorError.validatedProviderBaseURL(blocked)
+            ) { error in
+                guard case BurnBarProviderExecutorError.invalidBaseURL = error else {
+                    return XCTFail("Expected invalidBaseURL for \(blocked)")
+                }
+            }
+        }
+        XCTAssertNoThrow(try BurnBarProviderExecutorError.validatedProviderBaseURL("https://api.openai.com/v1"))
+    }
 }

@@ -301,6 +301,12 @@ struct ConnectionsSettingsView: View {
                 onSyncDroid: { syncDroidProxyModels() },
                 onToggleModelAdvertisement: { model, isEnabled in
                     setModelAdvertisement(model, isEnabled: isEnabled)
+                },
+                onUpsertModelAlias: { model, alias in
+                    await upsertModelAlias(model, alias: alias)
+                },
+                onRemoveModelAlias: { aliasModel in
+                    removeModelAlias(aliasModel)
                 }
             )
 
@@ -681,6 +687,30 @@ struct ConnectionsSettingsView: View {
         }
     }
 
+    private func upsertModelAlias(_ model: ProxyAdvertisedModel, alias: BurnBarModelAlias) async -> String? {
+        let saved = await daemonManager.setProviderModelAlias(
+            providerID: model.providerID,
+            alias: alias
+        )
+        guard saved else {
+            return daemonManager.lastError ?? "Could not save the custom model alias."
+        }
+        await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+        await viewModel.refreshWiringState(settings: settingsManager)
+        return nil
+    }
+
+    private func removeModelAlias(_ aliasModel: ProxyAdvertisedModel) {
+        Task {
+            await daemonManager.removeProviderModelAlias(
+                providerID: aliasModel.providerID,
+                aliasID: aliasModel.modelID
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
     private var accountGroups: [AccountGroup] {
         let groupedAPI = Dictionary(grouping: activeAccounts, by: \.providerID)
         let groupedOAuth = Dictionary(grouping: activeExternalOAuthAccounts, by: \.providerID)
@@ -817,6 +847,8 @@ struct ConnectionsSettingsView: View {
             return ProviderID(rawValue: "forge")
         case .antigravity:
             return .antigravity
+        case .grok:
+            return .xAI
         }
     }
 
@@ -1104,6 +1136,8 @@ struct ConnectionsSettingsView: View {
             return ProviderID(rawValue: "forge")
         case .antigravity:
             return .antigravity
+        case .grok:
+            return .xAI
         }
     }
 
@@ -1713,6 +1747,7 @@ private struct AppConnectRow: View {
         case .opencode: return .openCode
         case .forge: return .forgeDev
         case .droid: return .factory
+        case .grok: return .xAI
         case .antigravity: return .antigravity
         }
     }
@@ -1830,6 +1865,8 @@ private struct AppConnectRow: View {
             return "No route-ready OpenAI-compatible account is enabled. Add or enable a provider account before using \(target.displayName)."
         case .antigravity:
             return "No route-ready Google Antigravity profile is enabled. Add or enable an Antigravity account before using \(target.displayName)."
+        case .grok:
+            return "No route-ready xAI account is enabled. Add or enable an xAI API key before using \(target.displayName)."
         }
     }
 

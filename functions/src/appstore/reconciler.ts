@@ -49,10 +49,12 @@ import {
   getAppleJWSVerifier,
 } from "./verifier.js";
 import {
+  errorMessage,
   parseEntitlementBindingDoc,
   parseHostedQuotaEntitlementDoc,
   stripUndefinedObject,
 } from "../guards.js";
+import { logWarn } from "../logging.js";
 
 const ENTITLEMENT_SCHEMA_VERSION = 2;
 const VERIFICATION_VERSION = 2;
@@ -205,7 +207,10 @@ export async function reconcileEntitlement(
       decoded: redactPayload(candidate.payload),
     });
   } catch (err) {
-    console.warn("entitlement audit append failed", err);
+    logWarn({
+      event: "appstore.entitlement.audit_append_failed",
+      error: errorMessage(err),
+    });
   }
 
   return { uid, entitlement: result.entitlement, changed: result.changed };
@@ -438,7 +443,10 @@ async function fetchLiveStatusVerified(
       assertBundle(cfg, tx);
       verified.push(tx);
     } catch (err) {
-      console.warn("appstore:reconciler ASC JWS rejected", err);
+      logWarn({
+        event: "appstore.reconciler.asc_jws_rejected",
+        error: errorMessage(err),
+      });
     }
   }
   return verified;

@@ -26,6 +26,8 @@ struct ProxyModelCatalogPanel: View {
     let onToggleModelAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
     var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)? = nil
     var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)? = nil
+    var onUpsertModelAlias: ((ProxyAdvertisedModel, BurnBarModelAlias) async -> String?)? = nil
+    var onRemoveModelAlias: ((ProxyAdvertisedModel) -> Void)? = nil
 
     @State private var copiedEndpoint = false
     @State private var expandedProviderIDs: Set<String> = []
@@ -258,7 +260,9 @@ struct ProxyModelCatalogPanel: View {
                         onToggleExpanded: { toggleProvider(group.id) },
                         onToggleModelAdvertisement: onToggleModelAdvertisement,
                         onUpsertThinkingVariant: onUpsertThinkingVariant,
-                        onRemoveThinkingVariant: onRemoveThinkingVariant
+                        onRemoveThinkingVariant: onRemoveThinkingVariant,
+                        onUpsertModelAlias: onUpsertModelAlias,
+                        onRemoveModelAlias: onRemoveModelAlias
                     )
                     if group.id != groups.last?.id {
                         Divider().background(DesignSystem.Colors.border.opacity(0.45))
@@ -461,6 +465,8 @@ struct ProxyModelProviderSection: View {
     let onToggleModelAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
     var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)? = nil
     var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)? = nil
+    var onUpsertModelAlias: ((ProxyAdvertisedModel, BurnBarModelAlias) async -> String?)? = nil
+    var onRemoveModelAlias: ((ProxyAdvertisedModel) -> Void)? = nil
 
     private let collapsedLimit = 5
 
@@ -524,7 +530,9 @@ struct ProxyModelProviderSection: View {
                     onToggleAdvertisement: onToggleModelAdvertisement,
                     existingVariantLevels: existingVariantLevels(forBaseModelID: model.modelID, providerID: model.providerID),
                     onUpsertThinkingVariant: onUpsertThinkingVariant,
-                    onRemoveThinkingVariant: onRemoveThinkingVariant
+                    onRemoveThinkingVariant: onRemoveThinkingVariant,
+                    onUpsertModelAlias: onUpsertModelAlias,
+                    onRemoveModelAlias: onRemoveModelAlias
                 )
             }
 
@@ -553,6 +561,11 @@ struct ProxyModelCatalogRow: View {
     var existingVariantLevels: Set<BurnBarThinkingLevel> = []
     var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)? = nil
     var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)? = nil
+    var onUpsertModelAlias: ((ProxyAdvertisedModel, BurnBarModelAlias) async -> String?)? = nil
+    var onRemoveModelAlias: ((ProxyAdvertisedModel) -> Void)? = nil
+
+    @State private var showsAliasEditor = false
+    @State private var aliasDraft = ModelAliasEditorDraft.empty
 
     private var routeTint: Color {
         if model.routeEligible { return DesignSystem.Colors.success }
@@ -578,7 +591,7 @@ struct ProxyModelCatalogRow: View {
     }
 
     private var supportsThinkingVariants: Bool {
-        guard !model.isThinkingLevelVariant else { return false }
+        guard model.isBaseCatalogRow else { return false }
         let id = model.modelID.lowercased()
         let provider = model.providerID.lowercased()
         if provider == "anthropic" {
@@ -598,18 +611,49 @@ struct ProxyModelCatalogRow: View {
                 .fill(routeTint)
                 .frame(width: 7, height: 7)
             VStack(alignment: .leading, spacing: 3) {
-                Text(model.displayName)
-                    .font(DesignSystem.Typography.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    .lineLimit(1)
-                HStack(spacing: 5) {
+                if model.isUserModelAlias {
                     Text(model.modelID)
-                        .font(DesignSystem.Typography.monoTiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .textSelection(.enabled)
+                } else {
+                    Text(model.displayName)
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                }
+                HStack(spacing: 5) {
+                    if model.isUserModelAlias {
+                        if model.displayName != model.modelID {
+                            Text(model.displayName)
+                                .font(DesignSystem.Typography.monoTiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Text("•")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.7))
+                        }
+                        if let baseModelID = model.baseModelID {
+                            Text("→ \(baseModelID)")
+                                .font(DesignSystem.Typography.monoTiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .textSelection(.enabled)
+                        }
+                    } else {
+                        Text(model.modelID)
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
                     Text("•")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.7))
@@ -629,13 +673,37 @@ struct ProxyModelCatalogRow: View {
                 }
             }
             Spacer(minLength: DesignSystem.Spacing.sm)
+            if model.isUserModelAlias {
+                tag("custom alias", tint: DesignSystem.Colors.ember)
+            }
             if let level = resolvedThinkingLevel {
                 tag("think · \(level.displayLabel.lowercased())", tint: DesignSystem.Colors.purple)
             }
             tag(model.quotaState.replacingOccurrences(of: "_", with: " "), tint: quotaTint)
             tag(model.routeEligible ? "route ready" : "blocked", tint: routeTint)
             tag(advertisementLabel, tint: advertisementTint)
-            if model.isThinkingLevelVariant, let onRemoveThinkingVariant {
+            if model.isUserModelAlias, let onRemoveModelAlias {
+                Button {
+                    onRemoveModelAlias(model)
+                } label: {
+                    Image(systemName: "minus.circle")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .help("Remove the custom alias \(model.modelID).")
+            } else if model.isUserModelAlias, let onUpsertModelAlias {
+                Button {
+                    aliasDraft = ModelAliasEditorDraft(model: model)
+                    showsAliasEditor = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.ember)
+                .help("Edit alias \(model.modelID).")
+            } else if model.isThinkingLevelVariant, let onRemoveThinkingVariant {
                 Button {
                     onRemoveThinkingVariant(model)
                 } label: {
@@ -662,6 +730,17 @@ struct ProxyModelCatalogRow: View {
                 .fixedSize()
                 .foregroundStyle(DesignSystem.Colors.purple)
                 .help("Add a thinking-level variant for \(model.modelID).")
+            } else if model.isBaseCatalogRow, let onUpsertModelAlias {
+                Button {
+                    aliasDraft = ModelAliasEditorDraft(baseModel: model)
+                    showsAliasEditor = true
+                } label: {
+                    Label("Rename…", systemImage: "character.cursor.ibeam")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.ember)
+                .help("Expose \(model.modelID) under a custom wire id in /v1/models.")
             }
             if let onToggleAdvertisement {
                 Toggle(
@@ -684,6 +763,21 @@ struct ProxyModelCatalogRow: View {
         .help(model.lastError ?? "\(model.modelID) via \(model.providerName) source \(model.sourceID)")
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
+        .sheet(isPresented: $showsAliasEditor) {
+            ModelAliasEditorSheet(
+                draft: $aliasDraft,
+                onSave: { alias in
+                    guard let onUpsertModelAlias else { return nil }
+                    return await onUpsertModelAlias(model, alias)
+                },
+                onCancel: {
+                    showsAliasEditor = false
+                },
+                onSaved: {
+                    showsAliasEditor = false
+                }
+            )
+        }
     }
 
     private func tag(_ label: String, tint: Color) -> some View {
@@ -721,5 +815,145 @@ struct ProxyModelCatalogRow: View {
         let route = model.routeEligible ? "route ready" : "blocked"
         let quota = model.quotaState.replacingOccurrences(of: "_", with: " ")
         return "\(model.displayName), \(model.providerName), \(model.accountLabel), \(quota), \(route), \(advertisementLabel)"
+    }
+}
+
+private struct ModelAliasEditorDraft: Equatable {
+    var baseModelID: String
+    var aliasID: String
+    var displayName: String
+    var hidesBaseModel: Bool
+    var createdAt: Date
+
+    static var empty: ModelAliasEditorDraft {
+        ModelAliasEditorDraft(baseModelID: "", aliasID: "", displayName: "", hidesBaseModel: false, createdAt: Date())
+    }
+
+    init(baseModel: ProxyAdvertisedModel) {
+        self.baseModelID = baseModel.modelID
+        self.aliasID = ""
+        self.displayName = ""
+        self.hidesBaseModel = false
+        self.createdAt = Date()
+    }
+
+    init(model: ProxyAdvertisedModel) {
+        self.baseModelID = model.baseModelID ?? model.modelID
+        self.aliasID = model.modelID
+        self.displayName = model.displayName == model.modelID ? "" : model.displayName
+        self.hidesBaseModel = model.hidesBaseModel
+        self.createdAt = Date()
+    }
+
+    init(
+        baseModelID: String,
+        aliasID: String,
+        displayName: String,
+        hidesBaseModel: Bool,
+        createdAt: Date
+    ) {
+        self.baseModelID = baseModelID
+        self.aliasID = aliasID
+        self.displayName = displayName
+        self.hidesBaseModel = hidesBaseModel
+        self.createdAt = createdAt
+    }
+
+    var isValid: Bool {
+        BurnBarModelAlias.isValidAliasID(aliasID)
+            && !baseModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && aliasID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                != baseModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    func makeAlias() -> BurnBarModelAlias {
+        let trimmedID = aliasID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return BurnBarModelAlias(
+            aliasID: trimmedID,
+            baseModelID: baseModelID.trimmingCharacters(in: .whitespacesAndNewlines),
+            displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+            hidesBaseModel: hidesBaseModel,
+            createdAt: createdAt,
+            updatedAt: Date()
+        )
+    }
+}
+
+private struct ModelAliasEditorSheet: View {
+    @Binding var draft: ModelAliasEditorDraft
+    let onSave: (BurnBarModelAlias) async -> String?
+    let onCancel: () -> Void
+    let onSaved: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var saveError: String?
+    @State private var isSaving = false
+
+    private var validationMessage: String? {
+        let trimmedID = draft.aliasID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedID.isEmpty { return "Enter a custom model id." }
+        if !BurnBarModelAlias.isValidAliasID(trimmedID) {
+            return "Use letters, numbers, and . _ - : / only (no spaces)."
+        }
+        if trimmedID.lowercased() == draft.baseModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            return "The alias id must differ from the canonical model id."
+        }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text("Custom model alias")
+                .font(DesignSystem.Typography.headline)
+                .fontWeight(.semibold)
+            Text("Clients call the alias id in /v1/models and chat requests. BurnBar routes to \(draft.baseModelID).")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            TextField("Custom model id", text: $draft.aliasID)
+                .textFieldStyle(.roundedBorder)
+                .font(DesignSystem.Typography.monoSmall)
+
+            TextField("Display name (optional)", text: $draft.displayName)
+                .textFieldStyle(.roundedBorder)
+
+            Toggle("Hide original model in /v1/models", isOn: $draft.hidesBaseModel)
+                .font(DesignSystem.Typography.caption)
+
+            if let validationMessage {
+                Text(validationMessage)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.error)
+            }
+            if let saveError {
+                Text(saveError)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.error)
+            }
+
+            HStack {
+                Button("Cancel") {
+                    onCancel()
+                    dismiss()
+                }
+                Spacer()
+                Button("Save alias") {
+                    Task {
+                        isSaving = true
+                        defer { isSaving = false }
+                        saveError = await onSave(draft.makeAlias())
+                        if saveError == nil {
+                            onSaved()
+                            dismiss()
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!draft.isValid || isSaving)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(minWidth: 420)
     }
 }

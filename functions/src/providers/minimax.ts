@@ -47,7 +47,7 @@ interface MiniMaxBaseResp {
   status_msg?: string;
 }
 
-interface MiniMaxRemainsPayload {
+export interface MiniMaxRemainsPayload {
   base_resp?: MiniMaxBaseResp;
   // Token Plan response shape (varies between subscription tiers, but always
   // contains an array of model rows with usage counters).

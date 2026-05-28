@@ -199,6 +199,8 @@ extension SwitcherCLIProfileType {
             return .forgeDev
         case .antigravity:
             return .antigravity
+        case .grok:
+            return .xAI
         }
     }
 }
@@ -360,6 +362,14 @@ final class SettingsSwitcherProfileAdapter: SwitcherProfileStoreAdapter, Sendabl
 
     func setActiveProfileID(_ profileID: String?) {
         try? store.setActiveProfile(profileID)
+    }
+
+    func fetchActiveProfileID(for providerID: ProviderID) -> String? {
+        try? store.fetchActiveProfileID(for: providerID)
+    }
+
+    func setActiveProfileID(_ profileID: String?, for providerID: ProviderID) {
+        try? store.setActiveProfile(profileID, for: providerID)
     }
 
     func updateProfile(_ profile: SwitcherProfileRecord) {

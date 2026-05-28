@@ -164,7 +164,7 @@ final class CLIAgentSessionMirror {
     /// `hermes` / `piAgent` — those runtimes already mirror via the
     /// iOS-originated `MobileAssistantChatReader` path on macOS, so we
     /// don't double-publish.
-    static func cliAgent(for backend: ChatBackendID) -> CLIAgentRuntime? {
+    nonisolated static func cliAgent(for backend: ChatBackendID) -> CLIAgentRuntime? {
         switch backend {
         case .codex:    return .codex
         case .claude:   return .claude
@@ -179,7 +179,7 @@ final class CLIAgentSessionMirror {
     /// Convert the controller's in-memory transcript into a Sendable
     /// record ready for Firestore. Exposed `internal` so unit tests can
     /// assert the conversion without spinning up a real account.
-    static func build(
+    nonisolated static func build(
         threadID: String,
         agent: CLIAgentRuntime,
         modelName: String?,
@@ -217,7 +217,7 @@ final class CLIAgentSessionMirror {
         )
     }
 
-    static func buildArchivedLogRecord(
+    nonisolated static func buildArchivedLogRecord(
         conversation: ConversationRecord,
         cloudLogDocumentID: String? = nil
     ) -> CLIAgentSessionRecord? {
@@ -234,8 +234,8 @@ final class CLIAgentSessionMirror {
             providerSessionID: conversation.sessionId,
             projectLabel: conversation.projectName.nilIfBlank,
             commandHint: commandHint(agent: agent, sessionID: conversation.sessionId),
-            canResume: agent == .codex || agent == .claude,
-            canFork: agent == .codex || agent == .claude,
+            canResume: canResume(agent: agent),
+            canFork: canResume(agent: agent),
             canForward: true
         )
         let transcriptMessages = archivedMessages(for: conversation)
@@ -263,7 +263,7 @@ final class CLIAgentSessionMirror {
         )
     }
 
-    static func archivedAgent(for provider: AgentProvider) -> CLIAgentRuntime? {
+    nonisolated static func archivedAgent(for provider: AgentProvider) -> CLIAgentRuntime? {
         switch provider {
         case .codex: return .codex
         case .claudeCode: return .claude
@@ -271,11 +271,21 @@ final class CLIAgentSessionMirror {
         case .factory: return .droid
         case .forgeDev: return .forge
         case .antigravity: return .antigravity
+        case .xAI: return .grok
         default: return nil
         }
     }
 
-    static func firestoreDocumentID(for record: CLIAgentSessionRecord) -> String {
+    nonisolated static func canResume(agent: CLIAgentRuntime) -> Bool {
+        switch agent {
+        case .codex, .claude:
+            return true
+        case .openClaw, .droid, .forge, .antigravity, .grok:
+            return false
+        }
+    }
+
+    nonisolated static func firestoreDocumentID(for record: CLIAgentSessionRecord) -> String {
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
         let scalars = record.id.unicodeScalars.map { scalar -> Character in
             allowed.contains(scalar) ? Character(scalar) : "_"
@@ -284,13 +294,13 @@ final class CLIAgentSessionMirror {
         return sanitized.isEmpty ? UUID().uuidString : String(sanitized.prefix(512))
     }
 
-    private static func archivedTitle(for conversation: ConversationRecord) -> String {
+    nonisolated private static func archivedTitle(for conversation: ConversationRecord) -> String {
         if let title = conversation.summaryTitle?.nilIfBlank { return String(title.prefix(120)) }
         if let summary = conversation.summary?.nilIfBlank { return String(summary.prefix(120)) }
         return String((conversation.inferredTaskTitle.nilIfBlank ?? conversation.sessionId).prefix(120))
     }
 
-    private static func archivedPreview(for conversation: ConversationRecord) -> String {
+    nonisolated private static func archivedPreview(for conversation: ConversationRecord) -> String {
         let preview = conversation.lastAssistantMessage.nilIfBlank
             ?? conversation.summary?.nilIfBlank
             ?? conversation.fullText.nilIfBlank
@@ -298,7 +308,7 @@ final class CLIAgentSessionMirror {
         return String(preview.prefix(500))
     }
 
-    private static func commandHint(agent: CLIAgentRuntime, sessionID: String) -> String? {
+    nonisolated private static func commandHint(agent: CLIAgentRuntime, sessionID: String) -> String? {
         let safe = sessionID.replacingOccurrences(of: "\"", with: "\\\"")
         switch agent {
         case .codex:
@@ -313,10 +323,12 @@ final class CLIAgentSessionMirror {
             return nil
         case .antigravity:
             return nil
+        case .grok:
+            return nil
         }
     }
 
-    private static func archivedMessages(for conversation: ConversationRecord) -> [CLIAgentMessage] {
+    nonisolated private static func archivedMessages(for conversation: ConversationRecord) -> [CLIAgentMessage] {
         let raw = conversation.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else {
             return conversation.lastAssistantMessage.nilIfBlank.map { message in
@@ -361,7 +373,7 @@ final class CLIAgentSessionMirror {
         ]
     }
 
-    private static func parseMarkdownTurns(_ raw: String) -> [(role: CLIAgentRole, text: String)] {
+    nonisolated private static func parseMarkdownTurns(_ raw: String) -> [(role: CLIAgentRole, text: String)] {
         let lines = raw.components(separatedBy: .newlines)
         var turns: [(role: CLIAgentRole, text: String)] = []
         var currentRole: CLIAgentRole?
@@ -392,7 +404,7 @@ final class CLIAgentSessionMirror {
         return turns
     }
 
-    static func convert(_ message: ChatMessageRecord) -> CLIAgentMessage {
+    nonisolated static func convert(_ message: ChatMessageRecord) -> CLIAgentMessage {
         let role: CLIAgentRole
         switch message.role {
         case .user:      role = .user
@@ -435,7 +447,7 @@ final class CLIAgentSessionMirror {
         )
     }
 
-    static func derivedTitle(messages: [ChatMessageRecord]) -> String {
+    nonisolated static func derivedTitle(messages: [ChatMessageRecord]) -> String {
         let firstUser = messages.first(where: { $0.role == .user })?
             .content
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -445,7 +457,7 @@ final class CLIAgentSessionMirror {
         return "CLI session"
     }
 
-    static func derivedPreview(messages: [ChatMessageRecord]) -> String {
+    nonisolated static func derivedPreview(messages: [ChatMessageRecord]) -> String {
         let lastNonEmpty = messages
             .reversed()
             .first(where: { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?

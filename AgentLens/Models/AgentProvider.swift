@@ -85,9 +85,7 @@ extension AgentProvider {
         case .ollama: return "~/.ollama/logs"
         case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
         case .warp: return "~/Library/Application Support/dev.warp.Warp-Stable"
-        // xAI (Grok) usage flows through the xAI Management API / SuperGrok
-        // event log written by Hermes; there is no scanned log directory.
-        case .xAI: return "~/Library/Application Support/OpenBurnBar/xai"
+        case .xAI: return "~/.grok/sessions"
         // MiMo quota is refreshed via Token Plan API; no local log directory.
         case .mimo: return "~/.codex"
         }
@@ -123,7 +121,7 @@ extension AgentProvider {
         case .ollama: return "server*.log"
         case .windsurf: return "state.vscdb"
         case .warp: return "warp_network*.log"
-        case .xAI: return "superGrok-events.jsonl"
+        case .xAI: return "summary.json"
         case .mimo: return "mimo-no-local-logs"
         }
     }
@@ -131,7 +129,7 @@ extension AgentProvider {
     /// How well the macOS app supports this provider's local data.
     var supportLevel: ProviderSupportLevel {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose:
+        case .factory, .claudeCode, .codex, .openCode, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI:
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
@@ -139,7 +137,7 @@ extension AgentProvider {
             return .supported
         case .mimo:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent, .xAI:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent:
             return .partial
         case .augment:
             return .unsupported
@@ -150,14 +148,14 @@ extension AgentProvider {
     /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent:
+        case .factory, .claudeCode, .codex, .openCode, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI, .deepSeek:
             return .exact
         case .mimo:
             return .exact
-        case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama, .xAI:
+        case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama:
             return .estimated
         case .augment:
             return .unavailable

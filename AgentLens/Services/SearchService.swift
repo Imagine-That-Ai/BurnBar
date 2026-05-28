@@ -24,14 +24,21 @@ actor SearchService {
     private let nowProvider: @Sendable () -> Date
 
     private var _lastHealthWriteError: String?
+    private var _lastTypedHealthWriteError: OpenBurnBarError?
 
     /// May be read from the main thread or tests while retrieval runs in the background.
     public var lastHealthWriteError: String? {
         get { _lastHealthWriteError }
     }
 
-    private func setLastHealthWriteError(_ value: String?) {
+    /// Typed counterpart to `lastHealthWriteError` for metrics and structured logging.
+    public var lastTypedHealthWriteError: OpenBurnBarError? {
+        get { _lastTypedHealthWriteError }
+    }
+
+    private func setLastHealthWriteError(_ value: String?, typed: OpenBurnBarError? = nil) {
         _lastHealthWriteError = value
+        _lastTypedHealthWriteError = typed
     }
 
     /// Preferred initializer when shared-artifact access should resolve against the live account; requires a
@@ -329,7 +336,7 @@ actor SearchService {
 
     public func runBurnBarQuery(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
         let now = nowProvider()
-        let cacheKey = CacheKey(query: query)
+        let cacheKey = SearchQueryCacheKey(query: query)
         if let cachedResult = SearchQueryCache.shared.get(key: cacheKey, now: now) {
             TelemetryService.shared.record(feature: .searchRetrieval, outcome: .success, durationMs: 0)
             OpenBurnBarMetrics.histogram(name: "search_latency_ms", value: 0.0, labels: ["mode": cachedResult.plan.mode.rawValue])
@@ -873,7 +880,12 @@ actor SearchService {
             } catch {
                 // Fall back to pre-rerank order on error; mark health as degraded
                 crossEncoderLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: crossEncoderStartedAt)
-                setLastHealthWriteError("Cross-encoder reranking failed: \(error.localizedDescription)")
+                let typed = OpenBurnBarError.search(
+                    "cross_encoder_rerank_failed",
+                    message: "Cross-encoder reranking failed.",
+                    underlying: error
+                )
+                setLastHealthWriteError(typed.message, typed: typed)
                 // scoredResults remains unchanged — this is the graceful fallback
             }
         }
@@ -1040,9 +1052,14 @@ actor SearchService {
                     updatedAt: now
                 )
             )
-            setLastHealthWriteError(nil)
+            setLastHealthWriteError(nil, typed: nil)
         } catch {
-            setLastHealthWriteError(error.localizedDescription)
+            let typed = OpenBurnBarError.search(
+                "health_write_failed",
+                message: "Failed to persist lexical retrieval health.",
+                underlying: error
+            )
+            setLastHealthWriteError(typed.message, typed: typed)
         }
     }
 
@@ -1070,9 +1087,14 @@ actor SearchService {
                     updatedAt: now
                 )
             )
-            setLastHealthWriteError(nil)
+            setLastHealthWriteError(nil, typed: nil)
         } catch {
-            setLastHealthWriteError(error.localizedDescription)
+            let typed = OpenBurnBarError.search(
+                "semantic_health_write_failed",
+                message: "Failed to persist semantic fallback health.",
+                underlying: error
+            )
+            setLastHealthWriteError(typed.message, typed: typed)
         }
     }
 
@@ -1272,90 +1294,4 @@ private struct CandidateAccumulator {
     var lexicalRank: Double?
     var semanticScore: Double?
     var lexicalSnippet: String?
-}
-
-// MARK: - Search Query Cache
-
-extension SearchService {
-    struct CacheKey: Hashable, Sendable {
-        let text: String
-        let lexicalFTSQuery: String?
-        let provider: String?
-        let projectName: String?
-        let artifactTypes: Set<SearchSourceKind>?
-        let dateRangeLower: Date?
-        let dateRangeUpper: Date?
-        let ownership: String
-        let sourceIDs: Set<String>?
-        let conversationSources: Set<ConversationSourceType>?
-        let lexicalCandidateLimit: Int
-        let semanticCandidateLimit: Int
-        let rerankCandidateLimit: Int
-        let resultLimit: Int
-        let hybridFusionStrategy: String
-        let crossEncoderEnabled: Bool
-        let crossEncoderCandidateLimit: Int
-
-        init(query: RetrievalQuery) {
-            self.text = query.text
-            self.lexicalFTSQuery = query.lexicalFTSQuery
-            self.provider = query.filters.provider?.rawValue
-            self.projectName = query.filters.projectName
-            self.artifactTypes = query.filters.artifactTypes
-            self.dateRangeLower = query.filters.dateRange?.lowerBound
-            self.dateRangeUpper = query.filters.dateRange?.upperBound
-            self.ownership = query.filters.ownership.rawValue
-            self.sourceIDs = query.filters.sourceIDs
-            self.conversationSources = query.filters.conversationSources
-            self.lexicalCandidateLimit = query.lexicalCandidateLimit
-            self.semanticCandidateLimit = query.semanticCandidateLimit
-            self.rerankCandidateLimit = query.rerankCandidateLimit
-            self.resultLimit = query.resultLimit
-            self.hybridFusionStrategy = query.hybridFusionStrategy.rawValue
-            self.crossEncoderEnabled = query.crossEncoderEnabled
-            self.crossEncoderCandidateLimit = query.crossEncoderCandidateLimit
-        }
-    }
-
-    struct CacheEntry: Sendable {
-        let result: OpenBurnBarQueryRunResult
-        let createdAt: Date
-
-        func isValid(at date: Date, ttl: TimeInterval = 30) -> Bool {
-            return date.timeIntervalSince(createdAt) <= ttl
-        }
-    }
-}
-
-final class SearchQueryCache: @unchecked Sendable {
-    static let shared = SearchQueryCache()
-    private let lock = NSLock()
-    private var cache: [SearchService.CacheKey: SearchService.CacheEntry] = [:]
-
-    private init() {}
-
-    func get(key: SearchService.CacheKey, now: Date) -> OpenBurnBarQueryRunResult? {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard let entry = cache[key] else { return nil }
-        if entry.isValid(at: now) {
-            return entry.result
-        } else {
-            cache.removeValue(forKey: key)
-            return nil
-        }
-    }
-
-    func set(key: SearchService.CacheKey, result: OpenBurnBarQueryRunResult, now: Date) {
-        lock.lock()
-        defer { lock.unlock() }
-        cache[key] = SearchService.CacheEntry(result: result, createdAt: now)
-    }
-
-    func clear() {
-        lock.lock()
-        defer { lock.unlock() }
-        cache.removeAll()
-    }
 }

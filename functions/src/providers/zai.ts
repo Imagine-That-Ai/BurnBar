@@ -173,7 +173,7 @@ async function tryEachHost(
   };
 }
 
-interface ZaiBalancePayload {
+export interface ZaiBalancePayload {
   balance?: number;
   total?: number;
   used?: number;
@@ -189,7 +189,7 @@ interface ZaiQuotaRow {
   remaining?: number;
 }
 
-interface ZaiMonitorQuotaPayload {
+export interface ZaiMonitorQuotaPayload {
   data?: {
     /** Coding Plan keys return an array of windowed quotas. */
     quotaList?: ZaiQuotaRow[];

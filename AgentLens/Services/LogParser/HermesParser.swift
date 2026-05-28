@@ -48,7 +48,10 @@ final class HermesParser: LogParser, Sendable {
                     seenSessionIds.formUnion(sqliteResult.usages.map(\.sessionId))
                     seenSessionIds.formUnion(sqliteResult.conversations.map(\.sessionId))
                 } catch {
-                    // Continue with gateway/CLI fallback files when a scoped SQLite DB is unreadable.
+                    AppLogger.parser.error(
+                        "hermes_sqlite_scope_unreadable",
+                        metadata: ["path": dbURL.path, "error": error.localizedDescription]
+                    )
                 }
             }
 

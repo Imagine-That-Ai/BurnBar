@@ -230,7 +230,31 @@ filters to route-eligible models served by `/v1/chat/completions` or
 not one per account; account-level failover remains behind the gateway. Stale
 OpenBurnBar or local VibeProxy entries on the gateway port are removed during
 each sync, so Droid only sees the current BurnBar catalog. The shared
-OpenAI-style probe runs after the write.
+OpenAI-style probe runs after the write. After creating or renaming a custom
+model alias in Settings → Agents → Models, run **Sync to Droid** so Factory
+picks up the new wire id.
+
+## Custom model aliases
+
+Settings → Agents → Models lets you expose any route-ready model under a
+**custom wire id** (for example `my-fast-coder` → `claude-opus-4-7`). Clients
+see and call the alias id in `/v1/models` and in chat `model` fields; BurnBar
+still routes through the canonical upstream model.
+
+Each alias supports:
+
+- **Custom model id** — the string wired CLIs send in `model`.
+- **Display name** — optional picker label; defaults to the alias id.
+- **Hide original model** — when enabled for an advertised alias, the canonical
+  base row is omitted from public `/v1/models` while the alias row remains
+  visible. The Settings catalog at `/v1/models/catalog` still lists the base row.
+  Alias rows in the catalog payload include `base_model_id` and `hides_base_model`
+  so the Mac Settings editor can round-trip the hide-original toggle when editing.
+
+Alias ids must use letters, numbers, and `._-:/` only. Collisions with another
+alias, a thinking-level variant id, or an **exact** catalog model id are rejected
+at save time (fuzzy family matchers do not block custom ids). Re-run **Sync to Droid** after alias changes so Factory custom
+models match the live gateway catalog.
 
 Codex's ChatGPT-auth mode (browser session cookies) cannot be routed through
 a generic proxy; only the API-key path participates in the OpenAI-family pool

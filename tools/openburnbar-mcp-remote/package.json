@@ -5,7 +5,9 @@
   "type": "module",
   "bin": {
     "openburnbar-mcp-remote": "lib/index.js",
-    "openburnbar": "lib/index.js"
+    "openburnbar": "lib/index.js",
+    "obbresume": "lib/index.js",
+    "OBB": "lib/index.js"
   },
   "engines": {
     "node": "22"

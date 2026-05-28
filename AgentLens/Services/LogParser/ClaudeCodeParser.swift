@@ -238,7 +238,10 @@ final class ClaudeCodeParser: LogParser, Sendable {
             }
         }
 
-        guard acc.inputTokens > 0 || acc.outputTokens > 0 else {
+        guard acc.inputTokens > 0
+            || acc.outputTokens > 0
+            || acc.cacheCreationTokens > 0
+            || acc.cacheReadTokens > 0 else {
             return nil
         }
 
@@ -289,6 +292,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
             lastAssistantMessage: conv.lastAssistantText,
             fullText: conv.fullText,
             indexedAt: Date(),
+            workingDirectory: projectName.hasPrefix("~/") || projectName.hasPrefix("/") ? projectName : nil,
             fileModifiedAt: mtime,
             summary: nil
         )

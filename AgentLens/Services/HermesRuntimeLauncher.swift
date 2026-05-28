@@ -206,6 +206,7 @@ final class HermesRuntimeLauncher {
             return output.range(of: "running", options: .caseInsensitive) != nil
                 || output.range(of: "PID", options: .caseInsensitive) != nil
         } catch {
+            AppLogger.network.error("hermes_runtime_health_check_failed", metadata: ["error": error.localizedDescription])
             return false
         }
     }

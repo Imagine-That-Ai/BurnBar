@@ -735,6 +735,84 @@ final class ComputerUsePhoneControlSignerTests: XCTestCase {
         )
     }
 
+    func testRemoteUnlockSessionHashSurvivesRelayDateEncodingRoundTrip() throws {
+        let issuedAt = Date(timeIntervalSince1970: 1_700_000_000.123789)
+        let session = HermesRealtimeRelayRemoteUnlockSession(
+            requestId: "remote-unlock-request",
+            sessionId: "remote-unlock-session",
+            intent: .request,
+            requesterDisplayName: "Alberto's iPhone",
+            viewerDeviceId: "ios-device",
+            requestedAt: issuedAt,
+            expiresAt: issuedAt.addingTimeInterval(60),
+            localAuthenticationSatisfied: true,
+            requestedLockState: .screenLocked,
+            requestedBackend: .appleScreenSharingLoopback,
+            authority: authority(peerNodeId: "", counter: 0, intentHash: "", signature: "")
+        )
+
+        let decoded = try JSONDecoder().decode(
+            HermesRealtimeRelayRemoteUnlockSession.self,
+            from: JSONEncoder().encode(session)
+        )
+
+        XCTAssertEqual(
+            try signer.canonicalRemoteUnlockSessionHashHex(session: session),
+            try signer.canonicalRemoteUnlockSessionHashHex(session: decoded)
+        )
+    }
+
+    func testRemoteUnlockCredentialSignatureSurvivesRelayDateEncodingRoundTrip() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let issuedAt = Date(timeIntervalSince1970: 1_700_000_000.123789)
+        var credential = HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+            requestId: "remote-unlock-credential",
+            sessionId: "remote-unlock-session",
+            clientIntentId: "client-intent",
+            credentialKind: .typedPassword,
+            recipientKeyId: "hpke-key",
+            algorithm: RemoteUnlockPolicy.credentialEnvelopeAlgorithm,
+            ciphertextBase64: "Y2lwaGVy",
+            aadBase64: "YWFk",
+            redactedByteCount: 8,
+            requestedAt: issuedAt,
+            expiresAt: issuedAt.addingTimeInterval(30),
+            authority: authority(peerNodeId: "", counter: 0, intentHash: "", signature: "")
+        )
+
+        let signed = try signer.sign(
+            remoteUnlockCredential: credential,
+            peerNodeId: "phone-node",
+            counter: 14,
+            timestamp: issuedAt,
+            privateKey: privateKey
+        )
+        credential.authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+
+        let decoded = try JSONDecoder().decode(
+            HermesRealtimeRelayRemoteUnlockCredentialEnvelope.self,
+            from: JSONEncoder().encode(credential)
+        )
+
+        XCTAssertEqual(
+            try signer.canonicalRemoteUnlockCredentialHashHex(credential: credential),
+            try signer.canonicalRemoteUnlockCredentialHashHex(credential: decoded)
+        )
+        try signer.verify(
+            remoteUnlockCredential: decoded,
+            authority: signed,
+            peerPublicKey: privateKey.publicKey,
+            lastSeenCounter: 13,
+            now: issuedAt
+        )
+    }
+
     private func authority(
         peerNodeId: String,
         counter: UInt64,

@@ -8,7 +8,6 @@ APP_DOMAIN="${OPENBURNBAR_MAC_APP_DOMAIN:-com.openburnbar.app}"
 REPORT_DIR="${OPENBURNBAR_REMOTE_UNLOCK_PROOF_DIR:-$ROOT_DIR/.derived-data/remote-unlock}"
 REPORT_PATH="$REPORT_DIR/remote-unlock-certification-$(date -u +%Y%m%dT%H%M%SZ).json"
 VIEWER_KIND="${OPENBURNBAR_REMOTE_UNLOCK_VIEWER_KIND:-unknown}"
-CGSESSION="/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
 
 require_path() {
   local path="$1"
@@ -24,7 +23,30 @@ read_default() {
   defaults read "$APP_DOMAIN" "$key" 2>/dev/null || true
 }
 
-require_path "$CGSESSION" "CGSession is missing; cannot lock this Mac for the certification smoke."
+lock_mac() {
+  local cg_session_candidates=(
+    "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
+    "/System/Library/CoreServices/Menu Extras/User.menu/Contents/SharedSupport/CGSession"
+  )
+  local candidate
+  for candidate in "${cg_session_candidates[@]}"; do
+    if [[ -x "$candidate" ]]; then
+      "$candidate" -suspend
+      return
+    fi
+  done
+
+  if osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}' >/dev/null 2>&1; then
+    return
+  fi
+
+  if pmset displaysleepnow >/dev/null 2>&1; then
+    return
+  fi
+
+  printf 'error: No supported lock-screen command is available on this Mac.\n' >&2
+  exit 1
+}
 
 if [[ ! -e "/System/Library/CoreServices/RemoteManagement/ARDAgent.app" && ! -e "/System/Library/CoreServices/Applications/Screen Sharing.app" ]]; then
   printf 'error: Apple Screen Sharing / Remote Management is not available on this Mac.\n' >&2
@@ -64,7 +86,7 @@ EOF
 printf '\nPress Return to lock this Mac and start the hardware smoke, or Ctrl-C to abort. '
 read -r _
 
-"$CGSESSION" -suspend
+lock_mac
 
 cat <<'EOF'
 

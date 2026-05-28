@@ -126,6 +126,7 @@ private enum PixelClockExternalAgentActivityScanner {
             }
             process.waitUntilExit()
         } catch {
+            AppLogger.network.error("pixel_clock_mdns_browse_failed", metadata: ["error": error.localizedDescription])
             return []
         }
         guard process.terminationStatus == 0 else { return [] }
@@ -174,6 +175,7 @@ enum PixelClockAgentProcessDetector {
             do {
                 try process.run()
             } catch {
+                AppLogger.network.error("pixel_clock_mdns_resolve_failed", metadata: ["error": error.localizedDescription])
                 return [:]
             }
 

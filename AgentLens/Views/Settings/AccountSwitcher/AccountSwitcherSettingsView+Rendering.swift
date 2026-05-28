@@ -91,6 +91,7 @@ extension AccountSwitcherSettingsView {
                         } else if profiles.isEmpty {
                             emptyStateView
                         } else {
+                            drainTargetsSection
                             profileListView
                         }
                     }
@@ -115,6 +116,48 @@ extension AccountSwitcherSettingsView {
                 }
             }
         }
+    }
+
+    /// "Draining now" panel: per-provider drain-target switchers so the account
+    /// management screen also exposes the elegant toggle and the live highlight.
+    @ViewBuilder
+    var drainTargetsSection: some View {
+        let groups = DrainTargetSwitcher.grouped(profiles)
+        if !groups.isEmpty {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                    Text("DRAINING NOW")
+                        .font(DesignSystem.Typography.tiny)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                ForEach(groups, id: \.provider) { group in
+                    DrainTargetSwitcher(
+                        provider: group.provider,
+                        accounts: group.accounts,
+                        drainProfileID: drainTargets[group.provider.providerID.rawValue],
+                        variant: .full,
+                        quotaText: { profile in settingsDrainQuotaText(for: profile) },
+                        onSelect: { setDrainTarget($0, provider: group.provider) }
+                    )
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.25))
+            )
+        }
+    }
+
+    func settingsDrainQuotaText(for profile: SwitcherProfileRecord) -> String? {
+        guard let snapshot = quotaService.snapshot(accountID: profile.id) else { return nil }
+        if let pct = snapshot.hourlyBucket?.remainingPercent { return "\(Int(pct.rounded()))%" }
+        if let pct = snapshot.weeklyBucket?.remainingPercent { return "\(Int(pct.rounded()))%" }
+        return nil
     }
 
     /// Subset of profile groups visible for the current `mode`. The full set
@@ -490,6 +533,7 @@ extension AccountSwitcherSettingsView {
             (.droid, "Droid", "terminal.fill", Color(hex: "8B5CF6")),
             (.forge, "Forge", "flame.fill", Color(hex: "F97316")),
             (.antigravity, "Antigravity", "terminal.fill", Color(hex: "6C63FF")),
+            (.grok, "Grok Build", "terminal.fill", Color(hex: "111111")),
         ]
 
         var groups: [ProfileGroup] = []
@@ -504,6 +548,7 @@ extension AccountSwitcherSettingsView {
                 case .droid: "FactoryLogo"
                 case .forge: "ForgeLogo"
                 case .antigravity: "AntigravityLogo"
+                case .grok: "GrokLogo"
                 }
                 groups.append(ProfileGroup(
                     key: cliType.rawValue,

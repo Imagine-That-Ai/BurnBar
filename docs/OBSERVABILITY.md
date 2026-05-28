@@ -34,3 +34,4 @@ Cross-surface logging uses a shared correlation shape:
 1. Grab `trace_id` from macOS Console or Functions log JSON.
 2. Correlate daemon RPC + relay audit entries sharing the same id.
 3. For Computer Use incidents, check `ops/computer_use_budget_status/state/current` and RC `computer_use_kill_switch`.
+4. For SLO burn / error budgets, follow [runbooks/slos.md](runbooks/slos.md).

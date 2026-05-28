@@ -39,6 +39,7 @@ enum BurnBarRPCErrorCode {
     static let internalError = -32603
     static let unauthorized = -32001
     static let rateLimitExceeded = -32002
+    static let timeout = -32003
 }
 
 struct IncomingRequestEnvelope: Decodable {

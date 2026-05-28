@@ -25,14 +25,22 @@ enum OpenBurnBarDaemonSocketClient {
         )
 
         if let error = envelope.error {
-            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+            let managerError = OpenBurnBarDaemonManagerError.rpcError(error.message)
+            logDaemonFailure(OpenBurnBarError.fromDaemonManager(managerError))
+            throw managerError
         }
 
         guard let result = envelope.result else {
-            throw OpenBurnBarDaemonManagerError.emptyResponse
+            let managerError = OpenBurnBarDaemonManagerError.emptyResponse
+            logDaemonFailure(OpenBurnBarError.fromDaemonManager(managerError))
+            throw managerError
         }
 
         return result
+    }
+
+    private static func logDaemonFailure(_ error: OpenBurnBarError) {
+        AppLogger.daemon.error("daemon_rpc_failed", metadata: error.logMetadata)
     }
 
     static func config(at socketURL: URL) throws -> BurnBarProviderConfigurationSnapshot {
@@ -127,6 +135,32 @@ enum OpenBurnBarDaemonSocketClient {
         )
     }
 
+    static func upsertProviderModelAlias(
+        _ request: BurnBarProviderModelAliasUpsertRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderModelAliasMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerModelAliasUpsert,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func removeProviderModelAlias(
+        _ request: BurnBarProviderModelAliasRemoveRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderModelAliasMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerModelAliasRemove,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
     static func recentUsage(
         at socketURL: URL,
         limit: Int = 20
@@ -148,6 +182,19 @@ enum OpenBurnBarDaemonSocketClient {
         }
 
         return result.usage
+    }
+
+    static func runResume(
+        _ request: BurnBarRunResumeRequest,
+        at socketURL: URL
+    ) throws -> BurnBarRunResumeResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .runResume,
+                params: request
+            ),
+            socketURL: socketURL
+        )
     }
 
     static func connectorPlane(at socketURL: URL) throws -> BurnBarConnectorPlaneSnapshot {
@@ -974,6 +1021,14 @@ enum OpenBurnBarDaemonSocketClient {
         return nonEmptyToken
     }
 
+    private static func mapConnectFailure() -> OpenBurnBarDaemonManagerError {
+        let code = errno
+        if code == ETIMEDOUT || code == EAGAIN {
+            return .rpcTimedOut(seconds: 30)
+        }
+        return .rpcError("Daemon socket connect failed: \(POSIXError(.init(rawValue: code) ?? .EIO).localizedDescription)")
+    }
+
     private static func sendEncoded<Request: Encodable, Response: Codable & Sendable>(
         _ request: Request,
         socketURL: URL
@@ -1001,7 +1056,9 @@ enum OpenBurnBarDaemonSocketClient {
             }
         }
         guard connectResult == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            let managerError = mapConnectFailure()
+            logDaemonFailure(OpenBurnBarError.fromDaemonManager(managerError))
+            throw managerError
         }
 
         let encoder = JSONEncoder()
@@ -1013,7 +1070,11 @@ enum OpenBurnBarDaemonSocketClient {
             while bytesRemaining > 0 {
                 let bytesWritten = write(fileDescriptor, baseAddress.advanced(by: offset), bytesRemaining)
                 guard bytesWritten > 0 else {
-                    throw POSIXError(.init(rawValue: errno) ?? .EIO)
+                    let code = errno
+                    if code == ETIMEDOUT || code == EAGAIN {
+                        throw OpenBurnBarDaemonManagerError.rpcTimedOut(seconds: 30)
+                    }
+                    throw POSIXError(.init(rawValue: code) ?? .EIO)
                 }
                 bytesRemaining -= bytesWritten
                 offset += bytesWritten
@@ -1028,7 +1089,11 @@ enum OpenBurnBarDaemonSocketClient {
                 break
             }
             guard bytesRead > 0 else {
-                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+                let code = errno
+                if code == ETIMEDOUT || code == EAGAIN {
+                    throw OpenBurnBarDaemonManagerError.rpcTimedOut(seconds: 30)
+                }
+                throw POSIXError(.init(rawValue: code) ?? .EIO)
             }
             response.append(contentsOf: buffer.prefix(bytesRead))
             if response.last == 0x0A {

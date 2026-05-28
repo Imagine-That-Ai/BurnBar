@@ -248,12 +248,15 @@ final class MacFileTransferService: ObservableObject {
         let lease = await registry.register(stream: stream, uid: uid, connectionID: connectionID)
         Self.log.info("mac_control_stream_mounted connectionID=\(connectionID, privacy: .public)")
         Self.debugTrace("mac_control_stream_mounted connectionID=\(connectionID)")
+        let sendGate = MercuryControlStreamSendGate(stream: stream)
         // Bind a Sendable ack-sender to the same stream so inbound
         // advertise frames can write their ack back over the same path
-        // the dispatcher expects.
+        // the dispatcher expects. The gate is shared by mirror acks,
+        // presence replies, Remote Unlock responses, and video frames so
+        // concurrent writers cannot corrupt the single bi-stream.
         let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
-            [stream] outbound in
-            try await stream.send(outbound)
+            [sendGate] outbound in
+            try await sendGate.send(outbound)
         }
         do {
             while let frame = try await stream.receive() {

@@ -86,6 +86,7 @@ final class UsageAggregatorTests: XCTestCase {
     func test_init_persistenceErrorMessage_isNil() throws {
         let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
         XCTAssertNil(aggregator.persistenceErrorMessage)
+        XCTAssertNil(aggregator.typedPersistenceError)
     }
 
     func test_init_apiUsages_isEmpty() throws {
@@ -619,6 +620,20 @@ final class TokenExtractionUtilityTests: XCTestCase {
 
         XCTAssertEqual(result.reasoningTokens, 20)
         XCTAssertEqual(result.output, 50) // Output is not inflated
+    }
+
+    func test_extractUsageTokens_totalNormalizationSubtractsReasoningTokens() throws {
+        let usage: [String: Any] = [
+            "total_tokens": 120,
+            "input_tokens": 70,
+            "reasoning_tokens": 20
+        ]
+
+        let result = TokenExtractionUtility.extractUsageTokens(usage)
+
+        XCTAssertEqual(result.input, 70)
+        XCTAssertEqual(result.output, 30)
+        XCTAssertEqual(result.reasoningTokens, 20)
     }
 
     func test_hasExplicitPrimaryBucket_withBothBuckets_returnsTrue() throws {
@@ -1791,6 +1806,49 @@ final class BillingUsageReconciliationTests: XCTestCase {
         )
         XCTAssertEqual(result.count, 1)
         XCTAssertTrue(result.first!.sessionId.hasPrefix(BillingUsageReconciliation.apiReconciliationSessionPrefix))
+    }
+
+    func test_supplementalUsages_doesNotMatchFactoryRoutedModelAgainstDirectMiniMaxBilling() throws {
+        let day = Calendar.current.startOfDay(for: Date())
+        let apiRecords = [
+            ProviderUsageRecord(
+                providerName: "MiniMax",
+                model: "minimax-m2.7",
+                date: day,
+                inputTokens: 1_000,
+                outputTokens: 500,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 0,
+                costUSD: 0.05,
+                requestCount: 1
+            )
+        ]
+
+        let existingUsages = [
+            TokenUsage(
+                provider: .factory,
+                sessionId: "factory-minimax-session",
+                projectName: "FactoryProject",
+                model: "minimax-m2.7",
+                inputTokens: 1_000,
+                outputTokens: 500,
+                costUSD: 0,
+                startTime: day,
+                endTime: day,
+                provenanceMethod: .providerLog,
+                provenanceConfidence: .exact
+            )
+        ]
+
+        let result = BillingUsageReconciliation.supplementalUsages(
+            from: apiRecords,
+            existingUsages: existingUsages
+        )
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.provider, .minimax)
+        XCTAssertEqual(result.first?.projectName, "MiniMax API Reconciliation")
+        XCTAssertEqual(try XCTUnwrap(result.first?.costUSD), 0.05, accuracy: 0.000001)
     }
 }
 

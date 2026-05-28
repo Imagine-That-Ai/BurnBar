@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarCore
 import OpenBurnBarMedia
 @testable import OpenBurnBar
 
@@ -142,6 +143,102 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertEqual(reason, .sessionCapReached)
     }
 
+    func testRemoteUnlockSessionRegistryBindsCredentialSessionToPeer() {
+        let service = makeRemoteUnlockReadinessService()
+        let now = Date(timeIntervalSince1970: 1_774_000_000)
+        let session = remoteUnlockSession(
+            sessionId: "unlock-session",
+            peerNodeId: "ios-peer",
+            viewerDeviceId: "iphone-1",
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(60)
+        )
+
+        XCTAssertFalse(
+            service.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                now: now
+            )
+        )
+
+        service.recordRemoteUnlockSession(session, now: now)
+
+        XCTAssertTrue(
+            service.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            service.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "android-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            service.isRemoteUnlockSessionActive(
+                sessionId: "different-session",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            service.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "ipad-1",
+                now: now
+            )
+        )
+    }
+
+    func testRemoteUnlockSessionRegistryRejectsExpiredAndRevokedSessions() {
+        let service = makeRemoteUnlockReadinessService()
+        let now = Date(timeIntervalSince1970: 1_774_000_000)
+        let session = remoteUnlockSession(
+            sessionId: "unlock-session",
+            peerNodeId: "ios-peer",
+            viewerDeviceId: "iphone-1",
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(60)
+        )
+
+        service.recordRemoteUnlockSession(session, now: now)
+        XCTAssertFalse(
+            service.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                now: now.addingTimeInterval(61)
+            )
+        )
+
+        service.recordRemoteUnlockSession(session, now: now)
+        service.revokeRemoteUnlockSession(sessionId: "unlock-session")
+        XCTAssertFalse(
+            service.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                now: now
+            )
+        )
+
+        service.recordRemoteUnlockSession(session, now: now)
+        service.revokeAllRemoteUnlockSessions()
+        XCTAssertFalse(
+            service.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                now: now
+            )
+        )
+    }
+
     // MARK: helpers
 
     private func makeGate(
@@ -155,6 +252,39 @@ final class MacMediaCapabilityGateTests: XCTestCase {
             usageProvider: { usage },
             budgetProvider: { budget },
             concurrentSessionsProvider: { _ in concurrent }
+        )
+    }
+
+    private func makeRemoteUnlockReadinessService() -> MacRemoteUnlockReadinessService {
+        let defaults = UserDefaults(suiteName: "MacMediaCapabilityGateTests.\(UUID().uuidString)")!
+        return MacRemoteUnlockReadinessService(defaults: defaults)
+    }
+
+    private func remoteUnlockSession(
+        sessionId: String,
+        peerNodeId: String,
+        viewerDeviceId: String?,
+        requestedAt: Date,
+        expiresAt: Date
+    ) -> HermesRealtimeRelayRemoteUnlockSession {
+        HermesRealtimeRelayRemoteUnlockSession(
+            requestId: "unlock-req",
+            sessionId: sessionId,
+            intent: .request,
+            requesterDisplayName: "Alberto's iPhone",
+            viewerDeviceId: viewerDeviceId,
+            requestedAt: requestedAt,
+            expiresAt: expiresAt,
+            localAuthenticationSatisfied: true,
+            requestedLockState: .loginWindow,
+            requestedBackend: .appleScreenSharingLoopback,
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: peerNodeId,
+                counter: 1,
+                timestamp: requestedAt,
+                intentHashBlake3: "hash",
+                signatureEd25519: "signature"
+            )
         )
     }
 }

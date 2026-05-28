@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarCore
 
 // MARK: - Usage Aggregator
 
@@ -38,6 +39,8 @@ final class UsageAggregator {
     /// Set when usage row persistence fails during refreshAll().
     /// Tests can read this to verify the guard condition was triggered.
     private(set) var persistenceErrorMessage: String?
+    /// Typed counterpart to `persistenceErrorMessage` for metrics and structured logging.
+    private(set) var typedPersistenceError: OpenBurnBarError?
     /// Usage records fetched from provider billing APIs (separate from log-parsed data).
     private(set) var apiUsages: [ProviderUsageRecord] = []
     private var projectionWorkerTask: Task<Void, Never>?
@@ -134,6 +137,7 @@ final class UsageAggregator {
         parserImportError = nil
         parserHealth = [:]
         persistenceErrorMessage = nil
+        typedPersistenceError = nil
 
         // VAL-TOKEN-008: Set fallback estimator based on user flag before parsing.
         TokenExtractionUtility.fallbackEstimator = settingsManager.tokenizerAssistedFallbackEnabled
@@ -179,6 +183,7 @@ final class UsageAggregator {
         lastRefresh = Date()
 
         persistenceErrorMessage = result.persistenceErrorMessage
+        typedPersistenceError = result.typedPersistenceError
         if let healthError = result.healthWriteError, parserImportError == nil {
             parserImportError = healthError
         }
@@ -244,12 +249,23 @@ final class UsageAggregator {
         do {
             try await dataStore.deleteAll()
         } catch {
-            let message = "Failed to clear usage rows before recount: \(error.localizedDescription)"
-            parserImportError = message
+            let typed = OpenBurnBarError.database(
+                "recount_clear_failed",
+                message: "Failed to clear usage rows before recount.",
+                underlying: error
+            )
+            parserImportError = typed.message
+            typedPersistenceError = typed
             do {
-                try upsertParserImportHealth(importedUsageCount: 0, persistenceError: message)
+                try upsertParserImportHealth(importedUsageCount: 0, persistenceError: typed.message)
             } catch {
-                parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
+                let healthTyped = OpenBurnBarError.database(
+                    "parser_health_persist_failed",
+                    message: "Failed to persist parser/import health.",
+                    underlying: error
+                )
+                parserImportError = healthTyped.message
+                typedPersistenceError = healthTyped
             }
         }
         await refreshAll()
@@ -302,7 +318,13 @@ final class UsageAggregator {
                 persistenceError: result.error
             )
         } catch {
-            parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
+            let typed = OpenBurnBarError.database(
+                "parser_health_persist_failed",
+                message: "Failed to persist parser/import health.",
+                underlying: error
+            )
+            parserImportError = typed.message
+            typedPersistenceError = typed
         }
 
         let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
