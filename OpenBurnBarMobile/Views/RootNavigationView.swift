@@ -108,6 +108,9 @@ struct RootNavigationView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
             openAgentWatchRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
+            openSettingsRoute()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
         }
@@ -359,6 +362,12 @@ struct RootNavigationView: View {
         detailPath = NavigationPath()
         detailPath.append(YouRoute.computerUse)
         updateColumnVisibility(for: .you, animated: false)
+    }
+
+    private func openSettingsRoute() {
+        selection = .settings
+        detailPath = NavigationPath()
+        updateColumnVisibility(for: .settings, animated: false)
     }
 
     private func updateColumnVisibility(for destination: AppDestination, animated: Bool = true) {
