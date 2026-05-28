@@ -54,10 +54,21 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Fetch
 
+    /// Test-only deterministic clock override. Production leaves this unset.
+    static let referenceDateEnvironmentKey = "OPENBURNBAR_QUOTA_REFERENCE_MS"
+
+    static func referenceDate(from context: ProviderQuotaAdapterContext) -> Date {
+        guard let raw = context.environment[referenceDateEnvironmentKey],
+              let milliseconds = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return Date()
+        }
+        return Date(timeIntervalSince1970: milliseconds / 1000.0)
+    }
+
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let historyURL = context.homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli/history.jsonl")
         let settingsURL = context.homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli/settings.json")
-        let now = Date()
+        let now = Self.referenceDate(from: context)
 
         guard context.fileManager.fileExists(atPath: historyURL.path) else {
             return ProviderQuotaSnapshot(
