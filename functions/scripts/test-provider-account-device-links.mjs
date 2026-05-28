@@ -4,7 +4,7 @@ import {
   deviceLinkId,
   deviceLinkPath,
   isDeviceLinkCapability,
-} from "../lib/providerAccountDeviceLinks.js";
+} from "../lib/domains/device-links/index.js";
 
 assert.equal(isDeviceLinkCapability("owner"), true);
 assert.equal(isDeviceLinkCapability("use"), true);
@@ -18,9 +18,8 @@ assert.equal(
 );
 
 const types = readFileSync(new URL("../src/types/legacy.ts", import.meta.url), "utf8");
-assert.match(types, /export interface ProviderAccountDeviceLinkDoc/);
-assert.match(types, /accountID: string;/);
-assert.match(types, /deviceID: string;/);
+assert.match(types, /export type ProviderAccountDeviceLinkDoc = Omit/);
+assert.match(types, /capability: DeviceLinkCapability;/);
 assert.match(types, /export type DeviceLinkCapability = "owner" \| "use" \| "add";/);
 assert.match(types, /export interface RuntimeConnectionPreferenceDoc/);
 assert.match(types, /export type RuntimeConnectionPreferenceKind = "hermes" \| "piAgent";/);
