@@ -3,7 +3,7 @@ import Foundation
 
 @main
 struct BurnBarCLIExecutable {
-    static func main() {
+    static func main() async {
         let arguments = Array(CommandLine.arguments.dropFirst())
         if let result = BurnBarCLIRunner.startupPreflightResult(
             arguments: arguments,
@@ -18,28 +18,22 @@ struct BurnBarCLIExecutable {
         let socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
             ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
         let runner = BurnBarCLIRunner(client: BurnBarCLISocketClient(authToken: socketAuthToken))
-        let semaphore = DispatchSemaphore(value: 0)
-        var exitCode = Int32(EXIT_FAILURE)
+        let exitCode: Int32
 
-        Task {
-            defer { semaphore.signal() }
-
-            do {
-                let result = try await runner.invoke(
-                    arguments: arguments,
-                    invokedExecutablePath: CommandLine.arguments.first
-                )
-                if let output = result.output, !output.isEmpty {
-                    fputs(output + "\n", stdout)
-                }
-                exitCode = result.exitCode
-            } catch {
-                fputs((error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription) + "\n", stderr)
-                exitCode = EXIT_FAILURE
+        do {
+            let result = try await runner.invoke(
+                arguments: arguments,
+                invokedExecutablePath: CommandLine.arguments.first
+            )
+            if let output = result.output, !output.isEmpty {
+                fputs(output + "\n", stdout)
             }
+            exitCode = result.exitCode
+        } catch {
+            fputs((error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription) + "\n", stderr)
+            exitCode = EXIT_FAILURE
         }
 
-        semaphore.wait()
         exit(exitCode)
     }
 }

@@ -252,6 +252,7 @@ public actor BurnBarBrowserToolService {
                 )
             }
             let arguments = request.arguments ?? BurnBarBrowserActionArguments(url: request.url)
+            _ = try validatedURL(arguments.url ?? request.url)
             let response = try await executePlaywrightAction(request.action, arguments: arguments)
             return browserResponse(
                 from: response,
@@ -567,11 +568,21 @@ public actor BurnBarBrowserToolService {
 
     private func validatedURL(_ rawValue: String) throws -> URL {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: trimmed), trimmed.isEmpty == false else {
+        guard trimmed.isEmpty == false, let url = URL(string: trimmed) else {
             throw NSError(
                 domain: "BurnBarBrowserToolService",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "Browser action URL is invalid."]
+            )
+        }
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host,
+              host.isEmpty == false else {
+            throw NSError(
+                domain: "BurnBarBrowserToolService",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Browser action URL must use http or https with a host."]
             )
         }
         return url

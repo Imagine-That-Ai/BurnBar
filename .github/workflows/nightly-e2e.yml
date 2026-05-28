@@ -64,7 +64,6 @@ jobs:
         with:
           node-version: 22
       - name: Run commercial launch gate (read-only)
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/commercial-launch-gate.mjs || true
+        run: node scripts/commercial-launch-gate.mjs

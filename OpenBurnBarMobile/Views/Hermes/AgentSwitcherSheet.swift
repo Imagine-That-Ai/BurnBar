@@ -37,6 +37,7 @@ extension AssistantRuntimeID {
         case .droid:    return .factory
         case .forge:    return .forgeDev
         case .antigravity: return .antigravity
+        case .grok: return .xAI
         }
     }
 
@@ -52,6 +53,7 @@ extension AssistantRuntimeID {
         case .droid:    return Color(hex: "8B5CF6")
         case .forge:    return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
+        case .grok: return Color(hex: "111111")
         }
     }
 
@@ -67,6 +69,7 @@ extension AssistantRuntimeID {
         case .droid:    return "CLI agent"
         case .forge:    return "CLI agent"
         case .antigravity: return "CLI agent"
+        case .grok: return "CLI agent"
         }
     }
 
@@ -83,6 +86,7 @@ extension AssistantRuntimeID {
         case .factory:    return .droid
         case .forgeDev:   return .forge
         case .antigravity: return .antigravity
+        case .xAI: return .grok
         default:          return nil
         }
     }
@@ -159,7 +163,7 @@ struct AssistantStatusResolver {
             return RuntimeStatus(hermesService.selectedConnection.status)
         case .pi:
             return RuntimeStatus(piService.selectedConnection.status)
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok:
             // CLI-style runtimes bridge through the Mac. We use the Hermes
             // relay reachability as a proxy — if Hermes can talk to the Mac,
             // these can too.
@@ -177,7 +181,7 @@ struct AssistantStatusResolver {
         case .pi:
             return piService.selectedConnection.endpointURL.flatMap(host(from:))
                 ?? piService.selectedConnection.displayName
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok:
             return hermesService.selectedConnection.endpointURL.flatMap(host(from:))
                 ?? hermesService.selectedConnection.displayName
         }
@@ -464,6 +468,7 @@ struct AgentSwitcherSheet: View {
         case .droid:    kindCopy = "Droid CLI — pick the model it runs on"
         case .forge:    kindCopy = "Forge CLI — pick the model it runs on"
         case .antigravity: kindCopy = "Antigravity CLI — pick the model it runs on"
+        case .grok: kindCopy = "Grok Build CLI — pick the xAI model it runs on"
         }
         switch origin {
         case .live, .preference:

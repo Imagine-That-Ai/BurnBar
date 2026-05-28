@@ -14,7 +14,7 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
 
 <BaseLayout
   title="Providers"
-  description="The honest provider support matrix for OpenBurnBar — Claude Code, Codex, OpenAI, Copilot, Cursor, Factory, MiniMax, Z.ai, Warp, Ollama, Kimi and more."
+  description="The honest provider support matrix for OpenBurnBar — Antigravity, Claude Code, Codex, DeepSeek, OpenAI, Copilot, Cursor, Factory, MiniMax, Z.ai, Warp, Ollama, Kimi, Hermes and more."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -22,7 +22,7 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
       <h1 class="pagehead__h">An honest provider matrix.</h1>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
-          Eleven providers ship with real usage data today. Eight more are detected but expose no
+          Twenty-two providers ship with real usage data today. Eight more are detected but expose no
           usage API — we mark them so, rather than pretending. Confidence labels live on every row.
         </p>
       </div>
@@ -101,7 +101,7 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
     <div class="container">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Real usage data · today</span>
-        <h2>Eleven providers ship with live data.</h2>
+        <h2>Twenty-two providers ship with live data.</h2>
         <p class="lead">
           Each one names exactly where data comes from, what we can know about cost, and how quota
           is shaped. Notes capture limitations we'd rather you read than discover later.
@@ -176,6 +176,12 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
             Their real data sources live in your local filesystem. A cloud function has no lawful
             way to read them without an agent on your Mac. Plus, Anthropic's policy disallows
             third-party hosting of Claude.ai credentials — and we agree with that line.
+          </p>
+        </li>
+        <li>
+          <h4>Antigravity &amp; Hermes</h4>
+          <p>
+            Both are deeply integrated local components. Antigravity monitors the Gemini CLI history files (<code>history.jsonl</code>) locally, while Hermes is the native automation companion scraping computer-use metrics offline. Neither leaks credential material or session data to any external server.
           </p>
         </li>
       </ul>

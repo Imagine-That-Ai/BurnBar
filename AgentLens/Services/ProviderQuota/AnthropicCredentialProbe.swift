@@ -106,10 +106,9 @@ struct AnthropicCredentialProbe: Sendable {
         return "…\(trimmed.suffix(4))"
     }
 
-    /// Run the 1-token probe against `/v1/messages`.
-    func probe(credential rawCredential: String) async -> Result {
+    /// Build the outbound 1-token probe request (test seam for header dispatch).
+    func buildProbeRequest(credential rawCredential: String) throws -> (request: URLRequest, shape: Shape) {
         let shape = Self.detectShape(rawCredential)
-        let label = Self.redactedLabel(rawCredential)
         let endpoint = baseURL.appending(path: "messages")
 
         var request = URLRequest(url: endpoint)
@@ -130,9 +129,18 @@ struct AnthropicCredentialProbe: Sendable {
                 ["role": "user", "content": "ping"]
             ]
         ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        return (request, shape)
+    }
+
+    /// Run the 1-token probe against `/v1/messages`.
+    func probe(credential rawCredential: String) async -> Result {
+        let label = Self.redactedLabel(rawCredential)
+        let built: (request: URLRequest, shape: Shape)
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+            built = try buildProbeRequest(credential: rawCredential)
         } catch {
+            let shape = Self.detectShape(rawCredential)
             return Result(
                 verdict: .unexpected(status: 0, message: "could not encode probe body"),
                 shape: shape,
@@ -140,6 +148,8 @@ struct AnthropicCredentialProbe: Sendable {
                 probedAt: clock()
             )
         }
+        let request = built.request
+        let shape = built.shape
 
         do {
             let (data, response) = try await session.data(for: request)
@@ -164,7 +174,7 @@ struct AnthropicCredentialProbe: Sendable {
         }
     }
 
-    private func classify(status: Int, body: String) -> Verdict {
+    func classify(status: Int, body: String) -> Verdict {
         if (200..<300).contains(status) {
             return .ok(model: probeModel)
         }

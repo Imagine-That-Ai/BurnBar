@@ -13,7 +13,7 @@ import OpenBurnBarCore
 /// a single migration entry-point and shared codecs so that each store file
 /// stays focused on domain SQL.
 final class OpenBurnBarDatabase: Sendable {
-    private static let latestMigrationIdentifier = "v37_token_usage_performance_indexes"
+    private static let latestMigrationIdentifier = "v45_conversation_working_directory"
 
     let dbQueue: any DatabaseWriter
 
@@ -31,6 +31,7 @@ final class OpenBurnBarDatabase: Sendable {
     enum OpenBurnBarDatabaseError: Error {
         case integrityCheckFailed(details: String)
         case backupFailed(underlying: Error)
+        case migrationFailed(restoredFromBackup: Bool, underlying: Error)
     }
 
     /// Run integrity check and backup only when the schema actually needs a
@@ -39,11 +40,62 @@ final class OpenBurnBarDatabase: Sendable {
     /// ordinary already-current launches, the database should open immediately.
     /// Skips backup for in-memory databases (tests).
     func runMigrationsSafely() throws {
-        if try needsBackupBeforeMigration() {
-            try runIntegrityCheck()
-            try createBackupIfNeeded()
+        let migrationBackupURL: URL?
+        do {
+            if try needsBackupBeforeMigration() {
+                try runIntegrityCheck()
+                migrationBackupURL = try createBackupIfNeeded()
+            } else {
+                migrationBackupURL = nil
+            }
+        } catch {
+            if Self.isLikelyDatabaseCorruption(error) {
+                throw OpenBurnBarDatabaseError.integrityCheckFailed(details: String(describing: error))
+            }
+            throw error
         }
-        try Self.migrator.migrate(dbQueue)
+
+        do {
+            try Self.migrator.migrate(dbQueue)
+        } catch {
+            var restoredFromBackup = false
+            if let migrationBackupURL {
+                do {
+                    try restoreDatabaseFromBackup(backupURL: migrationBackupURL)
+                    restoredFromBackup = true
+                    AppLogger.dataStore.error(
+                        "Database migration failed; restored pre-migration backup",
+                        metadata: [
+                            "backup_path": migrationBackupURL.path,
+                            "error": String(describing: error)
+                        ]
+                    )
+                } catch let restoreError {
+                    AppLogger.dataStore.error(
+                        "Database migration and backup restore both failed",
+                        metadata: [
+                            "backup_path": migrationBackupURL.path,
+                            "migration_error": String(describing: error),
+                            "restore_error": String(describing: restoreError)
+                        ]
+                    )
+                }
+            } else {
+                AppLogger.dataStore.error(
+                    "Database migration failed",
+                    metadata: ["error": String(describing: error)]
+                )
+            }
+            throw OpenBurnBarDatabaseError.migrationFailed(
+                restoredFromBackup: restoredFromBackup,
+                underlying: error
+            )
+        }
+    }
+
+    private static func isLikelyDatabaseCorruption(_ error: Error) -> Bool {
+        guard let dbError = error as? DatabaseError else { return false }
+        return dbError.resultCode == .SQLITE_CORRUPT || dbError.resultCode == .SQLITE_NOTADB
     }
 
     private func runIntegrityCheck() throws {
@@ -85,8 +137,8 @@ final class OpenBurnBarDatabase: Sendable {
         }
     }
 
-    private func createBackupIfNeeded() throws {
-        guard !isInMemoryDatabase else { return }
+    private func createBackupIfNeeded() throws -> URL? {
+        guard !isInMemoryDatabase else { return nil }
 
         let dbPath = dbQueue.path
         let dbURL = URL(fileURLWithPath: dbPath)
@@ -99,7 +151,7 @@ final class OpenBurnBarDatabase: Sendable {
         let backupURL = supportDir.appendingPathComponent(backupName)
 
         // Ensure the database file actually exists before backing up
-        guard FileManager.default.fileExists(atPath: dbPath) else { return }
+        guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
 
         let destinationQueue: DatabaseQueue
         do {
@@ -121,6 +173,37 @@ final class OpenBurnBarDatabase: Sendable {
         }
 
         pruneOldBackups(in: supportDir, keeping: 5)
+        return backupURL
+    }
+
+    private func restoreDatabaseFromBackup(backupURL: URL) throws {
+        guard !isInMemoryDatabase else { return }
+
+        let dbPath = dbQueue.path
+        let dbURL = URL(fileURLWithPath: dbPath)
+        let fileManager = FileManager.default
+
+        if let pool = dbQueue as? DatabasePool {
+            try pool.close()
+        } else if let queue = dbQueue as? DatabaseQueue {
+            try queue.close()
+        }
+
+        if fileManager.fileExists(atPath: dbPath) {
+            try fileManager.removeItem(atPath: dbPath)
+        }
+        for suffix in ["-wal", "-shm"] {
+            let sidecarPath = dbPath + suffix
+            if fileManager.fileExists(atPath: sidecarPath) {
+                try fileManager.removeItem(atPath: sidecarPath)
+            }
+        }
+
+        try fileManager.copyItem(at: backupURL, to: dbURL)
+        AppLogger.dataStore.info(
+            "Restored database from pre-migration backup",
+            metadata: ["backup_path": backupURL.path, "database_path": dbPath]
+        )
     }
 
     private func pruneOldBackups(in directory: URL, keeping max: Int) {
@@ -1424,6 +1507,111 @@ final class OpenBurnBarDatabase: Sendable {
                 """)
         }
 
+        migrator.registerMigration("v44_repair_token_accounting_duplicates") { db in
+            try db.execute(sql: """
+                DELETE FROM token_usage
+                WHERE provider IN ('Zai', 'MiniMax', 'Ollama')
+                  AND EXISTS (
+                    SELECT 1
+                    FROM token_usage factory
+                    WHERE factory.provider = 'Factory'
+                      AND factory.sessionId = token_usage.sessionId
+                      AND COALESCE(factory.sourceDeviceId, '') = COALESCE(token_usage.sourceDeviceId, '')
+                      AND COALESCE(factory.providerAccountID, '') = COALESCE(token_usage.providerAccountID, '')
+                  )
+                """)
+
+            try db.execute(sql: """
+                DELETE FROM token_usage
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM token_usage winner
+                    WHERE winner.provider = token_usage.provider
+                      AND winner.sessionId = token_usage.sessionId
+                      AND winner.model != token_usage.model
+                      AND COALESCE(winner.sourceDeviceId, '') = COALESCE(token_usage.sourceDeviceId, '')
+                      AND COALESCE(winner.providerAccountID, '') = COALESCE(token_usage.providerAccountID, '')
+                      AND (
+                        CASE winner.provenanceConfidence
+                            WHEN 'exact' THEN 4
+                            WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1
+                            ELSE 0
+                        END
+                      ) > (
+                        CASE token_usage.provenanceConfidence
+                            WHEN 'exact' THEN 4
+                            WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1
+                            ELSE 0
+                        END
+                      )
+                )
+                """)
+        }
+
+        migrator.registerMigration("v45_conversation_working_directory") { db in
+            guard try db.tableExists("conversations") else { return }
+            let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(conversations)")
+                .compactMap { $0["name"] as? String }
+            guard !columns.contains("workingDirectory") else { return }
+            try db.alter(table: "conversations") { t in
+                t.add(column: "workingDirectory", .text)
+            }
+        }
+
+        migrator.registerMigration("v46_drain_target_per_provider") { db in
+            // Per-provider drain targets: `switcher_active_profile` gains a
+            // nullable `providerID`. `providerID IS NULL` remains the legacy
+            // global pointer (browser launching + legacy callers); one row per
+            // CLI providerID becomes that provider's drain target — the account
+            // the user is burning quota from for that provider.
+            guard try db.tableExists("switcher_active_profile") else { return }
+            let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(switcher_active_profile)")
+                .compactMap { $0["name"] as? String }
+            if !columns.contains("providerID") {
+                try db.alter(table: "switcher_active_profile") { t in
+                    t.add(column: "providerID", .text)
+                }
+            }
+
+            // Seed the per-provider drain target from the existing global active
+            // profile so the user's current selection survives the upgrade.
+            if let activeProfileID = try String.fetchOne(
+                db,
+                sql: """
+                    SELECT activeProfileID FROM switcher_active_profile
+                    WHERE activeProfileID IS NOT NULL AND providerID IS NULL
+                    ORDER BY COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
+                    LIMIT 1
+                """
+            ),
+               let cliTypeRaw = try String.fetchOne(
+                   db,
+                   sql: "SELECT cliType FROM switcher_profiles WHERE id = ?",
+                   arguments: [activeProfileID]
+               ),
+               let cliType = SwitcherCLIProfileType(rawValue: cliTypeRaw) {
+                let providerID = cliType.providerID.rawValue
+                let existing = try Int.fetchOne(
+                    db,
+                    sql: "SELECT COUNT(*) FROM switcher_active_profile WHERE providerID = ?",
+                    arguments: [providerID]
+                ) ?? 0
+                if existing == 0 {
+                    try db.execute(
+                        sql: """
+                            INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt)
+                            VALUES (?, ?, ?)
+                        """,
+                        arguments: [activeProfileID, providerID, Date()]
+                    )
+                }
+            }
+        }
+
         return migrator
     }
 
@@ -1536,5 +1724,93 @@ final class OpenBurnBarDatabase: Sendable {
             return nil
         }
         return try? JSONDecoder().decode([HermesAttachment].self, from: data)
+    }
+}
+
+// MARK: - Working Directory Backfill
+
+struct WorkingDirectoryBackfillService {
+    private let batchSize: Int
+
+    init(batchSize: Int = 1_000) {
+        self.batchSize = max(1, batchSize)
+    }
+
+    func runIfNeeded(database: OpenBurnBarDatabase) async {
+        let hasColumn = (try? await database.dbQueue.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(conversations)")
+                .compactMap { $0["name"] as? String }
+                .contains("workingDirectory")
+        }) ?? false
+        guard hasColumn else { return }
+
+        while !Task.isCancelled {
+            let limit = self.batchSize
+            let batch = (try? await database.dbQueue.read { db in
+                try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT id, keyFiles
+                    FROM conversations
+                    WHERE workingDirectory IS NULL
+                      AND keyFiles IS NOT NULL
+                      AND keyFiles != ''
+                      AND keyFiles != '[]'
+                      AND (
+                          keyFiles LIKE '["/%'
+                          OR keyFiles LIKE '["~/%'
+                          OR keyFiles LIKE '["\\/%'
+                      )
+                    LIMIT ?
+                    """,
+                    arguments: [limit]
+                ).compactMap { row -> (String, String)? in
+                    guard let id = row["id"] as? String,
+                          let keyFiles = row["keyFiles"] as? String else {
+                        return nil
+                    }
+                    return (id, keyFiles)
+                }
+            }) ?? []
+            guard !batch.isEmpty else { return }
+
+            let updates = batch.compactMap { id, keyFilesJSON -> (id: String, workingDirectory: String)? in
+                guard let workingDirectory = Self.inferWorkingDirectory(fromKeyFilesJSON: keyFilesJSON) else {
+                    return nil
+                }
+                return (id, workingDirectory)
+            }
+            guard !updates.isEmpty else { return }
+
+            try? await database.dbQueue.write { db in
+                for update in updates {
+                    try db.execute(
+                        sql: "UPDATE conversations SET workingDirectory = ? WHERE id = ? AND workingDirectory IS NULL",
+                        arguments: [update.workingDirectory, update.id]
+                    )
+                }
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
+    static func inferWorkingDirectory(fromKeyFilesJSON json: String) -> String? {
+        guard let data = json.data(using: .utf8),
+              let paths = try? JSONDecoder().decode([String].self, from: data),
+              let first = paths.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !first.isEmpty else {
+            return nil
+        }
+
+        let expanded: String
+        if first.hasPrefix("~/") {
+            expanded = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(String(first.dropFirst(2)))
+                .path
+        } else {
+            expanded = first
+        }
+        guard expanded.hasPrefix("/") else { return nil }
+        return URL(fileURLWithPath: expanded).deletingLastPathComponent().standardizedFileURL.path
     }
 }

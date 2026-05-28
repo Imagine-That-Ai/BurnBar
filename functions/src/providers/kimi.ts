@@ -142,7 +142,7 @@ async function tryEachHost(
 // Adapter
 // ---------------------------------------------------------------------------
 
-interface KimiModelsPayload {
+export interface KimiModelsPayload {
   data?: Array<{
     id?: string;
     object?: string;
@@ -321,7 +321,7 @@ export const kimiAdapter: ProviderAdapter = {
 // Balance payload
 // ---------------------------------------------------------------------------
 
-interface KimiBalancePayload {
+export interface KimiBalancePayload {
   available_balance?: number;
   availableBalance?: number;
   balance?: number;

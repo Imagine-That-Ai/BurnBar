@@ -141,9 +141,10 @@ for (const collection of ["hermes_relay_requests"]) {
 }
 assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*request\.resource\.data\.payloadCiphertext is string/);
 assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("data" in request\.resource\.data\)[\s\S]*request\.resource\.data\.ciphertext is string/);
-assert.match(readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"), /current\.status === "revoked"/);
+assert.match(readFileSync(new URL("../src/callables/hermes.ts", import.meta.url), "utf8"), /current\.status === "revoked"/);
 {
-  const functionsSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  const indexSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  const hermesSource = readFileSync(new URL("../src/callables/hermes.ts", import.meta.url), "utf8");
   for (const exportedName of [
     "createHermesPairing",
     "completeHermesPairing",
@@ -151,9 +152,10 @@ assert.match(readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"), 
     "revokeHermesConnection",
     "updateHermesConnectionStatus",
   ]) {
-    const start = functionsSource.indexOf(`export const ${exportedName}`);
-    assert.notEqual(start, -1, `${exportedName} must exist`);
-    const block = functionsSource.slice(start, functionsSource.indexOf("\n);\n", start) + 4);
+    assert.match(indexSource, new RegExp(`\\b${exportedName}\\b`), `${exportedName} must be exported from index`);
+    const start = hermesSource.indexOf(`export const ${exportedName}`);
+    assert.notEqual(start, -1, `${exportedName} must exist in callables/hermes.ts`);
+    const block = hermesSource.slice(start, hermesSource.indexOf("\n);\n", start) + 4);
     assert.match(block, /await assertActiveHostedQuotaEntitlement\(uid\);/, `${exportedName} must be premium-gated`);
   }
 }

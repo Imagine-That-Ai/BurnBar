@@ -86,6 +86,24 @@ struct DashboardLiveCostCurve: View {
         .onChange(of: cacheKey) { _, _ in rebuildSamplesIfNeeded() }
     }
 
+    private static let minuteAxisFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "mm:ss"
+        return formatter
+    }()
+
+    private static let hourAxisFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter
+    }()
+
+    private static let dayAxisFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "ha"
+        return formatter
+    }()
+
     // MARK: - Sample Cache
 
     fileprivate struct CacheKey: Equatable {
@@ -206,11 +224,11 @@ struct DashboardLiveCostCurve: View {
     }
 
     private func axisLabels() -> [String] {
-        let formatter = DateFormatter()
+        let formatter: DateFormatter
         switch granularity {
-        case .minute: formatter.dateFormat = "mm:ss"
-        case .hour:   formatter.dateFormat = "h:mm a"
-        case .day:    formatter.dateFormat = "ha"
+        case .minute: formatter = Self.minuteAxisFormatter
+        case .hour:   formatter = Self.hourAxisFormatter
+        case .day:    formatter = Self.dayAxisFormatter
         }
         let count = 6
         let interval = domain.upperBound.timeIntervalSince(domain.lowerBound) / Double(count - 1)
@@ -334,7 +352,6 @@ private struct CurveCanvas: View {
                 }
             }
         }
-        .drawingGroup(opaque: false, colorMode: .linear)
     }
 
     private func normalizedPoints(in size: CGSize) -> [CGPoint] {

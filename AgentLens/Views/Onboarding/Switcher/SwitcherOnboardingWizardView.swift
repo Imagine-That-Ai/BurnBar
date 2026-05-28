@@ -30,6 +30,7 @@ struct OnboardingProvider: Identifiable, Equatable {
         case droidCLI
         case forgeCLI
         case antigravityCLI
+        case grokCLI
     }
 
     static let defaultOrder: [OnboardingProvider] = [
@@ -43,6 +44,7 @@ struct OnboardingProvider: Identifiable, Equatable {
         OnboardingProvider(id: "droidcli",  label: "Droid CLI",       icon: "terminal.fill", bundledLogoName: "FactoryLogo",    color: Color(hex: "8B5CF6"), kind: .droidCLI),
         OnboardingProvider(id: "forgecli",  label: "Forge CLI",       icon: "terminal.fill", bundledLogoName: "ForgeLogo",      color: Color(hex: "F97316"), kind: .forgeCLI),
         OnboardingProvider(id: "antigravitycli", label: "Antigravity CLI", icon: "terminal.fill", bundledLogoName: "AntigravityLogo", color: Color(hex: "6C63FF"), kind: .antigravityCLI),
+        OnboardingProvider(id: "grokcli", label: "Grok Build CLI", icon: "terminal.fill", bundledLogoName: "GrokLogo", color: Color(hex: "111111"), kind: .grokCLI),
     ]
 }
 

@@ -161,12 +161,8 @@ test: ## Run all test suites (Swift packages + macOS + mobile + Android when con
 	@./scripts/test-openburnbar-swift.sh
 	@echo "==> Running macOS app tests…"
 	@./scripts/test-openburnbar-app.sh
-	@echo "==> Running iOS mobile tests (requires iOS Simulator)…"
-	@if xcodebuild -showdestinations -scheme OpenBurnBarMobile -project OpenBurnBar.xcodeproj 2>/dev/null | grep -q "iOS Simulator"; then \
-		./scripts/test-openburnbar-mobile.sh; \
-	else \
-		echo "WARNING: No iOS Simulator available; skipping mobile tests."; \
-	fi
+	@echo "==> Running iOS mobile tests (Simulator when CI=true; physical iPhone otherwise)…"
+	@CI=true ./scripts/test-openburnbar-mobile.sh
 	@if [ -x android/gradlew ] && [ -n "$${JAVA_HOME:-}" -o -d "$$HOME/.homebrew/opt/openjdk@21" -o -d /opt/homebrew/opt/openjdk@21 ]; then \
 		echo "==> Running Android unit tests…"; \
 		./scripts/test-openburnbar-android.sh || echo "WARNING: Android tests failed or SDK missing."; \
@@ -191,8 +187,9 @@ lint: ## Run SwiftLint
 		echo "WARNING: swiftlint not found; skipping lint."; \
 	fi
 
-debt-check: ## Enforce unsafe cast debt budget
+debt-check: ## Enforce unsafe cast debt budget + refresh tech-debt metrics
 	@./scripts/debt/check-unsafe-cast-budget.sh
+	@./scripts/ci/update-tech-debt-metrics.sh
 
 ci: debt-check lint test-full ## Full CI check (matches GitHub PR harness intent)
 

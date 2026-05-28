@@ -130,6 +130,7 @@ struct SwitcherOnboardingScanAddStep: View {
                     case .droid: cliKind = .droidCLI
                     case .forge: cliKind = .forgeCLI
                     case .antigravity: cliKind = .antigravityCLI
+                    case .grok: cliKind = .grokCLI
                     }
                     guard enforceCap(for: cliKind) else { return }
                     withAnimation(DesignSystem.Animation.snappy) {
@@ -336,6 +337,16 @@ struct SwitcherOnboardingScanAddStep: View {
                 ) {
                     await connectDifferentCLI(.antigravity)
                 }
+            case .grokCLI:
+                differentAccountButton(
+                    title: "Connect Grok Build",
+                    subtitle: "Verify the local Grok Build CLI profile on this Mac",
+                    icon: "link.badge.plus",
+                    color: Color(hex: "111111"),
+                    isLoading: connectingCLIType == .grok
+                ) {
+                    await connectDifferentCLI(.grok)
+                }
             }
         }
     }
@@ -392,6 +403,7 @@ struct SwitcherOnboardingScanAddStep: View {
         case (.droid, .droidCLI): return true
         case (.forge, .forgeCLI): return true
         case (.antigravity, .antigravityCLI): return true
+        case (.grok, .grokCLI): return true
         default: return false
         }
     }
@@ -489,7 +501,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
     private func signInIdentity(_ identity: DiscoveredIdentity) {
         switch identity.source {
-        case .codex, .claudeCode, .droid, .forge, .antigravity:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -508,7 +520,7 @@ struct SwitcherOnboardingScanAddStep: View {
             Task { await signInDifferentGoogle() }
         case .safari:
             Task { await signInDifferentApple() }
-        case .codex, .claudeCode, .droid, .forge, .antigravity:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -530,6 +542,7 @@ struct SwitcherOnboardingScanAddStep: View {
         case .droid: return .droidCLI
         case .forge: return .forgeCLI
         case .antigravity: return .antigravityCLI
+        case .grok: return .grokCLI
         }
     }
 
@@ -562,6 +575,8 @@ struct SwitcherOnboardingScanAddStep: View {
             kind = .forgeCLI
         case .antigravity:
             kind = .antigravityCLI
+        case .grok:
+            kind = .grokCLI
         }
 
         guard enforceCap(for: kind) else { return }
@@ -789,7 +804,7 @@ private struct IdentityCard: View {
             return "Signed in with a different Google account?"
         case .safari:
             return "Use a different Apple ID?"
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok:
             return "Connect another account for this provider?"
         }
     }
@@ -831,6 +846,10 @@ private struct IdentityCard: View {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(hex: "6C63FF"))
+        case .grok:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "111111"))
         }
     }
 
@@ -1119,7 +1138,7 @@ private extension DiscoveredIdentity {
                 return "Not installed"
             }
 
-        case .opencode, .droid, .forge, .antigravity:
+        case .opencode, .droid, .forge, .antigravity, .grok:
             switch authState {
             case .authenticated:
                 return "Logged in"
@@ -1147,7 +1166,8 @@ private extension DiscoveredIdentity {
             return normalized(executablePath) ?? subtitle
         case .droid(let executablePath, let configDirectory),
              .forge(let executablePath, let configDirectory),
-             .antigravity(let executablePath, let configDirectory):
+             .antigravity(let executablePath, let configDirectory),
+             .grok(let executablePath, let configDirectory):
             return normalized(executablePath) ?? normalized(configDirectory) ?? subtitle
         }
     }

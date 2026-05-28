@@ -57,6 +57,9 @@ struct PopoverQuickSwitchView: View {
 
     @State private var profiles: [SwitcherProfileRecord] = []
     @State private var activeProfileID: String?
+    /// Per-provider drain targets: providerID raw value → profile id currently
+    /// burning quota for that provider.
+    @State private var drainTargets: [String: String] = [:]
     @State private var selectedProfileID: String?
     @State private var switchState: SwitchState = .idle
     @State private var launchState: LaunchState = .idle
@@ -383,8 +386,9 @@ struct PopoverQuickSwitchView: View {
 
             providerPulseStrip
 
-            // All accounts roster — grouped by provider, cycleable
-            accountRoster
+            // Per-provider drain targets — the elegant toggle: pick which
+            // account is burning quota for each provider; the live one glows.
+            drainTargetsSection
 
             // Quick switch row (VAL-POPOVER-001)
             quickSwitchRow
@@ -431,46 +435,33 @@ struct PopoverQuickSwitchView: View {
 
     /// Grouped roster of all accounts by provider, showing connectivity and quota at a glance.
     @ViewBuilder
-    private var accountRoster: some View {
-        let groups = Dictionary(grouping: profiles, by: providerDisplayName(for:))
-            .map { (provider, items) in
-                (
-                    provider: provider,
-                    profiles: items.sorted { !$0.isDisabled && $1.isDisabled },
-                    connected: items.filter { !$0.isDisabled }.count
-                )
-            }
-            .sorted { $0.provider < $1.provider }
-
+    private var drainTargetsSection: some View {
+        let groups = DrainTargetSwitcher.grouped(profiles)
         if !groups.isEmpty {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 ForEach(groups, id: \.provider) { group in
-                    HStack(spacing: DesignSystem.Spacing.xs) {
-                        Circle()
-                            .fill(group.connected > 0 ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted.opacity(0.4))
-                            .frame(width: 5, height: 5)
-
-                        Text(group.provider)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-                        Text(group.profiles.count == 1 ? "1 account" : "\(group.profiles.count) accounts")
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                        Spacer()
-
-                        if group.connected > 1 {
-                            Text("\(group.connected) ready")
-                                .font(.system(size: 9, weight: .medium, design: .rounded))
-                                .foregroundStyle(DesignSystem.Colors.success)
-                        }
-                    }
-                    .padding(.horizontal, DesignSystem.Spacing.xs)
-                    .padding(.vertical, 2)
+                    DrainTargetSwitcher(
+                        provider: group.provider,
+                        accounts: group.accounts,
+                        drainProfileID: drainTargets[group.provider.providerID.rawValue],
+                        variant: .compact,
+                        quotaText: { profile in quotaRemainingText(for: profile) },
+                        onSelect: { setDrainTarget($0, provider: group.provider) }
+                    )
                 }
             }
         }
+    }
+
+    private func quotaRemainingText(for profile: SwitcherProfileRecord) -> String? {
+        guard let snapshot = quotaService.snapshot(accountID: profile.id) else { return nil }
+        if let pct = snapshot.hourlyBucket?.remainingPercent {
+            return "\(Int(pct.rounded()))%"
+        }
+        if let pct = snapshot.weeklyBucket?.remainingPercent {
+            return "\(Int(pct.rounded()))%"
+        }
+        return nil
     }
 
     // MARK: - Header Row
@@ -871,6 +862,7 @@ struct PopoverQuickSwitchView: View {
             let state = try dataStore.switcherStore.validateAndRecoverActiveProfile()
             activeProfileID = loadedProfiles.contains(where: { $0.id == state.activeProfileID }) ? state.activeProfileID : loadedProfiles.first?.id
             selectedProfileID = activeProfileID ?? loadedProfiles.first?.id
+            drainTargets = (try? dataStore.switcherStore.fetchAllActiveDrainTargets()) ?? [:]
 
             // Initialize launch services
             let adapter = PopoverSwitcherProfileAdapter(store: dataStore.switcherStore)
@@ -945,6 +937,23 @@ struct PopoverQuickSwitchView: View {
                 switchState = .error("Default update failed")
             }
             announceForAccessibility("Failed to update launch default. \(error.localizedDescription)")
+        }
+    }
+
+    /// Promotes `profile` to the drain target for `provider` — the account that
+    /// burns quota for that provider's CLI launches. Other providers are
+    /// untouched, so Claude and Codex each keep their own live account.
+    private func setDrainTarget(_ profile: SwitcherProfileRecord, provider: AgentProvider) {
+        let providerKey = provider.providerID.rawValue
+        guard drainTargets[providerKey] != profile.id else { return }
+        do {
+            try dataStore.switcherStore.setActiveProfile(profile.id, for: provider.providerID)
+            withAnimation(DesignSystem.Animation.snappy) {
+                drainTargets[providerKey] = profile.id
+            }
+            announceForAccessibility("\(provider.displayName) now draining \(profile.displayName)")
+        } catch {
+            announceForAccessibility("Failed to set drain target. \(error.localizedDescription)")
         }
     }
 
@@ -1363,6 +1372,14 @@ private final class PopoverSwitcherProfileAdapter: SwitcherProfileStoreAdapter, 
 
     func setActiveProfileID(_ profileID: String?) {
         try? store.setActiveProfile(profileID)
+    }
+
+    func fetchActiveProfileID(for providerID: ProviderID) -> String? {
+        try? store.fetchActiveProfileID(for: providerID)
+    }
+
+    func setActiveProfileID(_ profileID: String?, for providerID: ProviderID) {
+        try? store.setActiveProfile(profileID, for: providerID)
     }
 
     func updateProfile(_ profile: SwitcherProfileRecord) {

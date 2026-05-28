@@ -1,4 +1,5 @@
 import { errorMessage, isRecord } from "../guards.js";
+import { logError, logInfo } from "../logging.js";
 /**
  * @fileoverview Apple App Store Server Notifications V2 webhook.
  *
@@ -102,7 +103,8 @@ export const appStoreServerNotificationsV2 = onRequest(
     try {
       notification = await verifier.verifyNotification(rawSignedPayload);
     } catch (err) {
-      console.error("appstore:notifications verify failed", {
+      logError({
+        event: "appstore.notifications.verify_failed",
         message: errorMessage(err),
         kind:
           err instanceof JWSVerificationFailure
@@ -130,10 +132,11 @@ export const appStoreServerNotificationsV2 = onRequest(
       // SUBSCRIPTION_RENEWAL_DATE_EXTENSION summary) carry no transaction
       // info. We acknowledge and move on; logging keeps the audit trail
       // intact.
-      console.info("appstore:notifications no signedTransactionInfo", {
-        type: notification.payload.notificationType,
-        subtype: notification.payload.subtype,
-        notificationUUID: notification.payload.notificationUUID,
+      logInfo({
+        event: "appstore.notifications.no_signed_transaction",
+        type: String(notification.payload.notificationType ?? ""),
+        subtype: String(notification.payload.subtype ?? ""),
+        notification_uuid: String(notification.payload.notificationUUID ?? ""),
       });
       res.status(200).send();
       return;
@@ -163,10 +166,11 @@ export const appStoreServerNotificationsV2 = onRequest(
       });
       res.status(200).send();
     } catch (err) {
-      console.error("appstore:notifications reconcile failed", {
+      logError({
+        event: "appstore.notifications.reconcile_failed",
         message: errorMessage(err),
-        type: notification.payload.notificationType,
-        subtype: notification.payload.subtype,
+        type: String(notification.payload.notificationType ?? ""),
+        subtype: String(notification.payload.subtype ?? ""),
       });
       // For internal errors return 500 so Apple retries. For known
       // policy errors (binding mismatch, etc.) return 200 so we don't

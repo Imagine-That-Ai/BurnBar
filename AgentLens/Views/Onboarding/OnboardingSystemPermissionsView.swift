@@ -368,9 +368,7 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
             #endif
             openSystemSettings(for: step)
         case .accessibility:
-            let opts: [String: Bool] = ["AXTrustedCheckOptionPrompt": true]
-            _ = AXIsProcessTrustedWithOptions(opts as CFDictionary)
-            openSystemSettings(for: step)
+            _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
         case .fullDiskAccess:
             openSystemSettings(for: step)
         case .automation:

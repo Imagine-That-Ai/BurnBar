@@ -139,6 +139,29 @@ final class BurnBarConfigStoreTests: XCTestCase {
         }
     }
 
+    func testConfigStoreRejectsNonHTTPProviderBaseURL() async throws {
+        let harness = try makeHarness(name: "invalid-base-url")
+
+        for blockedURL in ["file:///etc/passwd", "javascript:alert(1)", "not-a-url"] {
+            do {
+                _ = try await harness.configStore.upsertProvider(
+                    BurnBarProviderSettings(
+                        providerID: "zai",
+                        isEnabled: true,
+                        baseURL: blockedURL,
+                        preferredModelIDs: ["glm-5"]
+                    )
+                )
+                XCTFail("Expected invalid base URL error for \(blockedURL)")
+            } catch let error as BurnBarConfigStoreError {
+                guard case .invalidBaseURL(let providerID) = error else {
+                    return XCTFail("Unexpected error for \(blockedURL): \(error)")
+                }
+                XCTAssertEqual(providerID, "zai")
+            }
+        }
+    }
+
     func testResolvedConfigurationMigratesLegacySecretToDefaultSlot() async throws {
         let harness = try makeHarness(name: "legacy-migration")
         _ = try await harness.configStore.upsertProvider(

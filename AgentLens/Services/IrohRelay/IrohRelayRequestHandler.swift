@@ -94,26 +94,57 @@ final class IrohRelayRequestHandler: Sendable {
     ) async throws -> ServeDisposition {
         var classifiedAsMediaControl = false
         while let frame = try await stream.receive() {
-            guard frame.uid == uid, frame.connectionId == connectionID else { continue }
+            guard frame.uid == uid else { continue }
             await auditStage(
                 "host_frame_received",
                 uid: uid,
-                connectionID: connectionID,
+                connectionID: frame.connectionId,
                 requestID: frame.requestId,
-                extra: ["frameType": frame.type.rawValue]
+                extra: [
+                    "frameType": frame.type.rawValue,
+                    "hostConnectionId": connectionID
+                ]
             )
 
             // First-frame classification — when iOS opens a stream and
             // declares it the long-lived media control stream, hand
             // ownership to the registry and return. The registry's
-            // owner drives the read loop from there.
+            // owner drives the read loop from there. Use the frame's
+            // connection id instead of the host's current relay id: iOS can
+            // arrive through a still-signed persisted Mercury route while the
+            // Mac has since refreshed its own relay document. The iroh node
+            // identity + uid are the trust boundary here; rejecting the
+            // classify frame on connection-id drift strands the phone in
+            // reconnect churn before the mirror request can ever arrive.
             if !classifiedAsMediaControl,
                frame.type == .mediaClassify,
                let mediaControlRegistrar,
                frame.media?.streamClass == "media.control" {
                 classifiedAsMediaControl = true
-                await mediaControlRegistrar(stream, uid, connectionID)
+                if frame.connectionId != connectionID {
+                    await auditStage(
+                        "host_media_control_connection_id_drift",
+                        uid: uid,
+                        connectionID: frame.connectionId,
+                        requestID: frame.requestId,
+                        extra: ["hostConnectionId": connectionID]
+                    )
+                }
+                await mediaControlRegistrar(stream, uid, frame.connectionId)
                 return .transferredStreamOwnership
+            }
+            guard frame.connectionId == connectionID else {
+                await auditStage(
+                    "host_frame_connection_mismatch",
+                    uid: uid,
+                    connectionID: frame.connectionId,
+                    requestID: frame.requestId,
+                    extra: [
+                        "frameType": frame.type.rawValue,
+                        "hostConnectionId": connectionID
+                    ]
+                )
+                continue
             }
             switch frame.type {
             case .requestStart:
@@ -850,6 +881,7 @@ final class IrohRelayRequestHandler: Sendable {
             }
             return HermesRelayHostService.mergedModelsResponseBodies(primaryBody, secondaryBody) ?? primaryBody
         } catch {
+            AppLogger.network.error("iroh_relay_body_merge_failed", metadata: ["error": error.localizedDescription])
             return primaryBody
         }
     }

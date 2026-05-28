@@ -105,6 +105,116 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func test_v45_addsConversationWorkingDirectoryAndBackfillsFromKeyFiles() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+
+        let columns = try await queue.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(conversations)")
+                .compactMap { $0["name"] as? String }
+        }
+        XCTAssertTrue(columns.contains("workingDirectory"))
+
+        let conversation = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "resume-backfill"),
+            provider: .codex,
+            sessionId: "resume-backfill",
+            projectName: "Project",
+            startTime: Date(timeIntervalSince1970: 10),
+            endTime: Date(timeIntervalSince1970: 20),
+            messageCount: 2,
+            userWordCount: 4,
+            assistantWordCount: 6,
+            keyFiles: ["/Users/test/project/Sources/App.swift"],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Resume backfill",
+            lastAssistantMessage: "Done",
+            fullText: "User\n\nAssistant",
+            indexedAt: Date(timeIntervalSince1970: 30),
+            workingDirectory: nil,
+            fileModifiedAt: Date(timeIntervalSince1970: 40)
+        )
+        try ConversationStore(dbQueue: queue).upsertConversation(conversation)
+
+        await WorkingDirectoryBackfillService(batchSize: 1).runIfNeeded(database: database)
+
+        let workingDirectory = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT workingDirectory FROM conversations WHERE id = ?",
+                arguments: [conversation.id]
+            )
+        }
+        XCTAssertEqual(workingDirectory, "/Users/test/project/Sources")
+    }
+
+
+    func test_runMigrationsSafely_integrityCheckFails_onCorruptedFile() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let dbPath = tempDir.appendingPathComponent("corrupt.sqlite").path
+
+        let queue = try DatabaseQueue(path: dbPath)
+        try queue.write { db in
+            try db.execute(sql: "CREATE TABLE test (id INTEGER PRIMARY KEY)")
+        }
+        _ = queue
+
+        var data = try Data(contentsOf: URL(fileURLWithPath: dbPath))
+        guard data.count > 100 else {
+            XCTFail("Database file too small")
+            return
+        }
+        for i in 0..<50 {
+            data[i] = 0xFF
+        }
+        try data.write(to: URL(fileURLWithPath: dbPath))
+
+        XCTAssertThrowsError(try {
+            let corruptQueue = try DatabaseQueue(path: dbPath)
+            let database = OpenBurnBarDatabase(databaseQueue: corruptQueue)
+            try database.runMigrationsSafely()
+        }()) { error in
+            if case OpenBurnBarDatabase.OpenBurnBarDatabaseError.integrityCheckFailed = error {
+                return
+            }
+            if let dbError = error as? DatabaseError,
+               dbError.resultCode == .SQLITE_CORRUPT || dbError.resultCode == .SQLITE_NOTADB {
+                return
+            }
+            XCTFail("Expected integrity or corruption error, got \(error)")
+        }
+    }
+
+    func test_dataStoreActor_corruptedDatabaseThrowsWithoutFatalError() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let dbPath = tempDir.appendingPathComponent("startup-corrupt.sqlite").path
+        let queue = try DatabaseQueue(path: dbPath)
+        try queue.write { db in
+            try db.execute(sql: "CREATE TABLE token_usage (id TEXT PRIMARY KEY)")
+        }
+        _ = queue
+
+        var data = try Data(contentsOf: URL(fileURLWithPath: dbPath))
+        for i in 0..<min(50, data.count) {
+            data[i] = 0xFF
+        }
+        try data.write(to: URL(fileURLWithPath: dbPath))
+
+        XCTAssertThrowsError(try {
+            let corruptQueue = try DatabaseQueue(path: dbPath)
+            _ = try DataStoreActor(databaseQueue: corruptQueue, runMigrations: true)
+        }())
+    }
 
     func test_runMigrationsSafely_prunesOldBackups() throws {
         let tempDir = FileManager.default.temporaryDirectory
@@ -237,6 +347,81 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(indexes.contains("token_usage_provider_id_time_idx"))
     }
 
+    func test_v44_removesFactoryRoutedProviderMirrorsAndStaleModelRows() throws {
+        let queue = try DatabaseQueue()
+        try seedLegacyDatabaseThroughV35(queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        try queue.write { db in
+            try insertUsageRow(
+                db,
+                id: "factory-canonical",
+                provider: "Factory",
+                sessionID: "factory-routed-session",
+                model: "minimax-m2.7",
+                inputTokens: 1_000,
+                outputTokens: 500,
+                cost: 0,
+                confidence: "exact",
+                providerID: "factory",
+                now: now
+            )
+            try insertUsageRow(
+                db,
+                id: "minimax-mirror",
+                provider: "MiniMax",
+                sessionID: "factory-routed-session",
+                model: "minimax-m2.7",
+                inputTokens: 1_000,
+                outputTokens: 500,
+                cost: 0.02,
+                confidence: "exact",
+                providerID: "minimax",
+                now: now
+            )
+            try insertUsageRow(
+                db,
+                id: "stale-estimate",
+                provider: "Claude Code",
+                sessionID: "corrected-model-session",
+                model: "unknown",
+                inputTokens: 5_000,
+                outputTokens: 2_000,
+                cost: 0.10,
+                confidence: "low_confidence_estimate",
+                providerID: "claude-code",
+                now: now
+            )
+            try insertUsageRow(
+                db,
+                id: "exact-correction",
+                provider: "Claude Code",
+                sessionID: "corrected-model-session",
+                model: "claude-4-sonnet",
+                inputTokens: 3_000,
+                outputTokens: 1_000,
+                cost: 0.04,
+                confidence: "exact",
+                providerID: "claude-code",
+                now: now
+            )
+        }
+
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrations()
+
+        let rows = try queue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT provider, sessionId, model FROM token_usage ORDER BY sessionId, provider"
+            )
+        }
+
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertTrue(rows.contains { ($0["provider"] as? String) == "Factory" && ($0["sessionId"] as? String) == "factory-routed-session" })
+        XCTAssertTrue(rows.contains { ($0["model"] as? String) == "claude-4-sonnet" && ($0["sessionId"] as? String) == "corrected-model-session" })
+    }
+
     private func seedLegacyDatabaseThroughV35(_ queue: DatabaseQueue) throws {
         try queue.write { db in
             try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
@@ -332,6 +517,47 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 Date(timeIntervalSince1970: 0),
                 Date(timeIntervalSince1970: 1),
                 Date(timeIntervalSince1970: 2),
+            ]
+        )
+    }
+
+    private func insertUsageRow(
+        _ db: Database,
+        id: String,
+        provider: String,
+        sessionID: String,
+        model: String,
+        inputTokens: Int,
+        outputTokens: Int,
+        cost: Double,
+        confidence: String,
+        providerID: String,
+        now: Date
+    ) throws {
+        try db.execute(
+            sql: """
+                INSERT INTO token_usage (
+                    id, provider, sessionId, projectName, model,
+                    inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
+                    totalTokens, cost, startTime, endTime, createdAt,
+                    reasoningTokens, usageSource, provenanceMethod, provenanceConfidence,
+                    estimatorVersion, providerID
+                ) VALUES (?, ?, ?, 'workspace', ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, 0, 'provider_log', 'provider_log', ?, '', ?)
+                """,
+            arguments: [
+                id,
+                provider,
+                sessionID,
+                model,
+                inputTokens,
+                outputTokens,
+                inputTokens + outputTokens,
+                cost,
+                now,
+                now,
+                now,
+                confidence,
+                providerID,
             ]
         )
     }

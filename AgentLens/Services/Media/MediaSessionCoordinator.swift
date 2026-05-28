@@ -12,7 +12,20 @@ import OpenBurnBarMedia
 /// share + video call) compose by spinning up multiple coordinators
 /// against the same iroh blob/control endpoint.
 @MainActor
+protocol ScreenCaptureSession: AnyObject {
+    func start() async throws
+    func stop() async
+}
+
+extension ScreenCapturePipeline: ScreenCaptureSession {}
+
+@MainActor
 final class MediaSessionCoordinator: ObservableObject {
+    typealias ScreenCaptureSessionFactory = @MainActor @Sendable (
+        ScreenCapturePipeline.Configuration,
+        @escaping ScreenCapturePipeline.FrameHandler
+    ) -> any ScreenCaptureSession
+
     enum Phase: Equatable, Sendable {
         case idle
         case starting(feature: MediaStreamClass.Feature)
@@ -30,7 +43,8 @@ final class MediaSessionCoordinator: ObservableObject {
     @Published private(set) var shadowBweDecision: MercuryBweShadowDecision?
 
     private let capabilityGate: any MediaCapabilityGate
-    private var screenCapture: ScreenCapturePipeline?
+    private let screenCaptureFactory: ScreenCaptureSessionFactory
+    private var screenCapture: (any ScreenCaptureSession)?
     private var videoEncoder: VideoEncoder?
     private var bitrateController: BitrateController
     private var shadowBweController: MercuryShadowBweController
@@ -43,9 +57,13 @@ final class MediaSessionCoordinator: ObservableObject {
 
     init(
         capabilityGate: any MediaCapabilityGate,
-        defaultBitrateSteps: BitrateController.Steps = .screenShare
+        defaultBitrateSteps: BitrateController.Steps = .screenShare,
+        screenCaptureFactory: @escaping ScreenCaptureSessionFactory = { configuration, frameHandler in
+            ScreenCapturePipeline(configuration: configuration, frameHandler: frameHandler)
+        }
     ) {
         self.capabilityGate = capabilityGate
+        self.screenCaptureFactory = screenCaptureFactory
         self.bitrateController = BitrateController(steps: defaultBitrateSteps)
         self.shadowBweController = MercuryShadowBweController(steps: defaultBitrateSteps)
     }
@@ -68,7 +86,7 @@ final class MediaSessionCoordinator: ObservableObject {
             streamSinks[sinkID] = sink
             return
         }
-        guard phase.isRestartable else { return }
+        guard phase.isRestartable else { throw MediaSessionError.captureFailed }
         let check = await capabilityGate.check(
             feature: .screenShare,
             sessionDurationLimitSeconds: 60 * 60,
@@ -82,71 +100,76 @@ final class MediaSessionCoordinator: ObservableObject {
             break
         }
 
-        phase = .starting(feature: .screenShare)
-        activeStreamClass = streamClass
-        self.cursorProvider = cursorProvider
-        var enableLongTermReference = false
-        if let localStreamingCapabilities, let remoteStreamingCapabilities {
-            let route = MercuryCodecRouter.route(
-                local: localStreamingCapabilities,
-                remote: remoteStreamingCapabilities,
-                policy: codecPolicy,
-                runtimeHealth: MercuryRuntimeHealthProbe.snapshot()
-            )
-            guard route.status == .routed else {
-                phase = .ended(reason: .error)
+        do {
+            phase = .starting(feature: .screenShare)
+            activeStreamClass = streamClass
+            self.cursorProvider = cursorProvider
+            var enableLongTermReference = false
+            if let localStreamingCapabilities, let remoteStreamingCapabilities {
+                let route = MercuryCodecRouter.route(
+                    local: localStreamingCapabilities,
+                    remote: remoteStreamingCapabilities,
+                    policy: codecPolicy,
+                    runtimeHealth: MercuryRuntimeHealthProbe.snapshot()
+                )
+                guard route.status == .routed else {
+                    phase = .ended(reason: .error)
+                    streamingStats = route.stats
+                    throw MediaSessionError.encodeFailed
+                }
+                codecRoute = route
+                negotiatedCodec = route.codec
                 streamingStats = route.stats
-                throw MediaSessionError.encodeFailed
+                if let codec = route.codec {
+                    enableLongTermReference =
+                        localStreamingCapabilities.capability(for: codec)?.longTermReference == true &&
+                        remoteStreamingCapabilities.capability(for: codec)?.longTermReference == true
+                }
+            } else {
+                negotiatedCodec = .hevc
+                streamingStats = MercuryRtcStatsSnapshot(
+                    timestampMillis: UInt64(Date().timeIntervalSince1970 * 1000),
+                    codec: .hevc,
+                    wireVersion: .v1,
+                    runtimeHealth: MercuryRuntimeHealthProbe.snapshot()
+                )
             }
-            codecRoute = route
-            negotiatedCodec = route.codec
-            streamingStats = route.stats
-            if let codec = route.codec {
-                enableLongTermReference =
-                    localStreamingCapabilities.capability(for: codec)?.longTermReference == true &&
-                    remoteStreamingCapabilities.capability(for: codec)?.longTermReference == true
+            sessionMetadata = MediaSessionMetadata(
+                sessionID: UUID().uuidString,
+                feature: .screenShare,
+                streamClass: streamClass,
+                peerDeviceID: peerDeviceID
+            )
+            self.streamSinks = [sinkID: sink]
+            let encoder = VideoEncoder(
+                configuration: .init(
+                    width: 1920,
+                    height: 1080,
+                    targetBitsPerSecond: bitrateController.currentBitsPerSecond,
+                    keyframeIntervalSeconds: 2.0,
+                    preferredCodec: VideoEncoder.Codec(mercuryCodec: negotiatedCodec) ?? .hevc,
+                    frameRate: 30,
+                    enableLongTermReference: enableLongTermReference
+                )
+            ) { [weak self] encodedFrame in
+                await self?.handleEncodedFrame(encodedFrame)
             }
-        } else {
-            negotiatedCodec = .hevc
-            streamingStats = MercuryRtcStatsSnapshot(
-                timestampMillis: UInt64(Date().timeIntervalSince1970 * 1000),
-                codec: .hevc,
-                wireVersion: .v1,
-                runtimeHealth: MercuryRuntimeHealthProbe.snapshot()
-            )
-        }
-        sessionMetadata = MediaSessionMetadata(
-            sessionID: UUID().uuidString,
-            feature: .screenShare,
-            streamClass: streamClass,
-            peerDeviceID: peerDeviceID
-        )
-        self.streamSinks = [sinkID: sink]
-        let encoder = VideoEncoder(
-            configuration: .init(
-                width: 1920,
-                height: 1080,
-                targetBitsPerSecond: bitrateController.currentBitsPerSecond,
-                keyframeIntervalSeconds: 2.0,
-                preferredCodec: VideoEncoder.Codec(mercuryCodec: negotiatedCodec) ?? .hevc,
-                frameRate: 30,
-                enableLongTermReference: enableLongTermReference
-            )
-        ) { [weak self] encodedFrame in
-            await self?.handleEncodedFrame(encodedFrame)
-        }
-        try encoder.start()
-        self.videoEncoder = encoder
-        bitrateBitsPerSecond = bitrateController.currentBitsPerSecond
+            try encoder.start()
+            self.videoEncoder = encoder
+            bitrateBitsPerSecond = bitrateController.currentBitsPerSecond
 
-        activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration(displayId: displayId)
-        let pipeline = ScreenCapturePipeline(configuration: activeScreenCaptureConfiguration) { [weak self] sample in
-            guard let self else { return }
-            try? await self.videoEncoder?.encode(sampleBuffer: sample)
+            activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration(displayId: displayId)
+            let pipeline = screenCaptureFactory(activeScreenCaptureConfiguration) { [weak self] sample in
+                guard let self else { return }
+                try? await self.videoEncoder?.encode(sampleBuffer: sample)
+            }
+            try await pipeline.start()
+            self.screenCapture = pipeline
+            phase = .active(feature: .screenShare)
+        } catch {
+            await stop(reason: .error)
+            throw error
         }
-        try await pipeline.start()
-        self.screenCapture = pipeline
-        phase = .active(feature: .screenShare)
     }
 
     func switchScreenShareDisplay(displayId: String) async throws {
@@ -158,7 +181,7 @@ final class MediaSessionCoordinator: ObservableObject {
         var nextConfiguration = activeScreenCaptureConfiguration
         nextConfiguration.displayId = displayId
         nextConfiguration.windowID = windowID
-        let pipeline = ScreenCapturePipeline(configuration: nextConfiguration) { [weak self] sample in
+        let pipeline = screenCaptureFactory(nextConfiguration) { [weak self] sample in
             guard let self else { return }
             try? await self.videoEncoder?.encode(sampleBuffer: sample)
         }

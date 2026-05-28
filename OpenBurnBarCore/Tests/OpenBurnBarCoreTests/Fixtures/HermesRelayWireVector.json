@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "+fiR2kBHySwGu7oykS318XWL+J8+5zHZ6VG9TZmWasunKKuF5e+KRHvWPqRqAnk=",
+  "chunkCiphertext" : "avdSWcZ+cdWwLTwj\/JE6VW7GfP9jerWSFF7ab1xayqTBPXeY9kiHbseQCFI78w4=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19IiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "yqSpMgpIYakRIPB2Wwk\/nO0suB8E3bo+Dnr4haBvEQC9KNowhISr5sVt5if7E0\/5Ud34rfzo4yMuz3O4sK\/i5j8QvEK8+avnaZAfo4bHnUxCN\/2XSRgJiPSoejkIVoKRGVEO2POpSXBuGegYhHokg7D06QR3LfUXfCvXhpYBCedn6D4qDRCU7b2EMIoOUr8nrSd8diSp",
+  "payloadCiphertext" : "tbATvhTuElg9v0o2iFAyl0tonhJWvN9ExXWEIOH3TT\/ahq7LbwE7FZ2OYfALIZ6GoYHx0NHQvWCZNNiOLBx2vCAMZZia+CJSYe8moHs64xGXpFcQ9rBzfMiRO3p88J14Ux4BwUR4ZAz9Bsrfo9RN62nz8B5+gsH8xKRjU3xmA93RMnc4nCYe1Cweb1\/8CZiv+L10Iitw",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BDIJ691Ng9tVY+4sT+yXdzXVV6Z5sylJ9byOXNxFJWW\/nxYx3+t+rMWEezqAUynrfYk0KS22S5Y+kgTuYB7FKbvgYVyZx\/SbqrihNcdaWei57OAdB2gc29vKfXevcRiRNBKn7\/+PlgykpY3dqPXKeH0e+epBMY450q7S1Z0="
+  "wrappedKey" : "BLHw8b+t4FpqBrICH2Nxo02Udz+o7TgXUL5wKNy7fh22\/FC3+l4RlSTeZwCrvIXK0ZF+kG6MTSm8Yg4Aehq2qYsGh77V\/vMDpCoi68jH2MVnJMaOiOmOxKzRIbgc2QuiBNeQbp3MWezbdByWmCC35Lzj9pfLEA6OJUr1kCw="
 }

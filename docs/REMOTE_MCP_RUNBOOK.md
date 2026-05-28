@@ -189,7 +189,9 @@ Target-client execution proof captured so far:
 - Claude Code: temp HOME + temp PATH shim, `claude mcp get openburnbar`
   reported connected against `https://mcp.burnbar.ai/mcp`.
 - Kimi CLI: temp HOME + temp PATH shim, `kimi mcp test openburnbar` connected
-  and listed all six OpenBurnBar tools.
+  and listed all OpenBurnBar tools available at that release. The 2026-05-15
+  proof listed six tools; BurnBar Resume raises the expected hosted count to
+  eight after deploy.
 - Codex: temp HOME + temp PATH shim, `codex mcp add` and
   `codex mcp get --json` passed.
 - Droid/Factory: temp HOME + temp PATH shim, real Factory `droid mcp add`

@@ -49,6 +49,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
             try db.execute(sql: """
                 CREATE TABLE switcher_active_profile (
                     activeProfileID TEXT,
+                    providerID TEXT,
                     updatedAt TEXT NOT NULL
                 )
             """)
@@ -818,5 +819,154 @@ final class SwitcherProfileStoreTests: XCTestCase {
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
         XCTAssertEqual(rowCount, 1)
+    }
+
+    // MARK: - Per-Provider Drain Targets
+
+    private func makeClaudeProfile(label: String, sortKey: Int = 0) throws -> SwitcherProfileRecord {
+        try store.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: label,
+                configDirectory: "/tmp/claude-\(label.lowercased())"
+            ),
+            sortKey: sortKey
+        ))
+    }
+
+    private func makeCodexProfile(label: String, sortKey: Int = 0) throws -> SwitcherProfileRecord {
+        try store.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: label,
+                configDirectory: "/tmp/codex-\(label.lowercased())"
+            ),
+            sortKey: sortKey
+        ))
+    }
+
+    func test_setActiveProfile_forProvider_isolatesAcrossProviders() throws {
+        let claudeA = try makeClaudeProfile(label: "Personal", sortKey: 1)
+        let claudeB = try makeClaudeProfile(label: "Work", sortKey: 2)
+        let codexA = try makeCodexProfile(label: "Personal", sortKey: 1)
+        let codexB = try makeCodexProfile(label: "Work", sortKey: 2)
+        _ = (claudeA, codexA)
+
+        try store.setActiveProfile(claudeA.id, for: .claudeCode)
+        try store.setActiveProfile(codexB.id, for: .codex)
+
+        XCTAssertEqual(try store.fetchActiveProfileID(for: .claudeCode), claudeA.id)
+        XCTAssertEqual(try store.fetchActiveProfileID(for: .codex), codexB.id)
+
+        // Switching Claude's drain target must not disturb Codex's.
+        try store.setActiveProfile(claudeB.id, for: .claudeCode)
+
+        XCTAssertEqual(try store.fetchActiveProfileID(for: .claudeCode), claudeB.id)
+        XCTAssertEqual(
+            try store.fetchActiveProfileID(for: .codex),
+            codexB.id,
+            "Codex drain target must remain untouched when Claude is switched"
+        )
+    }
+
+    func test_setActiveProfile_global_mirrorsPerProviderForCLIProfile() throws {
+        let claude = try makeClaudeProfile(label: "Solo")
+
+        try store.setActiveProfile(claude.id)
+
+        XCTAssertEqual(try store.fetchActiveProfileState().activeProfileID, claude.id)
+        XCTAssertEqual(
+            try store.fetchActiveProfileID(for: .claudeCode),
+            claude.id,
+            "Global setActiveProfile must mirror into the matching provider's drain target"
+        )
+    }
+
+    func test_setActiveProfile_global_browserProfile_doesNotMirror() throws {
+        let browser = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "BrowserProfile"),
+            sortKey: 1
+        ))
+
+        try store.setActiveProfile(browser.id)
+
+        XCTAssertEqual(try store.fetchActiveProfileState().activeProfileID, browser.id)
+        XCTAssertNil(
+            try store.fetchActiveProfileID(for: .claudeCode),
+            "Browser profiles have no provider and must not seed any drain target"
+        )
+        XCTAssertEqual(try store.fetchAllActiveDrainTargets(), [:])
+    }
+
+    func test_fetchAllActiveDrainTargets_returnsPerProviderMap() throws {
+        let claude = try makeClaudeProfile(label: "C")
+        let codex = try makeCodexProfile(label: "X")
+
+        try store.setActiveProfile(claude.id, for: .claudeCode)
+        try store.setActiveProfile(codex.id, for: .codex)
+
+        let map = try store.fetchAllActiveDrainTargets()
+        XCTAssertEqual(map[AgentProvider.claudeCode.providerID.rawValue], claude.id)
+        XCTAssertEqual(map[AgentProvider.codex.providerID.rawValue], codex.id)
+        XCTAssertEqual(map.count, 2)
+    }
+
+    func test_perProviderDrainTarget_preservesGlobalPointer() throws {
+        let browser = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Default"),
+            sortKey: 1
+        ))
+        let claude = try makeClaudeProfile(label: "Solo")
+
+        try store.setActiveProfile(browser.id) // global = browser
+        try store.setActiveProfile(claude.id, for: .claudeCode)
+
+        XCTAssertEqual(
+            try store.fetchActiveProfileState().activeProfileID,
+            browser.id,
+            "Per-provider drain writes must not overwrite the global pointer"
+        )
+        XCTAssertEqual(try store.fetchActiveProfileID(for: .claudeCode), claude.id)
+    }
+
+    func test_deleteProfile_clearsPerProviderDrainTarget() throws {
+        let claude = try makeClaudeProfile(label: "Solo")
+        try store.setActiveProfile(claude.id, for: .claudeCode)
+        XCTAssertEqual(try store.fetchActiveProfileID(for: .claudeCode), claude.id)
+
+        try store.deleteProfile(id: claude.id)
+
+        XCTAssertNil(
+            try store.fetchActiveProfileID(for: .claudeCode),
+            "Deleting the profile must null its per-provider drain target"
+        )
+    }
+
+    func test_clearDrainTarget_byPassingNil() throws {
+        let claude = try makeClaudeProfile(label: "Solo")
+        try store.setActiveProfile(claude.id, for: .claudeCode)
+        XCTAssertEqual(try store.fetchActiveProfileID(for: .claudeCode), claude.id)
+
+        try store.setActiveProfile(nil, for: .claudeCode)
+        XCTAssertNil(try store.fetchActiveProfileID(for: .claudeCode))
+    }
+
+    func test_switcherCLIProfileType_providerIDMappingIsStable() {
+        XCTAssertEqual(SwitcherCLIProfileType.claude.agentProvider, .claudeCode)
+        XCTAssertEqual(SwitcherCLIProfileType.codex.agentProvider, .codex)
+        XCTAssertEqual(SwitcherCLIProfileType.opencode.agentProvider, .openCode)
+        XCTAssertEqual(SwitcherCLIProfileType.droid.agentProvider, .factory)
+        XCTAssertEqual(SwitcherCLIProfileType.forge.agentProvider, .forgeDev)
+        XCTAssertEqual(SwitcherCLIProfileType.antigravity.agentProvider, .antigravity)
+        // Each type must round-trip through providerID for SQL keying.
+        for cliType in SwitcherCLIProfileType.allCases {
+            XCTAssertFalse(cliType.providerID.rawValue.isEmpty, "\(cliType) providerID raw value must be non-empty")
+        }
     }
 }

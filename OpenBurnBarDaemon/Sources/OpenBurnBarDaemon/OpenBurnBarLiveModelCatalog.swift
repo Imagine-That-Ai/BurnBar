@@ -75,6 +75,9 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
     /// otherwise. Stored as a string so older clients that haven't been
     /// upgraded ignore the field instead of failing to decode.
     public let thinkingLevel: String?
+    /// When this row is a user-defined alias, whether the base model should
+    /// be hidden from public `/v1/models`. Omitted for non-alias rows.
+    public let hidesBaseModel: Bool?
 
     public init(
         id: String,
@@ -94,7 +97,8 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         lastRefreshAt: Date? = nil,
         lastError: String? = nil,
         baseModelID: String? = nil,
-        thinkingLevel: String? = nil
+        thinkingLevel: String? = nil,
+        hidesBaseModel: Bool? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -114,13 +118,14 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         self.lastError = lastError
         self.baseModelID = baseModelID
         self.thinkingLevel = thinkingLevel
+        self.hidesBaseModel = hidesBaseModel
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, displayName, providerID, providerName, accountID, accountLabel
         case sourceID, sourceKind, capabilities, modelCapabilities, quotaState, enabled
         case advertisementEnabled, routeEligible, lastRefreshAt, lastError
-        case baseModelID, thinkingLevel
+        case baseModelID, thinkingLevel, hidesBaseModel
     }
 
     public init(from decoder: Decoder) throws {
@@ -143,6 +148,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
         baseModelID = try container.decodeIfPresent(String.self, forKey: .baseModelID)
         thinkingLevel = try container.decodeIfPresent(String.self, forKey: .thinkingLevel)
+        hidesBaseModel = try container.decodeIfPresent(Bool.self, forKey: .hidesBaseModel)
     }
 }
 
@@ -339,6 +345,10 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 configuration: configuration,
                 account: account
             ))
+            rows.append(contentsOf: aliasRows(
+                from: baseRow,
+                configuration: configuration
+            ))
         }
 
         guard liveRefresh?.isAuthoritative == true else {
@@ -380,6 +390,10 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 configuration: configuration,
                 account: account
             ))
+            rows.append(contentsOf: aliasRows(
+                from: liveRow,
+                configuration: configuration
+            ))
             seenIDs.formUnion(rows.suffix(rows.count - seenIDs.count).map { $0.id.lowercased() })
         }
 
@@ -420,6 +434,40 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 lastError: baseRow.lastError,
                 baseModelID: baseRow.id,
                 thinkingLevel: variant.thinkingLevel.rawValue
+            )
+        }
+    }
+
+    /// Emit one synthetic advertised row per user-defined alias whose
+    /// `baseModelID` matches the supplied base row.
+    private func aliasRows(
+        from baseRow: BurnBarLiveAdvertisedModel,
+        configuration: BurnBarResolvedProviderConfiguration
+    ) -> [BurnBarLiveAdvertisedModel] {
+        let aliases = configuration.settings.aliases(forBaseModelID: baseRow.id)
+        guard !aliases.isEmpty else { return [] }
+        return aliases.map { alias in
+            let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(alias.aliasID)
+            return BurnBarLiveAdvertisedModel(
+                id: alias.aliasID,
+                displayName: alias.displayName,
+                providerID: baseRow.providerID,
+                providerName: baseRow.providerName,
+                accountID: baseRow.accountID,
+                accountLabel: baseRow.accountLabel,
+                sourceID: "\(baseRow.sourceID)::alias::\(alias.aliasID)",
+                sourceKind: "user_model_alias",
+                capabilities: baseRow.capabilities,
+                modelCapabilities: baseRow.modelCapabilities,
+                quotaState: baseRow.quotaState,
+                enabled: baseRow.enabled,
+                advertisementEnabled: advertisementEnabled,
+                routeEligible: baseRow.routeEligible,
+                lastRefreshAt: baseRow.lastRefreshAt,
+                lastError: baseRow.lastError,
+                baseModelID: baseRow.id,
+                thinkingLevel: nil,
+                hidesBaseModel: alias.hidesBaseModel
             )
         }
     }
@@ -509,6 +557,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
         let endpoint = liveModelEndpoint(for: configuration.provider, baseURL: baseURL)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = refreshTimeoutSeconds
         if configuration.provider.id.lowercased() != "ollama" {
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
@@ -657,8 +706,9 @@ public struct BurnBarLiveModelCatalog: Sendable {
         }
         switch slot.status {
         case .ready:
-            if let remaining = slot.lastQuotaRemainingPercent, remaining <= 0 {
-                return .exhausted
+            if let remaining = slot.lastQuotaRemainingPercent {
+                if remaining <= 0 { return .exhausted }
+                if remaining <= 20 { return .coolingDown }
             }
             return .healthy
         case .coolingDown:

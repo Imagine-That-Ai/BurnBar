@@ -279,6 +279,280 @@ data class FirestoreProviderAccountConnectContext(
       },
     },
   },
+  "hermes-relay": {
+    models: {
+      HermesRelayRequestDoc: {
+        ts: `export interface HermesRelayRequestDoc {
+  operation: string;
+  status: string;
+  sessionId?: string;
+  createdAt: string;
+  updatedAt?: string;
+}`,
+        swift: `public struct FirestoreHermesRelayRequestDoc: Codable, Sendable, Equatable {
+    public var operation: String
+    public var status: String
+    public var sessionId: String?
+    public var createdAt: String
+    public var updatedAt: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesRelayRequestDoc(
+    val operation: String = "",
+    val status: String = "",
+    val sessionId: String? = null,
+    val createdAt: String = "",
+    val updatedAt: String? = null,
+)`,
+      },
+      HermesRelayChunkDoc: {
+        ts: `export interface HermesRelayChunkDoc {
+  requestId: string;
+  chunkIndex: number;
+  payloadBase64: string;
+  createdAt: string;
+}`,
+        swift: `public struct FirestoreHermesRelayChunkDoc: Codable, Sendable, Equatable {
+    public var requestId: String
+    public var chunkIndex: Int
+    public var payloadBase64: String
+    public var createdAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesRelayChunkDoc(
+    val requestId: String = "",
+    val chunkIndex: Long = 0,
+    val payloadBase64: String = "",
+    val createdAt: String = "",
+)`,
+      },
+    },
+  },
+  "iroh-pairing": {
+    models: {
+      IrohPairingDoc: {
+        ts: `export interface IrohPairingDoc {
+  pairingCodeDigest: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+  platform?: string;
+}`,
+        swift: `public struct FirestoreIrohPairingDoc: Codable, Sendable, Equatable {
+    public var pairingCodeDigest: String
+    public var status: String
+    public var createdAt: String
+    public var expiresAt: String
+    public var platform: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreIrohPairingDoc(
+    val pairingCodeDigest: String = "",
+    val status: String = "",
+    val createdAt: String = "",
+    val expiresAt: String = "",
+    val platform: String? = null,
+)`,
+      },
+    },
+  },
+  "pi-agent-relay": {
+    models: {
+      PiAgentConnectionDoc: {
+        ts: `export interface PiAgentConnectionDoc {
+  mode: string;
+  status: string;
+  endpointURL?: string;
+  createdAt: string;
+  updatedAt?: string;
+}`,
+        swift: `public struct FirestorePiAgentConnectionDoc: Codable, Sendable, Equatable {
+    public var mode: String
+    public var status: String
+    public var endpointURL: String?
+    public var createdAt: String
+    public var updatedAt: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestorePiAgentConnectionDoc(
+    val mode: String = "",
+    val status: String = "",
+    val endpointURL: String? = null,
+    val createdAt: String = "",
+    val updatedAt: String? = null,
+)`,
+      },
+    },
+  },
+  "computer-use": {
+    models: {
+      ComputerUsePhoneAuthorityDoc: {
+        ts: `export interface ComputerUsePhoneAuthorityDoc {
+  deviceId: string;
+  publicKey: string;
+  createdAt: string;
+  revokedAt?: string;
+}`,
+        swift: `public struct FirestoreComputerUsePhoneAuthorityDoc: Codable, Sendable, Equatable {
+    public var deviceId: String
+    public var publicKey: String
+    public var createdAt: String
+    public var revokedAt: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreComputerUsePhoneAuthorityDoc(
+    val deviceId: String = "",
+    val publicKey: String = "",
+    val createdAt: String = "",
+    val revokedAt: String? = null,
+)`,
+      },
+    },
+  },
+  "hosted-quota": {
+    models: {
+      EntitlementBindingDoc: {
+        ts: `export interface EntitlementBindingDoc {
+  appAccountToken: string;
+  uid: string;
+  createdAt: string;
+}`,
+        swift: `public struct FirestoreEntitlementBindingDoc: Codable, Sendable, Equatable {
+    public var appAccountToken: String
+    public var uid: String
+    public var createdAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreEntitlementBindingDoc(
+    val appAccountToken: String = "",
+    val uid: String = "",
+    val createdAt: String = "",
+)`,
+      },
+    },
+  },
+  "entitlements": {
+    models: {
+      EscrowDeviceDoc: {
+        ts: `export interface EscrowDeviceDoc {
+  deviceId: string;
+  trustState: string;
+  registeredAt: string;
+  approvedAt?: string;
+}`,
+        swift: `public struct FirestoreEscrowDeviceDoc: Codable, Sendable, Equatable {
+    public var deviceId: String
+    public var trustState: String
+    public var registeredAt: String
+    public var approvedAt: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreEscrowDeviceDoc(
+    val deviceId: String = "",
+    val trustState: String = "",
+    val registeredAt: String = "",
+    val approvedAt: String? = null,
+)`,
+      },
+    },
+  },
+  "insights": {
+    models: {
+      InsightCanvasDoc: {
+        ts: `export interface InsightCanvasDoc {
+  id: string;
+  title: string;
+  theme: string;
+  origin: string;
+  updatedAt: string;
+}`,
+        swift: `public struct FirestoreInsightCanvasDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var title: String
+    public var theme: String
+    public var origin: String
+    public var updatedAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreInsightCanvasDoc(
+    val id: String = "",
+    val title: String = "",
+    val theme: String = "",
+    val origin: String = "",
+    val updatedAt: String = "",
+)`,
+      },
+    },
+  },
+  "missions": {
+    models: {
+      MissionDispatchDoc: {
+        ts: `export interface MissionDispatchDoc {
+  missionId: string;
+  status: string;
+  createdAt: string;
+  updatedAt?: string;
+  payloadSummary?: string;
+}`,
+        swift: `public struct FirestoreMissionDispatchDoc: Codable, Sendable, Equatable {
+    public var missionId: String
+    public var status: String
+    public var createdAt: String
+    public var updatedAt: String?
+    public var payloadSummary: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreMissionDispatchDoc(
+    val missionId: String = "",
+    val status: String = "",
+    val createdAt: String = "",
+    val updatedAt: String? = null,
+    val payloadSummary: String? = null,
+)`,
+      },
+    },
+  },
+  "media-analytics": {
+    models: {
+      MediaQuotaUsageDoc: {
+        ts: `export interface MediaQuotaUsageDoc {
+  id: string;
+  schemaVersion: number;
+  bytesUploadedFile: number;
+  bytesDownloadedFile: number;
+  screenShareSecondsUsed: number;
+  videoCallSecondsUsed: number;
+}`,
+        swift: `public struct FirestoreMediaQuotaUsageDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var schemaVersion: Int
+    public var bytesUploadedFile: Double
+    public var bytesDownloadedFile: Double
+    public var screenShareSecondsUsed: Double
+    public var videoCallSecondsUsed: Double
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreMediaQuotaUsageDoc(
+    val id: String = "",
+    val schemaVersion: Long = 0,
+    val bytesUploadedFile: Double = 0.0,
+    val bytesDownloadedFile: Double = 0.0,
+    val screenShareSecondsUsed: Double = 0.0,
+    val videoCallSecondsUsed: Double = 0.0,
+)`,
+      },
+    },
+  },
 };
 
 function emitTypeScript(domainId, models) {

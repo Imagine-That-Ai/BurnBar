@@ -656,6 +656,8 @@ private func defaultSwitcherConfigDirectory(
         return homeDirectoryURL.appendingPathComponent(".forge", isDirectory: true).path
     case .antigravity:
         return homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli", isDirectory: true).path
+    case .grok:
+        return homeDirectoryURL.appendingPathComponent(".grok", isDirectory: true).path
     }
 }
 
@@ -696,6 +698,8 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
         return .forgeDev
     case .antigravity:
         return .antigravity
+    case .grok:
+        return .xAI
     }
 }
 

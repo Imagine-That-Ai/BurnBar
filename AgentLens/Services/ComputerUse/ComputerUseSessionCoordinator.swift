@@ -100,6 +100,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private var phoneValidator = PhoneControlAuthorityValidator()
     private var phoneReceiver: PhoneControlReceiver?
     var phoneControlAuthorizedPeerNodeProvider: (@MainActor @Sendable () -> String?)?
+    var remoteUnlockResultHandler: (@MainActor @Sendable (HermesRealtimeRelayRemoteUnlockResult) async -> Void)?
     weak var chatController: ChatSessionController?
     private var agentContextReceiver: AgentContextTargetReceiver?
     private var systemPermissionReceiver: SystemPermissionReceiver?
@@ -458,6 +459,12 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         guard var current = state else { return }
         current.liveTrustMode = mode
         state = current
+    }
+
+    func setRemoteUnlockResultHandler(
+        _ handler: (@MainActor @Sendable (HermesRealtimeRelayRemoteUnlockResult) async -> Void)?
+    ) {
+        remoteUnlockResultHandler = handler
     }
 
     public func submitApprovalResponse(_ response: HermesRealtimeRelayApprovalResponse) {
@@ -895,6 +902,29 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             await SystemPermissionRetryDispatcher.shared.observe(statusFrame: frame)
         case .remoteUnlockCredential:
             guard let credential = frame.control?.remoteUnlockCredential else { return }
+            let credentialPeerNodeId = credential.authority.peerNodeId
+            if !phoneValidator.hasPeer(nodeId: credentialPeerNodeId) {
+                do {
+                    let publicKey = try await authorityProvider.fetchPublicKey(
+                        uid: frame.uid,
+                        connectionId: frame.connectionId,
+                        peerNodeId: credentialPeerNodeId
+                    )
+                    registerPhonePeer(nodeId: credentialPeerNodeId, publicKey: publicKey)
+                    recordE2EProofEvent([
+                        "event": "remote_unlock_peer_registered",
+                        "peerNodeId": credentialPeerNodeId,
+                        "connectionId": frame.connectionId
+                    ])
+                } catch {
+                    recordE2EProofEvent([
+                        "event": "remote_unlock_peer_registration_failed",
+                        "peerNodeId": credentialPeerNodeId,
+                        "connectionId": frame.connectionId,
+                        "error": error.localizedDescription
+                    ])
+                }
+            }
             let authorizedPeerNode = await MainActor.run { phoneControlAuthorizedPeerNodeProvider?() }
             let result = await remoteUnlockCredentialController.handle(
                 credential: credential,
@@ -906,6 +936,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     authorizedPeerNodeId: authorizedPeerNode
                 )
             )
+            await remoteUnlockResultHandler?(result)
             emitControlFrame(
                 type: result.status == .denied ? .remoteUnlockDenied : .remoteUnlockResult,
                 payload: HermesRealtimeRelayControlPayload(

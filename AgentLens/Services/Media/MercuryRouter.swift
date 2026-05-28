@@ -15,10 +15,10 @@ import ImageIO
 ///   • Inbound `media.presence.heartbeat` forwarding to
 ///     `MercuryPeerSource` so the popover knows when the iPhone is
 ///     online.
-///   • Acceptance — drives `MediaSessionCoordinator.startScreenShare`
-///     with a caller-provided sink, then emits the corresponding
-///     `media.mirror.ack` via the same control-stream `replySender`
-///     that delivered the request.
+///   • Acceptance — admits the viewer and emits `media.mirror.ack`
+///     immediately, then starts the heavier capture/control runtime.
+///     The phone must never sit on "Opening mirror" while ScreenCaptureKit
+///     warms up.
 ///   • Cooldown — after decline or stop, holds for a configurable
 ///     window so the iPhone can't spam the Mac with retries.
 ///
@@ -28,6 +28,7 @@ import ImageIO
 @MainActor
 final class MercuryRouter: ObservableObject {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
+    private static let remoteUnlockSessionRequiredDetail = "remote_unlock_session_required"
     private static func debugTrace(_ message: String) {
         #if DEBUG
         NSLog("OpenBurnBarMercury \(message)")
@@ -124,6 +125,7 @@ final class MercuryRouter: ObservableObject {
         let controlStreamID: UUID?
         let viewerDeviceID: String?
         let controlAuthorityPeerNodeID: String?
+        let remoteUnlockSessionID: String?
     }
     private var activeMirrorSessionID: String?
     private var activeMirrorViewers: [String: ActiveMirrorViewer] = [:]
@@ -133,6 +135,9 @@ final class MercuryRouter: ObservableObject {
     private var remoteStreamingCapabilitiesByConnectionID: [String: MercuryStreamingCapabilitySnapshot] = [:]
     private var remoteStreamingCapabilitiesByControlStreamID: [UUID: MercuryStreamingCapabilitySnapshot] = [:]
     private var cooldownTask: Task<Void, Never>?
+    private var remoteUnlockResumeTask: Task<Void, Never>?
+    private var mirrorStartupTasks: [String: Task<Void, Never>] = [:]
+    private var mirrorStartupTaskIDs: [String: UUID] = [:]
     private nonisolated(unsafe) var workspaceAuthGateObservers: [NSObjectProtocol] = []
 
     init(
@@ -181,6 +186,9 @@ final class MercuryRouter: ObservableObject {
     }
 
     deinit {
+        remoteUnlockResumeTask?.cancel()
+        mirrorStartupTasks.values.forEach { $0.cancel() }
+        mirrorStartupTaskIDs.removeAll()
         for observer in workspaceAuthGateObservers {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
@@ -295,9 +303,17 @@ final class MercuryRouter: ObservableObject {
     }
 
     @discardableResult
-    private func removeActiveMirrorViewer(viewerID: String) async -> ActiveMirrorViewer? {
+    private func removeActiveMirrorViewer(
+        viewerID: String,
+        revokeRemoteUnlockSession: Bool = false
+    ) async -> ActiveMirrorViewer? {
+        mirrorStartupTasks.removeValue(forKey: viewerID)?.cancel()
+        mirrorStartupTaskIDs.removeValue(forKey: viewerID)
         guard let viewer = activeMirrorViewers.removeValue(forKey: viewerID) else { return nil }
         activeMirrorViewOrder.removeAll { $0 == viewerID }
+        if revokeRemoteUnlockSession {
+            remoteUnlockReadiness.revokeRemoteUnlockSession(sessionId: viewer.remoteUnlockSessionID)
+        }
         await sessionCoordinator.detachScreenShareViewer(viewerID: viewerID)
         if activeControlViewerID == viewerID {
             activeControlViewerID = activeMirrorViewOrder.first
@@ -315,7 +331,11 @@ final class MercuryRouter: ObservableObject {
     }
 
     private func clearAllActiveMirrorViewers() {
+        mirrorStartupTasks.values.forEach { $0.cancel() }
+        mirrorStartupTasks.removeAll()
+        mirrorStartupTaskIDs.removeAll()
         activeMirrorSessionID = nil
+        remoteUnlockReadiness.revokeAllRemoteUnlockSessions()
         activeMirrorViewers.removeAll()
         activeMirrorViewOrder.removeAll()
         activeControlViewerID = nil
@@ -328,6 +348,8 @@ final class MercuryRouter: ObservableObject {
         detail: String?,
         availableDisplays: [HermesRealtimeRelayDisplayDescriptor]? = nil,
         selectedDisplayId: String? = nil,
+        remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
+        remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil,
         excludingViewerID: String? = nil
     ) async {
         for viewer in currentMirrorSessions() {
@@ -344,6 +366,8 @@ final class MercuryRouter: ObservableObject {
                 viewerCount: activeMirrorViewers.count,
                 maxViewers: maxMirrorViewers,
                 controlOwnerViewerID: activeControlViewerID,
+                remoteUnlockState: remoteUnlockState,
+                remoteUnlockCapabilities: remoteUnlockCapabilities,
                 frame: viewer.frame,
                 replySender: viewer.replySender
             )
@@ -597,6 +621,10 @@ final class MercuryRouter: ObservableObject {
         await handleHostAuthGateClosed(reason: reason)
     }
 
+    func handleHostAuthGateOpenedForTesting(reason: String = "test") async {
+        await handleRemoteUnlockHostUnlocked(reason: reason)
+    }
+
     // MARK: - Private
 
     private func installHostAuthGateListeners() {
@@ -604,6 +632,8 @@ final class MercuryRouter: ObservableObject {
         let names: [Notification.Name] = [
             NSWorkspace.screensDidSleepNotification,
             NSWorkspace.sessionDidResignActiveNotification,
+            NSWorkspace.sessionDidBecomeActiveNotification,
+            NSWorkspace.didWakeNotification,
             NSWorkspace.didActivateApplicationNotification
         ]
         for name in names {
@@ -612,16 +642,22 @@ final class MercuryRouter: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] note in
-                guard let reason = Self.hostAuthGateReason(from: note) else { return }
+                if let reason = Self.hostAuthGateClosedReason(from: note) {
+                    Task { @MainActor [weak self] in
+                        await self?.handleHostAuthGateClosed(reason: reason)
+                    }
+                    return
+                }
+                guard let reason = Self.hostAuthGateOpenedReason(from: note) else { return }
                 Task { @MainActor [weak self] in
-                    await self?.handleHostAuthGateClosed(reason: reason)
+                    self?.scheduleRemoteUnlockResumeCheck(reason: reason)
                 }
             }
             workspaceAuthGateObservers.append(observer)
         }
     }
 
-    private nonisolated static func hostAuthGateReason(from note: Notification) -> String? {
+    private nonisolated static func hostAuthGateClosedReason(from note: Notification) -> String? {
         switch note.name {
         case NSWorkspace.screensDidSleepNotification:
             return "screen_sleep"
@@ -636,6 +672,161 @@ final class MercuryRouter: ObservableObject {
         default:
             return nil
         }
+    }
+
+    private nonisolated static func hostAuthGateOpenedReason(from note: Notification) -> String? {
+        switch note.name {
+        case NSWorkspace.sessionDidBecomeActiveNotification:
+            return "session_became_active"
+        case NSWorkspace.didWakeNotification:
+            return "display_wake"
+        case NSWorkspace.didActivateApplicationNotification:
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let bundle = app.bundleIdentifier,
+                  bundle != "com.apple.loginwindow",
+                  bundle != "com.apple.SecurityAgent",
+                  bundle != "com.apple.SecurityAgentHelper" else {
+                return nil
+            }
+            return "frontmost_app_active"
+        default:
+            return nil
+        }
+    }
+
+    private func scheduleRemoteUnlockResumeCheck(reason: String) {
+        scheduleRemoteUnlockResumePoll(reason: reason, initialDelayNanoseconds: 350_000_000)
+    }
+
+    func handleRemoteUnlockCredentialResult(_ result: HermesRealtimeRelayRemoteUnlockResult) {
+        guard result.status == .accepted || result.status == .unlocked else { return }
+        guard let resultSessionID = result.sessionId,
+              activeRemoteUnlockSessionID(in: currentMirrorSessions()) == resultSessionID else {
+            return
+        }
+        let reason = result.status == .unlocked
+            ? "remote_unlock_result_unlocked"
+            : "remote_unlock_credential_submitted"
+        scheduleRemoteUnlockResumePoll(reason: reason, initialDelayNanoseconds: result.status == .unlocked ? 0 : 250_000_000)
+    }
+
+    private func scheduleRemoteUnlockResumePoll(
+        reason: String,
+        initialDelayNanoseconds: UInt64,
+        maxAttempts: Int = 24
+    ) {
+        guard shouldKeepMirrorAliveForRemoteUnlock(currentMirrorSessions()) else { return }
+        remoteUnlockResumeTask?.cancel()
+        remoteUnlockResumeTask = Task { @MainActor [weak self] in
+            if initialDelayNanoseconds > 0 {
+                try? await Task.sleep(nanoseconds: initialDelayNanoseconds)
+            }
+            for attempt in 0..<maxAttempts {
+                guard !Task.isCancelled, let self else { return }
+                let activeViewers = self.currentMirrorSessions()
+                guard self.shouldKeepMirrorAliveForRemoteUnlock(activeViewers) else { return }
+                let remoteUnlockSessionID = self.activeRemoteUnlockSessionID(in: activeViewers)
+                let state = self.remoteUnlockReadiness.currentState(
+                    sessionId: remoteUnlockSessionID,
+                    controlOwnerViewerId: self.activeControlViewerID
+                )
+                if state.lockState == .unlocked {
+                    await self.handleRemoteUnlockHostUnlocked(reason: reason)
+                    return
+                }
+                if attempt < maxAttempts - 1 {
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                }
+            }
+            Self.log.info("router_remote_unlock_resume_poll_still_locked reason=\(reason, privacy: .public)")
+            Self.debugTrace("router_remote_unlock_resume_poll_still_locked reason=\(reason)")
+        }
+    }
+
+    private func handleRemoteUnlockHostUnlocked(reason: String) async {
+        let activeViewers = currentMirrorSessions()
+        guard shouldKeepMirrorAliveForRemoteUnlock(activeViewers) else { return }
+        let remoteUnlockSessionID = activeRemoteUnlockSessionID(in: activeViewers)
+        let state = remoteUnlockReadiness.currentState(
+            sessionId: remoteUnlockSessionID,
+            controlOwnerViewerId: activeControlViewerID
+        )
+        guard state.lockState == .unlocked else { return }
+
+        remoteUnlockReadiness.revokeAllRemoteUnlockSessions()
+        Self.log.info("router_remote_unlock_unlocked_resuming_normal_capture reason=\(reason, privacy: .public)")
+        Self.debugTrace("router_remote_unlock_unlocked_resuming_normal_capture reason=\(reason)")
+        do {
+            if case .active(feature: .screenShare) = sessionCoordinator.phase {
+                try await sessionCoordinator.switchScreenShareTarget(
+                    displayId: activeSelectedDisplayID,
+                    windowID: nil
+                )
+            } else {
+                for viewer in activeViewers {
+                    try await startNormalCapture(for: viewer)
+                }
+            }
+            lastError = nil
+        } catch {
+            lastError = "Mirror resumed after unlock, but screen capture restart failed: \(error.localizedDescription)"
+            Self.log.error("router_remote_unlock_resume_capture_failed error=\(error.localizedDescription, privacy: .public)")
+            Self.debugTrace("router_remote_unlock_resume_capture_failed error=\(error.localizedDescription)")
+        }
+
+        let displays = ScreenCapturePipeline.availableDisplays()
+        activeSelectedDisplayID = activeSelectedDisplayID ?? displays.first?.id
+        await broadcastMirrorAck(
+            decision: .accepted,
+            detail: "Mac unlocked; normal mirror resumed.",
+            availableDisplays: displays,
+            selectedDisplayId: activeSelectedDisplayID,
+            remoteUnlockState: state,
+            remoteUnlockCapabilities: state.capabilities
+        )
+    }
+
+    private func streamingCapabilities(
+        for mirrorRequest: HermesRealtimeRelayMirrorRequest,
+        frame: HermesRealtimeRelayFrame,
+        controlStreamID: UUID?
+    ) -> (
+        local: MercuryStreamingCapabilitySnapshot?,
+        remote: MercuryStreamingCapabilitySnapshot?
+    ) {
+        let remoteCapabilities = mirrorRequest.streamingCapabilities
+            .map(MercuryStreamingCapabilitySnapshot.init(wire:))
+            ?? controlStreamID.flatMap {
+                remoteStreamingCapabilitiesByControlStreamID[$0]
+            }
+            ?? remoteStreamingCapabilitiesByConnectionID[frame.connectionId]
+        let localCapabilities = remoteCapabilities.map { _ in
+            MercuryVideoToolboxCapabilityProbe.snapshot(mediaFrameVersions: .v1AndV2)
+        }
+        return (localCapabilities, remoteCapabilities)
+    }
+
+    private func startNormalCapture(for viewer: ActiveMirrorViewer) async throws {
+        guard let mirrorRequest = viewer.frame.media?.mirrorRequest,
+              let factory = mirrorSinkFactory else {
+            throw MediaSessionError.captureFailed
+        }
+        let sink = try await factory(mirrorRequest, viewer.frame, viewer.replySender)
+        let capabilities = streamingCapabilities(
+            for: mirrorRequest,
+            frame: viewer.frame,
+            controlStreamID: viewer.controlStreamID
+        )
+        try await startScreenShare(
+            viewer.frame.connectionId,
+            sink,
+            .screenVideo,
+            activeSelectedDisplayID,
+            viewer.viewerID,
+            capabilities.local,
+            capabilities.remote,
+            .production
+        )
     }
 
     private static func effectiveFocusFollowMode(
@@ -661,8 +852,9 @@ final class MercuryRouter: ObservableObject {
         guard hadWorkToStop else { return }
 
         if shouldKeepMirrorAliveForRemoteUnlock(activeViewers) {
+            let remoteUnlockSessionID = activeRemoteUnlockSessionID(in: activeViewers)
             let state = remoteUnlockReadiness.currentState(
-                sessionId: activeMirrorSessionID,
+                sessionId: remoteUnlockSessionID,
                 controlOwnerViewerId: activeControlViewerID
             )
             Self.log.info("router_host_auth_gate_remote_unlock_kept_alive reason=\(reason, privacy: .public) state=\(state.lockState.rawValue, privacy: .public)")
@@ -672,7 +864,9 @@ final class MercuryRouter: ObservableObject {
                 decision: .accepted,
                 detail: "Mac locked; Remote Unlock remains available.",
                 availableDisplays: ScreenCapturePipeline.availableDisplays(),
-                selectedDisplayId: activeSelectedDisplayID
+                selectedDisplayId: activeSelectedDisplayID,
+                remoteUnlockState: state,
+                remoteUnlockCapabilities: state.capabilities
             )
             return
         }
@@ -727,10 +921,84 @@ final class MercuryRouter: ObservableObject {
         phase = .idle
     }
 
+    private func activeRemoteUnlockSessionID(in activeViewers: [ActiveMirrorViewer]) -> String? {
+        activeViewers.first { viewer in
+            guard let sessionID = viewer.remoteUnlockSessionID,
+                  let peerNodeID = viewer.controlAuthorityPeerNodeID else {
+                return false
+            }
+            return remoteUnlockReadiness.isRemoteUnlockSessionActive(
+                sessionId: sessionID,
+                peerNodeId: peerNodeID,
+                viewerDeviceId: viewer.viewerDeviceID,
+                now: clock()
+            )
+        }?.remoteUnlockSessionID
+    }
+
     private func shouldKeepMirrorAliveForRemoteUnlock(_ activeViewers: [ActiveMirrorViewer]) -> Bool {
         guard remoteUnlockReadiness.capabilities().enabled else { return false }
         return activeViewers.contains { viewer in
-            viewer.frame.media?.mirrorRequest?.remoteUnlockSession != nil
+            guard let sessionID = viewer.remoteUnlockSessionID,
+                  let peerNodeID = viewer.controlAuthorityPeerNodeID else {
+                return false
+            }
+            return remoteUnlockReadiness.isRemoteUnlockSessionActive(
+                sessionId: sessionID,
+                peerNodeId: peerNodeID,
+                viewerDeviceId: viewer.viewerDeviceID,
+                now: clock()
+            )
+        }
+    }
+
+    private func remoteUnlockSessionForLockedMirror(
+        _ request: HermesRealtimeRelayMirrorRequest
+    ) -> HermesRealtimeRelayRemoteUnlockSession? {
+        guard let session = request.remoteUnlockSession else { return nil }
+        let state = remoteUnlockReadiness.currentState(
+            sessionId: session.sessionId,
+            controlOwnerViewerId: nil
+        )
+        guard state.lockState != .unlocked,
+              state.lockState != .unknown,
+              state.capabilities.supportedLockStates.contains(state.lockState) else {
+            return nil
+        }
+        return session
+    }
+
+    private func remoteUnlockSessionRequiredState(
+        for request: HermesRealtimeRelayMirrorRequest
+    ) -> HermesRealtimeRelayRemoteUnlockState? {
+        guard request.remoteUnlockSession == nil else { return nil }
+        let state = remoteUnlockReadiness.currentState(
+            sessionId: nil,
+            controlOwnerViewerId: nil
+        )
+        guard state.capabilities.enabled,
+              state.lockState != .unlocked,
+              state.lockState != .unknown,
+              state.capabilities.supportedLockStates.contains(state.lockState) else {
+            return nil
+        }
+        return state
+    }
+
+    private func remoteUnlockMirrorDenialReason(
+        request: HermesRealtimeRelayMirrorRequest,
+        session: HermesRealtimeRelayRemoteUnlockSession
+    ) -> String? {
+        if let authorityPeerNodeID = request.controlAuthorityPeerNodeId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !authorityPeerNodeID.isEmpty,
+           authorityPeerNodeID != session.authority.peerNodeId.trimmingCharacters(in: .whitespacesAndNewlines) {
+            return "remote_unlock_peer_mismatch"
+        }
+        switch remoteUnlockReadiness.validateRemoteUnlockSession(session, now: clock()) {
+        case .allowed:
+            return nil
+        case .denied(let reason):
+            return reason
         }
     }
 
@@ -747,11 +1015,9 @@ final class MercuryRouter: ObservableObject {
         Self.log.info("router_mirror_request_received requestID=\(req.requestId, privacy: .public) requester=\(req.requesterDisplayName, privacy: .public)")
         Self.debugTrace("router_mirror_request_received requestID=\(req.requestId) requester=\(req.requesterDisplayName)")
 
-        if let remoteUnlockSession = req.remoteUnlockSession {
-            switch remoteUnlockReadiness.validateRemoteUnlockSession(remoteUnlockSession, now: clock()) {
-            case .allowed:
-                break
-            case .denied(let reason):
+        let remoteUnlockSession = remoteUnlockSessionForLockedMirror(req)
+        if let remoteUnlockSession {
+            if let reason = remoteUnlockMirrorDenialReason(request: req, session: remoteUnlockSession) {
                 let state = remoteUnlockReadiness.currentState(
                     sessionId: remoteUnlockSession.sessionId,
                     controlOwnerViewerId: nil
@@ -770,6 +1036,20 @@ final class MercuryRouter: ObservableObject {
                 )
                 return
             }
+        } else if let state = remoteUnlockSessionRequiredState(for: req) {
+            Self.log.info("router_remote_unlock_session_required requestID=\(req.requestId, privacy: .public) state=\(state.lockState.rawValue, privacy: .public)")
+            Self.debugTrace("router_remote_unlock_session_required requestID=\(req.requestId) state=\(state.lockState.rawValue)")
+            await respond(
+                requestID: req.requestId,
+                decision: .unsupported,
+                detail: Self.remoteUnlockSessionRequiredDetail,
+                viewerID: req.viewerId,
+                remoteUnlockState: state,
+                remoteUnlockCapabilities: state.capabilities,
+                frame: frame,
+                replySender: replySender
+            )
+            return
         }
 
         // Cooldown short-circuit — never bother the user mid-cooldown.
@@ -856,9 +1136,11 @@ final class MercuryRouter: ObservableObject {
             controlStreamID: controlStreamID
         )
 
-        // Consent fast-path: if the user has flipped "Always allow my
-        // iPhone to mirror", auto-accept and bypass the ringing UI.
-        if consentStore.alwaysAllow {
+        // Consent fast-paths:
+        // - normal unlocked mirrors can use the durable "always allow" Mac grant;
+        // - locked Remote Unlock mirrors can use a signed trusted-device session.
+        // Neither path stores or replays the user's Mac password.
+        if consentStore.alwaysAllow || remoteUnlockSession != nil {
             Self.log.info("router_mirror_request_auto_accept requestID=\(req.requestId, privacy: .public)")
             Self.debugTrace("router_mirror_request_auto_accept requestID=\(req.requestId)")
             await beginMirror(for: pending)
@@ -889,7 +1171,10 @@ final class MercuryRouter: ObservableObject {
             Self.debugTrace("router_mirror_stop_ignored requestID=\(stop.requestId) phase=\(String(describing: phase))")
             return
         }
-        _ = await removeActiveMirrorViewer(viewerID: activeViewer.viewerID)
+        _ = await removeActiveMirrorViewer(
+            viewerID: activeViewer.viewerID,
+            revokeRemoteUnlockSession: true
+        )
         pendingRequest = nil
         await broadcastMirrorAck(
             decision: .accepted,
@@ -1054,6 +1339,47 @@ final class MercuryRouter: ObservableObject {
             phase = .idle
             return
         }
+        let remoteUnlockSession = remoteUnlockSessionForLockedMirror(mirrorRequest)
+        if let remoteUnlockSession,
+           let reason = remoteUnlockMirrorDenialReason(request: mirrorRequest, session: remoteUnlockSession) {
+            let state = remoteUnlockReadiness.currentState(
+                sessionId: remoteUnlockSession.sessionId,
+                controlOwnerViewerId: nil
+            )
+            await respond(
+                requestID: request.id,
+                decision: .unsupported,
+                detail: reason,
+                viewerID: mirrorRequest.viewerId,
+                remoteUnlockState: state,
+                remoteUnlockCapabilities: state.capabilities,
+                frame: request.frame,
+                replySender: request.replySender
+            )
+            if activeMirrorViewers.isEmpty {
+                phase = .idle
+            } else {
+                setStreamingPhaseIfNeeded()
+            }
+            return
+        } else if let state = remoteUnlockSessionRequiredState(for: mirrorRequest) {
+            await respond(
+                requestID: request.id,
+                decision: .unsupported,
+                detail: Self.remoteUnlockSessionRequiredDetail,
+                viewerID: mirrorRequest.viewerId,
+                remoteUnlockState: state,
+                remoteUnlockCapabilities: state.capabilities,
+                frame: request.frame,
+                replySender: request.replySender
+            )
+            if activeMirrorViewers.isEmpty {
+                phase = .idle
+            } else {
+                setStreamingPhaseIfNeeded()
+            }
+            return
+        }
         let viewerID = viewerID(for: mirrorRequest, frame: request.frame, controlStreamID: request.controlStreamID)
         guard activeMirrorViewers[viewerID] == nil else {
             await respond(
@@ -1088,7 +1414,7 @@ final class MercuryRouter: ObservableObject {
             setStreamingPhaseIfNeeded()
             return
         }
-        guard let factory = mirrorSinkFactory else {
+        guard mirrorSinkFactory != nil else {
             Self.log.error("router_mirror_accept_unsupported_missing_sink requestID=\(request.id, privacy: .public)")
             Self.debugTrace("router_mirror_accept_unsupported_missing_sink requestID=\(request.id)")
             await respond(
@@ -1109,26 +1435,6 @@ final class MercuryRouter: ObservableObject {
                 for: mirrorRequest,
                 requestedMode: requestedFocusMode
             )
-            let sink = try await factory(mirrorRequest, request.frame, request.replySender)
-            let remoteCapabilities = mirrorRequest.streamingCapabilities
-                .map(MercuryStreamingCapabilitySnapshot.init(wire:))
-                ?? request.controlStreamID.flatMap {
-                    remoteStreamingCapabilitiesByControlStreamID[$0]
-                }
-                ?? remoteStreamingCapabilitiesByConnectionID[request.frame.connectionId]
-            let localCapabilities = remoteCapabilities.map { _ in
-                MercuryVideoToolboxCapabilityProbe.snapshot(mediaFrameVersions: .v1AndV2)
-            }
-            try await startScreenShare(
-                request.frame.connectionId,
-                sink,
-                .screenVideo,
-                nil,
-                viewerID,
-                localCapabilities,
-                remoteCapabilities,
-                .production
-            )
             let viewer = ActiveMirrorViewer(
                 viewerID: viewerID,
                 requestID: request.id,
@@ -1139,23 +1445,22 @@ final class MercuryRouter: ObservableObject {
                 replySender: request.replySender,
                 controlStreamID: request.controlStreamID,
                 viewerDeviceID: mirrorRequest.viewerDeviceId,
-                controlAuthorityPeerNodeID: mirrorRequest.controlAuthorityPeerNodeId
+                controlAuthorityPeerNodeID: mirrorRequest.controlAuthorityPeerNodeId,
+                remoteUnlockSessionID: remoteUnlockSession?.sessionId
             )
+
             addActiveMirrorViewer(viewer)
-            if activeControlViewerID == viewerID {
-                do {
-                    applyFocusFollowMode?(focusMode)
-                    if let ensureComputerUseSession {
-                        try await ensureComputerUseSession()
-                    }
-                } catch {
-                    lastError = "Mirror is read-only: \(error.localizedDescription)"
-                    Self.log.error("router_computer_use_session_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-                    Self.debugTrace("router_computer_use_session_failed requestID=\(request.id) error=\(error.localizedDescription)")
-                }
+            if let remoteUnlockSession {
+                remoteUnlockReadiness.recordRemoteUnlockSession(remoteUnlockSession, now: clock())
             }
             let displays = ScreenCapturePipeline.availableDisplays()
             activeSelectedDisplayID = activeSelectedDisplayID ?? displays.first?.id
+            let remoteUnlockState = remoteUnlockSession.map {
+                remoteUnlockReadiness.currentState(
+                    sessionId: $0.sessionId,
+                    controlOwnerViewerId: activeControlViewerID
+                )
+            }
             await respond(
                 requestID: request.id,
                 decision: .accepted,
@@ -1168,9 +1473,14 @@ final class MercuryRouter: ObservableObject {
                 viewerCount: activeMirrorViewers.count,
                 maxViewers: maxMirrorViewers,
                 controlOwnerViewerID: activeControlViewerID,
+                remoteUnlockState: remoteUnlockState,
+                remoteUnlockCapabilities: remoteUnlockState?.capabilities,
                 frame: request.frame,
                 replySender: request.replySender
             )
+            if remoteUnlockSession == nil {
+                startAcceptedMirrorRuntime(for: viewer, focusMode: focusMode)
+            }
             if wasJoiningExistingSession {
                 await broadcastMirrorAck(
                     decision: .accepted,
@@ -1180,6 +1490,7 @@ final class MercuryRouter: ObservableObject {
                     excludingViewerID: viewerID
                 )
             }
+            await Task.yield()
         } catch {
             lastError = error.localizedDescription
             Self.log.error("router_mirror_start_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
@@ -1203,6 +1514,74 @@ final class MercuryRouter: ObservableObject {
                 setStreamingPhaseIfNeeded()
             }
         }
+    }
+
+    private func startAcceptedMirrorRuntime(
+        for viewer: ActiveMirrorViewer,
+        focusMode: AgentFocusFollowMode
+    ) {
+        mirrorStartupTasks.removeValue(forKey: viewer.viewerID)?.cancel()
+        let taskID = UUID()
+        mirrorStartupTaskIDs[viewer.viewerID] = taskID
+        mirrorStartupTasks[viewer.viewerID] = Task { @MainActor [weak self] in
+            await self?.runAcceptedMirrorRuntime(for: viewer, focusMode: focusMode, taskID: taskID)
+        }
+    }
+
+    private func runAcceptedMirrorRuntime(
+        for viewer: ActiveMirrorViewer,
+        focusMode: AgentFocusFollowMode,
+        taskID: UUID
+    ) async {
+        defer {
+            if mirrorStartupTaskIDs[viewer.viewerID] == taskID {
+                mirrorStartupTasks.removeValue(forKey: viewer.viewerID)
+                mirrorStartupTaskIDs.removeValue(forKey: viewer.viewerID)
+            }
+        }
+        guard activeMirrorViewers[viewer.viewerID]?.requestID == viewer.requestID else { return }
+        do {
+            try await startNormalCapture(for: viewer)
+            guard activeMirrorViewers[viewer.viewerID]?.requestID == viewer.requestID else { return }
+            if activeControlViewerID == viewer.viewerID {
+                do {
+                    applyFocusFollowMode?(focusMode)
+                    if let ensureComputerUseSession {
+                        try await ensureComputerUseSession()
+                    }
+                } catch {
+                    lastError = "Mirror is read-only: \(error.localizedDescription)"
+                    Self.log.error("router_computer_use_session_failed requestID=\(viewer.requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                    Self.debugTrace("router_computer_use_session_failed requestID=\(viewer.requestID) error=\(error.localizedDescription)")
+                }
+            }
+        } catch {
+            await failAcceptedMirrorRuntime(for: viewer, error: error)
+        }
+    }
+
+    private func failAcceptedMirrorRuntime(
+        for viewer: ActiveMirrorViewer,
+        error: Error
+    ) async {
+        guard activeMirrorViewers[viewer.viewerID]?.requestID == viewer.requestID else { return }
+        lastError = error.localizedDescription
+        Self.log.error("router_mirror_runtime_failed requestID=\(viewer.requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+        Self.debugTrace("router_mirror_runtime_failed requestID=\(viewer.requestID) error=\(error.localizedDescription)")
+        _ = await removeActiveMirrorViewer(viewerID: viewer.viewerID)
+        await respond(
+            requestID: viewer.requestID,
+            decision: .unsupported,
+            detail: error.localizedDescription,
+            sessionID: viewer.sessionID,
+            viewerID: viewer.viewerID,
+            viewerRole: viewerRole(for: viewer.viewerID),
+            viewerCount: activeMirrorViewers.count,
+            maxViewers: maxMirrorViewers,
+            controlOwnerViewerID: activeControlViewerID,
+            frame: viewer.frame,
+            replySender: viewer.replySender
+        )
     }
 
     private func request(
@@ -1280,9 +1659,8 @@ final class MercuryRouter: ObservableObject {
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         let capabilities = remoteUnlockCapabilities ?? remoteUnlockReadiness.capabilities()
-        let remoteUnlockSessionID = frame.media?.mirrorRequest?.remoteUnlockSession?.sessionId ?? sessionID
         let state = remoteUnlockState ?? remoteUnlockReadiness.currentState(
-            sessionId: remoteUnlockSessionID,
+            sessionId: nil,
             controlOwnerViewerId: controlOwnerViewerID
         )
         let ack = HermesRealtimeRelayMirrorAck(

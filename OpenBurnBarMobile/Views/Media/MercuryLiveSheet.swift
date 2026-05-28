@@ -76,6 +76,7 @@ enum MercuryMirrorTeardownTrigger: Equatable {
 @MainActor
 struct MercuryLiveSheet: View {
     private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "Mercury")
+    private static let remoteUnlockSessionRequiredDetail = "remote_unlock_session_required"
     private static func debugTrace(_ message: String) {
         #if DEBUG
         NSLog("OpenBurnBarMercury \(message)")
@@ -123,6 +124,8 @@ struct MercuryLiveSheet: View {
     @State private var pendingClipboardRequests: [String: HermesRealtimeRelayClipboardAction] = [:]
     @State private var remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
     @State private var remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult?
+    @State private var remoteUnlockRefreshInFlight = false
+    @State private var remoteUnlockPasswordDraft = ""
     @State private var selectedMirrorDisplayId: String?
     @State private var activeMirrorSessionId: String?
     @State private var activeMirrorViewerId: String?
@@ -320,6 +323,7 @@ struct MercuryLiveSheet: View {
                 displays: lastAck?.availableDisplays ?? [],
                 selectedDisplayId: selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
                 remoteUnlockState: remoteUnlockState ?? lastAck?.remoteUnlockState,
+                remoteUnlockPasswordDraft: $remoteUnlockPasswordDraft,
                 usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false,
                 sendTapIntent: { x, y, mouseButton in
                     let displayId = selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
@@ -813,7 +817,6 @@ struct MercuryLiveSheet: View {
 
     private var canRequestMirror: Bool {
         awaitingRequestID == nil
-            && peer.isOnline
             && peer.capabilities.contains(.mirrorHost)
             && controlStreamCoordinator.phase == .live
     }
@@ -828,7 +831,7 @@ struct MercuryLiveSheet: View {
         }
         switch controlStreamCoordinator.phase {
         case .live:
-            return peer.isOnline ? nil : "Mercury is connected, but the Mac presence is still catching up."
+            return nil
         case .idle, .dialing:
             return "Mercury is connecting to your Mac..."
         case .reconnecting:
@@ -854,6 +857,15 @@ struct MercuryLiveSheet: View {
                     self.mirrorTimeoutTask = nil
                     self.awaitingRequestID = nil
                 }
+                if ack.decision == .unsupported,
+                   ack.detail == Self.remoteUnlockSessionRequiredDetail {
+                    self.lastAck = nil
+                    self.lastError = nil
+                    Task {
+                        await self.requestMirror(forceRemoteUnlockSession: true)
+                    }
+                    return
+                }
                 if ack.requestId == self.activeMirrorRequestID || ack.requestId == self.awaitingRequestID {
                     self.activeMirrorSessionId = ack.sessionId ?? self.activeMirrorSessionId
                     self.activeMirrorViewerId = ack.viewerId ?? self.activeMirrorViewerId
@@ -871,6 +883,9 @@ struct MercuryLiveSheet: View {
                         self.lastError = nil
                         self.refreshCooldownTicker(for: ack)
                         return
+                    }
+                    if self.activeMirrorRequestID != ack.requestId {
+                        self.screenShareViewer.resetForNewMirror()
                     }
                     self.activeMirrorRequestID = ack.requestId
                     self.activeMirrorSessionId = ack.sessionId
@@ -929,6 +944,13 @@ struct MercuryLiveSheet: View {
         }
         controlStreamCoordinator.remoteUnlockStateHandler = { state in
             await MainActor.run {
+                if state.lockState != .unlocked {
+                    self.controlStreamCoordinator.suspendBackgroundTraffic(
+                        for: RemoteUnlockPolicy.default.sessionTTLSeconds
+                    )
+                } else {
+                    self.remoteUnlockPasswordDraft = ""
+                }
                 self.remoteUnlockState = state
             }
         }
@@ -940,9 +962,24 @@ struct MercuryLiveSheet: View {
                     self.remoteUnlockState = nil
                     self.phoneControlError = nil
                 case .denied, .failed, .expired:
-                    self.phoneControlError = result.detail ?? "Remote Unlock was denied."
-                case .accepted, .disconnected:
+                    let detail = result.detail ?? "Remote Unlock was denied."
+                    self.phoneControlError = self.remoteUnlockMessage(for: detail)
+                    if self.shouldRefreshRemoteUnlockSession(after: detail) {
+                        self.phoneControlSender = nil
+                        self.phoneControlConnectionID = nil
+                        self.remoteUnlockState = nil
+                        self.lastAck = nil
+                        Task {
+                            await self.refreshRemoteUnlockSessionAfterCredentialRejection()
+                        }
+                    }
+                case .accepted:
+                    self.phoneControlError = self.remoteUnlockMessage(for: result.detail ?? "credential_submitted")
+                case .disconnected:
                     break
+                }
+                if result.status == .accepted || result.status == .unlocked {
+                    self.remoteUnlockPasswordDraft = ""
                 }
             }
         }
@@ -978,7 +1015,10 @@ struct MercuryLiveSheet: View {
         }
     }
 
-    private func requestMirror() async {
+    private func requestMirror(
+        forceRemoteUnlockSession: Bool = false,
+        retryingAfterControlStreamRefresh: Bool = false
+    ) async {
         guard let uid = uidProvider(), !uid.isEmpty else {
             lastError = "Sign in to mirror your Mac."
             return
@@ -987,50 +1027,25 @@ struct MercuryLiveSheet: View {
             lastError = mercuryStatusMessage ?? "Mercury is not ready yet."
             return
         }
-        personalization.haptics.play()
+        controlStreamCoordinator.suspendBackgroundTraffic(for: 30)
+        if !retryingAfterControlStreamRefresh {
+            personalization.haptics.play()
+        }
         let requestID = UUID().uuidString
         let viewerID = UUID().uuidString
-        let signingKey = try? PhoneControlSigningKeyStore.shared.signingKey()
-        let controlAuthorityPeerNodeId = signingKey.map {
-            PhoneControlSigningKeyStore.shared.peerNodeId(for: $0)
-        }
         let remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession?
-        if peer.capabilities.contains(.remoteUnlockHost) {
-            guard let signingKey, let controlAuthorityPeerNodeId else {
-                lastError = "Trust this iPhone for Mac control before requesting a locked Mac mirror."
+        let controlAuthorityPeerNodeId: String?
+        if forceRemoteUnlockSession {
+            guard peer.capabilities.contains(.remoteUnlockHost)
+                    || remoteUnlockState?.capabilities.enabled == true
+                    || lastAck?.remoteUnlockCapabilities?.enabled == true else {
+                lastError = "Remote Unlock is not ready on this Mac."
                 return
             }
             do {
-                try await confirmLocalAuthentication(reason: "Allow Remote Unlock for this Mac.")
-                try await PhoneControlAuthorityPublisher.shared.publish(
-                    uid: uid,
-                    connectionId: connectionID,
-                    deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
-                    peerNodeId: controlAuthorityPeerNodeId,
-                    publicKey: signingKey.privateKey.publicKey
-                )
-                let sessionSigner = PhoneControlSender(
-                    peerNodeId: controlAuthorityPeerNodeId,
-                    uid: uid,
-                    connectionId: connectionID,
-                    signingKeyProvider: { signingKey },
-                    frameSink: { _ in }
-                )
-                let issuedAt = Date()
-                let unsignedSession = HermesRealtimeRelayRemoteUnlockSession(
-                    requestId: "remote-unlock-\(requestID)",
-                    sessionId: UUID().uuidString,
-                    intent: .request,
-                    requesterDisplayName: deviceDisplayName(),
-                    viewerDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
-                    requestedAt: issuedAt,
-                    expiresAt: issuedAt.addingTimeInterval(RemoteUnlockPolicy.default.sessionTTLSeconds),
-                    localAuthenticationSatisfied: true,
-                    requestedLockState: nil,
-                    requestedBackend: .appleScreenSharingLoopback,
-                    authority: Self.emptyAuthorityEnvelope
-                )
-                remoteUnlockSession = try sessionSigner.sign(remoteUnlockSession: unsignedSession)
+                let prepared = try await makeRemoteUnlockSession(uid: uid, requestID: requestID)
+                remoteUnlockSession = prepared.session
+                controlAuthorityPeerNodeId = prepared.peerNodeId
             } catch {
                 lastError = "Remote Unlock needs Face ID, Touch ID, or passcode confirmation."
                 awaitingRequestID = nil
@@ -1038,6 +1053,11 @@ struct MercuryLiveSheet: View {
             }
         } else {
             remoteUnlockSession = nil
+            if let signingKey = try? PhoneControlSigningKeyStore.shared.signingKey() {
+                controlAuthorityPeerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+            } else {
+                controlAuthorityPeerNodeId = nil
+            }
         }
         awaitingRequestID = requestID
         activeMirrorRequestID = nil
@@ -1051,18 +1071,14 @@ struct MercuryLiveSheet: View {
         lastAckReceivedAt = nil
         remoteUnlockState = nil
         remoteUnlockResult = nil
-        do {
-            try await controlStreamCoordinator.ensureResponsive(uid: uid, connectionID: connectionID)
-        } catch {
-            Self.log.error("mirror_request_probe_failed requestID=\(requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-            Self.debugTrace("mirror_request_probe_failed requestID=\(requestID) error=\(error.localizedDescription)")
-            lastError = error.localizedDescription
-            awaitingRequestID = nil
-            return
-        }
+        screenShareViewer.resetForNewMirror()
         // Don't tear down the app-scope phone control coordinator on
         // every mirror request — it stays warm and is reused for tap /
-        // scroll input once the Mac approves the mirror.
+        // scroll input once the Mac approves the mirror. Also do not
+        // gate mirror requests behind a separate heartbeat proof: while
+        // macOS is at loginwindow, the mirror request is the handshake
+        // that asks the Mac for the Remote Unlock lane, and a preflight
+        // heartbeat can wedge before the Mac ever sees that request.
         cooldownTickerTask?.cancel()
         cooldownTickerTask = nil
         let request = HermesRealtimeRelayMirrorRequest(
@@ -1092,22 +1108,57 @@ struct MercuryLiveSheet: View {
             try await controlStreamCoordinator.send(frame: frame)
             Self.log.info("mirror_request_sent requestID=\(requestID, privacy: .public) connectionID=\(connectionID, privacy: .public)")
             Self.debugTrace("mirror_request_sent requestID=\(requestID) connectionID=\(connectionID)")
-            startMirrorAckTimeout(requestID: requestID)
+            startMirrorAckTimeout(
+                requestID: requestID,
+                forceRemoteUnlockSession: forceRemoteUnlockSession,
+                retryingAfterControlStreamRefresh: retryingAfterControlStreamRefresh
+            )
         } catch {
             Self.log.error("mirror_request_send_failed requestID=\(requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
             Self.debugTrace("mirror_request_send_failed requestID=\(requestID) error=\(error.localizedDescription)")
+            if !retryingAfterControlStreamRefresh,
+               shouldRetryMirrorRequestAfterRefreshingControlStream(error) {
+                Self.log.info("mirror_request_retry_after_control_stream_refresh requestID=\(requestID, privacy: .public) connectionID=\(connectionID, privacy: .public)")
+                Self.debugTrace("mirror_request_retry_after_control_stream_refresh requestID=\(requestID) connectionID=\(connectionID)")
+                awaitingRequestID = nil
+                await controlStreamCoordinator.stop()
+                controlStreamCoordinator.start(uid: uid, connectionID: connectionID)
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                await requestMirror(
+                    forceRemoteUnlockSession: forceRemoteUnlockSession,
+                    retryingAfterControlStreamRefresh: true
+                )
+                return
+            }
             lastError = error.localizedDescription
             awaitingRequestID = nil
         }
     }
 
-    private func startMirrorAckTimeout(requestID: String) {
+    private func startMirrorAckTimeout(
+        requestID: String,
+        forceRemoteUnlockSession: Bool,
+        retryingAfterControlStreamRefresh: Bool
+    ) {
         mirrorTimeoutTask?.cancel()
         mirrorTimeoutTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 12_000_000_000)
             guard !Task.isCancelled, awaitingRequestID == requestID else { return }
             awaitingRequestID = nil
-            lastError = "No response from the Mac. Reopen BurnBar on the Mac, confirm Local Network is enabled, then try Ask to Mirror again."
+            if let uid = uidProvider(), !uid.isEmpty {
+                await controlStreamCoordinator.stop()
+                controlStreamCoordinator.start(uid: uid, connectionID: connectionID)
+            }
+            guard !retryingAfterControlStreamRefresh else {
+                lastError = "No response from the Mac. Mercury reconnected; try Mirror Mac again."
+                return
+            }
+            lastError = "No response from the Mac. Mercury reconnected and retried the mirror request."
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            await requestMirror(
+                forceRemoteUnlockSession: forceRemoteUnlockSession,
+                retryingAfterControlStreamRefresh: true
+            )
         }
     }
 
@@ -1270,6 +1321,110 @@ struct MercuryLiveSheet: View {
         intentHashBlake3: "",
         signatureEd25519: ""
     )
+
+    private func makeRemoteUnlockSession(
+        uid: String,
+        requestID: String
+    ) async throws -> (session: HermesRealtimeRelayRemoteUnlockSession, peerNodeId: String) {
+        let signingKey = try PhoneControlSigningKeyStore.shared.signingKey()
+        let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+        let trustGateway = LiveDeviceTrustGateway()
+        await trustGateway.registerSelfIfNeeded()
+        if try await !trustGateway.isSelfTrustedForComputerUseControl() {
+            try await confirmLocalAuthentication(reason: "Trust this iPhone for Remote Unlock.")
+            try await trustGateway.trustSelfForComputerUseControl()
+        }
+        try await publishPhoneControlAuthorityWithTrustRetry(
+            uid: uid,
+            peerNodeId: peerNodeId,
+            signingKey: signingKey,
+            trustGateway: trustGateway
+        )
+        let sessionSigner = PhoneControlSender(
+            peerNodeId: peerNodeId,
+            uid: uid,
+            connectionId: connectionID,
+            signingKeyProvider: { signingKey },
+            frameSink: { _ in }
+        )
+        let issuedAt = Date()
+        let unsignedSession = HermesRealtimeRelayRemoteUnlockSession(
+            requestId: "remote-unlock-\(requestID)",
+            sessionId: UUID().uuidString,
+            intent: .request,
+            requesterDisplayName: deviceDisplayName(),
+            viewerDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
+            requestedAt: issuedAt,
+            expiresAt: issuedAt.addingTimeInterval(RemoteUnlockPolicy.default.sessionTTLSeconds),
+            // Durable device trust is granted once and then reused for locked
+            // mirrors. The Mac password is never stored and must be typed for
+            // each unlock attempt.
+            localAuthenticationSatisfied: true,
+            requestedLockState: nil,
+            requestedBackend: .appleScreenSharingLoopback,
+            authority: Self.emptyAuthorityEnvelope
+        )
+        return (try sessionSigner.sign(remoteUnlockSession: unsignedSession), peerNodeId)
+    }
+
+    private func publishPhoneControlAuthorityWithTrustRetry(
+        uid: String,
+        peerNodeId: String,
+        signingKey: Curve25519SigningKey,
+        trustGateway: LiveDeviceTrustGateway = LiveDeviceTrustGateway()
+    ) async throws {
+        do {
+            try await publishPhoneControlAuthority(
+                uid: uid,
+                peerNodeId: peerNodeId,
+                signingKey: signingKey
+            )
+        } catch {
+            guard PhoneControlSetupMessage.isFirestorePermissionDenied(error) else { throw error }
+            try await trustGateway.trustSelfForComputerUseControl()
+            try await publishPhoneControlAuthority(
+                uid: uid,
+                peerNodeId: peerNodeId,
+                signingKey: signingKey
+            )
+        }
+    }
+
+    private func publishPhoneControlAuthority(
+        uid: String,
+        peerNodeId: String,
+        signingKey: Curve25519SigningKey
+    ) async throws {
+        try await PhoneControlAuthorityPublisher.shared.publish(
+            uid: uid,
+            connectionId: connectionID,
+            deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
+            peerNodeId: peerNodeId,
+            publicKey: signingKey.privateKey.publicKey
+        )
+    }
+
+    private func makeRemoteUnlockCredentialSender(uid: String) async throws -> PhoneControlSender {
+        let signingKey = try PhoneControlSigningKeyStore.shared.signingKey()
+        let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+        let trustGateway = LiveDeviceTrustGateway()
+        await trustGateway.registerSelfIfNeeded()
+        try await publishPhoneControlAuthorityWithTrustRetry(
+            uid: uid,
+            peerNodeId: peerNodeId,
+            signingKey: signingKey,
+            trustGateway: trustGateway
+        )
+        return PhoneControlSender(
+            peerNodeId: peerNodeId,
+            uid: uid,
+            connectionId: connectionID,
+            signingKeyProvider: { signingKey },
+            frameSink: { frame in
+                try await controlStreamCoordinator.send(frame: frame, timeout: 6)
+            }
+        )
+    }
 
     private func confirmLocalAuthentication(reason: String) async throws {
         let context = LAContext()
@@ -1558,12 +1713,73 @@ struct MercuryLiveSheet: View {
         phoneControlError = nil
     }
 
+    private func shouldRefreshRemoteUnlockSession(after detail: String) -> Bool {
+        switch detail {
+        case "session_mismatch",
+             "session_expired",
+             "signature_failure",
+             "counter_replay",
+             "stale_timestamp":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func shouldRetryMirrorRequestAfterRefreshingControlStream(_ error: Error) -> Bool {
+        guard let controlError = error as? MediaControlStreamCoordinator.ControlStreamError else {
+            return false
+        }
+        switch controlError {
+        case .timedOutWaitingForLiveStream,
+             .timedOutSendingFrame,
+             .macDidNotRespond:
+            return true
+        case .notLive:
+            return false
+        }
+    }
+
+    private func remoteUnlockMessage(for detail: String) -> String {
+        switch detail {
+        case "session_mismatch", "session_expired":
+            return "Unlock session refreshed. Enter your Mac password again."
+        case "signature_failure", "counter_replay", "stale_timestamp":
+            return "Secure unlock lane refreshed. Enter your Mac password again."
+        case "credential_submitted":
+            return "Password sent to Mac login window."
+        case "untrusted_controller":
+            return "Take control from this device, then try unlocking again."
+        case "control_owned_by_other_viewer":
+            return "Another device has control of this mirror."
+        case "remote_access_daemon_unavailable", "remote_access_daemon_socket_unavailable":
+            return "Remote Unlock helper is not reachable on the Mac."
+        case "remote_access_daemon_rejected":
+            return "Remote Unlock helper rejected the password request."
+        case "login_session_worker_failed", "login_session_worker_launch_failed", "login_session_worker_input_failed":
+            return "Remote Unlock could not reach the Mac login session."
+        default:
+            return detail
+        }
+    }
+
+    private func refreshRemoteUnlockSessionAfterCredentialRejection() async {
+        guard !remoteUnlockRefreshInFlight else { return }
+        remoteUnlockRefreshInFlight = true
+        defer { remoteUnlockRefreshInFlight = false }
+        await requestMirror(forceRemoteUnlockSession: true)
+        if phoneControlError == nil {
+            phoneControlError = "Unlock session refreshed. Enter your Mac password again."
+        }
+    }
+
     private func sendRemoteUnlockCredential(password: String) async {
         let trimmedPassword = password.trimmingCharacters(in: .newlines)
         guard !trimmedPassword.isEmpty else {
             phoneControlError = "Enter your Mac password."
             return
         }
+        controlStreamCoordinator.suspendBackgroundTraffic(for: 45)
         guard activeMirrorViewerRole == "controller" else {
             phoneControlError = "Watching only. Take control from this device to unlock the Mac."
             return
@@ -1579,12 +1795,12 @@ struct MercuryLiveSheet: View {
         }
         let capabilities = state.capabilities
         guard capabilities.enabled,
-              capabilities.certificationStatus == .certified,
+              capabilities.allowsCredentialPaste,
               let sessionId = state.sessionId,
               let recipientKeyId = capabilities.credentialRecipientKeyId,
               let recipientPublicKey = capabilities.credentialRecipientPublicKeyBase64,
               let algorithm = capabilities.credentialEnvelopeAlgorithm else {
-            phoneControlError = "Remote Unlock is not certified on this Mac."
+            phoneControlError = "Remote Unlock is not ready on this Mac."
             return
         }
         guard algorithm == RemoteUnlockCredentialEnvelopeCrypto.algorithm else {
@@ -1592,25 +1808,25 @@ struct MercuryLiveSheet: View {
             return
         }
 
+        let credentialSender: PhoneControlSender
         do {
-            try await confirmLocalAuthentication(reason: "Send your Mac password to this locked Mac.")
-            try await ensurePhoneControlStreamResponsive(uid: uid, connectionID: connectionID)
+            if let existingSender = phoneControlSender,
+               phoneControlConnectionID == connectionID {
+                credentialSender = existingSender
+            } else {
+                let sender = try await makeRemoteUnlockCredentialSender(uid: uid)
+                phoneControlSender = sender
+                phoneControlConnectionID = connectionID
+                credentialSender = sender
+            }
         } catch {
-            phoneControlError = "Remote Unlock needs Face ID, Touch ID, or passcode confirmation."
+            phoneControlSender = nil
+            phoneControlConnectionID = nil
+            phoneControlError = PhoneControlSetupMessage.message(for: error)
             return
         }
-        if phoneControlSender == nil {
-            await startPhoneControlIfPossible()
-        }
-        guard let phoneControlSender else { return }
 
         do {
-            try await sendPhoneControlClassify(
-                uid: uid,
-                connectionID: connectionID,
-                peerNodeId: phoneControlSender.peerNodeId
-            )
-
             let requestId = UUID().uuidString
             let clientIntentId = UUID().uuidString
             let requestedAt = Date()
@@ -1639,8 +1855,8 @@ struct MercuryLiveSheet: View {
                 expiresAt: expiresAt,
                 authority: Self.emptyAuthorityEnvelope
             )
-            _ = try await phoneControlSender.send(remoteUnlockCredential: envelope)
-            phoneControlError = "Password sent to Mac login window."
+            _ = try await credentialSender.send(remoteUnlockCredential: envelope)
+            phoneControlError = remoteUnlockMessage(for: "credential_submitted")
         } catch {
             self.phoneControlSender = nil
             phoneControlConnectionID = nil
@@ -1820,6 +2036,7 @@ private struct MercuryMirrorViewerFullScreen: View {
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
+    @Binding var remoteUnlockPasswordDraft: String
     let usePremiumSOTAUX: Bool
     let sendTapIntent: (Double, Double, Int) -> Void
     let sendScrollIntent: (Double, Double, Double, Double, String?) -> Void
@@ -1851,6 +2068,7 @@ private struct MercuryMirrorViewerFullScreen: View {
             lastFailureReason: lastFailureReason,
             lastLiveAt: lastLiveAt,
             remoteUnlockState: remoteUnlockState,
+            remoteUnlockPasswordDraft: $remoteUnlockPasswordDraft,
             usePremiumSOTAUX: usePremiumSOTAUX,
             onForceReconnect: onForceReconnect,
             onRetryRequest: onRetryRequest,

@@ -151,6 +151,7 @@ final class FactoryDroidParser: LogParser, Sendable {
         var userMessageCount = 0
         var assistantMessageCount = 0
         var inlineModel: String?
+        var workingDirectory: String?
 
         // Check settings.json for model and token usage totals
         // VAL-TOKEN-003: Settings/metadata exact totals suppress per-message fallback accumulation
@@ -161,6 +162,9 @@ final class FactoryDroidParser: LogParser, Sendable {
                 if let model = json["model"] as? String {
                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
                 }
+                workingDirectory = (json["cwd"] as? String)
+                    ?? (json["workingDirectory"] as? String)
+                    ?? (json["working_dir"] as? String)
 
                 if let tokenUsage = json["tokenUsage"] as? [String: Any] {
                     let extracted = TokenExtractionUtility.extractUsageTokens(tokenUsage)
@@ -278,7 +282,10 @@ final class FactoryDroidParser: LogParser, Sendable {
         let startTime = conv.startTime ?? tokenData.startTime ?? fallbackActivity
         let endTime = conv.endTime ?? tokenData.endTime ?? startTime
 
-        guard tokenData.input > 0 || tokenData.output > 0 else { return nil }
+        guard tokenData.input > 0
+            || tokenData.output > 0
+            || tokenData.cacheCreation > 0
+            || tokenData.cacheRead > 0 else { return nil }
 
         let pricing = ModelPricing.lookup(model: tokenData.model, providerID: "factory")
         let cost = pricing.cost(
@@ -321,6 +328,7 @@ final class FactoryDroidParser: LogParser, Sendable {
             lastAssistantMessage: conv.lastAssistantText,
             fullText: conv.fullText,
             indexedAt: Date(),
+            workingDirectory: workingDirectory,
             fileModifiedAt: mtime,
             summary: nil
         )

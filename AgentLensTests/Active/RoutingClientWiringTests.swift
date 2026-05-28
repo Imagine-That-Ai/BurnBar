@@ -348,6 +348,68 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(makeWiring().isWired(target: .forge))
     }
 
+    // MARK: - Grok Build (~/.grok/config.toml)
+
+    func test_wireGrok_writesCustomModelBlock() throws {
+        let wiring = makeWiring()
+        let change = try wiring.wire(target: .grok, gateway: exampleGateway(token: "grok-token"))
+
+        XCTAssertEqual(change.target, .grok)
+        let configURL = tempHome.appendingPathComponent(".grok/config.toml")
+        XCTAssertEqual(change.configURL, configURL)
+
+        let text = try String(contentsOf: configURL, encoding: .utf8)
+        XCTAssertTrue(text.contains("# openburnbar:routing — start"))
+        XCTAssertTrue(text.contains("[model.openburnbar]"))
+        XCTAssertTrue(text.contains("model = \"openburnbar-gateway\""))
+        XCTAssertTrue(text.contains("base_url = \"http://127.0.0.1:8317/v1\""))
+        XCTAssertTrue(text.contains("name = \"OpenBurnBar Gateway\""))
+        XCTAssertTrue(text.contains("env_key = \"XAI_API_KEY\""))
+    }
+
+    func test_isWired_grok_detectsExistingCustomModelWithoutSentinel() throws {
+        let url = tempHome.appendingPathComponent(".grok/config.toml")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        [model.openburnbar]
+        model = "openburnbar-gateway"
+        base_url = "http://127.0.0.1:8317/v1"
+        env_key = "XAI_API_KEY"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(makeWiring().isWired(target: .grok))
+    }
+
+    func test_wireGrok_preservesPriorUserTOML_andUnwireStripsOnlyOpenBurnBarBlock() throws {
+        let url = tempHome.appendingPathComponent(".grok/config.toml")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let priorTOML = """
+        [models]
+        default = "grok-3"
+
+        [session]
+        cwd = "/tmp"
+        """
+        try priorTOML.write(to: url, atomically: true, encoding: .utf8)
+
+        let wiring = makeWiring()
+        _ = try wiring.wire(target: .grok, gateway: exampleGateway(token: "tok"))
+        XCTAssertTrue(wiring.isWired(target: .grok))
+
+        try wiring.unwire(target: .grok)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(text.contains("openburnbar:routing"))
+        XCTAssertFalse(text.contains("[model.openburnbar]"))
+        XCTAssertTrue(text.contains("default = \"grok-3\""))
+        XCTAssertTrue(text.contains("cwd = \"/tmp\""))
+    }
+
     // MARK: - Droid (~/.factory/*.json)
 
     func test_wireDroid_writesCustomModelsIntoKnownFactoryConfigs() throws {
@@ -920,6 +982,17 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(snippet.contains("export OPENAI_BASE_URL='http://127.0.0.1:8317/v1'"))
     }
 
+    func test_shellSnippet_grok_exportsXAIKeyAndGatewayToken() {
+        let wiring = makeWiring()
+        let snippet = wiring.shellSnippet(
+            target: .grok,
+            gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "grok-local")
+        )
+        XCTAssertTrue(snippet.contains("export XAI_API_KEY='grok-local'"))
+        XCTAssertTrue(snippet.contains("export OPENBURNBAR_GATEWAY_TOKEN='grok-local'"))
+        XCTAssertTrue(snippet.contains("~/.grok/config.toml"))
+    }
+
     func test_shellSnippet_droid_includesProviderEnvVar() {
         let wiring = makeWiring()
         let snippet = wiring.shellSnippet(
@@ -957,6 +1030,10 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(
             wiring.configURL(for: .droid),
             tempHome.appendingPathComponent(".factory/settings.local.json")
+        )
+        XCTAssertEqual(
+            wiring.configURL(for: .grok),
+            tempHome.appendingPathComponent(".grok/config.toml")
         )
     }
 

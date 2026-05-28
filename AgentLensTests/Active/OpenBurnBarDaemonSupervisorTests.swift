@@ -35,7 +35,7 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
             daemonIsInstalled: true,
             now: now
         )
-        if case .retrying(let failures, _) = state {
+        if case .retrying(let failures, _, _) = state {
             XCTAssertEqual(failures, 1)
         } else {
             XCTFail("Expected .retrying, got \(state)")
@@ -50,7 +50,7 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
             daemonIsInstalled: true,
             now: now
         )
-        if case .retrying(let failures, _) = state {
+        if case .retrying(let failures, _, _) = state {
             XCTAssertEqual(failures, 1)
         } else {
             XCTFail("Expected .retrying, got \(state)")
@@ -99,7 +99,7 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
             )
         }
         // After threshold, should be crashLoop
-        if case .crashLoop(let failures, _, _) = state {
+        if case .crashLoop(let failures, _, _, _) = state {
             XCTAssertEqual(failures, 3)
         } else {
             XCTFail("Expected .crashLoop, got \(state)")
@@ -145,7 +145,8 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
         let crashLoop: OpenBurnBarDaemonSupervisionState = .crashLoop(
             consecutiveFailures: 5,
             nextRetryAt: now.addingTimeInterval(30),
-            detectedAt: now.addingTimeInterval(-60)
+            detectedAt: now.addingTimeInterval(-60),
+            lastFailureAt: now
         )
         let recovered = OpenBurnBarDaemonSupervisor.advance(
             from: crashLoop,
@@ -173,7 +174,8 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
         // Backoff hasn't elapsed
         let state: OpenBurnBarDaemonSupervisionState = .retrying(
             consecutiveFailures: 2,
-            nextRetryAt: now.addingTimeInterval(5)
+            nextRetryAt: now.addingTimeInterval(5),
+            lastFailureAt: now
         )
         XCTAssertFalse(OpenBurnBarDaemonSupervisor.shouldProbeNow(state: state, config: config, now: now))
     }
@@ -183,7 +185,8 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
         let now = Date()
         let state: OpenBurnBarDaemonSupervisionState = .retrying(
             consecutiveFailures: 2,
-            nextRetryAt: now.addingTimeInterval(-1) // already passed
+            nextRetryAt: now.addingTimeInterval(-1), // already passed
+            lastFailureAt: now
         )
         XCTAssertTrue(OpenBurnBarDaemonSupervisor.shouldProbeNow(state: state, config: config, now: now))
     }
@@ -194,7 +197,8 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
         let state: OpenBurnBarDaemonSupervisionState = .crashLoop(
             consecutiveFailures: 5,
             nextRetryAt: now.addingTimeInterval(30), // still in backoff
-            detectedAt: now.addingTimeInterval(-10)   // detected 10s ago, reset at 300s
+            detectedAt: now.addingTimeInterval(-10),   // detected 10s ago, reset at 300s
+            lastFailureAt: now
         )
         // Not past nextRetry, not past reset interval
         XCTAssertFalse(OpenBurnBarDaemonSupervisor.shouldProbeNow(state: state, config: config, now: now))
@@ -206,7 +210,8 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
         let state: OpenBurnBarDaemonSupervisionState = .crashLoop(
             consecutiveFailures: 5,
             nextRetryAt: now.addingTimeInterval(-1), // backoff expired
-            detectedAt: now.addingTimeInterval(-10)
+            detectedAt: now.addingTimeInterval(-10),
+            lastFailureAt: now
         )
         XCTAssertTrue(OpenBurnBarDaemonSupervisor.shouldProbeNow(state: state, config: config, now: now))
     }
@@ -217,10 +222,37 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
         let state: OpenBurnBarDaemonSupervisionState = .crashLoop(
             consecutiveFailures: 5,
             nextRetryAt: now.addingTimeInterval(100), // still in backoff window
-            detectedAt: now.addingTimeInterval(-310)    // detected over 300s ago
+            detectedAt: now.addingTimeInterval(-310),    // detected over 300s ago
+            lastFailureAt: now
         )
         // Reset interval has elapsed even though backoff hasn't — allow probe
         XCTAssertTrue(OpenBurnBarDaemonSupervisor.shouldProbeNow(state: state, config: config, now: now))
+    }
+
+    func test_advance_failureOutsideDetectionWindowResetsConsecutiveCount() {
+        let now = Date()
+        let config = OpenBurnBarDaemonSupervisorConfig(
+            crashLoopThreshold: 3,
+            failureDetectionWindow: 60
+        )
+
+        var state = OpenBurnBarDaemonSupervisor.advance(
+            from: .idle,
+            daemonIsHealthy: false,
+            daemonIsInstalled: true,
+            config: config,
+            now: now
+        )
+        XCTAssertEqual(state.consecutiveFailures, 1)
+
+        state = OpenBurnBarDaemonSupervisor.advance(
+            from: state,
+            daemonIsHealthy: false,
+            daemonIsInstalled: true,
+            config: config,
+            now: now.addingTimeInterval(120)
+        )
+        XCTAssertEqual(state.consecutiveFailures, 1, "Failures outside the 60s window should not accumulate")
     }
 
     // MARK: - resetAfterRepair
@@ -250,10 +282,10 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
                 daemonIsHealthy: false,
                 daemonIsInstalled: true,
                 config: config,
-                now: now.addingTimeInterval(Double(i) * 100)
+                now: now.addingTimeInterval(Double(i) * 3)
             )
             if let nextRetry = state.nextRetryAt {
-                let baseTime = now.addingTimeInterval(Double(i) * 100)
+                let baseTime = now.addingTimeInterval(Double(i) * 3)
                 let delay = nextRetry.timeIntervalSince(baseTime)
                 delays.append(delay)
             }
@@ -290,12 +322,12 @@ final class OpenBurnBarDaemonSupervisorTests: XCTestCase {
                 daemonIsHealthy: false,
                 daemonIsInstalled: true,
                 config: config,
-                now: now.addingTimeInterval(Double(i) * 100)
+                now: now.addingTimeInterval(Double(i) * 3)
             )
         }
 
         if let nextRetry = state.nextRetryAt {
-            let baseTime = now.addingTimeInterval(20.0 * 100)
+            let baseTime = now.addingTimeInterval(20.0 * 3)
             let delay = nextRetry.timeIntervalSince(baseTime)
             // 2^19 = 524288 but capped at 10s
             XCTAssertEqual(delay, 10.0, accuracy: 0.01)

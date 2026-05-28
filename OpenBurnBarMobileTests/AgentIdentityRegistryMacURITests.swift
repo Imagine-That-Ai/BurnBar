@@ -202,11 +202,13 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             dialer: { _, _ in stream },
             receiver: receiver,
             initialBackoff: 0.01,
-            maxBackoff: 0.01
+            maxBackoff: 0.01,
+            heartbeatInitialDelay: 0.01
         )
 
         coordinator.start(uid: "user-1", connectionID: "conn-1")
         try await waitUntilLive(coordinator)
+        try await waitUntilHeartbeatCount(stream, count: 1)
 
         let sentFrames = await stream.sentFrames
         let heartbeat = try XCTUnwrap(sentFrames.first { $0.type == .mediaPresenceHeartbeat })
@@ -223,7 +225,8 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             dialer: { _, _ in stream },
             receiver: receiver,
             initialBackoff: 0.01,
-            maxBackoff: 0.01
+            maxBackoff: 0.01,
+            heartbeatInitialDelay: 0.01
         )
 
         coordinator.start(uid: "user-1", connectionID: "conn-1")
@@ -378,7 +381,7 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         }
 
         try await waitUntil { dialCount >= 2 }
-        try await waitUntilHeartbeatCount(secondStream, count: 2)
+        try await waitUntilHeartbeatCount(secondStream, count: 1)
         await secondStream.pushInbound(macPresenceFrame(uid: "user-1", connectionID: "conn-1"))
         try await ensureTask.value
 
@@ -433,6 +436,93 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             },
             "phone-control input must be sent after retargeting to the active Mac route"
         )
+        await coordinator.stop()
+    }
+
+    func testInteractiveMirrorSendSuppressesBackgroundPresenceHeartbeat() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01,
+            heartbeatInitialDelay: 0.01,
+            heartbeatInterval: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        coordinator.suspendBackgroundTraffic(for: 15)
+        try await waitUntilLive(coordinator)
+
+        try await coordinator.send(
+            frame: mirrorRequestFrame(uid: "user-1", connectionID: "conn-1"),
+            timeout: 1.0
+        )
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        let sentTypes = await stream.sentFrames.map(\.type)
+        XCTAssertEqual(
+            sentTypes,
+            [.mediaClassify, .mediaMirrorRequest],
+            "presence heartbeats must not jump ahead of a user mirror request on the shared send lane"
+        )
+        await coordinator.stop()
+    }
+
+    func testBackgroundPresenceHeartbeatResumesAfterSuppressionWindow() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01,
+            heartbeatInitialDelay: 0.01,
+            heartbeatInterval: 0.01
+        )
+
+        coordinator.suspendBackgroundTraffic(for: 0.08)
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+        try await Task.sleep(nanoseconds: 40_000_000)
+
+        var heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
+        XCTAssertTrue(heartbeats.isEmpty, "suppressed background presence must stay off the lane while user work is active")
+
+        try await waitUntilHeartbeatCount(stream, count: 1)
+        heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
+        XCTAssertEqual(heartbeats.count, 1)
+        await coordinator.stop()
+    }
+
+    func testControlStreamSendTimesOutWhenUnderlyingWriteHangs() async throws {
+        let stream = MediaControlFakeStream(sendHangAfterFrameCount: 1)
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        do {
+            try await coordinator.send(
+                frame: macPresenceFrame(uid: "user-1", connectionID: "conn-1"),
+                timeout: 0.05
+            )
+            XCTFail("hung iroh writes must time out instead of leaving the mirror button stuck forever")
+        } catch let error as MediaControlStreamCoordinator.ControlStreamError {
+            XCTAssertEqual(error, .timedOutSendingFrame)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+
+        let sentFrames = await stream.sentFrames
+        XCTAssertEqual(sentFrames.count, 1, "only the classify frame should have completed before the write hung")
         await coordinator.stop()
     }
 
@@ -751,6 +841,24 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         )
     }
 
+    private func mirrorRequestFrame(uid: String, connectionID: String) -> HermesRealtimeRelayFrame {
+        let request = HermesRealtimeRelayMirrorRequest(
+            requestId: "mirror-request-1",
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_001),
+            requesterDisplayName: "iPhone",
+            streamClass: MediaStreamClass.screenVideo.rawValue,
+            viewerId: "viewer-1",
+            viewerDeviceId: "iphone-1"
+        )
+        return HermesRealtimeRelayFrame(
+            type: .mediaMirrorRequest,
+            uid: uid,
+            connectionId: connectionID,
+            requestId: request.requestId,
+            media: HermesRealtimeRelayMediaPayload(mirrorRequest: request)
+        )
+    }
+
     private func makeReceiver() -> iOSFileTransferService {
         let temp = FileManager.default.temporaryDirectory
             .appendingPathComponent("mercury-mobile-tests-\(UUID().uuidString)", isDirectory: true)
@@ -772,11 +880,20 @@ private actor MediaControlFakeStream: IrohRelayStream {
     private var receiveWaiter: CheckedContinuation<HermesRealtimeRelayFrame?, Error>?
     private var isClosed = false
     private var closeCallCount = 0
+    private let sendHangAfterFrameCount: Int?
+
+    init(sendHangAfterFrameCount: Int? = nil) {
+        self.sendHangAfterFrameCount = sendHangAfterFrameCount
+    }
 
     var sentFrames: [HermesRealtimeRelayFrame] { outboundFrames }
     var closeCount: Int { closeCallCount }
 
     func send(_ frame: HermesRealtimeRelayFrame) async throws {
+        if let sendHangAfterFrameCount,
+           outboundFrames.count >= sendHangAfterFrameCount {
+            try await Task.sleep(nanoseconds: 60_000_000_000)
+        }
         outboundFrames.append(frame)
     }
 

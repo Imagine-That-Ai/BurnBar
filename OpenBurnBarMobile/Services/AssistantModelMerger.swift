@@ -154,6 +154,8 @@ struct AssistantModelMerger {
             return ["forge", "forge-agent", "forge-dev"]
         case .antigravity:
             return ["antigravity", "agy", "google-antigravity", "googleantigravity"]
+        case .grok:
+            return ["grok", "grok-build", "xai", "grok-agent"]
         }
     }
 

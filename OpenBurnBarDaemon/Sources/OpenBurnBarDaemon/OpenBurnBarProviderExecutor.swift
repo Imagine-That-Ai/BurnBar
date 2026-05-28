@@ -119,6 +119,21 @@ public enum BurnBarProviderExecutorError: Error, LocalizedError {
             return "OpenBurnBar provider request failed with status \(statusCode): \(body)"
         }
     }
+
+    /// Rejects non-HTTP(S) provider endpoints (e.g. `file://`, `javascript:`) before outbound requests.
+    static func validatedProviderBaseURL(_ rawValue: String) throws -> URL {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false, let url = URL(string: trimmed) else {
+            throw BurnBarProviderExecutorError.invalidBaseURL(rawValue)
+        }
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host,
+              host.isEmpty == false else {
+            throw BurnBarProviderExecutorError.invalidBaseURL(rawValue)
+        }
+        return url
+    }
 }
 
 public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting {
@@ -139,9 +154,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             return fakeResult
         }
 
-        guard let baseURL = URL(string: route.baseURL) else {
-            throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
-        }
+        let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
 
         var messages: [ProviderCompletionRequest.Message] = []
         if let systemPrompt = promptRequest.systemPrompt, !systemPrompt.isEmpty {
@@ -225,9 +238,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         route: BurnBarProviderRoute,
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
-        guard let baseURL = URL(string: route.baseURL) else {
-            throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
-        }
+        let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
 
         if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
             return try await proxyOllamaNativeChatCompletions(
@@ -277,9 +288,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         route: BurnBarProviderRoute,
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
-        guard let baseURL = URL(string: route.baseURL) else {
-            throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
-        }
+        let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
 
         if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
             return try await proxyResponsesViaChatCompletions(body: body, route: route, variant: variant)
@@ -1833,6 +1842,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
             kSecUseAuthenticationContext as String: context,
         ]
         var item: CFTypeRef?

@@ -689,6 +689,57 @@ final class SearchServiceTests: XCTestCase {
         XCTAssertEqual(results.first?.conversation?.sourceType, .cliAssistant)
     }
 
+    func test_retrieve_hydration_batchFetchesConversationsOnce() async throws {
+        var batchConversationQueries = 0
+        var configuration = Configuration()
+        configuration.prepareDatabase { db in
+            db.trace { event in
+                guard case let .statement(statement) = event else { return }
+                let sql = statement.sql.uppercased()
+                if sql.contains("FROM CONVERSATIONS"), sql.contains(" IN (") {
+                    batchConversationQueries += 1
+                }
+            }
+        }
+
+        let queue = try DatabaseQueue(path: ":memory:", configuration: configuration)
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let projector = ProjectionPipelineService(dataStore: store, leaseOwner: "hydration-batch")
+        let base = Date(timeIntervalSince1970: 1_742_925_000)
+
+        for index in 0..<4 {
+            let conv = makeConversation(
+                id: "conv-batch-\(index)",
+                provider: .claudeCode,
+                projectName: "BatchHydration",
+                fullText: "Shared batch hydration keyword alpha topic \(index).",
+                indexedAt: base.addingTimeInterval(Double(index)),
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+        }
+        _ = try await projector.runSweep(maxJobs: 40)
+
+        batchConversationQueries = 0
+        let service = SearchService(dataStore: store, nowProvider: { base })
+        let results = await service.retrieve(
+            RetrievalQuery(
+                text: "batch hydration alpha",
+                filters: RetrievalFilters(artifactTypes: [.conversation]),
+                resultLimit: 10
+            )
+        )
+
+        XCTAssertGreaterThanOrEqual(results.count, 3)
+        XCTAssertTrue(results.allSatisfy { $0.conversation != nil })
+        XCTAssertEqual(
+            batchConversationQueries,
+            1,
+            "Hydration should issue one batched conversations IN query, not one per candidate"
+        )
+    }
+
     // MARK: - Date Range Filter Tests
 
     func test_retrieve_dateRangeFilter_excludesOutOfRangeResults() async throws {

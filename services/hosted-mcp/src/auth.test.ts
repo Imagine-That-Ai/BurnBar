@@ -6,7 +6,7 @@ import { signCursor, verifyCursor } from "./cursors.js";
 import { requireActiveRemoteMcpClient } from "./entitlements.js";
 import { handleMcpRequest } from "./mcp.js";
 import { redact } from "./redaction.js";
-import { listMcpTools } from "./toolRegistry.js";
+import { listMcpTools, tools } from "./toolRegistry.js";
 import type { HostedMcpFirestore, McpTransaction, RemoteMcpClientFirestore } from "./firestoreTypes.js";
 
 test("verifies HMAC bearer token claims and rejects wrong audience", () => {
@@ -60,9 +60,11 @@ test("registry exposes required tool surface and redaction strips raw content", 
   const names = listMcpTools().tools.map((tool) => tool.name).sort();
   assert.deepEqual(names, [
     "burnbar_get_conversation_body",
+    "burnbar_list_resumable_conversations",
     "burnbar_list_search_facets",
     "burnbar_list_search_index_status",
     "burnbar_recent_usage",
+    "burnbar_resume_conversation",
     "burnbar_resolve_capabilities",
     "burnbar_search_conversations"
   ].sort());
@@ -70,6 +72,8 @@ test("registry exposes required tool surface and redaction strips raw content", 
     query: "[REDACTED]",
     nested: { body: "[REDACTED]" }
   });
+  const resumeTool = tools.find((tool) => tool.name === "burnbar_resume_conversation");
+  assert.deepEqual(resumeTool?.requiredScopes, ["conversation:read", "search:read"]);
 });
 
 test("remote MCP client revocation fails closed", async () => {

@@ -27,6 +27,7 @@ public struct AppLogger: Sendable {
     public static let network = AppLogger(category: "network")
     public static let parser = AppLogger(category: "parser")
     public static let metrics = AppLogger(category: "metrics")
+    public static let daemon = AppLogger(category: "daemon")
     
     // MARK: - Initialization
     

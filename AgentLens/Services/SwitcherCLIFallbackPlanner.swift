@@ -89,6 +89,8 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
             return .forgeDev
         case .antigravity:
             return .antigravity
+        case .grok:
+            return .xAI
         }
     }
 

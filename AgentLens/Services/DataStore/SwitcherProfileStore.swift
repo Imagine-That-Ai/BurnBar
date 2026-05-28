@@ -121,26 +121,27 @@ public final class SwitcherProfileStore: Sendable {
     /// the most recent row with a non-NULL activeProfileID (preferring active rows over NULL).
     public func fetchActiveProfileState() throws -> SwitcherActiveProfileState {
         try dbQueue.write { db in
-            // Clean up legacy duplicate rows if any exist.
-            // Keep only the row with the most recent updatedAt that has an activeProfileID.
-            // NULL activeProfileID rows are cleaned up preferentially.
-            // Using COALESCE to treat NULL updatedAt as epoch (oldest) so NULL rows are deleted
-            // when a non-NULL row exists.
+            // Clean up legacy duplicate GLOBAL rows if any exist. Per-provider
+            // drain-target rows (providerID IS NOT NULL) are left untouched —
+            // this dedup only governs the single global pointer used by browser
+            // launching and legacy callers.
             try db.execute(sql: """
                 DELETE FROM switcher_active_profile
-                WHERE rowid NOT IN (
+                WHERE providerID IS NULL
+                  AND rowid NOT IN (
                     SELECT rowid FROM switcher_active_profile
-                    WHERE activeProfileID IS NOT NULL
+                    WHERE providerID IS NULL AND activeProfileID IS NOT NULL
                     ORDER BY COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
                     LIMIT 1
                 )
             """)
 
-            // Now select the remaining row with proper ordering
+            // Now select the remaining global row with proper ordering
             let row = try Row.fetchOne(
                 db,
                 sql: """
                     SELECT activeProfileID, updatedAt FROM switcher_active_profile
+                    WHERE providerID IS NULL
                     ORDER BY activeProfileID IS NOT NULL DESC,
                              COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
                     LIMIT 1
@@ -161,13 +162,118 @@ public final class SwitcherProfileStore: Sendable {
     public func setActiveProfile(_ profileID: String?) throws {
         try dbQueue.write { db in
             let now = Date()
-            // Delete all existing rows and insert fresh - guarantees single canonical row
-            try db.execute(sql: "DELETE FROM switcher_active_profile")
+            // Rewrite the single global pointer (providerID IS NULL). Browser
+            // launching and legacy callers read this.
+            try db.execute(sql: "DELETE FROM switcher_active_profile WHERE providerID IS NULL")
             try db.execute(
-                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, NULL, ?)",
                 arguments: [profileID, now]
             )
+
+            // Mirror into the per-provider drain target so callers that only
+            // know the global setter still populate per-provider state. A
+            // browser profile (cliType == nil) has no provider and is skipped.
+            if let profileID,
+               let cliTypeRaw = try String.fetchOne(
+                   db,
+                   sql: "SELECT cliType FROM switcher_profiles WHERE id = ?",
+                   arguments: [profileID]
+               ),
+               let cliType = SwitcherCLIProfileType(rawValue: cliTypeRaw) {
+                try Self.writeActiveProfile(db, profileID: profileID, providerID: cliType.providerID, now: now)
+            }
         }
+    }
+
+    // MARK: - Per-Provider Drain Targets
+
+    /// The profile ID currently draining quota for `providerID`, if any.
+    /// This is the per-provider counterpart to the global active profile and is
+    /// what the CLI launch path consults via `launchUsingDrainTarget(for:)`.
+    public func fetchActiveProfileID(for providerID: ProviderID) throws -> String? {
+        try dbQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: """
+                    SELECT activeProfileID FROM switcher_active_profile
+                    WHERE providerID = ? AND activeProfileID IS NOT NULL
+                    ORDER BY COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
+                    LIMIT 1
+                """,
+                arguments: [providerID.rawValue]
+            )
+        }
+    }
+
+    /// Full state for a provider's drain target (id + timestamp).
+    public func fetchActiveProfileState(for providerID: ProviderID) throws -> SwitcherActiveProfileState {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT activeProfileID, updatedAt FROM switcher_active_profile
+                    WHERE providerID = ?
+                    ORDER BY activeProfileID IS NOT NULL DESC,
+                             COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
+                    LIMIT 1
+                """,
+                arguments: [providerID.rawValue]
+            )
+            guard let row else {
+                return SwitcherActiveProfileState(activeProfileID: nil)
+            }
+            let activeProfileID: String? = row["activeProfileID"]
+            let updatedAt: Date = Self.parseDateValue(row["updatedAt"]) ?? Date()
+            return SwitcherActiveProfileState(activeProfileID: activeProfileID, updatedAt: updatedAt)
+        }
+    }
+
+    /// Sets the drain target for a single provider. Other providers' drain
+    /// targets are left untouched. Pass nil to clear this provider's target.
+    public func setActiveProfile(_ profileID: String?, for providerID: ProviderID) throws {
+        try dbQueue.write { db in
+            try Self.writeActiveProfile(db, profileID: profileID, providerID: providerID, now: Date())
+        }
+    }
+
+    /// All current per-provider drain targets keyed by providerID raw value.
+    /// Excludes the global (providerID IS NULL) pointer.
+    public func fetchAllActiveDrainTargets() throws -> [String: String] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT providerID, activeProfileID FROM switcher_active_profile
+                    WHERE providerID IS NOT NULL AND activeProfileID IS NOT NULL
+                """
+            )
+            var result: [String: String] = [:]
+            for row in rows {
+                if let providerID: String = row["providerID"],
+                   let activeProfileID: String = row["activeProfileID"] {
+                    result[providerID] = activeProfileID
+                }
+            }
+            return result
+        }
+    }
+
+    /// Upserts exactly one per-provider row, guaranteeing a single drain target
+    /// per provider.
+    private static func writeActiveProfile(
+        _ db: Database,
+        profileID: String?,
+        providerID: ProviderID,
+        now: Date
+    ) throws {
+        try db.execute(
+            sql: "DELETE FROM switcher_active_profile WHERE providerID = ?",
+            arguments: [providerID.rawValue]
+        )
+        try db.execute(
+            sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, ?, ?)",
+            arguments: [profileID, providerID.rawValue, now]
+        )
     }
 
     // MARK: - Profile CRUD
@@ -461,10 +567,11 @@ public final class SwitcherProfileStore: Sendable {
                 """
             )
             let fallbackID: String? = fallback?["id"]
-            // Delete all existing rows and insert fresh - guarantees single canonical row
-            try db.execute(sql: "DELETE FROM switcher_active_profile")
+            // Rewrite only the global pointer (providerID IS NULL) — per-provider
+            // drain targets are governed independently and must survive this.
+            try db.execute(sql: "DELETE FROM switcher_active_profile WHERE providerID IS NULL")
             try db.execute(
-                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, NULL, ?)",
                 arguments: [fallbackID, Date()]
             )
         }

@@ -88,6 +88,35 @@ final class BurnBarBrowserToolServiceComputerUseTests: XCTestCase {
         XCTAssertTrue(response.summary.contains("cannot run interactive browser actions"))
         XCTAssertTrue(response.detail?.contains("Choose Playwright") == true)
     }
+
+    func testRejectsNonHttpBrowserURLs() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-browser-cu-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let service = BurnBarBrowserToolService(
+            fileURL: rootURL.appendingPathComponent("browser-tooling.json"),
+            logger: BurnBarDaemonLogger(category: "browser-cu-tests")
+        )
+
+        for blocked in ["file:///etc/passwd", "javascript:alert(1)", "data:text/html,hi"] {
+            do {
+                _ = try await service.performAction(BurnBarBrowserActionRequest(
+                    action: .fetchDocument,
+                    url: blocked,
+                    preferredEngine: .urlSession,
+                    arguments: BurnBarBrowserActionArguments(url: blocked)
+                ))
+                XCTFail("Expected rejection for \(blocked)")
+            } catch {
+                let message = (error as NSError).localizedDescription.lowercased()
+                XCTAssertTrue(
+                    message.contains("http") || message.contains("invalid"),
+                    "Unexpected error for \(blocked): \(message)"
+                )
+            }
+        }
+    }
 }
 
 private final class PlaywrightCallRecorder: @unchecked Sendable {

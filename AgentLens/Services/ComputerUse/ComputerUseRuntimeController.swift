@@ -259,6 +259,12 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         coordinator.phoneControlAuthorizedPeerNodeProvider = provider
     }
 
+    func setRemoteUnlockResultHandler(
+        _ handler: (@MainActor @Sendable (HermesRealtimeRelayRemoteUnlockResult) async -> Void)?
+    ) {
+        coordinator.setRemoteUnlockResultHandler(handler)
+    }
+
     func endSession() async {
         await coordinator.endSession(reason: .userHalt)
         stopPanicMonitoring()

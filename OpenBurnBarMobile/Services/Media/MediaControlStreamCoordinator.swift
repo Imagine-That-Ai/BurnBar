@@ -52,6 +52,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
     enum ControlStreamError: LocalizedError, Equatable {
         case timedOutWaitingForLiveStream
+        case timedOutSendingFrame
         case notLive
         case macDidNotRespond
 
@@ -59,6 +60,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
             switch self {
             case .timedOutWaitingForLiveStream:
                 return "Mercury is still connecting. Try again after the Mac shows as online."
+            case .timedOutSendingFrame:
+                return "Mercury connected, but the Mac did not accept the control message in time."
             case .notLive:
                 return "Mercury control stream is not live."
             case .macDidNotRespond:
@@ -95,12 +98,15 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private let receiver: iOSFileTransferService
     private let initialBackoff: TimeInterval
     private let maxBackoff: TimeInterval
+    private let heartbeatInitialDelay: TimeInterval
+    private let heartbeatInterval: TimeInterval
 
     private var currentStream: (any IrohRelayStream)?
     private var currentSendGate: IrohRelayStreamSendGate?
     private var supervisorTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var pendingHeartbeatSentAt: Date?
+    private var backgroundTrafficSuppressedUntil: Date?
     private var streamReadyContinuations: [UUID: CheckedContinuation<any IrohRelayStream, Error>] = [:]
     private var activeUID: String?
     private var activeConnectionID: String?
@@ -163,12 +169,16 @@ final class MediaControlStreamCoordinator: ObservableObject {
         dialer: @escaping StreamDialer,
         receiver: iOSFileTransferService,
         initialBackoff: TimeInterval = 1.0,
-        maxBackoff: TimeInterval = 8.0
+        maxBackoff: TimeInterval = 8.0,
+        heartbeatInitialDelay: TimeInterval = 5.0,
+        heartbeatInterval: TimeInterval = 60.0
     ) {
         self.dialer = dialer
         self.receiver = receiver
         self.initialBackoff = initialBackoff
         self.maxBackoff = maxBackoff
+        self.heartbeatInitialDelay = heartbeatInitialDelay
+        self.heartbeatInterval = heartbeatInterval
     }
 
     func start(uid: String, connectionID: String) {
@@ -203,26 +213,66 @@ final class MediaControlStreamCoordinator: ObservableObject {
         lastInboundAt = nil
         lastRoundTripMillis = nil
         pendingHeartbeatSentAt = nil
+        backgroundTrafficSuppressedUntil = nil
     }
 
     /// Outbound send entry point. Blocks until the stream is live (or
     /// the supervisor gives up) so iOS-initiated sends don't race the
     /// initial dial.
     func send(frame: HermesRealtimeRelayFrame, timeout: TimeInterval = 8) async throws {
+        let isBackgroundFrame = frame.type == .mediaPresenceHeartbeat
+        if isBackgroundFrame, isBackgroundTrafficSuppressed {
+            return
+        }
         if activeUID != frame.uid || activeConnectionID != frame.connectionId {
             Self.log.info("control_stream_send_retarget fromConnectionID=\(self.activeConnectionID ?? "", privacy: .public) toConnectionID=\(frame.connectionId, privacy: .public)")
             Self.debugTrace("control_stream_send_retarget fromConnectionID=\(activeConnectionID ?? "") toConnectionID=\(frame.connectionId)")
             await stop()
             start(uid: frame.uid, connectionID: frame.connectionId)
         }
+        if !isBackgroundFrame {
+            suspendBackgroundTraffic(for: max(timeout, 15.0))
+        }
         let stream = try await awaitLiveStream(timeout: timeout)
         Self.log.info("control_stream_send type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
         Self.debugTrace("control_stream_send type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
-        if let currentSendGate {
-            try await currentSendGate.send(frame)
-        } else {
-            try await stream.send(frame)
+        do {
+            if let currentSendGate {
+                try await Self.withTimeout(seconds: timeout) {
+                    try await currentSendGate.send(frame)
+                }
+            } else {
+                try await Self.withTimeout(seconds: timeout) {
+                    try await stream.send(frame)
+                }
+            }
+        } catch ControlStreamError.timedOutSendingFrame {
+            Self.log.error("control_stream_send_timeout type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+            Self.debugTrace("control_stream_send_timeout type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
+            await invalidateCurrentStreamAfterTimedOutSend()
+            throw ControlStreamError.timedOutSendingFrame
         }
+        if !isBackgroundFrame,
+           phase == .live,
+           let uid = activeUID,
+           let connectionID = activeConnectionID,
+           heartbeatTask == nil,
+           !isBackgroundTrafficSuppressed {
+            startHeartbeatIfNeeded(uid: uid, connectionID: connectionID)
+        }
+    }
+
+    /// Presence is useful status, not a prerequisite for user actions. Keep it
+    /// off the shared send lane while a mirror request or Remote Unlock entry is
+    /// in flight so a wedged heartbeat cannot reset the visible workflow.
+    func suspendBackgroundTraffic(for duration: TimeInterval) {
+        let deadline = Date().addingTimeInterval(max(0, duration))
+        if let current = backgroundTrafficSuppressedUntil, current > deadline {
+            return
+        }
+        backgroundTrafficSuppressedUntil = deadline
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
     }
 
     func sendLongTermReferenceAcknowledgement(
@@ -375,7 +425,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
                 // Mercury Phase 8 — spawn the heartbeat task once the
                 // stream is live. Cancelled inside `stop()` or when the
-                // supervisor loop iterates after a peer-close.
+                // supervisor loop iterates after a peer-close. The loop
+                // itself skips sends while background traffic is suppressed.
                 startHeartbeatIfNeeded(uid: uid, connectionID: connectionID)
 
                 // Drive the read loop. When it returns (peer close or
@@ -528,21 +579,35 @@ final class MediaControlStreamCoordinator: ObservableObject {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             guard !Task.isCancelled, let self else { return }
-            // Establish presence immediately to fetch Mac capabilities.
-            // Wallpaper sync is intentionally not part of this liveness path:
-            // mirror setup depends on small, reliable probe/ack traffic.
-            await self.sendHeartbeat(uid: uid, connectionID: connectionID)
-
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 60_000_000_000) // 60s
+                let delay = self.pendingHeartbeatSentAt == nil
+                    ? self.heartbeatInitialDelay
+                    : self.heartbeatInterval
+                try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
                 guard !Task.isCancelled else { return }
+                guard !self.isBackgroundTrafficSuppressed else { continue }
                 await self.sendHeartbeat(uid: uid, connectionID: connectionID)
             }
         }
     }
 
+    private var isBackgroundTrafficSuppressed: Bool {
+        guard let deadline = backgroundTrafficSuppressedUntil else { return false }
+        if deadline > Date() {
+            return true
+        }
+        backgroundTrafficSuppressedUntil = nil
+        return false
+    }
 
-    private func sendHeartbeat(uid: String, connectionID: String) async {
+
+    @discardableResult
+    private func sendHeartbeat(
+        uid: String,
+        connectionID: String,
+        timeout: TimeInterval = 8
+    ) async -> Bool {
+        guard !isBackgroundTrafficSuppressed else { return false }
         let beat = HermesRealtimeRelayPresenceHeartbeat(
             sentAt: Date(),
             deviceDisplayName: heartbeatDeviceNameProvider(),
@@ -564,17 +629,21 @@ final class MediaControlStreamCoordinator: ObservableObject {
         )
         let sentAt = Date()
         do {
-            try await send(frame: frame)
+            try await send(frame: frame, timeout: timeout)
             pendingHeartbeatSentAt = sentAt
+            return true
         } catch {
             // The supervisor owns reconnects; heartbeat failure only means no
             // fresh RTT sample for the HUD.
+            return false
         }
     }
 
     private func probeMac(uid: String, connectionID: String, timeout: TimeInterval) async -> Bool {
         let probeStartedAt = Date()
-        await sendHeartbeat(uid: uid, connectionID: connectionID)
+        guard await sendHeartbeat(uid: uid, connectionID: connectionID, timeout: timeout) else {
+            return false
+        }
         return await waitForInbound(after: probeStartedAt, timeout: timeout)
     }
 
@@ -597,6 +666,38 @@ final class MediaControlStreamCoordinator: ObservableObject {
         // Decorrelated jitter: between initialBackoff and exp inclusive.
         let jitter = Double.random(in: initialBackoff ... exp)
         return min(maxBackoff, jitter)
+    }
+
+    private func invalidateCurrentStreamAfterTimedOutSend() async {
+        lastFailureReason = ControlStreamError.timedOutSendingFrame.localizedDescription
+        phase = .failed(reason: lastFailureReason ?? "Timed out sending Mercury control frame.")
+        currentSendGate = nil
+        let stream = currentStream
+        currentStream = nil
+        if let stream {
+            await stream.close()
+        }
+    }
+
+    private static func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                let clamped = max(0, seconds)
+                try await Task.sleep(nanoseconds: UInt64(clamped * 1_000_000_000))
+                throw ControlStreamError.timedOutSendingFrame
+            }
+            guard let result = try await group.next() else {
+                throw ControlStreamError.timedOutSendingFrame
+            }
+            group.cancelAll()
+            return result
+        }
     }
 }
 
