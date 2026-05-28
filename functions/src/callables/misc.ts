@@ -9,7 +9,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { computeUserRollups, writeUserRollups } from "../rollups.js";
 import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "../demoSeed.js";
-import { logError, logInfo } from "../logging.js";
+import { logError, logInfo, wrapCallableHandler } from "../logging.js";
 
 // ---------------------------------------------------------------------------
 // Callable: rebuildUsageRollups
@@ -21,7 +21,7 @@ export const rebuildUsageRollups = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 10,
   },
-  async (request: CallableRequest<Record<string, never>>) => {
+  wrapCallableHandler("rebuildUsageRollups", async (request: CallableRequest<Record<string, never>>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new Error("unauthenticated");
@@ -52,7 +52,7 @@ export const rebuildUsageRollups = onCall(
       throw err;
     }
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: seedAndroidDemoAccount
@@ -64,7 +64,7 @@ export const seedAndroidDemoAccount = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 20,
   },
-  async (request: CallableRequest<Record<string, never>>) => {
+  wrapCallableHandler("seedAndroidDemoAccount", async (request: CallableRequest<Record<string, never>>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before loading demo data.");
@@ -73,4 +73,4 @@ export const seedAndroidDemoAccount = onCall(
 
     return seedAndroidDemoAccountForUser(db, uid);
   }
-);
+));

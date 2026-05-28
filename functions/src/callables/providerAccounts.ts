@@ -7,7 +7,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db, auth } from "../adminRuntime.js";
-import { logError } from "../logging.js";
+import { logError, wrapCallableHandler } from "../logging.js";
 import {
   ACCOUNT_SCHEMA_VERSION,
   assertProvider,
@@ -60,7 +60,7 @@ export const connectProviderAccount = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("connectProviderAccount", async (
     request: CallableRequest<{
       provider: string;
       credential: string;
@@ -122,7 +122,7 @@ export const connectProviderAccount = onCall(
       isDefault: accountID == null,
     });
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: connectProviderCredential (legacy compatibility)
@@ -134,7 +134,7 @@ export const connectProviderCredential = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ provider: string; credential: string }>) => {
+  wrapCallableHandler("connectProviderCredential", async (request: CallableRequest<{ provider: string; credential: string }>) => {
     const { provider, credential } = request.data;
     const uid = request.auth?.uid;
 
@@ -166,7 +166,7 @@ export const connectProviderCredential = onCall(
 
     return connectionDocFromAccount(accountDoc);
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: connectHostedQuotaAccount
@@ -178,7 +178,7 @@ export const connectHostedQuotaAccount = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("connectHostedQuotaAccount", async (
     request: CallableRequest<{
       provider: string;
       credential: string;
@@ -254,7 +254,7 @@ export const connectHostedQuotaAccount = onCall(
     }
     return accountDoc;
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: connectSelfHostedQuotaAccount
@@ -266,7 +266,7 @@ export const connectSelfHostedQuotaAccount = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("connectSelfHostedQuotaAccount", async (
     request: CallableRequest<{
       provider: string;
       label?: string;
@@ -337,7 +337,7 @@ export const connectSelfHostedQuotaAccount = onCall(
     }
     return accountDoc;
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: uploadProviderQuotaSnapshot
@@ -349,7 +349,7 @@ export const uploadProviderQuotaSnapshot = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<Record<string, unknown>>) => {
+  wrapCallableHandler("uploadProviderQuotaSnapshot", async (request: CallableRequest<Record<string, unknown>>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before uploading quota snapshots.");
@@ -383,7 +383,7 @@ export const uploadProviderQuotaSnapshot = onCall(
     });
     return snapshot;
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: deleteHostedQuotaCredentials
@@ -395,7 +395,7 @@ export const deleteHostedQuotaCredentials = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ accountID: string; provider?: string }>) => {
+  wrapCallableHandler("deleteHostedQuotaCredentials", async (request: CallableRequest<{ accountID: string; provider?: string }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before deleting hosted credentials.");
@@ -440,7 +440,7 @@ export const deleteHostedQuotaCredentials = onCall(
     });
     return { success: true, accountID };
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: updateProviderAccount
@@ -452,7 +452,7 @@ export const updateProviderAccount = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("updateProviderAccount", async (
     request: CallableRequest<{
       accountID: string;
       label?: string;
@@ -521,7 +521,7 @@ export const updateProviderAccount = onCall(
     }
     return updated;
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: deleteProviderCredential
@@ -533,7 +533,7 @@ export const deleteProviderAccount = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ accountID: string }>) => {
+  wrapCallableHandler("deleteProviderAccount", async (request: CallableRequest<{ accountID: string }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new Error("unauthenticated");
@@ -617,7 +617,7 @@ export const deleteProviderAccount = onCall(
 
     return { success: true, accountID };
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: deleteUserCloudData
@@ -631,7 +631,7 @@ export const deleteUserCloudData = onCall(
     timeoutSeconds: 540,
     memory: "1GiB",
   },
-  async (request: CallableRequest<Record<string, never>>) => {
+  wrapCallableHandler("deleteUserCloudData", async (request: CallableRequest<Record<string, never>>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before deleting cloud data.");
@@ -657,7 +657,7 @@ export const deleteUserCloudData = onCall(
       ...summary,
     };
   }
-);
+));
 
 export const deleteProviderCredential = onCall(
   {
@@ -665,7 +665,7 @@ export const deleteProviderCredential = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ provider: string }>) => {
+  wrapCallableHandler("deleteProviderCredential", async (request: CallableRequest<{ provider: string }>) => {
     const { provider } = request.data;
     const uid = request.auth?.uid;
 
@@ -728,7 +728,7 @@ export const deleteProviderCredential = onCall(
 
     return { success: true, provider };
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: refreshProviderQuota
@@ -741,7 +741,7 @@ export const refreshProviderAccountQuota = onCall(
     maxInstances: 100,
     secrets: HOSTED_RUNNER_SECRETS,
   },
-  async (request: CallableRequest<{ accountID: string }>) => {
+  wrapCallableHandler("refreshProviderAccountQuota", async (request: CallableRequest<{ accountID: string }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new Error("unauthenticated");
@@ -755,7 +755,7 @@ export const refreshProviderAccountQuota = onCall(
     }
     return snapshot;
   }
-);
+));
 
 export const refreshProviderQuota = onCall(
   {
@@ -764,7 +764,7 @@ export const refreshProviderQuota = onCall(
     maxInstances: 100,
     secrets: HOSTED_RUNNER_SECRETS,
   },
-  async (request: CallableRequest<{ provider: string }>) => {
+  wrapCallableHandler("refreshProviderQuota", async (request: CallableRequest<{ provider: string }>) => {
     const { provider } = request.data;
     const uid = request.auth?.uid;
 
@@ -840,5 +840,5 @@ export const refreshProviderQuota = onCall(
       snapshots: [snapshot],
     };
   }
-);
+));
 

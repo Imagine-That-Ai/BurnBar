@@ -8,7 +8,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { logInfo } from "../logging.js";
+import { logInfo, wrapCallableHandler } from "../logging.js";
 import {
   adoptDeviceLink,
   backfillUserDeviceLinks,
@@ -29,7 +29,7 @@ export const adoptProviderAccountForDevice = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
-  async (
+  wrapCallableHandler("adoptProviderAccountForDevice", async (
     request: CallableRequest<{
       accountID: string;
       deviceID: string;
@@ -67,7 +67,7 @@ export const adoptProviderAccountForDevice = onCall(
     });
     return { success: true, link: doc };
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: revokeProviderAccountDeviceLink
@@ -81,7 +81,7 @@ export const revokeProviderAccountDeviceLink = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
-  async (
+  wrapCallableHandler("revokeProviderAccountDeviceLink", async (
     request: CallableRequest<{ accountID: string; deviceID: string }>
   ) => {
     const uid = request.auth?.uid;
@@ -98,7 +98,7 @@ export const revokeProviderAccountDeviceLink = onCall(
     await revokeDeviceLink({ db, uid, accountID, deviceID });
     return { success: true };
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Callable: backfillProviderAccountDeviceLinks
@@ -115,7 +115,7 @@ export const backfillProviderAccountDeviceLinks = onCall(
     maxInstances: 20,
     timeoutSeconds: 300,
   },
-  async (
+  wrapCallableHandler("backfillProviderAccountDeviceLinks", async (
     request: CallableRequest<{
       callerDeviceID?: string;
       callerDeviceDisplayName?: string;
@@ -139,7 +139,7 @@ export const backfillProviderAccountDeviceLinks = onCall(
     );
     return { success: true, writes };
   }
-);
+));
 
 export const backfillProviderAccountDeviceLinksScheduled = onSchedule(
   {
