@@ -146,7 +146,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// `send(...)` so we have a verified `(uid, connectionID, relayPublicKey)`
     /// triple to dial with. Once installed, the transport keeps the
     /// coordinator alive for the rest of the app's lifetime.
-    private weak var mediaControlReceiver: iOSFileTransferService?
+    private var mediaControlReceiver: iOSFileTransferService?
     private var mediaControlCoordinator: MediaControlStreamCoordinator?
     /// Outstanding bootstrap promise so concurrent callers reuse the same
     /// `transport.start()` invocation rather than racing to spin up two
@@ -204,6 +204,12 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     func installMediaControlStream(into receiver: iOSFileTransferService) {
         self.mediaControlReceiver = receiver
     }
+
+    #if DEBUG
+    var isMediaControlReceiverInstalledForTesting: Bool {
+        mediaControlReceiver != nil
+    }
+    #endif
 
     /// Start the persistent Mercury media-control stream from an already
     /// selected relay connection. This is used by Hermes Square before any
