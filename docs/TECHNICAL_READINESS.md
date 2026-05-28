@@ -4,26 +4,29 @@ One-page diligence snapshot for investors, operators, and senior engineers.
 
 ## Scorecard (post-remediation target)
 
-| Category | Target | Evidence |
-|----------|--------|----------|
-| CI / Testing | 10/10 | PR harness: macOS + iOS + Android unit tests, Functions, Firestore rules, supply chain audit |
-| Schema | 9/10 | `tools/schema-sync/` TypeSpec + emit + `check-drift.sh` |
-| Security | 9/10 | Threat model, rules tests, automated CU kill switch, App Check gate script |
-| Ops | 9/10 | Runbooks incl. [SLO runbook](runbooks/slos.md), `commercial-launch-gate.mjs`, nightly workflow, daemon `GET /metrics` |
-| Architecture | 9/10 | [Architecture ADRs](architecture/README.md); CloudSync coordinator; schema/sync ownership documented |
+| Category | Score | Target | Evidence |
+|----------|-------|--------|----------|
+| CI / Testing | **8.5/10** | 10/10 | PR harness: macOS + iOS + Android unit tests, Functions, Firestore rules, supply chain audit; diff-coverage hard-fail; app test false-negative guard |
+| Schema | **9/10** | 9/10 | `tools/schema-sync/` TypeSpec + emit + `check-drift.sh`; 11 domains in manifest; `types.ts` 13-line barrel |
+| Security | **9/10** | 9/10 | Rules tests, App Check on sensitive callables, extension `untrustedWorkspaces: false`, provider http/https validation, ops rollup tightened |
+| Ops | **8.5/10** | 9/10 | [SLO runbook](runbooks/slos.md), `commercial-launch-gate.mjs`, nightly workflow (no continue-on-error), daemon `GET /metrics` stub |
+| Architecture | **8/10** | 9/10 | [Architecture ADRs](architecture/README.md); CloudSync coordinator + domain services; `canonicalAgentProvider` in OpenBurnBarCore |
+| Documentation | **9.5/10** | 10/10 | ADRs, automated [TECH_DEBT_METRICS.md](TECH_DEBT_METRICS.md), [SOTA_REMEDIATION_PROGRESS.md](SOTA_REMEDIATION_PROGRESS.md) ledger |
 
-## Weighted diligence score (2026-05-28 audit)
+## Weighted diligence score (2026-05-28 Stream C audit)
 
-**~93/100** — Phase 0 complete; Phase 1 CI/security gates landed on branch; Phase 2 schema barrel + Functions modular entry (106 LOC `index.ts`, 13 LOC `types.ts` barrel); Phase 6 ADRs/SLO/debt metrics automated. Remaining: CloudSync god-file deletion (2187 LOC), quarantine revival, OpenBurnBarUI SPM split, mmap vector index, TypeSpec domain expansion beyond usage/quota.
+**94/100** (+1 vs prior 93/100 audit) — Phase 0 complete; Phase 1 CI/security gates landed; switcher drain-target grouping committed (`e38576ca1`) with Active test coverage; daemon SQLite profile store tests hardened (**4/4 pass**, no force-try). Remaining to **≥95**: local `make ci` exit 0, CloudSync god-file deletion (2187 LOC), quarantine count → 0, TypeSpec domain expansion beyond usage/quota.
 
 ## Audit notes (2026-05-28)
 
 - **Phase 0 (committed):** daemon heartbeat + reader tests, `.swiftlint.yml` `empty_catch_block` error, graceful DB init path.
 - **Phase 1 (committed):** PR harness path-filtered E2E (Hermes/iroh, computer use, Mercury/media), `website-ci.yml`, hard-fail diff coverage + xcresult gate, commercial launch gate on internal PRs, `app-check-smoke.sh` ENFORCED probe, release privacy manifests + SBOM NOTICES, `untrustedWorkspaces.supported: false`, provider `validatedProviderBaseURL` (http/https only), App Check on all sensitive callables.
 - **Phase 2 (partial, committed):** `functions/src/types.ts` → 13-line re-export barrel; `legacy.ts` 2916 LOC pending TypeSpec migration; `index.ts` 106 LOC domain re-exports.
-- **Phase 6 (partial, committed):** [architecture/](architecture/README.md) ADRs 001–005, [runbooks/slos.md](runbooks/slos.md), [TECH_DEBT_METRICS.md](TECH_DEBT_METRICS.md) CI-regenerated.
-- **Local `make ci` (2026-05-28):** `debt-check` (unsafe cast 0/0), SwiftLint, full Functions suite + Firestore rules emulator (21/21) green. Run interrupted during retrieval-eval Xcode build (~15 min agent timeout); not a code failure. First run hit transient Firestore emulator port 8080 conflict (passed on immediate retry). Daemon `BurnBarSwitcherSQLiteProfileStoreTests` pass after removing `try!` force-tries.
-- **Not proven locally this pass:** full macOS app test matrix, iOS sim, Android JVM — rely on GitHub PR harness (`macos-26`).
+- **Phase 6 (partial, committed):** [architecture/](architecture/README.md) ADRs 001–005, [runbooks/slos.md](runbooks/slos.md), [TECH_DEBT_METRICS.md](TECH_DEBT_METRICS.md) CI-regenerated (2026-05-28T05:18:00Z).
+- **Switcher follow-up (`e38576ca1`, committed):** drain-target grouping via `SwitcherCLIProfileType.canonicalAgentProvider`; OpenCode row in AccountSwitcher; `DrainTargetSwitcherGroupedTests` + expanded `SwitcherCLILaunchTests` in Active target; drain-pin UI in ProviderRoutingCockpit.
+- **Daemon SQLite profile store (verified 2026-05-28):** `BurnBarSwitcherSQLiteProfileStoreTests` **4/4 pass** after removing force-try; complements prior **355/355** daemon SPM report.
+- **`make ci` (2026-05-28):** **in-flight** at audit time (compile phase in `/tmp/make-ci-output.txt`). Prior completed run failed on `DrainTargetSwitcherGroupedTests` + `SystemPermissionMonitorRefreshTests` — both addressed on disk; outcome pending.
+- **Not proven locally this pass:** full macOS app test matrix end-to-end (concurrent CI build); iOS sim; Android JVM — rely on GitHub PR harness (`macos-26`).
 - Kill-switch automation is wired in Functions but only covered by a source-contract smoke test today.
 
 ## CI matrix (PR)
@@ -59,11 +62,13 @@ Author in `tools/schema-sync/typespec/` → emit → commit generated TS/Swift/K
 
 ## Known remaining work
 
+- **`make ci` green** on branch (primary +1 point to reach ≥95/100)
 - Complete CloudSync god-file deletion (Hermes/Pi relay hosts still in legacy service)
-- Revive archived sync tests from `AgentLensTests/Archive/` against current `DownloadSyncService`
+- Revive archived sync tests from `AgentLensTests/Archive/` against current `DownloadSyncService` (**16** quarantined files per metrics)
 - Full `ChatSessionController` backend driver extraction
 - Hermes wire type file split into RelayCore modules
 - Expand daemon `/metrics` counters (`metrics.jsonl`, RPC latency histograms) per [runbooks/slos.md](runbooks/slos.md)
 - OpenBurnBarUI SPM product split from OpenBurnBarCore Views
+- `docs/THREAT_MODEL.md` refresh (Phase 1 security closure)
 
 See [`docs/GOVERNANCE.md`](GOVERNANCE.md) for support tiers.

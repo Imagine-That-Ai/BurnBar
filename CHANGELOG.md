@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`BurnBarHTTPGatewayServerTests`** — align `/v1/messages` pool-isolation expectations with generic `No eligible route` responses and live-catalog probe behavior.
 - **Quarantine → Archive** — move stale suites to `AgentLensTests/Archive/`; quarantine directory is pointer-only.
 
+### Fixed — Switcher drain-target grouping (branch `follow-up/switcher-sqlite-profile-tests`)
+- **Drain-target grouping** — `DrainTargetSwitcher` groups CLI profiles via `SwitcherCLIProfileType.canonicalAgentProvider` (OpenBurnBarCore); covers all six CLI types including OpenCode.
+- **Account switcher** — OpenCode maps to `.openCode` provider row (no longer silently dropped).
+- **Daemon SQLite profile store** — remove force-try in regression tests; per-provider round-trip and global active-ID semantics covered.
+- **Tests** — `DrainTargetSwitcherGroupedTests`, expanded `SwitcherCLILaunchTests` (`launchUsingDrainTarget`), drain-pin UI in ProviderRoutingCockpit.
+
 ### Added — Custom proxy model aliases
 - **Gateway model aliases** — Settings → Agents → Models can expose any route-ready model under a custom wire id (optional display name, per-alias “hide original model in /v1/models”). Clients call the alias in `/v1/models` and chat requests; routing still uses the canonical upstream model. Re-sync Droid after alias changes.
 

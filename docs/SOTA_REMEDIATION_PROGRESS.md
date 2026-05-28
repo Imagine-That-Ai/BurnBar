@@ -4,11 +4,11 @@
 
 | Field | Value |
 |-------|-------|
-| **Last updated (UTC)** | 2026-05-28T05:02:16Z |
+| **Last updated (UTC)** | 2026-05-28T05:22:00Z |
 | **Branch** | `follow-up/switcher-sqlite-profile-tests` (tracking `origin/`) |
 | **Plan** | `/Users/albertonunez/.cursor/plans/sota_10_10_remediation_0fdfbc99.plan.md` |
 | **Parent transcript** | `8e7e21f0-bcbb-4a75-b5eb-e2f15dfc8e0c` |
-| **Program overall** | **~38%** (Phase 0 impl done; **CI gate not green**; Phases 2–6 mostly open) |
+| **Program overall** | **~40%** (Phase 0 impl done; switcher follow-up committed; **CI gate not green**; Phases 2–6 mostly open) |
 
 ---
 
@@ -17,12 +17,12 @@
 | Phase | Plan focus | % complete | Gate |
 |-------|------------|------------|------|
 | **0** | Safety (fatalError, heartbeat, RPC timeout, migrations, empty-catch) | **~90%** | `make ci` green — **not met** |
-| **1** | CI + security hardening | **~55%** | Launch gate + App Check parity + required checks |
+| **1** | CI + security hardening | **~58%** | Launch gate + App Check parity + required checks |
 | **2** | TypeSpec canon + Functions modularization | **~40%** | `types.ts` barrel + domain modules; legacy shrink ongoing |
 | **3** | Cloud sync completion + zero quarantine | **~10%** | Delete `CloudSyncService`; emulator suite |
 | **4** | App architecture + perf | **~5%** | MainActor removal; monolith splits |
 | **5** | Observability + perf benchmarks | **~15%** | Unified metrics; mmap vectors |
-| **6** | Docs + diligence closure | **~35%** | ADRs + automated metrics; ≥95/100 score |
+| **6** | Docs + diligence closure | **~45%** | ADRs + automated metrics; **94/100** readiness (target ≥95) |
 
 ---
 
@@ -50,7 +50,7 @@
 - Fork PR parity runbook (docs)
 - App test false-negative guard: `scripts/test-openburnbar-app.sh` (reject `Failing tests:` footer with real names)
 - CLI launch flake fix: `OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherCLILaunchService.swift` (`settleStartupOutput`)
-- **Daemon SPM tests green:** 355/355 reported by integrator `ea47f52c`
+- **Daemon SPM tests green:** 355/355 reported by integrator `ea47f52c`; **SQLite profile store 4/4** re-verified Stream C (2026-05-28T05:18Z)
 - `NSAppleEventsUsageDescription` in `AgentLens/Resources/OpenBurnBar-Info.plist` (fixes `SystemPermissionMonitorRefreshTests`)
 
 ### Phase 2 — Partial
@@ -64,12 +64,17 @@
 
 - ADRs: `docs/architecture/` (001–005 + README) and `docs/ARCHITECTURE/` (13 files)
 - SLO runbook: `docs/runbooks/slos.md`
-- Automated debt snapshot: `docs/TECH_DEBT_METRICS.md` (generated 2026-05-28T04:54:06Z)
+- Automated debt snapshot: `docs/TECH_DEBT_METRICS.md` (generated 2026-05-28T05:18:00Z)
 - Physical iPhone default for mobile tests: `scripts/test-openburnbar-mobile.sh` (subagent `95522f0f`)
+- **Readiness re-score:** `docs/TECHNICAL_READINESS.md` → **94/100** (Stream C integration, 2026-05-28)
 
-### Switcher follow-up (branch WIP, not full SOTA)
+### Switcher follow-up — **committed** (`e38576ca1`)
 
-- Uncommitted switcher grouping tests + profile store changes (see Uncommitted changes)
+- Drain-target grouping via `canonicalAgentProvider`: `OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherProfile.swift`, `AgentLens/Views/Components/ProviderAccount/DrainTargetSwitcher.swift`
+- OpenCode row mapping fix: `AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSupport.swift`
+- Drain-pin UI: `AgentLens/Views/Components/ProviderAccount/ProviderRoutingCockpit.swift`
+- New tests in Xcode target: `AgentLensTests/Active/DrainTargetSwitcherGroupedTests.swift` (113 LOC), expanded `SwitcherCLILaunchTests.swift` (+96 LOC)
+- Daemon SQLite store: removed `try!` force-tries in `BurnBarSwitcherSQLiteProfileStoreTests.swift` — **4/4 pass** (`swift test --filter BurnBarSwitcherSQLiteProfileStoreTests`)
 
 ---
 
@@ -77,9 +82,8 @@
 
 | Item | Owner / evidence |
 |------|------------------|
-| **`make ci` gate** | **RUNNING** at ledger time (`pgrep` shows `make ci` + `xcodebuild test` for OpenBurnBar). Do **not** start a second full `make ci` until the current run finishes. |
-| **App unit tests** | Last **completed** log in `/tmp/make-ci-output.txt` (2026-05-27 ~23:54 local) failed **2 tests** in 2722 executed; see snippet below. Re-run may pass after plist + switcher fixes. |
-| **Subagent `50583ee9`** | **Never started work** (prompt only). Replacement: this ledger + parent should spawn a new worker after CI settles. |
+| **`make ci` gate** | **RUNNING** at ledger time (`pgrep` shows `make ci` → `/tmp/make-ci-output.txt`, compile phase). Do **not** start a second full `make ci` until the current run finishes. |
+| **App unit tests** | Prior log (2026-05-27) failed **2 tests** including `DrainTargetSwitcherGroupedTests` — **addressed in `e38576ca1`**; outcome pending in-flight CI. |
 | **Phase 1 remainder** | PR-gated E2E in harness, app-check-smoke **ENFORCED** probe, release.yml privacy/NOTICES, `docs/THREAT_MODEL.md`, provider baseURL validation |
 
 ---
@@ -90,8 +94,8 @@
 - Phase 2: TypeSpec for all Firestore domains; ban raw `console.*` via ESLint; `logging.ts` everywhere
 - Phase 3: `CollaborationSyncService` extraction; delete/shrink `CloudSyncService.swift` (still **2187 LOC**); Firestore emulator integration suite; revive **16** quarantined test files (per metrics — files still counted, not in Active target)
 - Phase 4: `OpenBurnBarUI` SPM split; `OpenBurnBarError` taxonomy rollout; parser protocol consolidation
-- Phase 5: mmap vector index; dashboard snapshot cache; daemon `GET /metrics`
-- Phase 6: Update `docs/TECHNICAL_READINESS.md` with evidence; re-score ≥95/100; `CHANGELOG.md` / `AGENTS.md` sync
+- Phase 5: mmap vector index; dashboard snapshot cache; daemon `GET /metrics` expansion
+- Phase 6: `CHANGELOG.md` / `AGENTS.md` sync; **≥95/100** readiness (blocked on `make ci` green + quarantine count → 0)
 
 ---
 
@@ -99,6 +103,7 @@
 
 | Agent ID | Status | Lines in transcript | What it accomplished before exit |
 |----------|--------|---------------------|----------------------------------|
+| **Stream C (integration)** | **success (docs)** | — | Read `e38576ca1`, refreshed `TECH_DEBT_METRICS.md`, re-scored `TECHNICAL_READINESS.md` to **94/100**, cleared uncommitted switcher WIP section, updated phase % table. Verified daemon SQLite profile tests **4/4 pass**. |
 | **50583ee9-556d-4e47-9df9-1b38427db6f2** | **canceled / no-op** | 1 | **Only received user prompt.** Zero tool calls. No files changed, no tests run. Parent assigned: continue Phases 1–6 + `make ci` on branch with committed Phase 0/1 work. |
 | f0b4dc40-09f0-4637-9040-86be8b71b217 | success (partial gate) | 59 | **Phase 0 complete:** heartbeat, supervisor, migration tests, empty-catch codemod, pbxproj entries. Targeted xcodebuild tests **pass**. **`make ci` not run** to completion. |
 | 00dd8552-0c65-49be-802b-7f7caff0bf1c | **error** | 382 | **`make ci` green** attempt: fixed unsafe-cast budget (`services/hosted-mcp`), v45 migration guard, Anthropic probe tests, multiple `make ci` background runs. Ended **`WritableIterable is closed`** mid `make ci-4`. |
@@ -116,7 +121,7 @@
 | aecb662a-aacb-4c02-8eb8-aab54afd7ea0 | canceled | 1 | This progress-recorder subagent (duplicate of current task). |
 | *(diligence swarm)* | readonly | 13–16 each | Architecture, CI, security, ops reviews — informed plan only. |
 
-**Parent Task descriptions (chronological):** Architecture review → Phase 0 → Make CI green → CI+Phases 1–6 → Complete 1–6 → Parallel integrator → Status assess → CI gate+waves → Machine parallelism → Parallel tests → Resume → Exact audit → Resume after error → Physical iPhone → **Finish SOTA (50583ee9)** → **Check subagent / record progress**.
+**Parent Task descriptions (chronological):** Architecture review → Phase 0 → Make CI green → CI+Phases 1–6 → Complete 1–6 → Parallel integrator → Status assess → CI gate+waves → Machine parallelism → Parallel tests → Resume → Exact audit → Resume after error → Physical iPhone → **Finish SOTA (50583ee9)** → **Check subagent / record progress** → **Stream C docs integration**.
 
 ---
 
@@ -124,11 +129,11 @@
 
 | Field | Value |
 |-------|-------|
-| **Current** | **running** (multiple `make ci` / `xcodebuild test` processes observed 2026-05-28T05:02Z) |
+| **Current** | **running** (`make ci` observed 2026-05-28T05:22Z; xcodebuild compile phase in `/tmp/make-ci-output.txt`) |
 | **Log file** | `/tmp/make-ci-output.txt` (also `/tmp/make-ci-2.log`, `make-ci-3.log`, `make-ci-4.log` from prior attempts) |
-| **Last finished run (log tail)** | **failed** — app tests `Error 65` |
+| **Last finished run (log tail)** | **failed** — app tests `Error 65` (pre-`e38576ca1` tree) |
 
-**Last failure snippet** (`/tmp/make-ci-output.txt`):
+**Last failure snippet** (pre-switcher commit; likely fixed):
 
 ```
 Failing tests:
@@ -136,43 +141,26 @@ Failing tests:
 	DrainTargetSwitcherGroupedTests.test_grouped_coversAllSixCLITypes()
 	SystemPermissionMonitorRefreshTests.testMacAppDeclaresAppleEventsUsageDescription()
 ** TEST FAILED **
-make[1]: *** [test] Error 65
 ```
 
-**Note:** `NSAppleEventsUsageDescription` is now present in plist; `DrainTargetSwitcherGroupedTests.swift` is **untracked** WIP — may fix grouped test when added to target. Current run may still be on older tree until WIP lands.
+**Post-`e38576ca1` fixes on disk:** `DrainTargetSwitcherGroupedTests.swift` in Active target + pbxproj; `NSAppleEventsUsageDescription` in plist; OpenCode drain grouping via `canonicalAgentProvider`. Await in-flight CI for confirmation.
 
 **Integrator-reported prior states:**
 
-- Daemon tests: **355 pass / 0 fail** (SPM)
+- Daemon tests: **355 pass / 0 fail** (SPM); SQLite profile subset **4/4** (Stream C, 2026-05-28)
 - One `make ci` run exited **0** with **false-negative** app pass (fixed in `scripts/test-openburnbar-app.sh`)
 - Common crash: **`WritableIterable is closed`** (subagent stream closed before final summary)
 
 ---
 
-## Uncommitted changes (2026-05-28T05:02Z)
+## Uncommitted changes
 
-**Modified:**
+**None** on owned remediation paths (2026-05-28T05:22Z). Working tree clean except untracked `scratch/`, `state.json` (do not commit).
 
-- `AgentLens/Views/Components/ProviderAccount/DrainTargetSwitcher.swift`
-- `AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSupport.swift`
-- `AgentLensTests/Active/SwitcherCLILaunchTests.swift`
-- `AgentLensTests/Active/SwitcherProfileStoreTests.swift`
-- `OpenBurnBar.xcodeproj/project.pbxproj`
-- `OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherProfile.swift`
-- `OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesRelayWireVector.json`
-- `OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarSwitcherSQLiteProfileStoreTests.swift`
-- `OpenBurnBarMobileTests/AgentIdentityRegistryMacURITests.swift`
-- `docs/TECH_DEBT_METRICS.md`
-
-**Untracked:**
-
-- `AgentLensTests/Active/DrainTargetSwitcherGroupedTests.swift`
-- `scratch/`, `state.json` (do not commit)
-- `docs/SOTA_REMEDIATION_PROGRESS.md` (this file)
-
-**Recent commits (context):**
+**Recent commits:**
 
 ```
+e38576ca1 Fix switcher drain-target grouping and harden SQLite profile tests.
 b23ec125a Add daemon regression tests for shared switcher SQLite profile store.
 d470b234c Merge pull request #119 … macos-performance-swift6-startup
 ```
@@ -181,16 +169,16 @@ d470b234c Merge pull request #119 … macos-performance-swift6-startup
 
 ## Next 3 concrete actions
 
-1. **Wait for the in-flight `make ci` to finish** (or terminate stale PIDs if hung >2h). Read `EXIT:` line appended to `/tmp/make-ci-output.txt`. If red, fix only the listed failing tests (Antigravity quota, DrainTarget grouped — add test file to Xcode target, re-run `./scripts/test-openburnbar-app.sh` subset).
-2. **Stage and complete switcher WIP** (`DrainTargetSwitcherGroupedTests.swift` + related diffs) so CI matches branch intent; re-run `make ci` **once** after green subset.
-3. **After `make ci` exit 0:** spawn disjoint streams per plan — **S1 CI/security** (THREAT_MODEL, app-check-smoke ENFORCED, PR E2E) **‖ S2 schema/functions** (next TypeSpec domains); keep **S3 sync solo**.
+1. **Wait for the in-flight `make ci` to finish.** Read `EXIT:` line appended to `/tmp/make-ci-output.txt`. If red, fix only newly listed failures (Antigravity quota adapter may remain).
+2. **After `make ci` exit 0:** bump `TECHNICAL_READINESS.md` to **≥95/100** and Phase 6 to **~50%**; run `node scripts/commercial-launch-gate.mjs`.
+3. **Spawn disjoint streams per plan** — **S1 CI/security** (THREAT_MODEL, app-check-smoke ENFORCED, PR E2E) **‖ S2 schema/functions** (next TypeSpec domains); keep **S3 sync solo**.
 
 ---
 
 ## Human-only blockers
 
 | Blocker | Why agents cannot close it alone |
-|---------|--------------------------------|
+|---------|----------------------------------|
 | **Firebase App Check ENFORCED** | Console / project policy; smoke script can detect drift only |
 | **GitHub branch protection** | Org settings for CodeQL + required checks |
 | **Physical iPhone for full mobile CI** | Device must be connected USB; script defaults to device when present |
