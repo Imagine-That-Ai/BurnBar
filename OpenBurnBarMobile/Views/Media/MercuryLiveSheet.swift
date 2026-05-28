@@ -6,6 +6,7 @@ import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 import LocalAuthentication
 import OSLog
+import Security
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -126,6 +127,7 @@ struct MercuryLiveSheet: View {
     @State private var remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult?
     @State private var remoteUnlockRefreshInFlight = false
     @State private var remoteUnlockPasswordDraft = ""
+    @State private var remoteUnlockSavedCredentialAvailable = false
     @State private var selectedMirrorDisplayId: String?
     @State private var activeMirrorSessionId: String?
     @State private var activeMirrorViewerId: String?
@@ -269,6 +271,7 @@ struct MercuryLiveSheet: View {
             if !reduceMotion { pulseTrigger.toggle() }
             installAckHandler()
             decodeWallpaper(peer.blurredWallpaperBase64)
+            refreshSavedCredentialAvailability()
             Task {
                 await dashboardStore.load()
             }
@@ -323,6 +326,7 @@ struct MercuryLiveSheet: View {
                 displays: lastAck?.availableDisplays ?? [],
                 selectedDisplayId: selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
                 remoteUnlockState: remoteUnlockState ?? lastAck?.remoteUnlockState,
+                savedRemoteUnlockCredentialAvailable: remoteUnlockSavedCredentialAvailable,
                 remoteUnlockPasswordDraft: $remoteUnlockPasswordDraft,
                 usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false,
                 sendTapIntent: { x, y, mouseButton in
@@ -372,6 +376,15 @@ struct MercuryLiveSheet: View {
                 },
                 sendRemoteUnlockCredential: { password in
                     Task { await sendRemoteUnlockCredential(password: password) }
+                },
+                saveRemoteUnlockCredential: { password in
+                    Task { await saveRemoteUnlockCredential(password: password) }
+                },
+                sendSavedRemoteUnlockCredential: {
+                    Task { await sendSavedRemoteUnlockCredential() }
+                },
+                deleteSavedRemoteUnlockCredential: {
+                    deleteSavedRemoteUnlockCredential()
                 },
                 onSelectDisplay: selectMirrorDisplay,
                 onTrustControlDevice: {
@@ -851,6 +864,7 @@ struct MercuryLiveSheet: View {
                 self.lastAck = ack
                 self.lastAckReceivedAt = Date()
                 self.remoteUnlockState = ack.remoteUnlockState ?? self.remoteUnlockState
+                self.refreshSavedCredentialAvailability()
                 self.cooldownClock = Date()
                 if ack.requestId == self.awaitingRequestID {
                     self.mirrorTimeoutTask?.cancel()
@@ -952,6 +966,7 @@ struct MercuryLiveSheet: View {
                     self.remoteUnlockPasswordDraft = ""
                 }
                 self.remoteUnlockState = state
+                self.refreshSavedCredentialAvailability()
             }
         }
         controlStreamCoordinator.remoteUnlockResultHandler = { result in
@@ -1748,6 +1763,10 @@ struct MercuryLiveSheet: View {
             return "Secure unlock lane refreshed. Enter your Mac password again."
         case "credential_submitted":
             return "Password sent to Mac login window."
+        case "credential_saved":
+            return "One-tap Remote Unlock is ready on this device."
+        case "saved_credential_deleted":
+            return "Saved Remote Unlock credential removed from this device."
         case "untrusted_controller":
             return "Take control from this device, then try unlocking again."
         case "control_owned_by_other_viewer":
@@ -1773,7 +1792,86 @@ struct MercuryLiveSheet: View {
         }
     }
 
-    private func sendRemoteUnlockCredential(password: String) async {
+    private func saveRemoteUnlockCredential(password: String) async {
+        let trimmedPassword = password.trimmingCharacters(in: .newlines)
+        guard !trimmedPassword.isEmpty else {
+            phoneControlError = "Enter your Mac password before saving it for one-tap unlock."
+            return
+        }
+        let capabilities = (remoteUnlockState ?? lastAck?.remoteUnlockState)?.capabilities
+        guard capabilities?.enabled == true,
+              capabilities?.allowsSavedCredentialUnlock == true else {
+            phoneControlError = "One-tap Remote Unlock is not ready on this Mac."
+            return
+        }
+        do {
+            try await confirmLocalAuthentication(reason: "Save this Mac password for one-tap Remote Unlock on this device.")
+            guard let storeKey = remoteUnlockCredentialStoreKey() else {
+                phoneControlError = "Remote Unlock is not ready on this Mac."
+                return
+            }
+            try RemoteUnlockSavedCredentialStore.shared.save(trimmedPassword, storeKey: storeKey)
+            refreshSavedCredentialAvailability()
+            phoneControlError = remoteUnlockMessage(for: "credential_saved")
+        } catch {
+            phoneControlError = "Saved Remote Unlock setup was cancelled."
+        }
+    }
+
+    private func sendSavedRemoteUnlockCredential() async {
+        let capabilities = (remoteUnlockState ?? lastAck?.remoteUnlockState)?.capabilities
+        guard capabilities?.enabled == true,
+              capabilities?.allowsSavedCredentialUnlock == true else {
+            phoneControlError = "One-tap Remote Unlock is not ready on this Mac."
+            return
+        }
+        do {
+            guard let storeKey = remoteUnlockCredentialStoreKey() else {
+                phoneControlError = "One-tap Remote Unlock is not ready on this Mac."
+                return
+            }
+            let password = try RemoteUnlockSavedCredentialStore.shared.load(
+                storeKey: storeKey,
+                reason: "Unlock your Mac with the saved Remote Unlock credential."
+            )
+            await sendRemoteUnlockCredential(password: password, credentialKind: .savedPassword)
+        } catch {
+            refreshSavedCredentialAvailability()
+            phoneControlError = "Saved Remote Unlock credential is unavailable. Type your Mac password instead."
+        }
+    }
+
+    private func deleteSavedRemoteUnlockCredential() {
+        guard let storeKey = remoteUnlockCredentialStoreKey() else {
+            remoteUnlockSavedCredentialAvailable = false
+            return
+        }
+        RemoteUnlockSavedCredentialStore.shared.delete(storeKey: storeKey)
+        refreshSavedCredentialAvailability()
+        phoneControlError = remoteUnlockMessage(for: "saved_credential_deleted")
+    }
+
+    private func refreshSavedCredentialAvailability() {
+        guard let storeKey = remoteUnlockCredentialStoreKey() else {
+            remoteUnlockSavedCredentialAvailable = false
+            return
+        }
+        remoteUnlockSavedCredentialAvailable = RemoteUnlockSavedCredentialStore.shared.hasCredential(storeKey: storeKey)
+    }
+
+    private func remoteUnlockCredentialStoreKey() -> String? {
+        RemoteUnlockCredentialStoreKey.make(
+            state: remoteUnlockState ?? lastAck?.remoteUnlockState,
+            phoneControlConnectionID: phoneControlConnectionID,
+            mirrorConnectionID: connectionID,
+            mirrorRequestID: activeMirrorRequestID
+        )
+    }
+
+    private func sendRemoteUnlockCredential(
+        password: String,
+        credentialKind: HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind = .typedPassword
+    ) async {
         let trimmedPassword = password.trimmingCharacters(in: .newlines)
         guard !trimmedPassword.isEmpty else {
             phoneControlError = "Enter your Mac password."
@@ -1836,7 +1934,7 @@ struct MercuryLiveSheet: View {
                 requestId: requestId,
                 sessionId: sessionId,
                 clientIntentId: clientIntentId,
-                credentialKind: .typedPassword,
+                credentialKind: credentialKind,
                 recipientKeyId: recipientKeyId,
                 recipientPublicKeyBase64: recipientPublicKey,
                 algorithm: algorithm
@@ -1845,7 +1943,7 @@ struct MercuryLiveSheet: View {
                 requestId: requestId,
                 sessionId: sessionId,
                 clientIntentId: clientIntentId,
-                credentialKind: .typedPassword,
+                credentialKind: credentialKind,
                 recipientKeyId: recipientKeyId,
                 algorithm: algorithm,
                 ciphertextBase64: sealed.ciphertextBase64,
@@ -2023,6 +2121,120 @@ struct MercuryLiveSheet: View {
     }
 }
 
+enum RemoteUnlockCredentialStoreKey {
+    static func make(
+        state: HermesRealtimeRelayRemoteUnlockState?,
+        phoneControlConnectionID: String?,
+        mirrorConnectionID: String,
+        mirrorRequestID: String?
+    ) -> String? {
+        if let recipientKey = nonEmpty(state?.capabilities.credentialRecipientKeyId) {
+            return recipientKey
+        }
+        if let phoneConnectionID = nonEmpty(phoneControlConnectionID) {
+            return phoneConnectionID
+        }
+        if let connectionID = nonEmpty(mirrorConnectionID) {
+            return connectionID
+        }
+        return nonEmpty(mirrorRequestID)
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private final class RemoteUnlockSavedCredentialStore: @unchecked Sendable {
+    static let shared = RemoteUnlockSavedCredentialStore()
+
+    private let service = "com.openburnbar.remote-unlock.saved-credential"
+    private let defaultsPrefix = "remote_unlock.saved_credential_available."
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func hasCredential(storeKey: String) -> Bool {
+        defaults.bool(forKey: defaultsKey(storeKey: storeKey))
+    }
+
+    func save(_ password: String, storeKey: String) throws {
+        guard let data = password.data(using: .utf8), !data.isEmpty else {
+            throw StoreError.invalidCredential
+        }
+        guard let access = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            .userPresence,
+            nil
+        ) else {
+            throw StoreError.accessControlUnavailable
+        }
+        let query = baseQuery(storeKey: storeKey)
+        SecItemDelete(query as CFDictionary)
+
+        var item = query
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessControl as String] = access
+        let status = SecItemAdd(item as CFDictionary, nil)
+        guard status == errSecSuccess else { throw StoreError.keychainStatus(status) }
+        defaults.set(true, forKey: defaultsKey(storeKey: storeKey))
+    }
+
+    func load(storeKey: String, reason: String) throws -> String {
+        let context = LAContext()
+        context.localizedReason = reason
+        var query = baseQuery(storeKey: storeKey)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecUseAuthenticationContext as String] = context
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound {
+            defaults.set(false, forKey: defaultsKey(storeKey: storeKey))
+        }
+        guard status == errSecSuccess, let data = item as? Data else {
+            throw StoreError.keychainStatus(status)
+        }
+        guard let password = String(data: data, encoding: .utf8), !password.isEmpty else {
+            throw StoreError.invalidCredential
+        }
+        return password
+    }
+
+    func delete(storeKey: String) {
+        SecItemDelete(baseQuery(storeKey: storeKey) as CFDictionary)
+        defaults.set(false, forKey: defaultsKey(storeKey: storeKey))
+    }
+
+    private func baseQuery(storeKey: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account(storeKey: storeKey)
+        ]
+    }
+
+    private func account(storeKey: String) -> String {
+        let trimmed = storeKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "unknown-mac" : trimmed
+    }
+
+    private func defaultsKey(storeKey: String) -> String {
+        defaultsPrefix + account(storeKey: storeKey)
+    }
+
+    enum StoreError: Error {
+        case accessControlUnavailable
+        case invalidCredential
+        case keychainStatus(OSStatus)
+    }
+}
+
 private struct MercuryMirrorViewerFullScreen: View {
     @ObservedObject var coordinator: ScreenShareViewerCoordinator
     let resetToken: String?
@@ -2036,6 +2248,7 @@ private struct MercuryMirrorViewerFullScreen: View {
     let displays: [HermesRealtimeRelayDisplayDescriptor]
     let selectedDisplayId: String?
     let remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
+    let savedRemoteUnlockCredentialAvailable: Bool
     @Binding var remoteUnlockPasswordDraft: String
     let usePremiumSOTAUX: Bool
     let sendTapIntent: (Double, Double, Int) -> Void
@@ -2048,11 +2261,83 @@ private struct MercuryMirrorViewerFullScreen: View {
     let pasteClipboardToMac: () -> Void
     let grabClipboardFromMac: () -> Void
     let sendRemoteUnlockCredential: (String) -> Void
+    let saveRemoteUnlockCredential: (String) -> Void
+    let sendSavedRemoteUnlockCredential: () -> Void
+    let deleteSavedRemoteUnlockCredential: () -> Void
     let onSelectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let onForceReconnect: () -> Void
     let onRetryRequest: () -> Void
     let onClose: () -> Void
+    init(
+        coordinator: ScreenShareViewerCoordinator,
+        resetToken: String?,
+        controlStatus: ScreenSharePhoneControlStatus,
+        controlInputEnabled: Bool,
+        streamPhase: MediaControlStreamCoordinator.Phase,
+        reconnectAttemptStartedAt: Date?,
+        lastFailureReason: String?,
+        lastLiveAt: Date?,
+        controlRoundTripMillis: Int?,
+        displays: [HermesRealtimeRelayDisplayDescriptor],
+        selectedDisplayId: String?,
+        remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?,
+        savedRemoteUnlockCredentialAvailable: Bool,
+        remoteUnlockPasswordDraft: Binding<String>,
+        usePremiumSOTAUX: Bool,
+        sendTapIntent: @escaping (Double, Double, Int) -> Void,
+        sendScrollIntent: @escaping (Double, Double, Double, Double, String?) -> Void,
+        sendPointerMoveIntent: @escaping (Double, Double) -> Void,
+        sendPointerClickIntent: @escaping (Int) -> Void,
+        sendTextIntent: @escaping (String) -> Void,
+        sendShortcutIntent: @escaping (String, [String]) -> Void,
+        sendAgentContextTargetIntent: @escaping (Double, Double, String, String, String?) -> Void,
+        pasteClipboardToMac: @escaping () -> Void,
+        grabClipboardFromMac: @escaping () -> Void,
+        sendRemoteUnlockCredential: @escaping (String) -> Void,
+        saveRemoteUnlockCredential: @escaping (String) -> Void,
+        sendSavedRemoteUnlockCredential: @escaping () -> Void,
+        deleteSavedRemoteUnlockCredential: @escaping () -> Void,
+        onSelectDisplay: @escaping (String) -> Void,
+        onTrustControlDevice: @escaping () -> Void,
+        onForceReconnect: @escaping () -> Void,
+        onRetryRequest: @escaping () -> Void,
+        onClose: @escaping () -> Void
+    ) {
+        self.coordinator = coordinator
+        self.resetToken = resetToken
+        self.controlStatus = controlStatus
+        self.controlInputEnabled = controlInputEnabled
+        self.streamPhase = streamPhase
+        self.reconnectAttemptStartedAt = reconnectAttemptStartedAt
+        self.lastFailureReason = lastFailureReason
+        self.lastLiveAt = lastLiveAt
+        self.controlRoundTripMillis = controlRoundTripMillis
+        self.displays = displays
+        self.selectedDisplayId = selectedDisplayId
+        self.remoteUnlockState = remoteUnlockState
+        self.savedRemoteUnlockCredentialAvailable = savedRemoteUnlockCredentialAvailable
+        self._remoteUnlockPasswordDraft = remoteUnlockPasswordDraft
+        self.usePremiumSOTAUX = usePremiumSOTAUX
+        self.sendTapIntent = sendTapIntent
+        self.sendScrollIntent = sendScrollIntent
+        self.sendPointerMoveIntent = sendPointerMoveIntent
+        self.sendPointerClickIntent = sendPointerClickIntent
+        self.sendTextIntent = sendTextIntent
+        self.sendShortcutIntent = sendShortcutIntent
+        self.sendAgentContextTargetIntent = sendAgentContextTargetIntent
+        self.pasteClipboardToMac = pasteClipboardToMac
+        self.grabClipboardFromMac = grabClipboardFromMac
+        self.sendRemoteUnlockCredential = sendRemoteUnlockCredential
+        self.saveRemoteUnlockCredential = saveRemoteUnlockCredential
+        self.sendSavedRemoteUnlockCredential = sendSavedRemoteUnlockCredential
+        self.deleteSavedRemoteUnlockCredential = deleteSavedRemoteUnlockCredential
+        self.onSelectDisplay = onSelectDisplay
+        self.onTrustControlDevice = onTrustControlDevice
+        self.onForceReconnect = onForceReconnect
+        self.onRetryRequest = onRetryRequest
+        self.onClose = onClose
+    }
 
     var body: some View {
         ScreenShareViewerView(
@@ -2068,6 +2353,7 @@ private struct MercuryMirrorViewerFullScreen: View {
             lastFailureReason: lastFailureReason,
             lastLiveAt: lastLiveAt,
             remoteUnlockState: remoteUnlockState,
+            savedRemoteUnlockCredentialAvailable: savedRemoteUnlockCredentialAvailable,
             remoteUnlockPasswordDraft: $remoteUnlockPasswordDraft,
             usePremiumSOTAUX: usePremiumSOTAUX,
             onForceReconnect: onForceReconnect,
@@ -2082,6 +2368,9 @@ private struct MercuryMirrorViewerFullScreen: View {
             pasteClipboardToMac: pasteClipboardToMac,
             grabClipboardFromMac: grabClipboardFromMac,
             sendRemoteUnlockCredential: sendRemoteUnlockCredential,
+            saveRemoteUnlockCredential: saveRemoteUnlockCredential,
+            sendSavedRemoteUnlockCredential: sendSavedRemoteUnlockCredential,
+            deleteSavedRemoteUnlockCredential: deleteSavedRemoteUnlockCredential,
             onSelectDisplay: onSelectDisplay,
             onTrustControlDevice: onTrustControlDevice,
             onClose: onClose

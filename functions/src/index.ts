@@ -104,3 +104,9 @@ export {
   appStoreServerNotificationsV2,
   reconcileHostedEntitlementsDaily,
 } from "./appstore/index.js";
+
+export {
+  startCliLink,
+  pollCliLink,
+  completeCliLink,
+} from "./callables/cliLink.js";

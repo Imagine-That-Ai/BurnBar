@@ -173,6 +173,7 @@ final class Plan2SharedModelsTests: XCTestCase {
             supportedLockStates: [.screenLocked, .loginWindow, .rebootLoginWindow],
             blockers: [],
             allowsCredentialPaste: true,
+            allowsSavedCredentialUnlock: true,
             credentialRecipientKeyId: "mac-remote-unlock-key",
             credentialRecipientPublicKeyBase64: "cHVibGljLWtleQ==",
             credentialEnvelopeAlgorithm: "HPKE-X25519-SHA256-CHACHAPOLY",
@@ -203,7 +204,7 @@ final class Plan2SharedModelsTests: XCTestCase {
             requestId: "credential-1",
             sessionId: "unlock-session-1",
             clientIntentId: "client-credential-1",
-            credentialKind: .clipboardPassword,
+            credentialKind: .savedPassword,
             recipientKeyId: "mac-remote-unlock-key",
             algorithm: "HPKE-X25519-SHA256-CHACHAPOLY",
             ciphertextBase64: "Y2lwaGVydGV4dA==",
@@ -285,8 +286,9 @@ final class Plan2SharedModelsTests: XCTestCase {
             decodedState.control?.remoteUnlockState?.capabilities.credentialEnvelopeAlgorithm,
             "HPKE-X25519-SHA256-CHACHAPOLY"
         )
+        XCTAssertEqual(decodedState.control?.remoteUnlockState?.capabilities.allowsSavedCredentialUnlock, true)
         XCTAssertEqual(decodedCredential.control?.remoteUnlockCredential, credential)
-        XCTAssertEqual(decodedCredential.control?.remoteUnlockCredential?.credentialKind, .clipboardPassword)
+        XCTAssertEqual(decodedCredential.control?.remoteUnlockCredential?.credentialKind, .savedPassword)
         XCTAssertEqual(decodedCredential.control?.remoteUnlockCredential?.redactedByteCount, 16)
         XCTAssertEqual(decodedResult.control?.remoteUnlockResult, result)
         XCTAssertEqual(decodedResult.control?.remoteUnlockResult?.status, .unlocked)

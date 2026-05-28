@@ -338,60 +338,37 @@ struct ChatPanel: View {
         .shadow(color: Color.black.opacity(0.12), radius: 32, y: 14)
         .compositingGroup()
         .overlay(alignment: .trailing) {
-            Color.clear
-                .frame(width: 10)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .highPriorityGesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { g in
-                            if panelResizeStart == nil { panelResizeStart = controller.panelWidth }
-                            let base = panelResizeStart ?? 400
-                            controller.panelWidth = min(720, max(260, base + g.translation.width))
-                        }
-                        .onEnded { _ in
-                            panelResizeStart = nil
-                            controller.persistPanelGeometry()
-                        }
-                )
+            InteractiveResizeOverlay(direction: .trailing) { translation in
+                if panelResizeStart == nil { panelResizeStart = controller.panelWidth }
+                let base = panelResizeStart ?? 400
+                controller.panelWidth = min(720, max(260, base + translation.width))
+            } onEnded: {
+                panelResizeStart = nil
+                controller.persistPanelGeometry()
+            }
         }
         .overlay(alignment: .bottom) {
-            Color.clear
-                .frame(height: 10)
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
-                .highPriorityGesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { g in
-                            if bottomResizeStart == nil { bottomResizeStart = controller.panelHeight }
-                            let base = bottomResizeStart ?? 440
-                            controller.panelHeight = min(900, max(200, base + g.translation.height))
-                        }
-                        .onEnded { _ in
-                            bottomResizeStart = nil
-                            controller.persistPanelGeometry()
-                        }
-                )
+            InteractiveResizeOverlay(direction: .bottom) { translation in
+                if bottomResizeStart == nil { bottomResizeStart = controller.panelHeight }
+                let base = bottomResizeStart ?? 440
+                controller.panelHeight = min(900, max(200, base + translation.height))
+            } onEnded: {
+                bottomResizeStart = nil
+                controller.persistPanelGeometry()
+            }
         }
         .overlay(alignment: .bottomTrailing) {
-            Color.clear
-                .frame(width: cornerResizeHandle, height: cornerResizeHandle)
-                .contentShape(Rectangle())
-                .highPriorityGesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { g in
-                            if cornerResizeStart == nil {
-                                cornerResizeStart = CGSize(width: controller.panelWidth, height: controller.panelHeight)
-                            }
-                            let base = cornerResizeStart ?? CGSize(width: 400, height: 440)
-                            controller.panelWidth = min(720, max(260, base.width + g.translation.width))
-                            controller.panelHeight = min(900, max(200, base.height + g.translation.height))
-                        }
-                        .onEnded { _ in
-                            cornerResizeStart = nil
-                            controller.persistPanelGeometry()
-                        }
-                )
+            InteractiveResizeOverlay(direction: .bottomTrailing) { translation in
+                if cornerResizeStart == nil {
+                    cornerResizeStart = CGSize(width: controller.panelWidth, height: controller.panelHeight)
+                }
+                let base = cornerResizeStart ?? CGSize(width: 400, height: 440)
+                controller.panelWidth = min(720, max(260, base.width + translation.width))
+                controller.panelHeight = min(900, max(200, base.height + translation.height))
+            } onEnded: {
+                cornerResizeStart = nil
+                controller.persistPanelGeometry()
+            }
         }
         .transition(.scale(scale: 0.85).combined(with: .opacity))
     }
@@ -806,5 +783,76 @@ struct ChatPanel: View {
             chatBackend: controller.chatBackend,
             onSubmit: { Task { await controller.send() } }
         )
+    }
+}
+
+// MARK: - Reusable Interactive Resize Overlay
+struct InteractiveResizeOverlay: View {
+    enum Direction {
+        case trailing
+        case bottom
+        case bottomTrailing
+    }
+
+    var direction: Direction
+    var onResize: (CGSize) -> Void
+    var onEnded: () -> Void
+
+    @State private var isHovering = false
+    @State private var isDragging = false
+    @State private var cursorPushed = false
+
+    var body: some View {
+        Color.clear
+            .frame(
+                width: direction == .bottom ? nil : (direction == .trailing ? 16 : 24),
+                height: direction == .trailing ? nil : (direction == .bottom ? 16 : 24)
+            )
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                isHovering = hovering
+                updateCursor()
+            }
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        isDragging = true
+                        updateCursor()
+                        onResize(value.translation)
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                        updateCursor()
+                        onEnded()
+                    }
+            )
+            .onDisappear {
+                if cursorPushed {
+                    NSCursor.pop()
+                    cursorPushed = false
+                }
+            }
+    }
+
+    private func updateCursor() {
+        let shouldShowCursor = isHovering || isDragging
+        if shouldShowCursor {
+            if !cursorPushed {
+                switch direction {
+                case .trailing:
+                    NSCursor.resizeLeftRight.push()
+                case .bottom:
+                    NSCursor.resizeUpDown.push()
+                case .bottomTrailing:
+                    NSCursor.pointingHand.push()
+                }
+                cursorPushed = true
+            }
+        } else {
+            if cursorPushed {
+                NSCursor.pop()
+                cursorPushed = false
+            }
+        }
     }
 }

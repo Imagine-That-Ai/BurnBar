@@ -650,6 +650,8 @@ final class HermesService {
     var currentConversationTokenBurn = 0
     var isStreaming = false
     var lastError: String?
+    var visibleCLIStatusText: String?
+    var visibleCLIErrorText: String?
     var isReachable = false
     var isLoadingRuntime = false
     var runtimeErrorText: String?
@@ -665,6 +667,7 @@ final class HermesService {
     private let history: MobileChatHistoryStore
     private var runtimeGeneration = 0
     private var runtimeRefreshTask: Task<Void, Never>?
+    private var visibleCLIObservation: CLIAgentMissionObservation?
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
     private let selectedModelDefaultsKey = "hermes.selectedModelID"
     private let favoriteModelsDefaultsKey = "hermes.favoriteModelIDs"
@@ -1020,6 +1023,10 @@ final class HermesService {
     func clearChat() {
         currentTask?.cancel()
         currentTask = nil
+        visibleCLIObservation?.cancel()
+        visibleCLIObservation = nil
+        visibleCLIStatusText = nil
+        visibleCLIErrorText = nil
         messages.removeAll()
         lastError = nil
         isStreaming = false
@@ -1445,6 +1452,224 @@ final class HermesService {
             }
             persistCurrentThread()
         }
+    }
+
+    func sendVisibleCLIMessage(_ text: String, context: String? = nil, attachments: [HermesAttachment] = []) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (!trimmed.isEmpty || !attachments.isEmpty), !isStreaming else { return }
+
+        guard attachments.isEmpty else {
+            rejectVisibleCLIAttachmentTurn(text: trimmed, attachments: attachments)
+            return
+        }
+
+        preferSuggestedRelayWhenLocalHostIsOffline()
+        if selectedSessionID == nil {
+            selectedSessionID = UUID().uuidString
+        }
+        guard let threadID = selectedSessionID else { return }
+
+        currentTask?.cancel()
+        currentTask = nil
+        visibleCLIObservation?.cancel()
+        visibleCLIObservation = nil
+        visibleCLIStatusText = "Opening Hermes Terminal..."
+        visibleCLIErrorText = nil
+
+        let now = Date()
+        let userMessage = HermesChatMessage(
+            role: .user,
+            text: trimmed,
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            timestamp: now
+        )
+        let assistantPlaceholder = HermesChatMessage(
+            role: .assistant,
+            text: "Opening Hermes in a visible Mac Terminal session...",
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            timestamp: now.addingTimeInterval(0.001),
+            isStreaming: true,
+            responseStartedAt: now
+        )
+        messages.append(userMessage)
+        messages.append(assistantPlaceholder)
+        isStreaming = true
+        lastError = nil
+        persistCurrentThread()
+
+        let prompt = Self.visibleCLIPrompt(userText: trimmed, context: context)
+        let placeholderID = assistantPlaceholder.id
+        currentTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let requestID = try await CLIAgentMissionDispatcher.shared.dispatch(
+                    title: Self.derivedTitle(from: self.messages),
+                    prompt: prompt,
+                    missionKind: "chat",
+                    requestedRuntime: AssistantRuntimeID.hermes.rawValue,
+                    depth: "standard",
+                    approvalMode: "existing_policy",
+                    commandsAllowed: false,
+                    fileEditsAllowed: false,
+                    clientThreadID: threadID,
+                    sourceSurface: "ios-chat-cli",
+                    deliveryMode: .fullStream,
+                    parentHermesThreadID: threadID,
+                    presentationMode: .macVisibleCLI
+                )
+                try Task.checkCancellation()
+                self.visibleCLIObservation = try CLIAgentMissionDispatcher.shared.observe(
+                    requestID: requestID,
+                    onUpdate: { [weak self] snapshot in
+                        self?.applyVisibleCLISnapshot(snapshot, placeholderID: placeholderID)
+                    },
+                    onError: { [weak self] message in
+                        self?.finishVisibleCLIPlaceholder(
+                            placeholderID,
+                            text: "Could not watch Hermes Terminal output: \(message)",
+                            isError: true
+                        )
+                    }
+                )
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.finishVisibleCLIPlaceholder(
+                    placeholderID,
+                    text: "Could not open Hermes in Terminal on your Mac: \(error.localizedDescription)",
+                    isError: true
+                )
+            }
+        }
+    }
+
+    private func rejectVisibleCLIAttachmentTurn(text: String, attachments: [HermesAttachment]) {
+        let now = Date()
+        let displayText = text.isEmpty ? "Sent \(attachments.count) attachment\(attachments.count == 1 ? "" : "s")" : text
+        let message = "CLI mode cannot send attachments to a visible Mac Terminal session yet. Remove the attachment or switch back to Smart view for this turn."
+        messages.append(HermesChatMessage(
+            role: .user,
+            text: displayText,
+            attachments: attachments,
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            timestamp: now
+        ))
+        messages.append(HermesChatMessage(
+            role: .assistant,
+            text: message,
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            timestamp: now.addingTimeInterval(0.001),
+            isError: true,
+            responseStartedAt: now,
+            responseCompletedAt: now
+        ))
+        isStreaming = false
+        lastError = message
+        visibleCLIStatusText = nil
+        visibleCLIErrorText = message
+        persistCurrentThread()
+    }
+
+    private static func visibleCLIPrompt(userText: String, context: String?) -> String {
+        let trimmedContext = trimmedNilIfEmpty(context)
+        guard let trimmedContext else { return userText }
+        return """
+        \(trimmedContext)
+
+        User message:
+        \(userText)
+        """
+    }
+
+    private func applyVisibleCLISnapshot(_ snapshot: CLIAgentMissionSnapshot, placeholderID: String) {
+        let text = Self.visibleCLIResponseText(from: snapshot)
+            ?? snapshot.displayLiveSummary
+            ?? snapshot.currentStepLabel
+        let isError = snapshot.status.lowercased().contains("fail")
+            || snapshot.status.lowercased() == "unauthorized"
+            || snapshot.events.last?.isError == true
+        guard let index = messages.firstIndex(where: { $0.id == placeholderID }) else { return }
+        messages[index].text = text
+        messages[index].isStreaming = !snapshot.isTerminal
+        messages[index].isError = isError
+        messages[index].responseModelID = snapshot.selectedModelID
+        messages[index].modelName = snapshot.selectedModelID ?? activeModelName
+        if snapshot.isTerminal {
+            messages[index].finalizeResponseMetrics()
+            isStreaming = false
+            visibleCLIObservation?.cancel()
+            visibleCLIObservation = nil
+            if isError {
+                lastError = text
+                visibleCLIErrorText = text
+                visibleCLIStatusText = nil
+            } else {
+                visibleCLIErrorText = nil
+                visibleCLIStatusText = nil
+            }
+        } else if isError {
+            visibleCLIErrorText = text
+            visibleCLIStatusText = nil
+        } else {
+            visibleCLIErrorText = nil
+            visibleCLIStatusText = Self.trimmedNilIfEmpty(snapshot.displayLiveSummary)
+                ?? Self.trimmedNilIfEmpty(snapshot.currentStepLabel)
+                ?? "Hermes Terminal running..."
+        }
+        persistCurrentThread()
+    }
+
+    private static func visibleCLIResponseText(from snapshot: CLIAgentMissionSnapshot) -> String? {
+        if snapshot.isTerminal,
+           let error = trimmedNilIfEmpty(snapshot.errorMessage) {
+            return error
+        }
+        let responsePhases: Set<String> = [
+            "assistant_response",
+            "completed",
+            "final_answer"
+        ]
+        let responseKinds: Set<String> = [
+            "llm_response",
+            "final_answer"
+        ]
+        return snapshot.events.reversed().compactMap { event in
+            guard responsePhases.contains(event.phase) || responseKinds.contains(event.kind) else {
+                return nil
+            }
+            return trimmedNilIfEmpty(event.fullMessage)
+                ?? trimmedNilIfEmpty(event.message)
+        }.first
+    }
+
+    private static func trimmedNilIfEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func finishVisibleCLIPlaceholder(_ placeholderID: String, text: String, isError: Bool) {
+        if let index = messages.firstIndex(where: { $0.id == placeholderID }) {
+            messages[index].text = text
+            messages[index].isStreaming = false
+            messages[index].isError = isError
+            messages[index].finalizeResponseMetrics()
+        }
+        isStreaming = false
+        if isError {
+            lastError = text
+            visibleCLIErrorText = text
+            visibleCLIStatusText = nil
+        } else {
+            visibleCLIErrorText = nil
+            visibleCLIStatusText = nil
+        }
+        visibleCLIObservation?.cancel()
+        visibleCLIObservation = nil
+        persistCurrentThread()
     }
 
     private func preferSuggestedRelayWhenLocalHostIsOffline() {

@@ -103,6 +103,50 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertNil(service.lastError)
     }
 
+    func testVisibleCLIModeRejectsAttachmentsInsteadOfFallingBackToNativeChat() {
+        let service = HermesService()
+        let attachment = HermesAttachment(
+            kind: .textDocument,
+            displayName: "notes.md",
+            mimeType: "text/markdown",
+            byteSize: 42,
+            workspaceRelativePath: "attachments/notes.md",
+            extractedTextPreview: "launch checklist"
+        )
+
+        service.sendVisibleCLIMessage("Read this in Terminal", attachments: [attachment])
+
+        XCTAssertEqual(service.messages.count, 2)
+        XCTAssertEqual(service.messages[0].role, .user)
+        XCTAssertEqual(service.messages[0].attachments, [attachment])
+        XCTAssertEqual(service.messages[1].role, .assistant)
+        XCTAssertTrue(service.messages[1].isError)
+        XCTAssertTrue(service.messages[1].text.contains("CLI mode cannot send attachments"))
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertEqual(service.visibleCLIErrorText, service.messages[1].text)
+    }
+
+    func testClearChatClearsVisibleCLIStatus() {
+        let service = HermesService()
+        let attachment = HermesAttachment(
+            kind: .generic,
+            displayName: "archive.zip",
+            mimeType: "application/zip",
+            byteSize: 1024,
+            workspaceRelativePath: "attachments/archive.zip"
+        )
+
+        service.sendVisibleCLIMessage("", attachments: [attachment])
+        XCTAssertNotNil(service.visibleCLIErrorText)
+
+        service.clearChat()
+
+        XCTAssertTrue(service.messages.isEmpty)
+        XCTAssertNil(service.lastError)
+        XCTAssertNil(service.visibleCLIStatusText)
+        XCTAssertNil(service.visibleCLIErrorText)
+    }
+
     func testHermesChatMessageFields() {
         let msg = HermesChatMessage(role: .user, text: "Hi", modelName: "GLM-5")
         XCTAssertEqual(msg.role, .user)

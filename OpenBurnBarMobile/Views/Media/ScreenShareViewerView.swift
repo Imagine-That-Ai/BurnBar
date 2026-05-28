@@ -60,6 +60,7 @@ struct ScreenShareViewerView: View {
     let lastFailureReason: String?
     let lastLiveAt: Date?
     let remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
+    let savedRemoteUnlockCredentialAvailable: Bool
     let onForceReconnect: () -> Void
     let onRetryRequest: () -> Void
     let sendTapIntent: (Double, Double, Int) -> Void
@@ -72,6 +73,9 @@ struct ScreenShareViewerView: View {
     let pasteClipboardToMac: () -> Void
     let grabClipboardFromMac: () -> Void
     let sendRemoteUnlockCredential: (String) -> Void
+    let saveRemoteUnlockCredential: (String) -> Void
+    let sendSavedRemoteUnlockCredential: () -> Void
+    let deleteSavedRemoteUnlockCredential: () -> Void
     let onSelectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let onClose: () -> Void
@@ -91,8 +95,6 @@ struct ScreenShareViewerView: View {
     @State private var coPilotRuntime: String = "hermes"
     @State private var panelOffset = CGSize(width: -18, height: 18)
     @State private var panelDragBase = CGSize(width: -18, height: 18)
-    @State private var showingDisplayPicker = false
-    @State private var showingScrollTools = false
     @State private var edgeScrollEnabled = true
     @State private var hardwareScrollEnabled = false
     @State private var trackpadActive = false
@@ -128,6 +130,7 @@ struct ScreenShareViewerView: View {
         lastFailureReason: String? = nil,
         lastLiveAt: Date? = nil,
         remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
+        savedRemoteUnlockCredentialAvailable: Bool = false,
         remoteUnlockPasswordDraft: Binding<String> = .constant(""),
         usePremiumSOTAUX: Bool = false,
         onForceReconnect: @escaping () -> Void = {},
@@ -142,6 +145,9 @@ struct ScreenShareViewerView: View {
         pasteClipboardToMac: @escaping () -> Void = {},
         grabClipboardFromMac: @escaping () -> Void = {},
         sendRemoteUnlockCredential: @escaping (String) -> Void = { _ in },
+        saveRemoteUnlockCredential: @escaping (String) -> Void = { _ in },
+        sendSavedRemoteUnlockCredential: @escaping () -> Void = {},
+        deleteSavedRemoteUnlockCredential: @escaping () -> Void = {},
         onSelectDisplay: @escaping (String) -> Void = { _ in },
         onTrustControlDevice: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
@@ -158,6 +164,7 @@ struct ScreenShareViewerView: View {
         self.lastFailureReason = lastFailureReason
         self.lastLiveAt = lastLiveAt
         self.remoteUnlockState = remoteUnlockState
+        self.savedRemoteUnlockCredentialAvailable = savedRemoteUnlockCredentialAvailable
         self._remoteUnlockPasswordDraft = remoteUnlockPasswordDraft
         self.usePremiumSOTAUX = usePremiumSOTAUX
         self.onForceReconnect = onForceReconnect
@@ -172,6 +179,9 @@ struct ScreenShareViewerView: View {
         self.pasteClipboardToMac = pasteClipboardToMac
         self.grabClipboardFromMac = grabClipboardFromMac
         self.sendRemoteUnlockCredential = sendRemoteUnlockCredential
+        self.saveRemoteUnlockCredential = saveRemoteUnlockCredential
+        self.sendSavedRemoteUnlockCredential = sendSavedRemoteUnlockCredential
+        self.deleteSavedRemoteUnlockCredential = deleteSavedRemoteUnlockCredential
         self.onSelectDisplay = onSelectDisplay
         self.onTrustControlDevice = onTrustControlDevice
         self.onClose = onClose
@@ -392,8 +402,6 @@ struct ScreenShareViewerView: View {
                     isCollapsed: $panelCollapsed,
                     isTyping: $isTyping,
                     coPilotTarget: $coPilotTarget,
-                    showingDisplayPicker: $showingDisplayPicker,
-                    showingScrollTools: $showingScrollTools,
                     edgeScrollEnabled: $edgeScrollEnabled,
                     hardwareScrollEnabled: $hardwareScrollEnabled,
                     statsVisible: $statsVisible,
@@ -451,7 +459,11 @@ struct ScreenShareViewerView: View {
                     RemoteUnlockStatusOverlay(
                         state: activeRemoteUnlockState,
                         password: $remoteUnlockPasswordDraft,
+                        savedCredentialAvailable: savedRemoteUnlockCredentialAvailable,
                         sendCredential: sendRemoteUnlockCredential,
+                        saveCredential: saveRemoteUnlockCredential,
+                        sendSavedCredential: sendSavedRemoteUnlockCredential,
+                        deleteSavedCredential: deleteSavedRemoteUnlockCredential,
                         onReconnect: onForceReconnect,
                         onClose: onClose
                     )
@@ -1290,11 +1302,22 @@ struct ScreenShareViewportState: Equatable {
     }
 }
 
-private enum ScreenShareInteractionMode {
+enum ScreenShareInteractionMode: Equatable {
     case view
     case control
     case trackpad
     case coPilot
+}
+
+enum ScreenShareSmartTextActivationPolicy {
+    static func modeAfterAutoKeyboardToggle(
+        enabled: Bool,
+        currentMode: ScreenShareInteractionMode,
+        controlInputEnabled: Bool
+    ) -> ScreenShareInteractionMode {
+        guard enabled, controlInputEnabled else { return currentMode }
+        return .control
+    }
 }
 
 enum ScreenShareControlInputPolicy {
@@ -1350,13 +1373,23 @@ private enum MirrorCursorStyle: String, CaseIterable, Identifiable {
 private struct RemoteUnlockStatusOverlay: View {
     let state: HermesRealtimeRelayRemoteUnlockState
     @Binding var password: String
+    let savedCredentialAvailable: Bool
     let sendCredential: (String) -> Void
+    let saveCredential: (String) -> Void
+    let sendSavedCredential: () -> Void
+    let deleteSavedCredential: () -> Void
     let onReconnect: () -> Void
     let onClose: () -> Void
     @State private var isSending = false
+    @State private var isSaving = false
+    @State private var isSendingSaved = false
 
     private var canSendCredential: Bool {
         state.capabilities.enabled && state.capabilities.allowsCredentialPaste
+    }
+
+    private var canUseSavedCredential: Bool {
+        state.capabilities.enabled && state.capabilities.allowsSavedCredentialUnlock
     }
 
     private var title: String {
@@ -1429,40 +1462,97 @@ private struct RemoteUnlockStatusOverlay: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if canSendCredential {
-                HStack(spacing: 10) {
-                    SecureField("Mac password", text: $password)
-                        .textContentType(.password)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .frame(height: 42)
-                        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
-                        )
+                VStack(alignment: .leading, spacing: 10) {
+                    if savedCredentialAvailable, canUseSavedCredential {
+                        HStack(spacing: 10) {
+                            Button {
+                                isSendingSaved = true
+                                sendSavedCredential()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                    isSendingSaved = false
+                                }
+                            } label: {
+                                Label(isSendingSaved ? "Sending" : "One-tap unlock", systemImage: isSendingSaved ? "checkmark" : "faceid")
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 40)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.black)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .disabled(isSendingSaved)
+                            .accessibilityLabel("Unlock Mac with saved credential")
 
-                    Button {
-                        let credential = password
-                        password = ""
-                        isSending = true
-                        sendCredential(credential)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                            isSending = false
+                            Button(role: .destructive) {
+                                deleteSavedCredential()
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .frame(width: 40, height: 40)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.white)
+                            .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .accessibilityLabel("Delete saved Remote Unlock credential")
                         }
-                    } label: {
-                        Image(systemName: isSending ? "checkmark" : "lock.open")
-                            .font(.system(size: 16, weight: .bold))
-                            .frame(width: 42, height: 42)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.black)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .opacity(password.isEmpty || isSending ? 0.55 : 1)
-                    .disabled(password.isEmpty || isSending)
-                    .accessibilityLabel("Send Mac password")
+
+                    HStack(spacing: 10) {
+                        SecureField("Mac password", text: $password)
+                            .textContentType(.password)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .frame(height: 42)
+                            .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                            )
+
+                        Button {
+                            let credential = password
+                            password = ""
+                            isSending = true
+                            sendCredential(credential)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                isSending = false
+                            }
+                        } label: {
+                            Image(systemName: isSending ? "checkmark" : "lock.open")
+                                .font(.system(size: 16, weight: .bold))
+                                .frame(width: 42, height: 42)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.black)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .opacity(password.isEmpty || isSending ? 0.55 : 1)
+                        .disabled(password.isEmpty || isSending)
+                        .accessibilityLabel("Send Mac password")
+                    }
+
+                    if canUseSavedCredential {
+                        Button {
+                            isSaving = true
+                            saveCredential(password)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                isSaving = false
+                            }
+                        } label: {
+                            Label(isSaving ? "Saving" : "Save for one-tap unlock", systemImage: isSaving ? "checkmark.shield" : "key.fill")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 38)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white)
+                        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .opacity(password.isEmpty || isSaving ? 0.55 : 1)
+                        .disabled(password.isEmpty || isSaving)
+                        .accessibilityLabel("Save Mac password for one-tap Remote Unlock")
+                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
@@ -1473,13 +1563,117 @@ private struct RemoteUnlockStatusOverlay: View {
     }
 }
 
+#if DEBUG
+struct RemoteUnlockSimulatorHarnessView: View {
+    @State private var password = "test-mac-password"
+    @State private var savedCredentialAvailable = true
+    @State private var status = "Locked Mac Remote Unlock ready"
+
+    private var state: HermesRealtimeRelayRemoteUnlockState {
+        HermesRealtimeRelayRemoteUnlockState(
+            sessionId: "sim-remote-unlock-session",
+            lockState: .loginWindow,
+            backend: .appleScreenSharingLoopback,
+            capabilities: HermesRealtimeRelayRemoteUnlockCapabilities(
+                enabled: true,
+                certificationStatus: .certified,
+                activeBackend: .appleScreenSharingLoopback,
+                supportedBackends: [.appleScreenSharingLoopback],
+                supportedLockStates: [.loginWindow, .securityAgent, .screenLocked],
+                allowsCredentialPaste: true,
+                allowsSavedCredentialUnlock: true,
+                credentialRecipientKeyId: "sim-mac-recipient-key",
+                credentialRecipientPublicKeyBase64: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                credentialEnvelopeAlgorithm: "HPKE-X25519-SHA256-CHACHAPOLY"
+            ),
+            controlOwnerViewerId: "sim-viewer",
+            observedAt: Date()
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.08, green: 0.09, blue: 0.12), Color(red: 0.18, green: 0.20, blue: 0.23)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Label("MacBook Pro", systemImage: "display")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    Spacer()
+                    Label("loginwindow", systemImage: "lock.fill")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(.white.opacity(0.74))
+
+                Spacer(minLength: 24)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.white.opacity(0.20))
+                        .frame(width: 92, height: 92)
+                        .overlay(
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 58))
+                                .foregroundStyle(.white.opacity(0.70))
+                        )
+                    Text("Alberto")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("Password required")
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.60))
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 18)
+
+                RemoteUnlockStatusOverlay(
+                    state: state,
+                    password: $password,
+                    savedCredentialAvailable: savedCredentialAvailable,
+                    sendCredential: { credential in
+                        status = credential.isEmpty ? "Password missing" : "Typed password queued for loginwindow"
+                    },
+                    saveCredential: { credential in
+                        savedCredentialAvailable = !credential.isEmpty
+                        status = credential.isEmpty ? "Password missing" : "One-tap credential available"
+                    },
+                    sendSavedCredential: {
+                        status = "Saved credential queued for loginwindow"
+                    },
+                    deleteSavedCredential: {
+                        savedCredentialAvailable = false
+                        status = "Saved credential removed"
+                    },
+                    onReconnect: {
+                        status = "Remote Unlock session refreshed"
+                    },
+                    onClose: {
+                        status = "Remote Unlock viewer closed"
+                    }
+                )
+
+                Text(status)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.74))
+                    .accessibilityIdentifier("remoteUnlockHarness.status")
+            }
+            .padding(18)
+        }
+        .accessibilityIdentifier("remoteUnlockHarness.root")
+    }
+}
+#endif
+
 private struct MirrorControlPanel: View {
     @Binding var interactionMode: ScreenShareInteractionMode
     @Binding var isCollapsed: Bool
     @Binding var isTyping: Bool
     @Binding var coPilotTarget: (normalizedX: Double, normalizedY: Double, viewPoint: CGPoint)?
-    @Binding var showingDisplayPicker: Bool
-    @Binding var showingScrollTools: Bool
     @Binding var edgeScrollEnabled: Bool
     @Binding var hardwareScrollEnabled: Bool
     @Binding var statsVisible: Bool
@@ -1506,8 +1700,324 @@ private struct MirrorControlPanel: View {
     let grabClipboardFromMac: () -> Void
     let onClose: () -> Void
 
+    @State private var openGroup: MirrorControlGroup?
+    @State private var tooltip: String?
+
+    // Related controls are shelved behind one primary button each, so the
+    // always-visible dock stays compact instead of showing every action at once.
+    private enum MirrorControlGroup: String, CaseIterable, Identifiable {
+        case mode, zoom, scroll, keyboard, screen
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .mode: return "Mode"
+            case .zoom: return "Zoom"
+            case .scroll: return "Scroll"
+            case .keyboard: return "Keys"
+            case .screen: return "Screen"
+            }
+        }
+
+        var hint: String {
+            switch self {
+            case .mode: return "Interaction mode — view, control, trackpad, Co-Pilot"
+            case .zoom: return "Zoom and Smart Zoom"
+            case .scroll: return "Scroll and paging"
+            case .keyboard: return "Keyboard and clipboard"
+            case .screen: return "Display, cursor and stats"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .mode: return "hand.draw"
+            case .zoom: return "arrow.up.left.and.down.right.magnifyingglass"
+            case .scroll: return "arrow.up.arrow.down"
+            case .keyboard: return "keyboard"
+            case .screen: return "macwindow"
+            }
+        }
+    }
+
     var body: some View {
+        VStack(alignment: .center, spacing: 10) {
+            statusStrip
+            if let group = openGroup {
+                shelf(for: group)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .opacity
+                    ))
+            }
+            primaryDock
+        }
+        .overlay(alignment: .top) { tooltipBubble }
+        .animation(.snappy(duration: 0.26), value: openGroup)
+        .onChange(of: openGroup) { _, newValue in
+            isCollapsed = (newValue == nil)
+        }
+        .onAppear { isCollapsed = (openGroup == nil) }
+        .task(id: tooltip) {
+            guard tooltip != nil else { return }
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            withAnimation(.easeOut(duration: 0.2)) { tooltip = nil }
+        }
+    }
+
+    // MARK: - Primary dock
+
+    private var primaryDock: some View {
+        HStack(spacing: 10) {
+            ForEach(MirrorControlGroup.allCases) { group in
+                groupButton(group)
+            }
+            Spacer(minLength: 6)
+            Button(action: onClose) {
+                railIcon("xmark", selected: false, disabled: false)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close mirror")
+            .accessibilityHint("Disconnect and close the mirror")
+            .help("Close mirror")
+            .simultaneousGesture(longPress("Close mirror and disconnect"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .mirrorGlassBackground(cornerRadius: 24)
+        .shadow(color: .black.opacity(0.30), radius: 18, x: 0, y: 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Mirror controls")
+    }
+
+    private func groupButton(_ group: MirrorControlGroup) -> some View {
+        let isOpen = openGroup == group
+        return Button {
+            withAnimation(.snappy(duration: 0.26)) {
+                openGroup = isOpen ? nil : group
+            }
+        } label: {
+            railIcon(
+                group == .mode ? activeModeIcon : group.icon,
+                selected: isOpen || groupActive(group),
+                disabled: false
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(group.title)
+        .accessibilityHint(group.hint)
+        .accessibilityAddTraits(isOpen ? .isSelected : [])
+        .help(group.hint)
+        .simultaneousGesture(longPress(group.hint))
+    }
+
+    private func groupActive(_ group: MirrorControlGroup) -> Bool {
+        switch group {
+        case .mode: return interactionMode != .view
+        case .zoom: return isZoomed || smartZoomMode != .off
+        case .scroll: return edgeScrollEnabled || hardwareScrollEnabled
+        case .keyboard: return isTyping || autoKeyboardOnTextFocus
+        case .screen: return statsVisible || cursorStyle == .hidden
+        }
+    }
+
+    // MARK: - Shelf (cascading group contents)
+
+    private func shelf(for group: MirrorControlGroup) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                shelfTitle(group.title)
+                shelfContent(for: group)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+        .frame(maxWidth: .infinity)
+        .mirrorGlassBackground(cornerRadius: 22)
+        .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(group.title) options")
+    }
+
+    @ViewBuilder
+    private func shelfContent(for group: MirrorControlGroup) -> some View {
+        switch group {
+        case .mode: modeShelf
+        case .zoom: zoomShelf
+        case .scroll: scrollShelf
+        case .keyboard: keyboardShelf
+        case .screen: screenShelf
+        }
+    }
+
+    @ViewBuilder
+    private var modeShelf: some View {
+        leafButton(
+            "hand.draw", label: "View mode",
+            hint: "View only — pan and zoom without controlling the Mac",
+            selected: interactionMode == .view, collapsesShelf: true
+        ) {
+            withAnimation(.snappy) {
+                interactionMode = .view
+                isTyping = false
+            }
+        }
+        leafButton(
+            "target", label: "Agent Co-Pilot",
+            hint: "Tap a target and the agent acts on it for you",
+            selected: interactionMode == .coPilot,
+            disabled: controlInputEnabled == false, collapsesShelf: true
+        ) {
+            guard controlInputEnabled else { return }
+            withAnimation(.snappy) {
+                interactionMode = .coPilot
+                isTyping = false
+                coPilotTarget = nil
+            }
+        }
+        if controlInputEnabled, controlStatus.isLive == false {
+            leafButton(
+                "person.badge.key", label: "Trust this iPhone",
+                hint: "Authorize this iPhone to control the Mac",
+                collapsesShelf: true, action: onTrustControlDevice
+            )
+        }
+        leafButton(
+            controlInputEnabled ? "cursorarrow.click.2" : "lock",
+            label: controlStatus.label,
+            hint: "Direct control — tap and drag controls the Mac pointer",
+            selected: interactionMode == .control,
+            disabled: controlInputEnabled == false, collapsesShelf: true
+        ) {
+            guard controlInputEnabled else { return }
+            withAnimation(.snappy) {
+                interactionMode = .control
+                isTyping = false
+            }
+        }
+        leafButton(
+            "rectangle.and.hand.point.up.left", label: "Trackpad mode",
+            hint: "Trackpad — relative pointer movement like a laptop",
+            selected: interactionMode == .trackpad,
+            disabled: controlInputEnabled == false, collapsesShelf: true
+        ) {
+            guard controlInputEnabled else { return }
+            withAnimation(.snappy) {
+                interactionMode = .trackpad
+                isTyping = false
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var zoomShelf: some View {
+        leafButton(
+            "magnifyingglass.plus", label: "Zoom in",
+            hint: "Zoom into the mirrored screen", action: zoomIn
+        )
+        leafButton(
+            "magnifyingglass.minus", label: "Zoom out",
+            hint: "Zoom back out", disabled: isZoomed == false, action: zoomOut
+        )
+        if isZoomed {
+            leafButton(
+                "arrow.counterclockwise", label: "Reset zoom",
+                hint: "Return to fit-to-screen", action: resetZoom
+            )
+        }
+        smartZoomMenu
+    }
+
+    @ViewBuilder
+    private var scrollShelf: some View {
+        leafButton(
+            "chevron.up", label: "Scroll up", hint: "Scroll up a little",
+            disabled: controlInputEnabled == false
+        ) { sendScrollButton(-0.22) }
+        leafButton(
+            "chevron.down", label: "Scroll down", hint: "Scroll down a little",
+            disabled: controlInputEnabled == false
+        ) { sendScrollButton(0.22) }
+        leafButton(
+            "arrow.up.to.line", label: "Page up", hint: "Scroll up a full page",
+            disabled: controlInputEnabled == false
+        ) { sendScrollButton(-0.45) }
+        leafButton(
+            "arrow.down.to.line", label: "Page down", hint: "Scroll down a full page",
+            disabled: controlInputEnabled == false
+        ) { sendScrollButton(0.45) }
+        leafToggle(
+            "arrow.left.and.right", label: "Edge scroll",
+            hint: "Scroll by dragging near the screen edges", isOn: $edgeScrollEnabled
+        )
+        leafToggle(
+            "speaker.wave.2", label: "Volume scroll",
+            hint: "Use the hardware volume buttons to scroll", isOn: $hardwareScrollEnabled
+        )
+    }
+
+    @ViewBuilder
+    private var keyboardShelf: some View {
+        let autoKeyboardBinding = Binding<Bool>(
+            get: { autoKeyboardOnTextFocus },
+            set: { enabled in
+                autoKeyboardOnTextFocus = enabled
+                let nextMode = ScreenShareSmartTextActivationPolicy.modeAfterAutoKeyboardToggle(
+                    enabled: enabled,
+                    currentMode: interactionMode,
+                    controlInputEnabled: controlInputEnabled
+                )
+                guard nextMode != interactionMode else { return }
+                withAnimation(.snappy) {
+                    interactionMode = nextMode
+                }
+            }
+        )
+        leafButton(
+            "keyboard", label: "Type on Mac",
+            hint: "Open the keyboard and type on the Mac",
+            selected: isTyping, disabled: controlInputEnabled == false
+        ) {
+            guard controlInputEnabled else { return }
+            withAnimation(.snappy) {
+                interactionMode = .control
+                isTyping.toggle()
+            }
+            if isTyping { focusTyping() }
+        }
+        leafToggle(
+            "character.cursor.ibeam", label: "Auto keyboard",
+            hint: "Open the keyboard automatically when a text field is focused",
+            isOn: autoKeyboardBinding
+        )
+        leafButton(
+            "doc.on.clipboard", label: "Paste to Mac",
+            hint: "Send this iPhone's clipboard to the Mac",
+            disabled: controlInputEnabled == false, action: pasteClipboardToMac
+        )
+        leafButton(
+            "arrow.down.doc", label: "Grab from Mac",
+            hint: "Copy the Mac's clipboard to this iPhone",
+            disabled: controlInputEnabled == false, action: grabClipboardFromMac
+        )
+    }
+
+    @ViewBuilder
+    private var screenShelf: some View {
+        displayButton
+        cursorMenu
+        leafToggle(
+            "waveform.path.ecg", label: "Performance stats",
+            hint: "Show the bitrate and latency overlay", isOn: $statsVisible
+        )
+    }
+
+    // MARK: - Status strip
+
+    @ViewBuilder
+    private var statusStrip: some View {
+        if statsVisible || controlStatus.detail != nil {
             HStack(spacing: 8) {
                 if statsVisible {
                     compactStats
@@ -1515,79 +2025,102 @@ private struct MirrorControlPanel: View {
                 if let detail = controlStatus.detail {
                     compactControlStatus(detail)
                 }
-                panelButton("hand.draw", selected: interactionMode == .view, label: "View mode") {
-                    withAnimation(.snappy) {
-                        interactionMode = .view
-                        isTyping = false
-                    }
-                }
-                panelButton("target", selected: interactionMode == .coPilot, label: "Agent Co-Pilot", disabled: controlInputEnabled == false) {
-                    guard controlInputEnabled else { return }
-                    withAnimation(.snappy) {
-                        interactionMode = .coPilot
-                        isTyping = false
-                        coPilotTarget = nil
-                    }
-                }
-                if controlInputEnabled, controlStatus.isLive == false {
-                    panelButton("person.badge.key", selected: false, label: "Trust this iPhone for Mac control", action: onTrustControlDevice)
-                }
-                panelButton(controlInputEnabled ? "cursorarrow.click.2" : "lock", selected: interactionMode == .control, label: controlStatus.label, disabled: controlInputEnabled == false) {
-                    guard controlInputEnabled else { return }
-                    withAnimation(.snappy) {
-                        interactionMode = .control
-                        isTyping = false
-                    }
-                }
-                panelButton("rectangle.and.hand.point.up.left", selected: interactionMode == .trackpad, label: "Trackpad mode", disabled: controlInputEnabled == false) {
-                    guard controlInputEnabled else { return }
-                    withAnimation(.snappy) {
-                        interactionMode = .trackpad
-                        isTyping = false
-                    }
-                }
-                displayButton
-                cursorMenu
-                smartZoomMenu
-                panelButton("magnifyingglass.plus", selected: false, label: "Zoom in", action: zoomIn)
-                panelButton("magnifyingglass.minus", selected: false, label: "Zoom out", disabled: isZoomed == false, action: zoomOut)
-                panelButton("chevron.up", selected: false, label: "Scroll up", disabled: controlInputEnabled == false) { sendScrollButton(-0.22) }
-                panelButton("chevron.down", selected: false, label: "Scroll down", disabled: controlInputEnabled == false) { sendScrollButton(0.22) }
-                panelButton("arrow.up.to.line", selected: false, label: "Page up", disabled: controlInputEnabled == false) { sendScrollButton(-0.45) }
-                panelButton("arrow.down.to.line", selected: false, label: "Page down", disabled: controlInputEnabled == false) { sendScrollButton(0.45) }
-                panelButton("keyboard", selected: isTyping, label: "Type on Mac", disabled: controlInputEnabled == false) {
-                    guard controlInputEnabled else { return }
-                    withAnimation(.snappy) {
-                        interactionMode = .control
-                        isTyping.toggle()
-                    }
-                    if isTyping { focusTyping() }
-                }
-                panelToggle(
-                    "Auto keyboard on text focus",
-                    isOn: $autoKeyboardOnTextFocus,
-                    systemName: "character.cursor.ibeam"
-                )
-                panelButton("doc.on.clipboard", selected: false, label: "Paste to Mac", disabled: controlInputEnabled == false, action: pasteClipboardToMac)
-                panelButton("arrow.down.doc", selected: false, label: "Grab from Mac", disabled: controlInputEnabled == false, action: grabClipboardFromMac)
-                panelToggle("Edges", isOn: $edgeScrollEnabled, systemName: "arrow.left.and.right")
-                panelToggle("Volume", isOn: $hardwareScrollEnabled, systemName: "speaker.wave.2")
-                panelButton("waveform.path.ecg", selected: statsVisible, label: "Toggle performance stats") {
-                    withAnimation(.snappy) { statsVisible.toggle() }
-                }
-                if isZoomed {
-                    panelButton("arrow.counterclockwise", selected: false, label: "Reset zoom", action: resetZoom)
-                }
-                panelButton("xmark", selected: false, label: "Close mirror", action: onClose)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .transition(.opacity)
         }
-        .frame(maxWidth: .infinity)
-        .mirrorGlassBackground(cornerRadius: 24)
-        .shadow(color: .black.opacity(0.30), radius: 18, x: 0, y: 10)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Mirror controls")
+    }
+
+    // MARK: - Tooltip (tap and hold)
+
+    @ViewBuilder
+    private var tooltipBubble: some View {
+        if let tooltip {
+            Text(tooltip)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
+                .frame(maxWidth: 300)
+                .fixedSize(horizontal: false, vertical: true)
+                .offset(y: -54)
+                .transition(.scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func longPress(_ text: String) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+            presentTooltip(text)
+        }
+    }
+
+    private func presentTooltip(_ text: String) {
+        withAnimation(.snappy(duration: 0.2)) { tooltip = text }
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+    }
+
+    // MARK: - Leaf controls
+
+    private func leafButton(
+        _ systemName: String,
+        label: String,
+        hint: String,
+        selected: Bool = false,
+        disabled: Bool = false,
+        collapsesShelf: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            action()
+            if collapsesShelf {
+                withAnimation(.snappy(duration: 0.26)) { openGroup = nil }
+            }
+        } label: {
+            railIcon(systemName, selected: selected, disabled: disabled)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityLabel(label)
+        .accessibilityHint(hint)
+        .help(hint)
+        .simultaneousGesture(longPress(hint))
+    }
+
+    private func leafToggle(
+        _ systemName: String,
+        label: String,
+        hint: String,
+        isOn: Binding<Bool>
+    ) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            railIcon(systemName, selected: isOn.wrappedValue, disabled: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
+        .accessibilityHint(hint)
+        .help(hint)
+        .simultaneousGesture(longPress(hint))
+    }
+
+    private func shelfTitle(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .heavy, design: .rounded))
+            .tracking(0.6)
+            .foregroundStyle(.white.opacity(0.5))
+            .padding(.horizontal, 10)
+            .frame(height: 42)
+            .accessibilityHidden(true)
     }
 
     private var fallbackDisplays: [HermesRealtimeRelayDisplayDescriptor] {
@@ -1668,6 +2201,7 @@ private struct MirrorControlPanel: View {
                 }
             }
         }
+        .help(isDisabled ? "One display available" : "Switch display — long-press to choose")
         .accessibilityLabel(isDisabled ? "One display available" : "Switch display")
     }
 
@@ -1695,6 +2229,7 @@ private struct MirrorControlPanel: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .help("Cursor style and size")
         .accessibilityLabel("Cursor options")
     }
 
@@ -1747,28 +2282,9 @@ private struct MirrorControlPanel: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .help("Smart Zoom: \(smartZoomMode.label)")
         .accessibilityLabel("Smart Zoom: \(smartZoomMode.label)")
         .accessibilityValue(smartZoomAutoFollowing ? "Auto-following" : "Idle")
-    }
-
-    private func panelButton(_ systemName: String, selected: Bool, label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            railIcon(systemName, selected: selected, disabled: disabled)
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .accessibilityLabel(label)
-    }
-
-    private func panelToggle(_ label: String, isOn: Binding<Bool>, systemName: String) -> some View {
-        Button {
-            isOn.wrappedValue.toggle()
-        } label: {
-            railIcon(systemName, selected: isOn.wrappedValue, disabled: false)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
     }
 
     private func railIcon(_ systemName: String, selected: Bool, disabled: Bool) -> some View {

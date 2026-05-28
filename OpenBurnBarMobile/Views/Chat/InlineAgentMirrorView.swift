@@ -84,6 +84,11 @@ struct InlineAgentMirrorView: View {
                 .padding(.horizontal, 8)
                 .padding(.top, 6)
                 Spacer()
+                if cliMissionBannerText != nil {
+                    cliMissionBanner
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, shouldShowFooter ? 4 : 8)
+                }
                 if shouldShowFooter {
                     footer
                         .padding(.horizontal, 8)
@@ -96,6 +101,9 @@ struct InlineAgentMirrorView: View {
                 .strokeBorder(MobileTheme.mercuryGradient, lineWidth: 0.75)
         )
         .task {
+            if smartZoomMode == .off {
+                smartZoomMode = .smart
+            }
             controller.start(hermesService: hermesService)
         }
         .onDisappear {
@@ -289,9 +297,9 @@ struct InlineAgentMirrorView: View {
         var explainer: String {
             switch self {
             case .noRelay:
-                return "CLI view mirrors your Mac's entire desktop \u{2014} not a separate terminal window. We need a paired Mac with Hermes Remote Relay turned on."
+                return "CLI view opens Hermes in Terminal on your paired Mac and mirrors that focused workspace here. We need a Mac with Hermes Remote Relay turned on."
             case .noFrames:
-                return "CLI view mirrors your Mac's whole desktop \u{2014} no terminal will pop open. Your Mac acknowledged the request but the screen-share pipeline hasn't produced a single frame yet."
+                return "The Mac accepted the mirror request, but the screen-share pipeline has not produced a frame yet. Hermes Terminal may be opening off-screen or Screen Recording may still be blocked."
             case .generic:
                 return "The handshake didn't complete cleanly."
             }
@@ -359,6 +367,54 @@ struct InlineAgentMirrorView: View {
             }
             return .error(message, kind)
         }
+    }
+
+    @ViewBuilder
+    private var cliMissionBanner: some View {
+        if let text = cliMissionBannerText {
+            missionBanner(text: text, isError: cliMissionBannerIsError)
+        }
+    }
+
+    private var cliMissionBannerText: String? {
+        if let error = hermesService.visibleCLIErrorText?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !error.isEmpty {
+            return error
+        }
+        guard hermesService.isStreaming,
+              let status = hermesService.visibleCLIStatusText?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !status.isEmpty else { return nil }
+        return status
+    }
+
+    private var cliMissionBannerIsError: Bool {
+        let error = hermesService.visibleCLIErrorText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return error?.isEmpty == false
+    }
+
+    private func missionBanner(text: String, isError: Bool) -> some View {
+        HStack(alignment: .top, spacing: 7) {
+            Image(systemName: isError ? "exclamationmark.triangle.fill" : "terminal.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(isError ? MobileTheme.Colors.warning : MobileTheme.hermesAureate)
+                .padding(.top, 1)
+            Text(text)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.86))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(Color.black.opacity(0.68))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .stroke((isError ? MobileTheme.Colors.warning : MobileTheme.hermesAureate).opacity(0.35), lineWidth: 0.6)
+        )
     }
 
     // MARK: - Footer (compact diagnostic / retry)

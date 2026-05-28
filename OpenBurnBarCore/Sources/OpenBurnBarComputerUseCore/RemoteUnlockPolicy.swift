@@ -108,6 +108,7 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
             supportedLockStates: runtimeReady ? Array(supportedLockStates).sorted { $0.rawValue < $1.rawValue } : [],
             blockers: availabilityBlockers,
             allowsCredentialPaste: runtimeReady,
+            allowsSavedCredentialUnlock: runtimeReady,
             credentialRecipientKeyId: runtimeReady ? snapshot.credentialRecipientKeyId : nil,
             credentialRecipientPublicKeyBase64: runtimeReady ? snapshot.credentialRecipientPublicKeyBase64 : nil,
             credentialEnvelopeAlgorithm: runtimeReady ? Self.credentialEnvelopeAlgorithm : nil,

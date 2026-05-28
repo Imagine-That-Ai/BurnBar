@@ -311,7 +311,24 @@ enum CLIAgentMissionRuntimePlanner {
                 ],
                 extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
             )
-        case ChatBackendID.codex.rawValue, ChatBackendID.claude.rawValue, ChatBackendID.hermes.rawValue:
+        case ChatBackendID.hermes.rawValue:
+            var arguments = [
+                "chat",
+                "--query",
+                hostPrompt,
+                "--source",
+                "openburnbar-mobile-cli",
+                "--accept-hooks"
+            ]
+            if let requestedModelID {
+                arguments += ["--model", requestedModelID]
+            }
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "hermes",
+                arguments: arguments,
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.codex.rawValue, ChatBackendID.claude.rawValue:
             return nil
         default:
             return nil
@@ -383,6 +400,7 @@ enum CLIAgentMissionRuntimePlanner {
                 extraEnvironment: [:]
             )
         case ChatBackendID.openclaw.rawValue,
+            ChatBackendID.hermes.rawValue,
             ChatBackendID.piAgent.rawValue,
             "opencode",
             "ollama":

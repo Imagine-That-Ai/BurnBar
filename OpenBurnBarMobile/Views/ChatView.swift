@@ -241,7 +241,11 @@ struct ChatView: View {
         guard !text.isEmpty else { return }
         Haptics.rigid()
         inputText = ""
-        service.sendMessage(text)
+        if chatViewMode == .cli {
+            service.sendVisibleCLIMessage(text)
+        } else {
+            service.sendMessage(text)
+        }
     }
 }
 

@@ -6,6 +6,11 @@ import { runStdioShim } from "./shim.js";
 import { writeAccessToken } from "./oauth.js";
 import { basename } from "node:path";
 
+function looksLikeSessionId(s: string | undefined): boolean {
+  if (!s) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s) || /^[A-Za-z0-9_-]{16,}$/.test(s);
+}
+
 async function main(): Promise<void> {
   const [, , first, second, third] = process.argv;
   const invokedName = basename(process.argv[1] ?? "");
@@ -14,6 +19,7 @@ async function main(): Promise<void> {
     const asIdx = process.argv.indexOf("--as");
     const modelIdx = process.argv.indexOf("--model");
     const queryIdx = process.argv.indexOf("--query");
+    const sessionIdx = process.argv.indexOf("--session");
     const providerIdx = process.argv.indexOf("--provider");
     const projectIdx = process.argv.indexOf("--project");
     const targetHarness = optionValue("--as", asIdx);
@@ -21,16 +27,34 @@ async function main(): Promise<void> {
     const provider = optionValue("--provider", providerIdx);
     const projectName = optionValue("--project", projectIdx);
     const explicitQuery = optionValue("--query", queryIdx);
+    const explicitSessionId = optionValue("--session", sessionIdx);
     const positional = obbresumeBinary
       ? first && !first.startsWith("--") ? first : undefined
       : second && !second.startsWith("--") ? second : undefined;
     const obbResumeMode = obbresumeBinary || first === "obbresume" || first === "Resume";
-    const query = explicitQuery ?? (obbResumeMode ? positional : undefined);
-    const sessionId = first === "resume" || obbResumeMode ? positional : undefined;
+
+    const sessionId = explicitSessionId ?? (
+      !obbResumeMode && first === "resume" && positional && looksLikeSessionId(positional)
+        ? positional
+        : undefined
+    );
+    const query = explicitQuery ?? (
+      obbResumeMode
+        ? positional
+        : (first === "resume" && positional && !looksLikeSessionId(positional) ? positional : undefined)
+    );
+
     if (!sessionId && !query) {
-      process.stderr.write(first === "obbresume" || first === "Resume"
-        ? "error: OBB Resume requires fuzzy memory text or --query text\n"
-        : "error: resume requires a session id or --query text\n");
+      process.stderr.write(`Error: Resume requires a search query or a session ID.
+
+Examples:
+  obb resume "my topic"                      (Fuzzy search by topic)
+  obb resume 381a1795-001c-4b62-bbbe-...     (Direct resume by UUID)
+  obb resume --session <id>                  (Force resume by session ID)
+  obb resume --query "topic" --as python     (Search topic and spawn using python harness)
+  obb resume --query "topic" --copy          (Search topic and copy briefing to clipboard)
+  obb resume --query "topic" --open          (Search topic and open briefing file)
+`);
       process.exit(2);
     }
     const mode: ResumeMode = process.argv.includes("--copy")
@@ -61,12 +85,18 @@ async function main(): Promise<void> {
   if (first === "mcp" && second === "doctor") {
     process.exit(await doctor());
   }
-  if (first === "mcp" && second === "login" && third) {
-    writeAccessToken(third);
-    process.stdout.write("OpenBurnBar MCP token stored.\n");
-    return;
+  if (first === "mcp" && second === "login") {
+    if (third) {
+      writeAccessToken(third);
+      process.stdout.write("OpenBurnBar MCP token stored.\n");
+      return;
+    } else {
+      const { runLoginFlow } = await import("./login.js");
+      await runLoginFlow();
+      return;
+    }
   }
-  process.stdout.write("Usage: openburnbar mcp <serve|install|doctor|login> | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n");
+  process.stdout.write("Usage: openburnbar mcp <serve|install|doctor|login> [token] | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n");
 }
 
 function optionValue(name: string, index: number): string | undefined {

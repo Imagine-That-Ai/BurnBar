@@ -629,6 +629,7 @@ public struct HermesRealtimeRelayRemoteUnlockCapabilities: Codable, Sendable, Eq
     public var supportedLockStates: [HermesRealtimeRelayMacLockState]
     public var blockers: [String]
     public var allowsCredentialPaste: Bool
+    public var allowsSavedCredentialUnlock: Bool
     public var credentialRecipientKeyId: String?
     public var credentialRecipientPublicKeyBase64: String?
     public var credentialEnvelopeAlgorithm: String?
@@ -644,6 +645,7 @@ public struct HermesRealtimeRelayRemoteUnlockCapabilities: Codable, Sendable, Eq
         supportedLockStates: [HermesRealtimeRelayMacLockState] = [],
         blockers: [String] = [],
         allowsCredentialPaste: Bool = false,
+        allowsSavedCredentialUnlock: Bool = false,
         credentialRecipientKeyId: String? = nil,
         credentialRecipientPublicKeyBase64: String? = nil,
         credentialEnvelopeAlgorithm: String? = nil,
@@ -658,6 +660,7 @@ public struct HermesRealtimeRelayRemoteUnlockCapabilities: Codable, Sendable, Eq
         self.supportedLockStates = supportedLockStates
         self.blockers = blockers
         self.allowsCredentialPaste = allowsCredentialPaste
+        self.allowsSavedCredentialUnlock = allowsSavedCredentialUnlock
         self.credentialRecipientKeyId = credentialRecipientKeyId
         self.credentialRecipientPublicKeyBase64 = credentialRecipientPublicKeyBase64
         self.credentialEnvelopeAlgorithm = credentialEnvelopeAlgorithm
@@ -681,6 +684,7 @@ public struct HermesRealtimeRelayRemoteUnlockCapabilities: Codable, Sendable, Eq
         case supportedLockStates
         case blockers
         case allowsCredentialPaste
+        case allowsSavedCredentialUnlock
         case credentialRecipientKeyId
         case credentialRecipientPublicKeyBase64
         case credentialEnvelopeAlgorithm
@@ -714,6 +718,7 @@ public struct HermesRealtimeRelayRemoteUnlockCapabilities: Codable, Sendable, Eq
         ) ?? []
         self.blockers = try container.decodeIfPresent([String].self, forKey: .blockers) ?? []
         self.allowsCredentialPaste = try container.decodeIfPresent(Bool.self, forKey: .allowsCredentialPaste) ?? false
+        self.allowsSavedCredentialUnlock = try container.decodeIfPresent(Bool.self, forKey: .allowsSavedCredentialUnlock) ?? false
         self.credentialRecipientKeyId = try container.decodeIfPresent(String.self, forKey: .credentialRecipientKeyId)
         self.credentialRecipientPublicKeyBase64 = try container.decodeIfPresent(
             String.self,
@@ -739,6 +744,7 @@ public struct HermesRealtimeRelayRemoteUnlockCapabilities: Codable, Sendable, Eq
         try container.encode(supportedLockStates, forKey: .supportedLockStates)
         try container.encode(blockers, forKey: .blockers)
         try container.encode(allowsCredentialPaste, forKey: .allowsCredentialPaste)
+        try container.encode(allowsSavedCredentialUnlock, forKey: .allowsSavedCredentialUnlock)
         try container.encodeIfPresent(credentialRecipientKeyId, forKey: .credentialRecipientKeyId)
         try container.encodeIfPresent(credentialRecipientPublicKeyBase64, forKey: .credentialRecipientPublicKeyBase64)
         try container.encodeIfPresent(credentialEnvelopeAlgorithm, forKey: .credentialEnvelopeAlgorithm)
@@ -985,6 +991,7 @@ public struct HermesRealtimeRelayRemoteUnlockCredentialEnvelope: Codable, Sendab
     public enum CredentialKind: String, Codable, Sendable, Equatable {
         case typedPassword = "typed_password"
         case clipboardPassword = "clipboard_password"
+        case savedPassword = "saved_password"
     }
 
     public var requestId: String

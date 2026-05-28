@@ -16,6 +16,13 @@ CLI agent composer:
 | Chat | `native_chat` | Uses the native mobile chat surface. iOS, iPadOS, and Android send the turn through the encrypted `/v1/cli-agent/chat` Mac relay first. Android falls back from iroh to encrypted Firestore relay before considering any mission fallback. |
 | Mac CLI | `mac_visible_cli` | Sends the turn through the mission queue with `deliveryMode = full_stream`, opens the selected agent in a visible macOS Terminal window, and streams that same Terminal output back into the mobile thread. The phone/tablet can use Mercury screen sharing as the main interface while the Mac CLI is running. |
 
+The main iOS Hermes chat uses the same `mac_visible_cli` mission path when its
+toolbar view mode is set to **CLI**. A new Hermes turn opens `hermes chat` in
+Terminal on the paired Mac, starts the inline Mercury mirror, and uses Smart
+Zoom focus context to frame the active Terminal window on the phone. Attachment
+turns are rejected in CLI mode until there is a terminal-visible attachment
+handoff; switch back to Smart/native chat for attachment turns.
+
 The request field is `presentationMode`. Older clients and older relay payloads
 that omit the field decode as `native_chat`.
 

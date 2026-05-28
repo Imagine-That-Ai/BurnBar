@@ -2511,5 +2511,10 @@ service cloud.firestore {
       allow read: if isOperator();
       allow write: if false;
     }
+
+    // --- CLI Link Sessions (Deny All - Server Only) ---
+    match /cli_link_sessions/{sessionId} {
+      allow read, write: if false;
+    }
   }
 }

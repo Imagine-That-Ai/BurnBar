@@ -94,4 +94,15 @@ final class AssistantModelCatalogTests: XCTestCase {
     func test_openClawCatalogIsLiveOnly() {
         XCTAssertTrue(AssistantModelCatalog.options(for: .openClaw).isEmpty)
     }
+
+    func test_hermesAgentProviderMapping() {
+        XCTAssertEqual(hermesAgentProvider(for: "deepseek-v4-flash"), .deepSeek)
+        XCTAssertEqual(hermesAgentProvider(for: "deepseek-v4-pro"), .deepSeek)
+        XCTAssertEqual(hermesAgentProvider(for: "deepseek-v3.2"), .deepSeek)
+        XCTAssertEqual(hermesAgentProvider(for: "openai-gpt-4o"), .openAI)
+        XCTAssertEqual(hermesAgentProvider(for: "claude-3-5-sonnet"), .claudeCode)
+        XCTAssertEqual(hermesAgentProvider(for: "kimi-latest"), .kimi)
+        XCTAssertEqual(hermesAgentProvider(for: "grok-beta"), .xAI)
+        XCTAssertEqual(hermesAgentProvider(for: "openclaw-agent"), .openClaw)
+    }
 }
