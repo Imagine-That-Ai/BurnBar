@@ -7621,11 +7621,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_7F3B5150-6A1B-4DAA-8664-94D1D5695E09" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_2A0B726F-7030-4796-A302-69D64C1A7222" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_E84CCA63-E8AC-419B-A778-FB8B69470443" /* OpenBurnBarCore */;
+			productRef = "TEMP_B79BCFCB-A1FB-4F4B-AAC6-2CBFE760EEF5" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -7658,7 +7658,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_1779A9C1-8A2A-4261-B6B4-F20F466FA134" /* OpenBurnBarCore */;
+			productRef = "TEMP_1A1D02F0-C1EB-468E-86D6-6212E6FF9886" /* OpenBurnBarCore */;
 		};
 		DB969356C591A565802DBBD9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -7667,11 +7667,11 @@
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_6646A8F1-3299-4964-80D4-662680C90AEF" /* OpenBurnBarMedia */;
+			productRef = "TEMP_997EB0D5-E0F0-491B-BF29-14DA44B877DF" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_95ECA229-CEA4-4BD7-9C1E-0EEC3E3BA787" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_C0C522DC-4192-4D7D-853E-44F2F95AE59C" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -7809,7 +7809,6 @@
 		2547F2D70BB3F9FC14B79D2B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -8144,7 +8143,6 @@
 		D2BB797D25E72ABA834759CE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -8583,25 +8581,25 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_1779A9C1-8A2A-4261-B6B4-F20F466FA134" /* OpenBurnBarCore */ = {
+		"TEMP_1A1D02F0-C1EB-468E-86D6-6212E6FF9886" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		"TEMP_6646A8F1-3299-4964-80D4-662680C90AEF" /* OpenBurnBarMedia */ = {
+		"TEMP_2A0B726F-7030-4796-A302-69D64C1A7222" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_997EB0D5-E0F0-491B-BF29-14DA44B877DF" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_7F3B5150-6A1B-4DAA-8664-94D1D5695E09" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_95ECA229-CEA4-4BD7-9C1E-0EEC3E3BA787" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_E84CCA63-E8AC-419B-A778-FB8B69470443" /* OpenBurnBarCore */ = {
+		"TEMP_B79BCFCB-A1FB-4F4B-AAC6-2CBFE760EEF5" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
+		};
+		"TEMP_C0C522DC-4192-4D7D-853E-44F2F95AE59C" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

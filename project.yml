@@ -298,7 +298,6 @@ targets:
         CURRENT_PROJECT_VERSION: 38
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
-        APS_ENVIRONMENT: development
         # Apple sign-in + iOS Keychain access group; see
         # OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements.
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements
@@ -318,9 +317,6 @@ targets:
         OPENBURNBAR_USE_DEBUG_APP_CHECK: "NO"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-      configs:
-        Release:
-          APS_ENVIRONMENT: production
     postBuildScripts:
       - name: Inject Internal App Check Debug Token
         script: |
