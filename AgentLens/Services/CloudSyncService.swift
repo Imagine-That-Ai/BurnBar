@@ -16,7 +16,6 @@ import OpenBurnBarMedia
 ///
 /// Idempotent: document IDs are deterministic, so re-uploading the same row is a no-op.
 @Observable
-@MainActor
 final class CloudSyncService {
     private enum SyncBackoffPolicy {
         static let permissionDeniedCooldown: TimeInterval = 10 * 60
@@ -44,36 +43,23 @@ final class CloudSyncService {
 
     // MARK: - Init
 
-    init(dataStore: DataStore, accountManager: AccountManager, settingsManager: SettingsManager = .shared) {
+    init(
+        dataStore: DataStore,
+        accountManager: AccountManager,
+        settingsManager: SettingsManager
+    ) {
         self.dataStore = dataStore
         self.accountManager = accountManager
         self.settingsManager = settingsManager
     }
 
-    static func currentMemorySyncBoundary(
-        settingsManager: SettingsManager = .shared,
-        accountManager: AccountManager = .shared
-    ) -> OpenBurnBarMemorySyncBoundarySnapshot {
-        OpenBurnBarMemorySyncBoundarySnapshot(
-            mode: .localFirstOptionalCloud,
-            canonicalAuthority: .localSQLite,
-            cloudMetadataBackupEnabled: accountManager.isCloudSyncEnabled && settingsManager.conversationCloudBackupEnabled,
-            cloudSessionLogBackupEnabled: accountManager.isCloudSyncEnabled && settingsManager.sessionLogCloudBackupEnabled,
-            iCloudMirrorEnabled: settingsManager.iCloudSessionMirrorEnabled,
-            collaborationUsesCloudHead: accountManager.isCloudSyncEnabled,
-            notes: [
-                "SQLite and daemon state remain canonical on-device.",
-                "Firestore is an optional replication and collaboration plane, not the serving authority.",
-                "iCloud mirroring copies files for convenience but does not become the canonical memory graph."
-            ]
-        )
-    }
-
-    func memorySyncBoundarySnapshot() -> OpenBurnBarMemorySyncBoundarySnapshot {
-        Self.currentMemorySyncBoundary(
-            settingsManager: settingsManager,
-            accountManager: accountManager
-        )
+    func memorySyncBoundarySnapshot() async -> OpenBurnBarMemorySyncBoundarySnapshot {
+        await MainActor.run {
+            CloudSyncMemoryBoundary.currentSnapshot(
+                settingsManager: settingsManager,
+                accountManager: accountManager
+            )
+        }
     }
 
     private func makeSyncContext() -> CloudSyncContext {
@@ -213,8 +199,9 @@ final class CloudSyncService {
 
     /// Downloads remote data from Firestore with durable watermark tracking.
     func downloadRemoteData(uid: String? = nil) async {
-        guard accountManager.isFirebaseAvailable, accountManager.isSignedIn else { return }
         let context = makeSyncContext()
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable, gate.account.isSignedIn else { return }
         let service = DownloadSyncService(context: context)
         await service.sync()
         applyContextSuppression(from: context)
@@ -231,8 +218,9 @@ final class CloudSyncService {
 
     /// Fetch sum of cost across all devices for this user (last 90 days).
     func fetchCloudTotal(uid: String? = nil) async {
-        guard accountManager.isFirebaseAvailable else { return }
         let context = makeSyncContext()
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable else { return }
         let service = DownloadSyncService(context: context)
         await service.fetchCloudTotal()
         cloudTotalCost = service.cloudTotalCost

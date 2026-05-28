@@ -5,8 +5,7 @@ import Foundation
 /// Sync domain for uploading local TokenUsage rows to Firestore.
 ///
 /// Firestore layout: `users/{uid}/usage/{deviceId}_{usageId}`
-@MainActor
-final class UsageSyncService: CloudSyncDomain {
+final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
 
     private(set) var isSyncing = false
@@ -20,15 +19,17 @@ final class UsageSyncService: CloudSyncDomain {
     /// Upload all unsynced local usage rows to Firestore.
     /// Call after UsageAggregator.refreshAll().
     func sync() async {
-        guard context.accountManager.isFirebaseAvailable,
-              context.accountManager.isSignedIn,
-              context.accountManager.isCloudSyncEnabled,
-              !context.syncIsSuppressed(),
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              gate.account.isCloudSyncEnabled,
+              !gate.syncSuppressed,
               !isSyncing,
-              let uid = context.currentUID else { return }
+              let uid = gate.account.uid else { return }
 
         isSyncing = true
         lastSyncError = nil
+        let deviceId = gate.account.deviceId
 
         defer { isSyncing = false }
 
@@ -42,9 +43,9 @@ final class UsageSyncService: CloudSyncDomain {
                 let batch = context.firestoreGateway.batch()
 
                 for usage in unsynced {
-                    let docId = "\(context.deviceId)_\(usage.id.uuidString)"
+                    let docId = "\(deviceId)_\(usage.id.uuidString)"
                     let docRef = collectionRef.document(docId)
-                    let data = encodeUsage(usage, deviceId: context.deviceId)
+                    let data = encodeUsage(usage, deviceId: deviceId)
                     batch.setData(data, forDocument: docRef, merge: true)
                 }
 
@@ -62,15 +63,14 @@ final class UsageSyncService: CloudSyncDomain {
 
             lastSyncDate = Date()
             lastSyncError = nil
-            try await publishSyncHeartbeat(uid: uid, collectionsInSync: ["usage"])
+            try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: ["usage"])
         } catch {
-            recordSyncError(error)
+            await recordSyncError(error)
         }
     }
 
-    private func publishSyncHeartbeat(uid: String, collectionsInSync: [String]) async throws {
+    private func publishSyncHeartbeat(uid: String, deviceId: String, collectionsInSync: [String]) async throws {
         let now = Date()
-        let deviceId = context.deviceId
         let deviceName = Host.current().localizedName ?? "OpenBurnBar Mac"
         let userRef = context.firestoreGateway.collection("users").document(uid)
 
@@ -92,7 +92,7 @@ final class UsageSyncService: CloudSyncDomain {
         ], merge: true)
     }
 
-    private func recordSyncError(_ error: Error) {
+    private func recordSyncError(_ error: Error) async {
         lastSyncError = error.localizedDescription
 
         let nsError = error as NSError
@@ -101,7 +101,7 @@ final class UsageSyncService: CloudSyncDomain {
               code == .permissionDenied || code == .unauthenticated else {
             return
         }
-        context.suppressedSyncUntil = Date().addingTimeInterval(CloudSyncBackoffPolicy.permissionDeniedCooldown)
+        await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
     }
 
     private func encodeUsage(_ usage: TokenUsage, deviceId: String) -> [String: Any] {

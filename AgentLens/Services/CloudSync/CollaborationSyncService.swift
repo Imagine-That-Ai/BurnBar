@@ -10,8 +10,7 @@ import Foundation
 ///   -> Firestore head write/read with optimistic concurrency checks
 ///   -> local sync state + permission snapshot + audit event update
 ///   -> enqueue reproject/purge to keep local retrieval parity
-@MainActor
-final class CollaborationSyncService: CloudSyncDomain {
+final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
 
     private(set) var isSyncing = false
@@ -31,12 +30,15 @@ final class CollaborationSyncService: CloudSyncDomain {
     }
 
     func syncSharedArtifacts(maxRemoteArtifacts: Int = 300) async {
-        guard !isSyncing, !context.syncIsSuppressed() else { return }
+        guard !isSyncing else { return }
 
-        let firebaseAvailable = context.accountManager.isFirebaseAvailable
-        let signedIn = context.accountManager.isSignedIn
-        let cloudEnabled = context.accountManager.isCloudSyncEnabled
-        let uid: String? = firebaseAvailable ? context.currentUID : nil
+        let gate = await context.syncGate()
+        guard !gate.syncSuppressed else { return }
+
+        let firebaseAvailable = gate.account.isFirebaseAvailable
+        let signedIn = gate.account.isSignedIn
+        let cloudEnabled = gate.account.isCloudSyncEnabled
+        let uid: String? = firebaseAvailable ? gate.account.uid : nil
 
         guard firebaseAvailable, signedIn, cloudEnabled, let uid else {
             let errorCode: String
@@ -74,13 +76,14 @@ final class CollaborationSyncService: CloudSyncDomain {
         lastSyncError = nil
         let scope = SharedArtifactScope.defaultScope(for: uid)
         var report = SharedArtifactSyncReport(scope: scope)
+        let deviceId = gate.account.deviceId
 
         defer {
             isSyncing = false
         }
 
         do {
-            try await pushLocalSharedArtifacts(scope: scope, report: &report)
+            try await pushLocalSharedArtifacts(scope: scope, deviceId: deviceId, report: &report)
             try await pullRemoteSharedArtifacts(scope: scope, maxRemoteArtifacts: max(1, maxRemoteArtifacts), report: &report)
 
             let status: RetrievalHealthStatus = report.conflicts > 0 ? .degraded : .healthy
@@ -99,7 +102,7 @@ final class CollaborationSyncService: CloudSyncDomain {
             lastSyncError = errorMessage
         } catch {
             let syncError = error
-            recordSyncError(syncError)
+            await recordSyncError(syncError)
             do {
                 try upsertCollaborationHealth(
                     status: .failed,
@@ -115,7 +118,7 @@ final class CollaborationSyncService: CloudSyncDomain {
         }
     }
 
-    private func recordSyncError(_ error: Error) {
+    private func recordSyncError(_ error: Error) async {
         lastSyncError = error.localizedDescription
 
         let nsError = error as NSError
@@ -124,12 +127,12 @@ final class CollaborationSyncService: CloudSyncDomain {
               code == .permissionDenied || code == .unauthenticated else {
             return
         }
-        context.suppressedSyncUntil = Date().addingTimeInterval(CloudSyncBackoffPolicy.permissionDeniedCooldown)
+        await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
     }
 
     // MARK: - Shared Artifact Sync
 
-    func pushLocalSharedArtifacts(scope: SharedArtifactScope, report: inout SharedArtifactSyncReport) async throws {
+    func pushLocalSharedArtifacts(scope: SharedArtifactScope, deviceId: String, report: inout SharedArtifactSyncReport) async throws {
         let localArtifacts = try context.dataStore.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
@@ -232,7 +235,7 @@ final class CollaborationSyncService: CloudSyncDomain {
                     relativePath: artifact.relativePath,
                     isDeleted: false,
                     updatedByUserID: scope.ownerUserID,
-                    updatedByDeviceID: context.accountManager.deviceId,
+                    updatedByDeviceID: deviceId,
                     resolvedConflictRevisionID: resolvedConflict ? baseRevisionID : nil,
                     updatedAt: now
                 )

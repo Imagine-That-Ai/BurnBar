@@ -10,7 +10,6 @@ import Foundation
 /// - Replaces `FieldValue.serverTimestamp()` with `Date()` at write time and
 ///   applies `FieldValue.delete()` to merged writes.
 /// - Thread-safe via internal actor isolation.
-@MainActor
 final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway {
     private let store = FakeDocumentStore()
 
@@ -51,7 +50,6 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway {
 
 // MARK: - Fake Document Store
 
-@MainActor
 private final class FakeDocumentStore {
     private var documents: [String: [String: Any]] = [:]
 
@@ -93,7 +91,6 @@ private final class FakeDocumentStore {
 
 // MARK: - Fake Collection Gateway
 
-@MainActor
 private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway {
     private let store: FakeDocumentStore
     private let path: String
@@ -167,7 +164,6 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway {
 
 // MARK: - Fake Document Gateway
 
-@MainActor
 private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway {
     private let store: FakeDocumentStore
     let path: String
@@ -201,7 +197,6 @@ private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway {
 
 // MARK: - Fake Query Gateway
 
-@MainActor
 private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway {
     private let store: FakeDocumentStore
     private let collectionPath: String
@@ -288,7 +283,6 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway {
 
 // MARK: - Fake Query Snapshot
 
-@MainActor
 private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGateway {
     let documents: [CloudSyncDocumentSnapshotGateway]
 
@@ -330,7 +324,6 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
 
 // MARK: - Fake Document Snapshot
 
-@MainActor
 private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnapshotGateway {
     let documentID: String
     private let storedData: [String: Any]
@@ -347,7 +340,6 @@ private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnaps
 
 // MARK: - Fake Write Batch
 
-@MainActor
 private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway {
     private let store: FakeDocumentStore
     private let nextError: () -> Error?
@@ -387,7 +379,6 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway {
 
 // MARK: - Query Engine Helpers
 
-@MainActor
 private enum QueryPredicate {
     case whereFieldIsGreaterThan(String, Any)
     case whereFieldIsEqualTo(String, Any)
@@ -404,13 +395,11 @@ private enum QueryPredicate {
     }
 }
 
-@MainActor
 private struct SortDescriptor {
     let field: String
     let descending: Bool
 }
 
-@MainActor
 private enum FakeQueryEngine {
     static func compare(lhs: [String: Any], rhs: [String: Any], field: String) -> Int {
         guard let l = lhs[field], let r = rhs[field] else { return 0 }
@@ -440,7 +429,6 @@ private enum FakeQueryEngine {
 // MARK: - Field Value Normalization
 
 /// Replaces Firestore field transforms with deterministic fake behavior.
-@MainActor
 private func normalizeFieldValues(_ data: [String: Any]) -> [String: Any] {
     var result: [String: Any] = [:]
     for (key, value) in data {
@@ -472,7 +460,6 @@ private enum FakeFieldTransform {
 /// Firebase's Swift `FieldValue` type intentionally hides the concrete
 /// transform, so the fake inspects the debug surface and falls back to the
 /// legacy timestamp behavior for unknown transforms.
-@MainActor
 private func fakeFieldTransform(_ value: Any) -> FakeFieldTransform? {
     guard value is FieldValue else { return nil }
     let description = "\(String(describing: value)) \(String(reflecting: value))".lowercased()

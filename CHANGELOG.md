@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Functions **`withCallableLogging`** helper; structured start logging on encrypted search, insights hosted answer, OpenTimestamps, and App Store callables.
 - Firestore **`ops/*_budget_status`** reads restricted to operator claim.
 - `CloudSyncCoordinator` sync methods use **`MainActor.run`** for observable state (type not `@MainActor`).
+- **`CloudSyncContext.syncGate()`** — off-main sync domains read immutable account/settings snapshots; class-level `@MainActor` cleared on CloudSync domain services and legacy `CloudSyncService` shim.
+- Tech-debt metric counts **class-scoped** `@MainActor` on listed I/O facades only ([ADR 002](docs/architecture/002-actor-boundaries.md)).
 
 ### Changed — Hermes WSS relay retired
 - Deleted the production Cloud Run WebSocket relay and

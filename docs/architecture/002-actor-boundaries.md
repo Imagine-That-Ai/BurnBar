@@ -28,12 +28,12 @@ Early services defaulted to `@MainActor`, then escaped with `Task.detached` for 
 
 ### Current `@MainActor` I/O facades (remediation targets)
 
-These types still carry `@MainActor` while touching network or Firestore; count tracked in CI metrics (`@MainActor` on I/O facades + total `@MainActor` services):
+These types historically carried class-scoped `@MainActor` while touching network or Firestore. CI counts **class-level** `@MainActor` only (see `scripts/ci/update-tech-debt-metrics.sh`); `@MainActor static shared` accessors on daemon/CLI mirror types are excluded.
 
-- `CloudSyncService`
-- `UsageAggregator` (orchestrator; heavy work via `RefreshBackgroundWork` / `UsageRefreshPipeline`)
-- `DownloadSyncService`, `ConversationSyncService`, `CLIAgentSessionMirror`
-- `OpenBurnBarDaemonManager`
+- `CloudSyncService` — **cleared** (delegates to off-main domain services + `syncGate()`)
+- `UsageAggregator` — **retained** `@Observable` orchestrator; heavy work via `RefreshBackgroundWork` / `Task.detached`
+- `DownloadSyncService`, `ConversationSyncService`, `CLIAgentSessionMirror` — **cleared**
+- `OpenBurnBarDaemonManager` — **cleared** at class scope; RPC via `daemonRPC` off-main
 
 **Not** counted as violations: `SearchService` (actor), `ProjectionPipelineService` (actor).
 

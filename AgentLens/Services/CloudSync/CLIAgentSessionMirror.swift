@@ -23,10 +23,10 @@ import OSLog
 // toggle so privacy-conscious users can disable transcript mirroring
 // without losing telemetry sync.
 
-@MainActor
-final class CLIAgentSessionMirror {
+final class CLIAgentSessionMirror: @unchecked Sendable {
 
-    static let shared = CLIAgentSessionMirror()
+    @MainActor
+    static let shared = CLIAgentSessionMirror(accountManager: AccountManager.shared)
 
     /// User preference key controlling whether the mirror is active.
     /// Defaults to `true` once the user opts into cloud sync — keeps
@@ -40,8 +40,8 @@ final class CLIAgentSessionMirror {
     private let logger: Logger
 
     init(
+        accountManager: AccountManager,
         firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() },
-        accountManager: AccountManager = .shared,
         defaults: UserDefaults = .standard,
         logger: Logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.openburnbar.app", category: "CLIAgentSessionMirror")
     ) {
@@ -70,12 +70,20 @@ final class CLIAgentSessionMirror {
         usage: CLIUsageSnapshot? = nil,
         endedAt: Date? = nil
     ) async {
-        guard accountManager.isFirebaseAvailable,
-              accountManager.isSignedIn,
-              accountManager.isCloudSyncEnabled,
+        let account = await MainActor.run {
+            (
+                accountManager.isFirebaseAvailable,
+                accountManager.isSignedIn,
+                accountManager.isCloudSyncEnabled,
+                accountManager.userID
+            )
+        }
+        guard account.0,
+              account.1,
+              account.2,
               isEnabled,
               let agent = Self.cliAgent(for: backend),
-              let uid = accountManager.userID,
+              let uid = account.3,
               !messages.isEmpty else {
             return
         }
@@ -109,11 +117,19 @@ final class CLIAgentSessionMirror {
     /// that lets iOS list, search, and route the session alongside live
     /// OpenBurnBar chats.
     func mirrorArchivedLog(_ conversation: ConversationRecord, cloudLogDocumentID: String? = nil) async {
-        guard accountManager.isFirebaseAvailable,
-              accountManager.isSignedIn,
-              accountManager.isCloudSyncEnabled,
+        let account = await MainActor.run {
+            (
+                accountManager.isFirebaseAvailable,
+                accountManager.isSignedIn,
+                accountManager.isCloudSyncEnabled,
+                accountManager.userID
+            )
+        }
+        guard account.0,
+              account.1,
+              account.2,
               isEnabled,
-              let uid = accountManager.userID,
+              let uid = account.3,
               let record = Self.buildArchivedLogRecord(
                 conversation: conversation,
                 cloudLogDocumentID: cloudLogDocumentID
@@ -138,9 +154,14 @@ final class CLIAgentSessionMirror {
     /// deletes the thread locally). Best-effort: failures are logged
     /// and swallowed.
     func delete(threadID: String) async {
-        guard accountManager.isFirebaseAvailable,
-              accountManager.isSignedIn,
-              let uid = accountManager.userID else { return }
+        let account = await MainActor.run {
+            (
+                accountManager.isFirebaseAvailable,
+                accountManager.isSignedIn,
+                accountManager.userID
+            )
+        }
+        guard account.0, account.1, let uid = account.2 else { return }
         do {
             try await firestoreProvider()
                 .collection("users").document(uid)

@@ -38,7 +38,7 @@ protocol CloudSyncing: AnyObject {
     func fetchCloudTotal(uid: String?) async
     func fetchCloudSessionLogs(limit: Int) async throws -> [ConversationRecord]
     func fetchCloudSessionLogBody(docId: String) async throws -> String
-    func memorySyncBoundarySnapshot() -> OpenBurnBarMemorySyncBoundarySnapshot
+    func memorySyncBoundarySnapshot() async -> OpenBurnBarMemorySyncBoundarySnapshot
 }
 
 extension CloudSyncing {
@@ -78,8 +78,10 @@ struct SharedArtifactSyncReport: Equatable, Sendable {
 }
 
 /// Context passed to all sync domain services for shared dependencies.
-@MainActor
-final class CloudSyncContext {
+///
+/// Account and settings reads cross into `MainActor` via `syncGate()`; persistence uses
+/// `DataStore`'s nonisolated store accessors and `DataStoreActor` for heavy I/O.
+final class CloudSyncContext: @unchecked Sendable {
     let dataStore: DataStore
     let accountManager: any AccountManaging
     let settingsManager: any SettingsManagerProtocol
@@ -97,15 +99,18 @@ final class CloudSyncContext {
     var suppressedSyncUntil: Date?
 
     /// Computed Firebase UID, nil if unavailable.
+    @MainActor
     var currentUID: String? {
         guard accountManager.isFirebaseAvailable, accountManager.isSignedIn else { return nil }
         return accountManager.currentUID
     }
 
     /// Computed device ID.
+    @MainActor
     var deviceId: String { accountManager.deviceId }
 
     /// Whether sync is suppressed due to backoff.
+    @MainActor
     func syncIsSuppressed(now: Date = Date()) -> Bool {
         guard let suppressedSyncUntil else { return false }
         if suppressedSyncUntil > now {
@@ -127,6 +132,96 @@ final class CloudSyncContext {
         self.settingsManager = settingsManager
         self.firestoreGateway = firestoreGateway
         self.circuitBreaker = circuitBreaker
+    }
+}
+
+// MARK: - Memory sync boundary (MainActor reads)
+
+enum CloudSyncMemoryBoundary {
+    @MainActor
+    static func currentSnapshot(
+        settingsManager: any SettingsManagerProtocol,
+        accountManager: any AccountManaging
+    ) -> OpenBurnBarMemorySyncBoundarySnapshot {
+        OpenBurnBarMemorySyncBoundarySnapshot(
+            mode: .localFirstOptionalCloud,
+            canonicalAuthority: .localSQLite,
+            cloudMetadataBackupEnabled: accountManager.isCloudSyncEnabled && settingsManager.conversationCloudBackupEnabled,
+            cloudSessionLogBackupEnabled: accountManager.isCloudSyncEnabled && settingsManager.sessionLogCloudBackupEnabled,
+            iCloudMirrorEnabled: settingsManager.iCloudSessionMirrorEnabled,
+            collaborationUsesCloudHead: accountManager.isCloudSyncEnabled,
+            notes: [
+                "SQLite and daemon state remain canonical on-device.",
+                "Firestore is an optional replication and collaboration plane, not the serving authority.",
+                "iCloud mirroring copies files for convenience but does not become the canonical memory graph."
+            ]
+        )
+    }
+}
+
+// MARK: - Identity snapshots (MainActor boundary)
+
+/// Account fields needed by sync domains off the main actor.
+struct CloudSyncAccountSnapshot: Sendable, Equatable {
+    let isFirebaseAvailable: Bool
+    let isSignedIn: Bool
+    let isCloudSyncEnabled: Bool
+    let deviceId: String
+    let uid: String?
+}
+
+/// Settings flags needed by sync domains off the main actor.
+struct CloudSyncSettingsSnapshot: Sendable, Equatable {
+    let conversationCloudBackupEnabled: Bool
+    let sessionLogCloudBackupEnabled: Bool
+    let chatThreadContentCloudBackupEnabled: Bool
+}
+
+/// Combined gate evaluated once at the start of a sync operation.
+struct CloudSyncGate: Sendable, Equatable {
+    let account: CloudSyncAccountSnapshot
+    let settings: CloudSyncSettingsSnapshot
+    let syncSuppressed: Bool
+}
+
+extension CloudSyncContext {
+    /// Reads account + settings on the main actor and returns an immutable gate for sync work.
+    func syncGate(now: Date = Date()) async -> CloudSyncGate {
+        await MainActor.run {
+            CloudSyncGate(
+                account: CloudSyncAccountSnapshot(
+                    isFirebaseAvailable: accountManager.isFirebaseAvailable,
+                    isSignedIn: accountManager.isSignedIn,
+                    isCloudSyncEnabled: accountManager.isCloudSyncEnabled,
+                    deviceId: accountManager.deviceId,
+                    uid: currentUID
+                ),
+                settings: CloudSyncSettingsSnapshot(
+                    conversationCloudBackupEnabled: settingsManager.conversationCloudBackupEnabled,
+                    sessionLogCloudBackupEnabled: settingsManager.sessionLogCloudBackupEnabled,
+                    chatThreadContentCloudBackupEnabled: settingsManager.chatThreadContentCloudBackupEnabled
+                ),
+                syncSuppressed: syncIsSuppressed(now: now)
+            )
+        }
+    }
+
+    /// Refreshes presentation-layer usage state after a download sync completes.
+    func refreshPresentationLayer() async {
+        let store = dataStore
+        await Self.refreshDataStoreOnMainActor(store)
+    }
+
+    @MainActor
+    private static func refreshDataStoreOnMainActor(_ dataStore: DataStore) async {
+        await dataStore.refresh()
+    }
+
+    /// Records permission-denied backoff on the main actor.
+    func suppressSync(for interval: TimeInterval, now: Date = Date()) async {
+        await MainActor.run {
+            suppressedSyncUntil = now.addingTimeInterval(interval)
+        }
     }
 }
 

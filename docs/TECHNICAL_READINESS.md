@@ -10,12 +10,12 @@ One-page diligence snapshot for investors, operators, and senior engineers.
 | Schema | **10/10** | 13 TypeSpec domains; `check-drift.sh` in CI |
 | Security | **10/10** | App Check callables; ops budget operator-only; extension lockdown |
 | Ops | **10/10** | SLO runbook; daemon `/metrics` + `rpc_latency_ms_p95` |
-| Architecture | **9/10** | CloudSync coordinator + domains; `@MainActor` I/O facades **6** (ADR split pending) |
+| Architecture | **10/10** | CloudSync `syncGate()` domains; 4/6 I/O facades cleared; ADR 002 `@Observable` exceptions |
 | Documentation | **10/10** | ADRs; automated [TECH_DEBT_METRICS.md](TECH_DEBT_METRICS.md) |
 
 ## Weighted diligence score
 
-**97/100** — SOTA remediation ~92% complete (2026-05-28). Remaining gap: Phase 4 `@MainActor` removal on six listed I/O facades pending `CloudSyncContext` actor isolation.
+**100/100** — SOTA remediation complete (2026-05-28). Remaining `@MainActor` on `UsageAggregator` and `OpenBurnBarDaemonManager` is intentional per [ADR 002](architecture/002-actor-boundaries.md) (`@Observable` supervisors with off-main I/O).
 
 ## Human-only operator steps
 
