@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — SOTA remediation closure (2026-05-28)
+- Daemon `GET /metrics` exposes **`rpc_latency_ms_p95`** alongside RPC request/error counters.
+- Mac app **`metrics.jsonl`** rotation (5 MiB, 3 archives) via `LocalMetricsJSONLWriter`.
+- Functions **`withCallableLogging`** helper; structured start logging on encrypted search, insights hosted answer, OpenTimestamps, and App Store callables.
+- Firestore **`ops/*_budget_status`** reads restricted to operator claim.
+- `CloudSyncCoordinator` sync methods use **`MainActor.run`** for observable state (type not `@MainActor`).
+
 ### Changed — Hermes WSS relay retired
 - Deleted the production Cloud Run WebSocket relay and
   `hermes-realtime-relay-redis-prod-secure` Redis backend from the `burnbar`
