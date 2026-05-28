@@ -958,12 +958,12 @@ final class SwitcherProfileStoreTests: XCTestCase {
     }
 
     func test_switcherCLIProfileType_providerIDMappingIsStable() {
-        XCTAssertEqual(SwitcherCLIProfileType.claude.agentProvider, .claudeCode)
-        XCTAssertEqual(SwitcherCLIProfileType.codex.agentProvider, .codex)
-        XCTAssertEqual(SwitcherCLIProfileType.opencode.agentProvider, .openCode)
-        XCTAssertEqual(SwitcherCLIProfileType.droid.agentProvider, .factory)
-        XCTAssertEqual(SwitcherCLIProfileType.forge.agentProvider, .forgeDev)
-        XCTAssertEqual(SwitcherCLIProfileType.antigravity.agentProvider, .antigravity)
+        XCTAssertEqual(SwitcherCLIProfileType.claude.canonicalAgentProvider, .claudeCode)
+        XCTAssertEqual(SwitcherCLIProfileType.codex.canonicalAgentProvider, .codex)
+        XCTAssertEqual(SwitcherCLIProfileType.opencode.canonicalAgentProvider, .openCode)
+        XCTAssertEqual(SwitcherCLIProfileType.droid.canonicalAgentProvider, .factory)
+        XCTAssertEqual(SwitcherCLIProfileType.forge.canonicalAgentProvider, .forgeDev)
+        XCTAssertEqual(SwitcherCLIProfileType.antigravity.canonicalAgentProvider, .antigravity)
         // Each type must round-trip through providerID for SQL keying.
         for cliType in SwitcherCLIProfileType.allCases {
             XCTAssertFalse(cliType.providerID.rawValue.isEmpty, "\(cliType) providerID raw value must be non-empty")

@@ -491,9 +491,9 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         XCTAssertTrue(heartbeats.isEmpty, "suppressed background presence must stay off the lane while user work is active")
 
         try await waitUntilHeartbeatCount(stream, count: 1)
+        await coordinator.stop()
         heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
         XCTAssertEqual(heartbeats.count, 1)
-        await coordinator.stop()
     }
 
     func testControlStreamSendTimesOutWhenUnderlyingWriteHangs() async throws {

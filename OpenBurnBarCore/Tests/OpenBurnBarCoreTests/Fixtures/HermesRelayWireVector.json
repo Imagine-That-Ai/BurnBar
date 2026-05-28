@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "avdSWcZ+cdWwLTwj\/JE6VW7GfP9jerWSFF7ab1xayqTBPXeY9kiHbseQCFI78w4=",
+  "chunkCiphertext" : "tsz9Q76UW9Wrw+A5Fe9EO9eq0zk1cret3oEEAZg20bGD5sdGNYPxumk922qG+P8=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
+  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "tbATvhTuElg9v0o2iFAyl0tonhJWvN9ExXWEIOH3TT\/ahq7LbwE7FZ2OYfALIZ6GoYHx0NHQvWCZNNiOLBx2vCAMZZia+CJSYe8moHs64xGXpFcQ9rBzfMiRO3p88J14Ux4BwUR4ZAz9Bsrfo9RN62nz8B5+gsH8xKRjU3xmA93RMnc4nCYe1Cweb1\/8CZiv+L10Iitw",
+  "payloadCiphertext" : "dk7Z9xPwjDczmDlQ+6VROHFAFkElgqG\/9FRk9cj\/1En5wEfO6lkD7PERQckdTL9VomnR8+27+SXA0mL4slWqRamc5eOHp92IACehUDENcFR5XSx2UREPJK4Jt+FSvW3ugJeEZY1cRZjhEn6hZpu9SiadAVN4p5Z0wK1j8xgqkqolukF7n66TdYTuoZ1NVZQjLZ7W9mX1",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BLHw8b+t4FpqBrICH2Nxo02Udz+o7TgXUL5wKNy7fh22\/FC3+l4RlSTeZwCrvIXK0ZF+kG6MTSm8Yg4Aehq2qYsGh77V\/vMDpCoi68jH2MVnJMaOiOmOxKzRIbgc2QuiBNeQbp3MWezbdByWmCC35Lzj9pfLEA6OJUr1kCw="
+  "wrappedKey" : "BF9tc+QrSl9u3RdMG\/dZTrGuPNBjy13XeVhfGaG4LhgYBbgxXlJahItZjNX1fqPTUUQHFqgU+8a469t8BPZlYms7D5RdVEP209hF\/14NdoyWoI8MCgUiAdT9AI5dWWoUTWMgcxp+6uy4Yd1zkaAd3vDwzM0BYvkRNntBjA0="
 }

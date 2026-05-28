@@ -12,17 +12,18 @@ One-page diligence snapshot for investors, operators, and senior engineers.
 | Ops | 9/10 | Runbooks incl. [SLO runbook](runbooks/slos.md), `commercial-launch-gate.mjs`, nightly workflow, daemon `GET /metrics` |
 | Architecture | 9/10 | [Architecture ADRs](architecture/README.md); CloudSync coordinator; schema/sync ownership documented |
 
-## Weighted diligence score (2026-05-27 audit)
+## Weighted diligence score (2026-05-28 audit)
 
-**~92/100** — Phase 0–2 complete; Phase 1 CI gates and threat-model updates landed; Functions modularized; quarantine emptied (archived under `AgentLensTests/Archive/`); collaboration extracted; SLO/ADR/debt metrics automated. Remaining: CloudSync relay shim deletion, circuit-breaker revival, OpenBurnBarUI SPM split, mmap vector index, N+1 batch passes.
+**~93/100** — Phase 0 complete; Phase 1 CI/security gates landed on branch; Phase 2 schema barrel + Functions modular entry (106 LOC `index.ts`, 13 LOC `types.ts` barrel); Phase 6 ADRs/SLO/debt metrics automated. Remaining: CloudSync god-file deletion (2187 LOC), quarantine revival, OpenBurnBarUI SPM split, mmap vector index, TypeSpec domain expansion beyond usage/quota.
 
-## Audit notes (2026-05-27)
+## Audit notes (2026-05-28)
 
-- Phase 5 observability: [OBSERVABILITY.md](OBSERVABILITY.md) + [runbooks/slos.md](runbooks/slos.md) + loopback `GET /metrics` on daemon gateway.
-- Phase 5 governance: [architecture/](architecture/README.md) ADRs (naming, actor isolation, errors, schema, sync).
-- Debt trends: `./scripts/ci/update-tech-debt-metrics.sh` → [TECH_DEBT_METRICS.md](TECH_DEBT_METRICS.md) (quarantine count, MainActor I/O facades, empty catches, service LOC, schema barrel vs legacy).
-- Verified locally: Functions build, schema drift check, supply-chain audit, OpenBurnBarCore budget tests, macOS app build, `OfflineOnlineMergeTests` (6 cases, 1 skipped).
-- Not proven locally in this pass: full PR matrix (iOS sim + Android JVM) on this host; rely on CI.
+- **Phase 0 (committed):** daemon heartbeat + reader tests, `.swiftlint.yml` `empty_catch_block` error, graceful DB init path.
+- **Phase 1 (committed):** PR harness path-filtered E2E (Hermes/iroh, computer use, Mercury/media), `website-ci.yml`, hard-fail diff coverage + xcresult gate, commercial launch gate on internal PRs, `app-check-smoke.sh` ENFORCED probe, release privacy manifests + SBOM NOTICES, `untrustedWorkspaces.supported: false`, provider `validatedProviderBaseURL` (http/https only), App Check on all sensitive callables.
+- **Phase 2 (partial, committed):** `functions/src/types.ts` → 13-line re-export barrel; `legacy.ts` 2916 LOC pending TypeSpec migration; `index.ts` 106 LOC domain re-exports.
+- **Phase 6 (partial, committed):** [architecture/](architecture/README.md) ADRs 001–005, [runbooks/slos.md](runbooks/slos.md), [TECH_DEBT_METRICS.md](TECH_DEBT_METRICS.md) CI-regenerated.
+- **Local `make ci` (2026-05-28):** `debt-check` (unsafe cast 0/0), SwiftLint, full Functions suite + Firestore rules emulator (21/21) green. Run interrupted during retrieval-eval Xcode build (~15 min agent timeout); not a code failure. First run hit transient Firestore emulator port 8080 conflict (passed on immediate retry). Daemon `BurnBarSwitcherSQLiteProfileStoreTests` pass after removing `try!` force-tries.
+- **Not proven locally this pass:** full macOS app test matrix, iOS sim, Android JVM — rely on GitHub PR harness (`macos-26`).
 - Kill-switch automation is wired in Functions but only covered by a source-contract smoke test today.
 
 ## CI matrix (PR)
@@ -36,6 +37,9 @@ One-page diligence snapshot for investors, operators, and senior engineers.
 - `./tools/schema-sync/check-drift.sh`
 - `./scripts/supply-chain-audit.sh`
 - `./scripts/diff-coverage-all.sh` (Swift/Kotlin/TS changed surfaces)
+- Path-triggered E2E (internal PRs): Hermes/iroh, computer use loopback, Mercury/media (`openburnbar-pr-harness.yml` → `path-filter` jobs)
+- `website-ci.yml` on `website/**` changes
+- `scripts/ci/app-check-smoke.sh` (Firestore App Check ENFORCED) on internal runs with Firebase secrets
 
 ## Release matrix
 

@@ -43,6 +43,11 @@ struct ProviderRoutingCockpit: View {
     let provider: AgentProvider
     let state: ProviderRoutingStateSnapshot
     var compact: Bool = false
+    /// The profile id the user has chosen to drain for this provider. When the
+    /// routing layer's `activeAccount` matches, that lane gets a "DRAIN" pin so
+    /// the user's selection is reinforced; when routing has failed over to a
+    /// different lane, the pin moves there to expose the divergence.
+    var drainTargetProfileID: String? = nil
 
     @State private var showsHistory = false
 
@@ -473,7 +478,8 @@ struct ProviderRoutingCockpit: View {
         emptyText: String,
         accentTint: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        let isDrain = isDrainLane(candidate)
+        return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
@@ -481,6 +487,8 @@ struct ProviderRoutingCockpit: View {
                 Text(title)
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                if isDrain { drainPin }
+                Spacer(minLength: 0)
             }
 
             if let candidate {
@@ -518,6 +526,35 @@ struct ProviderRoutingCockpit: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, DesignSystem.Spacing.xs)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(isDrain ? DesignSystem.Colors.ember.opacity(0.06) : .clear)
+        )
+    }
+
+    /// True when the user has explicitly selected `candidate` as the drain
+    /// target for this provider.
+    private func isDrainLane(_ candidate: ProviderRoutingCandidate?) -> Bool {
+        guard let drainTargetProfileID, let candidate else { return false }
+        return drainTargetProfileID == candidate.accountID
+    }
+
+    /// Small ember pin reinforcing that this lane is the user's chosen drain
+    /// target for the provider.
+    private var drainPin: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 8, weight: .semibold))
+            Text("DRAIN")
+                .font(.system(size: 8, weight: .heavy, design: .rounded))
+        }
+        .foregroundStyle(DesignSystem.Colors.ember)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(DesignSystem.Colors.ember.opacity(0.14))
+        .clipShape(Capsule())
+        .help("Your chosen drain target for \(provider.displayName)")
+        .accessibilityLabel("Drain target")
     }
 
     private var blockedLaneCard: some View {

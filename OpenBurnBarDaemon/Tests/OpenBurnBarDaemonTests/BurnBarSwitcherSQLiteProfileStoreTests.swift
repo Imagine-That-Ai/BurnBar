@@ -10,10 +10,10 @@ import OpenBurnBarCore
 final class BurnBarSwitcherSQLiteProfileStoreTests: XCTestCase {
     private var dbQueue: DatabaseQueue!
 
-    override func setUp() {
-        super.setUp()
-        dbQueue = try! DatabaseQueue()
-        try! dbQueue.write { db in
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        dbQueue = try DatabaseQueue()
+        try dbQueue.write { db in
             try db.execute(sql: """
                 CREATE TABLE switcher_profiles (
                     id TEXT PRIMARY KEY,
@@ -43,10 +43,10 @@ final class BurnBarSwitcherSQLiteProfileStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    func test_init_addsProviderIDColumnIdempotently() {
+    func test_init_addsProviderIDColumnIdempotently() throws {
         _ = BurnBarSwitcherSQLiteProfileStore(dbQueue: dbQueue)
 
-        let columns = try! dbQueue.read { db in
+        let columns = try dbQueue.read { db in
             try Row.fetchAll(db, sql: "PRAGMA table_info(switcher_active_profile)")
                 .compactMap { $0["name"] as? String }
         }
@@ -54,18 +54,18 @@ final class BurnBarSwitcherSQLiteProfileStoreTests: XCTestCase {
 
         // Second init must not throw or duplicate the column.
         _ = BurnBarSwitcherSQLiteProfileStore(dbQueue: dbQueue)
-        let columnsAfter = try! dbQueue.read { db in
+        let columnsAfter = try dbQueue.read { db in
             try Row.fetchAll(db, sql: "PRAGMA table_info(switcher_active_profile)")
                 .compactMap { $0["name"] as? String }
         }
         XCTAssertEqual(columnsAfter.filter { $0 == "providerID" }.count, 1)
     }
 
-    func test_setActiveProfileID_doesNotWipeAppSetPerProviderRows() {
+    func test_setActiveProfileID_doesNotWipeAppSetPerProviderRows() throws {
         let store = BurnBarSwitcherSQLiteProfileStore(dbQueue: dbQueue)
 
         // App writes per-provider drain target for Claude.
-        try! dbQueue.write { db in
+        try dbQueue.write { db in
             try db.execute(
                 sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, ?, ?)",
                 arguments: ["claude-personal-id", AgentProvider.claudeCode.providerID.rawValue, Date()]
@@ -75,7 +75,7 @@ final class BurnBarSwitcherSQLiteProfileStoreTests: XCTestCase {
         // Daemon flips its own global active profile.
         store.setActiveProfileID("daemon-chosen-global-id")
 
-        let perProvider = try! dbQueue.read { db in
+        let perProvider = try dbQueue.read { db in
             try String.fetchOne(
                 db,
                 sql: """
@@ -95,13 +95,13 @@ final class BurnBarSwitcherSQLiteProfileStoreTests: XCTestCase {
         XCTAssertEqual(globalActive, "daemon-chosen-global-id")
     }
 
-    func test_fetchActiveProfileID_returnsGlobalNotPerProvider() {
+    func test_fetchActiveProfileID_returnsGlobalNotPerProvider() throws {
         let store = BurnBarSwitcherSQLiteProfileStore(dbQueue: dbQueue)
 
         // Stamp a more recent per-provider row and an older global row. The
         // pre-fix daemon ordered purely by updatedAt and would have returned
         // the per-provider id; the fix scopes to providerID IS NULL.
-        try! dbQueue.write { db in
+        try dbQueue.write { db in
             try db.execute(
                 sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, NULL, ?)",
                 arguments: ["global-id", Date().addingTimeInterval(-100)]

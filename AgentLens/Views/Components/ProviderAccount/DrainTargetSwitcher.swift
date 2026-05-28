@@ -289,18 +289,36 @@ struct DrainTargetSwitcher: View {
 private struct DrainPulseDot: View {
     let isLive: Bool
 
+    @State private var breathe: Bool = false
+
     var body: some View {
         ZStack {
+            // Outer breathing halo: continuously fades between 0.20 and 0.45
+            // so the live drain reads as alive at a glance even when nothing
+            // is animating around it.
             Circle()
                 .fill(DesignSystem.Colors.ember.opacity(0.35))
                 .frame(width: 18, height: 18)
-                .opacity(isLive ? 0.28 : 0)
+                .opacity(isLive ? (breathe ? 0.45 : 0.20) : 0)
+                .animation(
+                    isLive
+                        ? .easeInOut(duration: 1.4).repeatForever(autoreverses: true)
+                        : .default,
+                    value: breathe
+                )
             Circle()
                 .fill(isLive ? DesignSystem.Colors.ember : DesignSystem.Colors.textMuted)
                 .frame(width: 7, height: 7)
                 .shadow(color: DesignSystem.Colors.ember.opacity(isLive ? 0.65 : 0), radius: 4, y: 0)
         }
         .frame(width: 18, height: 18)
+        .onAppear {
+            if isLive { breathe = true }
+        }
+        .onChange(of: isLive) { _, nowLive in
+            breathe = nowLive
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -309,6 +327,16 @@ extension DrainTargetSwitcher {
     /// providers sorted by name, accounts within each sorted by `sortKey`.
     /// Browser profiles (no `cliType`) are excluded. Centralised so the popover
     /// and dashboard render identical groupings from one tested code path.
+    /// Groups CLI switcher profiles by their provider for drain-target display:
+    /// providers sorted by name, accounts within each sorted by `sortKey`.
+    /// Browser profiles (no `cliType`) are excluded. Centralised so the popover
+    /// and dashboard render identical groupings from one tested code path.
+    ///
+    /// Uses `canonicalAgentProvider` (OpenBurnBarCore-defined, non-optional)
+    /// rather than `agentProvider` because AgentLens contains a legacy
+    /// extension `SwitcherCLIProfileType.agentProvider -> AgentProvider?` that
+    /// returns `nil` for some cases — Swift overload resolution can silently
+    /// pick that one and a per-provider row would silently disappear.
     static func grouped(
         _ profiles: [SwitcherProfileRecord]
     ) -> [(provider: AgentProvider, accounts: [SwitcherProfileRecord])] {
@@ -316,7 +344,7 @@ extension DrainTargetSwitcher {
         let byProvider: [AgentProvider: [SwitcherProfileRecord]] = Dictionary(
             grouping: cliProfiles
         ) { profile in
-            profile.cliType?.agentProvider ?? .claudeCode
+            profile.cliType?.canonicalAgentProvider ?? .claudeCode
         }
         return byProvider
             .map { (provider: $0.key, accounts: $0.value.sorted { $0.sortKey < $1.sortKey }) }
