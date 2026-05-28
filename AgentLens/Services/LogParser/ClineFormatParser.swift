@@ -137,8 +137,10 @@ final class ClineFormatParser: LogParser, Sendable {
             }
         }
 
+        let hasUsage = inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0
+
         // Fallback estimation if no usage data
-        if inputTokens == 0 && outputTokens == 0 {
+        if !hasUsage {
             let userChars = fullText.isEmpty ? 0 : userWords * 5
             let assistantChars = fullText.isEmpty ? 0 : assistantWords * 5
             guard userChars + assistantChars > 0 else { return nil }
@@ -153,7 +155,7 @@ final class ClineFormatParser: LogParser, Sendable {
             outputTokens = estimated.output
         }
 
-        guard inputTokens > 0 || outputTokens > 0 else { return nil }
+        guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
         let model = models.first ?? "unknown"
         let pricing = ModelPricing.lookup(model: model)

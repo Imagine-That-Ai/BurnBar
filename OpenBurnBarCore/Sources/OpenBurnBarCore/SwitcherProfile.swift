@@ -50,6 +50,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     case droid
     case forge
     case antigravity
+    case grok
 
     public var displayName: String {
         switch self {
@@ -59,6 +60,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .droid: return "Droid"
         case .forge: return "Forge"
         case .antigravity: return "Antigravity"
+        case .grok: return "Grok Build"
         }
     }
 
@@ -71,6 +73,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .droid: return "FactoryLogo"
         case .forge: return "ForgeLogo"
         case .antigravity: return "AntigravityLogo"
+        case .grok: return "GrokLogo"
         }
     }
 
@@ -83,6 +86,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .droid: return "droid"
         case .forge: return "forge"
         case .antigravity: return "agy"
+        case .grok: return "grok"
         }
     }
 
@@ -131,8 +135,34 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
                 "$HOME/.antigravity/bin/agy",
                 "$HOME/.gemini/antigravity-cli/agy"
             ]
+        case .grok:
+            return [
+                "/usr/local/bin/grok",
+                "/opt/homebrew/bin/grok",
+                "$HOME/.grok/bin/grok",
+                "$HOME/.local/bin/grok"
+            ]
         }
     }
+
+    /// The OpenBurnBar provider this CLI profile drains quota from. Bridges the
+    /// launch-profile world to the canonical provider catalog so drain-target
+    /// selection, quota surfaces, and brand logos all speak the same language.
+    public var agentProvider: AgentProvider {
+        switch self {
+        case .codex: return .codex
+        case .claude: return .claudeCode
+        case .opencode: return .openCode
+        case .droid: return .factory
+        case .forge: return .forgeDev
+        case .antigravity: return .antigravity
+        case .grok: return .xAI
+        }
+    }
+
+    /// Stable provider token used as the per-provider drain-target key in
+    /// `switcher_active_profile`.
+    public var providerID: ProviderID { agentProvider.providerID }
 }
 
 // MARK: - Browser Service Identity

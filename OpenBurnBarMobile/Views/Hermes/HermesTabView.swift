@@ -2784,6 +2784,7 @@ func hermesAgentProvider(for raw: String) -> AgentProvider {
     if lower.contains("kimi") || lower.contains("moonshot") { return .kimi }
     if lower.contains("deepseek") { return .openClaw }
     if lower.contains("antigravity") { return .antigravity }
+    if lower.contains("grok") || lower.contains("xai") { return .xAI }
     if lower.contains("google") || lower.contains("gemini") { return .geminiCLI }
     if lower.contains("meta") || lower.contains("llama") || lower.contains("qwen") { return .ollama }
     if lower.contains("codex") { return .codex }

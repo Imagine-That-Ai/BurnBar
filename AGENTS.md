@@ -25,7 +25,11 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 - **Search the codebase** before adding new types, parsers, or UI; extend what exists unless the task explicitly requires greenfield work.
 - **Tests:** add or update tests in the active `AgentLensTests` / `OpenBurnBarDaemon` test targets for behavior changes; long-lived stale suites belong under `AgentLensTests/Quarantine/` and are not compiled by default — see [`AgentLensTests/README.md`](AgentLensTests/README.md).
 - **Docs:** user-facing or architectural changes belong in `docs/` and, when appropriate, [`CHANGELOG.md`](CHANGELOG.md) — follow existing doc voice and cross-links in [`README.md`](README.md).
+- **Architecture ADRs:** cross-cutting decisions live in [`docs/ARCHITECTURE/`](docs/ARCHITECTURE/README.md) (naming, actor isolation, errors, schema, sync).
+- **Ops SLOs:** [`docs/runbooks/slos.md`](docs/runbooks/slos.md) is the operator runbook for latency/availability/error budgets.
+- **Tech debt trends:** run `./scripts/ci/update-tech-debt-metrics.sh` before monthly debt reviews; commit updated [`docs/TECH_DEBT_METRICS.md`](docs/TECH_DEBT_METRICS.md) when baselines shift intentionally.
 - **Scope:** every line in a change should serve the request; avoid drive-by refactors and unrelated files.
+- **Mac CLI session paths (quota parsers):** Codex `~/.codex/sessions/`, Claude Code `~/.claude/projects/`, Grok Build `~/.grok/sessions/` (see [`GrokParser.swift`](AgentLens/Services/LogParser/GrokParser.swift) and [docs/PROVIDERS.md](docs/PROVIDERS.md)).
 
 Human-oriented Cursor and product context (onboarding, architecture, threat model) remains in the [docs/](docs/) tree — start with [`docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md`](docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md) and [`README.md`](README.md) **Cursor deep dives**.
 
@@ -43,7 +47,7 @@ The Android app reaches **full iOS parity** as of 2026-05-16 — Hermes Square, 
 | `cd android && ./gradlew clean assembleDebug --no-daemon 2>&1 \| grep "^e:\\|BUILD"` | Clean build, errors only |
 | `cd android && ./gradlew :app:testDebugUnitTest --no-daemon` | Run the JVM unit suite (relay + media + missions + atom parser, ~253 tests) |
 | `cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon` | iroh-relay library unit tests (codec + pairing + loopback transport) |
-| `./scripts/test-openburnbar-mobile.sh` | iOS Simulator unit tests (`OpenBurnBarMobileTests`) — CI-gated |
+| `./scripts/test-openburnbar-mobile.sh` | iOS mobile unit tests (`OpenBurnBarMobileTests`) on a connected physical iPhone locally; CI uses Simulator fallback — CI-gated |
 | `./scripts/test-openburnbar-android.sh` | Android JVM unit tests (app + iroh-relay modules) — CI-gated |
 | `make ci` | Full local CI parity (Functions, evals, Firestore rules, supply chain, all test surfaces) |
 | `scripts/build-iroh-android-aar.sh` | Build `Vendor/openburnbar-iroh.aar` (auto-installs NDK + cargo-ndk + Rust targets) |
@@ -111,6 +115,7 @@ All scripts follow `set -euo pipefail`, use absolute paths with `cd "$(dirname "
 | `scripts/cross-platform/run-android` | Build APK + install on running emulator + launch BurnBar (auto-starts emulator if needed) |
 | `scripts/ci/inject-firebase-config.sh` | iOS CI: injects `GoogleService-Info.plist` from `FIREBASE_PLIST_BASE64` |
 | `scripts/ci/inject-firebase-config-android.sh` | Android CI: injects `google-services.json` from `GOOGLE_SERVICES_JSON_BASE64` |
+| `scripts/ci/update-tech-debt-metrics.sh` | Regenerates `docs/TECH_DEBT_METRICS.md` trend snapshot |
 
 Environment variables for Android:
 ```bash

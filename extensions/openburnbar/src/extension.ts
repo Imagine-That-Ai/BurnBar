@@ -707,7 +707,7 @@ function buildEditorContextMetadata(): Record<string, BurnBarJSONValue> | undefi
 }
 
 async function resolveBurnBarClientID(
-  context: vscode.ExtensionContext,
+  context: OpenBurnBarActivationHostContext,
   overrideClientID?: string
 ): Promise<string> {
   if (overrideClientID) {

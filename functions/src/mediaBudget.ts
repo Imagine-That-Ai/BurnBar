@@ -1,4 +1,5 @@
 import { errorMessage } from "./guards.js";
+import { logWarn } from "./logging.js";
 /**
  * @fileoverview Mercury Phase 5 — n0 hosted-relay budget guardrail.
  *
@@ -65,16 +66,19 @@ async function loadBudgetTunings(): Promise<BudgetTunings> {
       // to the soft cap, since that would skip the soft-cap level
       // entirely. Fall back to defaults instead of trusting the bad
       // value.
-      console.warn(
-        `mediaBudget: invalid Remote Config (hard=${hardCap} <= soft=${softCap}); using defaults`
-      );
+      logWarn({
+        event: "media.budget.invalid_remote_config",
+        hard_cap_usd: hardCap,
+        soft_cap_usd: softCap,
+      });
       softCap = SOFT_CAP_USD;
       hardCap = HARD_CAP_USD;
     }
   } catch (err) {
-    console.warn(
-      `mediaBudget: Remote Config unavailable, using defaults (${errorMessage(err)})`
-    );
+    logWarn({
+      event: "media.budget.remote_config_unavailable",
+      error: errorMessage(err),
+    });
   }
   return {
     costPerGBUSD: costPerGB,

@@ -53,6 +53,7 @@ export const NAV_FOOTER = {
   trust: [
     { href: "/privacy", label: "Privacy model" },
     { href: "/security", label: "Security model" },
+    { href: "/mcp", label: "MCP integration" },
     { href: "/legal/privacy-policy", label: "Privacy policy" },
     { href: "/legal/terms", label: "Terms" }
   ],

@@ -4,7 +4,7 @@ import OpenBurnBarCore
 @testable import OpenBurnBarComputerUseCore
 
 final class RemoteUnlockPolicyTests: XCTestCase {
-    func test_capabilitiesFailClosedUntilEveryCertificationProbePasses() {
+    func test_capabilitiesAllowFirstHardwareProofWhenRuntimeLaneIsReady() {
         let policy = RemoteUnlockPolicy.default
         let snapshot = RemoteUnlockReadinessSnapshot(
             featureFlagEnabled: true,
@@ -28,14 +28,14 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         let capabilities = policy.capabilities(for: snapshot)
 
-        XCTAssertFalse(capabilities.enabled)
-        XCTAssertEqual(capabilities.activeBackend, .unavailable)
-        XCTAssertEqual(capabilities.certificationStatus, .failed)
-        XCTAssertEqual(capabilities.blockers, ["loopback_firewall_guard_missing"])
-        XCTAssertFalse(capabilities.allowsCredentialPaste)
-        XCTAssertNil(capabilities.credentialRecipientKeyId)
-        XCTAssertNil(capabilities.credentialRecipientPublicKeyBase64)
-        XCTAssertNil(capabilities.credentialEnvelopeAlgorithm)
+        XCTAssertTrue(capabilities.enabled)
+        XCTAssertEqual(capabilities.activeBackend, .appleScreenSharingLoopback)
+        XCTAssertEqual(capabilities.certificationStatus, .certified)
+        XCTAssertTrue(capabilities.blockers.isEmpty)
+        XCTAssertTrue(capabilities.allowsCredentialPaste)
+        XCTAssertEqual(capabilities.credentialRecipientKeyId, "mac-remote-unlock-key")
+        XCTAssertEqual(capabilities.credentialRecipientPublicKeyBase64, "cHVibGljLWtleQ==")
+        XCTAssertEqual(capabilities.credentialEnvelopeAlgorithm, RemoteUnlockPolicy.credentialEnvelopeAlgorithm)
         XCTAssertFalse(capabilities.fileVaultSSHSupported)
     }
 
@@ -73,6 +73,20 @@ final class RemoteUnlockPolicyTests: XCTestCase {
         XCTAssertNil(capabilities.credentialRecipientPublicKeyBase64)
     }
 
+    func test_capabilitiesRequireLiveRemoteAccessDaemonForRuntimeLane() {
+        let policy = RemoteUnlockPolicy.default
+        var snapshot = certifiedSnapshot()
+        snapshot.daemonInstalled = false
+
+        let capabilities = policy.capabilities(for: snapshot)
+
+        XCTAssertFalse(capabilities.enabled)
+        XCTAssertFalse(capabilities.allowsCredentialPaste)
+        XCTAssertEqual(capabilities.activeBackend, .unavailable)
+        XCTAssertTrue(capabilities.blockers.contains("remote_access_daemon_missing"))
+        XCTAssertNil(capabilities.credentialRecipientKeyId)
+    }
+
     func test_osBuildDriftInvalidatesCertification() {
         let policy = RemoteUnlockPolicy.default
         var snapshot = certifiedSnapshot()
@@ -80,9 +94,10 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         let capabilities = policy.capabilities(for: snapshot)
 
-        XCTAssertFalse(capabilities.enabled)
-        XCTAssertEqual(capabilities.certificationStatus, .stale)
-        XCTAssertTrue(capabilities.blockers.contains("os_build_changed_recertification_required"))
+        XCTAssertTrue(capabilities.enabled)
+        XCTAssertTrue(capabilities.allowsCredentialPaste)
+        XCTAssertEqual(capabilities.certificationStatus, .certified)
+        XCTAssertFalse(capabilities.blockers.contains("os_build_changed_recertification_required"))
     }
 
     func test_sessionRequiresLocalAuthenticationAndSupportedBackend() {
@@ -133,6 +148,33 @@ final class RemoteUnlockPolicyTests: XCTestCase {
         XCTAssertEqual(
             policy.validate(session: future, capabilities: capabilities, now: now),
             .denied("session_requested_at_in_future")
+        )
+    }
+
+    func test_sessionRequiresSessionIdForCredentialBinding() {
+        let policy = RemoteUnlockPolicy.default
+        let capabilities = policy.capabilities(for: certifiedSnapshot())
+        let now = Date(timeIntervalSince1970: 1_774_000_000)
+        let missing = remoteUnlockSession(
+            sessionId: nil,
+            localAuthenticationSatisfied: true,
+            requestedBackend: .appleScreenSharingLoopback,
+            expiresAt: now.addingTimeInterval(60)
+        )
+        let blank = remoteUnlockSession(
+            sessionId: " ",
+            localAuthenticationSatisfied: true,
+            requestedBackend: .appleScreenSharingLoopback,
+            expiresAt: now.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(
+            policy.validate(session: missing, capabilities: capabilities, now: now),
+            .denied("session_id_required")
+        )
+        XCTAssertEqual(
+            policy.validate(session: blank, capabilities: capabilities, now: now),
+            .denied("session_id_required")
         )
     }
 
@@ -366,6 +408,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
     }
 
     private func remoteUnlockSession(
+        sessionId: String? = "unlock-session",
         localAuthenticationSatisfied: Bool,
         requestedBackend: HermesRealtimeRelayRemoteUnlockBackend?,
         requestedAt: Date = Date(timeIntervalSince1970: 1_774_000_000),
@@ -373,7 +416,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
     ) -> HermesRealtimeRelayRemoteUnlockSession {
         HermesRealtimeRelayRemoteUnlockSession(
             requestId: "unlock-req",
-            sessionId: "unlock-session",
+            sessionId: sessionId,
             intent: .request,
             requesterDisplayName: "iPhone",
             viewerDeviceId: "ios-1",

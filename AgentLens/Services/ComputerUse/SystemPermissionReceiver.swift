@@ -135,8 +135,7 @@ public final class SystemPermissionReceiver {
             _ = CGRequestScreenCaptureAccess()
             #endif
         case .accessibility:
-            let options: NSDictionary = ["AXTrustedCheckOptionPrompt": true]
-            _ = AXIsProcessTrustedWithOptions(options)
+            _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
         case .camera:
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 AVCaptureDevice.requestAccess(for: .video) { _ in cont.resume() }

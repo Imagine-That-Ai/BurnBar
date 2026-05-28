@@ -362,7 +362,7 @@ final class RoutedClientWiringSentry {
         switch target {
         case .claudeCode, .forge, .antigravity:
             return false
-        case .codex, .opencode, .droid:
+        case .codex, .opencode, .droid, .grok:
             return true
         }
     }

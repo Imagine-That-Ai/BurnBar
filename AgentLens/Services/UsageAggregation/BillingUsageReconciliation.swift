@@ -75,6 +75,7 @@ enum BillingUsageReconciliation {
     static func usageMatches(record: ProviderUsageRecord, usage: TokenUsage) -> Bool {
         switch record.mappedProvider {
         case .some(.minimax):
+            guard usage.provider == .minimax else { return false }
             let localKey = TokenExtractionUtility.normalizeModelKey(usage.model)
             let apiKey = TokenExtractionUtility.normalizeModelKey(record.model)
             if apiKey == "minimax" {
@@ -82,6 +83,7 @@ enum BillingUsageReconciliation {
             }
             return localKey == apiKey || localKey.contains(apiKey) || (apiKey.contains("minimax") && localKey.contains("minimax"))
         case .some(.zai):
+            guard usage.provider == .zai else { return false }
             let localKey = TokenExtractionUtility.normalizeModelKey(usage.model)
             let apiKey = TokenExtractionUtility.normalizeModelKey(record.model)
             if apiKey == "glm" || apiKey == "zai" || apiKey == "z.ai" {

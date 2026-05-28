@@ -99,6 +99,9 @@ final class ConversationSyncService: CloudSyncDomain {
             "updatedAt": FieldValue.serverTimestamp(),
             "sourceType": record.sourceType.rawValue
         ]
+        if let workingDirectory = record.workingDirectory {
+            data["workingDirectory"] = workingDirectory
+        }
         data["startTime"] = record.startTime.map { Timestamp(date: $0) } as Any
         data["endTime"] = record.endTime.map { Timestamp(date: $0) } as Any
         if let summary = record.summary { data["summary"] = summary }

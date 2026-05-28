@@ -945,6 +945,14 @@ final class ProviderQuotaService {
             return account.status == .error ? .authFailed : .unknown
         }
 
+        if account.providerID == .xAI,
+           bucket.key == "xai-prepaid-credit-balance",
+           let remainingDollars = bucket.remainingValue {
+            if remainingDollars <= 0 { return .exhausted }
+            if remainingDollars <= 5 { return .pressure }
+            return .healthy
+        }
+
         if let remaining = bucket.remainingPercent {
             if remaining <= 0 { return bucket.isEstimated ? .pressure : .exhausted }
             if remaining <= 20 { return .pressure }
@@ -1548,7 +1556,7 @@ extension ProviderQuotaService {
         case .codex:
             return CLIAuthDiscovery.discoverAuthState(for: cliType).accountDescription
                 ?? "Current \(cliType.displayName) login"
-        case .claude, .opencode, .droid, .forge, .antigravity:
+        case .claude, .opencode, .droid, .forge, .antigravity, .grok:
             return "Current \(cliType.displayName) login"
         }
     }
@@ -1565,6 +1573,8 @@ extension ProviderQuotaService {
             return .forge
         case .antigravity:
             return .antigravity
+        case .xAI:
+            return .grok
         default:
             return nil
         }

@@ -47,6 +47,11 @@ from burnbar_usage_ledger import (  # noqa: E402  — module import after sys.pa
     default_ledger_path,
     derive_idempotency_key,
 )
+from resume_core import (  # noqa: E402
+    dispatch_resume,
+    list_resumable_conversations,
+    spawn_resume,
+)
 
 mcp = FastMCP("openburnbar-local")
 
@@ -1953,6 +1958,103 @@ def burnbar_org_spend(
         indent=2,
         default=str,
     )
+
+
+@mcp.tool()
+def burnbar_list_resumable_conversations(
+    provider: str | None = None,
+    project: str | None = None,
+    since: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> str:
+    """
+    List recent OpenBurnBar conversations that can be resumed.
+
+    Returns rows with both the stable composite id and the raw provider session id.
+    `can_resume_native` is true only when the source provider is native-eligible
+    and the source CLI's on-disk handle validates locally.
+    """
+    try:
+        payload = list_resumable_conversations(
+            provider=provider,
+            project=project,
+            since=since,
+            limit=limit,
+            offset=offset,
+        )
+    except Exception as exc:
+        payload = {
+            "kind": "error",
+            "code": "resume_list_failed",
+            "recovery": str(exc),
+        }
+    return json.dumps(payload, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_resume_conversation(
+    session_id: str,
+    target_harness: str | None = None,
+    target_model: str | None = None,
+    max_tokens: int = 8000,
+    print_only: bool = True,
+) -> str:
+    """
+    Compose a BurnBar Resume plan for a prior conversation.
+
+    Returns one of three stable response shapes: `native`, `ported`, or `error`.
+    The default is emit-only and keeps plaintext on-device. A 0600 temp briefing
+    file is created only when `print_only` is false.
+    """
+    try:
+        payload = dispatch_resume(
+            session_id,
+            target_harness=target_harness,
+            target_model=target_model,
+            max_tokens=max_tokens,
+            print_only=print_only,
+        )
+    except Exception as exc:
+        payload = {
+            "kind": "error",
+            "code": "resume_failed",
+            "session_id": session_id,
+            "recovery": str(exc),
+        }
+    return json.dumps(payload, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_spawn_resume(
+    session_id: str,
+    target_harness: str | None = None,
+    target_model: str | None = None,
+    max_tokens: int = 8000,
+    cleanup_after_seconds: int = 600,
+) -> str:
+    """
+    Spawn a native or cross-ported resume target as a detached local process.
+
+    This is intentionally separate from `burnbar_resume_conversation` so the
+    Phase A emit-only default stays stable for existing MCP clients.
+    """
+    try:
+        payload = spawn_resume(
+            session_id,
+            target_harness=target_harness,
+            target_model=target_model,
+            max_tokens=max_tokens,
+            cleanup_after_seconds=cleanup_after_seconds,
+        )
+    except Exception as exc:
+        payload = {
+            "kind": "error",
+            "code": "resume_spawn_failed",
+            "session_id": session_id,
+            "recovery": str(exc),
+        }
+    return json.dumps(payload, indent=2, default=str)
 
 
 def main() -> None:

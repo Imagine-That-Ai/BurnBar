@@ -52,6 +52,25 @@ before, then checks the current mirror controller peer. If a watcher sends a
 signed control intent, the Mac rejects it with `control.denied` detail
 `control_owned_by_other_viewer`.
 
+## Viewer controls
+
+Controllers can tap, type, scroll, switch displays, and use Mercury clipboard
+actions from the mirror dock. Optional **Auto keyboard on text focus** (Media
+settings or mirror dock customize; default off) opens the phone keyboard when
+Mac focus context reports a text field; Smart Zoom framing stays independent.
+Manual **Type on Mac** still works when auto-type is off or after dismiss.
+
+## Connection Recovery
+
+`media.control` stream ownership is bound to the paired iroh node and signed-in
+uid, not only to the Mac's latest published relay `connectionId`. A phone can
+open a valid stream through a still-signed persisted route while the Mac has
+already refreshed its relay document. The Mac must accept the first
+`media.classify` frame, register the stream under the frame's `connectionId`,
+and audit the drift instead of dropping the stream. Dropping that first classify
+frame leaves mobile clients stuck in the "connecting / reconnecting" loop before
+presence heartbeats or mirror requests reach `MercuryRouter`.
+
 ## Verification
 
 Focused automated gates:
@@ -61,6 +80,7 @@ xcodebuild -project OpenBurnBar.xcodeproj \
   -scheme OpenBurnBar \
   -destination 'platform=macOS,arch=arm64' \
   -jobs 1 \
+  -only-testing:OpenBurnBarTests/IrohRelayRequestHandlerTests \
   -only-testing:OpenBurnBarTests/MercuryRouterTests \
   -only-testing:OpenBurnBarTests/MacMediaCapabilityGateTests \
   test
@@ -73,7 +93,11 @@ cd android
   --tests com.openburnbar.irohrelay.HermesRealtimeRelayControlFrameTest \
   :app:testDebugUnitTest \
   --tests com.openburnbar.data.media.MediaControlStreamCoordinatorTest \
+  --tests com.openburnbar.ui.media.ScreenShareAutoTypeFollowPolicyTest \
   --no-daemon
+
+OPENBURNBAR_MOBILE_TEST_FILTER="OpenBurnBarMobileTests/ScreenShareAutoTypeFollowPolicyTests" \
+  ./scripts/test-openburnbar-mobile.sh
 ```
 
 Physical proof should include one iOS device and one Android device connected

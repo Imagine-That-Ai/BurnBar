@@ -264,6 +264,8 @@ struct CLIProcessStreamRunner: Sendable {
             return .forgeDev
         case .antigravity:
             return .antigravity
+        case .grok:
+            return .xAI
         }
     }
 

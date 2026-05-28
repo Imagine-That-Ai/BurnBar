@@ -299,6 +299,9 @@ public actor BurnBarHTTPGatewayServer {
         case ("GET", "/health"):
             return jsonResponse(status: 200, body: encodeBody(HealthResponse(ok: true, version: BurnBarDaemonVersion.current)))
 
+        case ("GET", "/metrics"):
+            return handleMetrics()
+
         case ("GET", "/v1/models"):
             return await handleModels()
 
@@ -319,17 +322,30 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
+    private func handleMetrics() -> GatewayHTTPResponse {
+        let snapshot = BurnBarGatewayMetricsSnapshot.live(gatewayEnabled: configuration.isEnabled)
+        return jsonResponse(status: 200, body: encodeBody(snapshot))
+    }
+
     // MARK: - /v1/models
 
     private func handleModels(includeUnadvertised: Bool = false) async -> GatewayHTTPResponse {
         do {
             let catalog = configStore.catalogSupport.catalog
+            let configSnapshot = try await configStore.snapshot()
+            let suppressedBaseIDs = includeUnadvertised
+                ? Set<String>()
+                : suppressedBaseModelIDs(from: configSnapshot)
             let snapshot = try await BurnBarLiveModelCatalog(
                 configStore: configStore,
                 session: modelCatalogSession
             ).snapshot()
             var entries: [GatewayModelCatalogEntry] = []
             for model in snapshot.models {
+                if !includeUnadvertised,
+                   isSuppressedBaseModelRow(model, suppressedBaseIDs: suppressedBaseIDs) {
+                    continue
+                }
                 let canAdvertise = await canAdvertiseModel(model, catalog: catalog)
                 let advertised = model.routeEligible && model.advertisementEnabled && canAdvertise
                 if advertised || (includeUnadvertised && (model.routeEligible || !model.advertisementEnabled)) {
@@ -420,12 +436,17 @@ public actor BurnBarHTTPGatewayServer {
     }
 
     /// Detect when the inbound wire id refers to a thinking-level variant
-    /// (e.g. `claude-opus-4-7-xhigh`) and resolve it back to the base model
-    /// the router knows how to score, alongside the variant struct that the
-    /// executors will use to inject thinking/reasoning config.
-    private func resolveVariant(
+    /// (e.g. `claude-opus-4-7-xhigh`) or a user-defined alias (`my-coder`) and
+    /// resolve it back to the base model the router knows how to score.
+    private struct GatewayProxyModelOverride {
+        let requestedModel: GatewayRequestedModel
+        let variant: BurnBarModelVariant?
+        let alias: BurnBarModelAlias?
+    }
+
+    private func resolveProxyModelOverride(
         forRequestedModel requestedModel: GatewayRequestedModel
-    ) async -> (GatewayRequestedModel, BurnBarModelVariant)? {
+    ) async -> GatewayProxyModelOverride? {
         guard let snapshot = try? await configStore.snapshot() else { return nil }
         let requested = requestedModel.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !requested.isEmpty else { return nil }
@@ -449,10 +470,57 @@ public actor BurnBarHTTPGatewayServer {
                     providerID: requestedModel.providerID ?? provider.providerID,
                     accountID: requestedModel.accountID
                 )
-                return (rewritten, variant)
+                return GatewayProxyModelOverride(
+                    requestedModel: rewritten,
+                    variant: variant,
+                    alias: nil
+                )
+            }
+        }
+
+        for provider in providersToScan {
+            if let alias = provider.modelAliases.first(where: {
+                $0.aliasID.caseInsensitiveCompare(requested) == .orderedSame
+            }) {
+                let rewritten = GatewayRequestedModel(
+                    originalID: requestedModel.originalID,
+                    modelID: alias.baseModelID,
+                    providerID: requestedModel.providerID ?? provider.providerID,
+                    accountID: requestedModel.accountID
+                )
+                return GatewayProxyModelOverride(
+                    requestedModel: rewritten,
+                    variant: nil,
+                    alias: alias
+                )
             }
         }
         return nil
+    }
+
+    private func suppressedBaseModelIDs(from snapshot: BurnBarProviderConfigurationSnapshot) -> Set<String> {
+        var suppressed = Set<String>()
+        for provider in snapshot.providers {
+            for alias in provider.modelAliases where alias.hidesBaseModel {
+                guard provider.isModelAdvertisementEnabled(alias.aliasID) else { continue }
+                let normalizedBase = alias.baseModelID
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                guard !normalizedBase.isEmpty else { continue }
+                suppressed.insert(normalizedBase)
+            }
+        }
+        return suppressed
+    }
+
+    private func isSuppressedBaseModelRow(
+        _ model: BurnBarLiveAdvertisedModel,
+        suppressedBaseIDs: Set<String>
+    ) -> Bool {
+        guard model.baseModelID == nil, model.thinkingLevel == nil else { return false }
+        guard model.sourceKind != "user_model_alias" else { return false }
+        let normalizedID = model.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return suppressedBaseIDs.contains(normalizedID)
     }
 
     private func advertisedRouteKeysByFamily(for requestedModel: GatewayRequestedModel) async throws -> [BurnBarProviderFormatFamily: Set<String>] {
@@ -475,7 +543,12 @@ public actor BurnBarHTTPGatewayServer {
                model.accountID.caseInsensitiveCompare(accountID) != .orderedSame {
                 continue
             }
-            guard advertisedModel(model.id, matchesRequestedModelID: normalizedModelID, providerID: model.providerID, catalog: catalog) else {
+            guard modelMatchesRequested(
+                model,
+                normalizedRequestedModelID: normalizedModelID,
+                providerID: model.providerID,
+                catalog: catalog
+            ) else {
                 continue
             }
             guard await canAdvertiseModel(model, catalog: catalog) else {
@@ -638,6 +711,30 @@ public actor BurnBarHTTPGatewayServer {
         return providerIDs.count == 1 ? providerIDs.first : nil
     }
 
+    private func modelMatchesRequested(
+        _ model: BurnBarLiveAdvertisedModel,
+        normalizedRequestedModelID: String,
+        providerID: String,
+        catalog: BurnBarCatalog
+    ) -> Bool {
+        if advertisedModel(
+            model.id,
+            matchesRequestedModelID: normalizedRequestedModelID,
+            providerID: providerID,
+            catalog: catalog
+        ) {
+            return true
+        }
+        if let baseModelID = model.baseModelID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+           !baseModelID.isEmpty,
+           baseModelID == normalizedRequestedModelID {
+            return true
+        }
+        return false
+    }
+
     private func advertisedModel(
         _ advertisedModelID: String,
         matchesRequestedModelID normalizedRequestedModelID: String,
@@ -686,14 +783,15 @@ public actor BurnBarHTTPGatewayServer {
             return jsonResponse(status: 400, body: errorBody("model field required"))
         }
         var requestedModel = gatewayRequestedModel(from: modelID)
+        let wireRequestedModel = requestedModel
         var resolvedVariant: BurnBarModelVariant?
-        if let (rewritten, variant) = await resolveVariant(forRequestedModel: requestedModel) {
-            requestedModel = rewritten
-            resolvedVariant = variant
+        if let override = await resolveProxyModelOverride(forRequestedModel: requestedModel) {
+            requestedModel = override.requestedModel
+            resolvedVariant = override.variant
         }
 
         do {
-            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: requestedModel)
+            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: wireRequestedModel)
             guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
                 return noEligibleRouteResponse(modelID: modelID)
             }
@@ -826,14 +924,15 @@ public actor BurnBarHTTPGatewayServer {
             return jsonResponse(status: 400, body: errorBody("model field required"))
         }
         var requestedModel = gatewayRequestedModel(from: modelID)
+        let wireRequestedModel = requestedModel
         var resolvedVariant: BurnBarModelVariant?
-        if let (rewritten, variant) = await resolveVariant(forRequestedModel: requestedModel) {
-            requestedModel = rewritten
-            resolvedVariant = variant
+        if let override = await resolveProxyModelOverride(forRequestedModel: requestedModel) {
+            requestedModel = override.requestedModel
+            resolvedVariant = override.variant
         }
 
         do {
-            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: requestedModel)
+            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: wireRequestedModel)
             guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
                 return noEligibleRouteResponse(modelID: modelID)
             }
@@ -966,27 +1065,38 @@ public actor BurnBarHTTPGatewayServer {
             return jsonResponse(status: 400, body: errorBody("model field required"))
         }
         var requestedModel = gatewayRequestedModel(from: modelID)
+        let wireRequestedModel = requestedModel
         var resolvedVariant: BurnBarModelVariant?
-        if let (rewritten, variant) = await resolveVariant(forRequestedModel: requestedModel) {
-            requestedModel = rewritten
-            resolvedVariant = variant
+        if let override = await resolveProxyModelOverride(forRequestedModel: requestedModel) {
+            requestedModel = override.requestedModel
+            resolvedVariant = override.variant
         }
 
         do {
+            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: wireRequestedModel)
+            guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
+                return noEligibleRouteResponse(modelID: modelID)
+            }
+            guard let advertisedRouteKeys = advertisedRouteKeysByFamily[.anthropic], !advertisedRouteKeys.isEmpty else {
+                return noEligibleRouteResponse(modelID: modelID)
+            }
+
             let router = BurnBarProviderRouter(
                 configStore: configStore,
                 logger: BurnBarDaemonLogger(category: "gateway-router-anthropic"),
                 routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
             let catalog = configStore.catalogSupport.catalog
+            let effectiveProviderID = requestedModel.providerID
+                ?? singleAdvertisedProviderID(in: advertisedRouteKeysByFamily)
             let requestedCanonicalModelID = canonicalModelID(
                 forModelName: requestedModel.modelID,
-                providerID: requestedModel.providerID,
+                providerID: effectiveProviderID,
                 catalog: catalog
             )
             let ranking = try await router.scoreAndRankRoutes(
                 modelName: requestedModel.modelID,
-                preferredProviderID: requestedModel.providerID,
+                preferredProviderID: effectiveProviderID,
                 requestedFormatFamily: .anthropic,
                 requiredCanonicalModelID: requestedCanonicalModelID
             )
@@ -1000,6 +1110,7 @@ public actor BurnBarHTTPGatewayServer {
                     guard let accountID = requestedModel.accountID else { return true }
                     return $0.credentialSlotID?.caseInsensitiveCompare(accountID) == .orderedSame
                 }
+                .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
             guard rankedRoutes.isEmpty == false else {
                 return jsonResponse(
                     status: 503,
@@ -1178,6 +1289,13 @@ public actor BurnBarHTTPGatewayServer {
             )
         } catch {
             logger.silentFailure("gateway_usage_record", error: error)
+        }
+
+        if route.providerID.caseInsensitiveCompare("xai") == .orderedSame {
+            XAISuperGrokPacingLog.recordPromptDispatched(
+                model: route.resolvedModelID,
+                source: "http-gateway"
+            )
         }
     }
 
@@ -1509,6 +1627,7 @@ public actor BurnBarHTTPGatewayServer {
         let lastError: String?
         let baseModelID: String?
         let thinkingLevel: String?
+        let hidesBaseModel: Bool?
 
         init(group: GatewayModelCatalogGroup, advertisedID: String, advertised: Bool? = nil) {
             let representative = group.representative
@@ -1563,6 +1682,7 @@ public actor BurnBarHTTPGatewayServer {
             self.lastError = models.compactMap(\.lastError).first
             self.baseModelID = models.compactMap(\.baseModelID).first
             self.thinkingLevel = thinkingLevel
+            self.hidesBaseModel = models.compactMap(\.hidesBaseModel).first
         }
 
         private static func formatFamily(from capabilities: [String]) -> BurnBarProviderFormatFamily {
@@ -1741,6 +1861,7 @@ public actor BurnBarHTTPGatewayServer {
             case lastError = "last_error"
             case baseModelID = "base_model_id"
             case thinkingLevel = "thinking_level"
+            case hidesBaseModel = "hides_base_model"
         }
     }
 

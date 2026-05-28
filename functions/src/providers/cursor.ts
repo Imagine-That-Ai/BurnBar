@@ -50,7 +50,7 @@ async function cursorFetch(
   }
 }
 
-interface CursorDashPayload {
+export interface CursorDashPayload {
   usage?: {
     used?: number;
     limit?: number;

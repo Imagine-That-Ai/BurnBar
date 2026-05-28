@@ -57,7 +57,7 @@ interface OpenAIUsageBucket {
   [k: string]: unknown;
 }
 
-interface OpenAIUsagePayload {
+export interface OpenAIUsagePayload {
   data?: OpenAIUsageBucket[];
   [k: string]: unknown;
 }

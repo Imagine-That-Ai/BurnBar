@@ -477,6 +477,8 @@ struct CLIAgentConversationListView: View {
             return "Start a Forge chat here. The Mac streams replies back into this mobile thread."
         case .antigravity:
             return "Start an Antigravity chat here. The Mac streams replies back into this mobile thread."
+        case .grok:
+            return "Start a Grok Build chat here. The Mac streams replies back into this mobile thread."
         }
     }
 
@@ -488,6 +490,8 @@ struct CLIAgentConversationListView: View {
         case .droid:    return Color(hex: "8B5CF6")
         case .forge:    return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
+        case .grok: return Color(hex: "111111")
+        case .grok: return Color(hex: "111111")
         }
     }
 
@@ -1338,6 +1342,7 @@ struct CLIAgentChatThreadView: View {
         case .droid: return Color(hex: "8B5CF6")
         case .forge: return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
+        case .grok: return Color(hex: "111111")
         }
     }
 }

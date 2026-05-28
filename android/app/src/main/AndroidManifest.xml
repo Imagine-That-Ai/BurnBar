@@ -206,6 +206,7 @@
             android:exported="false"
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:launchMode="singleTask" />
 

@@ -88,10 +88,28 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
 
     public init(databaseURL: URL = BurnBarDaemonPaths.supportDirectoryURL.appendingPathComponent("openburnbar.sqlite")) throws {
         self.dbQueue = try DatabasePool(path: databaseURL.path, configuration: Self.databaseConfiguration())
+        try Self.ensureDrainTargetColumn(on: self.dbQueue)
     }
 
     public init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
+        try? Self.ensureDrainTargetColumn(on: dbQueue)
+    }
+
+    /// Idempotently adds the per-provider `providerID` column to
+    /// `switcher_active_profile` if it isn't already present. The app's v46
+    /// migrator adds the same column; this guard means the daemon stays
+    /// correct even when it boots before the app has had a chance to migrate
+    /// the shared SQLite file at `~/Library/Application Support/OpenBurnBar/`.
+    private static func ensureDrainTargetColumn(on dbQueue: any DatabaseWriter) throws {
+        try dbQueue.write { db in
+            guard try db.tableExists("switcher_active_profile") else { return }
+            let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(switcher_active_profile)")
+                .compactMap { $0["name"] as? String }
+            if !columns.contains("providerID") {
+                try db.execute(sql: "ALTER TABLE switcher_active_profile ADD COLUMN providerID TEXT")
+            }
+        }
     }
 
     public func fetchProfile(id: String) -> SwitcherProfileRecord? {
@@ -128,6 +146,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
                     db,
                     sql: """
                         SELECT activeProfileID FROM switcher_active_profile
+                        WHERE providerID IS NULL
                         ORDER BY activeProfileID IS NOT NULL DESC,
                                  COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
                         LIMIT 1
@@ -142,17 +161,57 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         }
     }
 
+    public func fetchActiveProfileID(for providerID: ProviderID) -> String? {
+        do {
+            return try dbQueue.read { db in
+                try String.fetchOne(
+                    db,
+                    sql: """
+                        SELECT activeProfileID FROM switcher_active_profile
+                        WHERE providerID = ? AND activeProfileID IS NOT NULL
+                        ORDER BY COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
+                        LIMIT 1
+                    """,
+                    arguments: [providerID.rawValue]
+                )
+            }
+        } catch {
+            logger.silentFailure("fetch_active_profile_id_for_provider", error: error)
+            return nil
+        }
+    }
+
     public func setActiveProfileID(_ profileID: String?) {
         do {
             try dbQueue.write { db in
-                try db.execute(sql: "DELETE FROM switcher_active_profile")
+                // Rewrite only the global pointer (providerID IS NULL). Wiping
+                // every row would also delete per-provider drain targets the
+                // app has set in the shared SQLite file.
+                try db.execute(sql: "DELETE FROM switcher_active_profile WHERE providerID IS NULL")
                 try db.execute(
-                    sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                    sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, NULL, ?)",
                     arguments: [profileID, Date()]
                 )
             }
         } catch {
             logger.silentFailure("set_active_profile_id", error: error)
+        }
+    }
+
+    public func setActiveProfileID(_ profileID: String?, for providerID: ProviderID) {
+        do {
+            try dbQueue.write { db in
+                try db.execute(
+                    sql: "DELETE FROM switcher_active_profile WHERE providerID = ?",
+                    arguments: [providerID.rawValue]
+                )
+                try db.execute(
+                    sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, ?, ?)",
+                    arguments: [profileID, providerID.rawValue, Date()]
+                )
+            }
+        } catch {
+            logger.silentFailure("set_active_profile_id_for_provider", error: error)
         }
     }
 
@@ -310,6 +369,8 @@ public struct BurnBarSwitcherKeychainCredentialStore: BurnBarSwitcherCredentialP
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
+            ,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
         ]
         let context = LAContext()
         context.interactionNotAllowed = true
@@ -731,6 +792,8 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             return "ANTHROPIC_API_KEY"
         case .opencode, .droid, .forge, .antigravity:
             return nil
+        case .grok:
+            return "XAI_API_KEY"
         }
     }
 

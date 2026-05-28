@@ -167,7 +167,11 @@ enum TokenExtractionUtility {
             ]
         ) ?? 0
 
-        let explicitPayloadTotal = max(input, 0) + max(output, 0) + max(cacheCreation, 0) + max(cacheRead, 0)
+        let explicitPayloadTotal = max(input, 0)
+            + max(output, 0)
+            + max(cacheCreation, 0)
+            + max(cacheRead, 0)
+            + max(reasoningTokens, 0)
         let normalizedTotal = max(total, explicitPayloadTotal)
 
         // VAL-TOKEN-004: Fallback gating - normalization occurs when total_tokens is present.
@@ -178,7 +182,7 @@ enum TokenExtractionUtility {
         if normalizedTotal > 0 {
             // Normalization: derive missing primary buckets from total_tokens.
             // This is appropriate when total_tokens is explicitly provided by the provider.
-            let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead, 0)
+            let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead - reasoningTokens, 0)
 
             if input == 0 && output == 0 && availableForInOut > 0 {
                 // Both missing but total available - use hints to normalize the split

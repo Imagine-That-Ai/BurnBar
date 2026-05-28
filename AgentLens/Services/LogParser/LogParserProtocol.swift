@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Parse Result
 
@@ -9,8 +10,7 @@ struct ParseResult: Sendable {
 
 // MARK: - Log Parser Protocol
 
-protocol LogParser: Sendable {
-    var provider: AgentProvider { get }
+protocol LogParser: LogParserProtocol {
     func parse() async throws -> ParseResult
 }
 

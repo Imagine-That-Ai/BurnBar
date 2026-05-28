@@ -286,6 +286,18 @@ public enum CLIRuntimeModelCatalog {
                 "Google via Antigravity CLI",
                 source: .antigravityProfile
             )
+        case .grok:
+            return option(
+                "grok-build-0.1",
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: "Grok Build 0.1",
+                    providerName: "xAI",
+                    providerID: "xai",
+                    reasoningLevel: "CLI default"
+                ),
+                "xai",
+                "xAI via Grok Build CLI"
+            )
         case .droid, .forge, .hermes, .pi, .openClaw:
             return nil
         }

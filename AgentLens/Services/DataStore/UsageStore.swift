@@ -18,6 +18,11 @@ final class UsageStore: Sendable {
     func insert(_ usage: TokenUsage) throws {
         try dbQueue.write { db in
             try deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
+            if try shouldSuppressFactoryRoutedMirror(usage, in: db) {
+                return
+            }
+            try deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
+            try deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
             try upsertUsage(usage, in: db)
         }
         SearchQueryCache.shared.clear()
@@ -28,6 +33,11 @@ final class UsageStore: Sendable {
         try dbQueue.write { db in
             for usage in newUsages {
                 try deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
+                if try shouldSuppressFactoryRoutedMirror(usage, in: db) {
+                    continue
+                }
+                try deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
+                try deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
                 try upsertUsage(usage, in: db)
             }
         }
@@ -109,6 +119,86 @@ final class UsageStore: Sendable {
         model.trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .hasPrefix("chatcmpl-")
+    }
+
+    private func shouldSuppressFactoryRoutedMirror(_ usage: TokenUsage, in db: Database) throws -> Bool {
+        guard Self.isFactoryRoutedMirrorProvider(usage.provider) else { return false }
+        let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
+        let count = try Int.fetchOne(
+            db,
+            sql: """
+                SELECT COUNT(*)
+                FROM token_usage
+                WHERE provider = ?
+                  AND sessionId = ?
+                  AND COALESCE(sourceDeviceId, '') = COALESCE(?, '')
+                  AND COALESCE(providerAccountID, '') = COALESCE(?, '')
+                """,
+            arguments: [
+                AgentProvider.factory.rawValue,
+                usage.sessionId,
+                usage.sourceDeviceId,
+                usagePartition,
+            ]
+        ) ?? 0
+        return count > 0
+    }
+
+    private func deleteFactoryRoutedMirrorRows(replacedBy usage: TokenUsage, in db: Database) throws {
+        guard usage.provider == .factory else { return }
+        let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
+        try db.execute(
+            sql: """
+                DELETE FROM token_usage
+                WHERE provider IN (?, ?, ?)
+                  AND sessionId = ?
+                  AND COALESCE(sourceDeviceId, '') = COALESCE(?, '')
+                  AND COALESCE(providerAccountID, '') = COALESCE(?, '')
+                """,
+            arguments: [
+                AgentProvider.zai.rawValue,
+                AgentProvider.minimax.rawValue,
+                AgentProvider.ollama.rawValue,
+                usage.sessionId,
+                usage.sourceDeviceId,
+                usagePartition,
+            ]
+        )
+    }
+
+    private func deleteStaleLowerConfidenceModelRows(replacedBy usage: TokenUsage, in db: Database) throws {
+        let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
+        try db.execute(
+            sql: """
+                DELETE FROM token_usage
+                WHERE provider = ?
+                  AND sessionId = ?
+                  AND model != ?
+                  AND COALESCE(sourceDeviceId, '') = COALESCE(?, '')
+                  AND COALESCE(providerAccountID, '') = COALESCE(?, '')
+                  AND (
+                    CASE provenanceConfidence
+                        WHEN 'exact' THEN 4
+                        WHEN 'derived_exact' THEN 3
+                        WHEN 'high_confidence_estimate' THEN 2
+                        WHEN 'low_confidence_estimate' THEN 1
+                        ELSE 0
+                    END
+                  ) < ?
+                """,
+            arguments: [
+                usage.provider.rawValue,
+                usage.sessionId,
+                usage.model,
+                usage.sourceDeviceId,
+                usagePartition,
+                usage.provenanceConfidence.precedence,
+            ]
+        )
+    }
+
+    private static func isFactoryRoutedMirrorProvider(_ provider: AgentProvider) -> Bool {
+        provider == .zai || provider == .minimax || provider == .ollama
     }
 
     /// Inserts remote usage with update-to-correction semantics.

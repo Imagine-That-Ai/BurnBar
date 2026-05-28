@@ -1,2 +1,11 @@
 import "./domains/usage-quota.tsp";
 import "./domains/provider-account.tsp";
+import "./domains/hermes-relay.tsp";
+import "./domains/iroh-pairing.tsp";
+import "./domains/pi-agent-relay.tsp";
+import "./domains/computer-use.tsp";
+import "./domains/hosted-quota.tsp";
+import "./domains/entitlements.tsp";
+import "./domains/insights.tsp";
+import "./domains/missions.tsp";
+import "./domains/media-analytics.tsp";

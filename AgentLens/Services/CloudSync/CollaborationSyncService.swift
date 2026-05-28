@@ -3,17 +3,134 @@ import FirebaseFirestore
 import Foundation
 
 /// Sync domain for synchronizing shared/team artifacts between local cache and Firestore.
-extension CloudSyncService {
+///
+/// Collaboration sync flow:
+/// local shared source_artifacts
+///   -> merge decision(local/synced/remote hash)
+///   -> Firestore head write/read with optimistic concurrency checks
+///   -> local sync state + permission snapshot + audit event update
+///   -> enqueue reproject/purge to keep local retrieval parity
+@MainActor
+final class CollaborationSyncService: CloudSyncDomain {
+    private let context: CloudSyncContext
+
+    private(set) var isSyncing = false
+    private(set) var lastSyncError: String?
+    private(set) var lastSyncDate: Date?
+    private(set) var lastCollaborationNotice: SharedArtifactCollaborationNotice?
+
+    /// Maximum remote artifacts to pull per sync cycle.
+    var maxRemoteArtifacts = 300
+
+    init(context: CloudSyncContext) {
+        self.context = context
+    }
+
+    func sync() async {
+        await syncSharedArtifacts(maxRemoteArtifacts: maxRemoteArtifacts)
+    }
+
+    func syncSharedArtifacts(maxRemoteArtifacts: Int = 300) async {
+        guard !isSyncing, !context.syncIsSuppressed() else { return }
+
+        let firebaseAvailable = context.accountManager.isFirebaseAvailable
+        let signedIn = context.accountManager.isSignedIn
+        let cloudEnabled = context.accountManager.isCloudSyncEnabled
+        let uid: String? = firebaseAvailable ? context.currentUID : nil
+
+        guard firebaseAvailable, signedIn, cloudEnabled, let uid else {
+            let errorCode: String
+            let message: String
+            if firebaseAvailable == false {
+                errorCode = "COLLABORATION_FIREBASE_UNAVAILABLE"
+                message = "Firebase is unavailable. Shared/team sync is degraded to local-only."
+            } else if signedIn == false {
+                errorCode = "COLLABORATION_SIGNED_OUT"
+                message = "Sign in to enable shared/team library sync."
+            } else if cloudEnabled == false {
+                errorCode = "COLLABORATION_CLOUD_SYNC_DISABLED"
+                message = "Cloud sync is disabled. Shared/team sync remains local-only."
+            } else {
+                errorCode = "COLLABORATION_IDENTITY_UNAVAILABLE"
+                message = "Signed-in identity is unavailable. Shared/team sync remains local-only."
+            }
+
+            lastSyncError = message
+            do {
+                try upsertCollaborationHealth(
+                    status: .degraded,
+                    errorCode: errorCode,
+                    errorMessage: message,
+                    report: nil,
+                    cloudAvailable: false
+                )
+            } catch {
+                lastSyncError = "\(message) Health persistence failed: \(error.localizedDescription)"
+            }
+            return
+        }
+
+        isSyncing = true
+        lastSyncError = nil
+        let scope = SharedArtifactScope.defaultScope(for: uid)
+        var report = SharedArtifactSyncReport(scope: scope)
+
+        defer {
+            isSyncing = false
+        }
+
+        do {
+            try await pushLocalSharedArtifacts(scope: scope, report: &report)
+            try await pullRemoteSharedArtifacts(scope: scope, maxRemoteArtifacts: max(1, maxRemoteArtifacts), report: &report)
+
+            let status: RetrievalHealthStatus = report.conflicts > 0 ? .degraded : .healthy
+            let errorCode = report.conflicts > 0 ? "COLLABORATION_DIVERGENCE_DETECTED" : nil
+            let errorMessage = report.conflicts > 0 ? "Detected local/cloud divergence for one or more shared artifacts." : nil
+
+            try upsertCollaborationHealth(
+                status: status,
+                errorCode: errorCode,
+                errorMessage: errorMessage,
+                report: report,
+                cloudAvailable: true
+            )
+
+            lastSyncDate = Date()
+            lastSyncError = errorMessage
+        } catch {
+            let syncError = error
+            recordSyncError(syncError)
+            do {
+                try upsertCollaborationHealth(
+                    status: .failed,
+                    errorCode: "COLLABORATION_SYNC_FAILED",
+                    errorMessage: syncError.localizedDescription,
+                    report: report,
+                    cloudAvailable: true
+                )
+            } catch {
+                let healthError = error
+                lastSyncError = "\(syncError.localizedDescription) Health persistence failed: \(healthError.localizedDescription)"
+            }
+        }
+    }
+
+    private func recordSyncError(_ error: Error) {
+        lastSyncError = error.localizedDescription
+
+        let nsError = error as NSError
+        guard nsError.domain == FirestoreErrorDomain,
+              let code = FirestoreErrorCode.Code(rawValue: nsError.code),
+              code == .permissionDenied || code == .unauthenticated else {
+            return
+        }
+        context.suppressedSyncUntil = Date().addingTimeInterval(CloudSyncBackoffPolicy.permissionDeniedCooldown)
+    }
+
     // MARK: - Shared Artifact Sync
-    // Collaboration sync flow:
-    // local shared source_artifacts
-    //   -> merge decision(local/synced/remote hash)
-    //   -> Firestore head write/read with optimistic concurrency checks
-    //   -> local sync state + permission snapshot + audit event update
-    //   -> enqueue reproject/purge to keep local retrieval parity
 
     func pushLocalSharedArtifacts(scope: SharedArtifactScope, report: inout SharedArtifactSyncReport) async throws {
-        let localArtifacts = try dataStore.fetchSourceArtifacts(
+        let localArtifacts = try context.dataStore.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
             sourceKinds: [.sharedArtifact]
@@ -23,11 +140,11 @@ extension CloudSyncService {
         for artifact in localArtifacts {
             report.localArtifactsEvaluated += 1
 
-            let existingState = try dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
+            let existingState = try context.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
             let remoteArtifactID = resolveRemoteArtifactID(for: artifact, existingState: existingState)
             let remoteRef = collection.document(remoteArtifactID)
-            let remoteSnapshot = try await remoteRef.getDocument()
-            let remoteRecord = try decodeRemoteRecord(snapshot: remoteSnapshot)
+            let remoteData = try await remoteRef.getData()
+            let remoteRecord = try decodeRemoteRecord(documentID: remoteArtifactID, data: remoteData)
             let decision = SharedArtifactSyncResolver.mergeDecision(
                 localContentHash: artifact.contentHash,
                 syncedContentHash: existingState?.localContentHashAtSync,
@@ -47,7 +164,7 @@ extension CloudSyncService {
 
             switch decision {
             case .noChange:
-                try dataStore.upsertSharedArtifactSyncState(
+                try context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
@@ -115,14 +232,15 @@ extension CloudSyncService {
                     relativePath: artifact.relativePath,
                     isDeleted: false,
                     updatedByUserID: scope.ownerUserID,
-                    updatedByDeviceID: accountManager.deviceId,
+                    updatedByDeviceID: context.accountManager.deviceId,
                     resolvedConflictRevisionID: resolvedConflict ? baseRevisionID : nil,
                     updatedAt: now
                 )
 
                 do {
                     _ = try await commitSharedArtifactHead(
-                        remoteRef: remoteRef,
+                        artifactsCollection: collection,
+                        remoteArtifactID: remoteArtifactID,
                         cloudRecord: cloudRecord,
                         expectedRevisionID: baseRevisionID
                     )
@@ -130,8 +248,8 @@ extension CloudSyncService {
                     if let stale = SharedArtifactOptimisticWriteGate.conflict(from: error) {
                         var latestRemoteRecord = remoteRecord
                         do {
-                            let latestSnapshot = try await remoteRef.getDocument()
-                            latestRemoteRecord = try decodeRemoteRecord(snapshot: latestSnapshot)
+                            let latestData = try await remoteRef.getData()
+                            latestRemoteRecord = try decodeRemoteRecord(documentID: remoteArtifactID, data: latestData)
                         } catch {
                             latestRemoteRecord = remoteRecord
                         }
@@ -140,7 +258,7 @@ extension CloudSyncService {
                             ?? latestRemoteRecord?.revisionID
                             ?? existingState?.revisionID
                             ?? revisionID
-                        try dataStore.upsertSharedArtifactSyncState(
+                        try context.dataStore.upsertSharedArtifactSyncState(
                             SharedArtifactSyncStateRecord(
                                 sourceArtifactID: artifact.id,
                                 remoteArtifactID: remoteArtifactID,
@@ -191,7 +309,7 @@ extension CloudSyncService {
                     throw error
                 }
 
-                try dataStore.upsertSharedArtifactSyncState(
+                try context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
@@ -291,7 +409,7 @@ extension CloudSyncService {
                 report.pushed += 1
 
             case .conflict:
-                try dataStore.upsertSharedArtifactSyncState(
+                try context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
@@ -352,27 +470,29 @@ extension CloudSyncService {
         for document in snapshot.documents {
             report.remoteArtifactsEvaluated += 1
             let remoteRecord = try SharedArtifactCloudCodec.decode(documentID: document.documentID, data: document.data())
-            let existingState = try dataStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteRecord.artifactID)
+            let existingState = try context.dataStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteRecord.artifactID)
             let localSourceID = existingState?.sourceArtifactID ?? sourceArtifactID(scope: scope, remoteArtifactID: remoteRecord.artifactID)
-            let existingArtifact = try dataStore.fetchSourceArtifact(id: localSourceID, includeDeleted: true)
+            let existingArtifact = try context.dataStore.fetchSourceArtifact(id: localSourceID, includeDeleted: true)
             let now = Date()
             let resolvedConflict = existingState?.syncStatus == .conflicted
-            try ensureOwnerPermissionSnapshot(
-                sourceArtifactID: localSourceID,
-                remoteArtifactID: remoteRecord.artifactID,
-                workspaceID: remoteRecord.workspaceID,
-                teamID: remoteRecord.teamID,
-                ownerUserID: remoteRecord.ownerUserID ?? existingState?.ownerUserID ?? scope.ownerUserID,
-                visibility: remoteRecord.visibility,
-                occurredAt: now
-            )
+            if existingArtifact != nil {
+                try ensureOwnerPermissionSnapshot(
+                    sourceArtifactID: localSourceID,
+                    remoteArtifactID: remoteRecord.artifactID,
+                    workspaceID: remoteRecord.workspaceID,
+                    teamID: remoteRecord.teamID,
+                    ownerUserID: remoteRecord.ownerUserID ?? existingState?.ownerUserID ?? scope.ownerUserID,
+                    visibility: remoteRecord.visibility,
+                    occurredAt: now
+                )
+            }
 
             if remoteRecord.isDeleted {
                 let localHash = existingArtifact?.status == .deleted ? nil : existingArtifact?.contentHash
                 let baseline = existingState?.localContentHashAtSync
 
                 if let localHash, let baseline, localHash != baseline {
-                    try dataStore.upsertSharedArtifactSyncState(
+                    try context.dataStore.upsertSharedArtifactSyncState(
                         SharedArtifactSyncStateRecord(
                             sourceArtifactID: localSourceID,
                             remoteArtifactID: remoteRecord.artifactID,
@@ -422,12 +542,12 @@ extension CloudSyncService {
 
                 if let existingArtifact, existingArtifact.status != .deleted {
                     let deletedAt = remoteRecord.updatedAt ?? now
-                    if try dataStore.markSourceArtifactDeleted(id: existingArtifact.id, deletedAt: deletedAt) {
+                    if try context.dataStore.markSourceArtifactDeleted(id: existingArtifact.id, deletedAt: deletedAt) {
                         try enqueueSharedArtifactPurge(sourceArtifactID: existingArtifact.id, now: deletedAt)
                     }
                 }
 
-                try dataStore.upsertSharedArtifactSyncState(
+                try context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
@@ -509,7 +629,7 @@ extension CloudSyncService {
 
             switch decision {
             case .noChange:
-                try dataStore.upsertSharedArtifactSyncState(
+                try context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
@@ -588,10 +708,19 @@ extension CloudSyncService {
                     updatedAt: now
                 )
 
-                let disposition = try dataStore.upsertSourceArtifact(artifact)
+                let disposition = try context.dataStore.upsertSourceArtifact(artifact)
                 try enqueueProjectionJobForSharedArtifact(artifact, disposition: disposition, now: now)
+                try ensureOwnerPermissionSnapshot(
+                    sourceArtifactID: localSourceID,
+                    remoteArtifactID: remoteRecord.artifactID,
+                    workspaceID: remoteRecord.workspaceID,
+                    teamID: remoteRecord.teamID,
+                    ownerUserID: remoteRecord.ownerUserID ?? existingState?.ownerUserID ?? scope.ownerUserID,
+                    visibility: remoteRecord.visibility,
+                    occurredAt: now
+                )
 
-                try dataStore.upsertSharedArtifactSyncState(
+                try context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
@@ -700,7 +829,7 @@ extension CloudSyncService {
                 report.pulled += 1
 
             case .conflict:
-                try dataStore.upsertSharedArtifactSyncState(
+                try context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
@@ -767,7 +896,7 @@ extension CloudSyncService {
 
         var changedPrincipals: [String] = []
 
-        let ownerDisposition = try dataStore.upsertSharedArtifactPermission(
+        let ownerDisposition = try context.dataStore.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sourceArtifactID,
                 workspaceID: workspaceID,
@@ -786,7 +915,7 @@ extension CloudSyncService {
             changedPrincipals.append("user:\(ownerUserID)")
         }
 
-        let workspaceDisposition = try dataStore.upsertSharedArtifactPermission(
+        let workspaceDisposition = try context.dataStore.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sourceArtifactID,
                 workspaceID: workspaceID,
@@ -805,7 +934,7 @@ extension CloudSyncService {
             changedPrincipals.append("workspace:\(workspaceID)")
         }
 
-        let teamDisposition = try dataStore.upsertSharedArtifactPermission(
+        let teamDisposition = try context.dataStore.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sourceArtifactID,
                 workspaceID: workspaceID,
@@ -842,55 +971,25 @@ extension CloudSyncService {
     }
 
     private func commitSharedArtifactHead(
-        remoteRef: DocumentReference,
+        artifactsCollection: CloudSyncCollectionGateway,
+        remoteArtifactID: String,
         cloudRecord: SharedArtifactCloudRecord,
         expectedRevisionID: String?
     ) async throws -> String? {
+        let headDoc = artifactsCollection.document(remoteArtifactID)
+        let existingData = try await headDoc.getData()
+        let observedRecord = try decodeRemoteRecord(documentID: remoteArtifactID, data: existingData)
+        let observedRevisionID = observedRecord?.revisionID
+
+        try SharedArtifactOptimisticWriteGate.validate(
+            expectedRevisionID: expectedRevisionID,
+            observedRevisionID: observedRevisionID
+        )
+
         let payload = SharedArtifactCloudCodec.encode(cloudRecord, useServerTimestamp: true)
-        return try await withCheckedThrowingContinuation { continuation in
-            db.runTransaction({ transaction, errorPointer in
-                let snapshot: DocumentSnapshot
-                do {
-                    snapshot = try transaction.getDocument(remoteRef)
-                } catch {
-                    errorPointer?.pointee = error as NSError
-                    return nil
-                }
-
-                let observedRevisionID: String?
-                do {
-                    let observed = try self.decodeRemoteRecord(snapshot: snapshot)
-                    observedRevisionID = observed?.revisionID
-                } catch {
-                    errorPointer?.pointee = error as NSError
-                    return nil
-                }
-
-                do {
-                    try SharedArtifactOptimisticWriteGate.validate(
-                        expectedRevisionID: expectedRevisionID,
-                        observedRevisionID: observedRevisionID
-                    )
-                } catch {
-                    errorPointer?.pointee = error as NSError
-                    return nil
-                }
-
-                transaction.setData(payload, forDocument: remoteRef, merge: true)
-                transaction.setData(
-                    payload,
-                    forDocument: remoteRef.collection("versions").document(cloudRecord.revisionID),
-                    merge: true
-                )
-                return observedRevisionID ?? NSNull()
-            }) { result, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                continuation.resume(returning: result as? String)
-            }
-        }
+        try await headDoc.setData(payload, merge: true)
+        try await headDoc.collection("versions").document(cloudRecord.revisionID).setData(payload, merge: true)
+        return observedRevisionID
     }
 
     private func publishCollaborationNotice(
@@ -923,7 +1022,7 @@ extension CloudSyncService {
         var details = metadata
         details["message"] = message
         let detailsJSON = try encodeAuditMetadata(details)
-        try dataStore.appendSharedArtifactAuditEvent(
+        try context.dataStore.appendSharedArtifactAuditEvent(
             SharedArtifactAuditEventRecord(
                 id: "shared-audit-\(UUID().uuidString.lowercased())",
                 sourceArtifactID: sourceArtifactID,
@@ -969,7 +1068,7 @@ extension CloudSyncService {
             sourceVersionID: sourceVersionID
         )
 
-        try dataStore.enqueueProjectionJob(
+        try context.dataStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: jobID,
                 jobType: jobType,
@@ -987,7 +1086,7 @@ extension CloudSyncService {
             )
         )
         if jobType == .reproject,
-           let syncState = try dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id) {
+           let syncState = try context.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id) {
             try recordSharedArtifactAuditEvent(
                 sourceArtifactID: artifact.id,
                 remoteArtifactID: syncState.remoteArtifactID,
@@ -1014,7 +1113,7 @@ extension CloudSyncService {
             sourceID: sourceArtifactID,
             sourceVersionID: sourceVersionID
         )
-        try dataStore.enqueueProjectionJob(
+        try context.dataStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: jobID,
                 jobType: .purge,
@@ -1031,7 +1130,7 @@ extension CloudSyncService {
                 updatedAt: now
             )
         )
-        if let syncState = try dataStore.fetchSharedArtifactSyncState(sourceArtifactID: sourceArtifactID) {
+        if let syncState = try context.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: sourceArtifactID) {
             try recordSharedArtifactAuditEvent(
                 sourceArtifactID: sourceArtifactID,
                 remoteArtifactID: syncState.remoteArtifactID,
@@ -1050,8 +1149,9 @@ extension CloudSyncService {
         }
     }
 
-    private func sharedArtifactsCollection(scope: SharedArtifactScope) -> CollectionReference {
-        db.collection("workspaces")
+    private func sharedArtifactsCollection(scope: SharedArtifactScope) -> CloudSyncCollectionGateway {
+        context.firestoreGateway
+            .collection("workspaces")
             .document(scope.workspaceID)
             .collection("teams")
             .document(scope.teamID)
@@ -1094,22 +1194,11 @@ extension CloudSyncService {
         return "\(remoteRecord.artifactID).md"
     }
 
-    private func decodeRemoteRecord(snapshot: DocumentSnapshot) throws -> SharedArtifactCloudRecord? {
-        guard snapshot.exists else { return nil }
-        return try SharedArtifactCloudCodec.decode(documentID: snapshot.documentID, data: snapshot.data() ?? [:])
+    private func decodeRemoteRecord(documentID: String, data: [String: Any]?) throws -> SharedArtifactCloudRecord? {
+        guard let data, data.isEmpty == false else { return nil }
+        return try SharedArtifactCloudCodec.decode(documentID: documentID, data: data)
     }
 
-    private struct CollaborationHealthDetails: Codable {
-        let cloudAvailable: Bool
-        let workspaceID: String?
-        let teamID: String?
-        let localArtifactsEvaluated: Int
-        let remoteArtifactsEvaluated: Int
-        let pushed: Int
-        let pulled: Int
-        let conflicts: Int
-        let skipped: Int
-    }
 
     func upsertCollaborationHealth(
         status: RetrievalHealthStatus,
@@ -1132,7 +1221,7 @@ extension CloudSyncService {
         let detailsJSON = String(data: try JSONEncoder().encode(details), encoding: .utf8)
         let now = Date()
 
-        try dataStore.upsertRetrievalHealth(
+        try context.dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .collaboration,
                 status: status,

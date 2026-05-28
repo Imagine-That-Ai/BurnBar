@@ -16,10 +16,12 @@ public actor BurnBarDaemonServer {
     private let computerUseService: ComputerUseService
     private let missionControlService: any BurnBarMissionControlServing
     private let indexedSearch: BurnBarIndexedSearchService?
+    private let resumeService: BurnBarResumeService?
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
 
     public init(
         configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration(),
@@ -144,8 +146,21 @@ public actor BurnBarDaemonServer {
                 )
                 self.indexedSearch = nil
             }
+            do {
+                self.resumeService = try BurnBarResumeService(
+                    databasePath: path,
+                    logger: BurnBarDaemonLogger(category: "resume-service")
+                )
+            } catch {
+                logger.warning(
+                    "resume_service_init_failed",
+                    metadata: ["path": path, "error": "\(error)"]
+                )
+                self.resumeService = nil
+            }
         } else {
             self.indexedSearch = nil
+            self.resumeService = nil
         }
 
         // HTTP gateway — only initialized if enabled.
@@ -212,6 +227,9 @@ public actor BurnBarDaemonServer {
                 logger: logger
             )
         }
+        heartbeatTask = BurnBarDaemonHeartbeat.startPeriodicWriter(
+            daemonVersion: configuration.daemonVersion
+        )
         await missionControlService.startBackgroundLoops()
 
         logger.notice(
@@ -247,6 +265,8 @@ public actor BurnBarDaemonServer {
         )
 
         self.listenerFileDescriptor = nil
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
         let acceptTask = acceptLoopTask
         acceptLoopTask = nil
         acceptTask?.cancel()
@@ -485,6 +505,41 @@ public actor BurnBarDaemonServer {
                     result: BurnBarProviderModelVariantMutationResponse(snapshot: snapshot)
                 )
                 return encode(response)
+            case .providerModelAliasUpsert:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderModelAliasUpsertRequest>.self,
+                    from: requestData
+                )
+                let alias = try await configStore.upsertModelAlias(
+                    providerID: typedRequest.params.providerID,
+                    alias: typedRequest.params.alias
+                )
+                let aliasSnapshot = try await configStore.snapshot()
+                let aliasResponse = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderModelAliasMutationResponse(
+                        snapshot: aliasSnapshot,
+                        alias: alias
+                    )
+                )
+                return encode(aliasResponse)
+            case .providerModelAliasRemove:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderModelAliasRemoveRequest>.self,
+                    from: requestData
+                )
+                try await configStore.removeModelAlias(
+                    providerID: typedRequest.params.providerID,
+                    aliasID: typedRequest.params.aliasID
+                )
+                let removedAliasSnapshot = try await configStore.snapshot()
+                let removedAliasResponse = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderModelAliasMutationResponse(snapshot: removedAliasSnapshot)
+                )
+                return encode(removedAliasResponse)
             case .usageRecent:
                 let typedRequest = try decoder.decode(
                     BurnBarRPCRequestEnvelopeWithParams<BurnBarRecentUsageRequest>.self,
@@ -1145,6 +1200,33 @@ public actor BurnBarDaemonServer {
                         message: error.localizedDescription
                     )
                 }
+            case .runResume:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarRunResumeRequest>.self,
+                    from: requestData
+                )
+                guard let resumeService else {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.internalError,
+                        message:
+                            "OpenBurnBar resume is not available. Ensure OPENBURNBAR_INDEX_DATABASE_PATH points to your OpenBurnBar database and restart the daemon."
+                    )
+                }
+                do {
+                    let result = try resumeService.runResume(typedRequest.params)
+                    return encode(BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        protocolVersion: BurnBarProtocolVersion.current,
+                        result: result
+                    ))
+                } catch {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.internalError,
+                        message: error.localizedDescription
+                    )
+                }
             case .authBootstrap:
                 // Authentication bootstrap is handled via BurnBarDaemonAuthManager
                 // Return internal error indicating this endpoint is not handled via socket RPC
@@ -1253,6 +1335,7 @@ public actor BurnBarDaemonServer {
         let result = getsockopt(clientFileDescriptor, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidSize)
         return result == 0 ? pid : nil
     }
+
 
     private static func handleClientConnection(
         server: BurnBarDaemonServer,

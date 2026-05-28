@@ -31,6 +31,8 @@ The hosted service implements the 2025-11-25 MCP Streamable HTTP shape:
 - `burnbar_list_search_index_status`
 - `burnbar_list_search_facets`
 - `burnbar_recent_usage`
+- `burnbar_list_resumable_conversations`
+- `burnbar_resume_conversation`
 - `burnbar_resolve_capabilities`
 
 Every tool has required scopes, an entitlement check, a rate-limit bucket, a
@@ -45,6 +47,16 @@ The hosted service searches opaque token/semantic hashes and returns sealed
 titles, snippets, previews, and encrypted body pages. Plaintext decrypt happens
 inside OpenBurnBar or the local shim after the user has an allowed vault-key
 wrapper. Silent hosted plaintext decrypt is not implemented.
+
+Hosted resume follows the same rule. The server composes only a sealed resume
+envelope; `openburnbar-mcp-remote resume ...` checks for a local vault key before
+the network call, decrypts the envelope on-device, verifies chunk hashes, then
+prints, copies, opens, or explicitly spawns the rendered resume locally. Fuzzy
+resume via `OBB Resume "memory"` sends locally derived opaque query hashes, not
+the raw memory text, and renders a ranked local candidate list with decrypted
+titles/snippets plus exact resume commands.
+See [BurnBar Resume](BURNBAR_RESUME.md) for the local, hosted, daemon CLI, and
+Mac app behavior.
 
 ## Entitlement
 

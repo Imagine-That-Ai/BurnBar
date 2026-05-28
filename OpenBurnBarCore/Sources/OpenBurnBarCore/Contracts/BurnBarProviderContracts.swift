@@ -181,6 +181,51 @@ public struct BurnBarModelVariant: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// A user-defined proxy alias that exposes a base model under a custom wire id
+/// in `/v1/models` and wired CLI pickers while routing through `baseModelID`.
+public struct BurnBarModelAlias: Codable, Hashable, Identifiable, Sendable {
+    public var aliasID: String
+    public var baseModelID: String
+    public var displayName: String
+    public var hidesBaseModel: Bool
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    public var id: String { aliasID }
+
+    public init(
+        aliasID: String,
+        baseModelID: String,
+        displayName: String = "",
+        hidesBaseModel: Bool = false,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.aliasID = aliasID
+        self.baseModelID = baseModelID
+        self.displayName = displayName
+        self.hidesBaseModel = hidesBaseModel
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// Characters allowed in a user-chosen alias wire id.
+    public static let allowedAliasIDCharacterSet = CharacterSet.alphanumerics
+        .union(CharacterSet(charactersIn: "._-:/"))
+
+    public static func isValidAliasID(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return trimmed.unicodeScalars.allSatisfy { allowedAliasIDCharacterSet.contains($0) }
+    }
+
+    public static func normalizedDisplayName(aliasID: String, displayName: String) -> String {
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        return aliasID.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable {
     public let providerID: String
     public var isEnabled: Bool
@@ -193,6 +238,8 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
     /// row in `/v1/models` and in every wired CLI's picker, while still
     /// routing through `baseModelID`.
     public var modelVariants: [BurnBarModelVariant]
+    /// User-defined proxy aliases with custom wire ids and optional hide-base behavior.
+    public var modelAliases: [BurnBarModelAlias]
 
     public var id: String { providerID }
 
@@ -204,7 +251,8 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         disabledAdvertisedModelIDs: [String] = [],
         preferredCredentialSlotID: String? = nil,
         credentialSlots: [BurnBarProviderCredentialSlot] = [],
-        modelVariants: [BurnBarModelVariant] = []
+        modelVariants: [BurnBarModelVariant] = [],
+        modelAliases: [BurnBarModelAlias] = []
     ) {
         self.providerID = providerID
         self.isEnabled = isEnabled
@@ -214,6 +262,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         self.preferredCredentialSlotID = preferredCredentialSlotID
         self.credentialSlots = credentialSlots
         self.modelVariants = Self.normalizedModelVariants(modelVariants)
+        self.modelAliases = Self.normalizedModelAliases(modelAliases)
     }
 
     public func isModelAdvertisementEnabled(_ modelID: String) -> Bool {
@@ -267,6 +316,39 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         }
     }
 
+    /// Insert or update an alias, keyed by `aliasID`. Touches `updatedAt`.
+    public mutating func upsertModelAlias(_ alias: BurnBarModelAlias) {
+        var working = modelAliases
+        var inserted = alias
+        inserted.updatedAt = Date()
+        if let index = working.firstIndex(where: { $0.aliasID.caseInsensitiveCompare(inserted.aliasID) == .orderedSame }) {
+            inserted.createdAt = working[index].createdAt
+            working[index] = inserted
+        } else {
+            working.append(inserted)
+        }
+        modelAliases = Self.normalizedModelAliases(working)
+    }
+
+    /// Remove an alias by id. Returns `true` if a row was removed.
+    @discardableResult
+    public mutating func removeModelAlias(aliasID: String) -> Bool {
+        let trimmed = aliasID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let before = modelAliases.count
+        modelAliases.removeAll { $0.aliasID.caseInsensitiveCompare(trimmed) == .orderedSame }
+        return modelAliases.count != before
+    }
+
+    /// Aliases that target a specific base model id.
+    public func aliases(forBaseModelID baseModelID: String) -> [BurnBarModelAlias] {
+        let normalized = baseModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return [] }
+        return modelAliases.filter {
+            $0.baseModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+        }
+    }
+
     private enum CodingKeys: String, CodingKey {
         case providerID
         case isEnabled
@@ -276,6 +358,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         case preferredCredentialSlotID
         case credentialSlots
         case modelVariants
+        case modelAliases
     }
 
     public init(from decoder: Decoder) throws {
@@ -291,6 +374,9 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         credentialSlots = try container.decodeIfPresent([BurnBarProviderCredentialSlot].self, forKey: .credentialSlots) ?? []
         modelVariants = Self.normalizedModelVariants(
             try container.decodeIfPresent([BurnBarModelVariant].self, forKey: .modelVariants) ?? []
+        )
+        modelAliases = Self.normalizedModelAliases(
+            try container.decodeIfPresent([BurnBarModelAlias].self, forKey: .modelAliases) ?? []
         )
     }
 
@@ -336,6 +422,34 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
                 return lhs.baseModelID.localizedCaseInsensitiveCompare(rhs.baseModelID) == .orderedAscending
             }
             return lhs.thinkingLevel.ladderIndex < rhs.thinkingLevel.ladderIndex
+        }
+    }
+
+    private static func normalizedModelAliases(_ aliases: [BurnBarModelAlias]) -> [BurnBarModelAlias] {
+        var seen = Set<String>()
+        return aliases.compactMap { raw in
+            let trimmedID = raw.aliasID.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedBase = raw.baseModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard BurnBarModelAlias.isValidAliasID(trimmedID),
+                  !trimmedBase.isEmpty,
+                  trimmedID.caseInsensitiveCompare(trimmedBase) != .orderedSame,
+                  seen.insert(trimmedID.lowercased()).inserted else {
+                return nil
+            }
+            return BurnBarModelAlias(
+                aliasID: trimmedID,
+                baseModelID: trimmedBase,
+                displayName: BurnBarModelAlias.normalizedDisplayName(aliasID: trimmedID, displayName: raw.displayName),
+                hidesBaseModel: raw.hidesBaseModel,
+                createdAt: raw.createdAt,
+                updatedAt: raw.updatedAt
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.baseModelID.caseInsensitiveCompare(rhs.baseModelID) != .orderedSame {
+                return lhs.baseModelID.localizedCaseInsensitiveCompare(rhs.baseModelID) == .orderedAscending
+            }
+            return lhs.aliasID.localizedCaseInsensitiveCompare(rhs.aliasID) == .orderedAscending
         }
     }
 }
@@ -479,6 +593,39 @@ public struct BurnBarProviderModelVariantMutationResponse: Codable, Hashable, Se
     ) {
         self.snapshot = snapshot
         self.variant = variant
+    }
+}
+
+public struct BurnBarProviderModelAliasUpsertRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let alias: BurnBarModelAlias
+
+    public init(providerID: String, alias: BurnBarModelAlias) {
+        self.providerID = providerID
+        self.alias = alias
+    }
+}
+
+public struct BurnBarProviderModelAliasRemoveRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let aliasID: String
+
+    public init(providerID: String, aliasID: String) {
+        self.providerID = providerID
+        self.aliasID = aliasID
+    }
+}
+
+public struct BurnBarProviderModelAliasMutationResponse: Codable, Hashable, Sendable {
+    public let snapshot: BurnBarProviderConfigurationSnapshot
+    public let alias: BurnBarModelAlias?
+
+    public init(
+        snapshot: BurnBarProviderConfigurationSnapshot,
+        alias: BurnBarModelAlias? = nil
+    ) {
+        self.snapshot = snapshot
+        self.alias = alias
     }
 }
 

@@ -70,6 +70,7 @@ final class SwitcherDashboardUITests: XCTestCase {
             try db.execute(sql: """
                 CREATE TABLE switcher_active_profile (
                     activeProfileID TEXT,
+                    providerID TEXT,
                     updatedAt TEXT NOT NULL
                 )
             """)
@@ -1914,6 +1915,7 @@ final class SwitcherDashboardDataSourceTests: XCTestCase {
             try db.execute(sql: """
                 CREATE TABLE switcher_active_profile (
                     activeProfileID TEXT,
+                    providerID TEXT,
                     updatedAt TEXT NOT NULL
                 )
             """)

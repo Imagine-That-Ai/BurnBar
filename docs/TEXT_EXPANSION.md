@@ -37,7 +37,7 @@ Cloud sync uses `users/{uid}/text_snippets/{snippetId}`. Firestore stores `seale
 ## Safety Rules
 
 - Global macOS expansion is off by default and compiles out of MAS builds.
-- macOS global expansion requires Accessibility permission, skips OpenBurnBar itself, skips secure/focused denied surfaces, and resets its buffer on command/control/option and non-printable navigation events.
+- macOS global expansion requires Accessibility permission, skips OpenBurnBar itself, skips secure/focused denied surfaces, and resets its buffer on command/control/option and non-printable navigation events. When permission is missing, Settings → Text Expansion routes users to **Privacy & Security → Accessibility** (same pane as Computer Use).
 - LLM snippets produce a preview with Insert/Cancel controls before draft replacement in macOS OpenBurnBar chat.
 - Static snippets can run globally; LLM snippets stay in OpenBurnBar-owned thread contexts.
 - Cloud rules allow owner-scoped read/write/delete only and validate the encrypted document shape.

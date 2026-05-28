@@ -70,6 +70,7 @@ final class SwitcherPopoverUITests: XCTestCase {
             try db.execute(sql: """
                 CREATE TABLE switcher_active_profile (
                     activeProfileID TEXT,
+                    providerID TEXT,
                     updatedAt TEXT NOT NULL
                 )
             """)

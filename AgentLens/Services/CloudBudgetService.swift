@@ -91,6 +91,7 @@ final class CloudBudgetService {
         do {
             localRules = try budgetRulesStore.fetchAllRules(includeDisabled: true)
         } catch {
+            AppLogger.sync.error("budget_rules_fetch_failed", metadata: ["error": error.localizedDescription])
             return
         }
         let localByID = Dictionary(uniqueKeysWithValues: localRules.map { ($0.id, $0) })

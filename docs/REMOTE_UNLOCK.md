@@ -37,6 +37,29 @@ Remote Unlock frames ride the existing Mercury control stream:
 - `remote_unlock.result`
 - `remote_unlock.denied`
 
+Locked mirror admission is intentionally two-phase:
+
+1. The phone/tablet requests a normal `media.mirror.request`.
+2. If the Mac is locked and Remote Unlock is runtime-ready, the Mac returns an
+   unsupported mirror ack with `detail=remote_unlock_session_required`,
+   `remoteUnlockState`, and `remoteUnlockCapabilities`.
+3. The mobile client ensures the device is trusted once, permanently, in the
+   user's device trust registry. If the phone/tablet is already trusted, no
+   Mac-side physical permission prompt is shown again. If it is not trusted, the
+   client performs local device authentication once, marks the device trusted,
+   publishes the phone-control authority key, signs a `remoteUnlockSession`, and
+   retries the mirror request.
+4. The Mac validates the signed session and auto-accepts the locked mirror
+   without showing a prompt on the locked Mac. This acceptance is not allowed
+   to wait for normal ScreenCaptureKit startup: while locked, the secure Remote
+   Unlock surface opens first, and normal screen capture starts only after the
+   Mac reports the user session is unlocked.
+5. The password field sends `remote_unlock.credential`, HPKE-sealed to the Mac's
+   advertised recipient key and signed by the same trusted phone-control key.
+6. The Mac validates signature freshness, counter monotonicity, active session
+   binding, recipient key id, credential TTL, and lock-state readiness before the
+   privileged local agent types the credential into loginwindow.
+
 The Mac also attaches `remoteUnlockCapabilities` and `remoteUnlockState` to
 mirror acks and presence heartbeats. Unsupported peers ignore these fields.
 
@@ -51,6 +74,13 @@ Credential payloads use a sealed credential envelope:
   any of these fields are absent;
 - every credential carries the existing Ed25519 authority envelope, monotonic
   counter, freshness window, session ID, and client intent ID.
+- Remote Unlock permission is durable: approving/trusting an iPhone, iPad, or
+  Android for locked mirroring is a one-time grant and survives app restarts.
+  Revocation is explicit from the device trust surface. The actual Mac password
+  is not part of that grant: it is never saved, never logged, never replayed, and
+  must be typed by the user for each unlock attempt. The typed password is held
+  only in volatile UI state, cleared when submitted/unlocked, HPKE-sealed to the
+  Mac recipient key, signed, and sent over `remote_unlock.credential`.
 
 ## Readiness
 
@@ -111,15 +141,88 @@ This change lands the permanent contract and fail-closed runtime seams:
   human unlock sessions;
 - mobile locked-state overlay that pauses normal Mac control while the
   privileged credential lane is unavailable;
+- locked Remote Unlock mirrors are accepted before normal ScreenCaptureKit
+  starts, avoiding "Opening mirror" deadlocks when macOS blocks capture at
+  `loginwindow`; after the credential succeeds, the router starts normal
+  capture and broadcasts a resumed mirror ack;
+- mobile mirror requests are not gated behind a heartbeat preflight at
+  `loginwindow`; control-stream writes are bounded by send timeouts, stale
+  streams are closed, and the mirror request is retried once after a fresh
+  control-stream dial;
+- mobile clients treat a live Mercury control stream as the authoritative
+  mirror-ready signal. Firestore/presence heartbeat freshness is status only:
+  it cannot disable the Mirror button, jump ahead of a user mirror request, or
+  interrupt Remote Unlock password entry;
+- Remote Unlock credential submission uses the dedicated signed
+  `remote_unlock.credential` lane directly. It does not run normal phone-control
+  probe/classify traffic first, so a stale presence heartbeat cannot stall or
+  reset the password flow;
 - certification proof store plus `openburnbar-cli remote-unlock-certification`
   status/reset/record tooling;
 - hardware smoke script for iOS, iPadOS, and Android certification;
 - tests for policy, certification report validation, Swift relay round-trip, and
   Android relay round-trip.
 
-The direct-download remote-access daemon still owns the privileged bridge work:
-Screen Sharing loopback management, PF anchor installation, System Keychain
-credential rotation, and HPKE private-key custody. Until the daemon publishes
-key material and the hardware smoke records a fresh certification report, Remote
-Unlock remains disabled by policy and the mobile apps must not present password
-entry as an available action.
+The direct-download remote-access daemon owns the privileged locked-screen
+credential-entry bridge. Runtime readiness and certification are deliberately
+separate:
+
+- Runtime ready: direct-download Mac app, healthy local remote-access agent,
+  Apple Screen Sharing availability, and HPKE recipient key material. Mobile
+  apps may present password entry in this state.
+- Certified: a real locked-screen round trip has succeeded on this hardware and
+  the Mac recorded a fresh `RemoteUnlockCertification-v1.json` proof. Future
+  sessions advertise `certified`; stale or missing proof does not deadlock the
+  first hardware proof attempt.
+
+Wire compatibility note: current mobile clients show the password field when
+`remoteUnlockCapabilities.allowsCredentialPaste` is true. A `certified` status
+still means a durable hardware proof exists; runtime-ready-but-not-yet-certified
+Macs may accept the first real locked unlock and record certification afterward.
+
+## Local Direct-Download Agent
+
+Install or repair the local privileged credential-entry agent with:
+
+```bash
+./scripts/install-remote-access-agent.sh
+```
+
+The installer builds `OpenBurnBarRemoteAccessAgent`, installs it as
+`/Library/Application Support/OpenBurnBar/RemoteAccess/openburnbar-remote-access-agent`,
+and bootstraps `/Library/LaunchDaemons/com.openburnbar.remote-access-agent.plist`.
+The agent exposes only a local Unix socket at
+`/var/run/openburnbar-remote-access-agent.sock`; the socket is owned by the
+active console user with mode `0600`, and the daemon verifies the Unix peer UID
+before handling a request. It accepts health checks and the single
+`typeCredential` operation used after the Mac app has already decrypted and
+validated a human Remote Unlock credential. The agent does not log the
+credential.
+
+Verify the installed agent with:
+
+```bash
+./scripts/verify-remote-access-agent.sh
+```
+
+After install, run the hardware certification smoke above or perform one real
+locked Remote Unlock from a trusted phone/tablet. The LaunchDaemon alone is not
+certification: it makes the privileged locked-screen input lane available; the
+first successful locked unlock records the human hardware proof.
+
+## Troubleshooting
+
+- `signature_failure` on the phone means the Mac rejected the Ed25519 authority
+  envelope before it would type the credential. Both the Mac app and the phone
+  app must be built from the same canonical signing contract. Remote Unlock
+  session and credential signatures must hash relay dates exactly as the relay
+  encodes them: ISO-8601 strings with fractional seconds. Do not hash raw
+  `Date` values in Remote Unlock canonical payloads.
+- `session_mismatch` means the password credential did not match an active
+  Remote Unlock mirror session accepted by the Mac. Restart the mirror after
+  updating the Mac app; the Mac records the Remote Unlock session only when it
+  accepts the locked-screen mirror request, binds it to the phone peer, and
+  revokes it on expiry or viewer disconnect.
+- `Mac isn't sending frames` means the Mercury control stream is alive but the
+  video backend has not produced frames. Fix the mirror backend separately; it
+  does not by itself mean credential validation failed.

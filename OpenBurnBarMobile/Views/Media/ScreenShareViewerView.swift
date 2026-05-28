@@ -79,7 +79,9 @@ struct ScreenShareViewerView: View {
     @State private var statsVisible: Bool = false
     @State private var viewport = ScreenShareViewportState()
     @AppStorage("mercurySmartZoomMode") private var smartZoomModeRaw: String = SmartZoomMode.smart.rawValue
+    @AppStorage("mercury.autoKeyboardOnTextFocus") private var autoKeyboardOnTextFocus = false
     @State private var smartZoomManualOverrideUntil: Date?
+    @State private var autoTypeManualDismissUntil: Date?
     @State private var smartZoomAutoFollowing: Bool = false
     @State private var lastLayoutSize: CGSize?
     @State private var interactionMode: ScreenShareInteractionMode = .view
@@ -102,6 +104,7 @@ struct ScreenShareViewerView: View {
     @State private var cursorPoint: CGPoint?
     @State private var cursorSize: CGFloat = 24
     @State private var cursorStyle: MirrorCursorStyle = .hidden
+    @Binding var remoteUnlockPasswordDraft: String
     @GestureState private var magnification: CGFloat = 1
     @GestureState private var controlMagnification: CGFloat = 1
     @GestureState private var dragTranslation: CGSize = .zero
@@ -125,6 +128,7 @@ struct ScreenShareViewerView: View {
         lastFailureReason: String? = nil,
         lastLiveAt: Date? = nil,
         remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
+        remoteUnlockPasswordDraft: Binding<String> = .constant(""),
         usePremiumSOTAUX: Bool = false,
         onForceReconnect: @escaping () -> Void = {},
         onRetryRequest: @escaping () -> Void = {},
@@ -154,6 +158,7 @@ struct ScreenShareViewerView: View {
         self.lastFailureReason = lastFailureReason
         self.lastLiveAt = lastLiveAt
         self.remoteUnlockState = remoteUnlockState
+        self._remoteUnlockPasswordDraft = remoteUnlockPasswordDraft
         self.usePremiumSOTAUX = usePremiumSOTAUX
         self.onForceReconnect = onForceReconnect
         self.onRetryRequest = onRetryRequest
@@ -402,6 +407,7 @@ struct ScreenShareViewerView: View {
                     isZoomed: viewport.isZoomed,
                     smartZoomMode: smartZoomMode,
                     smartZoomAutoFollowing: smartZoomAutoFollowing,
+                    autoKeyboardOnTextFocus: $autoKeyboardOnTextFocus,
                     setSmartZoomMode: { newMode in
                         smartZoomMode = newMode
                         smartZoomManualOverrideUntil = nil
@@ -444,6 +450,7 @@ struct ScreenShareViewerView: View {
                 if let activeRemoteUnlockState {
                     RemoteUnlockStatusOverlay(
                         state: activeRemoteUnlockState,
+                        password: $remoteUnlockPasswordDraft,
                         sendCredential: sendRemoteUnlockCredential,
                         onReconnect: onForceReconnect,
                         onClose: onClose
@@ -483,22 +490,71 @@ struct ScreenShareViewerView: View {
                 controlPanTranslation = .zero
             }
         }
-        .onChange(of: isTyping) { _, newValue in
+        .onChange(of: isTyping) { oldValue, newValue in
             if newValue {
                 focusTypingBar()
             } else {
                 typingFocusTask?.cancel()
                 typingFocusTask = nil
+                if oldValue, shouldSetAutoTypeManualDismissOnKeyboardClose() {
+                    autoTypeManualDismissUntil = Date().addingTimeInterval(
+                        ScreenShareAutoTypeFollowPolicy.manualDismissHold
+                    )
+                }
             }
         }
         .onChange(of: coordinator.latestFocusContext) { _, _ in
             applySmartZoomDecisionUsingCurrentLayout()
+            applyAutoTypeFollowDecision()
+        }
+        .onChange(of: autoKeyboardOnTextFocus) { _, _ in
+            applyAutoTypeFollowDecision()
+        }
+        .onChange(of: interactionMode) { _, _ in
+            applyAutoTypeFollowDecision()
+        }
+        .onChange(of: activeRemoteUnlockState?.lockState) { _, newValue in
+            applyAutoTypeFollowDecision()
+            if newValue == nil || newValue == .unlocked {
+                remoteUnlockPasswordDraft = ""
+            }
         }
     }
 
     private func beginManualZoomOverride() {
         smartZoomManualOverrideUntil = Date().addingTimeInterval(ScreenShareSmartZoomReducer.manualOverrideHold)
         smartZoomAutoFollowing = false
+    }
+
+    private func shouldSetAutoTypeManualDismissOnKeyboardClose() -> Bool {
+        guard autoKeyboardOnTextFocus else { return false }
+        guard let context = coordinator.latestFocusContext else { return false }
+        return ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
+            context: context,
+            selectedDisplayId: selectedDisplayId,
+            now: Date()
+        )
+    }
+
+    private func applyAutoTypeFollowDecision() {
+        let action = ScreenShareAutoTypeFollowPolicy.reduce(
+            autoKeyboardEnabled: autoKeyboardOnTextFocus,
+            controlInputEnabled: standardControlInputEnabled,
+            isTyping: isTyping,
+            isCoPilotMode: interactionMode == .coPilot,
+            context: coordinator.latestFocusContext,
+            selectedDisplayId: selectedDisplayId,
+            manualDismissUntil: autoTypeManualDismissUntil,
+            now: Date()
+        )
+        switch action {
+        case .open:
+            focusTypingBar()
+        case .close:
+            isTyping = false
+        case .none:
+            break
+        }
     }
 
     private func applySmartZoomDecisionUsingCurrentLayout() {
@@ -1293,14 +1349,14 @@ private enum MirrorCursorStyle: String, CaseIterable, Identifiable {
 
 private struct RemoteUnlockStatusOverlay: View {
     let state: HermesRealtimeRelayRemoteUnlockState
+    @Binding var password: String
     let sendCredential: (String) -> Void
     let onReconnect: () -> Void
     let onClose: () -> Void
-    @State private var password = ""
     @State private var isSending = false
 
-    private var isCertified: Bool {
-        state.capabilities.enabled && state.capabilities.certificationStatus == .certified
+    private var canSendCredential: Bool {
+        state.capabilities.enabled && state.capabilities.allowsCredentialPaste
     }
 
     private var title: String {
@@ -1318,19 +1374,22 @@ private struct RemoteUnlockStatusOverlay: View {
     }
 
     private var detail: String {
-        if isCertified {
-            return "Remote Unlock is certified on this Mac. Credential entry uses the dedicated remote-unlock lane; normal Mac control is paused while locked."
+        if canSendCredential {
+            if state.capabilities.certificationStatus == .certified {
+                return "Remote Unlock is certified on this Mac. Credential entry uses the dedicated remote-unlock lane; normal Mac control is paused while locked."
+            }
+            return "Remote Unlock is ready on this Mac. The first successful locked unlock records hardware certification; normal Mac control is paused while locked."
         }
         let firstBlocker = state.capabilities.blockers.first ?? "remote_unlock_not_certified"
-        return "Remote Unlock is not certified on this Mac: \(firstBlocker). Normal Mac control is paused while locked."
+        return "Remote Unlock is unavailable on this Mac: \(firstBlocker). Normal Mac control is paused while locked."
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Image(systemName: isCertified ? "lock.open.display" : "lock.display")
+                Image(systemName: canSendCredential ? "lock.open.display" : "lock.display")
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(isCertified ? .green : .yellow)
+                    .foregroundStyle(canSendCredential ? .green : .yellow)
                     .frame(width: 36, height: 36)
                     .background(Color.white.opacity(0.10), in: Circle())
 
@@ -1369,7 +1428,7 @@ private struct RemoteUnlockStatusOverlay: View {
                 .foregroundStyle(.white.opacity(0.82))
                 .fixedSize(horizontal: false, vertical: true)
 
-            if isCertified {
+            if canSendCredential {
                 HStack(spacing: 10) {
                     SecureField("Mac password", text: $password)
                         .textContentType(.password)
@@ -1434,6 +1493,7 @@ private struct MirrorControlPanel: View {
     let isZoomed: Bool
     let smartZoomMode: SmartZoomMode
     let smartZoomAutoFollowing: Bool
+    @Binding var autoKeyboardOnTextFocus: Bool
     let setSmartZoomMode: (SmartZoomMode) -> Void
     let zoomIn: () -> Void
     let zoomOut: () -> Void
@@ -1503,6 +1563,11 @@ private struct MirrorControlPanel: View {
                     }
                     if isTyping { focusTyping() }
                 }
+                panelToggle(
+                    "Auto keyboard on text focus",
+                    isOn: $autoKeyboardOnTextFocus,
+                    systemName: "character.cursor.ibeam"
+                )
                 panelButton("doc.on.clipboard", selected: false, label: "Paste to Mac", disabled: controlInputEnabled == false, action: pasteClipboardToMac)
                 panelButton("arrow.down.doc", selected: false, label: "Grab from Mac", disabled: controlInputEnabled == false, action: grabClipboardFromMac)
                 panelToggle("Edges", isOn: $edgeScrollEnabled, systemName: "arrow.left.and.right")
@@ -2812,7 +2877,20 @@ final class ScreenShareViewerCoordinator: ObservableObject {
         let layer = AVSampleBufferDisplayLayer()
         layer.videoGravity = .resizeAspect
         self.displayLayer = layer
-        self.pipeline = VideoReceivePipeline { [weak self] sampleBuffer in
+        self.pipeline = makePipeline()
+    }
+
+    func resetForNewMirror() {
+        displayLayer.flushAndRemoveImage()
+        lastStats = Stats()
+        displayAspectRatio = nil
+        latestFocusContext = nil
+        statsMeter = ScreenShareViewerStatsMeter()
+        pipeline = makePipeline()
+    }
+
+    private func makePipeline() -> VideoReceivePipeline {
+        VideoReceivePipeline { [weak self] sampleBuffer in
             await MainActor.run {
                 self?.enqueue(sampleBuffer: sampleBuffer)
             }

@@ -99,6 +99,7 @@ runs:
     - name: Run iOS mobile unit tests
       if: inputs.enable_mobile == 'true'
       shell: bash
+      # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
       run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh
 
     - name: Run Android unit tests
@@ -115,5 +116,11 @@ runs:
       if: inputs.enable_diff_coverage == 'true'
       shell: bash
       run: |
-        ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json" || true
+        set -euo pipefail
+        xcresult="$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
+        if [[ ! -d "$xcresult" ]]; then
+          echo "Missing xcresult at $xcresult" >&2
+          exit 1
+        fi
+        ./scripts/extract-coverage.sh "$xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
         ./scripts/diff-coverage-all.sh "${{ inputs.base_ref }}"

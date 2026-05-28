@@ -165,4 +165,11 @@ final class SystemPermissionConciergeTests: XCTestCase {
         )
         XCTAssertEqual(macItem.dedupeKey, phoneItem.dedupeKey)
     }
+
+    func test_accessibilityDeepLink_pointsToPrivacyAccessibilityPane() {
+        XCTAssertEqual(
+            SystemPermissionKind.accessibility.systemSettingsDeepLink,
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        )
+    }
 }

@@ -52,6 +52,22 @@ protocol SwitcherDataLoading {
 
     /// Sets the active profile by ID.
     func setActiveProfile(_ profileID: String) throws
+
+    /// All current per-provider drain targets keyed by providerID raw value.
+    func fetchAllActiveDrainTargets() throws -> [String: String]
+
+    /// Sets the drain target for a single provider, leaving siblings untouched.
+    func setDrainTarget(_ profileID: String, for providerID: ProviderID) throws
+}
+
+extension SwitcherDataLoading {
+    // Defaults keep older conformers (e.g. test mocks) source-compatible while
+    // the drain-target feature rolls out.
+    func fetchAllActiveDrainTargets() throws -> [String: String] { [:] }
+
+    func setDrainTarget(_ profileID: String, for providerID: ProviderID) throws {
+        try setActiveProfile(profileID)
+    }
 }
 
 /// Production implementation that wraps `DataStore.switcherStore`.
@@ -72,6 +88,14 @@ final class DataStoreSwitcherDataLoading: SwitcherDataLoading {
 
     func setActiveProfile(_ profileID: String) throws {
         try store.setActiveProfile(profileID)
+    }
+
+    func fetchAllActiveDrainTargets() throws -> [String: String] {
+        try store.fetchAllActiveDrainTargets()
+    }
+
+    func setDrainTarget(_ profileID: String, for providerID: ProviderID) throws {
+        try store.setActiveProfile(profileID, for: providerID)
     }
 }
 
@@ -101,6 +125,8 @@ struct DashboardQuickSwitchView: View {
 
     @State private var profiles: [SwitcherProfileRecord] = []
     @State private var activeProfileID: String?
+    /// Per-provider drain targets: providerID raw value → profile id burning quota.
+    @State private var drainTargets: [String: String] = [:]
     @State private var selectedProfileID: String?
     @State private var switchState: SwitchState = .idle
     @State private var launchState: LaunchState = .idle
@@ -469,6 +495,10 @@ struct DashboardQuickSwitchView: View {
 
             providerPulseSection
 
+            // Per-provider drain targets — pick which account burns quota for
+            // each provider; the live one glows, the rest dim back.
+            drainTargetsSection
+
             // Quick switch row
             quickSwitchRow
 
@@ -479,6 +509,50 @@ struct DashboardQuickSwitchView: View {
 
             // State feedback
             stateFeedbackView
+        }
+    }
+
+    @ViewBuilder
+    private var drainTargetsSection: some View {
+        let groups = DrainTargetSwitcher.grouped(profiles)
+        if !groups.isEmpty {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                ForEach(groups, id: \.provider) { group in
+                    DrainTargetSwitcher(
+                        provider: group.provider,
+                        accounts: group.accounts,
+                        drainProfileID: drainTargets[group.provider.providerID.rawValue],
+                        variant: .full,
+                        quotaText: { profile in drainQuotaText(for: profile) },
+                        onSelect: { setDrainTarget($0, provider: group.provider) }
+                    )
+                }
+            }
+        }
+    }
+
+    private func drainQuotaText(for profile: SwitcherProfileRecord) -> String? {
+        guard let snapshot = quotaService.snapshot(accountID: profile.id) else { return nil }
+        if let pct = snapshot.hourlyBucket?.remainingPercent {
+            return "\(Int(pct.rounded()))%"
+        }
+        if let pct = snapshot.weeklyBucket?.remainingPercent {
+            return "\(Int(pct.rounded()))%"
+        }
+        return nil
+    }
+
+    private func setDrainTarget(_ profile: SwitcherProfileRecord, provider: AgentProvider) {
+        let providerKey = provider.providerID.rawValue
+        guard drainTargets[providerKey] != profile.id else { return }
+        do {
+            try switcherDataLoading.setDrainTarget(profile.id, for: provider.providerID)
+            withAnimation(DesignSystem.Animation.snappy) {
+                drainTargets[providerKey] = profile.id
+            }
+            announceForAccessibility("\(provider.displayName) now draining \(profile.displayName)")
+        } catch {
+            announceForAccessibility("Failed to set drain target. \(error.localizedDescription)")
         }
     }
 
@@ -913,6 +987,7 @@ struct DashboardQuickSwitchView: View {
             let state = try switcherDataLoading.validateAndRecoverActiveProfile()
             activeProfileID = loadedProfiles.contains(where: { $0.id == state.activeProfileID }) ? state.activeProfileID : loadedProfiles.first?.id
             selectedProfileID = activeProfileID ?? loadedProfiles.first?.id
+            drainTargets = (try? switcherDataLoading.fetchAllActiveDrainTargets()) ?? [:]
 
             // Initialize launch services
             let adapter = DashboardSwitcherProfileAdapter(store: dataStore.switcherStore)
@@ -1426,6 +1501,14 @@ private final class DashboardSwitcherProfileAdapter: SwitcherProfileStoreAdapter
 
     func setActiveProfileID(_ profileID: String?) {
         try? store.setActiveProfile(profileID)
+    }
+
+    func fetchActiveProfileID(for providerID: ProviderID) -> String? {
+        try? store.fetchActiveProfileID(for: providerID)
+    }
+
+    func setActiveProfileID(_ profileID: String?, for providerID: ProviderID) {
+        try? store.setActiveProfile(profileID, for: providerID)
     }
 
     func updateProfile(_ profile: SwitcherProfileRecord) {

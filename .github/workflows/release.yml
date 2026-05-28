@@ -168,6 +168,7 @@ jobs:
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
 
       - name: Run OpenBurnBar mobile unit tests
+        # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh
 
       - name: Run retrieval replay evals
@@ -500,6 +501,60 @@ jobs:
 
           echo "sbom_path=$SBOM_FILE" >> "$GITHUB_OUTPUT"
 
+      - name: Verify Apple privacy manifests in release bundles
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+          for manifest in \
+            "$APP_PATH/Contents/Resources/PrivacyInfo.xcprivacy" \
+            "AgentLens/Resources/PrivacyInfo.xcprivacy" \
+            "OpenBurnBarMobile/Resources/PrivacyInfo.xcprivacy" \
+            "OpenBurnBarWidget/Resources/PrivacyInfo.xcprivacy"; do
+            if [[ ! -f "$manifest" ]]; then
+              echo "Missing privacy manifest: $manifest" >&2
+              exit 1
+            fi
+          done
+          echo "Privacy manifests present for macOS app source trees and embedded bundle."
+
+      - name: Generate third-party NOTICES from SBOM
+        id: notices
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SBOM_PATH: ${{ steps.sbom.outputs.sbom_path }}
+        run: |
+          NOTICES_FILE="$RUNNER_TEMP/NOTICES-v${VERSION}.txt"
+          python3 - <<'PY' "$SBOM_PATH" "$NOTICES_FILE" "$VERSION"
+          import json, sys
+          from pathlib import Path
+          sbom_path, notices_path, version = sys.argv[1:4]
+          data = json.loads(Path(sbom_path).read_text())
+          packages = data.get("packages") or []
+          lines = [
+              f"OpenBurnBar v{version} — third-party notices",
+              "Generated from SPDX SBOM at release time.",
+              "",
+          ]
+          for pkg in sorted(packages, key=lambda p: (p.get("name") or "", p.get("version") or "")):
+              name = pkg.get("name") or "unknown"
+              ver = pkg.get("version") or ""
+              license_id = None
+              for ref in pkg.get("licenseConcluded") or []:
+                  if isinstance(ref, str) and ref.startswith("LicenseRef-"):
+                      license_id = ref.replace("LicenseRef-", "")
+              if license_id is None and pkg.get("licenseDeclared"):
+                  license_id = str(pkg["licenseDeclared"])
+              lines.append(f"{name} {ver}".strip())
+              if license_id:
+                  lines.append(f"  License: {license_id}")
+              lines.append("")
+          Path(notices_path).write_text("\n".join(lines))
+          print(f"Wrote {notices_path} ({len(packages)} packages)")
+          PY
+          echo "notices_path=$NOTICES_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Write release metadata
         id: metadata
         env:
@@ -566,6 +621,13 @@ jobs:
         with:
           name: sbom-v${{ steps.version.outputs.version }}
           path: ${{ steps.sbom.outputs.sbom_path }}
+          if-no-files-found: error
+
+      - name: Upload NOTICES artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: notices-v${{ steps.version.outputs.version }}
+          path: ${{ steps.notices.outputs.notices_path }}
           if-no-files-found: error
 
       - name: Upload release metadata artifact
@@ -714,6 +776,7 @@ jobs:
           # `find -print -quit` is shellcheck-clean (SC2012) and quoted to handle spaces (SC2086).
           CHECKSUMS_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "checksums-v${VERSION}*.txt" -print -quit 2>/dev/null)
           SBOM_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.spdx.json" -print -quit 2>/dev/null)
+          NOTICES_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "NOTICES-v${VERSION}*.txt" -print -quit 2>/dev/null)
           METADATA_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "release-metadata.json" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
 
@@ -740,6 +803,7 @@ jobs:
           done
           [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
           [[ -n "$SBOM_PATH" && -f "$SBOM_PATH" ]] && ASSETS+=("$SBOM_PATH")
+          [[ -n "$NOTICES_PATH" && -f "$NOTICES_PATH" ]] && ASSETS+=("$NOTICES_PATH")
           [[ -n "$METADATA_PATH" && -f "$METADATA_PATH" ]] && ASSETS+=("$METADATA_PATH")
           [[ -n "$SIG_PATH" && -f "$SIG_PATH" ]] && ASSETS+=("$SIG_PATH")
 

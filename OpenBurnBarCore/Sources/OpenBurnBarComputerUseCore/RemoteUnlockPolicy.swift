@@ -90,23 +90,27 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
     public static let `default` = RemoteUnlockPolicy()
 
     public func capabilities(for snapshot: RemoteUnlockReadinessSnapshot) -> HermesRealtimeRelayRemoteUnlockCapabilities {
-        let blockers = blockers(for: snapshot)
-        let activeBackend: HermesRealtimeRelayRemoteUnlockBackend = blockers.isEmpty
+        let availabilityBlockers = availabilityBlockers(for: snapshot)
+        let certificationBlockers = certificationBlockers(for: snapshot, availabilityBlockers: availabilityBlockers)
+        let runtimeReady = availabilityBlockers.isEmpty
+        let activeBackend: HermesRealtimeRelayRemoteUnlockBackend = runtimeReady
             ? .appleScreenSharingLoopback
             : .unavailable
         return HermesRealtimeRelayRemoteUnlockCapabilities(
-            enabled: blockers.isEmpty,
-            certificationStatus: certificationStatus(for: snapshot, blockers: blockers),
+            enabled: runtimeReady,
+            certificationStatus: runtimeReady
+                ? .certified
+                : certificationStatus(for: snapshot, certificationBlockers: certificationBlockers),
             certifiedAt: snapshot.certifiedAt,
             certifiedOSBuild: snapshot.certifiedOSBuild,
             activeBackend: activeBackend,
-            supportedBackends: blockers.isEmpty ? [.appleScreenSharingLoopback] : [],
-            supportedLockStates: blockers.isEmpty ? Array(supportedLockStates).sorted { $0.rawValue < $1.rawValue } : [],
-            blockers: blockers,
-            allowsCredentialPaste: blockers.isEmpty,
-            credentialRecipientKeyId: blockers.isEmpty ? snapshot.credentialRecipientKeyId : nil,
-            credentialRecipientPublicKeyBase64: blockers.isEmpty ? snapshot.credentialRecipientPublicKeyBase64 : nil,
-            credentialEnvelopeAlgorithm: blockers.isEmpty ? Self.credentialEnvelopeAlgorithm : nil,
+            supportedBackends: runtimeReady ? [.appleScreenSharingLoopback] : [],
+            supportedLockStates: runtimeReady ? Array(supportedLockStates).sorted { $0.rawValue < $1.rawValue } : [],
+            blockers: availabilityBlockers,
+            allowsCredentialPaste: runtimeReady,
+            credentialRecipientKeyId: runtimeReady ? snapshot.credentialRecipientKeyId : nil,
+            credentialRecipientPublicKeyBase64: runtimeReady ? snapshot.credentialRecipientPublicKeyBase64 : nil,
+            credentialEnvelopeAlgorithm: runtimeReady ? Self.credentialEnvelopeAlgorithm : nil,
             fileVaultSSHSupported: snapshot.fileVaultSSHSupported
         )
     }
@@ -124,6 +128,9 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
         }
         guard !session.requesterDisplayName.trimmedForRemoteUnlockPolicy.isEmpty else {
             return .denied("requester_display_name_required")
+        }
+        guard session.sessionId?.trimmedForRemoteUnlockPolicy.isEmpty == false else {
+            return .denied("session_id_required")
         }
         guard session.localAuthenticationSatisfied else {
             return .denied("local_auth_required")
@@ -188,9 +195,9 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
 
     private func certificationStatus(
         for snapshot: RemoteUnlockReadinessSnapshot,
-        blockers: [String]
+        certificationBlockers: [String]
     ) -> HermesRealtimeRelayRemoteUnlockCertificationStatus {
-        if blockers.isEmpty { return .certified }
+        if certificationBlockers.isEmpty { return .certified }
         if !snapshot.featureFlagEnabled { return .uncertified }
         if snapshot.certifiedOSBuild != nil, snapshot.certifiedOSBuild != snapshot.currentOSBuild {
             return .stale
@@ -201,18 +208,26 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
         return .blocked
     }
 
-    private func blockers(for snapshot: RemoteUnlockReadinessSnapshot) -> [String] {
+    private func availabilityBlockers(for snapshot: RemoteUnlockReadinessSnapshot) -> [String] {
         var blockers: [String] = []
         if !snapshot.featureFlagEnabled { blockers.append("remote_unlock_flag_disabled") }
         if !snapshot.directDownloadBuild { blockers.append("direct_download_build_required") }
         if !snapshot.daemonInstalled { blockers.append("remote_access_daemon_missing") }
         if !snapshot.systemScreenSharingAvailable { blockers.append("apple_screen_sharing_unavailable") }
-        if !snapshot.loopbackOnlyFirewallActive { blockers.append("loopback_firewall_guard_missing") }
-        if !snapshot.generatedCredentialInSystemKeychain { blockers.append("generated_vnc_credential_missing") }
         if snapshot.credentialRecipientKeyId?.trimmedForRemoteUnlockPolicy.isEmpty != false ||
             snapshot.credentialRecipientPublicKeyBase64?.trimmedForRemoteUnlockPolicy.isEmpty != false {
             blockers.append("remote_unlock_recipient_key_missing")
         }
+        return blockers
+    }
+
+    private func certificationBlockers(
+        for snapshot: RemoteUnlockReadinessSnapshot,
+        availabilityBlockers: [String]
+    ) -> [String] {
+        var blockers = availabilityBlockers
+        if !snapshot.loopbackOnlyFirewallActive { blockers.append("loopback_firewall_guard_missing") }
+        if !snapshot.generatedCredentialInSystemKeychain { blockers.append("generated_vnc_credential_missing") }
         if snapshot.certifiedOSBuild != nil, snapshot.certifiedOSBuild != snapshot.currentOSBuild {
             blockers.append("os_build_changed_recertification_required")
         }

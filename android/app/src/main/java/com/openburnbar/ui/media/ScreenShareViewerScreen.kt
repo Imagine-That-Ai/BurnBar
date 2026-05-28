@@ -76,6 +76,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.platform.LocalContext
+import com.openburnbar.data.media.MercuryAutoKeyboardPreference
 import com.openburnbar.irohrelay.HermesRealtimeRelayDisplayDescriptor
 import com.openburnbar.irohrelay.HermesRealtimeRelayMacLockState
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
@@ -173,6 +175,7 @@ fun ScreenShareViewerScreen(
     controlStatus: String? = null,
     onTrustControlDevice: () -> Unit = {},
 ) {
+    val context = LocalContext.current
     var statsVisible by remember { mutableStateOf(false) }
     var toolsCollapsed by rememberSaveable { mutableStateOf(false) }
     var customizeOpen by rememberSaveable { mutableStateOf(false) }
@@ -183,6 +186,10 @@ fun ScreenShareViewerScreen(
     var smartZoomDecision by remember { mutableStateOf(ScreenShareSmartZoomDecision.identity) }
     var surfaceLayoutSize by remember { mutableStateOf(IntSize.Zero) }
     var typingOpen by rememberSaveable { mutableStateOf(false) }
+    var autoKeyboardOnTextFocus by remember(context) {
+        mutableStateOf(MercuryAutoKeyboardPreference.isEnabled(context))
+    }
+    var autoTypeManualDismissUntilMillis by remember { mutableStateOf<Long?>(null) }
     var trayScale by rememberSaveable { mutableStateOf(1.0f) }
     var coPilotTarget by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var coPilotViewPoint by remember { mutableStateOf<Offset?>(null) }
@@ -259,6 +266,39 @@ fun ScreenShareViewerScreen(
 
     LaunchedEffect(latestFocusContext, smartZoomMode, activeDisplayId, aspect, fit, surfaceLayoutSize) {
         if (surfaceLayoutSize != IntSize.Zero) recomputeSmartZoomDecision(surfaceLayoutSize)
+    }
+
+    LaunchedEffect(
+        latestFocusContext,
+        autoKeyboardOnTextFocus,
+        controlMode,
+        standardControlEnabled,
+        typingOpen,
+        activeDisplayId,
+        autoTypeManualDismissUntilMillis,
+    ) {
+        val now = System.currentTimeMillis()
+        val autoTypeInput = ScreenShareAutoTypeFollowPolicy.Input(
+            autoKeyboardEnabled = autoKeyboardOnTextFocus,
+            standardControlEnabled = standardControlEnabled,
+            controlMode = controlMode,
+            typingOpen = typingOpen,
+            context = latestFocusContext,
+            selectedDisplayId = activeDisplayId,
+            manualDismissUntilMillis = autoTypeManualDismissUntilMillis,
+            nowMillis = now,
+        )
+        when {
+            ScreenShareAutoTypeFollowPolicy.shouldOpen(autoTypeInput) -> {
+                typingOpen = true
+                if (controlMode == ScreenMirrorControlMode.VIEW) {
+                    controlModeName = ScreenMirrorControlMode.TOUCH.name
+                }
+            }
+            typingOpen && ScreenShareAutoTypeFollowPolicy.shouldClose(autoTypeInput) -> {
+                typingOpen = false
+            }
+        }
     }
 
     Box(
@@ -490,7 +530,21 @@ fun ScreenShareViewerScreen(
                     .padding(start = 1.dp, bottom = 1.dp),
                 onText = onTypeText,
                 onKey = { key -> onShortcut(key, emptyList()) },
-                onDismiss = { typingOpen = false },
+                onDismiss = {
+                    typingOpen = false
+                    val now = System.currentTimeMillis()
+                    if (
+                        autoKeyboardOnTextFocus &&
+                        ScreenShareAutoTypeFollowPolicy.hasActiveTextFocus(
+                            context = latestFocusContext,
+                            selectedDisplayId = activeDisplayId,
+                            nowMillis = now,
+                        )
+                    ) {
+                        autoTypeManualDismissUntilMillis =
+                            now + ScreenShareAutoTypeFollowPolicy.MANUAL_DISMISS_HOLD_MILLIS
+                    }
+                },
             )
         }
 
@@ -574,9 +628,14 @@ fun ScreenShareViewerScreen(
                     recomputeSmartZoomDecision(surfaceLayoutSize)
                 }
             },
+            autoKeyboardOnTextFocus = autoKeyboardOnTextFocus,
+            onAutoKeyboardOnTextFocusChange = { enabled ->
+                autoKeyboardOnTextFocus = enabled
+                MercuryAutoKeyboardPreference.setEnabled(context, enabled)
+            },
             onSelectControlMode = { mode ->
                 controlModeName = mode.name
-                if (mode == ScreenMirrorControlMode.VIEW) {
+                if (mode == ScreenMirrorControlMode.VIEW || mode == ScreenMirrorControlMode.COPILOT) {
                     typingOpen = false
                 }
             },
@@ -1087,6 +1146,8 @@ internal fun ScreenMirrorToolsDock(
     smartZoomAutoFollowing: Boolean,
     onSelectSmartZoomMode: (SmartZoomMode) -> Unit,
     onSelectControlMode: (ScreenMirrorControlMode) -> Unit,
+    autoKeyboardOnTextFocus: Boolean,
+    onAutoKeyboardOnTextFocusChange: (Boolean) -> Unit,
     onToggleTyping: () -> Unit,
     onScrollUp: () -> Unit,
     onScrollDown: () -> Unit,
@@ -1325,6 +1386,17 @@ internal fun ScreenMirrorToolsDock(
                         checked = statsVisible,
                         scale = scale,
                         onCheckedChange = { onToggleStats() },
+                    )
+                    DockToggleRow(
+                        label = "Auto keyboard on text focus",
+                        checked = autoKeyboardOnTextFocus,
+                        scale = scale,
+                        onCheckedChange = onAutoKeyboardOnTextFocusChange,
+                    )
+                    Text(
+                        "Opens the phone keyboard when your Mac focuses a text field. Smart Zoom still controls framing.",
+                        color = Color.White.copy(alpha = 0.56f),
+                        style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp),
                     )
 
                     // Resizable slide control inside customize settings (flicker-free!)
@@ -2136,8 +2208,7 @@ private fun RemoteUnlockStatusPanel(
 ) {
     var password by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
-    val certified = state.capabilities.enabled &&
-        state.capabilities.certificationStatus.name == "CERTIFIED"
+    val ready = state.capabilities.enabled && state.capabilities.allowsCredentialPaste
     val title = when (state.lockState) {
         HermesRealtimeRelayMacLockState.LOGIN_WINDOW,
         HermesRealtimeRelayMacLockState.REBOOT_LOGIN_WINDOW -> "Mac Login Window"
@@ -2151,11 +2222,15 @@ private fun RemoteUnlockStatusPanel(
         HermesRealtimeRelayMacLockState.UNKNOWN -> "Mac Lock State Unknown"
         HermesRealtimeRelayMacLockState.UNLOCKED -> "Mac Unlocked"
     }
-    val detail = if (certified) {
-        "Remote Unlock is certified on this Mac. Normal Mac control is paused while locked."
+    val detail = if (ready) {
+        if (state.capabilities.certificationStatus.name == "CERTIFIED") {
+            "Remote Unlock is certified on this Mac. Normal Mac control is paused while locked."
+        } else {
+            "Remote Unlock is ready on this Mac. The first successful locked unlock records hardware certification."
+        }
     } else {
         val blocker = state.capabilities.blockers.firstOrNull() ?: "remote_unlock_not_certified"
-        "Remote Unlock is not certified on this Mac: $blocker. Normal Mac control is paused while locked."
+        "Remote Unlock is unavailable on this Mac: $blocker. Normal Mac control is paused while locked."
     }
     Box(
         modifier = modifier
@@ -2172,7 +2247,7 @@ private fun RemoteUnlockStatusPanel(
                 Icon(
                     imageVector = Icons.Filled.VerifiedUser,
                     contentDescription = null,
-                    tint = if (certified) AuroraColors.successDark else AuroraColors.amber,
+                    tint = if (ready) AuroraColors.successDark else AuroraColors.amber,
                     modifier = Modifier.size(30.dp),
                 )
                 Column(modifier = Modifier.weight(1f)) {
@@ -2199,7 +2274,7 @@ private fun RemoteUnlockStatusPanel(
                 color = Color.White.copy(alpha = 0.82f),
                 style = AuroraType.caption,
             )
-            if (certified) {
+            if (ready) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,

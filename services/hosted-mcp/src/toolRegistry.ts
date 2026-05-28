@@ -5,6 +5,7 @@ import { requireActiveBurnBarPro, requireActiveRemoteMcpClient } from "./entitle
 import { enforceRateLimit } from "./rateLimits.js";
 import { listFacets, listIndexStatus, searchConversations } from "./search.js";
 import { listResources, readConversationBody, recentUsage } from "./resources.js";
+import { listResumable, resumeConversation } from "./resume.js";
 
 export type CostClass = "metadata" | "standard" | "body";
 
@@ -53,7 +54,7 @@ export const tools: RegisteredTool[] = [
   {
     name: "burnbar_get_conversation_body",
     description: "Fetch one encrypted session body page for a resource returned by search.",
-    requiredScopes: ["conversation:read"],
+    requiredScopes: ["conversation:read", "search:read"],
     costClass: "body",
     rateLimitBucket: "body:standard",
     inputSchema: schema({
@@ -89,6 +90,38 @@ export const tools: RegisteredTool[] = [
     rateLimitBucket: "metadata:standard",
     inputSchema: schema({}),
     handler: async ({ db, claims }) => recentUsage(db, claims.sub)
+  },
+  {
+    name: "burnbar_list_resumable_conversations",
+    description: "List recent encrypted hosted sessions eligible for resume.",
+    requiredScopes: ["index:status"],
+    costClass: "metadata",
+    rateLimitBucket: "metadata:standard",
+    inputSchema: schema({
+      provider: { type: "string", maxLength: 80 },
+      project: { type: "string", maxLength: 512 },
+      since: { type: "string" },
+      limit: { type: "integer", minimum: 1, maximum: 50 }
+    }),
+    handler: async ({ db, claims }, args) => listResumable(db, claims.sub, args)
+  },
+  {
+    name: "burnbar_resume_conversation",
+    description: "Compose a sealed resume plan. The local shim decrypts and renders on device.",
+    requiredScopes: ["conversation:read", "search:read"],
+    costClass: "body",
+    rateLimitBucket: "body:standard",
+    inputSchema: schema({
+      session_id: { type: "string", maxLength: 256 },
+      tokenHashes: { type: "array", items: { type: "string" }, maxItems: 10 },
+      semanticHashes: { type: "array", items: { type: "string" }, maxItems: 12 },
+      provider: { type: "string", maxLength: 80 },
+      projectName: { type: "string", maxLength: 512 },
+      target_harness: { type: "string", maxLength: 64 },
+      target_model: { type: "string", maxLength: 120 },
+      max_tokens: { type: "integer", minimum: 1024, maximum: 32000 }
+    }),
+    handler: async ({ db, claims }, args) => resumeConversation(db, claims.sub, args)
   },
   {
     name: "burnbar_resolve_capabilities",

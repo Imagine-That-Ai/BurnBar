@@ -220,8 +220,87 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
       "Forge routes through OpenBurnBar's local gateway at 127.0.0.1:8317, so vendor cost is $0; counts are conversation/file/active-model.",
     category: "agent",
     shippedToday: true
+  },
+  {
+    id: "antigravity",
+    name: "Antigravity",
+    blurb: "Google Gemini-based advanced agent — reads ~/.gemini/antigravity-cli/history.jsonl",
+    source: "Local history JSONL + API metrics",
+    cost: "exact",
+    quota: "yes",
+    cred: "none (local) or Google Gemini API key",
+    notes:
+      "Features detailed per-token usage, full session breakdowns, and direct local history logging.",
+    category: "agent",
+    shippedToday: true
+  },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    blurb: "Organization-wide usage and spend from the official platform",
+    source: "api.deepseek.com/v1",
+    cost: "exact",
+    quota: "partial",
+    cred: "API key (sk-…)",
+    notes:
+      "Supports exact cost calculations from the global pricing table. Hard limits are balance-dependent.",
+    category: "api",
+    shippedToday: true
+  },
+  {
+    id: "opencode",
+    name: "OpenCode",
+    blurb: "Self-hosted coding agent — reads ~/.local/share/opencode/opencode.db",
+    source: "Local SQLite database",
+    cost: "exact",
+    quota: "yes",
+    cred: "none (local)",
+    notes:
+      "Tracks exact conversation tokens, files touched, and active local models straight from the client database.",
+    category: "agent",
+    shippedToday: true
+  },
+  {
+    id: "hermes",
+    name: "Hermes",
+    blurb: "BurnBar's native computer-use companion — reads ~/.hermes/sessions/*.jsonl",
+    source: "Local session JSONL",
+    cost: "exact",
+    quota: "no",
+    cred: "none (local)",
+    notes:
+      "Tracks deep computer use metrics, UI automation cycles, and session token counts completely offline.",
+    category: "agent",
+    shippedToday: true
+  },
+  {
+    id: "pi-agent",
+    name: "Pi Agent",
+    blurb: "Pi Agent local workspaces — reads ~/.pi/sessions/*.jsonl",
+    source: "Local session JSONL",
+    cost: "exact",
+    quota: "no",
+    cred: "none (local)",
+    notes:
+      "Aggregates session costs and token histories locally across active workspace configurations.",
+    category: "agent",
+    shippedToday: true
+  },
+  {
+    id: "xai",
+    name: "xAI (Grok)",
+    blurb: "Grok chat and API usage from the developer management console",
+    source: "SuperGrok Event Log + xAI Management API",
+    cost: "estimated",
+    quota: "yes",
+    cred: "xAI API key",
+    notes:
+      "Spend telemetry and rate limits are managed through the xAI Management API and event logs written by Hermes.",
+    category: "api",
+    shippedToday: true
   }
 ];
+
 
 export const PROVIDERS_DETECTED: ProviderRow[] = [
   {

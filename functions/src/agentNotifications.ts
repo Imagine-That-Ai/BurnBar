@@ -10,7 +10,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getMessaging, type Message } from "firebase-admin/messaging";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { createHash } from "node:crypto";
 import { errorCode, isRecord } from "./guards.js";
 
@@ -20,7 +19,6 @@ const REPLY_COLLECTION = "agent_notification_replies";
 const DEVICE_COLLECTION = "devices";
 const ACTIVE_TTL_MS = 90_000;
 const MAX_PREVIEW_CHARS = 180;
-const MAX_REPLY_CHARS = 16_000;
 
 export type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
 
@@ -394,59 +392,6 @@ export const onMobileAssistantAgentReplyNotification = onDocumentWritten(
   }
 );
 
-export const submitAgentNotificationReply = onCall(
-  { region: REGION },
-  async (request) => {
-    if (!request.auth?.uid) {
-      throw new HttpsError("unauthenticated", "Sign in before replying.");
-    }
-    const uid = request.auth.uid;
-    const data = parseSubmitReplyRequest(request.data);
-    const eventId = boundedString(data.eventId, "eventId", 512);
-    const replyText = boundedString(data.replyText, "replyText", MAX_REPLY_CHARS);
-    const deviceId = optionalBoundedString(data.deviceId, "deviceId", 160);
-    const clientReplyId = optionalBoundedString(data.clientReplyId, "clientReplyId", 160);
-    const firestore = getFirestore();
-    const eventRef = firestore
-      .collection("users").doc(uid)
-      .collection(EVENT_COLLECTION).doc(eventId);
-    const eventSnap = await eventRef.get();
-    if (!eventSnap.exists) {
-      throw new HttpsError("not-found", "Notification event not found.");
-    }
-    const event = parseNotificationEvent(eventSnap.data());
-    if (!event) {
-      throw new HttpsError("failed-precondition", "Notification event is invalid.");
-    }
-    const replyId = clientReplyId ?? `${eventId}_${safeId(deviceId ?? "device")}`;
-    const now = Timestamp.now();
-    const command: AgentNotificationReplyCommand = {
-      id: replyId,
-      uid,
-      eventId,
-      threadId: event.threadId,
-      runtime: event.runtime,
-      sourceKind: event.sourceKind,
-      replyText,
-      deviceId,
-      status: "queued",
-      createdAt: now,
-      updatedAt: now,
-      schemaVersion: 1,
-    };
-    await firestore
-      .collection("users").doc(uid)
-      .collection(REPLY_COLLECTION).doc(replyId)
-      .set(command, { merge: false })
-      .catch(async (err: unknown) => {
-        const code = errorCode(err);
-        if (code === 6 || code === "already-exists") return;
-        throw err;
-      });
-    return { ok: true, replyId };
-  }
-);
-
 function decodeDevice(id: string, data: FirebaseFirestore.DocumentData): DeviceNotificationState {
   return {
     id,
@@ -509,25 +454,6 @@ function parseNotificationEvent(raw: unknown): AgentReplyNotificationEvent | und
   };
 }
 
-function parseSubmitReplyRequest(raw: unknown): {
-  eventId: unknown;
-  replyText: unknown;
-  deviceId?: string;
-  clientReplyId?: string;
-} {
-  return isRecord(raw)
-    ? {
-        eventId: raw.eventId,
-        replyText: raw.replyText,
-        deviceId: stringValue(raw.deviceId),
-        clientReplyId: stringValue(raw.clientReplyId),
-      }
-    : {
-        eventId: undefined,
-        replyText: undefined,
-      };
-}
-
 function parseLifecycle(raw: unknown): DeviceNotificationState["appLifecycle"] {
   switch (raw) {
     case "active":
@@ -538,20 +464,6 @@ function parseLifecycle(raw: unknown): DeviceNotificationState["appLifecycle"] {
     default:
       return "unknown";
   }
-}
-
-function boundedString(raw: unknown, field: string, max: number): string {
-  const value = String(raw ?? "").trim();
-  if (!value) throw new HttpsError("invalid-argument", `${field} is required.`);
-  if (value.length > max) {
-    throw new HttpsError("invalid-argument", `${field} is too long.`);
-  }
-  return value;
-}
-
-function optionalBoundedString(raw: unknown, field: string, max: number): string | undefined {
-  if (raw === undefined || raw === null) return undefined;
-  return boundedString(raw, field, max);
 }
 
 function stringValue(raw: unknown): string | undefined {

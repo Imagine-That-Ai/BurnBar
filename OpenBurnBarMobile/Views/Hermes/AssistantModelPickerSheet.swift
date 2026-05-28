@@ -84,7 +84,7 @@ struct AssistantModelPickerSheet: View {
 
     private var isCLIRuntime: Bool {
         switch runtime {
-        case .codex, .claude, .droid, .forge, .antigravity: return true
+        case .codex, .claude, .droid, .forge, .antigravity, .grok: return true
         case .hermes, .pi, .openClaw: return false
         }
     }
@@ -217,7 +217,7 @@ struct AssistantModelPickerSheet: View {
         case .hermes:           return hermesService.modelOptions
         case .pi:               return piService.modelOptions
         case .openClaw:         return OpenClawService.shared.modelOptions
-        case .codex, .claude, .droid, .forge, .antigravity: return []
+        case .codex, .claude, .droid, .forge, .antigravity, .grok: return []
         }
     }
 
@@ -352,7 +352,7 @@ struct AssistantModelPickerSheet: View {
             if !OpenClawService.shared.favoriteModelOptions.isEmpty {
                 liveFavoritesGroup(favorites: OpenClawService.shared.favoriteModelOptions, service: .openClaw)
             }
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok:
             EmptyView()
         }
     }
@@ -414,7 +414,7 @@ struct AssistantModelPickerSheet: View {
         case .hermes:   return hermesService.isFavoriteModel(option.asHermesRuntimeModelOption)
         case .pi:       return piService.isFavoriteModel(option.asHermesRuntimeModelOption)
         case .openClaw: return OpenClawService.shared.isFavoriteModel(option.asHermesRuntimeModelOption)
-        case .codex, .claude, .droid, .forge, .antigravity: return false
+        case .codex, .claude, .droid, .forge, .antigravity, .grok: return false
         }
     }
 
@@ -423,7 +423,7 @@ struct AssistantModelPickerSheet: View {
         case .hermes:   return hermesService.selectedModelID
         case .pi:       return piService.selectedModelID
         case .openClaw: return OpenClawService.shared.selectedModelID
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok:
             return cliPreference ?? CLIAgentModelPreferences.preferredModelID(for: runtime)
         }
     }
@@ -680,7 +680,7 @@ struct AssistantModelPickerSheet: View {
             piService.selectModel(option.asHermesRuntimeModelOption)
         case .openClaw:
             OpenClawService.shared.selectModel(option.asHermesRuntimeModelOption)
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok:
             let modelID = option.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
             CLIAgentModelPreferences.setPreferredModelID(modelID.isEmpty ? nil : modelID, for: runtime)
             cliPreference = modelID.isEmpty ? nil : modelID
@@ -698,7 +698,7 @@ struct AssistantModelPickerSheet: View {
             piService.toggleFavoriteModel(option.asHermesRuntimeModelOption)
         case .openClaw:
             OpenClawService.shared.toggleFavoriteModel(option.asHermesRuntimeModelOption)
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok:
             break
         }
         HapticBus.toggle()
@@ -711,7 +711,7 @@ struct AssistantModelPickerSheet: View {
             case .hermes:   return hermesService.selectedModelID != nil
             case .pi:       return piService.selectedModelID != nil
             case .openClaw: return OpenClawService.shared.selectedModelID != nil
-            case .codex, .claude, .droid, .forge, .antigravity: return cliPreference != nil
+            case .codex, .claude, .droid, .forge, .antigravity, .grok: return cliPreference != nil
             }
         }()
         if hasPreference {
@@ -739,7 +739,7 @@ struct AssistantModelPickerSheet: View {
     private var resetLabel: String {
         switch runtime {
         case .hermes, .pi, .openClaw: return "Clear selection (let the relay pick)"
-        case .codex, .claude, .droid, .forge, .antigravity: return "Clear preference (let the Mac CLI choose)"
+        case .codex, .claude, .droid, .forge, .antigravity, .grok: return "Clear preference (let the Mac CLI choose)"
         }
     }
 
@@ -751,7 +751,7 @@ struct AssistantModelPickerSheet: View {
             piService.clearSelectedModel()
         case .openClaw:
             OpenClawService.shared.clearSelectedModel()
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok:
             CLIAgentModelPreferences.setPreferredModelID(nil, for: runtime)
             cliPreference = nil
         }
@@ -783,7 +783,7 @@ struct AssistantModelPickerSheet: View {
         case .hermes:           await hermesService.refreshRuntime()
         case .pi:               await piService.refreshRuntime()
         case .openClaw:         await OpenClawService.shared.refreshRuntime()
-        case .codex, .claude, .droid, .forge, .antigravity: break
+        case .codex, .claude, .droid, .forge, .antigravity, .grok: break
         }
     }
 

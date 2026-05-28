@@ -158,7 +158,10 @@ final class KimiParser: LogParser, Sendable {
             cacheReadTokens = 0
         }
 
-        guard inputTokens > 0 || outputTokens > 0 else {
+        guard inputTokens > 0
+            || outputTokens > 0
+            || cacheCreationTokens > 0
+            || cacheReadTokens > 0 else {
             return nil
         }
 
@@ -226,6 +229,7 @@ final class KimiParser: LogParser, Sendable {
         defer { try? handle.close() }
 
         var result = WireTokenData()
+        var messageUsages: [String: WireTokenData] = [:]
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
@@ -240,16 +244,30 @@ final class KimiParser: LogParser, Sendable {
                 continue
             }
 
-            // Sum per-turn token counts
-            result.inputOther += tokenUsage["input_other"] as? Int ?? 0
-            result.output += tokenUsage["output"] as? Int ?? 0
-            result.inputCacheRead += tokenUsage["input_cache_read"] as? Int ?? 0
-            result.inputCacheCreation += tokenUsage["input_cache_creation"] as? Int ?? 0
+            let messageId = payload["message_id"] as? String ?? UUID().uuidString
+            let turnInputOther = tokenUsage["input_other"] as? Int ?? 0
+            let turnOutput = tokenUsage["output"] as? Int ?? 0
+            let turnCacheRead = tokenUsage["input_cache_read"] as? Int ?? 0
+            let turnCacheCreation = tokenUsage["input_cache_creation"] as? Int ?? 0
+
+            var turnData = messageUsages[messageId] ?? WireTokenData()
+            turnData.inputOther = max(turnData.inputOther, turnInputOther)
+            turnData.output = max(turnData.output, turnOutput)
+            turnData.inputCacheRead = max(turnData.inputCacheRead, turnCacheRead)
+            turnData.inputCacheCreation = max(turnData.inputCacheCreation, turnCacheCreation)
+            messageUsages[messageId] = turnData
 
             if result.model == nil,
                let model = Self.validWireModel(from: tokenUsage, payload: payload) {
                 result.model = model
             }
+        }
+
+        for turnData in messageUsages.values {
+            result.inputOther += turnData.inputOther
+            result.output += turnData.output
+            result.inputCacheRead += turnData.inputCacheRead
+            result.inputCacheCreation += turnData.inputCacheCreation
         }
 
         return (result.inputOther > 0 || result.output > 0) ? result : nil

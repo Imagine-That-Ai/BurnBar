@@ -178,7 +178,7 @@ struct DaemonLifecycleDetailView: View {
                                     .foregroundStyle(DesignSystem.Colors.textMuted)
                             }
                         }
-                    } else if case .retrying(let n, let nextRetry) = daemonManager.supervisionState {
+                    } else if case .retrying(let n, let nextRetry, _) = daemonManager.supervisionState {
                         Divider().background(DesignSystem.Colors.border)
                         HStack(spacing: DesignSystem.Spacing.sm) {
                             Image(systemName: "arrow.clockwise")

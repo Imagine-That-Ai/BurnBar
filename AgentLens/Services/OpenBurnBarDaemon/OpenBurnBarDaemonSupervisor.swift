@@ -14,12 +14,12 @@ enum OpenBurnBarDaemonSupervisionState: Equatable, Sendable {
     /// Daemon is unhealthy but within normal retry bounds.
     /// `consecutiveFailures` tracks how many health checks have failed in a row.
     /// `nextRetryAt` is the earliest time the next health probe should fire.
-    case retrying(consecutiveFailures: Int, nextRetryAt: Date)
+    case retrying(consecutiveFailures: Int, nextRetryAt: Date, lastFailureAt: Date)
     /// Daemon appears to be in a crash loop — it has failed more than
     /// `crashLoopThreshold` times within the detection window.
     /// The supervisor will not attempt restart until the backoff period
     /// expires, and the UI should surface a "needs repair" prompt.
-    case crashLoop(consecutiveFailures: Int, nextRetryAt: Date, detectedAt: Date)
+    case crashLoop(consecutiveFailures: Int, nextRetryAt: Date, detectedAt: Date, lastFailureAt: Date)
 
     var isCrashLoop: Bool {
         if case .crashLoop = self { return true }
@@ -29,14 +29,23 @@ enum OpenBurnBarDaemonSupervisionState: Equatable, Sendable {
     var consecutiveFailures: Int {
         switch self {
         case .idle, .healthy: return 0
-        case .retrying(let n, _), .crashLoop(let n, _, _): return n
+        case .retrying(let n, _, _), .crashLoop(let n, _, _, _): return n
         }
     }
 
     var nextRetryAt: Date? {
         switch self {
         case .idle, .healthy: return nil
-        case .retrying(_, let date), .crashLoop(_, let date, _): return date
+        case .retrying(_, let date, _), .crashLoop(_, let date, _, _): return date
+        }
+    }
+
+    var lastFailureAt: Date? {
+        switch self {
+        case .idle, .healthy:
+            return nil
+        case .retrying(_, _, let date), .crashLoop(_, _, _, let date):
+            return date
         }
     }
 }
@@ -45,6 +54,8 @@ enum OpenBurnBarDaemonSupervisionState: Equatable, Sendable {
 struct OpenBurnBarDaemonSupervisorConfig: Sendable {
     /// Number of consecutive failures before entering crash-loop state.
     let crashLoopThreshold: Int
+    /// Failures older than this window do not count toward crash-loop detection.
+    let failureDetectionWindow: TimeInterval
     /// Base delay for exponential backoff (seconds).
     let backoffBaseDelay: TimeInterval
     /// Maximum backoff delay (seconds).
@@ -56,13 +67,15 @@ struct OpenBurnBarDaemonSupervisorConfig: Sendable {
     let crashLoopResetInterval: TimeInterval
 
     init(
-        crashLoopThreshold: Int = 5,
+        crashLoopThreshold: Int = 3,
+        failureDetectionWindow: TimeInterval = 60.0,
         backoffBaseDelay: TimeInterval = 2.0,
         backoffMaxDelay: TimeInterval = 120.0,
         jitterFactor: Double = 0.25,
         crashLoopResetInterval: TimeInterval = 300.0
     ) {
         self.crashLoopThreshold = crashLoopThreshold
+        self.failureDetectionWindow = failureDetectionWindow
         self.backoffBaseDelay = backoffBaseDelay
         self.backoffMaxDelay = backoffMaxDelay
         self.jitterFactor = jitterFactor
@@ -99,7 +112,13 @@ enum OpenBurnBarDaemonSupervisor {
         }
 
         // Daemon is unhealthy. Compute backoff.
-        let previousFailures = currentState.consecutiveFailures
+        let previousFailures: Int
+        if let lastFailureAt = currentState.lastFailureAt,
+           now.timeIntervalSince(lastFailureAt) > config.failureDetectionWindow {
+            previousFailures = 0
+        } else {
+            previousFailures = currentState.consecutiveFailures
+        }
         let newFailureCount = previousFailures + 1
         let backoff = computeBackoff(
             consecutiveFailures: newFailureCount,
@@ -111,11 +130,16 @@ enum OpenBurnBarDaemonSupervisor {
             return .crashLoop(
                 consecutiveFailures: newFailureCount,
                 nextRetryAt: nextRetryAt,
-                detectedAt: now
+                detectedAt: now,
+                lastFailureAt: now
             )
         }
 
-        return .retrying(consecutiveFailures: newFailureCount, nextRetryAt: nextRetryAt)
+        return .retrying(
+            consecutiveFailures: newFailureCount,
+            nextRetryAt: nextRetryAt,
+            lastFailureAt: now
+        )
     }
 
     /// Determine whether the supervisor should attempt a health probe right now.
@@ -131,9 +155,9 @@ enum OpenBurnBarDaemonSupervisor {
         switch state {
         case .idle, .healthy:
             return true
-        case .retrying(_, let nextRetryAt):
+        case .retrying(_, let nextRetryAt, _):
             return now >= nextRetryAt
-        case .crashLoop(_, let nextRetryAt, let detectedAt):
+        case .crashLoop(_, let nextRetryAt, let detectedAt, _):
             // In crash-loop, allow one probe per backoff cycle.
             if now >= nextRetryAt { return true }
             // Also reset if the crash-loop interval has fully elapsed

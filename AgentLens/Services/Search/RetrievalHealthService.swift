@@ -5,7 +5,9 @@ import OpenBurnBarCore
 
 /// Service for aggregating and reporting health status of the retrieval pipeline.
 /// Monitors parser import, projection queue, semantic pipeline, and rebuild subsystems.
-@MainActor
+///
+/// DB-only I/O — intentionally not `@MainActor` so settings views can call it from
+/// background snapshot builders without blocking UI isolation.
 final class RetrievalHealthService {
     private struct ProjectionHealthDetailsPayload: Decodable {
         let queueDepth: Int

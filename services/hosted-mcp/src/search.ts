@@ -83,10 +83,14 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
       resourceUri: `burnbar://conversation/${documentID}`,
       chunkID: item.id,
       documentID,
+      sessionID: doc?.sessionId ?? item.data.sessionId,
       sourceKind: item.data.sourceKind,
       sourceID: item.data.sourceID,
-      provider: item.data.provider,
+      provider: doc?.provider ?? item.data.provider,
+      model: doc?.model ?? item.data.model,
       projectName: doc?.projectName ?? item.data.projectName,
+      startedAt: timestampISO(doc?.startTime ?? item.data.startTime),
+      lastMessageAt: timestampISO(doc?.endTime ?? item.data.endTime),
       sealedTitle: doc?.sealedTitle ?? item.data.sealedTitle,
       sealedSnippet: item.data.sealedSnippet,
       sealedBodyPreview: args.includeBodyPreview ? doc?.sealedBodyPreview : undefined,
@@ -197,6 +201,22 @@ function postingHasChunkPayload(data: FirebaseFirestore.DocumentData): boolean {
     && typeof data.bodyHash === "string"
     && typeof data.storagePath === "string"
     && data.sealedSnippet !== undefined;
+}
+
+function timestampISO(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string") return value;
+  const date = firestoreTimestampToDate(value);
+  return date?.toISOString();
+}
+
+function firestoreTimestampToDate(value: unknown): Date | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const toDate = Reflect.get(value, "toDate");
+  if (typeof toDate !== "function") return undefined;
+  const date = toDate.call(value);
+  return date instanceof Date && !Number.isNaN(date.valueOf()) ? date : undefined;
 }
 
 export async function listIndexStatus(db: Firestore, uid: string) {
