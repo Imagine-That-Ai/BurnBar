@@ -191,6 +191,38 @@ final class AgentIdentityRegistryMacURITests: XCTestCase {
 
         XCTAssertEqual(sequence, [requested])
     }
+
+    func testMercuryPeerSourceTreatsFreshOnlineRelayAsReachableBeforeControlStreamLive() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let relay = HermesConnectionRecord(
+            id: "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa",
+            displayName: "MacBook Pro",
+            mode: .relayLink,
+            status: .online,
+            realtimeRelayStatus: "online",
+            realtimeRelayLastSeenAt: now.addingTimeInterval(-5 * 60),
+            lastSeenAt: now.addingTimeInterval(-5 * 60),
+            updatedAt: now.addingTimeInterval(-5 * 60)
+        )
+
+        XCTAssertTrue(MercuryPeerSource.isFreshOnlineRelay(relay, now: now))
+    }
+
+    func testMercuryPeerSourceRejectsStaleOnlineRelay() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let relay = HermesConnectionRecord(
+            id: "relay-stale",
+            displayName: "MacBook Pro",
+            mode: .relayLink,
+            status: .online,
+            realtimeRelayStatus: "online",
+            realtimeRelayLastSeenAt: now.addingTimeInterval(-31 * 60),
+            lastSeenAt: now.addingTimeInterval(-31 * 60),
+            updatedAt: now.addingTimeInterval(-31 * 60)
+        )
+
+        XCTAssertFalse(MercuryPeerSource.isFreshOnlineRelay(relay, now: now))
+    }
 }
 
 @MainActor
@@ -436,6 +468,37 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             },
             "phone-control input must be sent after retargeting to the active Mac route"
         )
+        await coordinator.stop()
+    }
+
+    func testStartRetargetsRunningSupervisorToNewConnection() async throws {
+        let staleStream = MediaControlFakeStream()
+        let currentStream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        var dialedConnectionIDs: [String] = []
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, connectionID in
+                dialedConnectionIDs.append(connectionID)
+                return connectionID == "conn-current" ? currentStream : staleStream
+            },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-stale")
+        try await waitUntilLive(coordinator)
+
+        coordinator.start(uid: "user-1", connectionID: "conn-current")
+
+        try await waitUntil {
+            dialedConnectionIDs == ["conn-stale", "conn-current"]
+                && coordinator.connectionID == "conn-current"
+                && coordinator.phase == .live
+        }
+
+        let staleCloseCount = await staleStream.closeCount
+        XCTAssertEqual(staleCloseCount, 1)
         await coordinator.stop()
     }
 
