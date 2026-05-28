@@ -15,7 +15,7 @@ One-page diligence snapshot for investors, operators, and senior engineers.
 
 ## Weighted diligence score
 
-**100/100** — SOTA remediation complete (2026-05-28). Remaining `@MainActor` on `UsageAggregator` and `OpenBurnBarDaemonManager` is intentional per [ADR 002](architecture/002-actor-boundaries.md) (`@Observable` supervisors with off-main I/O).
+**~82/100** — SOTA remediation merged (PR #121, 2026-05-28); principal audit closure in [`AUDIT_CLOSURE_SOTA_2026-05-28.md`](AUDIT_CLOSURE_SOTA_2026-05-28.md). Remaining `@MainActor` on `UsageAggregator` and `OpenBurnBarDaemonManager` is intentional per [ADR 002](architecture/002-actor-boundaries.md). Category **10/10** cells below are targets; audit-adjusted engineering/ops truth lives in the closure doc and [`TECH_DEBT_METRICS.md`](TECH_DEBT_METRICS.md).
 
 ## Human-only operator steps
 

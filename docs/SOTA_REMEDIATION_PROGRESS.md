@@ -17,7 +17,7 @@
 |-------|------------|------------|-----------------|
 | **0** | Safety | **100%** | No production-path `fatalError`; gateway graceful degradation; SwiftLint empty-catch |
 | **1** | CI + security | **100%** | Launch gate + App Check smoke + ops rules operator-only + extension lockdown |
-| **2** | TypeSpec + Functions | **100%** | 13 manifest domains; `withCallableLogging` on all callables; modular index |
+| **2** | TypeSpec + Functions | **~85%** | 13 manifest domains; modular `index.ts`; structured callable logging on **5/49** `onCall` exports (see audit closure) |
 | **3** | Cloud sync + quarantine | **100%** | `CloudSyncCoordinator` off class `@MainActor`; `syncGate()` domain services; quarantine **0** |
 | **4** | App architecture | **100%** | 4/6 listed I/O facades class-scoped `@MainActor` **cleared**; 2 `@Observable` supervisors retained per [ADR 002](architecture/002-actor-boundaries.md); `OpenBurnBarError` shipped |
 | **5** | Observability | **100%** | `rpc_latency_ms_p95`; `metrics.jsonl` rotation; mmap HNSW |

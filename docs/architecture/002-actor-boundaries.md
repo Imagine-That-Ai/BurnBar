@@ -33,7 +33,7 @@ These types historically carried class-scoped `@MainActor` while touching networ
 - `CloudSyncService` — **cleared** (delegates to off-main domain services + `syncGate()`)
 - `UsageAggregator` — **retained** `@Observable` orchestrator; heavy work via `RefreshBackgroundWork` / `Task.detached`
 - `DownloadSyncService`, `ConversationSyncService`, `CLIAgentSessionMirror` — **cleared**
-- `OpenBurnBarDaemonManager` — **cleared** at class scope; RPC via `daemonRPC` off-main
+- `OpenBurnBarDaemonManager` — **retained** `@Observable` supervisor (class-scoped `@MainActor`); RPC via `daemonRPC` off-main
 
 **Not** counted as violations: `SearchService` (actor), `ProjectionPipelineService` (actor).
 
