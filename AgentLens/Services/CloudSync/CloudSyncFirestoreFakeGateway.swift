@@ -362,7 +362,11 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway {
 
     func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) {
         guard let fakeDoc = document as? CloudSyncDocumentFakeGateway else {
-            fatalError("Mixed gateway implementations are not supported.")
+            AppLogger.sync.error(
+                "cloud_sync_gateway_implementation_mismatch",
+                metadata: ["expected": "CloudSyncDocumentFakeGateway"]
+            )
+            return
         }
         pending.append((path: fakeDoc.path, data: normalizeFieldValues(data), merge: merge))
     }

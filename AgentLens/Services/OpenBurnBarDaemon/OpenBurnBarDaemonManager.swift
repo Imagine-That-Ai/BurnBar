@@ -193,6 +193,8 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
     }
 }
 
+/// UI-bound daemon supervisor. I/O paths use `daemonRPC` / `daemonProcess` off the main actor.
+/// `@MainActor` remains on this type until `OpenBurnBarDaemonGateway` actor split (ADR 002 follow-up).
 @Observable
 @MainActor
 final class OpenBurnBarDaemonManager {

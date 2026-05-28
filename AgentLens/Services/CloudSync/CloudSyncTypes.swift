@@ -6,7 +6,6 @@ import Foundation
 
 /// Protocol for all cloud sync domain services.
 /// Each domain is responsible for one area of sync (usage, conversations, artifacts, etc.)
-@MainActor
 protocol CloudSyncDomain: AnyObject {
     /// Whether this domain is currently syncing.
     var isSyncing: Bool { get }

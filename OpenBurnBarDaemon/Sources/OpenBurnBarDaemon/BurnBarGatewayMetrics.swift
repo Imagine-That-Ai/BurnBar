@@ -9,6 +9,8 @@ public enum BurnBarDaemonMetricsCounters {
     private static let lock = NSLock()
     private static var rpcRequestsTotal = 0
     private static var rpcErrorsTotal = 0
+    private static var rpcLatencyMsSamples: [Int] = []
+    private static let maxLatencySamples = 256
 
     public static func recordRPCRequest() {
         lock.lock()
@@ -22,13 +24,39 @@ public enum BurnBarDaemonMetricsCounters {
         lock.unlock()
     }
 
+    /// Records one RPC round-trip latency sample for p95 SLO probes.
+    public static func recordRPCLatency(milliseconds: Int) {
+        let clamped = max(0, milliseconds)
+        lock.lock()
+        rpcLatencyMsSamples.append(clamped)
+        if rpcLatencyMsSamples.count > maxLatencySamples {
+            rpcLatencyMsSamples.removeFirst(rpcLatencyMsSamples.count - maxLatencySamples)
+        }
+        lock.unlock()
+    }
+
     public static func snapshot() -> [String: Int] {
         lock.lock()
         defer { lock.unlock() }
-        return [
+        var counters = [
             "rpc_requests_total": rpcRequestsTotal,
             "rpc_errors_total": rpcErrorsTotal,
         ]
+        if let p95 = percentile(rpcLatencyMsSamples, p: 0.95) {
+            counters["rpc_latency_ms_p95"] = p95
+        }
+        return counters
+    }
+
+    private static func percentile(_ values: [Int], p: Double) -> Int? {
+        guard !values.isEmpty else { return nil }
+        let sorted = values.sorted()
+        let index = Double(sorted.count - 1) * p
+        let lower = Int(index)
+        let upper = min(lower + 1, sorted.count - 1)
+        let fraction = index - Double(lower)
+        let value = Double(sorted[lower]) * (1 - fraction) + Double(sorted[upper]) * fraction
+        return Int(value.rounded())
     }
 
     #if DEBUG
@@ -37,6 +65,7 @@ public enum BurnBarDaemonMetricsCounters {
         lock.lock()
         rpcRequestsTotal = 0
         rpcErrorsTotal = 0
+        rpcLatencyMsSamples = []
         lock.unlock()
     }
     #endif

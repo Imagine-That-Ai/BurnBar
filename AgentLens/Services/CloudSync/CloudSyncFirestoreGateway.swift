@@ -169,7 +169,11 @@ final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway {
 
     func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) {
         guard let liveDoc = document as? CloudSyncDocumentLiveGateway else {
-            fatalError("Mixed gateway implementations are not supported.")
+            AppLogger.sync.error(
+                "cloud_sync_gateway_implementation_mismatch",
+                metadata: ["expected": "CloudSyncDocumentLiveGateway"]
+            )
+            return
         }
         batch.setData(data, forDocument: liveDoc.reference, merge: merge)
     }
