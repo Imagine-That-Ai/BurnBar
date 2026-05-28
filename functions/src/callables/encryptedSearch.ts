@@ -33,6 +33,7 @@ import { randomBytes } from "node:crypto";
 import type { DocumentData, DocumentSnapshot, QuerySnapshot, WriteBatch } from "firebase-admin/firestore";
 import type { ProjectMemorySnapshotDoc } from "../types.js";
 import { stripUndefinedObject } from "../guards.js";
+import { withCallableLogging } from "../logging.js";
 
 // ---------------------------------------------------------------------------
 // Callable: encrypted hosted session logs + cloud search
@@ -54,6 +55,7 @@ export const beginEncryptedSessionBlobUpload = onCall(
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before uploading session logs.");
+    return withCallableLogging("beginEncryptedSessionBlobUpload", request, uid, async () => {
     enforceAuthAndAppCheck(request, uid);
     await assertActiveBurnBarProEntitlement(uid);
 
@@ -91,6 +93,7 @@ export const beginEncryptedSessionBlobUpload = onCall(
       maxBytes: getConfig().encryptedSessionBlobMaxBytes,
       acceptedByteCount: encryptedByteCount,
     };
+    });
   }
 );
 

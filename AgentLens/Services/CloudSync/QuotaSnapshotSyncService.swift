@@ -5,8 +5,7 @@ import OpenBurnBarCore
 /// Uploads non-secret provider account metadata so iOS/iPad can show the same
 /// account list as macOS. Credentials remain in Keychain or server-private
 /// Secret Manager references; this sync only writes public account state.
-@MainActor
-final class ProviderAccountSyncService {
+final class ProviderAccountSyncService: @unchecked Sendable {
     private let context: CloudSyncContext
 
     init(context: CloudSyncContext) {
@@ -14,11 +13,14 @@ final class ProviderAccountSyncService {
     }
 
     func uploadAccounts() async {
-        guard context.accountManager.isFirebaseAvailable,
-              context.accountManager.isSignedIn,
-              context.accountManager.isCloudSyncEnabled,
-              !context.syncIsSuppressed(),
-              let uid = context.currentUID else { return }
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              gate.account.isCloudSyncEnabled,
+              !gate.syncSuppressed,
+              let uid = gate.account.uid else { return }
+
+        let deviceId = gate.account.deviceId
 
         do {
             let accounts = try context.dataStore.providerAccountStore.fetchAll()
@@ -29,7 +31,7 @@ final class ProviderAccountSyncService {
 
             for account in accounts {
                 let docRef = collectionRef.document(sanitizeDocumentIDPart(account.id))
-                batch.setData(encodeAccount(account, deviceId: context.deviceId), forDocument: docRef, merge: true)
+                batch.setData(encodeAccount(account, deviceId: deviceId), forDocument: docRef, merge: true)
             }
 
             try await withCloudSyncRetry(
@@ -44,7 +46,7 @@ final class ProviderAccountSyncService {
             guard nsError.domain == FirestoreErrorDomain,
                   let code = FirestoreErrorCode.Code(rawValue: nsError.code),
                   code == .permissionDenied || code == .unauthenticated else { return }
-            context.suppressedSyncUntil = Date().addingTimeInterval(CloudSyncBackoffPolicy.permissionDeniedCooldown)
+            await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
         }
     }
 
@@ -105,8 +107,7 @@ final class ProviderAccountSyncService {
 
 /// Uploads desktop quota snapshots to Firestore so iOS can read them.
 /// Desktop writes: users/{uid}/quota_snapshots/{providerID}_{accountID}_{sourceID}
-@MainActor
-final class QuotaSnapshotSyncService {
+final class QuotaSnapshotSyncService: @unchecked Sendable {
     private let context: CloudSyncContext
 
     init(context: CloudSyncContext) {
@@ -114,11 +115,14 @@ final class QuotaSnapshotSyncService {
     }
 
     func uploadSnapshots(_ snapshots: [ProviderQuotaSnapshot]) async {
-        guard context.accountManager.isFirebaseAvailable,
-              context.accountManager.isSignedIn,
-              context.accountManager.isCloudSyncEnabled,
-              !context.syncIsSuppressed(),
-              let uid = context.currentUID else { return }
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              gate.account.isCloudSyncEnabled,
+              !gate.syncSuppressed,
+              let uid = gate.account.uid else { return }
+
+        let deviceId = gate.account.deviceId
 
         do {
             let batch = context.firestoreGateway.batch()
@@ -126,9 +130,9 @@ final class QuotaSnapshotSyncService {
             var didEnqueueWrite = false
 
             for snapshot in snapshots where snapshot.hasDisplayableQuotaSignal {
-                let docId = snapshotDocumentID(snapshot, fallbackSourceID: context.deviceId)
+                let docId = snapshotDocumentID(snapshot, fallbackSourceID: deviceId)
                 let docRef = collectionRef.document(docId)
-                let data = encodeSnapshot(snapshot, deviceId: context.deviceId)
+                let data = encodeSnapshot(snapshot, deviceId: deviceId)
                 batch.setData(data, forDocument: docRef, merge: true)
                 didEnqueueWrite = true
             }
@@ -147,7 +151,7 @@ final class QuotaSnapshotSyncService {
             guard nsError.domain == FirestoreErrorDomain,
                   let code = FirestoreErrorCode.Code(rawValue: nsError.code),
                   code == .permissionDenied || code == .unauthenticated else { return }
-            context.suppressedSyncUntil = Date().addingTimeInterval(CloudSyncBackoffPolicy.permissionDeniedCooldown)
+            await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
         }
     }
 

@@ -4,13 +4,12 @@ import OpenBurnBarCore
 
 // MARK: - Usage Aggregator
 
-/// Thin `@MainActor @Observable` facade that coordinates the refresh pipeline.
+/// Thin `@Observable` facade that coordinates the refresh pipeline.
 ///
 /// Heavy work (parsing 12+ providers, DB persistence, quota API calls,
 /// conversation indexing, cloud sync) runs off the main thread via
-/// `RefreshBackgroundWork` inside `Task.detached`.  This type only touches
-/// observable state on the main actor: setting `isRefreshing`, applying
-/// results to `DataStore`, and launching post-refresh side-effects.
+/// `RefreshBackgroundWork` inside `Task.detached`.  Observable state updates
+/// happen on the main actor at apply boundaries.
 @Observable
 @MainActor
 final class UsageAggregator {
@@ -104,15 +103,19 @@ final class UsageAggregator {
             self?.requestProjectionSweep()
         }
         self.quotaService.onSnapshotsPersistedForCloudSync = { [weak self] snapshots in
-            Task { @MainActor [weak self] in
-                await self?.publishQuotaSnapshotsForIOS(snapshots)
+            Task {
+                await MainActor.run { [weak self] in
+                    Task { await self?.publishQuotaSnapshotsForIOS(snapshots) }
+                }
             }
         }
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            let pendingProjectionJobs = (try? self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
-            if pendingProjectionJobs > 0 {
-                self.requestProjectionSweep()
+        Task {
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                let pendingProjectionJobs = (try? self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+                if pendingProjectionJobs > 0 {
+                    self.requestProjectionSweep()
+                }
             }
         }
     }
@@ -144,7 +147,7 @@ final class UsageAggregator {
             ? .tokenizerAssisted
             : .characterRatio
 
-        // Snapshot @MainActor state before entering background.
+        // Snapshot main-actor state before entering background.
         let existingUsages = dataStore.usages
         let settings = RefreshSettingsSnapshot(
             conversationIndexingEnabled: settingsManager.conversationIndexingEnabled,
@@ -170,7 +173,7 @@ final class UsageAggregator {
             )
         }.value
 
-        // ── Apply results back on @MainActor ─────────────────────────
+        // ── Apply results back on the main actor ─────────────────────────
         parserHealth = result.parserHealth
         errors = result.errors
 
@@ -281,7 +284,7 @@ final class UsageAggregator {
             ? .tokenizerAssisted
             : .characterRatio
 
-        // Snapshot @MainActor state before entering background.
+        // Snapshot main-actor state before entering background.
         let settings = RefreshSettingsSnapshot(
             conversationIndexingEnabled: settingsManager.conversationIndexingEnabled,
             snapshotAPIs: usageAPIService?.snapshotAPIs() ?? []
@@ -300,7 +303,7 @@ final class UsageAggregator {
             )
         }.value
 
-        // ── Apply results back on @MainActor ─────────────────────────
+        // ── Apply results back on the main actor ─────────────────────────
         parserHealth[provider] = result.health
 
         if let error = result.error {

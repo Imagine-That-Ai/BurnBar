@@ -313,13 +313,22 @@ public actor BurnBarDaemonServer {
     }
 
     private func responseData(for requestData: Data, peerPID: pid_t?) async -> Data {
+        let rpcStartedAt = ContinuousClock.now
+        defer {
+            let elapsed = rpcStartedAt.duration(to: ContinuousClock.now)
+            let milliseconds = Int(elapsed.components.seconds * 1000)
+                + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+            BurnBarDaemonMetricsCounters.recordRPCLatency(milliseconds: milliseconds)
+        }
         do {
             let decoder = JSONDecoder()
             let incomingRequest = try decoder.decode(IncomingRequestEnvelope.self, from: requestData)
+            BurnBarDaemonMetricsCounters.recordRPCRequest()
 
             if let requiredToken = configuration.socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
                 let providedToken = incomingRequest.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
                 guard providedToken == requiredToken else {
+                    BurnBarDaemonMetricsCounters.recordRPCError()
                     logger.warning(
                         "rpc_request_unauthorized",
                         metadata: [
@@ -337,6 +346,7 @@ public actor BurnBarDaemonServer {
             }
 
             guard let method = BurnBarRPCMethod(rawValue: incomingRequest.method) else {
+                BurnBarDaemonMetricsCounters.recordRPCError()
                 logger.error(
                     "rpc_method_not_found",
                     metadata: [
@@ -356,6 +366,7 @@ public actor BurnBarDaemonServer {
                 let clientKey = peerPID.map(String.init) ?? "unknown"
                 let limitResult = await rateLimiter.checkLimit(clientKey: clientKey)
                 if case .throttled(let retryAfter) = limitResult {
+                    BurnBarDaemonMetricsCounters.recordRPCError()
                     logger.warning(
                         "rpc_rate_limit_exceeded",
                         metadata: [
@@ -1237,6 +1248,7 @@ public actor BurnBarDaemonServer {
                 )
             }
         } catch {
+            BurnBarDaemonMetricsCounters.recordRPCError()
             logger.error(
                 "rpc_request_failed",
                 metadata: ["error": "\(error)"]

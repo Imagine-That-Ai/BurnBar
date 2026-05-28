@@ -19,7 +19,7 @@ import {
   refreshUserProviderAccountQuota,
   refreshUserProviderQuota,
 } from "../quota.js";
-import { upsertDeviceLink } from "../providerAccountDeviceLinks.js";
+import { upsertDeviceLink } from "../domains/device-links/index.js";
 import { minimaxAdapter } from "../providers/minimax.js";
 import { zaiAdapter } from "../providers/zai.js";
 import { xaiAdapter } from "../providers/xai.js";

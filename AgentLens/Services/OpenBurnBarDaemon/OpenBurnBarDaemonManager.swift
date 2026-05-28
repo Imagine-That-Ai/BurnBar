@@ -193,10 +193,11 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
     }
 }
 
+/// UI-bound daemon supervisor. I/O paths use `daemonRPC` / `daemonProcess` off the main actor.
 @Observable
 @MainActor
 final class OpenBurnBarDaemonManager {
-    static let shared = OpenBurnBarDaemonManager()
+    static let shared = OpenBurnBarDaemonManager(settingsManager: .shared)
     static let daemonSocketAuthTokenAccount = OpenBurnBarIdentity.daemonSocketAuthTokenAccount
     static let controllerRuntimeSecrets = KeychainStore(
         service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
@@ -310,7 +311,9 @@ final class OpenBurnBarDaemonManager {
                 await cloudSyncService?.uploadPending()
             }
         }
-        OpenBurnBarDaemonLocalNotificationRelay.shared.start()
+        Task { @MainActor in
+            OpenBurnBarDaemonLocalNotificationRelay.shared.start()
+        }
         Task {
             await refreshInstalledDaemonIfNeededForCurrentAppBuild()
             await refreshHealth()

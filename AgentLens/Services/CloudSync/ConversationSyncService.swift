@@ -6,8 +6,7 @@ import Foundation
 ///
 /// Firestore layout: `users/{uid}/conversations/{deviceId}_{conversationId}`
 /// Note: Full transcripts are NOT uploaded here; only metadata for cross-device recall.
-@MainActor
-final class ConversationSyncService: CloudSyncDomain {
+final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
 
     private(set) var isSyncing = false
@@ -21,13 +20,14 @@ final class ConversationSyncService: CloudSyncDomain {
     /// Upload unsynced conversation metadata (excluding full transcripts).
     /// Runs after UsageAggregator.refreshAll(), matching token sync cadence.
     func sync() async {
-        guard context.accountManager.isFirebaseAvailable,
-              context.accountManager.isSignedIn,
-              context.accountManager.isCloudSyncEnabled,
-              context.settingsManager.conversationCloudBackupEnabled,
-              !context.syncIsSuppressed(),
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              gate.account.isCloudSyncEnabled,
+              gate.settings.conversationCloudBackupEnabled,
+              !gate.syncSuppressed,
               !isSyncing,
-              let uid = context.currentUID else { return }
+              let uid = gate.account.uid else { return }
 
         isSyncing = true
         lastSyncError = nil
@@ -43,11 +43,12 @@ final class ConversationSyncService: CloudSyncDomain {
 
             let batch = context.firestoreGateway.batch()
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("conversations")
+            let deviceId = gate.account.deviceId
 
             for record in unsynced {
-                let docId = "\(context.deviceId)_\(record.id)"
+                let docId = "\(deviceId)_\(record.id)"
                 let docRef = collectionRef.document(docId)
-                let data = Self.encodeConversation(record, deviceId: context.deviceId)
+                let data = Self.encodeConversation(record, deviceId: deviceId)
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 
@@ -65,11 +66,11 @@ final class ConversationSyncService: CloudSyncDomain {
             lastSyncDate = Date()
             lastSyncError = nil
         } catch {
-            recordSyncError(error)
+            await recordSyncError(error)
         }
     }
 
-    private func recordSyncError(_ error: Error) {
+    private func recordSyncError(_ error: Error) async {
         lastSyncError = error.localizedDescription
 
         let nsError = error as NSError
@@ -78,7 +79,7 @@ final class ConversationSyncService: CloudSyncDomain {
               code == .permissionDenied || code == .unauthenticated else {
             return
         }
-        context.suppressedSyncUntil = Date().addingTimeInterval(CloudSyncBackoffPolicy.permissionDeniedCooldown)
+        await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
     }
 
     static func encodeConversation(_ record: ConversationRecord, deviceId: String) -> [String: Any] {

@@ -10,4 +10,7 @@ export * from "./types/legacy.js";
 export type {
   GeneratedProviderAccountDoc,
   GeneratedProviderAccountConnectContext,
+  GeneratedProviderAccountDeviceLinkDoc,
+  GeneratedModelBenchmarkSnapshotDoc,
+  GeneratedModelBenchmarkSourceStatusDoc,
 } from "./types/generated/index.js";

@@ -556,7 +556,8 @@ public enum BurnBarCatalogLoader {
         do {
             return try loadBundledCatalog()
         } catch {
-            fatalError("Failed to load bundled OpenBurnBar catalog: \(error)")
+            assertionFailure("Failed to load bundled OpenBurnBar catalog: \(error)")
+            return BurnBarCatalog(schemaVersion: 1, providers: [])
         }
     }()
 

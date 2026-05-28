@@ -61,4 +61,20 @@ final class LocalMetricsAggregatorTests: XCTestCase {
         // The 9999 ms old record should be excluded
         XCTAssertEqual(snapshot?.searchP50Ms, 100.0)
     }
+
+    func test_metricsJSONLWriter_rotatesOversizedFile() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let oversized = Data(repeating: 0x41, count: (5 * 1024 * 1024) + 128)
+        let fileURL = directory.appendingPathComponent(LocalMetricsJSONLWriter.filename)
+        try oversized.write(to: fileURL)
+
+        LocalMetricsJSONLWriter.append(event: ["event": "probe"], supportDirectory: directory)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.appendingPathExtension("1").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+    }
 }

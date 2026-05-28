@@ -101,7 +101,7 @@ Events emitted:
 | `iroh_stream_opened` | Once `transport.connect(target, timeout)` returns |
 | `iroh_stream_closed` | On `response.complete` |
 | `iroh_stream_failed` | On dial timeout / connection drop / decode error |
-| `iroh_fallback_to_wss` | When the composite cascade falls through to Firestore |
+| `iroh_fallback_to_firestore` | When the composite cascade falls through to Firestore |
 
 ## Composite cascade
 
@@ -110,7 +110,7 @@ Events emitted:
 1. Read the remote-config kill switch (`hermes_iroh_transport_enabled`).
    Off → skip iroh, go straight to Firestore.
 2. Try iroh. On `IrohRelayTransportError.{TimedOut, EndpointNotReady,
-   Shutdown, StreamRejected}`, log `iroh_fallback_to_wss` and delegate
+   Shutdown, StreamRejected}`, log `iroh_fallback_to_firestore` and delegate
    to Firestore.
 3. Other throwables propagate (server bugs, not transport drops).
 

@@ -192,7 +192,11 @@ extension SwitcherCLIProfileType {
         case .claude:
             return .claudeCode
         case .opencode:
-            return nil
+            // Historically returned nil; OpenCode does have a first-class
+            // `AgentProvider.openCode` so we map it correctly. Drain-target
+            // callers — and any AgentLens caller checking this for logos /
+            // theming — would otherwise silently lose the OpenCode row.
+            return .openCode
         case .droid:
             return .factory
         case .forge:

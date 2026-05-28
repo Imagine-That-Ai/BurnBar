@@ -2128,6 +2128,102 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         XCTAssertEqual(routedProfileID, codexC.id,
             "Routed profile ID should equal codexC.id (final committed active profile after A->B->C switch), proving no stale A/B routing")
     }
+
+    // MARK: - launchUsingDrainTarget(for:)
+
+    /// Per-provider drain target is the user-chosen account that burns quota
+    /// for one provider. The launch path must read the right profile.
+    func test_launchUsingDrainTarget_routesToProviderActiveProfile() async {
+        let claudePersonal = SwitcherProfileRecord(
+            id: "claude-personal",
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Claude Personal"),
+            sortKey: 1
+        )
+        let codexWork = SwitcherProfileRecord(
+            id: "codex-work",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex Work"),
+            sortKey: 2
+        )
+        store.addProfile(claudePersonal)
+        store.addProfile(codexWork)
+
+        CLILaunchAdapter.executableResolver = { _ in nil }
+
+        store.setActiveProfileID(claudePersonal.id, for: AgentProvider.claudeCode.providerID)
+        store.setActiveProfileID(codexWork.id, for: AgentProvider.codex.providerID)
+
+        let outcome = await service.launchUsingDrainTarget(for: AgentProvider.claudeCode.providerID)
+
+        XCTAssertFalse(outcome.success, "Resolver returns nil so launch must fail at executable lookup, not earlier")
+        if case .executableNotFound(let cliType) = outcome.error {
+            XCTAssertEqual(cliType, .claude, "Launch must have selected the Claude drain target, not Codex")
+        } else {
+            XCTFail("Expected .executableNotFound for claude, got \(String(describing: outcome.error))")
+        }
+
+        let routed = await service.getLastAttemptedProfileID()
+        XCTAssertEqual(routed, claudePersonal.id, "Routed profile id must equal the Claude drain target")
+    }
+
+    func test_launchUsingDrainTarget_returnsNoActiveProfile_whenProviderHasNoTarget() async {
+        let unrelated = SwitcherProfileRecord(
+            id: "codex-only",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex"),
+            sortKey: 1
+        )
+        store.addProfile(unrelated)
+        store.setActiveProfileID(unrelated.id, for: AgentProvider.codex.providerID)
+
+        let outcome = await service.launchUsingDrainTarget(for: AgentProvider.claudeCode.providerID)
+
+        XCTAssertFalse(outcome.success)
+        if case .noActiveProfile = outcome.error {
+            // Expected — provider-scoped lookup correctly returns nil
+        } else {
+            XCTFail("Expected .noActiveProfile, got \(String(describing: outcome.error))")
+        }
+    }
+
+    func test_launchUsingDrainTarget_isolatedFromGlobalActiveProfile() async {
+        let claudeDrain = SwitcherProfileRecord(
+            id: "claude-drain",
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Claude Drain"),
+            sortKey: 1
+        )
+        let globalActive = SwitcherProfileRecord(
+            id: "codex-global",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex Global"),
+            sortKey: 2
+        )
+        store.addProfile(claudeDrain)
+        store.addProfile(globalActive)
+
+        CLILaunchAdapter.executableResolver = { _ in nil }
+
+        // Global pointer = Codex; Claude has its own drain target.
+        store.setActiveProfileID(globalActive.id)
+        store.setActiveProfileID(claudeDrain.id, for: AgentProvider.claudeCode.providerID)
+
+        let outcome = await service.launchUsingDrainTarget(for: AgentProvider.claudeCode.providerID)
+
+        if case .executableNotFound(let cliType) = outcome.error {
+            XCTAssertEqual(cliType, .claude, "Drain-target launch must not be hijacked by the global pointer")
+        } else {
+            XCTFail("Expected .executableNotFound for claude, got \(String(describing: outcome.error))")
+        }
+        let routed = await service.getLastAttemptedProfileID()
+        XCTAssertEqual(routed, claudeDrain.id)
+    }
 }
 
 // MARK: - Helper Extensions

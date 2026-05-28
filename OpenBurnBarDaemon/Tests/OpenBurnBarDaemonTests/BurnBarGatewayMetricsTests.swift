@@ -10,6 +10,7 @@ final class BurnBarGatewayMetricsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(snapshot.uptimeSeconds, 0)
         XCTAssertEqual(snapshot.protocolVersion, BurnBarProtocolVersion.current)
         XCTAssertEqual(snapshot.counters["gateway_enabled"], 1)
+        XCTAssertEqual(snapshot.counters["heartbeat_stale"], snapshot.heartbeatStale ? 1 : 0)
     }
 
     func test_liveSnapshotEncodesToJSON() throws {

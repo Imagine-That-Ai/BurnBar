@@ -6,6 +6,11 @@
 > retirement only happens after 14 consecutive days of iroh carrying
 > 100% of relay traffic with zero fallback-to-WSS events.
 
+> **Completed 2026-05-28 for `burnbar`.** The Cloud Run service
+> `hermes-realtime-relay` and Memorystore instance
+> `hermes-realtime-relay-redis-prod-secure` were deleted. Current production
+> validation should confirm they remain absent.
+
 See [`HERMES_IROH_TRANSPORT.md`](HERMES_IROH_TRANSPORT.md) for the
 overall architecture and Phase 1-6 milestones.
 

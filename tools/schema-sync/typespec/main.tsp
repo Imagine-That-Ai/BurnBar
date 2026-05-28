@@ -9,3 +9,5 @@ import "./domains/entitlements.tsp";
 import "./domains/insights.tsp";
 import "./domains/missions.tsp";
 import "./domains/media-analytics.tsp";
+import "./domains/device-links.tsp";
+import "./domains/model-benchmarks.tsp";

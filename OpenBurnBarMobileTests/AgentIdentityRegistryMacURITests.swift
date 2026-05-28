@@ -479,21 +479,22 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             initialBackoff: 0.01,
             maxBackoff: 0.01,
             heartbeatInitialDelay: 0.01,
-            heartbeatInterval: 0.01
+            // Slow post-resume cadence so exactly-one assertion does not race 10 ms ticks.
+            heartbeatInterval: 1.0
         )
 
-        coordinator.suspendBackgroundTraffic(for: 0.08)
+        coordinator.suspendBackgroundTraffic(for: 0.4)
         coordinator.start(uid: "user-1", connectionID: "conn-1")
         try await waitUntilLive(coordinator)
-        try await Task.sleep(nanoseconds: 40_000_000)
+        try await Task.sleep(nanoseconds: 50_000_000)
 
         var heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
         XCTAssertTrue(heartbeats.isEmpty, "suppressed background presence must stay off the lane while user work is active")
 
         try await waitUntilHeartbeatCount(stream, count: 1)
+        await coordinator.stop()
         heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
         XCTAssertEqual(heartbeats.count, 1)
-        await coordinator.stop()
     }
 
     func testControlStreamSendTimesOutWhenUnderlyingWriteHangs() async throws {
