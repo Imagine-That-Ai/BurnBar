@@ -57,14 +57,6 @@ final class HermesRelayHostService {
         if let realtimeRelayClient {
             self.realtimeRelayClient = realtimeRelayClient
         } else {
-            let wssClient = HermesRealtimeRelayHostClient(
-                accountManager: accountManager,
-                settingsManager: settingsManager,
-                relayKeyStore: relayKeyStore,
-                urlSession: urlSession
-            )
-            wssClient.cliChatDispatcher = cliChatDispatcher
-            wssClient.cliModelCatalogDispatcher = cliModelCatalogDispatcher
             let forceIrohTransport: Bool = {
                 #if DEBUG
                 ProcessInfo.processInfo.environment["OPENBURNBAR_ENABLE_IROH_TRANSPORT"] == "1"
@@ -118,12 +110,9 @@ final class HermesRelayHostService {
                 irohClient.cliChatDispatcher = cliChatDispatcher
                 irohClient.cliModelCatalogDispatcher = cliModelCatalogDispatcher
                 irohClient.setControlDispatcher(computerUseControlDispatcher)
-                self.realtimeRelayClient = HermesRelayHostFanout(
-                    primary: irohClient,
-                    fallback: wssClient
-                )
+                self.realtimeRelayClient = irohClient
             } else {
-                self.realtimeRelayClient = wssClient
+                self.realtimeRelayClient = DisabledHermesRealtimeRelayHostClient()
             }
         }
     }

@@ -25,6 +25,7 @@ enum class IrohTransportAuditEvent(val raw: String) {
     PAIRING_VERIFIED("iroh_pairing_verified"),
     PAIRING_REJECTED("iroh_pairing_rejected"),
     FALLBACK_TO_WSS("iroh_fallback_to_wss"),
+    FALLBACK_TO_FIRESTORE("iroh_fallback_to_firestore"),
 }
 
 enum class IrohTransportSelection(val raw: String) {

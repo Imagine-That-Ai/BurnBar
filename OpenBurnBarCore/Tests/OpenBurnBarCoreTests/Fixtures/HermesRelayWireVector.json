@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "AxuSKFbGS\/WA3\/0OuIwr\/4EtgsR2D1D20C19yuJPrCF3DpnlC9i8GctHvziD57w=",
+  "chunkCiphertext" : "KrLZNo1yG179G8eJuvdZcDGXhSdUCDuT8Nw6FR82\/Q7uP1xetLy3h3QoNEGVn10=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
   "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "nbr593v1yk+7olZ1\/CHew1R9dQrXXiyWeU9Py7DOqQQFyF7H0WDQ2y54HuT4cY3acykzxe7IQmUp7gtM93SQOKo+9YxwDpX3r0d4g2xKdwOe8IyvUejx4Rq7Q5447w87ewkmNKGv+5KiNgA6Q81ndj5nBW\/+JCD+ehdpKncVwsyrQ7T9fdr099p0Fedo\/B4HErIdHY0L",
+  "payloadCiphertext" : "eIFmqR9SQHllgYr4npaZth6LOMvtrIsR8\/jIl\/sEcvb0WonHhGDbjjtTbq\/Wan2tHeqwf2V5dDi3ejOaGARqbNQOCqIXsdSdSklzpYfhKqpC7up6m6DWubjs\/eL164\/aws6PRkyHCHVpSE0rvUyAqqDIqQqwOVxcCNtWyeDHSIgpepzd3S6eQiRmwBLVejYBq4uhsnOc",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BJJNROu4ZQWFTqX1BjTrR4bzRUG8cNEARKxc+9FFF88BfxJd3CWr1ZxvMzE+Bhhoz\/R9AjBip+OvBUFwzVIHTxkqBgBHryMf6GscPokQgVm3CUOxFuDYInFsG7UV1Xh6elguSfMUgumhKEIpHzWLm7unRiXQcV1doIxa0Vo="
+  "wrappedKey" : "BPrXEqBGWnov0OEKI2IcdYQ2LfwtYezglDL7ZmD2wJiwg9hsPrLrqKBWNITDskP9TxDZHCE4MJYe+gLna7hgZxsJVkYUEAsOI3iLoCKGSZsmBBlpsNFiOvl3JtPQillVykTKwv4au0dR\/QC0ZcktTnB\/POjEIZmQXH4eH2g="
 }

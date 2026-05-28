@@ -103,8 +103,8 @@ public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Send
     }
 
     /// Bridges backend error semantics into the public transport surface.
-    /// Connect timeouts collapse to `.timedOut` so the WSS fallback path in
-    /// `HermesCompositeRelayTransport` triggers the same way as on the
+    /// Connect timeouts collapse to `.timedOut` so the Firestore fallback path
+    /// in `HermesCompositeRelayTransport` triggers the same way as on the
     /// loopback transport.
     static func surface(_ error: IrohBackendError) -> IrohRelayTransportError {
         switch error {
