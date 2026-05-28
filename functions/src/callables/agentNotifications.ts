@@ -8,7 +8,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { errorCode, isRecord } from "../guards.js";
-import { logInfo } from "../logging.js";
+import { logInfo, wrapCallableHandler } from "../logging.js";
 import type {
   AgentNotificationReplyCommand,
   AgentReplyNotificationEvent,
@@ -21,7 +21,7 @@ const MAX_REPLY_CHARS = 16_000;
 
 export const submitAgentNotificationReply = onCall(
   { region: REGION, enforceAppCheck: getConfig().enforceAppCheck },
-  async (request) => {
+  wrapCallableHandler("submitAgentNotificationReply", async (request) => {
     assertAppCheck(request);
     if (!request.auth?.uid) {
       throw new HttpsError("unauthenticated", "Sign in before replying.");
@@ -78,7 +78,7 @@ export const submitAgentNotificationReply = onCall(
     });
     return { ok: true, replyId };
   }
-);
+));
 
 function parseNotificationEvent(raw: unknown): AgentReplyNotificationEvent | undefined {
   if (!isRecord(raw)) return undefined;

@@ -3,6 +3,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { CallableRequest } from "firebase-functions/v2/https";
 
 export interface LogFields {
   event: string;
@@ -92,4 +93,30 @@ export async function withCallableLogging<T>(
     logCallableFailure(name, traceId, error, uid);
     throw error;
   }
+}
+
+/**
+ * Wraps a callable handler with start/success/error structured logs.
+ * Prefer migrating exports from raw `onCall` to `onCallWithLogging` for SLO probes.
+ */
+export function onCallWithLogging<T, R>(
+  name: string,
+  handler: (request: { auth?: { uid?: string }; rawRequest?: { headers?: Record<string, unknown> } }) => Promise<R>,
+): (request: { auth?: { uid?: string }; rawRequest?: { headers?: Record<string, unknown> } }) => Promise<R> {
+  return async (request) =>
+    withCallableLogging(name, request, request.auth?.uid, async () => handler(request));
+}
+
+/**
+ * Wraps a v2 `onCall` handler with callable_start / callable_success / callable_error logs.
+ * Use as the second argument to `onCall(options, wrapCallableHandler("name", handler))`.
+ */
+export function wrapCallableHandler<Data, R>(
+  name: string,
+  handler: (request: CallableRequest<Data>) => Promise<R>,
+): (request: CallableRequest<Data>) => Promise<R> {
+  return async (request: CallableRequest<Data>) => {
+    const uid = request.auth?.uid;
+    return withCallableLogging(name, request, uid, () => handler(request));
+  };
 }

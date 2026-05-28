@@ -16,6 +16,27 @@ function assertHttpsError(fn, code) {
   assert.throws(fn, (err) => err?.code === code);
 }
 
+function callableExportBlock(source, exportName) {
+  const start = source.indexOf(`export const ${exportName}`);
+  assert.notEqual(start, -1, `${exportName} must exist`);
+  const onCallIndex = source.indexOf("onCall(", start);
+  assert.notEqual(onCallIndex, -1, `${exportName} must use onCall`);
+  const openParen = source.indexOf("(", onCallIndex);
+  let depth = 0;
+  for (let i = openParen; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        const end = source[i + 1] === ";" ? i + 2 : i + 1;
+        return source.slice(start, end);
+      }
+    }
+  }
+  throw new Error(`Could not find end of ${exportName} onCall export`);
+}
+
 const code = randomPiAgentPairingCode();
 assert.match(code, /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
 assert.equal(piAgentPairingCodeDigest("ab12-cd34"), piAgentPairingCodeDigest("AB12CD34"));
@@ -108,7 +129,7 @@ for (const collection of ["pi_agent_pairings", "pi_agent_audit_events"]) {
     assert.match(indexSource, new RegExp(`\\b${exportedName}\\b`), `${exportedName} must be exported from index`);
     const start = piAgentSource.indexOf(`export const ${exportedName}`);
     assert.notEqual(start, -1, `${exportedName} must exist in callables/piAgent.ts`);
-    const block = piAgentSource.slice(start, piAgentSource.indexOf("\n);\n", start) + 4);
+    const block = callableExportBlock(piAgentSource, exportedName);
     assert.match(block, /await assertActiveHostedQuotaEntitlement\(uid\);/, `${exportedName} must be premium-gated`);
   }
   assert.match(piAgentSource, /pi_agent_create_pairing|pi_agent_\$\{action\}|pi_agent_/);

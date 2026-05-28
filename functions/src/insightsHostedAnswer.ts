@@ -71,7 +71,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 
 import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth } from "./auth.js";
-import { logCallableStart, traceIdFromCallableRequest } from "./logging.js";
+import { wrapCallableHandler } from "./logging.js";
 
 /**
  * Lazy Firestore handle. The module is loaded inside the deployed
@@ -457,7 +457,7 @@ export const insightsHostedAnswer = onCall(
     timeoutSeconds: 60,
     secrets: [OPENROUTER_API_KEY],
   },
-  async (
+  wrapCallableHandler("insightsHostedAnswer", async (
     request: CallableRequest<HostedAnswerRequest>
   ): Promise<Record<string, unknown>> => {
     assertAppCheck(request);
@@ -471,7 +471,6 @@ export const insightsHostedAnswer = onCall(
     if (!uid) {
       throw new HttpsError("unauthenticated", "Request must be authenticated with Firebase Auth.");
     }
-    logCallableStart("insightsHostedAnswer", traceIdFromCallableRequest(request), uid);
     await assertActiveBurnBarProEntitlement(uid);
 
     const startedAtISO = isoNow();
@@ -573,7 +572,7 @@ export const insightsHostedAnswer = onCall(
       ranAt: completedAtISO,
     };
   }
-);
+));
 
 /**
  * Parse an env var as a non-negative float. Returns `fallback` when

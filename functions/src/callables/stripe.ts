@@ -7,7 +7,7 @@ import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-fu
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { logError } from "../logging.js";
+import { logError, wrapCallableHandler } from "../logging.js";
 import {
   BURNBAR_PRO_ENTITLEMENT_ID,
   STRIPE_API_SECRETS,
@@ -41,7 +41,7 @@ export const createStripeBurnBarProCheckoutSession = onCall(
     maxInstances: 50,
     secrets: STRIPE_API_SECRETS,
   },
-  async (
+  wrapCallableHandler("createStripeBurnBarProCheckoutSession", async (
     request: CallableRequest<{
       successUrl?: unknown;
       cancelUrl?: unknown;
@@ -79,7 +79,7 @@ export const createStripeBurnBarProCheckoutSession = onCall(
 
     return { sessionId: session.id, url: session.url };
   }
-);
+));
 
 export const createStripeBurnBarProPortalSession = onCall(
   {
@@ -88,7 +88,7 @@ export const createStripeBurnBarProPortalSession = onCall(
     maxInstances: 50,
     secrets: STRIPE_API_SECRETS,
   },
-  async (
+  wrapCallableHandler("createStripeBurnBarProPortalSession", async (
     request: CallableRequest<{
       returnUrl?: unknown;
     }>
@@ -106,7 +106,7 @@ export const createStripeBurnBarProPortalSession = onCall(
     });
     return { url: session.url };
   }
-);
+));
 
 export const verifyGooglePlayBurnBarProSubscription = onCall(
   {
@@ -114,7 +114,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("verifyGooglePlayBurnBarProSubscription", async (
     request: CallableRequest<{
       purchaseToken?: unknown;
       productID?: unknown;
@@ -179,7 +179,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
 
     return { entitlement, subscriptionState, active, expiresAt: new Date(expiresAtMillis).toISOString() };
   }
-);
+));
 
 export const stripeBurnBarProWebhook = onRequest(
   {

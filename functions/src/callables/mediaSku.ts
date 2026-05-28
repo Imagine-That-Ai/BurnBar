@@ -12,7 +12,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { isRecord, numberField, stringField } from "../guards.js";
-import { logInfo } from "../logging.js";
+import { logInfo, wrapCallableHandler } from "../logging.js";
 
 const MEDIA_SKU = "com.openburnbar.hostedMediaSync.monthly";
 const PRO_SKU = "com.openburnbar.pro.monthly";
@@ -42,7 +42,7 @@ function nowPlusDays(days: number): Timestamp {
 
 export const grantMediaGrandfather = onCall(
   { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
-  async (request) => {
+  wrapCallableHandler("grantMediaGrandfather", async (request) => {
     assertAppCheck(request);
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign-in required.");
@@ -102,7 +102,7 @@ export const grantMediaGrandfather = onCall(
     });
     return { granted, skipped };
   }
-);
+));
 
 interface ValidateRequest {
   productID: string;
@@ -121,7 +121,7 @@ function parseValidateRequest(raw: unknown): ValidateRequest | undefined {
 
 export const validateMediaPurchase = onCall(
   { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
-  async (request) => {
+  wrapCallableHandler("validateMediaPurchase", async (request) => {
     assertAppCheck(request);
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign-in required.");
@@ -160,4 +160,4 @@ export const validateMediaPurchase = onCall(
     });
     return { active: true, productID: data.productID };
   }
-);
+));

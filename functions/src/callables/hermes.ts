@@ -8,7 +8,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { logInfo } from "../logging.js";
+import { logInfo, wrapCallableHandler } from "../logging.js";
 import {
   HERMES_SCHEMA_VERSION,
   HERMES_PAIRING_TTL_MS,
@@ -46,7 +46,7 @@ export const createHermesPairing = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("createHermesPairing", async (
     request: CallableRequest<{
       deviceId?: string;
       platform?: "ios" | "ipados" | "macos" | "web";
@@ -91,7 +91,7 @@ export const createHermesPairing = onCall(
     logInfo({ event: "callable_info", message: "hermes_pairing_created", pairing_id: id });
     return { id, code, expiresAt };
   }
-);
+));
 
 export const completeHermesPairing = onCall(
   {
@@ -99,7 +99,7 @@ export const completeHermesPairing = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("completeHermesPairing", async (
     request: CallableRequest<{
       pairingId: string;
       code: string;
@@ -235,7 +235,7 @@ export const completeHermesPairing = onCall(
     });
     return stripUndefinedObject(connection);
   }
-);
+));
 
 export const listHermesConnections = onCall(
   {
@@ -243,7 +243,7 @@ export const listHermesConnections = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ includeRevoked?: boolean }>) => {
+  wrapCallableHandler("listHermesConnections", async (request: CallableRequest<{ includeRevoked?: boolean }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before listing Hermes connections.");
@@ -261,7 +261,7 @@ export const listHermesConnections = onCall(
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     return { connections };
   }
-);
+));
 
 export const revokeHermesConnection = onCall(
   {
@@ -269,7 +269,7 @@ export const revokeHermesConnection = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ connectionId: string; deviceId?: string }>) => {
+  wrapCallableHandler("revokeHermesConnection", async (request: CallableRequest<{ connectionId: string; deviceId?: string }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before revoking a Hermes connection.");
@@ -296,7 +296,7 @@ export const revokeHermesConnection = onCall(
     logInfo({ event: "callable_info", message: "hermes_connection_revoked", connection_id: connectionId });
     return { success: true, connectionId };
   }
-);
+));
 
 export const updateHermesConnectionStatus = onCall(
   {
@@ -304,7 +304,7 @@ export const updateHermesConnectionStatus = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler("updateHermesConnectionStatus", async (
     request: CallableRequest<{
       connectionId: string;
       status: HermesConnectionDoc["status"];
@@ -372,5 +372,5 @@ export const updateHermesConnectionStatus = onCall(
     });
     return { success: true, connectionId };
   }
-);
+));
 
