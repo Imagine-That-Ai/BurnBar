@@ -66,6 +66,6 @@ Author in `tools/schema-sync/typespec/` → emit → commit generated TS/Swift/K
 - **Quarantine:** **0** actionable archived test files (`AgentLensTests/Archive/` empty); 2 legacy reference suites under `LegacyReference/` per ADR
 - **Hermes WSS retirement (2026-05-28):** iroh primary + Firestore fallback; hosted WSS URL blank; Mac uses `DisabledHermesRealtimeRelayHostClient` when iroh off
 - **Daemon metrics:** `GET /metrics` counters include `rpc_requests_total`, `rpc_errors_total`
-- **`make ci`:** pre-commit run in flight; post-commit verification required after integration push
+- **`make ci` (2026-05-28):** **verified green** on `020b44cd7` (`EXIT:0`, log `/tmp/make-ci-final.txt`)
 
 See [`docs/GOVERNANCE.md`](GOVERNANCE.md) for support tiers.

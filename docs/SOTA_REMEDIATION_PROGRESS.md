@@ -7,7 +7,7 @@
 | **Last updated (UTC)** | 2026-05-28T05:50:00Z |
 | **Branch** | `follow-up/switcher-sqlite-profile-tests` (tracking `origin/`) |
 | **Plan** | `/Users/albertonunez/.cursor/plans/sota_10_10_remediation_0fdfbc99.plan.md` |
-| **Program overall** | **~78%** (Phases 0–3 core gates closed; quarantine 0; Hermes WSS retired; daemon RPC metrics; CI re-run pending post-commit) |
+| **Program overall** | **~82%** (CI green on `020b44cd7`; quarantine 0; Hermes WSS retired; daemon RPC metrics) |
 
 ---
 
@@ -15,13 +15,13 @@
 
 | Phase | Plan focus | % complete | Gate |
 |-------|------------|------------|------|
-| **0** | Safety (fatalError, heartbeat, RPC timeout, migrations, empty-catch) | **~95%** | `make ci` green |
+| **0** | Safety (fatalError, heartbeat, RPC timeout, migrations, empty-catch) | **~95%** | **`make ci` green** ✅ |
 | **1** | CI + security hardening | **~75%** | Launch gate + App Check parity + THREAT_MODEL refresh |
 | **2** | TypeSpec canon + Functions modularization | **~45%** | `types.ts` barrel + domain modules; logging.ts adopted in callables |
 | **3** | Cloud sync completion + zero quarantine | **~90%** | CloudSyncService shim 242 LOC; emulator/fake-gateway suite; **quarantine 0** |
 | **4** | App architecture + perf | **~10%** | MainActor removal (6 listed facades remain); monolith splits deferred |
 | **5** | Observability + perf benchmarks | **~35%** | Daemon `rpc_*` counters on `/metrics`; mmap HNSW `view()` exists |
-| **6** | Docs + diligence closure | **~85%** | ADRs + automated metrics; **97/100** readiness (post-commit CI pending) |
+| **6** | Docs + diligence closure | **~90%** | ADRs + automated metrics; **97/100** readiness + CI evidence |
 
 ---
 
@@ -88,8 +88,8 @@
 
 | Field | Value |
 |-------|-------|
-| **Pre-commit run** | **running** — Android JVM phase (`/tmp/make-ci-output.txt`, ~102k lines) |
-| **Post-commit run** | **pending** — must run after Hermes + quarantine + metrics commit |
+| **Latest run** | **PASS** — `EXIT:0` on commit `020b44cd7` (2026-05-28T06:25Z approx) |
+| **Log file** | `/tmp/make-ci-final.txt` |
 
 ---
 
