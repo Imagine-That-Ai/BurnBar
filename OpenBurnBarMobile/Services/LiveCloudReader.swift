@@ -76,7 +76,7 @@ final class LiveCloudReader: CloudReader {
                 .whereField("platform", isEqualTo: "macOS")
                 .getDocuments()
 
-            let macDeviceId: String
+            let macDeviceId: String?
             let macName: String
             if let macDoc = devicesSnap.documents.max(by: { lhs, rhs in
                 let left = CloudDeviceActivityDateResolver.date(from: lhs.data()) ?? .distantPast
@@ -87,32 +87,64 @@ final class LiveCloudReader: CloudReader {
                 macDeviceId = d["deviceId"] as? String ?? macDoc.documentID
                 macName = d["deviceName"] as? String ?? "Mac"
             } else {
-                // No Mac found; return empty snapshot
-                return CloudSyncStatusSnapshot(
-                    lastPublishedAt: nil,
-                    lastReadAt: Date(),
-                    publisher: nil,
-                    lastErrorClassification: nil
+                macDeviceId = nil
+                macName = "Mac"
+            }
+
+            let syncStatusCollection = db.collection("users/\(uid)/sync_status")
+            if let macDeviceId {
+                let doc = try await syncStatusCollection.document(macDeviceId).getDocument()
+                if doc.exists {
+                    return Self.syncStatusSnapshot(
+                        deviceID: macDeviceId,
+                        displayName: macName,
+                        data: doc.data()
+                    )
+                }
+            }
+
+            let latestSyncStatus = try await syncStatusCollection
+                .order(by: "lastSyncAt", descending: true)
+                .limit(to: 1)
+                .getDocuments()
+            if let latest = latestSyncStatus.documents.first {
+                return Self.syncStatusSnapshot(
+                    deviceID: latest.documentID,
+                    displayName: macName,
+                    data: latest.data()
                 )
             }
 
-            let doc = try await db.document("users/\(uid)/sync_status/\(macDeviceId)").getDocument()
-            let d = doc.data()
-            let lastPublished = (d?["lastSyncAt"] as? Timestamp)?.dateValue()
-            let lastError = d?["lastError"] as? String
-
             return CloudSyncStatusSnapshot(
-                lastPublishedAt: lastPublished,
+                lastPublishedAt: nil,
                 lastReadAt: Date(),
-                publisher: CloudPublisherDevice(
-                    deviceID: macDeviceId,
-                    displayName: macName,
-                    platform: "macOS",
-                    lastSeen: lastPublished ?? Date()
-                ),
-                lastErrorClassification: lastError != nil ? .other(message: lastError!) : nil
+                publisher: nil,
+                lastErrorClassification: nil
             )
         } catch { throw classify(error) }
+    }
+
+    static func syncStatusSnapshot(
+        deviceID: String,
+        displayName: String,
+        data: [String: Any]?,
+        readAt: Date = Date()
+    ) -> CloudSyncStatusSnapshot {
+        let lastPublished = (data?["lastSyncAt"] as? Timestamp)?.dateValue()
+            ?? (data?["updatedAt"] as? Timestamp)?.dateValue()
+        let lastError = data?["lastError"] as? String
+
+        return CloudSyncStatusSnapshot(
+            lastPublishedAt: lastPublished,
+            lastReadAt: readAt,
+            publisher: CloudPublisherDevice(
+                deviceID: deviceID,
+                displayName: displayName,
+                platform: "macOS",
+                lastSeen: lastPublished ?? readAt
+            ),
+            lastErrorClassification: lastError != nil ? .other(message: lastError!) : nil
+        )
     }
 
     func loadProviderSummaries() async throws -> [ProviderConnectionDoc] {

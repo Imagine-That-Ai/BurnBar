@@ -92,15 +92,6 @@ struct MercuryLiveStatusStrip: View {
     }
 
     private var phaseDescriptor: PhaseDescriptor {
-        if !peer.isOnline {
-            return PhaseDescriptor(
-                label: "Offline",
-                color: Color(red: 0.85, green: 0.4, blue: 0.4),
-                shouldPulse: false,
-                isActionable: true,
-                accessibility: "Offline — tap to retry"
-            )
-        }
         switch phase {
         case .live:
             return PhaseDescriptor(
@@ -143,6 +134,15 @@ struct MercuryLiveStatusStrip: View {
                 accessibility: "Mercury stopped — tap to retry"
             )
         case .idle:
+            if !peer.isOnline {
+                return PhaseDescriptor(
+                    label: "Offline",
+                    color: Color(red: 0.85, green: 0.4, blue: 0.4),
+                    shouldPulse: false,
+                    isActionable: true,
+                    accessibility: "Offline — tap to retry"
+                )
+            }
             return PhaseDescriptor(
                 label: "Idle",
                 color: Color(white: 0.55),

@@ -11,9 +11,9 @@ import OpenBurnBarMedia
 /// Resolves from two signals:
 ///   1. `MediaControlStreamCoordinator.phase` — once the persistent
 ///      iroh control stream is `.live`, we know the Mac is reachable.
-///   2. (Optional) paired-Mac display name supplied by the host
-///      caller — usually drawn from Firestore `users/{uid}/devices/*`
-///      or the cached `pairing` document.
+///   2. `HermesConnectionRecord` relay presence — a fresh Firestore
+///      relay heartbeat means the Mac can be dialed even before the
+///      iOS control stream has completed its own handshake.
 ///
 /// Capabilities default to `MercuryPeer.macFallbackCapabilities` until
 /// the iOS app receives a `media.presence.heartbeat` from the Mac. The
@@ -22,6 +22,8 @@ import OpenBurnBarMedia
 /// fallback set.
 @MainActor
 final class MercuryPeerSource: ObservableObject {
+    static let relayFreshnessWindow: TimeInterval = 30 * 60
+
     @Published private(set) var peer: MercuryPeer?
 
     private let transport: HermesIrohRelayTransport
@@ -75,11 +77,12 @@ final class MercuryPeerSource: ObservableObject {
 
     private func refresh() async {
         let phase = transport.currentMediaControlPhase
-        let isOnline = (phase == .live)
+        let relay = relayConnectionProvider()
+        let isOnline = phase == .live || Self.isFreshOnlineRelay(relay, now: clock())
         let connectionID = await currentConnectionID()
         let displayName = resolveDisplayName()
         let capabilities = resolveCapabilities()
-        let lastSeen = resolveLastSeen(isOnline: isOnline)
+        let lastSeen = resolveLastSeen(isOnline: isOnline, relay: relay)
         let next = MercuryPeer(
             connectionID: connectionID,
             displayName: displayName,
@@ -94,9 +97,30 @@ final class MercuryPeerSource: ObservableObject {
         }
     }
 
-    private func resolveLastSeen(isOnline: Bool) -> Date {
+    static func isFreshOnlineRelay(
+        _ relay: HermesConnectionRecord?,
+        now: Date,
+        freshnessWindow: TimeInterval = relayFreshnessWindow
+    ) -> Bool {
+        guard let relay else { return false }
+        let statusOnline = relay.status == .online
+        let realtimeOnline = relay.realtimeRelayStatus?.lowercased() == "online"
+        guard statusOnline || realtimeOnline else { return false }
+
+        let activityDate = relay.realtimeRelayLastSeenAt
+            ?? relay.lastSeenAt
+            ?? relay.updatedAt
+        return now.timeIntervalSince(activityDate) <= freshnessWindow
+    }
+
+    private func resolveLastSeen(isOnline: Bool, relay: HermesConnectionRecord?) -> Date {
         if let heartbeat = lastHeartbeat {
             return heartbeat.sentAt
+        }
+        if let relayActivity = relay?.realtimeRelayLastSeenAt
+            ?? relay?.lastSeenAt
+            ?? relay?.updatedAt {
+            return relayActivity
         }
         if isOnline {
             if peer?.isOnline == true, let existing = peer?.lastSeenAt {
