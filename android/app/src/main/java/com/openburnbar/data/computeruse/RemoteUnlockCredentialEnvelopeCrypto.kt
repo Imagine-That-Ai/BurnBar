@@ -98,4 +98,5 @@ internal fun HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.wi
     when (this) {
         HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.TYPED_PASSWORD -> "typed_password"
         HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.CLIPBOARD_PASSWORD -> "clipboard_password"
+        HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.SAVED_PASSWORD -> "saved_password"
     }

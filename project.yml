@@ -74,6 +74,7 @@ targets:
           - _googlecast._tcp
           - _http._tcp
         NSLocalNetworkUsageDescription: OpenBurnBar uses the local network to connect this Mac to your trusted iPhone, iPad, Android devices, and local smart displays for pairing, Hermes relay, Mercury media sessions, and screen sharing.
+        NSAppleEventsUsageDescription: OpenBurnBar may send Apple Events to apps you approve--such as Cursor, Safari, Google Chrome, and Finder--during Computer Use runs so agents can verify Automation permission and operate only the apps you authorize. Every action is recorded in a tamper-evident audit log.
     sources:
       - path: AgentLens
         excludes:
@@ -293,8 +294,8 @@ targets:
       base:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
-        MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: 36
+        MARKETING_VERSION: "1.0.1"
+        CURRENT_PROJECT_VERSION: 38
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         APS_ENVIRONMENT: development
@@ -510,8 +511,8 @@ targets:
       base:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
-        MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: 36
+        MARKETING_VERSION: "1.0.1"
+        CURRENT_PROJECT_VERSION: 38
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
@@ -544,8 +545,8 @@ targets:
       base:
         PRODUCT_NAME: OpenBurnBarKeyboard
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.keyboard
-        MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: 36
+        MARKETING_VERSION: "1.0.1"
+        CURRENT_PROJECT_VERSION: 38
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements

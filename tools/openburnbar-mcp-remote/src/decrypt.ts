@@ -1,4 +1,5 @@
 import { createDecipheriv } from "node:crypto";
+import { readVaultKey } from "./vaultStore.js";
 
 export interface SealedEnvelope {
   algorithm: "AES-256-GCM";
@@ -9,7 +10,7 @@ export interface SealedEnvelope {
 }
 
 function vaultKey(): Buffer | undefined {
-  const raw = process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64;
+  const raw = readVaultKey();
   if (!raw) return undefined;
   const key = Buffer.from(raw, "base64");
   return key.length === 32 ? key : undefined;

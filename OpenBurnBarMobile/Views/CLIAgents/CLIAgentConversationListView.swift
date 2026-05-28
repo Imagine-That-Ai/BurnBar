@@ -491,7 +491,6 @@ struct CLIAgentConversationListView: View {
         case .forge:    return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
         case .grok: return Color(hex: "111111")
-        case .grok: return Color(hex: "111111")
         }
     }
 

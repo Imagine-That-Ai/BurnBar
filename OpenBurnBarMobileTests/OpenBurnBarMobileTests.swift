@@ -1,5 +1,6 @@
 import XCTest
 import CryptoKit
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
@@ -38,6 +39,49 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(decoded.provider, usage.provider)
         XCTAssertEqual(decoded.totalTokens, 150)
         XCTAssertEqual(decoded.cost, 0.01)
+    }
+
+    func testRemoteUnlockCredentialStoreKeyPrefersStableRecipientKey() {
+        let state = makeRemoteUnlockState(credentialRecipientKeyId: " recipient-key-1 ")
+
+        let key = RemoteUnlockCredentialStoreKey.make(
+            state: state,
+            phoneControlConnectionID: "control-route-older",
+            mirrorConnectionID: "mirror-route-newer",
+            mirrorRequestID: "request-1"
+        )
+
+        XCTAssertEqual(key, "recipient-key-1")
+    }
+
+    func testRemoteUnlockCredentialStoreKeyFallsBackToConnectionIdentifiers() {
+        XCTAssertEqual(
+            RemoteUnlockCredentialStoreKey.make(
+                state: nil,
+                phoneControlConnectionID: " control-route ",
+                mirrorConnectionID: "mirror-route",
+                mirrorRequestID: "request-1"
+            ),
+            "control-route"
+        )
+        XCTAssertEqual(
+            RemoteUnlockCredentialStoreKey.make(
+                state: nil,
+                phoneControlConnectionID: " ",
+                mirrorConnectionID: " mirror-route ",
+                mirrorRequestID: "request-1"
+            ),
+            "mirror-route"
+        )
+        XCTAssertEqual(
+            RemoteUnlockCredentialStoreKey.make(
+                state: nil,
+                phoneControlConnectionID: nil,
+                mirrorConnectionID: " ",
+                mirrorRequestID: " request-1 "
+            ),
+            "request-1"
+        )
     }
 
     // MARK: - Stream Session Projection
@@ -364,6 +408,152 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertFalse(pointerClickIntent.authority.signatureEd25519.isEmpty)
     }
 
+    func testPhoneControlSenderSerializesConcurrentInputIntentsBeforeWritingFrames() async throws {
+        let suiteName = "PhoneControlSenderSerializes-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let key = Curve25519SigningKey(privateKey: Curve25519.Signing.PrivateKey())
+        let firstFrameGate = MobileAsyncGate()
+        let recorder = PhoneControlFrameOrderRecorder()
+        let sender = PhoneControlSender(
+            peerNodeId: "ios-phone-glass-trackpad-test",
+            uid: "user-glass-trackpad-test",
+            connectionId: "relay-glass-trackpad-test",
+            signingKeyProvider: { key },
+            userDefaults: defaults,
+            frameSink: { frame in
+                guard let counter = frame.control?.inputIntent?.authority.counter else {
+                    return
+                }
+                await recorder.recordStarted(counter)
+                if counter == 1 {
+                    await firstFrameGate.wait()
+                }
+                await recorder.recordFinished(counter)
+            }
+        )
+        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        let intent = HermesRealtimeRelayInputIntent(
+            kind: .pointerMove,
+            normalizedX2: 12,
+            normalizedY2: -7,
+            authority: placeholder
+        )
+
+        let firstSend = Task { try await sender.send(intent: intent) }
+        await recorder.waitForStarted(counter: 1)
+
+        let secondSend = Task { try await sender.send(intent: intent) }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let finishedBeforeGateOpen = await recorder.finishedCounters()
+        XCTAssertEqual(
+            finishedBeforeGateOpen,
+            [],
+            "A later Glass Trackpad intent must not pass a stalled earlier counter."
+        )
+
+        await firstFrameGate.open()
+        let firstAuthority = try await firstSend.value
+        let secondAuthority = try await secondSend.value
+
+        XCTAssertEqual(firstAuthority.counter, 1)
+        XCTAssertEqual(secondAuthority.counter, 2)
+        let finishedAfterGateOpen = await recorder.finishedCounters()
+        XCTAssertEqual(finishedAfterGateOpen, [1, 2])
+    }
+
+    func testPhoneControlSenderCancelsQueuedIntentBeforeItWritesAFrame() async throws {
+        let suiteName = "PhoneControlSenderCancellation-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let key = Curve25519SigningKey(privateKey: Curve25519.Signing.PrivateKey())
+        let firstFrameGate = MobileAsyncGate()
+        let recorder = PhoneControlFrameOrderRecorder()
+        let sender = PhoneControlSender(
+            peerNodeId: "ios-phone-cancelled-trackpad-test",
+            uid: "user-cancelled-trackpad-test",
+            connectionId: "relay-cancelled-trackpad-test",
+            signingKeyProvider: { key },
+            userDefaults: defaults,
+            frameSink: { frame in
+                guard let counter = frame.control?.inputIntent?.authority.counter else {
+                    return
+                }
+                await recorder.recordStarted(counter)
+                if counter == 1 {
+                    await firstFrameGate.wait()
+                }
+                await recorder.recordFinished(counter)
+            }
+        )
+        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+        let intent = HermesRealtimeRelayInputIntent(
+            kind: .pointerMove,
+            normalizedX2: 8,
+            normalizedY2: 3,
+            authority: placeholder
+        )
+
+        let firstSend = Task { try await sender.send(intent: intent) }
+        await recorder.waitForStarted(counter: 1)
+
+        let secondSend = Task { try await sender.send(intent: intent) }
+        secondSend.cancel()
+
+        await firstFrameGate.open()
+        _ = try await firstSend.value
+
+        do {
+            _ = try await secondSend.value
+            XCTFail("Expected the queued Glass Trackpad intent to honor caller cancellation.")
+        } catch is CancellationError {
+            // Expected.
+        }
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let startedCounters = await recorder.startedCounterValues()
+        XCTAssertEqual(startedCounters, [1])
+        XCTAssertEqual(defaults.object(forKey: "openburnbar.phoneControl.counter.ios-phone-cancelled-trackpad-test") as? Int, 1)
+    }
+
+    func testPhoneControlCounterAllocationIsProcessWideAcrossConcurrentCallers() async throws {
+        let suiteName = "PhoneControlCounterGlobal-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let peerNodeId = "ios-phone-global-counter-test"
+        let count = 200
+        let counters = await withTaskGroup(of: UInt64.self, returning: [UInt64].self) { group in
+            for _ in 0..<count {
+                group.addTask {
+                    PhoneControlSender.nextCounter(peerNodeId: peerNodeId, userDefaults: defaults)
+                }
+            }
+            var collected: [UInt64] = []
+            for await counter in group {
+                collected.append(counter)
+            }
+            return collected
+        }
+
+        XCTAssertEqual(Set(counters).count, count)
+        XCTAssertEqual(counters.sorted(), Array(UInt64(1)...UInt64(count)))
+    }
+
     // MARK: - Formatting
 
     func testCostFormatting() {
@@ -506,6 +696,29 @@ final class OpenBurnBarMobileTests: XCTestCase {
         }
         XCTFail("Timed out waiting for Agent Watch condition")
         throw NSError(domain: "AgentWatchOverlayCoordinatorTests", code: 2)
+    }
+
+    private func makeRemoteUnlockState(
+        credentialRecipientKeyId: String?
+    ) -> HermesRealtimeRelayRemoteUnlockState {
+        HermesRealtimeRelayRemoteUnlockState(
+            sessionId: "unlock-session-1",
+            lockState: .loginWindow,
+            backend: .appleScreenSharingLoopback,
+            capabilities: HermesRealtimeRelayRemoteUnlockCapabilities(
+                enabled: true,
+                certificationStatus: .certified,
+                activeBackend: .appleScreenSharingLoopback,
+                supportedBackends: [.appleScreenSharingLoopback],
+                supportedLockStates: [.loginWindow],
+                allowsCredentialPaste: true,
+                allowsSavedCredentialUnlock: true,
+                credentialRecipientKeyId: credentialRecipientKeyId,
+                credentialRecipientPublicKeyBase64: "recipient-public-key",
+                credentialEnvelopeAlgorithm: RemoteUnlockPolicy.credentialEnvelopeAlgorithm
+            ),
+            observedAt: Date(timeIntervalSinceReferenceDate: 1_000)
+        )
     }
 
     private func makeUsage(
@@ -843,6 +1056,63 @@ private actor AgentWatchFakeAuthorityPublisher: PhoneControlAuthorityPublishing 
 
     func published() -> [Published] {
         values
+    }
+}
+
+private actor MobileAsyncGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func open() {
+        guard !isOpen else {
+            return
+        }
+        isOpen = true
+        let pending = waiters
+        waiters.removeAll()
+        pending.forEach { $0.resume() }
+    }
+}
+
+private actor PhoneControlFrameOrderRecorder {
+    private var startedCounters: Set<UInt64> = []
+    private var finished: [UInt64] = []
+    private var startedWaiters: [UInt64: [CheckedContinuation<Void, Never>]] = [:]
+
+    func recordStarted(_ counter: UInt64) {
+        startedCounters.insert(counter)
+        let pending = startedWaiters.removeValue(forKey: counter) ?? []
+        pending.forEach { $0.resume() }
+    }
+
+    func waitForStarted(counter: UInt64) async {
+        if startedCounters.contains(counter) {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            startedWaiters[counter, default: []].append(continuation)
+        }
+    }
+
+    func recordFinished(_ counter: UInt64) {
+        finished.append(counter)
+    }
+
+    func finishedCounters() -> [UInt64] {
+        finished
+    }
+
+    func startedCounterValues() -> [UInt64] {
+        startedCounters.sorted()
     }
 }
 

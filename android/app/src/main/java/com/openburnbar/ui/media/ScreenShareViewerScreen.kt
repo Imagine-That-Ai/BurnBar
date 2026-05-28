@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,17 +46,21 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardTab
 import androidx.compose.material.icons.filled.AdsClick
+import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
-import androidx.compose.material.icons.filled.KeyboardDoubleArrowUp
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CropFree
@@ -66,7 +71,6 @@ import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.SwipeVertical
 import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -77,6 +81,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import com.openburnbar.data.media.MercuryAutoKeyboardPreference
 import com.openburnbar.irohrelay.HermesRealtimeRelayDisplayDescriptor
 import com.openburnbar.irohrelay.HermesRealtimeRelayMacLockState
@@ -112,6 +117,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.onSizeChanged
@@ -156,6 +162,7 @@ fun ScreenShareViewerScreen(
     selectedDisplayId: String? = null,
     latestFocusContext: ScreenShareSmartZoomContext? = null,
     remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = null,
+    savedRemoteUnlockCredentialAvailable: Boolean = false,
     onSelectDisplay: (String) -> Unit = {},
     onClose: () -> Unit = {},
     onEnterPictureInPicture: () -> Unit = {},
@@ -172,13 +179,16 @@ fun ScreenShareViewerScreen(
     onPasteClipboardToMac: () -> Unit = {},
     onGrabClipboardFromMac: () -> Unit = {},
     onSendRemoteUnlockPassword: (String) -> Unit = {},
+    onSaveRemoteUnlockPassword: (String) -> Unit = {},
+    onSendSavedRemoteUnlockPassword: () -> Unit = {},
+    onDeleteSavedRemoteUnlockPassword: () -> Unit = {},
     controlStatus: String? = null,
     onTrustControlDevice: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var statsVisible by remember { mutableStateOf(false) }
     var toolsCollapsed by rememberSaveable { mutableStateOf(false) }
-    var customizeOpen by rememberSaveable { mutableStateOf(false) }
+    var openGroup by remember { mutableStateOf<MirrorControlGroup?>(null) }
     var fitName by rememberSaveable { mutableStateOf(ScreenMirrorFit.FIT.name) }
     var controlModeName by rememberSaveable { mutableStateOf(ScreenMirrorControlMode.VIEW.name) }
     var smartZoomModeName by rememberSaveable { mutableStateOf(SmartZoomMode.SMART.name) }
@@ -204,8 +214,8 @@ fun ScreenShareViewerScreen(
     var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
     val stats by pipeline.stats.collectAsState()
 
-    LaunchedEffect(lastInteractionTime, toolsCollapsed, customizeOpen, typingOpen) {
-        if (!toolsCollapsed && !customizeOpen && !typingOpen) {
+    LaunchedEffect(lastInteractionTime, toolsCollapsed, openGroup, typingOpen) {
+        if (!toolsCollapsed && openGroup == null && !typingOpen) {
             delay(2000)
             toolsCollapsed = true
         }
@@ -575,6 +585,10 @@ fun ScreenShareViewerScreen(
                 onReconnect = onReconnect,
                 onClose = onClose,
                 onSendPassword = onSendRemoteUnlockPassword,
+                savedCredentialAvailable = savedRemoteUnlockCredentialAvailable,
+                onSavePassword = onSaveRemoteUnlockPassword,
+                onSendSavedPassword = onSendSavedRemoteUnlockPassword,
+                onDeleteSavedPassword = onDeleteSavedRemoteUnlockPassword,
             )
         }
 
@@ -588,7 +602,7 @@ fun ScreenShareViewerScreen(
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                 },
             collapsed = toolsCollapsed,
-            customizeOpen = customizeOpen,
+            openGroup = openGroup,
             fit = fit,
             controlMode = controlMode,
             typingOpen = typingOpen,
@@ -612,8 +626,11 @@ fun ScreenShareViewerScreen(
                 onSelectDisplay(displayId)
             },
             onTrayScaleChange = { trayScale = it },
-            onToggleCollapsed = { toolsCollapsed = !toolsCollapsed },
-            onToggleCustomize = { customizeOpen = !customizeOpen },
+            onToggleCollapsed = {
+                toolsCollapsed = !toolsCollapsed
+                if (toolsCollapsed) openGroup = null
+            },
+            onSelectGroup = { openGroup = it },
             onToggleStats = { statsVisible = !statsVisible },
             onCycleFit = { fitName = fit.next().name },
             onCycleControlMode = { controlModeName = controlMode.next().name },
@@ -1121,11 +1138,43 @@ internal object ScreenMirrorInputPolicy {
     }
 }
 
+internal enum class MirrorControlGroup(val title: String, val hint: String) {
+    MODE("Mode", "Interaction mode — view, click, trackpad, Co-Pilot"),
+    ZOOM("Zoom", "Fit and Smart Zoom"),
+    SCROLL("Scroll", "Scroll the Mac up and down"),
+    KEYS("Keys", "Keyboard and clipboard"),
+    SCREEN("Screen", "Display, stats and window"),
+}
+
+private fun mirrorGroupIcon(group: MirrorControlGroup, controlMode: ScreenMirrorControlMode): ImageVector =
+    when (group) {
+        MirrorControlGroup.MODE -> screenMirrorControlIcon(controlMode)
+        MirrorControlGroup.ZOOM -> Icons.Filled.ZoomIn
+        MirrorControlGroup.SCROLL -> Icons.Filled.SwapVert
+        MirrorControlGroup.KEYS -> Icons.Filled.Keyboard
+        MirrorControlGroup.SCREEN -> Icons.Filled.DesktopWindows
+    }
+
+private fun mirrorGroupActive(
+    group: MirrorControlGroup,
+    controlMode: ScreenMirrorControlMode,
+    smartZoomMode: SmartZoomMode,
+    typingOpen: Boolean,
+    autoKeyboardOnTextFocus: Boolean,
+    statsVisible: Boolean,
+): Boolean = when (group) {
+    MirrorControlGroup.MODE -> controlMode != ScreenMirrorControlMode.VIEW
+    MirrorControlGroup.ZOOM -> smartZoomMode != SmartZoomMode.OFF
+    MirrorControlGroup.SCROLL -> false
+    MirrorControlGroup.KEYS -> typingOpen || autoKeyboardOnTextFocus
+    MirrorControlGroup.SCREEN -> statsVisible
+}
+
 @Composable
 internal fun ScreenMirrorToolsDock(
     modifier: Modifier = Modifier,
     collapsed: Boolean,
-    customizeOpen: Boolean,
+    openGroup: MirrorControlGroup?,
     fit: ScreenMirrorFit,
     controlMode: ScreenMirrorControlMode,
     typingOpen: Boolean,
@@ -1138,7 +1187,7 @@ internal fun ScreenMirrorToolsDock(
     onSelectDisplay: (String) -> Unit,
     onTrayScaleChange: (Float) -> Unit,
     onToggleCollapsed: () -> Unit,
-    onToggleCustomize: () -> Unit,
+    onSelectGroup: (MirrorControlGroup?) -> Unit,
     onToggleStats: () -> Unit,
     onCycleFit: () -> Unit,
     onCycleControlMode: () -> Unit,
@@ -1162,7 +1211,6 @@ internal fun ScreenMirrorToolsDock(
     onEnterPictureInPicture: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val scale = 1.0f
     val dockShape = RoundedCornerShape(24.dp)
     val mercuryBrush = Brush.linearGradient(screenShareControlGradientColors)
     val dockSheen = Brush.linearGradient(
@@ -1218,309 +1266,457 @@ internal fun ScreenMirrorToolsDock(
             }
         }
     } else {
-        Column(
-            modifier = modifier
-                .fillMaxWidth()
-                .auroraGlass(cornerRadius = 24.dp, tintAlpha = 0.36f, shadow = AuroraShadows.large)
-                .background(dockSheen, dockShape)
-                .border(1.5.dp, mercuryBrush, dockShape)
-                .animateContentSize()
-                .pointerInput(Unit) {} // Prevent touch events on the tools tray from triggering Mac input!
-                .padding(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            // Horizontally scrollable row of square glass keycaps exactly matching iOS!
-            Row(
+        val haptic = LocalHapticFeedback.current
+        var tooltip by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(tooltip) {
+            if (tooltip != null) {
+                delay(2600)
+                tooltip = null
+            }
+        }
+        val showTip: (String) -> Unit = { text ->
+            tooltip = text
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+        Box(modifier = modifier) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .auroraGlass(cornerRadius = 24.dp, tintAlpha = 0.36f, shadow = AuroraShadows.large)
+                    .background(dockSheen, dockShape)
+                    .border(1.5.dp, mercuryBrush, dockShape)
+                    .animateContentSize()
+                    .pointerInput(Unit) {} // Prevent touch events on the tools tray from triggering Mac input!
+                    .padding(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (statsVisible) {
-                    // Premium Compact Stats Capsule
-                    CompactStatsChip(
-                        roundTripMillis = stats.roundTripMillis,
-                        bitrateMbps = (stats.bitsPerSecond / 1_000_000.0).toFloat()
+                MirrorDockStatusStrip(
+                    statsVisible = statsVisible,
+                    stats = stats,
+                    phaseLabel = phaseLabel,
+                    controlStatus = controlStatus,
+                )
+
+                // Cascading shelf: only the open group's related controls appear.
+                openGroup?.let { group ->
+                    MirrorControlShelf(
+                        group = group,
+                        controlMode = controlMode,
+                        typingOpen = typingOpen,
+                        statsVisible = statsVisible,
+                        autoKeyboardOnTextFocus = autoKeyboardOnTextFocus,
+                        smartZoomMode = smartZoomMode,
+                        smartZoomAutoFollowing = smartZoomAutoFollowing,
+                        fit = fit,
+                        trayScale = trayScale,
+                        availableDisplays = availableDisplays,
+                        activeDisplayId = activeDisplayId,
+                        onSelectControlMode = { mode ->
+                            onSelectControlMode(mode)
+                            onSelectGroup(null)
+                        },
+                        onTrustControlDevice = {
+                            onTrustControlDevice()
+                            onSelectGroup(null)
+                        },
+                        onPanic = onPanic,
+                        onCycleFit = onCycleFit,
+                        onSelectSmartZoomMode = onSelectSmartZoomMode,
+                        onScrollUp = onScrollUp,
+                        onScrollDown = onScrollDown,
+                        onToggleTyping = onToggleTyping,
+                        onAutoKeyboardOnTextFocusChange = onAutoKeyboardOnTextFocusChange,
+                        onPasteClipboardToMac = onPasteClipboardToMac,
+                        onGrabClipboardFromMac = onGrabClipboardFromMac,
+                        onEscape = onEscape,
+                        onCommandTab = onCommandTab,
+                        onSelectDisplay = onSelectDisplay,
+                        onToggleStats = onToggleStats,
+                        onReconnect = onReconnect,
+                        onEnterPictureInPicture = onEnterPictureInPicture,
+                        onTrayScaleChange = onTrayScaleChange,
+                        showTooltip = showTip,
                     )
                 }
 
-                KeycapButton(
-                    icon = Icons.Filled.Tune,
-                    selected = customizeOpen,
-                    label = "Details",
-                    contentDescription = if (customizeOpen) {
-                        "Hide detailed controls"
-                    } else {
-                        "Show detailed controls"
-                    },
-                    onClick = onToggleCustomize,
-                    modifier = Modifier.width(68.dp),
-                )
-
-                ScreenMirrorControlMode.entries.forEach { mode ->
-                    ControlModeKeycap(
-                        mode = mode,
-                        selected = controlMode == mode,
-                        onClick = { onSelectControlMode(mode) },
-                    )
-                }
-
-                // Display selector Menus / cycler
-                if (!availableDisplays.isNullOrEmpty() && availableDisplays.size > 1) {
-                    val currentIndex = availableDisplays.indexOfFirst { it.id == activeDisplayId }.coerceAtLeast(0)
-                    val nextIndex = (currentIndex + 1) % availableDisplays.size
-                    val nextDisplay = availableDisplays[nextIndex]
-                    KeycapButton(
-                        icon = Icons.Filled.Tv,
-                        selected = false,
-                        contentDescription = "Switch display",
-                        onClick = { onSelectDisplay(nextDisplay.id) }
-                    )
-                }
-
-                KeycapButton(
-                    icon = Icons.Filled.AspectRatio,
-                    selected = false,
-                    contentDescription = "Cycle fit mode",
-                    onClick = onCycleFit
-                )
-
-                // 6b. Smart Zoom toggle (tap toggles On/Off; long-press picks a specific mode)
-                SmartZoomKeycap(
-                    mode = smartZoomMode,
-                    autoFollowing = smartZoomAutoFollowing,
-                    onToggle = {
-                        onSelectSmartZoomMode(
-                            if (smartZoomMode == SmartZoomMode.OFF) SmartZoomMode.SMART
-                            else SmartZoomMode.OFF
-                        )
-                    },
-                    onSelectMode = onSelectSmartZoomMode,
-                )
-
-                KeycapButton(
-                    icon = Icons.Filled.ExpandLess,
-                    selected = false,
-                    contentDescription = "Scroll up",
-                    onClick = onScrollUp
-                )
-                KeycapButton(
-                    icon = Icons.Filled.ExpandMore,
-                    selected = false,
-                    contentDescription = "Scroll down",
-                    onClick = onScrollDown
-                )
-
-                KeycapButton(
-                    icon = Icons.Filled.Keyboard,
-                    selected = typingOpen,
-                    contentDescription = "Type on Mac",
-                    onClick = onToggleTyping
-                )
-
-                // 10. Remote clipboard: phone clipboard -> Mac paste
-                KeycapButton(
-                    icon = Icons.Filled.ContentPaste,
-                    selected = false,
-                    contentDescription = "Paste to Mac",
-                    onClick = onPasteClipboardToMac
-                )
-
-                // 11. Remote clipboard: Mac clipboard -> phone
-                KeycapButton(
-                    icon = Icons.Filled.Download,
-                    selected = false,
-                    contentDescription = "Grab from Mac",
-                    onClick = onGrabClipboardFromMac
-                )
-
-                // 12. Reconnect
-                KeycapButton(
-                    icon = Icons.Filled.Refresh,
-                    selected = false,
-                    contentDescription = "Reconnect mirror",
-                    onClick = onReconnect
-                )
-
-                KeycapButton(
-                    icon = Icons.Filled.Computer,
-                    selected = false,
-                    contentDescription = "Enter Picture in Picture",
-                    onClick = onEnterPictureInPicture
-                )
-
-                KeycapButton(
-                    icon = Icons.Filled.ExpandLess,
-                    selected = false,
-                    contentDescription = "Collapse mirror controls",
-                    onClick = onToggleCollapsed
-                )
-
-                KeycapButton(
-                    icon = Icons.Filled.Close,
-                    selected = false,
-                    contentDescription = "Close mirror",
-                    onClick = onClose
-                )
-            }
-
-            if (customizeOpen) {
-                Column(
+                // Primary dock: one keycap per group, plus pinned collapse + close.
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy((8 * scale).dp)
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        "Detailed controls",
-                        color = Color.White.copy(alpha = 0.72f),
-                        style = AuroraType.monoTiny.copy(
-                            fontSize = (10 * scale).sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    )
-                    DockToggleRow(
-                        label = "Stream stats",
-                        checked = statsVisible,
-                        scale = scale,
-                        onCheckedChange = { onToggleStats() },
-                    )
-                    DockToggleRow(
-                        label = "Auto keyboard on text focus",
-                        checked = autoKeyboardOnTextFocus,
-                        scale = scale,
-                        onCheckedChange = onAutoKeyboardOnTextFocusChange,
-                    )
-                    Text(
-                        "Opens the phone keyboard when your Mac focuses a text field. Smart Zoom still controls framing.",
-                        color = Color.White.copy(alpha = 0.56f),
-                        style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp),
-                    )
-
-                    // Resizable slide control inside customize settings (flicker-free!)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(
-                            "Tray size",
-                            color = Color.White.copy(alpha = 0.76f),
-                            style = AuroraType.caption.copy(fontSize = (12 * scale).sp),
-                            modifier = Modifier.weight(1f)
-                        )
-                        androidx.compose.material3.Slider(
-                            value = trayScale,
-                            onValueChange = onTrayScaleChange,
-                            valueRange = 0.5f..1.2f,
-                            modifier = Modifier
-                                .weight(2f)
-                                .height((30 * scale).dp)
-                        )
-                    }
-
-                    // Display selection list in Customize
-                    if (!availableDisplays.isNullOrEmpty()) {
-                        Text(
-                            "Select Display",
-                            color = Color.White.copy(alpha = 0.56f),
-                            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp),
-                            modifier = Modifier.padding(top = (8 * scale).dp)
-                        )
-                        availableDisplays.forEach { display ->
-                            val isSelected = display.id == activeDisplayId
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onSelectDisplay(display.id) }
-                                    .padding(vertical = (4 * scale).dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    display.name,
-                                    color = if (isSelected) AuroraColors.hermesMercury else Color.White.copy(alpha = 0.8f),
-                                    style = AuroraType.caption.copy(
-                                        fontSize = (12 * scale).sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                )
-                                if (isSelected) {
-                                    Icon(
-                                        Icons.Filled.Check,
-                                        contentDescription = "Selected",
-                                        tint = AuroraColors.hermesMercury,
-                                        modifier = Modifier.size((14 * scale).dp)
-                                    )
-                                }
-                            }
+                        MirrorControlGroup.entries.forEach { group ->
+                            KeycapButton(
+                                icon = mirrorGroupIcon(group, controlMode),
+                                selected = openGroup == group || mirrorGroupActive(
+                                    group,
+                                    controlMode,
+                                    smartZoomMode,
+                                    typingOpen,
+                                    autoKeyboardOnTextFocus,
+                                    statsVisible,
+                                ),
+                                label = group.title,
+                                contentDescription = group.title,
+                                onClick = { onSelectGroup(if (openGroup == group) null else group) },
+                                onLongClick = { showTip(group.hint) },
+                            )
                         }
                     }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
-                    ) {
-                        MirrorToolButton(Icons.Filled.VerifiedUser, "Trust", scale = scale, onClick = onTrustControlDevice)
-                        MirrorToolButton(Icons.Filled.KeyboardDoubleArrowUp, "Up", scale = scale, onClick = onScrollUp)
-                        MirrorToolButton(Icons.Filled.KeyboardDoubleArrowDown, "Down", scale = scale, onClick = onScrollDown)
-                        MirrorToolButton(Icons.Filled.Close, "Esc", scale = scale, onClick = onEscape)
-                        MirrorToolButton(Icons.AutoMirrored.Filled.KeyboardTab, "Cmd Tab", scale = scale, onClick = onCommandTab)
-                    }
-                    MirrorToolButton(Icons.Filled.Report, "Panic", scale = scale, onClick = onPanic)
-
-                    DockInfoRow("Fit mode", fit.label, scale = scale)
-                    DockInfoRow("Input mode", controlMode.label, scale = scale)
-                    controlStatus?.let { DockInfoRow("Mac control", it, scale = scale) }
-                    DockInfoRow("Tools", "Collapsible + signed", scale = scale)
+                    KeycapButton(
+                        icon = Icons.Filled.ExpandMore,
+                        selected = false,
+                        label = "Hide",
+                        contentDescription = "Collapse mirror controls",
+                        onClick = onToggleCollapsed,
+                        onLongClick = { showTip("Minimize the control bar to a pill") },
+                    )
+                    KeycapButton(
+                        icon = Icons.Filled.Close,
+                        selected = false,
+                        label = "Close",
+                        contentDescription = "Close mirror",
+                        onClick = onClose,
+                        onLongClick = { showTip("Close the mirror and disconnect") },
+                    )
                 }
+            }
+
+            tooltip?.let { text ->
+                MirrorTooltipBubble(
+                    text = text,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-12).dp),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun MirrorModePicker(
-    controlMode: ScreenMirrorControlMode,
-    scale: Float,
-    onSelect: (ScreenMirrorControlMode) -> Unit,
+private fun MirrorDockStatusStrip(
+    statsVisible: Boolean,
+    stats: VideoReceivePipeline.Stats,
+    phaseLabel: String,
+    controlStatus: String?,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy((6 * scale).dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        listOf(
-            ScreenMirrorControlMode.VIEW,
-            ScreenMirrorControlMode.TOUCH,
-            ScreenMirrorControlMode.TRACKPAD,
-            ScreenMirrorControlMode.SCROLL,
-        ).forEach { mode ->
-            val selected = mode == controlMode
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape((10 * scale).dp))
-                    .background(if (selected) AuroraColors.hermesMercury.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.08f))
-                    .border(
-                        width = 1.dp,
-                        color = if (selected) AuroraColors.hermesMercury.copy(alpha = 0.62f) else Color.White.copy(alpha = 0.10f),
-                        shape = RoundedCornerShape((10 * scale).dp),
+        StatusChip(label = phaseLabel, scale = 1f)
+        if (statsVisible) {
+            CompactStatsChip(
+                roundTripMillis = stats.roundTripMillis,
+                bitrateMbps = (stats.bitsPerSecond / 1_000_000.0).toFloat(),
+            )
+        }
+        controlStatus?.let { status ->
+            Text(
+                text = status,
+                color = Color.White.copy(alpha = 0.78f),
+                style = AuroraType.monoTiny.copy(fontSize = 10.sp),
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MirrorTooltipBubble(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .widthIn(max = 300.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xF21A1A22))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            style = AuroraType.caption.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun MirrorControlShelf(
+    group: MirrorControlGroup,
+    controlMode: ScreenMirrorControlMode,
+    typingOpen: Boolean,
+    statsVisible: Boolean,
+    autoKeyboardOnTextFocus: Boolean,
+    smartZoomMode: SmartZoomMode,
+    smartZoomAutoFollowing: Boolean,
+    fit: ScreenMirrorFit,
+    trayScale: Float,
+    availableDisplays: List<HermesRealtimeRelayDisplayDescriptor>,
+    activeDisplayId: String?,
+    onSelectControlMode: (ScreenMirrorControlMode) -> Unit,
+    onTrustControlDevice: () -> Unit,
+    onPanic: () -> Unit,
+    onCycleFit: () -> Unit,
+    onSelectSmartZoomMode: (SmartZoomMode) -> Unit,
+    onScrollUp: () -> Unit,
+    onScrollDown: () -> Unit,
+    onToggleTyping: () -> Unit,
+    onAutoKeyboardOnTextFocusChange: (Boolean) -> Unit,
+    onPasteClipboardToMac: () -> Unit,
+    onGrabClipboardFromMac: () -> Unit,
+    onEscape: () -> Unit,
+    onCommandTab: () -> Unit,
+    onSelectDisplay: (String) -> Unit,
+    onToggleStats: () -> Unit,
+    onReconnect: () -> Unit,
+    onEnterPictureInPicture: () -> Unit,
+    onTrayScaleChange: (Float) -> Unit,
+    showTooltip: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = group.title.uppercase(),
+            color = Color.White.copy(alpha = 0.5f),
+            style = AuroraType.monoTiny.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            when (group) {
+                MirrorControlGroup.MODE -> {
+                    ScreenMirrorControlMode.entries.forEach { mode ->
+                        ControlModeKeycap(
+                            mode = mode,
+                            selected = controlMode == mode,
+                            onClick = { onSelectControlMode(mode) },
+                            onLongClick = { showTooltip(screenMirrorControlContentDescription(mode)) },
+                        )
+                    }
+                    KeycapButton(
+                        icon = Icons.Filled.VerifiedUser,
+                        selected = false,
+                        label = "Trust",
+                        contentDescription = "Trust this device",
+                        onClick = onTrustControlDevice,
+                        onLongClick = { showTooltip("Authorize this device to control the Mac") },
                     )
-                    .clickable { onSelect(mode) }
-                    .padding(vertical = (9 * scale).dp),
-                contentAlignment = Alignment.Center,
+                    KeycapButton(
+                        icon = Icons.Filled.Report,
+                        selected = false,
+                        label = "Panic",
+                        contentDescription = "Panic, release control",
+                        onClick = onPanic,
+                        onLongClick = { showTooltip("Immediately release all input control of the Mac") },
+                    )
+                }
+                MirrorControlGroup.ZOOM -> {
+                    KeycapButton(
+                        icon = Icons.Filled.AspectRatio,
+                        selected = false,
+                        label = fit.label,
+                        contentDescription = "Cycle fit mode",
+                        onClick = onCycleFit,
+                        onLongClick = { showTooltip("Cycle fit: Fit, Fill, Float") },
+                    )
+                    SmartZoomKeycap(
+                        mode = smartZoomMode,
+                        autoFollowing = smartZoomAutoFollowing,
+                        onToggle = {
+                            onSelectSmartZoomMode(
+                                if (smartZoomMode == SmartZoomMode.OFF) SmartZoomMode.SMART
+                                else SmartZoomMode.OFF
+                            )
+                        },
+                        onSelectMode = onSelectSmartZoomMode,
+                    )
+                }
+                MirrorControlGroup.SCROLL -> {
+                    KeycapButton(
+                        icon = Icons.Filled.ExpandLess,
+                        selected = false,
+                        label = "Up",
+                        contentDescription = "Scroll up",
+                        onClick = onScrollUp,
+                        onLongClick = { showTooltip("Scroll the Mac up") },
+                    )
+                    KeycapButton(
+                        icon = Icons.Filled.ExpandMore,
+                        selected = false,
+                        label = "Down",
+                        contentDescription = "Scroll down",
+                        onClick = onScrollDown,
+                        onLongClick = { showTooltip("Scroll the Mac down") },
+                    )
+                }
+                MirrorControlGroup.KEYS -> {
+                    KeycapButton(
+                        icon = Icons.Filled.Keyboard,
+                        selected = typingOpen,
+                        label = "Type",
+                        contentDescription = "Type on Mac",
+                        onClick = onToggleTyping,
+                        onLongClick = { showTooltip("Open the keyboard and type on the Mac") },
+                    )
+                    KeycapButton(
+                        icon = Icons.Filled.TextFields,
+                        selected = autoKeyboardOnTextFocus,
+                        label = "Auto",
+                        contentDescription = "Auto keyboard on text focus",
+                        onClick = { onAutoKeyboardOnTextFocusChange(!autoKeyboardOnTextFocus) },
+                        onLongClick = { showTooltip("Open the keyboard automatically when the Mac focuses a text field") },
+                    )
+                    KeycapButton(
+                        icon = Icons.Filled.ContentPaste,
+                        selected = false,
+                        label = "Paste",
+                        contentDescription = "Paste to Mac",
+                        onClick = onPasteClipboardToMac,
+                        onLongClick = { showTooltip("Send this device's clipboard to the Mac") },
+                    )
+                    KeycapButton(
+                        icon = Icons.Filled.Download,
+                        selected = false,
+                        label = "Grab",
+                        contentDescription = "Grab from Mac",
+                        onClick = onGrabClipboardFromMac,
+                        onLongClick = { showTooltip("Copy the Mac's clipboard to this device") },
+                    )
+                    KeycapButton(
+                        icon = Icons.Filled.Close,
+                        selected = false,
+                        label = "Esc",
+                        contentDescription = "Escape key",
+                        onClick = onEscape,
+                        onLongClick = { showTooltip("Send the Escape key to the Mac") },
+                    )
+                    KeycapButton(
+                        icon = Icons.AutoMirrored.Filled.KeyboardTab,
+                        selected = false,
+                        label = "Cmd Tab",
+                        contentDescription = "Command Tab",
+                        onClick = onCommandTab,
+                        onLongClick = { showTooltip("Send Command-Tab to switch Mac apps") },
+                    )
+                }
+                MirrorControlGroup.SCREEN -> {
+                    if (availableDisplays.size > 1) {
+                        val currentIndex = availableDisplays.indexOfFirst { it.id == activeDisplayId }.coerceAtLeast(0)
+                        val nextIndex = (currentIndex + 1) % availableDisplays.size
+                        val nextDisplay = availableDisplays[nextIndex]
+                        KeycapButton(
+                            icon = Icons.Filled.Tv,
+                            selected = false,
+                            label = "Display",
+                            contentDescription = "Switch display",
+                            onClick = { onSelectDisplay(nextDisplay.id) },
+                            onLongClick = { showTooltip("Switch which Mac display you are viewing") },
+                        )
+                    }
+                    KeycapButton(
+                        icon = Icons.Filled.Speed,
+                        selected = statsVisible,
+                        label = "Stats",
+                        contentDescription = "Toggle stream stats",
+                        onClick = onToggleStats,
+                        onLongClick = { showTooltip("Show bitrate and latency stats") },
+                    )
+                    KeycapButton(
+                        icon = Icons.Filled.Refresh,
+                        selected = false,
+                        label = "Reconnect",
+                        contentDescription = "Reconnect mirror",
+                        onClick = onReconnect,
+                        onLongClick = { showTooltip("Reconnect the mirror stream") },
+                    )
+                    KeycapButton(
+                        icon = Icons.Filled.Computer,
+                        selected = false,
+                        label = "PiP",
+                        contentDescription = "Enter Picture in Picture",
+                        onClick = onEnterPictureInPicture,
+                        onLongClick = { showTooltip("Shrink the mirror into a floating window") },
+                    )
+                }
+            }
+        }
+
+        if (group == MirrorControlGroup.SCREEN) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = mode.label,
-                    color = Color.White.copy(alpha = if (selected) 0.98f else 0.68f),
-                    style = AuroraType.monoTiny.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = (9 * scale).sp
-                    ),
-                    textAlign = TextAlign.Center,
+                    "Tray size",
+                    color = Color.White.copy(alpha = 0.76f),
+                    style = AuroraType.caption.copy(fontSize = 12.sp),
+                    modifier = Modifier.weight(1f),
                 )
+                androidx.compose.material3.Slider(
+                    value = trayScale,
+                    onValueChange = onTrayScaleChange,
+                    valueRange = 0.5f..1.2f,
+                    modifier = Modifier
+                        .weight(2f)
+                        .height(30.dp),
+                )
+            }
+            if (availableDisplays.isNotEmpty()) {
+                availableDisplays.forEach { display ->
+                    val isSelected = display.id == activeDisplayId
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelectDisplay(display.id) }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            display.name,
+                            color = if (isSelected) AuroraColors.hermesMercury else Color.White.copy(alpha = 0.8f),
+                            style = AuroraType.caption.copy(
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            ),
+                        )
+                        if (isSelected) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = "Selected",
+                                tint = AuroraColors.hermesMercury,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -1674,77 +1870,6 @@ private fun StatusChip(label: String, scale: Float) {
     }
 }
 
-@Composable
-private fun MirrorToolButton(
-    icon: ImageVector,
-    label: String,
-    scale: Float,
-    onClick: () -> Unit,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier
-                .size((42 * scale).dp)
-                .mirrorKeycapChrome(selected = false, shape = CircleShape)
-        ) {
-            Icon(
-                icon,
-                contentDescription = label,
-                tint = Color.White,
-                modifier = Modifier.size((24 * scale).dp)
-            )
-        }
-        Text(
-            label,
-            color = Color.White.copy(alpha = 0.68f),
-            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp)
-        )
-    }
-}
-
-@Composable
-private fun DockToggleRow(label: String, checked: Boolean, scale: Float, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            label,
-            color = Color.White.copy(alpha = 0.76f),
-            style = AuroraType.caption.copy(fontSize = (12 * scale).sp)
-        )
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
-        )
-    }
-}
-
-@Composable
-private fun DockInfoRow(label: String, value: String, scale: Float) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            label,
-            color = Color.White.copy(alpha = 0.56f),
-            style = AuroraType.monoTiny.copy(fontSize = (9 * scale).sp)
-        )
-        Text(
-            value,
-            color = Color.White,
-            style = AuroraType.monoTiny.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = (9 * scale).sp
-            )
-        )
-    }
-}
-
 private class SurfaceCallback(
     private val pipeline: VideoReceivePipeline,
     private val scope: CoroutineScope,
@@ -1852,6 +1977,7 @@ private fun ControlModeKeycap(
     mode: ScreenMirrorControlMode,
     selected: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     KeycapButton(
         icon = screenMirrorControlIcon(mode),
@@ -1859,6 +1985,7 @@ private fun ControlModeKeycap(
         label = screenMirrorControlLabel(mode),
         contentDescription = screenMirrorControlContentDescription(mode),
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = Modifier.width(screenMirrorControlWidth(mode)),
     )
 }
@@ -1893,6 +2020,7 @@ internal fun screenMirrorControlContentDescription(mode: ScreenMirrorControlMode
     ScreenMirrorControlMode.COPILOT -> "Agent Co-Pilot"
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun KeycapButton(
     icon: ImageVector,
@@ -1901,18 +2029,24 @@ private fun KeycapButton(
     modifier: Modifier = Modifier,
     label: String? = null,
     contentDescription: String? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val semanticModifier = if (contentDescription != null) {
         modifier.semantics { this.contentDescription = contentDescription }
     } else {
         modifier
     }
+    val clickModifier = if (onLongClick != null) {
+        Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    } else {
+        Modifier.clickable { onClick() }
+    }
     Box(
         modifier = semanticModifier
             .height(if (label == null) 42.dp else 54.dp)
             .widthIn(min = if (label == null) 42.dp else 56.dp)
             .mirrorKeycapChrome(selected = selected)
-            .clickable { onClick() },
+            .then(clickModifier),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -2205,10 +2339,17 @@ private fun RemoteUnlockStatusPanel(
     onReconnect: () -> Unit,
     onClose: () -> Unit,
     onSendPassword: (String) -> Unit,
+    savedCredentialAvailable: Boolean,
+    onSavePassword: (String) -> Unit,
+    onSendSavedPassword: () -> Unit,
+    onDeleteSavedPassword: () -> Unit,
 ) {
     var password by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
+    var sendingSaved by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
     val ready = state.capabilities.enabled && state.capabilities.allowsCredentialPaste
+    val savedReady = ready && state.capabilities.allowsSavedCredentialUnlock
     val title = when (state.lockState) {
         HermesRealtimeRelayMacLockState.LOGIN_WINDOW,
         HermesRealtimeRelayMacLockState.REBOOT_LOGIN_WINDOW -> "Mac Login Window"
@@ -2275,6 +2416,50 @@ private fun RemoteUnlockStatusPanel(
                 style = AuroraType.caption,
             )
             if (ready) {
+                if (savedCredentialAvailable && savedReady) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Button(
+                            enabled = !sendingSaved,
+                            onClick = {
+                                sendingSaved = true
+                                onSendSavedPassword()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AuroraColors.success,
+                                contentColor = Color.Black,
+                                disabledContainerColor = AuroraColors.success.copy(alpha = 0.42f),
+                                disabledContentColor = Color.Black.copy(alpha = 0.55f),
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .height(46.dp)
+                                .weight(1f),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.LockOpen,
+                                contentDescription = "One-tap unlock",
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("One-tap unlock")
+                        }
+                        IconButton(onClick = onDeleteSavedPassword) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "Delete saved Remote Unlock credential",
+                                tint = Color.White,
+                            )
+                        }
+                        LaunchedEffect(sendingSaved) {
+                            if (sendingSaved) {
+                                delay(1000)
+                                sendingSaved = false
+                            }
+                        }
+                    }
+                }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -2323,6 +2508,38 @@ private fun RemoteUnlockStatusPanel(
                         if (sending) {
                             delay(1000)
                             sending = false
+                        }
+                    }
+                }
+                if (savedReady) {
+                    Button(
+                        enabled = password.isNotEmpty() && !saving,
+                        onClick = {
+                            saving = true
+                            onSavePassword(password)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White.copy(alpha = 0.18f),
+                            contentColor = Color.White,
+                            disabledContainerColor = Color.White.copy(alpha = 0.08f),
+                            disabledContentColor = Color.White.copy(alpha = 0.42f),
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Key,
+                            contentDescription = "Save for one-tap unlock",
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Save for one-tap unlock")
+                    }
+                    LaunchedEffect(saving) {
+                        if (saving) {
+                            delay(1000)
+                            saving = false
                         }
                     }
                 }

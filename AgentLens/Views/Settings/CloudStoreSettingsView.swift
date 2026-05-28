@@ -468,13 +468,27 @@ struct CloudStoreSettingsView: View {
 
                 MacRemoteMCPConnectedClientsSection(store: remoteMCPClients)
 
-                Link(destination: URL(string: "https://burnbar.ai/product")!) {
-                    HStack(spacing: 6) {
-                        Text("Open Remote MCP setup")
-                        Image(systemName: "arrow.up.right.square.fill")
+                HStack(spacing: 16) {
+                    Link(destination: URL(string: "https://burnbar.ai/product")!) {
+                        HStack(spacing: 6) {
+                            Text("Open Remote MCP setup")
+                            Image(systemName: "arrow.up.right.square.fill")
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(DesignSystem.Colors.ember)
                     }
-                    .font(.system(size: 12))
-                    .foregroundStyle(DesignSystem.Colors.ember)
+
+                    Button(action: {
+                        AppCommandRouter.shared.handleLinkCli()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "terminal.fill")
+                            Text("Link this Mac's CLI")
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(20)

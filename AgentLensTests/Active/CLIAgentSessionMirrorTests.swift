@@ -623,6 +623,35 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(plan.arguments[modelIndex + 1], "claude-opus-4-7")
     }
 
+    func test_missionRuntimePlanner_launchesHermesVisibleCLIWithSelectedModel() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .hermes)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Hermes visible CLI chat",
+            prompt: "Answer from a visible Terminal.",
+            backend: backend,
+            data: [
+                "requestedModelID": "minimax/minimax-2.7-highspeed",
+                "source": "ios-chat",
+                "missionKind": "chat",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        XCTAssertEqual(plan.executableName, "hermes")
+        XCTAssertEqual(Array(plan.arguments.prefix(2)), ["chat", "--query"])
+        let query = try XCTUnwrap(plan.arguments.dropFirst(2).first)
+        XCTAssertTrue(query.contains("Source: ios-chat"))
+        XCTAssertTrue(query.contains("Commands allowed: no"))
+        XCTAssertTrue(query.contains("File edits allowed: no"))
+        XCTAssertTrue(query.contains("Answer from a visible Terminal."))
+        XCTAssertTrue(plan.arguments.contains("--accept-hooks"))
+        XCTAssertTrue(plan.arguments.contains("--source"))
+        XCTAssertTrue(plan.arguments.contains("openburnbar-mobile-cli"))
+        let modelIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--model"))
+        XCTAssertEqual(plan.arguments[modelIndex + 1], "minimax/minimax-2.7-highspeed")
+    }
+
     func test_missionRuntimePlanner_constrainsOpenClawEditToolsWhenFileEditsAreDisabled() throws {
         let backend = CLIAgentMissionBackend(chatBackend: .openclaw)
         let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(

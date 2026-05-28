@@ -288,8 +288,16 @@ is_xcode_false_negative_pass() {
     if grep -Eq "Test Case '-\\[[^]]+\\]' failed" "$log_path"; then
         return 1
     fi
-    # Any non-empty line after "Failing tests:" means a real failure (do not accept xcodebuild 65).
-    if grep -A20 "^Failing tests:" "$log_path" | tail -n +2 | grep -qE '^[[:space:]]+[^[:space:]]'; then
+    # Ignore stale "Failing tests:" banners from earlier XCTest relaunches when the final summary is green.
+    if grep -Fq "Test Suite 'Selected tests' passed" "$log_path"; then
+        if ! awk '
+            /^\*\* TEST FAILED \*\*$/ { failed=1 }
+            /^Test Suite '\''Selected tests'\'' passed/ { failed=0 }
+            END { exit failed ? 1 : 0 }
+        ' "$log_path"; then
+            return 1
+        fi
+    elif grep -A20 "^Failing tests:" "$log_path" | tail -n +2 | grep -qE '^[[:space:]]+[^[:space:]]'; then
         return 1
     fi
     if awk "/Test Suite 'Selected tests'/{found=1} found && /Executed [0-9]+ tests/ && /with .*[^0] failures/" "$log_path" | grep -q .; then
