@@ -197,7 +197,79 @@ final class AppCommandRouter {
         case "search", "chat":
             openConversationSearch?()
             return true
+        case "link-cli":
+            return handleLinkCli()
         default:
+            return false
+        }
+    }
+
+    @discardableResult
+    func handleLinkCli() -> Bool {
+        guard let uid = AccountManager.shared.userID else {
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "Sign In Required"
+                alert.informativeText = "Please sign in to the OpenBurnBar app before linking your CLI."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+            return false
+        }
+
+        let keyStore = CloudVaultKeyStore(service: "com.openburnbar.cloud-vault")
+        do {
+            guard let keyData = try keyStore.loadKey(uid: uid) else {
+                DispatchQueue.main.async {
+                    let alert = NSAlert()
+                    alert.messageText = "No Vault Key Found"
+                    alert.informativeText = "No cloud vault key was found for your account. Please enable cloud sync first."
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
+                return false
+            }
+
+            let base64Key = keyData.base64EncodedString()
+
+            // 1. Write to Keychain service com.openburnbar.mcp-remote account vault-key
+            let keychain = SecurityKeychainStoreBackend()
+            if let utf8Data = base64Key.data(using: .utf8) {
+                try keychain.set(utf8Data, service: "com.openburnbar.mcp-remote", account: "vault-key")
+            }
+
+            // 2. Write fallback file to ~/.openburnbar/vault-key
+            let fileManager = FileManager.default
+            let home = fileManager.homeDirectoryForCurrentUser
+            let dir = home.appendingPathComponent(".openburnbar")
+            try fileManager.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+            let fileUrl = dir.appendingPathComponent("vault-key")
+            try base64Key.write(to: fileUrl, atomically: true, encoding: .utf8)
+
+            var attributes = [FileAttributeKey: Any]()
+            attributes[.posixPermissions] = 0o600
+            try fileManager.setAttributes(attributes, ofItemAtPath: fileUrl.path)
+
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "CLI Linked Successfully!"
+                alert.informativeText = "Your Mac's CLI has been successfully linked with your secure cloud vault key. You can now return to your terminal."
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+            return true
+        } catch {
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "Linking Failed"
+                alert.informativeText = "Failed to link your CLI: \(error.localizedDescription)"
+                alert.alertStyle = .critical
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
             return false
         }
     }

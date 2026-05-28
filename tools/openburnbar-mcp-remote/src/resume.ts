@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { decryptSealedText, hasVaultKey } from "./decrypt.js";
 import { readAccessToken } from "./oauth.js";
+import { readVaultKey } from "./vaultStore.js";
 import { DEFAULT_ENDPOINT } from "./shim.js";
 
 const execFileAsync = promisify(execFile);
@@ -129,7 +130,7 @@ function sha256(value: string): string {
 }
 
 function readVaultKeyBytes(): Buffer {
-  const raw = process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64;
+  const raw = readVaultKey();
   const key = raw ? Buffer.from(raw, "base64") : undefined;
   if (!key || key.length !== 32) {
     throw new ResumeCliError(JSON.stringify({

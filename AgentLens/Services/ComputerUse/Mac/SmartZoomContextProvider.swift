@@ -310,25 +310,30 @@ public final class SmartZoomContextProvider {
     public typealias ContextSink = @MainActor @Sendable (HermesRealtimeRelayFocusContext) async -> Void
 
     public static let defaultSampleIntervalSeconds: TimeInterval = 0.25
+    public static let defaultRefreshIntervalSeconds: TimeInterval = 1.0
 
     private let inputsProvider: InputsProvider
     private let sink: ContextSink
     private let clock: any SmartZoomClock
     private let sampleIntervalSeconds: TimeInterval
+    private let refreshIntervalSeconds: TimeInterval
     private var loopTask: Task<Void, Never>?
     private var lastEmittedContext: HermesRealtimeRelayFocusContext?
+    private var lastEmittedAt: Date?
     private var isRunning = false
 
     public init(
         inputsProvider: @escaping InputsProvider,
         sink: @escaping ContextSink,
         clock: any SmartZoomClock = SystemSmartZoomClock(),
-        sampleIntervalSeconds: TimeInterval = SmartZoomContextProvider.defaultSampleIntervalSeconds
+        sampleIntervalSeconds: TimeInterval = SmartZoomContextProvider.defaultSampleIntervalSeconds,
+        refreshIntervalSeconds: TimeInterval = SmartZoomContextProvider.defaultRefreshIntervalSeconds
     ) {
         self.inputsProvider = inputsProvider
         self.sink = sink
         self.clock = clock
         self.sampleIntervalSeconds = sampleIntervalSeconds
+        self.refreshIntervalSeconds = refreshIntervalSeconds
     }
 
     public var isActive: Bool { isRunning }
@@ -337,6 +342,7 @@ public final class SmartZoomContextProvider {
         guard !isRunning else { return }
         isRunning = true
         lastEmittedContext = nil
+        lastEmittedAt = nil
         loopTask?.cancel()
         loopTask = Task { @MainActor [weak self] in
             await self?.runLoop()
@@ -348,6 +354,7 @@ public final class SmartZoomContextProvider {
         loopTask?.cancel()
         loopTask = nil
         lastEmittedContext = nil
+        lastEmittedAt = nil
     }
 
     /// Drives a single sample-emit cycle. Exposed for deterministic
@@ -355,8 +362,10 @@ public final class SmartZoomContextProvider {
     public func emitOnce() async {
         let inputs = await inputsProvider()
         guard let context = SmartZoomContextResolver.resolve(inputs) else { return }
-        guard contextDiffersFromLast(context) else { return }
+        let sampledAt = context.updatedAt ?? inputs.sampledAt
+        guard shouldEmit(context, sampledAt: sampledAt) else { return }
         lastEmittedContext = context
+        lastEmittedAt = sampledAt
         await sink(context)
     }
 
@@ -367,17 +376,21 @@ public final class SmartZoomContextProvider {
         }
     }
 
-    /// Compares the relevant slice of two contexts so equal targets do
-    /// not generate wire chatter. The `updatedAt` timestamp is
-    /// intentionally excluded — otherwise every tick would diff.
-    private func contextDiffersFromLast(_ next: HermesRealtimeRelayFocusContext) -> Bool {
+    /// Compares the relevant slice of two contexts so equal targets do not
+    /// generate every-tick wire chatter. Identical targets still refresh
+    /// periodically because the phone intentionally ages out Smart Zoom
+    /// context after a short window.
+    private func shouldEmit(_ next: HermesRealtimeRelayFocusContext, sampledAt: Date) -> Bool {
         guard let previous = lastEmittedContext else { return true }
-        return previous.targetKind != next.targetKind
+        let targetChanged = previous.targetKind != next.targetKind
             || previous.displayId != next.displayId
             || previous.normalizedRect != next.normalizedRect
             || previous.normalizedPoint != next.normalizedPoint
             || previous.bundleId != next.bundleId
             || previous.windowId != next.windowId
+        if targetChanged { return true }
+        guard let lastEmittedAt else { return true }
+        return sampledAt.timeIntervalSince(lastEmittedAt) >= refreshIntervalSeconds
     }
 }
 

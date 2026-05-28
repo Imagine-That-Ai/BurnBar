@@ -185,12 +185,14 @@ final class SmartZoomContextProviderTests: XCTestCase {
 
     func testEmitOnceDedupesIdenticalConsecutiveContexts() async {
         let display = SmartZoomDisplayBounds(displayId: "d-1", originX: 0, originY: 0, width: 1000, height: 1000)
+        let sampledAt = Date(timeIntervalSince1970: 1_700_000_000)
         var emitted: [HermesRealtimeRelayFocusContext] = []
         let provider = SmartZoomContextProvider(
             inputsProvider: {
                 SmartZoomSampleInputs(
                     focusedElement: SmartZoomElementSnapshot(role: "AXTextField", subrole: nil, frame: CGRect(x: 100, y: 100, width: 200, height: 30)),
-                    displays: [display]
+                    displays: [display],
+                    sampledAt: sampledAt
                 )
             },
             sink: { context in emitted.append(context) },
@@ -202,26 +204,70 @@ final class SmartZoomContextProviderTests: XCTestCase {
         XCTAssertEqual(emitted.count, 1)
     }
 
-    func testEmitOnceProducesNewContextWhenTargetMoves() async {
+    func testEmitOnceRefreshesIdenticalContextBeforePhoneStaleWindow() async {
         let display = SmartZoomDisplayBounds(displayId: "d-1", originX: 0, originY: 0, width: 1000, height: 1000)
-        var current: CGRect = CGRect(x: 100, y: 100, width: 200, height: 30)
+        var sampledAt = Date(timeIntervalSince1970: 1_700_000_000)
         var emitted: [HermesRealtimeRelayFocusContext] = []
         let provider = SmartZoomContextProvider(
             inputsProvider: {
                 SmartZoomSampleInputs(
-                    focusedElement: SmartZoomElementSnapshot(role: "AXTextField", subrole: nil, frame: current),
-                    displays: [display]
+                    focusedElement: SmartZoomElementSnapshot(role: "AXTextField", subrole: nil, frame: CGRect(x: 100, y: 100, width: 200, height: 30)),
+                    displays: [display],
+                    sampledAt: sampledAt
                 )
+            },
+            sink: { context in emitted.append(context) },
+            clock: TestSmartZoomClock(),
+            sampleIntervalSeconds: 0,
+            refreshIntervalSeconds: 1.0
+        )
+        await provider.emitOnce()
+        sampledAt = sampledAt.addingTimeInterval(0.75)
+        await provider.emitOnce()
+        XCTAssertEqual(emitted.count, 1)
+
+        sampledAt = sampledAt.addingTimeInterval(0.25)
+        await provider.emitOnce()
+        XCTAssertEqual(emitted.count, 2)
+        XCTAssertEqual(emitted[0].normalizedRect, emitted[1].normalizedRect)
+    }
+
+    func testEmitOnceProducesNewContextWhenTargetMoves() async {
+        let display = SmartZoomDisplayBounds(displayId: "d-1", originX: 0, originY: 0, width: 1000, height: 1000)
+        let frameStore = TestSmartZoomFrameStore(frame: CGRect(x: 100, y: 100, width: 200, height: 30))
+        var emitted: [HermesRealtimeRelayFocusContext] = []
+        let provider = SmartZoomContextProvider(
+            inputsProvider: {
+                await frameStore.inputs(display: display)
             },
             sink: { context in emitted.append(context) },
             clock: TestSmartZoomClock(),
             sampleIntervalSeconds: 0
         )
         await provider.emitOnce()
-        current = CGRect(x: 700, y: 400, width: 200, height: 30)
+        await frameStore.update(frame: CGRect(x: 700, y: 400, width: 200, height: 30))
         await provider.emitOnce()
         XCTAssertEqual(emitted.count, 2)
         XCTAssertNotEqual(emitted[0].normalizedRect, emitted[1].normalizedRect)
+    }
+}
+
+private actor TestSmartZoomFrameStore {
+    private var frame: CGRect
+
+    init(frame: CGRect) {
+        self.frame = frame
+    }
+
+    func update(frame: CGRect) {
+        self.frame = frame
+    }
+
+    func inputs(display: SmartZoomDisplayBounds) -> SmartZoomSampleInputs {
+        SmartZoomSampleInputs(
+            focusedElement: SmartZoomElementSnapshot(role: "AXTextField", subrole: nil, frame: frame),
+            displays: [display]
+        )
     }
 }
 

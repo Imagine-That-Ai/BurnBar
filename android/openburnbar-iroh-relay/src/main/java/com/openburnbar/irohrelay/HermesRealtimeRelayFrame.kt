@@ -413,6 +413,7 @@ data class HermesRealtimeRelayRemoteUnlockCapabilities(
     val supportedLockStates: List<HermesRealtimeRelayMacLockState> = emptyList(),
     val blockers: List<String> = emptyList(),
     val allowsCredentialPaste: Boolean = false,
+    val allowsSavedCredentialUnlock: Boolean = false,
     val credentialRecipientKeyId: String? = null,
     val credentialRecipientPublicKeyBase64: String? = null,
     val credentialEnvelopeAlgorithm: String? = null,
@@ -494,6 +495,7 @@ data class HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
     enum class CredentialKind {
         @SerialName("typed_password") TYPED_PASSWORD,
         @SerialName("clipboard_password") CLIPBOARD_PASSWORD,
+        @SerialName("saved_password") SAVED_PASSWORD,
     }
 }
 

@@ -67,15 +67,7 @@ public final class PhoneControlAuthorityIssuer {
     }
 
     private func nextCounter() -> UInt64 {
-        let key = counterKey()
-        let raw = userDefaults.object(forKey: key) as? Int ?? 0
-        let next = UInt64(max(raw, 0)) &+ 1
-        userDefaults.set(Int(min(next, UInt64(Int.max))), forKey: key)
-        return next
-    }
-
-    private func counterKey() -> String {
-        "openburnbar.phoneControl.counter.\(peerNodeId)"
+        PhoneControlSender.nextCounter(peerNodeId: peerNodeId, userDefaults: userDefaults)
     }
 }
 #endif

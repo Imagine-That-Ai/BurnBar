@@ -41,6 +41,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>OpenBurnBar may send Apple Events to apps you approve--such as Cursor, Safari, Google Chrome, and Finder--during Computer Use runs so agents can verify Automation permission and operate only the apps you authorize. Every action is recorded in a tamper-evident audit log.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_googlecast._tcp</string>
@@ -48,7 +50,5 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenBurnBar uses the local network to connect this Mac to your trusted iPhone, iPad, Android devices, and local smart displays for pairing, Hermes relay, Mercury media sessions, and screen sharing.</string>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>OpenBurnBar may send Apple Events to apps you approve—such as Cursor, Safari, Google Chrome, and Finder—during Computer Use runs so agents can verify Automation permission and operate only the apps you authorize. Every action is recorded in a tamper-evident audit log.</string>
 </dict>
 </plist>

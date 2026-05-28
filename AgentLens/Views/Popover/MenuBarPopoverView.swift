@@ -34,6 +34,8 @@ struct MenuBarPopoverView: View {
     @State private var intrinsicTraySectionHeights: [String: CGFloat] = [:]
     @State private var activeTrayResizeSection: String? = nil
     @State private var activeTrayResizeStartHeight: CGFloat = 0
+    @State private var isHoveringResizeHandle = false
+    @State private var resizeHandleCursorPushed = false
 
     @AppStorage("popoverTrayWidth") private var storedPopoverTrayWidth = 340.0
     @AppStorage("popoverTrayHeight") private var storedPopoverTrayHeight = 540.0
@@ -236,6 +238,12 @@ struct MenuBarPopoverView: View {
         .onChange(of: dataStore.usagesVersion) { _, _ in
             refreshInsightRollups()
         }
+        .onDisappear {
+            if resizeHandleCursorPushed {
+                NSCursor.pop()
+                resizeHandleCursorPushed = false
+            }
+        }
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
     }
@@ -387,14 +395,19 @@ struct MenuBarPopoverView: View {
     private var resizeHandle: some View {
         Image(systemName: "arrow.up.left.and.arrow.down.right")
             .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.75))
-            .frame(width: 28, height: 28)
+            .foregroundStyle(isHoveringResizeHandle || resizingStartSize != nil ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted.opacity(0.75))
+            .frame(width: 32, height: 32)
             .contentShape(.rect)
+            .onHover { hovering in
+                isHoveringResizeHandle = hovering
+                updateResizeHandleCursor(show: hovering || resizingStartSize != nil)
+            }
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         if resizingStartSize == nil {
                             resizingStartSize = CGSize(width: popoverWidth, height: popoverViewportHeight)
+                            updateResizeHandleCursor(show: true)
                         }
                         let start = resizingStartSize ?? CGSize(width: popoverWidth, height: popoverViewportHeight)
                         storedPopoverTrayWidth = Double(clampPopoverWidth(start.width + value.translation.width))
@@ -403,11 +416,26 @@ struct MenuBarPopoverView: View {
                     .onEnded { _ in
                         resizingStartSize = nil
                         clampStoredPopoverSize()
+                        updateResizeHandleCursor(show: isHoveringResizeHandle)
                     }
             )
             .accessibilityLabel("Resize popover tray")
             .popoverTooltip("Drag to resize")
             .padding(2)
+    }
+
+    private func updateResizeHandleCursor(show: Bool) {
+        if show {
+            if !resizeHandleCursorPushed {
+                NSCursor.pointingHand.push()
+                resizeHandleCursorPushed = true
+            }
+        } else {
+            if resizeHandleCursorPushed {
+                NSCursor.pop()
+                resizeHandleCursorPushed = false
+            }
+        }
     }
 
     private func setTraySectionOrder(_ sections: [PopoverTraySection]) {
@@ -1210,51 +1238,59 @@ private struct ResizableTraySectionDivider: View {
 
     var body: some View {
         ZStack {
-            if showsLine {
-                Rectangle()
-                    .fill(DesignSystem.Colors.border)
-                    .frame(height: 1)
+            // Visual elements
+            ZStack {
+                if showsLine {
+                    Rectangle()
+                        .fill(DesignSystem.Colors.border)
+                        .frame(height: 1)
+                }
+                if isHovered || isDragging {
+                    Capsule()
+                        .fill(handleColor)
+                        .frame(width: 36, height: 3)
+                        .transition(.opacity)
+                }
             }
-            if isHovered || isDragging {
-                Capsule()
-                    .fill(handleColor)
-                    .frame(width: 36, height: 3)
-                    .transition(.opacity)
-            }
+            .frame(height: 8)
+
+            // Taller, invisible interactive hit zone
+            Color.clear
+                .frame(height: 24) // 24 points is generous and very easy to target
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        isHovered = hovering
+                    }
+                    updateCursor(showResize: hovering)
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { value in
+                            if !isDragging {
+                                isDragging = true
+                                updateCursor(showResize: true)
+                            }
+                            onResizeChanged(value.translation.height)
+                        }
+                        .onEnded { _ in
+                            isDragging = false
+                            onResizeEnded()
+                            if !isHovered {
+                                updateCursor(showResize: false)
+                            }
+                        }
+                )
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        if hasCustomHeight {
+                            onReset()
+                        }
+                    }
+                )
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 8)
-        .contentShape(Rectangle())
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
-                isHovered = hovering
-            }
-            updateCursor(showResize: hovering)
-        }
-        .gesture(
-            DragGesture(minimumDistance: 1)
-                .onChanged { value in
-                    if !isDragging {
-                        isDragging = true
-                        updateCursor(showResize: true)
-                    }
-                    onResizeChanged(value.translation.height)
-                }
-                .onEnded { _ in
-                    isDragging = false
-                    onResizeEnded()
-                    if !isHovered {
-                        updateCursor(showResize: false)
-                    }
-                }
-        )
-        .simultaneousGesture(
-            TapGesture(count: 2).onEnded {
-                if hasCustomHeight {
-                    onReset()
-                }
-            }
-        )
+        .frame(height: 8) // Layout height remains exactly 8
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Resize \(sectionLabel) section")
         .accessibilityHint(hasCustomHeight

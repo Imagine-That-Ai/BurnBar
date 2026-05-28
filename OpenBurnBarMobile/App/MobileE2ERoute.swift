@@ -6,6 +6,10 @@ enum MobileE2ERoute {
         route == "cloud-store" || route == "cloud"
     }
 
+    static var isRemoteUnlockRoute: Bool {
+        route == "remote-unlock" || route == "unlock"
+    }
+
     static var allowsGuestCloudStore: Bool {
         ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_CLOUD_STORE_GUEST"] == "1"
     }
