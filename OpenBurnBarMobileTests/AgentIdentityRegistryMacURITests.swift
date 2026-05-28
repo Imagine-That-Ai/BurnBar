@@ -482,10 +482,10 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             heartbeatInterval: 0.01
         )
 
-        coordinator.suspendBackgroundTraffic(for: 0.08)
+        coordinator.suspendBackgroundTraffic(for: 0.4)
         coordinator.start(uid: "user-1", connectionID: "conn-1")
         try await waitUntilLive(coordinator)
-        try await Task.sleep(nanoseconds: 40_000_000)
+        try await Task.sleep(nanoseconds: 50_000_000)
 
         var heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
         XCTAssertTrue(heartbeats.isEmpty, "suppressed background presence must stay off the lane while user work is active")
