@@ -19,7 +19,7 @@ import * as functions from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 
 import { enforceAuthAndAppCheck } from "../auth.js";
-import { logCallableStart, traceIdFromCallableRequest } from "../logging.js";
+import { logCallableStart, traceIdFromCallableRequest, wrapCallableHandler } from "../logging.js";
 import { getConfig } from "../config.js";
 import { parseHostedQuotaEntitlementDoc } from "../guards.js";
 import type { HostedQuotaEntitlementDoc } from "../types.js";
@@ -50,7 +50,7 @@ export const beginEntitlementBinding = onCall(
     maxInstances: 50,
     secrets: APP_STORE_SECRETS,
   },
-  async (
+  wrapCallableHandler("beginEntitlementBinding", async (
     request: CallableRequest<{
       productID?: string;
       clientPlatform?: "ios" | "ipados" | "macos";
@@ -64,7 +64,7 @@ export const beginEntitlementBinding = onCall(
     const db = getFirestore();
     return beginBinding(db, uid, productID, request.data.clientPlatform);
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // verifyHostedQuotaEntitlement
@@ -77,7 +77,7 @@ export const verifyHostedQuotaEntitlement = onCall(
     maxInstances: 100,
     secrets: APP_STORE_SECRETS,
   },
-  async (
+  wrapCallableHandler("verifyHostedQuotaEntitlement", async (
     request: CallableRequest<{
       signedTransactionJWS: string;
       signedRenewalInfoJWS?: string;
@@ -119,7 +119,7 @@ export const verifyHostedQuotaEntitlement = onCall(
       throw mapReconcileError(err);
     }
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // restoreHostedQuotaEntitlement
@@ -145,7 +145,7 @@ export const restoreHostedQuotaEntitlement = onCall(
     maxInstances: 50,
     secrets: APP_STORE_SECRETS,
   },
-  async (
+  wrapCallableHandler("restoreHostedQuotaEntitlement", async (
     request: CallableRequest<{
       productID?: string;
       /**
@@ -238,7 +238,7 @@ export const restoreHostedQuotaEntitlement = onCall(
       throw mapReconcileError(err);
     }
   }
-);
+));
 
 // ---------------------------------------------------------------------------
 // Helpers
