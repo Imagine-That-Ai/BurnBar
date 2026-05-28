@@ -73,6 +73,12 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         try json.write(to: settingsURL, atomically: true, encoding: .utf8)
     }
 
+    /// Integer millisecond timestamps avoid JSON float/scientific-notation decode flakes in CI.
+    private func historyLine(display: String, hoursAgo: Double, anchorMs: Double = referenceEpochMs) -> String {
+        let timestampMs = Int64(anchorMs - (hoursAgo * 60.0 * 60.0 * 1000.0))
+        return "{\"display\":\"\(display)\",\"timestamp\":\(timestampMs),\"workspace\":\"/mock/ws\"}"
+    }
+
     // MARK: - Tests
 
     func testFetch_whenHistoryDoesNotExist_returnsUnavailableSnapshot() async throws {
@@ -211,9 +217,9 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let hourInMs = 60.0 * 60.0 * 1000.0
 
         let mockLines = [
-            "{\"display\":\"R1\",\"timestamp\":\(nowMs - (1.0 * hourInMs)),\"workspace\":\"/mock/ws\"}",
-            "{\"display\":\"R2\",\"timestamp\":\(nowMs - (2.0 * hourInMs)),\"workspace\":\"/mock/ws\"}",
-            "{\"display\":\"R3\",\"timestamp\":\(nowMs - (3.0 * hourInMs)),\"workspace\":\"/mock/ws\"}"
+            historyLine(display: "R1", hoursAgo: 1.0, anchorMs: nowMs),
+            historyLine(display: "R2", hoursAgo: 2.0, anchorMs: nowMs),
+            historyLine(display: "R3", hoursAgo: 3.0, anchorMs: nowMs),
         ]
 
         try writeHistory(lines: mockLines)
@@ -222,15 +228,16 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let context = try makeContext()
         let snapshot = try await adapter.fetch(context: context)
 
+        XCTAssertEqual(snapshot.sourceKind, .localCLI, snapshot.statusMessage)
         XCTAssertEqual(snapshot.buckets.count, 7)
 
         let activeBucket = snapshot.buckets.first(where: { $0.label.contains("(Active)") })
-        XCTAssertNotNil(activeBucket)
+        XCTAssertNotNil(activeBucket, "Expected active bucket; buckets=\(snapshot.buckets.map(\.label))")
         if let active = activeBucket {
-            XCTAssertTrue(active.label.contains("Gemini 3.5 Flash (Medium)"))
-            XCTAssertEqual(active.usedValue, 3.0)
-            XCTAssertEqual(active.limitValue, 900.0)
-            XCTAssertEqual(active.remainingValue, 897.0)
+            XCTAssertTrue(active.label.contains("Gemini 3.5 Flash (Medium)"), active.label)
+            XCTAssertEqual(active.usedValue, 3.0, "used=\(active.usedValue)")
+            XCTAssertEqual(active.limitValue, 900.0, "limit=\(active.limitValue)")
+            XCTAssertEqual(active.remainingValue, 897.0, "remaining=\(active.remainingValue)")
         }
 
         // Claude Opus should now be inactive with 0 used
