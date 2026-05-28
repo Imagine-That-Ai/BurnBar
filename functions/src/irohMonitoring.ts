@@ -35,6 +35,7 @@ const EVENT_TYPES: IrohAuditEventType[] = [
   "iroh_pairing_verified",
   "iroh_pairing_rejected",
   "iroh_fallback_to_wss",
+  "iroh_fallback_to_firestore",
 ];
 
 const TRANSPORTS: IrohTransport[] = [
@@ -144,7 +145,9 @@ export function summarizeIrohAuditEvents(
   const streamCloses = eventCounts.iroh_stream_closed;
   const streamFailures = eventCounts.iroh_stream_failed;
   const wssFallbacks = eventCounts.iroh_fallback_to_wss;
-  const terminalEvents = streamCloses + streamFailures + wssFallbacks;
+  const firestoreFallbacks = eventCounts.iroh_fallback_to_firestore;
+  const totalFallbacks = wssFallbacks + firestoreFallbacks;
+  const terminalEvents = streamCloses + streamFailures + totalFallbacks;
   const irohTransports = transportCounts["iroh-direct"] + transportCounts["iroh-relay"];
 
   return {
@@ -162,8 +165,9 @@ export function summarizeIrohAuditEvents(
     streamCloses,
     streamFailures,
     wssFallbacks,
+    firestoreFallbacks,
     successRate: rate(streamCloses, terminalEvents),
-    fallbackRate: rate(wssFallbacks, terminalEvents),
+    fallbackRate: rate(totalFallbacks, terminalEvents),
     directShare: rate(transportCounts["iroh-direct"], irohTransports),
     relayShare: rate(transportCounts["iroh-relay"], irohTransports),
     rttMillis: {

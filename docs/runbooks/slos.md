@@ -87,6 +87,8 @@ When adding a new critical path, ship **one structured log event** and **one cou
 | `counters.gateway_enabled` | `1` when gateway enabled |
 | `counters.daemon_heartbeat_present` | `1` when heartbeat file decodes |
 | `counters.heartbeat_stale` | `0` when heartbeat age `< 20s` |
+| `counters.rpc_requests_total` | Monotonic RPC request count (socket + gateway) |
+| `counters.rpc_errors_total` | RPC responses with error codes (auth, rate limit, decode) |
 | `heartbeat.updatedAt` | ISO8601 last write (when present) |
 
 **Playbook:**

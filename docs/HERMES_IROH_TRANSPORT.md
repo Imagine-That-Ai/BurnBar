@@ -120,7 +120,7 @@ reused byte-for-byte.
 | `OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/` | SwiftPM target. Contains the wire codec, transport protocol, in-process loopback transport, pairing helpers, audit contract, and the encrypted echo path. |
 | `OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/` | UniFFI-generated Swift/C/modulemap bindings. Used only when `Vendor/OpenBurnBarIroh.xcframework` exists locally or in CI. |
 | `OpenBurnBarCore/Tests/OpenBurnBarIrohRelayTests/` | XCTest suite (18 tests, all green on macOS arm64). |
-| `services/hermes-realtime-relay/` | Existing Cloud Run relay. Stays in place while we burn down WSS traffic, then is decommissioned in Milestone 7. |
+| `services/hermes-realtime-relay/` | Retired Cloud Run WSS relay source. The production service and Redis backend were deleted from `burnbar` on 2026-05-28; keep this only as historical/self-hosted reference until the source directory is removed. |
 
 ## Wire format
 
@@ -220,10 +220,10 @@ seven phases now land in this PR.
 | **1. Spine + crypto + transport contract** | Rust crate, xcframework workflow, Swift package target, frame codec, pairing primitives, in-process loopback transport, encrypted echo, full test coverage. | ✅ |
 | **2. Real iroh transport (xcframework-backed)** | `IrohXcframeworkTransport` (Swift) + `IrohEndpointBackend` protocol + `OpenBurnBarIrohFFIBackend` (UniFFI bridge). Conditionally compiled with `#if canImport(OpenBurnBarIrohFFI)` so the SwiftPM package builds before the xcframework binary is published. | ✅ |
 | **3. Pairing handshake in production** | `IrohPairingDirectory` protocol + `InMemoryIrohPairingDirectory` + `FirestoreIrohPairingDirectory` (Mac + iOS variants). `firestore.rules` gates `/users/{uid}/iroh_pairing/*` and `/users/{uid}/iroh_audit_events/*`. `functions/src/types.ts` ships `IrohPairingRecordDoc` + `IrohTransportAuditEventDoc`. `scripts/deploy-iroh-relay.sh` rolls the changes. | ✅ |
-| **4. Real Hermes payload over iroh** | `HermesIrohRelayHostClient` (Mac) — accept-loop, request handler, pairing-record heartbeat. `HermesIrohRelayTransport` (iOS) — conforms to `HermesRelayTransporting`. Composite chain becomes iroh → WSS → Firestore. Feature flag `SettingsManager.hermesIrohTransportEnabled`. | ✅ |
+| **4. Real Hermes payload over iroh** | `HermesIrohRelayHostClient` (Mac) — accept-loop, request handler, pairing-record heartbeat. `HermesIrohRelayTransport` (iOS) — conforms to `HermesRelayTransporting`. Composite chain is now iroh → Firestore after WSS retirement. Feature flag `SettingsManager.hermesIrohTransportEnabled`. | ✅ |
 | **5. Audit + RTT telemetry** | `IrohTransportAuditLogging` protocol + `FirestoreIrohAuditLogger`. Every stream open / close / failure / pairing event / fallback hop emits `IrohTransportAuditEventDoc` with `transport`, `rttMillis`, and `detail`. `rollupIrohTransportDaily` converts the raw per-user stream into daily success/fallback/RTT rollups for rollout gates. | ✅ |
 | **6. Owned hosted relay** | Rust crate's `bootstrap()` takes a `relay_url` parameter; Swift transport exposes a `relayURLProvider` closure. Iroh Services provisions the managed relay in the dashboard; `scripts/cutover-n0-hosted-relay.sh` then publishes the captured URL through Firebase Remote Config so all devices pick it up on next boot. | ✅ |
-| **7. Cloud Run relay retirement** | `docs/HERMES_IROH_RETIREMENT.md` — the operational runbook, gates, decommissioning steps, rollback playbook, and cost analysis. Cloud Run service deletion is the final step; the WSS adapter remains in source until 14 consecutive days of zero-fallback traffic. | ✅ |
+| **7. Cloud Run relay retirement** | `docs/HERMES_IROH_RETIREMENT.md` — the operational runbook, gates, decommissioning steps, rollback playbook, and cost analysis. The production Cloud Run service and Redis backend were deleted from `burnbar` on 2026-05-28; the WSS adapter source remains historical/self-hosted reference until removed. | ✅ |
 
 ## Failure model
 
@@ -261,6 +261,6 @@ device-attached round-trip against the real iroh stack (Phase 2).
 
 * iroh: <https://www.iroh.computer/>
 * `iroh-ffi` status (paused by n0): <https://github.com/n0-computer/iroh-ffi>
-* `HERMES_REALTIME_RELAY.md` (current Cloud Run relay)
+* `HERMES_REALTIME_RELAY.md` (retired Cloud Run relay reference)
 * `HERMES_MOBILE_TOOLS.md` (consumer of the relay)
-* `services/hermes-realtime-relay/` (relay source)
+* `services/hermes-realtime-relay/` (retired relay source)

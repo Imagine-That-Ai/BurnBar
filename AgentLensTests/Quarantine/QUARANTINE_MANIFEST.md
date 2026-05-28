@@ -60,11 +60,11 @@ it with `./scripts/test-openburnbar-app.sh`.
 
 ## Totals
 
-- **Wave 2 archived:** 18 tests (6 revived to Active; circuit breaker remains skipped in Active)
-- **Legacy archived:** 2 suites (under `AgentLensTests/Archive/`)
+- **Wave 2 archived:** 0 actionable quarantine files (all revived in `AgentLensTests/Active/` or superseded)
+- **Legacy reference (not counted as quarantine):** 2 suites under `AgentLensTests/LegacyReference/` per [ADR](../adr/2026-05-27-archive-legacy-parser-performance-tests.md)
 - **Quarantine directory:** empty of Swift sources (pointer README only)
 - **Fixed to passing:** 2 tests (`testParseEmptyDirectory`, `testWrongDeviceDecryptionFails` env-gate)
-- **Deleted:** 0 tests
+- **Deleted:** 14 duplicate Archive files removed 2026-05-28 after Active parity confirmed
 
 ## Maintenance Notes
 

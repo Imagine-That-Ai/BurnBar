@@ -608,6 +608,16 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
     }
 }
 
+@MainActor
+final class DisabledHermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
+    var isReady: Bool { false }
+    var publishableRelayURLString: String? { nil }
+
+    @discardableResult
+    func start(uid _: String, connectionID _: String) async -> Bool { false }
+    func stop() {}
+}
+
 private enum HermesRealtimeRelayHostError: LocalizedError {
     case unauthenticated
     case invalidPath

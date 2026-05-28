@@ -56,7 +56,7 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
                 "daemon_heartbeat_present": heartbeat == nil ? 0 : 1,
                 "gateway_enabled": gatewayEnabled ? 1 : 0,
                 "heartbeat_stale": heartbeatStale ? 1 : 0,
-            ]
+            ].merging(BurnBarDaemonMetricsCounters.snapshot()) { current, _ in current }
         )
     }
 }

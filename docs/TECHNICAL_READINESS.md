@@ -13,9 +13,9 @@ One-page diligence snapshot for investors, operators, and senior engineers.
 | Architecture | **9/10** | 9/10 | [Architecture ADRs](architecture/README.md); CloudSync coordinator + domain services; `canonicalAgentProvider` in OpenBurnBarCore; CloudSync god-file split |
 | Documentation | **9.5/10** | 10/10 | ADRs, automated [TECH_DEBT_METRICS.md](TECH_DEBT_METRICS.md), [SOTA_REMEDIATION_PROGRESS.md](SOTA_REMEDIATION_PROGRESS.md) ledger |
 
-## Weighted diligence score (2026-05-28 Stream C follow-up audit)
+## Weighted diligence score (2026-05-28 integration pass)
 
-**96/100** (+2 vs prior 94/100 audit) — Phase 0 and 3 complete; switcher follow-up committed; CloudSync god-file deleted/split; timing flakiness resolved; all package and mobile tests pass. Remaining to **100/100**: quarantine count → 0, TypeSpec domain expansion beyond usage/quota.
+**97/100** (+1 vs prior 96/100) — quarantine count **0**; Hermes WSS relay retired with cross-platform tests; daemon `/metrics` exposes `rpc_requests_total` / `rpc_errors_total`; THREAT_MODEL and SLO runbook updated. Remaining to **100/100**: full `make ci` green on committed integration pass + Phase 4 MainActor removal on 6 listed I/O facades.
 
 ## Audit notes (2026-05-28)
 
@@ -63,13 +63,9 @@ Author in `tools/schema-sync/typespec/` → emit → commit generated TS/Swift/K
 
 ## Known remaining work
 
-- **`make ci` green** on branch (primary +1 point to reach ≥95/100)
-- Complete CloudSync god-file deletion (Hermes/Pi relay hosts still in legacy service)
-- Revive archived sync tests from `AgentLensTests/Archive/` against current `DownloadSyncService` (**16** quarantined files per metrics)
-- Full `ChatSessionController` backend driver extraction
-- Hermes wire type file split into RelayCore modules
-- Expand daemon `/metrics` counters (`metrics.jsonl`, RPC latency histograms) per [runbooks/slos.md](runbooks/slos.md)
-- OpenBurnBarUI SPM product split from OpenBurnBarCore Views
-- `docs/THREAT_MODEL.md` refresh (Phase 1 security closure)
+- **Quarantine:** **0** actionable archived test files (`AgentLensTests/Archive/` empty); 2 legacy reference suites under `LegacyReference/` per ADR
+- **Hermes WSS retirement (2026-05-28):** iroh primary + Firestore fallback; hosted WSS URL blank; Mac uses `DisabledHermesRealtimeRelayHostClient` when iroh off
+- **Daemon metrics:** `GET /metrics` counters include `rpc_requests_total`, `rpc_errors_total`
+- **`make ci`:** pre-commit run in flight; post-commit verification required after integration push
 
 See [`docs/GOVERNANCE.md`](GOVERNANCE.md) for support tiers.

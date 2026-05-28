@@ -476,7 +476,7 @@ export interface ComputerUseAuditExportSignerPublicKeyDoc {
 
 /**
  * Audit event the Mac (or the Cloud Functions hosted runner) writes when an
- * iroh stream is opened, closed, or fails over to the WSS relay. Surfaces
+ * iroh stream is opened, closed, or falls back to a non-iroh relay. Surfaces
  * transport health to the user's audit log without exposing payload bytes.
  */
 export interface IrohTransportAuditEventDoc {
@@ -490,7 +490,8 @@ export interface IrohTransportAuditEventDoc {
     | "iroh_pairing_published"
     | "iroh_pairing_verified"
     | "iroh_pairing_rejected"
-    | "iroh_fallback_to_wss";
+    | "iroh_fallback_to_wss"
+    | "iroh_fallback_to_firestore";
   /** Observed RTT (ms) of the most recent ping on this stream, if known. */
   rttMillis?: number;
   /**
@@ -524,6 +525,7 @@ export interface IrohTransportDailyRollupDoc {
   streamCloses: number;
   streamFailures: number;
   wssFallbacks: number;
+  firestoreFallbacks: number;
   successRate: number;
   fallbackRate: number;
   directShare: number;

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Hermes WSS relay retired
+- Deleted the production Cloud Run WebSocket relay and
+  `hermes-realtime-relay-redis-prod-secure` Redis backend from the `burnbar`
+  project. Mobile now cascades from iroh directly to Firestore fallback, and the
+  Mac host no longer starts or advertises the retired WSS fallback.
+- Updated the commercial launch gate to require the retired relay and Redis to
+  stay absent instead of treating them as production launch prerequisites.
+
 ### Added — Grok Build first-class CLI harness
 - **`GrokParser`** — reads `~/.grok/sessions/` (`summary.json`, `signals.json`, `chat_history.jsonl`, optional `updates.jsonl`) under `AgentProvider.xAI` with exact token confidence.
 - **Catalog** — `grok-build-0.1` model family; `grok-code-fast-1` retains `grok-build-0.1` alias for retirement migration.

@@ -3236,14 +3236,12 @@ final class HermesService {
 final class HermesCompositeRelayTransport: HermesRelayTransporting {
     /// `UserDefaults` key the iOS feature toggle writes. The OpenBurnBar Mac
     /// app sets the same key via `SettingsManager.hermesIrohTransportEnabled`.
-    /// When false (the v1 default) the cascade skips iroh entirely and goes
-    /// straight to WSS so users on older builds never see the iroh dial
-    /// timeout latency.
+    /// When false, the cascade skips iroh and uses Firestore directly.
     nonisolated static let irohEnabledDefaultsKey = "hermes_iroh_transport_enabled"
 
     static let shared = HermesCompositeRelayTransport(
         primary: HermesIrohRelayTransport.shared,
-        secondary: HermesRealtimeRelayTransport.shared,
+        secondary: FirestoreHermesRelayTransport.shared,
         fallback: FirestoreHermesRelayTransport.shared
     )
 
@@ -3252,11 +3250,9 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
     private let fallback: HermesRelayTransporting
     private let irohEnabled: @Sendable () -> Bool
 
-    /// Three-tier fallback chain. The primary is the iroh peer-to-peer
-    /// transport; failures cascade to the WSS relay and finally to the
-    /// Firestore long-poll transport. Cascade reasons are surfaced through
-    /// `FirestoreIrohAuditLogger` so the user's audit log shows when iroh
-    /// falls back to WSS.
+    /// Fallback chain. The primary is the iroh peer-to-peer transport;
+    /// failures now cascade directly to the Firestore long-poll transport
+    /// because the Cloud Run WSS relay and Redis backend were retired.
     init(
         primary: HermesRelayTransporting,
         secondary: HermesRelayTransporting,
@@ -3284,7 +3280,7 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
                 if HermesServiceError.shouldStopRelayFallback(error) {
                     throw error
                 }
-                await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
+                await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-firestore")
             }
         }
         do {
@@ -3293,7 +3289,10 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
             if HermesServiceError.shouldStopRelayFallback(error) {
                 throw error
             }
-            await Self.recordFallback(payload: payload, error: error, hop: "wss-to-firestore")
+            if secondary === fallback {
+                throw error
+            }
+            await Self.recordFallback(payload: payload, error: error, hop: "secondary-to-firestore")
         }
         return try await fallback.sendUnary(payload, timeout: timeout)
     }
@@ -3311,7 +3310,7 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
                 if HermesServiceError.shouldStopRelayFallback(error) {
                     throw error
                 }
-                await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
+                await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-firestore")
             }
         }
         do {
@@ -3321,7 +3320,10 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
             if HermesServiceError.shouldStopRelayFallback(error) {
                 throw error
             }
-            await Self.recordFallback(payload: payload, error: error, hop: "wss-to-firestore")
+            if secondary === fallback {
+                throw error
+            }
+            await Self.recordFallback(payload: payload, error: error, hop: "secondary-to-firestore")
         }
         try await fallback.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
     }
@@ -3329,13 +3331,14 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
     private static func recordFallback(payload: HermesRelayPayload, error: Error, hop: String) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         await FirestoreIrohAuditLogger.shared.record(
-            event: .fallbackToWss,
+            event: .fallbackToFirestore,
             uid: uid,
             connectionId: payload.connectionID,
-            transport: hop == "iroh-to-wss" ? .wss : .firestore,
+            transport: .firestore,
             rttMillis: nil,
             detail: [
                 "hop": hop,
+                "target": "firestore",
                 "error": String(error.localizedDescription.prefix(256))
             ]
         )

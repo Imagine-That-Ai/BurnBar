@@ -16,6 +16,9 @@ const REGION = process.env.OPENBURNBAR_GCP_REGION || "us-central1";
 const REQUIRED_IOS_STATE = "PENDING_DEVELOPER_RELEASE";
 const LIVE_IOS_STATE = "READY_FOR_SALE";
 const PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
+const RETIRED_HERMES_REALTIME_RELAY_SERVICE = "hermes-realtime-relay";
+const RETIRED_HERMES_REALTIME_REDIS_INSTANCE =
+  process.env.OPENBURNBAR_RETIRED_REDIS_INSTANCE_NAME || "hermes-realtime-relay-redis-prod-secure";
 const REQUIRED_CODEQL_CHECKS = [
   "Analyze (swift)",
   "Analyze (javascript-typescript)",
@@ -448,7 +451,7 @@ function checkCloudRun() {
   ]);
   if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
   const services = JSON.parse(result.stdout);
-  const required = ["openburnbar-quota-runner", "hermes-realtime-relay"];
+  const required = ["openburnbar-quota-runner"];
   const byName = new Map(services.map((service) => [service.metadata?.name, service]));
   const serviceStates = required.map((name) => {
     const service = byName.get(name);
@@ -457,9 +460,17 @@ function checkCloudRun() {
     );
     return { name, ready, url: service?.status?.url || null };
   });
+  const retiredRelay = byName.get(RETIRED_HERMES_REALTIME_RELAY_SERVICE) || null;
   return {
-    ok: serviceStates.every((service) => service.ready),
+    ok: serviceStates.every((service) => service.ready) && retiredRelay === null,
     services: serviceStates,
+    retiredServices: [
+      {
+        name: RETIRED_HERMES_REALTIME_RELAY_SERVICE,
+        absent: retiredRelay === null,
+        url: retiredRelay?.status?.url || null,
+      },
+    ],
   };
 }
 
@@ -486,99 +497,32 @@ function checkRunnerReadyz() {
   };
 }
 
-function cloudRunEnvValue(env, name) {
-  const entry = env.find((item) => item.name === name);
-  if (!entry) return { source: "missing", value: null };
-  if (entry.value !== undefined) return { source: "plain", value: entry.value };
-  const secretRef = entry.valueFrom?.secretKeyRef || entry.valueSource?.secretKeyRef || null;
-  const secretName = secretRef?.name || secretRef?.secret || null;
-  const version = secretRef?.key || secretRef?.version || "latest";
-  if (!secretName) return { source: "unknown", value: null };
-  const result = run("gcloud", [
-    "secrets",
-    "versions",
-    "access",
-    version,
-    "--secret",
-    secretName,
-    "--project",
-    PROJECT,
-  ]);
-  if (!result.ok) {
-    return {
-      source: "secret",
-      secretName,
-      version,
-      value: null,
-      error: result.stderr || result.stdout || result.error,
-    };
-  }
-  return {
-    source: "secret",
-    secretName,
-    version,
-    value: result.stdout.trim(),
-  };
-}
-
 function checkRedis() {
-  const redisName =
-    process.env.OPENBURNBAR_REDIS_INSTANCE_NAME || "hermes-realtime-relay-redis-prod-secure";
   const result = run("gcloud", [
     "redis",
     "instances",
     "describe",
-    redisName,
+    RETIRED_HERMES_REALTIME_REDIS_INSTANCE,
     "--project",
     PROJECT,
     "--region",
     REGION,
     "--format=json",
   ]);
-  if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
-  const redis = JSON.parse(result.stdout);
-  const relay = run("gcloud", [
-    "run",
-    "services",
-    "describe",
-    "hermes-realtime-relay",
-    "--project",
-    PROJECT,
-    "--region",
-    REGION,
-    "--format=json",
-  ]);
-  if (!relay.ok) return { ok: false, error: relay.stderr || relay.stdout };
-  const relayService = JSON.parse(relay.stdout);
-  const env = relayService.spec?.template?.spec?.containers?.[0]?.env || [];
-  const redisURL = cloudRunEnvValue(env, "REDIS_URL");
-  const redisTLSPem = cloudRunEnvValue(env, "REDIS_TLS_CA_PEM");
-  const redisTLSBase64 = cloudRunEnvValue(env, "REDIS_TLS_CA_BASE64");
-  let relayRedisHost = null;
-  let relayRedisScheme = null;
-  try {
-    const parsedURL = redisURL.value ? new URL(redisURL.value) : null;
-    relayRedisHost = parsedURL?.hostname || null;
-    relayRedisScheme = parsedURL?.protocol?.replace(":", "") || null;
-  } catch {
-    relayRedisHost = null;
-    relayRedisScheme = null;
+  if (!result.ok) {
+    const error = result.stderr || result.stdout || result.error || "";
+    const notFound = error.includes("NOT_FOUND") || error.includes("was not found");
+    return {
+      ok: notFound,
+      name: RETIRED_HERMES_REALTIME_REDIS_INSTANCE,
+      state: notFound ? "absent" : "unknown",
+      retired: true,
+      error: notFound ? undefined : error,
+    };
   }
-  const maintenanceWindow = redis?.maintenancePolicy?.weeklyMaintenanceWindow?.[0] || null;
-  const tlsCAConfigured = redisTLSPem.source !== "missing" || redisTLSBase64.source !== "missing";
-  const ok = redis?.state === "READY" &&
-    redis?.tier === "STANDARD_HA" &&
-    Number(redis?.memorySizeGb || 0) >= 1 &&
-    redis?.authEnabled === true &&
-    redis?.transitEncryptionMode === "SERVER_AUTHENTICATION" &&
-    redisURL.source === "secret" &&
-    relayRedisScheme === "rediss" &&
-    relayRedisHost === redis?.host &&
-    tlsCAConfigured &&
-    maintenanceWindow?.day === "SUNDAY" &&
-    Number(maintenanceWindow?.startTime?.hours) === 9;
+  const redis = JSON.parse(result.stdout);
   return {
-    ok,
+    ok: false,
     name: redis?.name || null,
     tier: redis?.tier || null,
     state: redis?.state || null,
@@ -587,16 +531,9 @@ function checkRedis() {
     connectMode: redis?.connectMode || null,
     authEnabled: redis?.authEnabled === true,
     transitEncryptionMode: redis?.transitEncryptionMode || null,
-    redisCredentialSource: redisURL.source,
-    redisCredentialSecret: redisURL.secretName || null,
-    redisCredentialError: redisURL.error || undefined,
-    relayRedisScheme,
-    redisTLSCASource: redisTLSPem.source !== "missing" ? redisTLSPem.source : redisTLSBase64.source,
-    redisTLSCASecret: redisTLSPem.secretName || redisTLSBase64.secretName || null,
-    redisTLSCAError: redisTLSPem.error || redisTLSBase64.error || undefined,
-    maintenanceWindow,
-    relayRedisHost,
     redisHost: redis?.host || null,
+    retired: true,
+    error: "Retired Hermes realtime Redis exists; delete it before declaring the commercial launch gate clean.",
   };
 }
 

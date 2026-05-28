@@ -21,6 +21,10 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         return base.appendingPathComponent("HermesRelayWireVector.json")
     }()
 
+    func test_defaultHostedRelayURLString_isEmptyAfterWSSRetirement() {
+        XCTAssertTrue(HermesRealtimeRelayProtocol.defaultHostedRelayURLString.isEmpty)
+    }
+
     func test_emitsDeterministicVector_thatRoundTrips() throws {
         let priv = try makeDeterministicPrivateKey()
         let pub = priv.publicKey
