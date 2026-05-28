@@ -216,7 +216,7 @@ final class InlineAgentMirrorController: ObservableObject {
             streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
                 mediaFrameVersions: .v1AndV2
             ).wireValue,
-            focusFollowMode: AgentFocusFollowMode.off.rawValue,
+            focusFollowMode: AgentFocusFollowMode.smart.rawValue,
             viewerId: viewerID,
             viewerDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
             controlAuthorityPeerNodeId: controlAuthorityPeerNodeId

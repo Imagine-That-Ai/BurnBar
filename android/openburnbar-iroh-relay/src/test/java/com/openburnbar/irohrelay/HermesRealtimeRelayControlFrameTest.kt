@@ -90,7 +90,7 @@ class HermesRealtimeRelayControlFrameTest {
                     requestId = "credential-1",
                     sessionId = "unlock-session-1",
                     clientIntentId = "client-credential-1",
-                    credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.CLIPBOARD_PASSWORD,
+                    credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.SAVED_PASSWORD,
                     recipientKeyId = "mac-remote-unlock-key",
                     algorithm = "HPKE-X25519-SHA256-CHACHAPOLY",
                     ciphertextBase64 = "Y2lwaGVydGV4dA==",
@@ -123,6 +123,7 @@ class HermesRealtimeRelayControlFrameTest {
                         supportedBackends = listOf(HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK),
                         supportedLockStates = listOf(HermesRealtimeRelayMacLockState.LOGIN_WINDOW),
                         allowsCredentialPaste = true,
+                        allowsSavedCredentialUnlock = true,
                         credentialRecipientKeyId = "mac-remote-unlock-key",
                         credentialRecipientPublicKeyBase64 = "cHVibGljLWtleQ==",
                         credentialEnvelopeAlgorithm = "HPKE-X25519-SHA256-CHACHAPOLY",
@@ -160,7 +161,7 @@ class HermesRealtimeRelayControlFrameTest {
         assertEquals(HermesRealtimeRelayFrameType.REMOTE_UNLOCK_CREDENTIAL, decodedCredential.type)
         assertEquals("remote_unlock", decodedCredential.control?.streamClass)
         assertEquals(
-            HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.CLIPBOARD_PASSWORD,
+            HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.SAVED_PASSWORD,
             decodedCredential.control?.remoteUnlockCredential?.credentialKind,
         )
         assertEquals(16, decodedCredential.control?.remoteUnlockCredential?.redactedByteCount)
@@ -174,6 +175,7 @@ class HermesRealtimeRelayControlFrameTest {
             "HPKE-X25519-SHA256-CHACHAPOLY",
             decodedState.control?.remoteUnlockState?.capabilities?.credentialEnvelopeAlgorithm,
         )
+        assertEquals(true, decodedState.control?.remoteUnlockState?.capabilities?.allowsSavedCredentialUnlock)
         assertEquals(HermesRealtimeRelayFrameType.REMOTE_UNLOCK_RESULT, decodedResult.type)
         assertEquals(HermesRealtimeRelayRemoteUnlockResult.Status.UNLOCKED, decodedResult.control?.remoteUnlockResult?.status)
         assertEquals(HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK, decodedResult.control?.remoteUnlockResult?.backend)

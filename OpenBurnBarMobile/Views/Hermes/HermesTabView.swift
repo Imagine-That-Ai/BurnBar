@@ -1981,7 +1981,11 @@ struct HermesChatView: View {
             dashboardContext: dashboardContextPrompt,
             commandBias: commandBias
         )
-        service.sendMessage(trimmed, context: context, attachments: attachments)
+        if chatViewMode == .cli {
+            service.sendVisibleCLIMessage(trimmed, context: context, attachments: attachments)
+        } else {
+            service.sendMessage(trimmed, context: context, attachments: attachments)
+        }
     }
 
     private var textExpansionThreadID: String? {
@@ -2782,7 +2786,7 @@ func hermesAgentProvider(for raw: String) -> AgentProvider {
     if lower.contains("minimax") || lower.contains("abab") { return .minimax }
     if lower.contains("zai") || lower.contains("z.ai") || lower.contains("glm") { return .zai }
     if lower.contains("kimi") || lower.contains("moonshot") { return .kimi }
-    if lower.contains("deepseek") { return .openClaw }
+    if lower.contains("deepseek") { return .deepSeek }
     if lower.contains("antigravity") { return .antigravity }
     if lower.contains("grok") || lower.contains("xai") { return .xAI }
     if lower.contains("google") || lower.contains("gemini") { return .geminiCLI }

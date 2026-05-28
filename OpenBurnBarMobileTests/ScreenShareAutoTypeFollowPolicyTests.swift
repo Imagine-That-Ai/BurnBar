@@ -159,6 +159,35 @@ final class ScreenShareAutoTypeFollowPolicyTests: XCTestCase {
         XCTAssertEqual(action, .open)
     }
 
+    func testEnablingAutoKeyboardMovesViewerIntoDirectControlMode() {
+        let mode = ScreenShareSmartTextActivationPolicy.modeAfterAutoKeyboardToggle(
+            enabled: true,
+            currentMode: .view,
+            controlInputEnabled: true
+        )
+
+        XCTAssertEqual(mode, .control)
+    }
+
+    func testAutoKeyboardTogglePreservesModeWhenControlUnavailableOrDisabling() {
+        XCTAssertEqual(
+            ScreenShareSmartTextActivationPolicy.modeAfterAutoKeyboardToggle(
+                enabled: true,
+                currentMode: .view,
+                controlInputEnabled: false
+            ),
+            .view
+        )
+        XCTAssertEqual(
+            ScreenShareSmartTextActivationPolicy.modeAfterAutoKeyboardToggle(
+                enabled: false,
+                currentMode: .trackpad,
+                controlInputEnabled: true
+            ),
+            .trackpad
+        )
+    }
+
     func testIsActiveTextFocusRequiresFocusedElement() {
         XCTAssertTrue(
             ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(

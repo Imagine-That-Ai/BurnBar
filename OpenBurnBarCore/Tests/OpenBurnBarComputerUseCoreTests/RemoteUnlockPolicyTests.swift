@@ -33,6 +33,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
         XCTAssertEqual(capabilities.certificationStatus, .certified)
         XCTAssertTrue(capabilities.blockers.isEmpty)
         XCTAssertTrue(capabilities.allowsCredentialPaste)
+        XCTAssertTrue(capabilities.allowsSavedCredentialUnlock)
         XCTAssertEqual(capabilities.credentialRecipientKeyId, "mac-remote-unlock-key")
         XCTAssertEqual(capabilities.credentialRecipientPublicKeyBase64, "cHVibGljLWtleQ==")
         XCTAssertEqual(capabilities.credentialEnvelopeAlgorithm, RemoteUnlockPolicy.credentialEnvelopeAlgorithm)
@@ -52,6 +53,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
         XCTAssertTrue(capabilities.supportedLockStates.contains(.loginWindow))
         XCTAssertTrue(capabilities.supportedLockStates.contains(.rebootLoginWindow))
         XCTAssertTrue(capabilities.allowsCredentialPaste)
+        XCTAssertTrue(capabilities.allowsSavedCredentialUnlock)
         XCTAssertEqual(capabilities.credentialRecipientKeyId, "mac-remote-unlock-key")
         XCTAssertEqual(capabilities.credentialRecipientPublicKeyBase64, "cHVibGljLWtleQ==")
         XCTAssertEqual(capabilities.credentialEnvelopeAlgorithm, RemoteUnlockPolicy.credentialEnvelopeAlgorithm)
@@ -68,6 +70,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         XCTAssertFalse(capabilities.enabled)
         XCTAssertFalse(capabilities.allowsCredentialPaste)
+        XCTAssertFalse(capabilities.allowsSavedCredentialUnlock)
         XCTAssertTrue(capabilities.blockers.contains("remote_unlock_recipient_key_missing"))
         XCTAssertNil(capabilities.credentialRecipientKeyId)
         XCTAssertNil(capabilities.credentialRecipientPublicKeyBase64)
@@ -82,6 +85,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         XCTAssertFalse(capabilities.enabled)
         XCTAssertFalse(capabilities.allowsCredentialPaste)
+        XCTAssertFalse(capabilities.allowsSavedCredentialUnlock)
         XCTAssertEqual(capabilities.activeBackend, .unavailable)
         XCTAssertTrue(capabilities.blockers.contains("remote_access_daemon_missing"))
         XCTAssertNil(capabilities.credentialRecipientKeyId)

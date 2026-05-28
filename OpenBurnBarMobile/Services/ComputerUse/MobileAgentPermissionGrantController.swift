@@ -230,11 +230,7 @@ final class MobileAgentPermissionGrantController {
     }
 
     private func nextCounter(peerNodeId: String) -> UInt64 {
-        let key = "openburnbar.phoneControl.counter.\(peerNodeId)"
-        let raw = userDefaults.object(forKey: key) as? Int ?? 0
-        let next = UInt64(max(raw, 0)) &+ 1
-        userDefaults.set(Int(min(next, UInt64(Int.max))), forKey: key)
-        return next
+        PhoneControlSender.nextCounter(peerNodeId: peerNodeId, userDefaults: userDefaults)
     }
 
     private func jsonObject<T: Encodable>(from value: T) throws -> [String: Any] {

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Interactive CLI Link (`openburnbar mcp login`) & Secure Local Vault Key
+- Fully implemented the RFC 8628 style device link flow for `openburnbar mcp login` (no args) with automated user code verification and browser launching.
+- Added a secure, hierarchical local Vault-Key store resolver (`vaultStore.ts`) that reads from Env, Keychain, or fallback file with 0600 permissions, ensuring `obb resume` works seamlessly on decrypted hosted session-memory search results.
+- Added new cloud-hosted HTTPS endpoints `startCliLink` and `pollCliLink` and an authorized callable `completeCliLink` requiring BurnBar Pro entitlement.
+- Integrated a premium dark-themed glassmorphism `/link` page on the web site allowing easy Google Sign-in to authorize CLI devices.
+- Wired deep link `openburnbar://link-cli` and a "Link this Mac's CLI" Settings button inside the macOS app to instantly sync secure cloud vault keys down to the CLI Keychain and fallback storage.
+
+### Added — Mercury Remote Unlock saved credential mode
+- iPhone, iPad, and Android Remote Unlock now support optional one-tap saved
+  credentials after locked mirroring is trusted. Saved credentials stay in the
+  mobile secure store, require local device authentication before save/send, and
+  travel only as signed HPKE `remote_unlock.credential` envelopes with
+  `credentialKind=saved_password`.
+
+### Fixed — Mercury Smart Text keyboard activation
+- Smart Text auto-keyboard now switches the iOS mirror into direct Control mode
+  when enabled, so tapping a Mac text field actually sends the focus tap before
+  Smart Zoom and the phone keyboard react.
+- Mac Smart Zoom focus context now refreshes unchanged text-field targets before
+  the phone's stale-context window expires, preventing the keyboard follow mode
+  from silently timing out while focus remains in the same text box.
+
+### Fixed — iOS Hermes CLI mode
+- iOS Hermes chat **CLI** mode now dispatches the turn as a `mac_visible_cli`
+  mission, opens `hermes chat` in a visible Mac Terminal session, streams that
+  Terminal output back into the mobile thread, and keeps the inline Mercury
+  mirror in Smart Zoom follow mode so the phone frames the active Terminal
+  instead of a zoomed-out desktop. Attachment turns now fail fast with a clear
+  CLI-mode explanation instead of silently falling back to hidden native chat.
+
 ### Added — SOTA remediation closure (2026-05-28)
 - Daemon `GET /metrics` exposes **`rpc_latency_ms_p95`** alongside RPC request/error counters.
 - Mac app **`metrics.jsonl`** rotation (5 MiB, 3 archives) via `LocalMetricsJSONLWriter`.

@@ -31,7 +31,9 @@ struct AuthGateView: View {
                 mainSignedInView
             } else {
                 #if DEBUG
-                if MobileE2ERoute.isCloudStoreRoute {
+                if MobileE2ERoute.isRemoteUnlockRoute {
+                    RemoteUnlockSimulatorHarnessView()
+                } else if MobileE2ERoute.isCloudStoreRoute {
                     MobileE2ECloudStoreRouteView()
                 } else {
                     authStateView
@@ -45,6 +47,9 @@ struct AuthGateView: View {
         .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
         .environment(\.mobileAuthStore, authStore)
         .task(id: authStore.currentIdentity?.uid) {
+            #if DEBUG
+            guard !MobileE2ERoute.isRemoteUnlockRoute else { return }
+            #endif
             guard let uid = authStore.currentIdentity?.uid, !uid.isEmpty else { return }
             if !BudgetEnforcement.shared.isConfigured {
                 let rulesStore = BudgetRulesStore()
@@ -89,7 +94,9 @@ struct AuthGateView: View {
     @ViewBuilder
     private var signedInView: some View {
         #if DEBUG
-        if MobileE2ERoute.isCloudStoreRoute {
+        if MobileE2ERoute.isRemoteUnlockRoute {
+            RemoteUnlockSimulatorHarnessView()
+        } else if MobileE2ERoute.isCloudStoreRoute {
             NavigationStack {
                 CloudStoreView()
             }

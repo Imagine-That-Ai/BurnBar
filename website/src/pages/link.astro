@@ -1,0 +1,429 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Link CLI"
+  description="Link your terminal command line interface with your OpenBurnBar account."
+>
+  <section class="pagehead">
+    <div class="container pagehead__inner">
+      <span class="eyebrow eyebrow--ember">Integration</span>
+      <h1 class="pagehead__h">Link CLI to Cloud</h1>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          Connect your terminal CLI to sync your local environment securely with your BurnBar account.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="link-container">
+    <div class="container container--narrow">
+      <div class="glass-pane link-card">
+        <!-- Loader / Checking Auth State -->
+        <div id="state-checking" class="link-state">
+          <div class="spinner"></div>
+          <p>Securing connection...</p>
+        </div>
+
+        <!-- State: Signed Out -->
+        <div id="state-signed-out" class="link-state hidden">
+          <div class="icon-wrap">
+            <span class="icon-flame">🔑</span>
+          </div>
+          <h2>Authentication Required</h2>
+          <p>Please sign in with your BurnBar account to authorize this CLI connection.</p>
+          <button id="btn-signin" class="btn btn--ember">
+            Sign In with Google
+          </button>
+        </div>
+
+        <!-- State: Signed In, Enter/Confirm Code -->
+        <div id="state-confirm" class="link-state hidden">
+          <div class="user-badge" id="user-badge">
+            <img id="user-avatar" src="" alt="Avatar" class="avatar hidden" />
+            <span id="user-email" class="mono">...</span>
+          </div>
+          <h2>Confirm Link Code</h2>
+          <p>Please enter or confirm the 8-character code shown in your terminal.</p>
+
+          <div class="code-input-wrap">
+            <input
+              type="text"
+              id="code-input"
+              placeholder="WDJB-MQXK"
+              maxlength="9"
+              class="mono-input"
+            />
+          </div>
+
+          <button id="btn-confirm" class="btn btn--ember">
+            Link CLI Device
+          </button>
+
+          <button id="btn-signout" class="btn-text">
+            Sign out of this account
+          </button>
+        </div>
+
+        <!-- State: Submitting / Linking -->
+        <div id="state-linking" class="link-state hidden">
+          <div class="spinner"></div>
+          <h2>Connecting CLI...</h2>
+          <p>Provisioning credentials and preparing secure sync endpoints.</p>
+        </div>
+
+        <!-- State: Success -->
+        <div id="state-success" class="link-state hidden">
+          <div class="success-glow"></div>
+          <div class="icon-wrap success">
+            <span class="icon-check">✔</span>
+          </div>
+          <h2>CLI Linked Successfully!</h2>
+          <p>Your terminal is now authorized and ready to run.</p>
+          <div class="next-step-box">
+            <p class="mono small">Return to your terminal to complete the flow.</p>
+          </div>
+        </div>
+
+        <!-- State: Error -->
+        <div id="state-error" class="link-state hidden">
+          <div class="icon-wrap error">
+            <span class="icon-cross">❌</span>
+          </div>
+          <h2>Linking Failed</h2>
+          <p id="error-message">An unexpected error occurred.</p>
+          <button id="btn-retry" class="btn btn--secondary">
+            Try Again
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .link-container {
+    padding: 2rem 1rem 6rem;
+    display: flex;
+    justify-content: center;
+  }
+  .container--narrow {
+    max-width: 520px;
+    width: 100%;
+  }
+  .link-card {
+    padding: 3rem 2rem;
+    text-align: center;
+    border-radius: 16px;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .link-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    animation: fadeIn 0.4s ease-out;
+  }
+  .hidden {
+    display: none !important;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  h2 {
+    font-size: 1.75rem;
+    margin: 1rem 0 0.5rem;
+    font-weight: 700;
+  }
+
+  p {
+    color: var(--color-text-muted, #94a3b8);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+    max-width: 360px;
+  }
+
+  .btn {
+    width: 100%;
+    max-width: 320px;
+    padding: 0.875rem 1.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn--secondary {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+  }
+  .btn--secondary:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .btn-text {
+    background: none;
+    border: none;
+    color: var(--color-text-muted, #94a3b8);
+    font-size: 0.875rem;
+    margin-top: 1.5rem;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .btn-text:hover {
+    color: #fff;
+  }
+
+  /* Spinner */
+  .spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-top: 4px solid var(--color-primary, #f59e0b);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1.5rem;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Icons */
+  .icon-wrap {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: rgba(245, 158, 11, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+  .icon-wrap.success {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #10b981;
+  }
+  .icon-wrap.error {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+  }
+
+  /* User Badge */
+  .user-badge {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.5rem 1rem;
+    border-radius: 99px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+  }
+
+  /* Code Input */
+  .code-input-wrap {
+    margin-bottom: 2rem;
+    width: 100%;
+    max-width: 320px;
+  }
+  .mono-input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    color: #fff;
+    font-family: monospace;
+    font-size: 1.5rem;
+    letter-spacing: 2px;
+    text-align: center;
+    text-transform: uppercase;
+    transition: border-color 0.2s ease;
+  }
+  .mono-input:focus {
+    outline: none;
+    border-color: var(--color-primary, #f59e0b);
+  }
+
+  /* Success Glow */
+  .success-glow {
+    position: absolute;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .next-step-box {
+    margin-top: 1.5rem;
+    background: rgba(16, 185, 129, 0.05);
+    border: 1px dashed rgba(16, 185, 129, 0.3);
+    padding: 1rem;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 320px;
+  }
+</style>
+
+<script>
+  import { auth, googleProvider, functions } from "../lib/firebaseClient";
+  import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+  import { httpsCallable } from "firebase/functions";
+
+  // Elements
+  const states = {
+    checking: document.getElementById("state-checking"),
+    signedOut: document.getElementById("state-signed-out"),
+    confirm: document.getElementById("state-confirm"),
+    linking: document.getElementById("state-linking"),
+    success: document.getElementById("state-success"),
+    error: document.getElementById("state-error")
+  };
+
+  const btnSignin = document.getElementById("btn-signin");
+  const btnConfirm = document.getElementById("btn-confirm");
+  const btnSignout = document.getElementById("btn-signout");
+  const btnRetry = document.getElementById("btn-retry");
+
+  const codeInput = document.getElementById("code-input") as HTMLInputElement;
+  const userEmail = document.getElementById("user-email");
+  const userAvatar = document.getElementById("user-avatar") as HTMLImageElement;
+  const errorMessage = document.getElementById("error-message");
+
+  let currentUser = null;
+
+  // Helpers
+  function showState(activeState: keyof typeof states) {
+    Object.keys(states).forEach((key) => {
+      const el = states[key as keyof typeof states];
+      if (el) {
+        if (key === activeState) {
+          el.classList.remove("hidden");
+        } else {
+          el.classList.add("hidden");
+        }
+      }
+    });
+  }
+
+  function getQueryCode(): string {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get("code") || "").toUpperCase();
+  }
+
+  // Format code input with hyphen: WDJB-MQXK
+  if (codeInput) {
+    codeInput.addEventListener("input", (e) => {
+      let val = codeInput.value.replace(/[^A-Za-z2-9]/g, "").toUpperCase();
+      if (val.length > 4) {
+        val = val.slice(0, 4) + "-" + val.slice(4, 8);
+      } else {
+        val = val.slice(0, 4);
+      }
+      codeInput.value = val;
+    });
+  }
+
+  // Auth State Listener
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    if (!user) {
+      showState("signedOut");
+    } else {
+      if (userEmail) userEmail.textContent = user.email || user.displayName || "Authenticated User";
+      if (userAvatar && user.photoURL) {
+        userAvatar.src = user.photoURL;
+        userAvatar.classList.remove("hidden");
+      }
+
+      // Auto-prefill query param code
+      const queryCode = getQueryCode();
+      if (queryCode && codeInput) {
+        codeInput.value = queryCode;
+      }
+
+      showState("confirm");
+    }
+  });
+
+  // Action: Sign In
+  btnSignin?.addEventListener("click", async () => {
+    try {
+      showState("checking");
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: any) {
+      if (errorMessage) errorMessage.textContent = err.message || "Authentication failed.";
+      showState("error");
+    }
+  });
+
+  // Action: Sign Out
+  btnSignout?.addEventListener("click", async () => {
+    try {
+      showState("checking");
+      await signOut(auth);
+    } catch (err) {
+      console.error("Sign out error", err);
+    }
+  });
+
+  // Action: Complete link
+  btnConfirm?.addEventListener("click", async () => {
+    const code = (codeInput?.value || "").replace("-", "").trim();
+    if (code.length !== 8) {
+      alert("Please enter a valid 8-character linking code.");
+      return;
+    }
+
+    try {
+      showState("linking");
+      const completeCliLink = httpsCallable(functions, "completeCliLink");
+      await completeCliLink({ userCode: codeInput.value.trim() });
+      showState("success");
+    } catch (err: any) {
+      console.error("Linking error", err);
+      let friendlyMessage = err.message || "An unexpected error occurred.";
+      if (err.code === "functions/not-found" || err.code === "not-found") {
+        friendlyMessage = "Link session not found or code expired. Please ensure you entered the exact code from your terminal.";
+      } else if (err.code === "functions/failed-precondition" || err.code === "failed-precondition") {
+        friendlyMessage = "BurnBar Pro is required for Remote MCP access. Please subscribe to continue.";
+      }
+      if (errorMessage) errorMessage.textContent = friendlyMessage;
+      showState("error");
+    }
+  });
+
+  // Action: Retry
+  btnRetry?.addEventListener("click", () => {
+    if (currentUser) {
+      showState("confirm");
+    } else {
+      showState("signedOut");
+    }
+  });
+</script>

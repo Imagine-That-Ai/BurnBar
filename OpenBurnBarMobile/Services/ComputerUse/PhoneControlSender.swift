@@ -30,6 +30,8 @@ public final class PhoneControlSender: @unchecked Sendable {
     private let frameSink: FrameSink
     private let uid: String
     private let connectionId: String
+    private let sendSequencer = PhoneControlSendSequencer()
+    private static let counterLock = NSLock()
 
     public init(
         peerNodeId: String,
@@ -54,6 +56,12 @@ public final class PhoneControlSender: @unchecked Sendable {
     /// in the local timeline.
     @discardableResult
     public func send(intent rawIntent: HermesRealtimeRelayInputIntent) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await sendSequencer.enqueue { [self] in
+            try await sendInputIntent(rawIntent)
+        }
+    }
+
+    private func sendInputIntent(_ rawIntent: HermesRealtimeRelayInputIntent) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         guard let key = signingKeyProvider()?.privateKey else {
             throw SendError.signingFailed("no signing key")
         }
@@ -108,6 +116,12 @@ public final class PhoneControlSender: @unchecked Sendable {
     /// input intents so the Mac can reject replay across both channels.
     @discardableResult
     public func send(agentGrant request: AgentCapabilityGrantRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await sendSequencer.enqueue { [self] in
+            try await sendAgentGrant(request)
+        }
+    }
+
+    private func sendAgentGrant(_ request: AgentCapabilityGrantRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         guard let key = signingKeyProvider()?.privateKey else {
             throw SendError.signingFailed("no signing key")
         }
@@ -162,6 +176,12 @@ public final class PhoneControlSender: @unchecked Sendable {
     /// phone-control peer.
     @discardableResult
     public func send(clipboardRequest rawRequest: HermesRealtimeRelayClipboardRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await sendSequencer.enqueue { [self] in
+            try await sendClipboardRequest(rawRequest)
+        }
+    }
+
+    private func sendClipboardRequest(_ rawRequest: HermesRealtimeRelayClipboardRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         guard let key = signingKeyProvider()?.privateKey else {
             throw SendError.signingFailed("no signing key")
         }
@@ -263,6 +283,14 @@ public final class PhoneControlSender: @unchecked Sendable {
     public func send(
         remoteUnlockCredential rawCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await sendSequencer.enqueue { [self] in
+            try await sendRemoteUnlockCredential(rawCredential)
+        }
+    }
+
+    private func sendRemoteUnlockCredential(
+        _ rawCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope
+    ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         guard let key = signingKeyProvider()?.privateKey else {
             throw SendError.signingFailed("no signing key")
         }
@@ -322,6 +350,14 @@ public final class PhoneControlSender: @unchecked Sendable {
     /// replay across every control surface.
     @discardableResult
     public func send(systemPermissionRequest rawRequest: HermesRealtimeRelaySystemPermissionRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await sendSequencer.enqueue { [self] in
+            try await sendSystemPermissionRequest(rawRequest)
+        }
+    }
+
+    private func sendSystemPermissionRequest(
+        _ rawRequest: HermesRealtimeRelaySystemPermissionRequest
+    ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         guard let key = signingKeyProvider()?.privateKey else {
             throw SendError.signingFailed("no signing key")
         }
@@ -387,6 +423,12 @@ public final class PhoneControlSender: @unchecked Sendable {
 
     @discardableResult
     public func send(contextTarget rawTarget: HermesRealtimeRelayAgentContextTarget) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await sendSequencer.enqueue { [self] in
+            try await sendContextTarget(rawTarget)
+        }
+    }
+
+    private func sendContextTarget(_ rawTarget: HermesRealtimeRelayAgentContextTarget) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         guard let key = signingKeyProvider()?.privateKey else {
             throw SendError.signingFailed("no signing key")
         }
@@ -449,12 +491,36 @@ public final class PhoneControlSender: @unchecked Sendable {
     }
 
     public static func nextCounter(peerNodeId: String, userDefaults: UserDefaults = .standard) -> UInt64 {
+        counterLock.lock()
+        defer { counterLock.unlock() }
         let key = "openburnbar.phoneControl.counter.\(peerNodeId)"
         let raw = userDefaults.object(forKey: key) as? Int ?? 0
         let next = UInt64(max(raw, 0)) &+ 1
         // `Int` clamp keeps Int64 max in range on 64-bit platforms.
         userDefaults.set(Int(min(next, UInt64(Int.max))), forKey: key)
         return next
+    }
+}
+
+private actor PhoneControlSendSequencer {
+    private var tail: Task<Void, Never> = Task {}
+
+    func enqueue<T: Sendable>(_ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+        let predecessor = tail
+        let priority = Task.currentPriority
+        let next = Task<T, Error>(priority: priority) {
+            await predecessor.value
+            try Task.checkCancellation()
+            return try await operation()
+        }
+        tail = Task {
+            _ = try? await next.value
+        }
+        return try await withTaskCancellationHandler {
+            try await next.value
+        } onCancel: {
+            next.cancel()
+        }
     }
 }
 

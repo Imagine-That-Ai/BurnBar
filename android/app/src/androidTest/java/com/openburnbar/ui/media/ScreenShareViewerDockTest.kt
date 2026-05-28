@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
@@ -34,10 +35,10 @@ class ScreenShareViewerDockTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun expandedDockUsesSemanticIconsInsteadOfLetterKeycaps() {
+    fun expandedDockGroupsControlsIntoCascadingShelves() {
         composeRule.setContent {
             MaterialTheme {
-                var customizeOpen by remember { mutableStateOf(false) }
+                var openGroup by remember { mutableStateOf<MirrorControlGroup?>(null) }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -45,7 +46,7 @@ class ScreenShareViewerDockTest {
                 ) {
                     ScreenMirrorToolsDock(
                         collapsed = false,
-                        customizeOpen = customizeOpen,
+                        openGroup = openGroup,
                         fit = ScreenMirrorFit.FIT,
                         controlMode = ScreenMirrorControlMode.VIEW,
                         typingOpen = false,
@@ -58,7 +59,7 @@ class ScreenShareViewerDockTest {
                         onSelectDisplay = {},
                         onTrayScaleChange = {},
                         onToggleCollapsed = {},
-                        onToggleCustomize = { customizeOpen = !customizeOpen },
+                        onSelectGroup = { openGroup = it },
                         onToggleStats = {},
                         onCycleFit = {},
                         onCycleControlMode = {},
@@ -86,23 +87,37 @@ class ScreenShareViewerDockTest {
             }
         }
 
+        // Primary dock shows one keycap per group plus pinned collapse/close.
+        listOf(
+            "Mode",
+            "Zoom",
+            "Scroll",
+            "Keys",
+            "Screen",
+            "Collapse mirror controls",
+            "Close mirror",
+        ).forEach { label ->
+            composeRule.onNodeWithContentDescription(label).assertExists()
+        }
+
+        // Mode controls are shelved — hidden until the Mode group is opened.
+        composeRule.onAllNodesWithContentDescription("Glass Trackpad mode").assertCountEquals(0)
+
+        // No legacy single-letter keycaps.
+        listOf("V", "T", "P", "S", "C").forEach { legacyLabel ->
+            composeRule.onAllNodesWithText(legacyLabel).assertCountEquals(0)
+        }
+
+        // Opening the Mode group cascades the control-mode keycaps into view.
+        composeRule.onNodeWithContentDescription("Mode").performClick()
         listOf(
             "View mode",
             "Click mode",
             "Glass Trackpad mode",
             "Scroll mode",
             "Agent Co-Pilot",
-            "Show detailed controls",
         ).forEach { label ->
             composeRule.onNodeWithContentDescription(label).assertExists()
-        }
-
-        listOf("View", "Click", "Trackpad", "Scroll", "Co-Pilot", "Details").forEach { label ->
-            composeRule.onAllNodesWithText(label).assertCountEquals(1)
-        }
-
-        listOf("V", "T", "P", "S", "C").forEach { legacyLabel ->
-            composeRule.onAllNodesWithText(legacyLabel).assertCountEquals(0)
         }
 
         val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
@@ -124,9 +139,5 @@ class ScreenShareViewerDockTest {
             "Mirror dock should render visible iOS teal/violet gradient accents.",
             accentPixels > 40,
         )
-
-        composeRule.onNodeWithContentDescription("Show detailed controls").performClick()
-        composeRule.onNodeWithContentDescription("Hide detailed controls").assertExists()
-        composeRule.onAllNodesWithText("Detailed controls").assertCountEquals(1)
     }
 }

@@ -68,50 +68,37 @@ struct ChatExpandedPanel: View {
         .shadow(color: Color.black.opacity(0.12), radius: 32, y: 14)
         .compositingGroup()
         .overlay(alignment: .trailing) {
-            Color.clear.frame(width: 10).frame(maxHeight: .infinity).contentShape(Rectangle())
-                .highPriorityGesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { g in
-                            if panelResizeStart == nil { panelResizeStart = controller.panelWidth }
-                            let base = panelResizeStart ?? 400
-                            controller.panelWidth = min(720, max(260, base + g.translation.width))
-                        }
-                        .onEnded { _ in
-                            panelResizeStart = nil
-                            controller.persistPanelGeometry()
-                        }
-                )
+            InteractiveResizeOverlay(direction: .trailing) { translation in
+                if panelResizeStart == nil { panelResizeStart = controller.panelWidth }
+                let base = panelResizeStart ?? 400
+                controller.panelWidth = min(720, max(260, base + translation.width))
+            } onEnded: {
+                panelResizeStart = nil
+                controller.persistPanelGeometry()
+            }
         }
         .overlay(alignment: .bottom) {
-            Color.clear.frame(height: 10).frame(maxWidth: .infinity).contentShape(Rectangle())
-                .highPriorityGesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { g in
-                            if bottomResizeStart == nil { bottomResizeStart = controller.panelHeight }
-                            let base = bottomResizeStart ?? 440
-                            controller.panelHeight = min(900, max(200, base + g.translation.height))
-                        }
-                        .onEnded { _ in
-                            bottomResizeStart = nil
-                            controller.persistPanelGeometry()
-                        }
-                )
+            InteractiveResizeOverlay(direction: .bottom) { translation in
+                if bottomResizeStart == nil { bottomResizeStart = controller.panelHeight }
+                let base = bottomResizeStart ?? 440
+                controller.panelHeight = min(900, max(200, base + translation.height))
+            } onEnded: {
+                bottomResizeStart = nil
+                controller.persistPanelGeometry()
+            }
         }
         .overlay(alignment: .bottomTrailing) {
-            Color.clear.frame(width: cornerResizeHandle, height: cornerResizeHandle).contentShape(Rectangle())
-                .highPriorityGesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { g in
-                            if cornerResizeStart == nil { cornerResizeStart = CGSize(width: controller.panelWidth, height: controller.panelHeight) }
-                            let base = cornerResizeStart ?? CGSize(width: 400, height: 440)
-                            controller.panelWidth = min(720, max(260, base.width + g.translation.width))
-                            controller.panelHeight = min(900, max(200, base.height + g.translation.height))
-                        }
-                        .onEnded { _ in
-                            cornerResizeStart = nil
-                            controller.persistPanelGeometry()
-                        }
-                )
+            InteractiveResizeOverlay(direction: .bottomTrailing) { translation in
+                if cornerResizeStart == nil {
+                    cornerResizeStart = CGSize(width: controller.panelWidth, height: controller.panelHeight)
+                }
+                let base = cornerResizeStart ?? CGSize(width: 400, height: 440)
+                controller.panelWidth = min(720, max(260, base.width + translation.width))
+                controller.panelHeight = min(900, max(200, base.height + translation.height))
+            } onEnded: {
+                cornerResizeStart = nil
+                controller.persistPanelGeometry()
+            }
         }
         .transition(.scale(scale: 0.85).combined(with: .opacity))
     }

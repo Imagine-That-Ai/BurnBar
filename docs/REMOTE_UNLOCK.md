@@ -76,11 +76,22 @@ Credential payloads use a sealed credential envelope:
   counter, freshness window, session ID, and client intent ID.
 - Remote Unlock permission is durable: approving/trusting an iPhone, iPad, or
   Android for locked mirroring is a one-time grant and survives app restarts.
-  Revocation is explicit from the device trust surface. The actual Mac password
-  is not part of that grant: it is never saved, never logged, never replayed, and
-  must be typed by the user for each unlock attempt. The typed password is held
-  only in volatile UI state, cleared when submitted/unlocked, HPKE-sealed to the
-  Mac recipient key, signed, and sent over `remote_unlock.credential`.
+  Revocation is explicit from the device trust surface. This trust grant is
+  separate from password handling. By default, the user types the Mac password
+  for each unlock attempt; the typed password is held only in volatile UI state,
+  cleared when submitted/unlocked, HPKE-sealed to the Mac recipient key, signed,
+  and sent over `remote_unlock.credential`.
+- One-tap Remote Unlock is optional and device-local. When the Mac advertises
+  `remoteUnlockCapabilities.allowsSavedCredentialUnlock`, iOS, iPadOS, and
+  Android can store the Mac password in the local secure credential store
+  (Keychain on Apple platforms, AndroidKeyStore-wrapped storage on Android).
+  Saving and each one-tap send require local device authentication. The Mac
+  still never stores the user's login password, and the relay still only sees a
+  sealed `remote_unlock.credential` envelope with `credentialKind=saved_password`.
+  The saved credential is keyed to the Mac's stable `credentialRecipientKeyId`
+  when advertised, so it survives Mercury connection ID rotation while still
+  following recipient-key rotation. It can be deleted from the mirror overlay on
+  each device.
 
 ## Readiness
 
@@ -157,6 +168,9 @@ This change lands the permanent contract and fail-closed runtime seams:
   `remote_unlock.credential` lane directly. It does not run normal phone-control
   probe/classify traffic first, so a stale presence heartbeat cannot stall or
   reset the password flow;
+- iPhone, iPad, and Android support both typed-per-unlock submission and
+  optional one-tap saved credential submission, guarded by local device
+  authentication and encoded on the wire as `credentialKind=saved_password`;
 - certification proof store plus `openburnbar-cli remote-unlock-certification`
   status/reset/record tooling;
 - hardware smoke script for iOS, iPadOS, and Android certification;

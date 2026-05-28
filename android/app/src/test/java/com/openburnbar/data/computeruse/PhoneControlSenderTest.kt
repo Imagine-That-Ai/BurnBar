@@ -239,7 +239,7 @@ class PhoneControlSenderTest {
             requestId = "remote-unlock-credential",
             sessionId = "remote-unlock-session",
             clientIntentId = "client-intent",
-            credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.TYPED_PASSWORD,
+            credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.SAVED_PASSWORD,
             recipientKeyId = "hpke-key",
             algorithm = RemoteUnlockCredentialEnvelopeCrypto.ALGORITHM,
             ciphertextBase64 = "Y2lwaGVy",
@@ -260,6 +260,7 @@ class PhoneControlSenderTest {
         assertEquals("remote-unlock-session", frame.control?.sessionId)
         val credential = frame.control?.remoteUnlockCredential
         assertNotNull(credential)
+        assertEquals(HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.SAVED_PASSWORD, credential?.credentialKind)
         assertEquals("android-phone-1", credential?.authority?.peerNodeId)
         assertEquals(1L, credential?.authority?.counter)
         assertEquals(
