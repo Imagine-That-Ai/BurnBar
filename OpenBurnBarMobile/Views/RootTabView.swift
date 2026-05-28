@@ -187,6 +187,9 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
             openAgentWatchRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
+            openSettingsRoute()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
             isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
         }
@@ -314,6 +317,12 @@ struct RootTabView: View {
         selection = .you
         youPath = NavigationPath()
         youPath.append(YouRoute.computerUse)
+    }
+
+    private func openSettingsRoute() {
+        selection = .you
+        youPath = NavigationPath()
+        youPath.append(YouRoute.settings)
     }
 
     private func applyScreenshotRouteIfNeeded() {

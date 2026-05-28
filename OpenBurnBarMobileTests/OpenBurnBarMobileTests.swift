@@ -135,6 +135,18 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertTrue(transport.isMediaControlReceiverInstalledForTesting)
     }
 
+    func testMobileRootSettingsNotificationRouteIsInstalled() throws {
+        let rootTab = try sourceFile("OpenBurnBarMobile/Views/RootTabView.swift")
+        let rootNavigation = try sourceFile("OpenBurnBarMobile/Views/RootNavigationView.swift")
+
+        XCTAssertTrue(rootTab.contains(#".init("ShowSettings")"#))
+        XCTAssertTrue(rootTab.contains("openSettingsRoute()"))
+        XCTAssertTrue(rootTab.contains("youPath.append(YouRoute.settings)"))
+        XCTAssertTrue(rootNavigation.contains(#".init("ShowSettings")"#))
+        XCTAssertTrue(rootNavigation.contains("openSettingsRoute()"))
+        XCTAssertTrue(rootNavigation.contains("selection = .settings"))
+    }
+
     // MARK: - Stream Session Projection
 
     func testActivityStoreSummarizesRawUsageRowsBySession() throws {
@@ -770,6 +782,20 @@ final class OpenBurnBarMobileTests: XCTestCase {
             ),
             observedAt: Date(timeIntervalSinceReferenceDate: 1_000)
         )
+    }
+
+    private func sourceFile(_ relativePath: String) throws -> String {
+        var root = URL(fileURLWithPath: #filePath)
+        let fileManager = FileManager.default
+        while root.path != "/" {
+            let project = root.appendingPathComponent("OpenBurnBar.xcodeproj")
+            if fileManager.fileExists(atPath: project.path) {
+                let url = root.appendingPathComponent(relativePath)
+                return try String(contentsOf: url, encoding: .utf8)
+            }
+            root.deleteLastPathComponent()
+        }
+        throw NSError(domain: "OpenBurnBarMobileTests", code: 1)
     }
 
     private func makeUsage(
