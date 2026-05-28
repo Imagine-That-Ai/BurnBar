@@ -19,6 +19,7 @@ import * as functions from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 
 import { enforceAuthAndAppCheck } from "../auth.js";
+import { logCallableStart, traceIdFromCallableRequest } from "../logging.js";
 import { getConfig } from "../config.js";
 import { parseHostedQuotaEntitlementDoc } from "../guards.js";
 import type { HostedQuotaEntitlementDoc } from "../types.js";
@@ -57,6 +58,7 @@ export const beginEntitlementBinding = onCall(
   ): Promise<{ appAccountToken: string }> => {
     const uid = request.auth?.uid;
     if (!uid) throw httpsError("unauthenticated", "auth required");
+    logCallableStart("beginEntitlementBinding", traceIdFromCallableRequest(request), uid);
     enforceAuthAndAppCheck(request, uid);
     const productID = request.data.productID ?? hostedQuotaProductID();
     const db = getFirestore();
@@ -84,6 +86,7 @@ export const verifyHostedQuotaEntitlement = onCall(
   ): Promise<HostedQuotaEntitlementDoc> => {
     const uid = request.auth?.uid;
     if (!uid) throw httpsError("unauthenticated", "auth required");
+    logCallableStart("verifyHostedQuotaEntitlement", traceIdFromCallableRequest(request), uid);
     enforceAuthAndAppCheck(request, uid);
     const signedTransactionJWS = String(
       request.data.signedTransactionJWS ?? ""
@@ -155,6 +158,7 @@ export const restoreHostedQuotaEntitlement = onCall(
   ): Promise<HostedQuotaEntitlementDoc> => {
     const uid = request.auth?.uid;
     if (!uid) throw httpsError("unauthenticated", "auth required");
+    logCallableStart("restoreHostedQuotaEntitlement", traceIdFromCallableRequest(request), uid);
     enforceAuthAndAppCheck(request, uid);
     const cfg = loadAppStoreRuntimeConfig();
     const productID = request.data.productID ?? hostedQuotaProductID();

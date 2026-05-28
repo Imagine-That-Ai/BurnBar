@@ -1,5 +1,10 @@
 # WSS Retirement Checklist
 
+Status: completed for the `burnbar` project on 2026-05-28. The Cloud Run
+service `hermes-realtime-relay` and Memorystore instance
+`hermes-realtime-relay-redis-prod-secure` were deleted; current production
+checks should verify they stay absent.
+
 Companion to `docs/HERMES_IROH_RETIREMENT.md`. Phase 7 of the Mercury
 media rollout (`plans/2026-05-15-mercury-media-master-plan.md`) lifts
 the WSS retirement out of the iroh transport plan and folds it into the
@@ -23,7 +28,7 @@ state.
    `iroh_transport_daily_rollups`.
 3. `gcloud run services delete hermes-realtime-relay
    --region=us-central1 --project=burnbar`.
-4. `gcloud redis instances delete hermes-realtime-relay
+4. `gcloud redis instances delete hermes-realtime-relay-redis-prod-secure
    --region=us-central1 --project=burnbar`.
 5. `firebase functions:delete hostedRelayProvision --region=us-central1
    --project=burnbar`.

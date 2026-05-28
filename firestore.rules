@@ -1968,7 +1968,7 @@ service cloud.firestore {
 
     // Operator-side documents. Server-only writes.
     match /ops/computer_use_budget_status/state/current {
-      allow read: if request.auth != null;
+      allow read: if isOperator();
       allow write: if false;
     }
     match /ops/computer_use_session_daily_rollups/days/{day} {
@@ -2503,7 +2503,7 @@ service cloud.firestore {
     // the canonical writers are `evaluateMediaBudget` and
     // `rollupMediaSessionDaily`.
     match /ops/media_budget_status/{document=**} {
-      allow read: if request.auth != null;
+      allow read: if isOperator();
       allow write: if false;
     }
 

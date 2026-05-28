@@ -34,8 +34,10 @@ ops/iroh_transport_daily_rollups/days/{YYYY-MM-DD}
 
 Each rollup includes:
 
-- `successRate`: `iroh_stream_closed / (iroh_stream_closed + iroh_stream_failed + iroh_fallback_to_wss)`.
-- `fallbackRate`: `iroh_fallback_to_wss / terminal events`.
+- `successRate`: `iroh_stream_closed / (iroh_stream_closed + iroh_stream_failed + iroh_fallback_to_wss + iroh_fallback_to_firestore)`.
+- `fallbackRate`: `(iroh_fallback_to_wss + iroh_fallback_to_firestore) / terminal events`.
+- `wssFallbacks` and `firestoreFallbacks`, tracked separately so retired WSS
+  stays at zero while Firestore remains the last-resort fallback.
 - `directShare` and `relayShare`: split of `iroh-direct` versus `iroh-relay` events.
 - `rttMillis.p50`, `p95`, and `p99`.
 - `eventCounts.iroh_pairing_rejected`, which must stay zero for soak gates.

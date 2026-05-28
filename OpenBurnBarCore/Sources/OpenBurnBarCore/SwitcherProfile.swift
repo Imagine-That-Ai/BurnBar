@@ -148,7 +148,16 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     /// The OpenBurnBar provider this CLI profile drains quota from. Bridges the
     /// launch-profile world to the canonical provider catalog so drain-target
     /// selection, quota surfaces, and brand logos all speak the same language.
-    public var agentProvider: AgentProvider {
+    /// The OpenBurnBar provider this CLI profile drains quota from. Bridges the
+    /// launch-profile world to the canonical provider catalog so drain-target
+    /// selection, quota surfaces, and brand logos all speak the same language.
+    ///
+    /// Named explicitly to avoid a Swift overload-resolution clash with a
+    /// pre-existing AgentLens extension (`var agentProvider: AgentProvider?`)
+    /// that returns Optional and historically mapped `.opencode -> nil`. Swift
+    /// could pick either overload at a call site, hiding the bug some of the
+    /// time. Unique naming makes the canonical mapping unambiguous everywhere.
+    public var canonicalAgentProvider: AgentProvider {
         switch self {
         case .codex: return .codex
         case .claude: return .claudeCode
@@ -162,7 +171,9 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
 
     /// Stable provider token used as the per-provider drain-target key in
     /// `switcher_active_profile`.
-    public var providerID: ProviderID { agentProvider.providerID }
+    /// Stable provider token used as the per-provider drain-target key in
+    /// `switcher_active_profile`.
+    public var providerID: ProviderID { canonicalAgentProvider.providerID }
 }
 
 // MARK: - Browser Service Identity

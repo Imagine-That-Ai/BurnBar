@@ -87,94 +87,108 @@ final class CloudSyncCoordinator {
 
     /// Upload all unsynced local usage rows to Firestore.
     /// Call after UsageAggregator.refreshAll().
-    @MainActor
     func syncUsage() async {
         await propagateUsageErrors { await usageSync.sync() }
-        if usageSync.lastSyncDate != nil {
-            lastSyncDate = usageSync.lastSyncDate
+        await MainActor.run {
+            if usageSync.lastSyncDate != nil {
+                lastSyncDate = usageSync.lastSyncDate
+            }
         }
     }
 
     /// Upload unsynced conversation metadata (excluding full transcripts).
-    @MainActor
     func syncConversationMetadata() async {
         await propagateConversationErrors { await conversationSync.sync() }
     }
 
     /// Upload chat threads and messages to Firestore for cross-device resume.
-    @MainActor
     func syncChatThreads() async {
         await propagateChatThreadErrors { await chatThreadSync.sync() }
     }
 
     /// Upload session-log manifests and search metadata to Firestore.
     /// Gated on `sessionLogCloudBackupEnabled`.
-    @MainActor
     func syncSessionLogs() async {
         await propagateSessionLogErrors { await sessionLogSync.sync() }
     }
 
     /// Upload and download encrypted Text Expansion snippets.
-    @MainActor
     func syncTextExpansionSnippets() async {
         await propagateTextExpansionErrors { await textExpansionSync.sync() }
     }
 
     /// Upload non-secret provider account metadata to Firestore for iOS visibility.
-    @MainActor
     func syncProviderAccounts() async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        clearSyncFailureState()
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
+        }
+        guard shouldProceed else { return }
         await providerAccountSync.uploadAccounts()
-        isSyncing = false
+        await MainActor.run { isSyncing = false }
     }
 
     /// Upload local quota snapshots to Firestore for iOS visibility.
-    @MainActor
     func syncQuotaSnapshots(_ snapshots: [ProviderQuotaSnapshot]) async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        clearSyncFailureState()
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
+        }
+        guard shouldProceed else { return }
         await quotaSnapshotSync.uploadSnapshots(snapshots)
-        isSyncing = false
+        await MainActor.run { isSyncing = false }
     }
 
     /// Synchronize shared/team artifacts between local cache and Firestore.
-    @MainActor
     func syncCollaborationArtifacts() async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        clearSyncFailureState()
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
+        }
+        guard shouldProceed else { return }
 
         await collaborationSync.sync()
 
-        lastCollaborationNotice = collaborationSync.lastCollaborationNotice
-        lastSyncDate = collaborationSync.lastSyncDate ?? lastSyncDate
-        recordSyncFailure(collaborationSync.lastSyncError)
-        isSyncing = false
+        await MainActor.run {
+            lastCollaborationNotice = collaborationSync.lastCollaborationNotice
+            lastSyncDate = collaborationSync.lastSyncDate ?? lastSyncDate
+            recordSyncFailure(collaborationSync.lastSyncError)
+            isSyncing = false
+        }
     }
 
     // MARK: - Public API: Download (Cloud → Local)
 
     /// Download remote data from Firestore with durable watermark tracking.
-    @MainActor
     func syncRemoteReplicas() async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        clearSyncFailureState()
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
+        }
+        guard shouldProceed else { return }
         await downloadSync.sync()
-        lastSyncDate = downloadSync.lastSyncDate
-        recordSyncFailure(downloadSync.lastSyncError)
-        cloudTotalCost = downloadSync.cloudTotalCost
-        isSyncing = false
+        await MainActor.run {
+            lastSyncDate = downloadSync.lastSyncDate
+            recordSyncFailure(downloadSync.lastSyncError)
+            cloudTotalCost = downloadSync.cloudTotalCost
+            isSyncing = false
+        }
     }
 
     /// Fetch sum of cost across all devices for this user (last 90 days).
-    @MainActor
     func fetchCloudTotal() async {
         await downloadSync.fetchCloudTotal()
-        cloudTotalCost = downloadSync.cloudTotalCost
+        await MainActor.run {
+            cloudTotalCost = downloadSync.cloudTotalCost
+        }
     }
 
     // MARK: - Session Log Read
@@ -190,44 +204,23 @@ final class CloudSyncCoordinator {
     }
 
     /// Update local device name in Firestore (called from Settings).
-    @MainActor
     func updateLocalDeviceName(_ name: String) async {
         await downloadSync.updateLocalDeviceName(name)
     }
 
     // MARK: - Memory Boundary
 
-    @MainActor
-    static func currentMemorySyncBoundary(
-        settingsManager: any SettingsManagerProtocol = SettingsManager.shared,
-        accountManager: any AccountManaging = AccountManager.shared
-    ) -> OpenBurnBarMemorySyncBoundarySnapshot {
-        OpenBurnBarMemorySyncBoundarySnapshot(
-            mode: .localFirstOptionalCloud,
-            canonicalAuthority: .localSQLite,
-            cloudMetadataBackupEnabled: accountManager.isCloudSyncEnabled && settingsManager.conversationCloudBackupEnabled,
-            cloudSessionLogBackupEnabled: accountManager.isCloudSyncEnabled && settingsManager.sessionLogCloudBackupEnabled,
-            iCloudMirrorEnabled: settingsManager.iCloudSessionMirrorEnabled,
-            collaborationUsesCloudHead: accountManager.isCloudSyncEnabled,
-            notes: [
-                "SQLite and daemon state remain canonical on-device.",
-                "Firestore is an optional replication and collaboration plane, not the serving authority.",
-                "iCloud mirroring copies files for convenience but does not become the canonical memory graph."
-            ]
-        )
-    }
-
-    @MainActor
-    func memorySyncBoundarySnapshot() -> OpenBurnBarMemorySyncBoundarySnapshot {
-        Self.currentMemorySyncBoundary(
-            settingsManager: context.settingsManager,
-            accountManager: context.accountManager
-        )
+    func memorySyncBoundarySnapshot() async -> OpenBurnBarMemorySyncBoundarySnapshot {
+        await MainActor.run {
+            CloudSyncMemoryBoundary.currentSnapshot(
+                settingsManager: context.settingsManager,
+                accountManager: context.accountManager
+            )
+        }
     }
 
     // MARK: - Error Propagation Helpers
 
-    @MainActor
     private func recordSyncFailure(_ message: String?) {
         guard let message, !message.isEmpty else {
             lastSyncError = nil
@@ -243,103 +236,131 @@ final class CloudSyncCoordinator {
         )
     }
 
-    @MainActor
     private func clearSyncFailureState() {
         lastSyncError = nil
         lastTypedSyncError = nil
     }
 
-    @MainActor
     private func propagateUsageErrors(_ block: () async -> Void) async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        clearSyncFailureState()
-        await block()
-        if let err = usageSync.lastSyncError, err.isEmpty == false {
-            recordSyncFailure(err)
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
         }
-        isSyncing = false
+        guard shouldProceed else { return }
+        await block()
+        await MainActor.run {
+            if let err = usageSync.lastSyncError, err.isEmpty == false {
+                recordSyncFailure(err)
+            }
+            isSyncing = false
+        }
     }
 
-    @MainActor
     private func propagateConversationErrors(_ block: () async -> Void) async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        clearSyncFailureState()
-        await block()
-        if let err = conversationSync.lastSyncError, err.isEmpty == false {
-            recordSyncFailure(err)
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
         }
-        isSyncing = false
+        guard shouldProceed else { return }
+        await block()
+        await MainActor.run {
+            if let err = conversationSync.lastSyncError, err.isEmpty == false {
+                recordSyncFailure(err)
+            }
+            isSyncing = false
+        }
     }
 
-    @MainActor
     private func propagateTextExpansionErrors(_ block: () async -> Void) async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        clearSyncFailureState()
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
+        }
+        guard shouldProceed else { return }
         await block()
-        if let err = textExpansionSync.lastSyncError, err.isEmpty == false {
-            recordSyncFailure(err)
+        await MainActor.run {
+            if let err = textExpansionSync.lastSyncError, err.isEmpty == false {
+                recordSyncFailure(err)
+            }
+            if textExpansionSync.lastSyncDate != nil {
+                lastSyncDate = textExpansionSync.lastSyncDate
+            }
+            isSyncing = false
         }
-        if textExpansionSync.lastSyncDate != nil {
-            lastSyncDate = textExpansionSync.lastSyncDate
-        }
-        isSyncing = false
     }
 
-    @MainActor
     private func propagateChatThreadErrors(_ block: () async -> Void) async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        clearSyncFailureState()
-        await block()
-        if let err = chatThreadSync.lastSyncError, err.isEmpty == false {
-            recordSyncFailure(err)
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
         }
-        isSyncing = false
+        guard shouldProceed else { return }
+        await block()
+        await MainActor.run {
+            if let err = chatThreadSync.lastSyncError, err.isEmpty == false {
+                recordSyncFailure(err)
+            }
+            isSyncing = false
+        }
     }
 
-    @MainActor
     private func propagateSessionLogErrors(_ block: () async -> Void) async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        clearSyncFailureState()
-        await block()
-        if let err = sessionLogSync.lastSyncError, err.isEmpty == false {
-            recordSyncFailure(err)
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
         }
-        isSyncing = false
+        guard shouldProceed else { return }
+        await block()
+        await MainActor.run {
+            if let err = sessionLogSync.lastSyncError, err.isEmpty == false {
+                recordSyncFailure(err)
+            }
+            isSyncing = false
+        }
     }
 
     // MARK: - Internal Delegate Methods
 
-    @MainActor
     func delegateUsageSync() async {
         await usageSync.sync()
-        lastSyncDate = usageSync.lastSyncDate
-        lastSyncError = usageSync.lastSyncError
+        await MainActor.run {
+            lastSyncDate = usageSync.lastSyncDate
+            lastSyncError = usageSync.lastSyncError
+        }
     }
 
-    @MainActor
     func delegateConversationSync() async {
         await conversationSync.sync()
-        lastSyncDate = conversationSync.lastSyncDate
-        lastSyncError = conversationSync.lastSyncError
+        await MainActor.run {
+            lastSyncDate = conversationSync.lastSyncDate
+            lastSyncError = conversationSync.lastSyncError
+        }
     }
 
-    @MainActor
     func delegateChatThreadSync() async {
         await chatThreadSync.sync()
-        lastSyncDate = chatThreadSync.lastSyncDate
-        lastSyncError = chatThreadSync.lastSyncError
+        await MainActor.run {
+            lastSyncDate = chatThreadSync.lastSyncDate
+            lastSyncError = chatThreadSync.lastSyncError
+        }
     }
 
-    @MainActor
     func delegateSessionLogSync() async {
         await sessionLogSync.sync()
-        lastSyncDate = sessionLogSync.lastSyncDate
-        lastSyncError = sessionLogSync.lastSyncError
+        await MainActor.run {
+            lastSyncDate = sessionLogSync.lastSyncDate
+            lastSyncError = sessionLogSync.lastSyncError
+        }
     }
 
     func delegateCollaborationSync() async {
@@ -351,11 +372,12 @@ final class CloudSyncCoordinator {
         }
     }
 
-    @MainActor
     func delegateDownloadSync() async {
         await downloadSync.sync()
-        lastSyncDate = downloadSync.lastSyncDate
-        lastSyncError = downloadSync.lastSyncError
+        await MainActor.run {
+            lastSyncDate = downloadSync.lastSyncDate
+            lastSyncError = downloadSync.lastSyncError
+        }
         await fetchCloudTotal()
     }
 }

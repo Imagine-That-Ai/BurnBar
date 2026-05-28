@@ -39,7 +39,7 @@ import {
 import {
   revokeAllLinksForAccount,
   upsertDeviceLink,
-} from "../providerAccountDeviceLinks.js";
+} from "../domains/device-links/index.js";
 import { eraseUserAccount } from "../accountDeletion.js";
 import { HOSTED_RUNNER_SECRETS } from "../hostedRunnerConfig.js";
 import {

@@ -23,6 +23,7 @@ import type {
 } from "./types.js";
 import { syncKillSwitchForBudgetLevel } from "./computerUseRemoteConfig.js";
 import { numberField } from "./guards.js";
+import { logError, logInfo } from "./logging.js";
 import { remoteConfigStringValue } from "./remoteConfigGuards.js";
 
 const SOFT_CAP_USD = 1500;
@@ -135,24 +136,38 @@ export const evaluateComputerUseBudget = onSchedule(
     timeoutSeconds: 540,
   },
   async () => {
-    const tunings = await loadBudgetTunings();
-    const now = new Date();
-    const { monthToDateUSD, daysElapsed, daysInMonth: total } = await sumMonthToDate(now);
-    const projected =
-      monthToDateUSD * (total / Math.max(daysElapsed, 1));
-    const level = pickLevel(projected, tunings);
-    const env = envelope(level);
+    try {
+      const tunings = await loadBudgetTunings();
+      const now = new Date();
+      const { monthToDateUSD, daysElapsed, daysInMonth: total } = await sumMonthToDate(now);
+      const projected =
+        monthToDateUSD * (total / Math.max(daysElapsed, 1));
+      const level = pickLevel(projected, tunings);
+      const env = envelope(level);
 
-    const doc: ComputerUseBudgetStatusDoc = {
-      level,
-      projectedMonthEndUSD: Math.round(projected * 100) / 100,
-      monthToDateUSD: Math.round(monthToDateUSD * 100) / 100,
-      ...env,
-      updatedAt: Timestamp.fromDate(now),
-    };
-    await getFirestore()
-      .doc("ops/computer_use_budget_status/state/current")
-      .set(doc, { merge: true });
-    await syncKillSwitchForBudgetLevel(level);
+      const doc: ComputerUseBudgetStatusDoc = {
+        level,
+        projectedMonthEndUSD: Math.round(projected * 100) / 100,
+        monthToDateUSD: Math.round(monthToDateUSD * 100) / 100,
+        ...env,
+        updatedAt: Timestamp.fromDate(now),
+      };
+      await getFirestore()
+        .doc("ops/computer_use_budget_status/state/current")
+        .set(doc, { merge: true });
+      await syncKillSwitchForBudgetLevel(level);
+      logInfo({
+        event: "computer_use_budget_evaluated",
+        level,
+        month_to_date_usd: doc.monthToDateUSD,
+        projected_month_end_usd: doc.projectedMonthEndUSD,
+      });
+    } catch (err) {
+      logError({
+        event: "computer_use_budget_evaluate_failed",
+        error: String(err),
+      });
+      throw err;
+    }
   },
 );

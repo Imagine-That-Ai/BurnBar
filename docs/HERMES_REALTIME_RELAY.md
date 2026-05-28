@@ -1,15 +1,27 @@
 # Hermes Realtime Relay
 
-OpenBurnBar supports two remote Hermes relay paths:
+> **Retired 2026-05-28.** The Cloud Run WebSocket relay and
+> `hermes-realtime-relay-redis-prod-secure` Memorystore instance were deleted
+> from the `burnbar` project. The active remote path is iroh with Firestore as
+> the last-resort fallback; see [`HERMES_IROH_TRANSPORT.md`](HERMES_IROH_TRANSPORT.md).
 
-- **Realtime relay:** iOS/iPadOS and the Mac connect to a Cloud Run WebSocket service. Cloud Run routes encrypted frames through Redis Pub/Sub. This is the preferred path for near-realtime streaming.
+This document is kept as historical implementation reference for local
+experiments and incident archaeology. Do not recreate the production Cloud Run
+service or Redis backend without a new budget/architecture decision.
+
+Before retirement, OpenBurnBar supported two remote Hermes relay paths:
+
+- **Realtime relay:** iOS/iPadOS and the Mac connected to a Cloud Run WebSocket service. Cloud Run routed encrypted frames through Redis Pub/Sub.
 - **Firestore fallback:** the existing encrypted Firestore request/chunk relay remains available when the realtime endpoint is not configured or temporarily fails.
 
 The realtime service never receives plaintext chat content. iOS still encrypts each relay request to the Mac relay public key, and the Mac encrypts every response chunk back to the request key. Cloud Run and Redis only carry routing metadata and ciphertext.
 
-The hosted route is intentionally premium-only infrastructure. Every WebSocket upgrade must pass Firebase Auth, Firebase App Check, an explicit relay role header, and an unexpired Apple-verified `hosted_quota_sync` entitlement before the relay accepts the socket.
+The retired hosted route was premium-only infrastructure. Every WebSocket upgrade had to pass Firebase Auth, Firebase App Check, an explicit relay role header, and an unexpired Apple-verified `hosted_quota_sync` entitlement before the relay accepted the socket.
 
-## Deploy
+## Historical Deploy Reference
+
+Do not use this section for the `burnbar` production project. It exists only to
+document how the retired WSS relay worked.
 
 1. Create a Memorystore Redis instance in the same region as the relay. Use Standard Tier, Redis 7, Redis AUTH, and in-transit encryption for production so Redis has automatic failover and every Cloud Run to Redis hop is authenticated and encrypted. Basic/plaintext Redis is only for local or disposable staging.
 2. Ensure Cloud Run can reach Redis. Prefer Direct VPC egress when available; use a Serverless VPC Access connector when Direct VPC egress is not available for the project.
@@ -54,11 +66,11 @@ In OpenBurnBar for macOS:
 4. Optionally turn on **Launch Hermes Dashboard and gateway when OpenBurnBar opens**.
 5. Turn on Remote Relay.
 
-OpenBurnBar ships with the hosted relay endpoint built in; normal users do not paste infrastructure URLs. The endpoint field is kept behind Advanced relay endpoint for development and self-hosted staging only.
+Current OpenBurnBar builds ship with a blank hosted relay endpoint. Older builds shipped the hosted relay endpoint built in; normal users did not paste infrastructure URLs. The endpoint field is kept behind Advanced relay endpoint for development and self-hosted staging only.
 
 Hermes Remote Relay is a premium capability. The Mac can run Hermes locally without a subscription, but advertising a hosted relay connection and sending mobile relay traffic require the Apple-verified `hosted_quota_sync` entitlement for `com.openburnbar.hostedQuotaSync.cloud.monthly`. Firestore rules, callable functions, and the WebSocket relay all enforce that gate so hosted relay cost is tied to paid accounts.
 
-The Mac publishes the realtime relay URL to its `hermes_connections` document only after the Cloud Run service acknowledges `host.register` with `host.ready`. Mobile uses that verified URL first and falls back to Firestore if realtime connection fails. If the relay service is reachable but no Mac host is subscribed, iOS now receives an immediate realtime error instead of waiting for the full request timeout before falling back.
+In the retired WSS mode, the Mac published the realtime relay URL to its `hermes_connections` document only after the Cloud Run service acknowledged `host.register` with `host.ready`. Current builds clear the realtime relay URL and rely on iroh first, then Firestore. If the old relay service was reachable but no Mac host was subscribed, iOS received an immediate realtime error instead of waiting for the full request timeout before falling back.
 
 For chat completions, the Mac host forwards upstream Server-Sent Events as soon as each complete SSE event is received. It does not wait for the local Hermes gateway to finish the whole response before sending encrypted realtime chunks back to iOS. Non-streaming relay operations, such as model and session listing, are split into bounded encrypted data fragments before completion so large catalogs cannot exceed the WebSocket frame budget.
 

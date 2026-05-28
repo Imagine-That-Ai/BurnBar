@@ -1,12 +1,8 @@
 /**
- * @fileoverview Provider Account Device Links — server-side helpers.
+ * @fileoverview Provider account device link persistence helpers.
  *
  * Canonical path:
  *   users/{uid}/provider_account_device_links/{accountID}_{deviceID}
- *
- * ProviderAccountDoc.sourceDeviceID remains for compatibility, but new readers
- * should prefer these links because one provider account can be attached to
- * multiple devices.
  */
 
 import { type Firestore } from "firebase-admin/firestore";
@@ -16,13 +12,11 @@ import type {
   DeviceLinkCapability,
   DeviceLinkStatus,
   ProviderAccountDeviceLinkDoc,
-  ProviderAccountDoc,
-} from "./types.js";
-import { isRecord, parseProviderAccountDoc, recordOrUndefined, stringField } from "./guards.js";
+} from "../../types.js";
+import { isRecord, parseProviderAccountDoc, recordOrUndefined, stringField } from "../../guards.js";
+import { logInfo } from "../../logging.js";
 
 const SCHEMA_VERSION = 1;
-
-const VALID_CAPABILITIES: readonly DeviceLinkCapability[] = ["owner", "use", "add"];
 
 export function isDeviceLinkCapability(value: unknown): value is DeviceLinkCapability {
   switch (value) {
@@ -128,7 +122,7 @@ export async function adoptDeviceLink(params: AdoptParams): Promise<ProviderAcco
   const capability: DeviceLinkCapability =
     deviceID === account.sourceDeviceID ? "owner" : requested === "owner" ? "use" : requested;
 
-  return upsertDeviceLink({
+  const link = await upsertDeviceLink({
     db,
     uid,
     accountID,
@@ -136,6 +130,14 @@ export async function adoptDeviceLink(params: AdoptParams): Promise<ProviderAcco
     deviceDisplayName: resolvedName,
     capability,
   });
+  logInfo({
+    event: "device_link_adopted",
+    user_id_hash: uid.slice(0, 8),
+    account_id: accountID,
+    device_id: deviceID,
+    capability,
+  });
+  return link;
 }
 
 interface RevokeParams {
@@ -158,6 +160,12 @@ export async function revokeDeviceLink(params: RevokeParams): Promise<void> {
     },
     { merge: true }
   );
+  logInfo({
+    event: "device_link_revoked",
+    user_id_hash: params.uid.slice(0, 8),
+    account_id: params.accountID,
+    device_id: params.deviceID,
+  });
 }
 
 export async function backfillUserDeviceLinks(
@@ -200,6 +208,13 @@ export async function backfillUserDeviceLinks(
       writes += 1;
     }
   }
+  if (writes > 0) {
+    logInfo({
+      event: "device_link_backfill",
+      user_id_hash: uid.slice(0, 8),
+      writes,
+    });
+  }
   return writes;
 }
 
@@ -228,6 +243,12 @@ export async function revokeAllLinksForAccount(
     );
   }
   await batch.commit();
+  logInfo({
+    event: "device_link_revoke_all",
+    user_id_hash: uid.slice(0, 8),
+    account_id: accountID,
+    revoked_count: snap.size,
+  });
 }
 
 async function resolveDeviceName(

@@ -553,6 +553,165 @@ data class FirestoreMediaQuotaUsageDoc(
       },
     },
   },
+  "device-links": {
+    models: {
+      ProviderAccountDeviceLinkDoc: {
+        ts: `export interface ProviderAccountDeviceLinkDoc {
+  id: string;
+  accountID: string;
+  deviceID: string;
+  deviceDisplayName: string;
+  capability: string;
+  status: string;
+  lastObservedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}`,
+        swift: `/// Firestore: users/{uid}/provider_account_device_links/{accountID}_{deviceID}
+public struct FirestoreProviderAccountDeviceLinkDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var accountID: String
+    public var deviceID: String
+    public var deviceDisplayName: String
+    public var capability: String
+    public var status: String
+    public var lastObservedAt: String
+    public var createdAt: String
+    public var updatedAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreProviderAccountDeviceLinkDoc(
+    val id: String = "",
+    @get:PropertyName("accountID") @set:PropertyName("accountID")
+    var accountId: String = "",
+    @get:PropertyName("deviceID") @set:PropertyName("deviceID")
+    var deviceId: String = "",
+    val deviceDisplayName: String = "",
+    val capability: String = "",
+    val status: String = "",
+    val lastObservedAt: String = "",
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+    },
+  },
+  "model-benchmarks": {
+    models: {
+      ModelBenchmarkSnapshotDoc: {
+        ts: `export interface ModelBenchmarkSnapshotDoc {
+  id: string;
+  source: string;
+  sourceURL?: string;
+  attribution?: string;
+  fetchedAt: string;
+  modelID: string;
+  providerID?: string;
+  taskCategory: string;
+  score?: number;
+  rank?: number;
+  costSignal?: number;
+  inputCostPerMtoken?: number;
+  outputCostPerMtoken?: number;
+  blendedCostPerMtoken?: number;
+  latencySignal?: number;
+  contextWindowTokens?: number;
+  reliabilitySignal?: number;
+  confidence?: number;
+  freshness: string;
+  schemaVersion: number;
+  updatedAt: string;
+}`,
+        swift: `/// Firestore: model_benchmark_snapshots/{source_model_task_timestamp}
+public struct FirestoreModelBenchmarkSnapshotDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var source: String
+    public var sourceURL: String?
+    public var attribution: String?
+    public var fetchedAt: String
+    public var modelID: String
+    public var providerID: String?
+    public var taskCategory: String
+    public var score: Double?
+    public var rank: Int?
+    public var costSignal: Double?
+    public var inputCostPerMtoken: Double?
+    public var outputCostPerMtoken: Double?
+    public var blendedCostPerMtoken: Double?
+    public var latencySignal: Double?
+    public var contextWindowTokens: Int?
+    public var reliabilitySignal: Double?
+    public var confidence: Double?
+    public var freshness: String
+    public var schemaVersion: Int
+    public var updatedAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreModelBenchmarkSnapshotDoc(
+    val id: String = "",
+    val source: String = "",
+    val sourceURL: String? = null,
+    val attribution: String? = null,
+    val fetchedAt: String = "",
+    @get:PropertyName("modelID") @set:PropertyName("modelID")
+    var modelId: String = "",
+    @get:PropertyName("providerID") @set:PropertyName("providerID")
+    var providerId: String? = null,
+    val taskCategory: String = "",
+    val score: Double? = null,
+    val rank: Long? = null,
+    val costSignal: Double? = null,
+    val inputCostPerMtoken: Double? = null,
+    val outputCostPerMtoken: Double? = null,
+    val blendedCostPerMtoken: Double? = null,
+    val latencySignal: Double? = null,
+    val contextWindowTokens: Long? = null,
+    val reliabilitySignal: Double? = null,
+    val confidence: Double? = null,
+    val freshness: String = "",
+    val schemaVersion: Long = 0,
+    val updatedAt: String = "",
+)`,
+      },
+      ModelBenchmarkSourceStatusDoc: {
+        ts: `export interface ModelBenchmarkSourceStatusDoc {
+  source: string;
+  status: string;
+  fetchedAt?: string;
+  message: string;
+  attribution?: string;
+  schemaVersion: number;
+  updatedAt: string;
+}`,
+        swift: `/// Firestore: model_benchmark_source_status/{source}
+public struct FirestoreModelBenchmarkSourceStatusDoc: Codable, Sendable, Equatable {
+    public var source: String
+    public var status: String
+    public var fetchedAt: String?
+    public var message: String
+    public var attribution: String?
+    public var schemaVersion: Int
+    public var updatedAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreModelBenchmarkSourceStatusDoc(
+    val source: String = "",
+    val status: String = "",
+    val fetchedAt: String? = null,
+    val message: String = "",
+    val attribution: String? = null,
+    val schemaVersion: Long = 0,
+    val updatedAt: String = "",
+)`,
+      },
+    },
+  },
 };
 
 function emitTypeScript(domainId, models) {

@@ -13,13 +13,12 @@ import OpenBurnBarCore
 ///
 /// Gated separately on `sessionLogCloudBackupEnabled`.
 /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
-@MainActor
-final class SessionLogSyncService: CloudSyncDomain {
+final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
     private let encryptedCloudClient: SessionLogEncryptedCloudClient
     private let vaultKeyStore: SessionLogVaultKeyProviding
     private let vaultKeyPublisher: SessionLogVaultKeyPublishing
-    private let archivedSessionMirror: SessionLogArchivedSessionMirroring
+    private var archivedSessionMirror: SessionLogArchivedSessionMirroring?
 
     private(set) var isSyncing = false
     private(set) var lastSyncError: String?
@@ -27,27 +26,39 @@ final class SessionLogSyncService: CloudSyncDomain {
 
     init(
         context: CloudSyncContext,
-        encryptedCloudClient: SessionLogEncryptedCloudClient = FirebaseSessionLogEncryptedCloudClient(),
+        encryptedCloudClient: SessionLogEncryptedCloudClient? = nil,
         vaultKeyStore: SessionLogVaultKeyProviding = CloudVaultKeyStore(),
         vaultKeyPublisher: SessionLogVaultKeyPublishing = FirebaseSessionLogVaultKeyPublisher(),
-        archivedSessionMirror: SessionLogArchivedSessionMirroring = CLIAgentSessionMirror.shared
+        archivedSessionMirror: SessionLogArchivedSessionMirroring? = nil
     ) {
         self.context = context
-        self.encryptedCloudClient = encryptedCloudClient
+        self.encryptedCloudClient = encryptedCloudClient ?? FirebaseSessionLogEncryptedCloudClient()
         self.vaultKeyStore = vaultKeyStore
         self.vaultKeyPublisher = vaultKeyPublisher
         self.archivedSessionMirror = archivedSessionMirror
     }
 
+    private func resolvedArchivedSessionMirror() async -> SessionLogArchivedSessionMirroring {
+        if let archivedSessionMirror {
+            return archivedSessionMirror
+        }
+        let shared = await MainActor.run { CLIAgentSessionMirror.shared }
+        archivedSessionMirror = shared
+        return shared
+    }
+
     /// Upload session-log manifests and search metadata to Firestore.
     func sync() async {
-        guard context.accountManager.isFirebaseAvailable,
-              context.accountManager.isSignedIn,
-              context.accountManager.isCloudSyncEnabled,
-              context.settingsManager.sessionLogCloudBackupEnabled,
-              !context.syncIsSuppressed(),
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              gate.account.isCloudSyncEnabled,
+              gate.settings.sessionLogCloudBackupEnabled,
+              !gate.syncSuppressed,
               !isSyncing,
-              let uid = context.currentUID else { return }
+              let uid = gate.account.uid else { return }
+
+        let deviceId = gate.account.deviceId
 
         isSyncing = true
         lastSyncError = nil
@@ -70,7 +81,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                 let safeId = record.id
                     .replacingOccurrences(of: ":", with: "_")
                     .replacingOccurrences(of: "/", with: "_")
-                let docId = "\(context.deviceId)_\(safeId)"
+                let docId = "\(deviceId)_\(safeId)"
                 let manifestRef = logsRef.document(docId)
                 let bodyHash = Self.sha256Hex(markdown)
                 let model = sessionModelMap["\(record.provider.rawValue):\(record.sessionId)"] ?? "unknown"
@@ -80,7 +91,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                    existing["chunkMetadataVersion"] as? Int == Self.chunkMetadataVersion,
                    existing["cloudSearchIndexVersion"] as? Int == Self.cloudSearchIndexVersion,
                    existing["bodyStorage"] as? String == "firebase_storage_encrypted" {
-                    await archivedSessionMirror.mirrorArchivedLog(record, cloudLogDocumentID: docId)
+                    await resolvedArchivedSessionMirror().mirrorArchivedLog(record, cloudLogDocumentID: docId)
                     try context.dataStore.markSessionLogsSynced(ids: [record.id])
                     continue
                 }
@@ -103,7 +114,7 @@ final class SessionLogSyncService: CloudSyncDomain {
 
                 var manifest: [String: Any] = [
                     "id": record.id,
-                    "deviceId": context.deviceId,
+                    "deviceId": deviceId,
                     "provider": record.provider.rawValue,
                     "sessionId": record.sessionId,
                     "sourceType": record.sourceType.rawValue,
@@ -163,7 +174,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                         "docId": docId,
                         "conversationId": record.id,
                         "sessionId": record.sessionId,
-                        "deviceId": context.deviceId,
+                        "deviceId": deviceId,
                         "provider": record.provider.rawValue,
                         "model": model,
                         "projectName": record.projectName,
@@ -198,7 +209,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                 }
 
                 try await encryptedCloudClient.commitEncryptedSearchIndex(
-                    deviceId: context.deviceId,
+                    deviceId: deviceId,
                     indexVersion: Self.cloudSearchIndexVersion,
                     document: [
                         "documentID": docId,
@@ -230,7 +241,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                         try await batch.commit()
                     }
                 }
-                await archivedSessionMirror.mirrorArchivedLog(record, cloudLogDocumentID: docId)
+                await resolvedArchivedSessionMirror().mirrorArchivedLog(record, cloudLogDocumentID: docId)
             }
 
             let ids = unsynced.map(\.id)
@@ -238,11 +249,11 @@ final class SessionLogSyncService: CloudSyncDomain {
             lastSyncDate = Date()
             lastSyncError = nil
         } catch {
-            recordSyncError(error)
+            await recordSyncError(error)
         }
     }
 
-    private func recordSyncError(_ error: Error) {
+    private func recordSyncError(_ error: Error) async {
         lastSyncError = error.localizedDescription
 
         let nsError = error as NSError
@@ -251,7 +262,7 @@ final class SessionLogSyncService: CloudSyncDomain {
               code == .permissionDenied || code == .unauthenticated else {
             return
         }
-        context.suppressedSyncUntil = Date().addingTimeInterval(CloudSyncBackoffPolicy.permissionDeniedCooldown)
+        await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
     }
 
     /// Splits a UTF-8 string into chunks each fitting within `maxBytes` bytes.
@@ -279,12 +290,13 @@ final class SessionLogSyncService: CloudSyncDomain {
     private static let cloudSearchIndexVersion = 2
 
     func uploadProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot) async throws {
-        guard context.accountManager.isFirebaseAvailable,
-              context.accountManager.isSignedIn,
-              context.accountManager.isCloudSyncEnabled,
-              context.settingsManager.sessionLogCloudBackupEnabled,
-              !context.syncIsSuppressed(),
-              let uid = context.currentUID else { return }
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              gate.account.isCloudSyncEnabled,
+              gate.settings.sessionLogCloudBackupEnabled,
+              !gate.syncSuppressed,
+              let uid = gate.account.uid else { return }
 
         let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
         try await vaultKeyPublisher.publishCloudVaultKey(uid: uid, vaultKey: vaultKey, context: context)
@@ -312,12 +324,13 @@ final class SessionLogSyncService: CloudSyncDomain {
     }
 
     func fetchCloudProjectMemorySnapshot(projectSlug: String) async throws -> ProjectMemorySnapshot? {
-        guard context.accountManager.isFirebaseAvailable,
-              context.accountManager.isSignedIn,
-              context.accountManager.isCloudSyncEnabled,
-              context.settingsManager.sessionLogCloudBackupEnabled,
-              !context.syncIsSuppressed(),
-              let uid = context.currentUID else { return nil }
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              gate.account.isCloudSyncEnabled,
+              gate.settings.sessionLogCloudBackupEnabled,
+              !gate.syncSuppressed,
+              let uid = gate.account.uid else { return nil }
 
         guard let vaultKey = try vaultKeyStore.loadKey(uid: uid) else { return nil }
         let payload: [String: Any]
@@ -344,9 +357,10 @@ final class SessionLogSyncService: CloudSyncDomain {
     /// Fetches session log manifests from Firestore for the signed-in user.
     /// Returns ConversationRecords with empty fullText; body is fetched lazily via DownloadSyncService.
     func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
-        guard context.accountManager.isFirebaseAvailable,
-              context.accountManager.isSignedIn,
-              let uid = context.currentUID else { return [] }
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              let uid = gate.account.uid else { return [] }
         let vaultKey = try? vaultKeyStore.loadKey(uid: uid)
 
         let snapshot = try await context.firestoreGateway
@@ -398,7 +412,6 @@ final class SessionLogSyncService: CloudSyncDomain {
 
 }
 
-@MainActor
 protocol SessionLogVaultKeyProviding {
     func loadKey(uid: String) throws -> Data?
     func getOrCreateKey(uid: String) throws -> Data
@@ -406,7 +419,6 @@ protocol SessionLogVaultKeyProviding {
 
 extension CloudVaultKeyStore: SessionLogVaultKeyProviding {}
 
-@MainActor
 protocol SessionLogArchivedSessionMirroring {
     func mirrorArchivedLog(_ conversation: ConversationRecord, cloudLogDocumentID: String?) async
 }
@@ -550,7 +562,6 @@ struct EncryptedSessionBlobUploadTicket {
     let uploadURL: URL
 }
 
-@MainActor
 protocol SessionLogEncryptedCloudClient {
     func beginEncryptedSessionBlobUpload(
         documentID: String,
@@ -568,8 +579,7 @@ protocol SessionLogEncryptedCloudClient {
     func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any]
 }
 
-@MainActor
-final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
+final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient, @unchecked Sendable {
     private let injectedFunctions: Functions?
     private let urlSession: URLSession
 
@@ -697,8 +707,11 @@ extension CloudSyncService {
     }
 
     func searchCloudSessionLogs(query: String, limit: Int = 50) async throws -> [ConversationRecord] {
-        guard accountManager.isFirebaseAvailable,
-              accountManager.isSignedIn,
+        let accountReady = await MainActor.run {
+            (accountManager.isFirebaseAvailable, accountManager.isSignedIn)
+        }
+        guard accountReady.0,
+              accountReady.1,
               let uid = Auth.auth().currentUser?.uid else { return [] }
         guard let vaultKey = try await cloudVaultKey(uid: uid) else { return [] }
         let tokenHashes = try CloudVaultCrypto.tokenHashes(for: query, keyData: vaultKey, limit: 10)
@@ -760,7 +773,8 @@ extension CloudSyncService {
     /// the body source.
     /// - Parameter docId: The Firestore document ID (stored in `record.sessionId` for cloud-sourced records).
     func fetchCloudSessionLogBody(docId: String) async throws -> String {
-        guard accountManager.isFirebaseAvailable,
+        let firebaseAvailable = await MainActor.run { accountManager.isFirebaseAvailable }
+        guard firebaseAvailable,
               let uid = Auth.auth().currentUser?.uid else { return "" }
 
         let manifest = try await db

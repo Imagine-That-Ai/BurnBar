@@ -43,6 +43,11 @@ actor LocalMetricsAggregator {
                 "searchP50": String(format: "%.1f", snapshot.searchP50Ms ?? 0),
                 "recordCount": "\(healthRecords.count)"
             ])
+            LocalMetricsJSONLWriter.append(event: [
+                "event": "metrics_snapshot",
+                "search_p50_ms": String(format: "%.1f", snapshot.searchP50Ms ?? 0),
+                "search_p95_ms": String(format: "%.1f", snapshot.searchP95Ms ?? 0),
+            ])
         } catch {
             AppLogger.metrics.silentFailure("compute", error: error)
         }
@@ -151,5 +156,69 @@ actor LocalMetricsAggregator {
         let upper = min(lower + 1, sorted.count - 1)
         let fraction = index - Double(lower)
         return sorted[lower] * (1 - fraction) + sorted[upper] * fraction
+    }
+}
+
+// MARK: - metrics.jsonl rotation
+
+/// Appends structured metric events to `metrics.jsonl` in Application Support with rotation.
+enum LocalMetricsJSONLWriter {
+    static let filename = "metrics.jsonl"
+    static let maxBytes = 5 * 1024 * 1024
+    static let maxRotatedFiles = 3
+
+    static func append(event: [String: String], supportDirectory: URL? = nil) {
+        let directory = supportDirectory ?? defaultSupportDirectory()
+        guard let directory else { return }
+
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let fileURL = directory.appendingPathComponent(filename)
+            rotateIfNeeded(at: fileURL)
+            let payload: [String: Any] = [
+                "ts": ISO8601DateFormatter().string(from: Date()),
+            ].merging(event) { _, new in new }
+            let line = try JSONSerialization.data(withJSONObject: payload) + Data([0x0A])
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                let handle = try FileHandle(forWritingTo: fileURL)
+                defer { try? handle.close() }
+                try handle.seekToEnd()
+                try handle.write(contentsOf: line)
+            } else {
+                try line.write(to: fileURL, options: .atomic)
+            }
+        } catch {
+            AppLogger.metrics.silentFailure("metrics_jsonl_append", error: error)
+        }
+    }
+
+    private static func defaultSupportDirectory() -> URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("OpenBurnBar", isDirectory: true)
+    }
+
+    private static func rotateIfNeeded(at fileURL: URL) {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let size = attributes[.size] as? NSNumber,
+              size.intValue >= maxBytes else {
+            return
+        }
+
+        for index in stride(from: maxRotatedFiles, through: 1, by: -1) {
+            let source = fileURL.appendingPathExtension("\(index)")
+            let destination = fileURL.appendingPathExtension("\(index + 1)")
+            if FileManager.default.fileExists(atPath: source.path) {
+                if index == maxRotatedFiles {
+                    try? FileManager.default.removeItem(at: source)
+                } else {
+                    try? FileManager.default.removeItem(at: destination)
+                    try? FileManager.default.moveItem(at: source, to: destination)
+                }
+            }
+        }
+
+        let firstArchive = fileURL.appendingPathExtension("1")
+        try? FileManager.default.removeItem(at: firstArchive)
+        try? FileManager.default.moveItem(at: fileURL, to: firstArchive)
     }
 }

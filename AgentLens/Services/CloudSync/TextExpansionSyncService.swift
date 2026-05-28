@@ -2,8 +2,7 @@ import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
 
-@MainActor
-final class TextExpansionSyncService: CloudSyncDomain {
+final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
     private let vaultKeyStore: CloudVaultKeyStore
     private let vaultKeyPublisher: FirebaseSessionLogVaultKeyPublisher
@@ -23,10 +22,14 @@ final class TextExpansionSyncService: CloudSyncDomain {
     }
 
     func sync() async {
+        let gate = await context.syncGate()
+        let textExpansionCloudSyncEnabled = await MainActor.run {
+            SettingsManager.shared.textExpansion.cloudSyncEnabled
+        }
         guard !isSyncing,
-              !context.syncIsSuppressed(),
-              SettingsManager.shared.textExpansion.cloudSyncEnabled,
-              let uid = context.currentUID else { return }
+              !gate.syncSuppressed,
+              textExpansionCloudSyncEnabled,
+              let uid = gate.account.uid else { return }
         isSyncing = true
         lastSyncError = nil
         defer { isSyncing = false }
@@ -34,16 +37,16 @@ final class TextExpansionSyncService: CloudSyncDomain {
         do {
             let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
             try await vaultKeyPublisher.publishCloudVaultKey(uid: uid, vaultKey: vaultKey, context: context)
-            try await uploadPending(uid: uid, vaultKey: vaultKey)
+            try await uploadPending(uid: uid, vaultKey: vaultKey, deviceId: gate.account.deviceId)
             try await downloadRemote(uid: uid, vaultKey: vaultKey)
             lastSyncDate = Date()
         } catch {
             lastSyncError = error.localizedDescription
-            context.suppressedSyncUntil = Date().addingTimeInterval(CloudSyncBackoffPolicy.permissionDeniedCooldown)
+            await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
         }
     }
 
-    private func uploadPending(uid: String, vaultKey: Data) async throws {
+    private func uploadPending(uid: String, vaultKey: Data, deviceId: String) async throws {
         let snippets = try context.dataStore.fetchUnsyncedTextExpansionSnippets(limit: 200)
         guard !snippets.isEmpty else { return }
         let collection = context.firestoreGateway
@@ -57,7 +60,7 @@ final class TextExpansionSyncService: CloudSyncDomain {
                 try Self.cloudDocument(
                     snippet: snippet,
                     uid: uid,
-                    deviceID: context.deviceId,
+                    deviceID: deviceId,
                     vaultKey: vaultKey
                 ),
                 forDocument: document,

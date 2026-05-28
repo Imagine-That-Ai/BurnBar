@@ -71,10 +71,25 @@ When adding a new critical path, ship **one structured log event** and **one cou
 
 **Signals:**
 
-- `GET http://127.0.0.1:{port}/health` — version + ok ([OpenBurnBarHTTPGatewayServer](../../OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift))
-- `GET http://127.0.0.1:{port}/metrics` — JSON snapshot (uptime, heartbeat, gateway counters stub)
-- On-disk heartbeat: `BurnBarDaemonPaths.defaultHeartbeatURL`
+- `GET http://127.0.0.1:{port}/health` — `{ "ok": true, "version": "<daemonVersion>" }` ([OpenBurnBarHTTPGatewayServer](../../OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift))
+- `GET http://127.0.0.1:{port}/metrics` — JSON snapshot from [`BurnBarGatewayMetricsSnapshot`](../../OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarGatewayMetrics.swift) (fields below)
+- On-disk heartbeat: `~/Library/Application Support/OpenBurnBar/daemon/openburnbar-daemon.heartbeat.json` (override dir via `OPENBURNBAR_DAEMON_SUPPORT_DIR`)
+- Unix socket RPC: `swift run --package-path OpenBurnBarDaemon OpenBurnBarCLI health` (or installed `openburnbar health`)
 - Structured logs: `gateway_*`, `daemon_*` events
+
+**`GET /metrics` JSON fields** (camelCase keys):
+
+| Field | SLO use |
+|-------|---------|
+| `gatewayEnabled` | Gateway configured on |
+| `heartbeatStale` | Must be `false` when daemon is healthy |
+| `uptimeSeconds` | Process uptime |
+| `counters.gateway_enabled` | `1` when gateway enabled |
+| `counters.daemon_heartbeat_present` | `1` when heartbeat file decodes |
+| `counters.heartbeat_stale` | `0` when heartbeat age `< 20s` |
+| `counters.rpc_requests_total` | Monotonic RPC request count (socket + gateway) |
+| `counters.rpc_errors_total` | RPC responses with error codes (auth, rate limit, decode) |
+| `heartbeat.updatedAt` | ISO8601 last write (when present) |
 
 **Playbook:**
 
@@ -104,13 +119,24 @@ When adding a new critical path, ship **one structured log event** and **one cou
 
 **Signals:**
 
-- `functions/src/logging.ts` — `logInfo` / `logError` with `event` keys
+- `functions/src/logging.ts` — `logInfo` / `logError` / `logWarn` emit JSON with `event`, `trace_id`, `severity`
+- **Stable `event` keys** (log-based SLO filters):
+
+  | Event | Surface |
+  |-------|---------|
+  | `computer_use_budget_evaluated` | Hourly `evaluateComputerUseBudget` success |
+  | `computer_use_budget_evaluate_failed` | Budget evaluator failure |
+  | `callable_info` / `callable_error` / `callable_warn` | HTTPS callables (e.g. `rebuild_usage_rollups_*`) |
+  | `rollup.rebuild_failed` | Scheduled rollup rebuild |
+  | `router_rundown.latest_failed` | Router rundown fetch |
+
 - Log-based metrics (example hosted MCP — extend pattern for new surfaces):
 
   - `logging.googleapis.com/user/openburnbar_hosted_mcp_5xx`
   - `logging.googleapis.com/user/openburnbar_hosted_mcp_429`
   - `logging.googleapis.com/user/openburnbar_hosted_mcp_auth_denial`
 
+- Firestore budget state: `ops/computer_use_budget_status/state/current` (`level`, `monthToDateUSD`, `projectedMonthEndUSD`)
 - Cloud Monitoring dashboards — see [REMOTE_MCP_RUNBOOK.md](../REMOTE_MCP_RUNBOOK.md#monitor)
 
 ### Latency
@@ -137,15 +163,56 @@ When adding a new critical path, ship **one structured log event** and **one cou
 
 ## Local verification
 
-```bash
-# Daemon gateway (default loopback port from daemon config)
-curl -sS "http://127.0.0.1:8317/health" | jq .
-curl -sS "http://127.0.0.1:8317/metrics" | jq .
+Default gateway port is **8317** (`BurnBarGatewayConfiguration.port`, overridable via `OPENBURNBAR_GATEWAY_PORT` or `--gateway-port`).
 
-# Tech debt / remediation trend snapshot
+```bash
+# --- Daemon gateway (loopback; gateway must be enabled in daemon config) ---
+PORT="${OPENBURNBAR_GATEWAY_PORT:-8317}"
+
+# Availability: /health must return ok:true
+curl -fsS "http://127.0.0.1:${PORT}/health" | jq -e '.ok == true'
+
+# Metrics snapshot + SLO counters (exit 1 if heartbeat stale or missing)
+curl -fsS "http://127.0.0.1:${PORT}/metrics" | jq -e '
+  .gatewayEnabled == true
+  and .heartbeatStale == false
+  and .counters["heartbeat_stale"] == 0
+  and .counters["daemon_heartbeat_present"] == 1
+'
+
+# Human-readable metrics dump
+curl -sS "http://127.0.0.1:${PORT}/metrics" | jq '{gatewayEnabled, heartbeatStale, uptimeSeconds, counters, heartbeat: .heartbeat.updatedAt}'
+
+# --- On-disk heartbeat (works even when HTTP gateway is disabled) ---
+HB="$HOME/Library/Application Support/OpenBurnBar/daemon/openburnbar-daemon.heartbeat.json"
+test -f "$HB" && jq -e '.updatedAt' "$HB"
+# Staleness: updatedAt within 20s (BurnBarDaemonHeartbeat.defaultStaleThreshold)
+python3 - <<'PY'
+import json, os, sys
+from datetime import datetime, timezone
+path = os.path.expanduser("~/Library/Application Support/OpenBurnBar/daemon/openburnbar-daemon.heartbeat.json")
+with open(path) as f:
+    snap = json.load(f)
+updated = datetime.fromisoformat(snap["updatedAt"].replace("Z", "+00:00"))
+age = (datetime.now(timezone.utc) - updated).total_seconds()
+sys.exit(0 if age <= 20 else 1)
+PY
+
+# --- Unix socket RPC health (daemon process must be running) ---
+swift run --package-path OpenBurnBarDaemon OpenBurnBarCLI health 2>/dev/null | head -5
+
+# --- Cloud Functions structured logs (emulator or deployed; grep local emulator output) ---
+# Budget evaluator success/failure events:
+#   event=computer_use_budget_evaluated | computer_use_budget_evaluate_failed
+# Callable rollup rebuild:
+#   message=rebuild_usage_rollups_succeeded | rebuild_usage_rollups_failed
+
+# --- Tech debt / remediation trend snapshot ---
 ./scripts/ci/update-tech-debt-metrics.sh
 cat docs/TECH_DEBT_METRICS.md
 ```
+
+**Bearer auth:** When the gateway binds outside loopback, pass `Authorization: Bearer <OPENBURNBAR_GATEWAY_TOKEN>` on `/health` and `/metrics`.
 
 ---
 

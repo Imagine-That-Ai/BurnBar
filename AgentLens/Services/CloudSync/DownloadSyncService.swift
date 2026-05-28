@@ -7,8 +7,7 @@ import OpenBurnBarCore
 ///
 /// Handles cross-device replication with durable, per-account, per-collection watermark tracking.
 /// Layout: `users/{uid}/usage`, `users/{uid}/conversations`, `users/{uid}/session_logs`
-@MainActor
-final class DownloadSyncService: CloudSyncDomain {
+final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
 
     private(set) var isSyncing = false
@@ -25,9 +24,11 @@ final class DownloadSyncService: CloudSyncDomain {
     /// VAL-PERSIST-010: Watermark advances only after successful sync commit.
     /// VAL-PERSIST-011: Watermark scope is account-aware and collection-safe.
     func sync() async {
-        guard context.accountManager.isFirebaseAvailable, context.accountManager.isSignedIn else { return }
-        guard let resolvedUid = context.currentUID else { return }
-        let localDeviceId = context.deviceId
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable,
+              gate.account.isSignedIn,
+              let resolvedUid = gate.account.uid else { return }
+        let localDeviceId = gate.account.deviceId
 
         isSyncing = true
         lastSyncError = nil
@@ -43,13 +44,14 @@ final class DownloadSyncService: CloudSyncDomain {
 
         lastSyncDate = Date()
         await fetchCloudTotal()
-        await context.dataStore.refresh()
+        await context.refreshPresentationLayer()
     }
 
     /// Fetch sum of cost across all devices for this user (last 90 days).
     func fetchCloudTotal(uid: String? = nil) async {
-        guard context.accountManager.isFirebaseAvailable else { return }
-        let resolvedUid = uid ?? context.currentUID
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable else { return }
+        let resolvedUid = uid ?? gate.account.uid
         guard let resolvedUid else { return }
 
         let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
@@ -78,9 +80,10 @@ final class DownloadSyncService: CloudSyncDomain {
 
     /// Updates the local device name in Firestore (called from Settings).
     func updateLocalDeviceName(_ name: String) async {
-        guard context.accountManager.isFirebaseAvailable, let uid = context.currentUID else { return }
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable, let uid = gate.account.uid else { return }
         let devicesRef = context.firestoreGateway.collection("users").document(uid).collection("devices")
-        try? await devicesRef.document(context.deviceId).setData(["deviceName": name], merge: true)
+        try? await devicesRef.document(gate.account.deviceId).setData(["deviceName": name], merge: true)
     }
 
     // MARK: - Device Registry
@@ -512,7 +515,8 @@ final class DownloadSyncService: CloudSyncDomain {
 
     /// Reassembles chunk sub-documents into the full Markdown body for a session log.
     func fetchCloudSessionLogBody(docId: String) async throws -> String {
-        guard context.accountManager.isFirebaseAvailable, let uid = context.currentUID else { return "" }
+        let gate = await context.syncGate()
+        guard gate.account.isFirebaseAvailable, let uid = gate.account.uid else { return "" }
 
         let snapshot = try await withCloudSyncRetry(
             policy: context.retryPolicy,

@@ -25,6 +25,7 @@ count_rg() {
 
 quarantine_files="$(find "${repo_root}/AgentLensTests/Archive" -name '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
 quarantine_lines="$(find "${repo_root}/AgentLensTests/Archive" -name '*.swift' -exec cat {} + 2>/dev/null | wc -l | tr -d ' ')"
+legacy_reference_files="$(find "${repo_root}/AgentLensTests/LegacyReference" -name '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
 
 types_ts_lines="$(count_swift_lines "${repo_root}/functions/src/types.ts")"
 types_legacy_lines="$(count_swift_lines "${repo_root}/functions/src/types/legacy.ts")"
@@ -79,7 +80,15 @@ for rel in \
   "AgentLens/Services/CloudSync/CLIAgentSessionMirror.swift" \
   "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager.swift"
 do
-  if [[ -f "${repo_root}/${rel}" ]] && rg -q '@MainActor' "${repo_root}/${rel}" 2>/dev/null; then
+  if [[ -f "${repo_root}/${rel}" ]] && python3 - <<'PY' "${repo_root}/${rel}"
+import pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+# Class-scoped @MainActor on listed I/O facades (excludes @MainActor static shared accessors).
+if re.search(r"@MainActor\s*\n(?:@\w+\s*\n)*(?:final\s+)?class\s", text):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
     main_actor_io_services=$((main_actor_io_services + 1))
   fi
 done
@@ -103,6 +112,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 |--------|---------|---------------|---------------|
 | Quarantined test files | ${quarantine_files} | shrinking | 0 |
 | Quarantined test lines | ${quarantine_lines} | shrinking | 0 |
+| Legacy reference suites (ADR, not quarantined) | ${legacy_reference_files} | stable | — |
 | \`@MainActor\` on I/O facades (listed set) | ${main_actor_io_services} | 4 | 0 |
 | Empty \`catch {}\` blocks (app + daemon) | ${empty_catch_blocks} | 0 | 0 |
 | \`Task.detached\` in \`AgentLens/Services/\` | ${task_detached_services} | ≤ 10 | 0 |

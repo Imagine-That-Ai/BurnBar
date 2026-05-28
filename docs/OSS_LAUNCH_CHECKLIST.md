@@ -81,11 +81,10 @@ Re-check every item immediately before changing repository visibility.
 - Production Firebase Functions list includes the hosted entitlement callables,
   App Store Server Notifications V2 webhook, daily entitlement reconciler, and
   hosted quota account/refresh/delete callables in `us-central1` on Node 22.
-- Cloud Run reports `openburnbar-quota-runner` and `hermes-realtime-relay`
-  `RoutesReady=True`; production Memorystore Redis is now
-  `hermes-realtime-relay-redis-prod-secure`, `READY`, Standard HA, Redis 7,
-  AUTH-enabled, and configured for `SERVER_AUTHENTICATION` in-transit
-  encryption.
+- Cloud Run reports `openburnbar-quota-runner` `RoutesReady=True`; the Hermes
+  realtime Cloud Run relay and `hermes-realtime-relay-redis-prod-secure`
+  Memorystore backend were retired/deleted on 2026-05-28 and are no longer
+  production launch requirements.
 - Runtime env/secret readback confirms Apple ASC secrets are bound to the
   Apple-aware functions, `HOSTED_QUOTA_RUNNER_TOKEN` is bound to the hosted
   refresh callable and quota runner, and the hosted runner rejects an

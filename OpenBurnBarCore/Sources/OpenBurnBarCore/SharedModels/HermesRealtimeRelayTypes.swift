@@ -3,7 +3,7 @@ import Foundation
 public enum HermesRealtimeRelayProtocol {
     public static let version = 1
     public static let capability = "realtime_relay"
-    public static let defaultHostedRelayURLString = "wss://hermes-realtime-relay-cjrjb5ckqq-uc.a.run.app/v1/hermes/ws"
+    public static let defaultHostedRelayURLString = ""
     public static let roleHeaderName = "X-OpenBurnBar-Relay-Role"
     public static let hostRoleHeaderValue = "host"
     public static let clientRoleHeaderValue = "client"

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — SOTA remediation closure (2026-05-28)
+- Daemon `GET /metrics` exposes **`rpc_latency_ms_p95`** alongside RPC request/error counters.
+- Mac app **`metrics.jsonl`** rotation (5 MiB, 3 archives) via `LocalMetricsJSONLWriter`.
+- Functions **`withCallableLogging`** helper; structured start logging on encrypted search, insights hosted answer, OpenTimestamps, and App Store callables.
+- Firestore **`ops/*_budget_status`** reads restricted to operator claim.
+- `CloudSyncCoordinator` sync methods use **`MainActor.run`** for observable state (type not `@MainActor`).
+- **`CloudSyncContext.syncGate()`** — off-main sync domains read immutable account/settings snapshots; class-level `@MainActor` cleared on CloudSync domain services and legacy `CloudSyncService` shim.
+- Tech-debt metric counts **class-scoped** `@MainActor` on listed I/O facades only ([ADR 002](docs/architecture/002-actor-boundaries.md)).
+
+### Changed — Hermes WSS relay retired
+- Deleted the production Cloud Run WebSocket relay and
+  `hermes-realtime-relay-redis-prod-secure` Redis backend from the `burnbar`
+  project. Mobile now cascades from iroh directly to Firestore fallback, and the
+  Mac host no longer starts or advertises the retired WSS fallback.
+- Updated the commercial launch gate to require the retired relay and Redis to
+  stay absent instead of treating them as production launch prerequisites.
+
 ### Added — Grok Build first-class CLI harness
 - **`GrokParser`** — reads `~/.grok/sessions/` (`summary.json`, `signals.json`, `chat_history.jsonl`, optional `updates.jsonl`) under `AgentProvider.xAI` with exact token confidence.
 - **Catalog** — `grok-build-0.1` model family; `grok-code-fast-1` retains `grok-build-0.1` alias for retirement migration.
@@ -21,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`CLILaunchInvokerTests`** — use injected `launchHandler` for repeated quota-exhaustion launches (eliminates process-timing flake).
 - **`BurnBarHTTPGatewayServerTests`** — align `/v1/messages` pool-isolation expectations with generic `No eligible route` responses and live-catalog probe behavior.
 - **Quarantine → Archive** — move stale suites to `AgentLensTests/Archive/`; quarantine directory is pointer-only.
+
+### Fixed — Switcher drain-target grouping (branch `follow-up/switcher-sqlite-profile-tests`)
+- **Drain-target grouping** — `DrainTargetSwitcher` groups CLI profiles via `SwitcherCLIProfileType.canonicalAgentProvider` (OpenBurnBarCore); covers all six CLI types including OpenCode.
+- **Account switcher** — OpenCode maps to `.openCode` provider row (no longer silently dropped).
+- **Daemon SQLite profile store** — remove force-try in regression tests; per-provider round-trip and global active-ID semantics covered.
+- **Tests** — `DrainTargetSwitcherGroupedTests`, expanded `SwitcherCLILaunchTests` (`launchUsingDrainTarget`), drain-pin UI in ProviderRoutingCockpit.
 
 ### Added — Custom proxy model aliases
 - **Gateway model aliases** — Settings → Agents → Models can expose any route-ready model under a custom wire id (optional display name, per-alias “hide original model in /v1/models”). Clients call the alias in `/v1/models` and chat requests; routing still uses the canonical upstream model. Re-sync Droid after alias changes.

@@ -138,18 +138,13 @@ export interface ProviderAccountDoc {
 export type DeviceLinkCapability = "owner" | "use" | "add";
 export type DeviceLinkStatus = "active" | "revoked";
 
-export interface ProviderAccountDeviceLinkDoc {
-  id: string;
-  accountID: string;
-  deviceID: string;
-  deviceDisplayName: string;
+export type ProviderAccountDeviceLinkDoc = Omit<
+  import("./generated/device-links.js").ProviderAccountDeviceLinkDoc,
+  "capability" | "status"
+> & {
   capability: DeviceLinkCapability;
   status: DeviceLinkStatus;
-  lastObservedAt: string;
-  createdAt: string;
-  updatedAt: string;
-  schemaVersion: number;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Firestore: runtime_connection_preferences/{deviceID}_{runtimeKind}
@@ -481,7 +476,7 @@ export interface ComputerUseAuditExportSignerPublicKeyDoc {
 
 /**
  * Audit event the Mac (or the Cloud Functions hosted runner) writes when an
- * iroh stream is opened, closed, or fails over to the WSS relay. Surfaces
+ * iroh stream is opened, closed, or falls back to a non-iroh relay. Surfaces
  * transport health to the user's audit log without exposing payload bytes.
  */
 export interface IrohTransportAuditEventDoc {
@@ -495,7 +490,8 @@ export interface IrohTransportAuditEventDoc {
     | "iroh_pairing_published"
     | "iroh_pairing_verified"
     | "iroh_pairing_rejected"
-    | "iroh_fallback_to_wss";
+    | "iroh_fallback_to_wss"
+    | "iroh_fallback_to_firestore";
   /** Observed RTT (ms) of the most recent ping on this stream, if known. */
   rttMillis?: number;
   /**
@@ -529,6 +525,7 @@ export interface IrohTransportDailyRollupDoc {
   streamCloses: number;
   streamFailures: number;
   wssFallbacks: number;
+  firestoreFallbacks: number;
   successRate: number;
   fallbackRate: number;
   directShare: number;
@@ -938,39 +935,23 @@ export type ModelBenchmarkFreshness =
   | "cached"
   | "manual";
 
-export interface ModelBenchmarkSnapshotDoc {
-  id: string;
+export type ModelBenchmarkSnapshotDoc = Omit<
+  import("./generated/model-benchmarks.js").ModelBenchmarkSnapshotDoc,
+  "source" | "taskCategory" | "freshness" | "providerID"
+> & {
   source: ModelBenchmarkSource;
-  sourceURL?: string;
-  attribution?: string;
-  fetchedAt: string;
-  modelID: string;
   providerID?: ProviderID;
   taskCategory: ModelBenchmarkTaskCategory;
-  score?: number;
-  rank?: number;
-  costSignal?: number;
-  inputCostPerMtoken?: number;
-  outputCostPerMtoken?: number;
-  blendedCostPerMtoken?: number;
-  latencySignal?: number;
-  contextWindowTokens?: number;
-  reliabilitySignal?: number;
-  confidence?: number;
   freshness: ModelBenchmarkFreshness;
-  schemaVersion: number;
-  updatedAt: string;
-}
+};
 
-export interface ModelBenchmarkSourceStatusDoc {
+export type ModelBenchmarkSourceStatusDoc = Omit<
+  import("./generated/model-benchmarks.js").ModelBenchmarkSourceStatusDoc,
+  "source" | "status"
+> & {
   source: ModelBenchmarkSource;
   status: "fresh" | "stale" | "unavailable" | "error";
-  fetchedAt?: string;
-  message: string;
-  attribution?: string;
-  schemaVersion: number;
-  updatedAt: string;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Firestore: usage_rollups/{windowKey}

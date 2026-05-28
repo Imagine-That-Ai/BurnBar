@@ -22,6 +22,7 @@ public enum IrohTransportAuditEvent: String, Sendable, Equatable {
     case pairingVerified = "iroh_pairing_verified"
     case pairingRejected = "iroh_pairing_rejected"
     case fallbackToWss = "iroh_fallback_to_wss"
+    case fallbackToFirestore = "iroh_fallback_to_firestore"
 }
 
 public enum IrohTransportSelection: String, Sendable, Equatable {

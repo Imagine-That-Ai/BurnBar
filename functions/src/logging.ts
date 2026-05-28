@@ -38,3 +38,58 @@ export function logWarn(fields: LogFields): void {
   };
   console.warn(JSON.stringify(payload));
 }
+
+export function traceIdFromCallableRequest(request: { rawRequest?: { headers?: Record<string, unknown> } }): string {
+  const headers = request.rawRequest?.headers;
+  const incoming = headers?.["x-cloud-trace-context"] ?? headers?.["x-trace-id"];
+  if (typeof incoming === "string" && incoming.trim().length > 0) {
+    return incoming.split("/")[0]?.trim() || randomUUID();
+  }
+  return randomUUID();
+}
+
+export function logCallableStart(name: string, traceId: string, uid?: string): void {
+  logInfo({
+    event: "callable_start",
+    callable: name,
+    trace_id: traceId,
+    user_id_hash: uid?.slice(0, 8),
+  });
+}
+
+export function logCallableSuccess(name: string, traceId: string, uid?: string): void {
+  logInfo({
+    event: "callable_success",
+    callable: name,
+    trace_id: traceId,
+    user_id_hash: uid?.slice(0, 8),
+  });
+}
+
+export function logCallableFailure(name: string, traceId: string, error: unknown, uid?: string): void {
+  logError({
+    event: "callable_error",
+    callable: name,
+    trace_id: traceId,
+    user_id_hash: uid?.slice(0, 8),
+    error: String(error),
+  });
+}
+
+export async function withCallableLogging<T>(
+  name: string,
+  request: { rawRequest?: { headers?: Record<string, unknown> } },
+  uid: string | undefined,
+  handler: (traceId: string) => Promise<T>,
+): Promise<T> {
+  const traceId = traceIdFromCallableRequest(request);
+  logCallableStart(name, traceId, uid);
+  try {
+    const result = await handler(traceId);
+    logCallableSuccess(name, traceId, uid);
+    return result;
+  } catch (error) {
+    logCallableFailure(name, traceId, error, uid);
+    throw error;
+  }
+}
