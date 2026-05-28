@@ -17,6 +17,16 @@ final class BurnBarDaemonMetricsCountersTests: XCTestCase {
         XCTAssertEqual(counters["rpc_errors_total"], 1)
     }
 
+    func test_snapshotTracksRPCLatencyP95() {
+        BurnBarDaemonMetricsCounters.recordRPCLatency(milliseconds: 10)
+        BurnBarDaemonMetricsCounters.recordRPCLatency(milliseconds: 20)
+        BurnBarDaemonMetricsCounters.recordRPCLatency(milliseconds: 100)
+        BurnBarDaemonMetricsCounters.recordRPCLatency(milliseconds: 200)
+
+        let counters = BurnBarDaemonMetricsCounters.snapshot()
+        XCTAssertEqual(counters["rpc_latency_ms_p95"], 185)
+    }
+
     func test_liveMetricsSnapshotMergesRPCCounters() {
         BurnBarDaemonMetricsCounters.recordRPCRequest()
 

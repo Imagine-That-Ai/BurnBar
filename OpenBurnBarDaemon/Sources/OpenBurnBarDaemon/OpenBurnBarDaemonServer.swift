@@ -313,6 +313,13 @@ public actor BurnBarDaemonServer {
     }
 
     private func responseData(for requestData: Data, peerPID: pid_t?) async -> Data {
+        let rpcStartedAt = ContinuousClock.now
+        defer {
+            let elapsed = rpcStartedAt.duration(to: ContinuousClock.now)
+            let milliseconds = Int(elapsed.components.seconds * 1000)
+                + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+            BurnBarDaemonMetricsCounters.recordRPCLatency(milliseconds: milliseconds)
+        }
         do {
             let decoder = JSONDecoder()
             let incomingRequest = try decoder.decode(IncomingRequestEnvelope.self, from: requestData)
