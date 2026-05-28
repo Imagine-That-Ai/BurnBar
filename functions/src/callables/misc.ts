@@ -9,6 +9,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { computeUserRollups, writeUserRollups } from "../rollups.js";
 import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "../demoSeed.js";
+import { logError, logInfo } from "../logging.js";
 
 // ---------------------------------------------------------------------------
 // Callable: rebuildUsageRollups
@@ -27,14 +28,29 @@ export const rebuildUsageRollups = onCall(
     }
     enforceAuthAndAppCheck(request, uid);
 
-    const rollups = await computeUserRollups(db, uid);
-    await writeUserRollups(db, uid, rollups);
-
-    return {
-      success: true,
-      computedAt: rollups.all_time.computedAt,
-      windows: ["today", "7d", "30d", "90d", "all_time"] as const,
-    };
+    try {
+      const rollups = await computeUserRollups(db, uid);
+      await writeUserRollups(db, uid, rollups);
+      logInfo({
+        event: "callable_info",
+        message: "rebuild_usage_rollups_succeeded",
+        user_id_hash: uid.slice(0, 8),
+        computed_at: rollups.all_time.computedAt,
+      });
+      return {
+        success: true,
+        computedAt: rollups.all_time.computedAt,
+        windows: ["today", "7d", "30d", "90d", "all_time"] as const,
+      };
+    } catch (err) {
+      logError({
+        event: "callable_error",
+        message: "rebuild_usage_rollups_failed",
+        user_id_hash: uid.slice(0, 8),
+        detail: String(err),
+      });
+      throw err;
+    }
   }
 );
 
