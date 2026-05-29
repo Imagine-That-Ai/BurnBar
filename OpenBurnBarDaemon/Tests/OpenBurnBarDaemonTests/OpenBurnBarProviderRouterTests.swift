@@ -254,6 +254,27 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(aliasRoute.resolvedModelID, "claude-opus-4-7")
     }
 
+    func testRouterRoutesClaudeOpus48WireIDsThroughExistingAnthropicFamily() async throws {
+        let harness = try makeHarness(name: "anthropic-opus-48-wire-id")
+        try await harness.configStore.setSecret("sk-ant-test", for: "anthropic")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://api.anthropic.com/v1",
+                preferredModelIDs: ["claude-opus-4-7-family"]
+            )
+        )
+
+        for requestedModel in ["claude-opus-4-8", "claude-opus-4-8[1m]"] {
+            let route = try await harness.router.route(modelName: requestedModel)
+            XCTAssertEqual(route.requestedModel, requestedModel)
+            XCTAssertEqual(route.resolvedModelID, requestedModel)
+            XCTAssertEqual(route.canonicalModelID, "claude-opus-4-7")
+            XCTAssertEqual(route.modelCapabilityClassID, "anthropic:opus")
+        }
+    }
+
     func testRouterTreatsFactoryAsRoutableDroidProvider() async throws {
         let harness = try makeHarness(name: "factory-droid")
         _ = try await harness.configStore.upsertProvider(

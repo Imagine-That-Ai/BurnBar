@@ -302,53 +302,58 @@ public struct BurnBarLiveModelCatalog: Sendable {
 
         var rows: [BurnBarLiveAdvertisedModel] = []
         for model in configuration.preferredModels {
-            let wireModelID = advertisedModelID(for: model, providerID: configuration.provider.id)
-            let liveModel = liveRefresh?.advertisedModels.first { $0.id.caseInsensitiveCompare(wireModelID) == .orderedSame }
-            let liveConfirmed = liveIDSet?.contains(wireModelID.lowercased())
-            let liveBlocksRouting = liveRefresh?.blocksRouting == true
-            let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(wireModelID)
-            let liveError: String? = {
-                if let error = liveRefresh?.error {
-                    return error
-                }
-                if liveConfirmed == false {
-                    return "Configured model '\(wireModelID)' was not advertised by \(configuration.provider.displayName)'s live /models endpoint."
-                }
-                return account.lastError
-            }()
-            let baseRow = BurnBarLiveAdvertisedModel(
-                id: wireModelID,
-                displayName: liveModel?.displayName ?? model.displayName,
+            for wireModelID in advertisedWireModelIDs(
+                for: model,
                 providerID: configuration.provider.id,
-                providerName: configuration.provider.displayName,
-                accountID: account.accountID,
-                accountLabel: account.accountLabel,
-                sourceID: "\(configuration.provider.id)#\(account.accountID)",
-                sourceKind: liveRefresh?.sourceKind ?? configuredModelSourceKind(for: configuration.provider.id),
-                capabilities: capabilities,
-                modelCapabilities: model.modelCapabilities,
-                quotaState: account.quotaState,
-                enabled: account.enabled,
-                advertisementEnabled: advertisementEnabled,
-                routeEligible: providerCanRoute
-                    && account.enabled
-                    && account.hasCredential
-                    && isEligibleQuotaState(account.quotaState)
-                    && !liveBlocksRouting
-                    && (liveConfirmed ?? true),
-                lastRefreshAt: liveRefresh?.refreshedAt ?? account.lastRefreshAt,
-                lastError: liveError
-            )
-            rows.append(baseRow)
-            rows.append(contentsOf: variantRows(
-                from: baseRow,
-                configuration: configuration,
-                account: account
-            ))
-            rows.append(contentsOf: aliasRows(
-                from: baseRow,
-                configuration: configuration
-            ))
+                formatFamily: configuration.provider.formatFamily
+            ) {
+                let liveModel = liveRefresh?.advertisedModels.first { $0.id.caseInsensitiveCompare(wireModelID) == .orderedSame }
+                let liveConfirmed = liveIDSet?.contains(wireModelID.lowercased())
+                let liveBlocksRouting = liveRefresh?.blocksRouting == true
+                let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(wireModelID)
+                let liveError: String? = {
+                    if let error = liveRefresh?.error {
+                        return error
+                    }
+                    if liveConfirmed == false {
+                        return "Configured model '\(wireModelID)' was not advertised by \(configuration.provider.displayName)'s live /models endpoint."
+                    }
+                    return account.lastError
+                }()
+                let baseRow = BurnBarLiveAdvertisedModel(
+                    id: wireModelID,
+                    displayName: liveModel?.displayName ?? model.displayName,
+                    providerID: configuration.provider.id,
+                    providerName: configuration.provider.displayName,
+                    accountID: account.accountID,
+                    accountLabel: account.accountLabel,
+                    sourceID: "\(configuration.provider.id)#\(account.accountID)",
+                    sourceKind: liveRefresh?.sourceKind ?? configuredModelSourceKind(for: configuration.provider.id),
+                    capabilities: capabilities,
+                    modelCapabilities: model.modelCapabilities,
+                    quotaState: account.quotaState,
+                    enabled: account.enabled,
+                    advertisementEnabled: advertisementEnabled,
+                    routeEligible: providerCanRoute
+                        && account.enabled
+                        && account.hasCredential
+                        && isEligibleQuotaState(account.quotaState)
+                        && !liveBlocksRouting
+                        && (liveConfirmed ?? true),
+                    lastRefreshAt: liveRefresh?.refreshedAt ?? account.lastRefreshAt,
+                    lastError: liveError
+                )
+                rows.append(baseRow)
+                rows.append(contentsOf: variantRows(
+                    from: baseRow,
+                    configuration: configuration,
+                    account: account
+                ))
+                rows.append(contentsOf: aliasRows(
+                    from: baseRow,
+                    configuration: configuration
+                ))
+            }
         }
 
         guard liveRefresh?.isAuthoritative == true else {
@@ -470,6 +475,28 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 hidesBaseModel: alias.hidesBaseModel
             )
         }
+    }
+
+    private func advertisedWireModelIDs(
+        for model: BurnBarCatalogModel,
+        providerID: String,
+        formatFamily: BurnBarProviderFormatFamily
+    ) -> [String] {
+        if providerID.lowercased() == "ollama" {
+            return [advertisedModelID(for: model, providerID: providerID)]
+        }
+
+        if formatFamily == .anthropic,
+           model.id.lowercased().hasSuffix("-family") {
+            let aliases = model.aliases
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            if !aliases.isEmpty {
+                return aliases
+            }
+        }
+
+        return [advertisedModelID(for: model, providerID: providerID)]
     }
 
     private func advertisedModelID(for model: BurnBarCatalogModel, providerID: String) -> String {

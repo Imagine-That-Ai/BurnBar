@@ -78,8 +78,16 @@ Anthropic bridge for those local endpoints.
 
 A request for a model not advertised for that local endpoint returns `503`
 with `No eligible route for <model>. Add or enable an account/provider that
-serves this model.` A request whose route cannot prove an exact canonical model
-identity returns `503` before contacting upstream. Within a compatible pool,
+serves this model.` before BurnBar contacts upstream.
+
+Anthropic `-family` catalog rows can list multiple CLI wire IDs as aliases.
+`OpenBurnBarLiveModelCatalog` publishes every alias in `/v1/models`, and the
+gateway treats aliases on the same family row as mutually routable. When
+Anthropic ships a new default CLI model name, add the wire ID to the bundled
+`catalog.json` family row and restart the daemon so the running bundle picks
+up the change.
+
+A request whose route cannot prove an exact canonical model identity returns `503` before contacting upstream. Within a compatible pool,
 in-flight failover only retries routes whose `canonicalModelID` matches the
 requested canonical model. When a real upstream route proves that a
 provider/account/model pair cannot serve the selected model, BurnBar records
