@@ -883,6 +883,42 @@ final class ScreenShareControlInputPolicyTests: XCTestCase {
             ),
             1
         )
+        XCTAssertEqual(ScreenShareControlInputPolicy.rightClickHoldDelayNanoseconds, 550_000_000)
+    }
+
+    func testPendingControlRightClickCancelsOnlyAfterGestureBecomesScrollOrPan() {
+        XCTAssertFalse(
+            ScreenShareControlInputPolicy.shouldCancelPendingControlRightClick(
+                distance: 12,
+                panStartDistance: 30,
+                isEdgeScrollGesture: false,
+                hasResolvedClickPoint: true
+            )
+        )
+        XCTAssertFalse(
+            ScreenShareControlInputPolicy.shouldCancelPendingControlRightClick(
+                distance: 34,
+                panStartDistance: 30,
+                isEdgeScrollGesture: false,
+                hasResolvedClickPoint: true
+            )
+        )
+        XCTAssertTrue(
+            ScreenShareControlInputPolicy.shouldCancelPendingControlRightClick(
+                distance: 34,
+                panStartDistance: 30,
+                isEdgeScrollGesture: false,
+                hasResolvedClickPoint: false
+            )
+        )
+        XCTAssertTrue(
+            ScreenShareControlInputPolicy.shouldCancelPendingControlRightClick(
+                distance: 12,
+                panStartDistance: 30,
+                isEdgeScrollGesture: true,
+                hasResolvedClickPoint: true
+            )
+        )
     }
 
     func testTrackpadTapClicksImmediatelyButDragDoesNot() {
