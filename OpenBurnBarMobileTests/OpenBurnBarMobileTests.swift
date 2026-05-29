@@ -1373,3 +1373,145 @@ private final class MobileFakeSelfHostedQuotaRunnerSecrets: SelfHostedQuotaRunne
         savedByAccount.removeValue(forKey: accountID)
     }
 }
+
+final class SwarmBackgroundPowerPolicyTests: XCTestCase {
+    func testVisibilityConstraintKeepsMostRestrictiveState() {
+        XCTAssertEqual(.prominent, MobileBackgroundVisibility.prominent.constrained(by: .prominent))
+        XCTAssertEqual(.subtle, MobileBackgroundVisibility.prominent.constrained(by: .subtle))
+        XCTAssertEqual(.obscured, MobileBackgroundVisibility.subtle.constrained(by: .obscured))
+        XCTAssertEqual(.hidden, MobileBackgroundVisibility.hidden.constrained(by: .prominent))
+    }
+
+    func testProminentActiveBackgroundUsesFullLivePlan() {
+        let plan = SwarmBackgroundPowerPolicy.resolve(
+            location: .everywhere,
+            conditionMet: true,
+            requestedVisibility: .prominent,
+            scenePhaseActive: true,
+            isLowPowerModeEnabled: false,
+            reduceMotion: false
+        )
+
+        XCTAssertEqual(plan.mode, .live)
+        XCTAssertEqual(plan.maxFrameRate, 30)
+        XCTAssertEqual(plan.particleScale, 1.0)
+        XCTAssertTrue(plan.allowsAutoCycling)
+        XCTAssertTrue(plan.allowsSparkles)
+        XCTAssertFalse(plan.isBatteryThrottled)
+    }
+
+    func testSubtleBackgroundUsesThrottledLivePlan() {
+        let plan = SwarmBackgroundPowerPolicy.resolve(
+            location: .everywhere,
+            conditionMet: true,
+            requestedVisibility: .subtle,
+            scenePhaseActive: true,
+            isLowPowerModeEnabled: false,
+            reduceMotion: false
+        )
+
+        XCTAssertEqual(plan.mode, .live)
+        XCTAssertEqual(plan.maxFrameRate, 15)
+        XCTAssertLessThan(plan.particleScale, 0.5)
+        XCTAssertFalse(plan.allowsAutoCycling)
+        XCTAssertFalse(plan.allowsSparkles)
+        XCTAssertTrue(plan.isBatteryThrottled)
+    }
+
+    func testCoveredInactiveOrReduceMotionBackgroundBecomesStatic() {
+        XCTAssertEqual(
+            staticPlan(requestedVisibility: .obscured, scenePhaseActive: true, reduceMotion: false).mode,
+            .staticBackdrop
+        )
+        XCTAssertEqual(
+            staticPlan(requestedVisibility: .prominent, scenePhaseActive: false, reduceMotion: false).mode,
+            .staticBackdrop
+        )
+        XCTAssertEqual(
+            staticPlan(requestedVisibility: .prominent, scenePhaseActive: true, reduceMotion: true).mode,
+            .staticBackdrop
+        )
+    }
+
+    func testDecorativeEffectsOnlyRunWhenVisibleAndActive() {
+        XCTAssertTrue(MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: .prominent,
+            scenePhaseActive: true
+        ))
+        XCTAssertTrue(MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: .subtle,
+            scenePhaseActive: true
+        ))
+        XCTAssertFalse(MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: .obscured,
+            scenePhaseActive: true
+        ))
+        XCTAssertFalse(MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: .hidden,
+            scenePhaseActive: true
+        ))
+        XCTAssertFalse(MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: .prominent,
+            scenePhaseActive: false
+        ))
+    }
+
+    func testLowPowerKeepsOnlyProminentBackgroundLiveAtSubtleRate() {
+        let prominentPlan = SwarmBackgroundPowerPolicy.resolve(
+            location: .everywhere,
+            conditionMet: true,
+            requestedVisibility: .prominent,
+            scenePhaseActive: true,
+            isLowPowerModeEnabled: true,
+            reduceMotion: false
+        )
+        let subtlePlan = SwarmBackgroundPowerPolicy.resolve(
+            location: .everywhere,
+            conditionMet: true,
+            requestedVisibility: .subtle,
+            scenePhaseActive: true,
+            isLowPowerModeEnabled: true,
+            reduceMotion: false
+        )
+
+        XCTAssertEqual(prominentPlan, .subtleLive)
+        XCTAssertEqual(subtlePlan.mode, .staticBackdrop)
+    }
+
+    func testDisabledAndUnmetConditionsDoNotStartSwarm() {
+        let disabledPlan = SwarmBackgroundPowerPolicy.resolve(
+            location: .disabled,
+            conditionMet: true,
+            requestedVisibility: .prominent,
+            scenePhaseActive: true,
+            isLowPowerModeEnabled: false,
+            reduceMotion: false
+        )
+        let conditionPlan = SwarmBackgroundPowerPolicy.resolve(
+            location: .everywhere,
+            conditionMet: false,
+            requestedVisibility: .prominent,
+            scenePhaseActive: true,
+            isLowPowerModeEnabled: false,
+            reduceMotion: false
+        )
+
+        XCTAssertEqual(disabledPlan.mode, .disabledFallback)
+        XCTAssertEqual(conditionPlan.mode, .staticBackdrop)
+    }
+
+    private func staticPlan(
+        requestedVisibility: MobileBackgroundVisibility,
+        scenePhaseActive: Bool,
+        reduceMotion: Bool
+    ) -> SwarmBackgroundRenderPlan {
+        SwarmBackgroundPowerPolicy.resolve(
+            location: .everywhere,
+            conditionMet: true,
+            requestedVisibility: requestedVisibility,
+            scenePhaseActive: scenePhaseActive,
+            isLowPowerModeEnabled: false,
+            reduceMotion: reduceMotion
+        )
+    }
+}

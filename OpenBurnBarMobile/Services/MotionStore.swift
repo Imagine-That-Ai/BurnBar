@@ -3,6 +3,17 @@ import SwiftUI
 #if canImport(CoreMotion)
 import CoreMotion
 #endif
+#if canImport(UIKit)
+import UIKit
+
+private final class MotionLifecycleObserverBag {
+    var observers: [NSObjectProtocol] = []
+
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+    }
+}
+#endif
 
 // MARK: - MotionStore
 //
@@ -29,16 +40,24 @@ final class MotionStore {
     #endif
 
     private var subscriberCount: Int = 0
+    private var isReduceMotionEnabled = false
 
-    init() {}
+    #if canImport(UIKit)
+    private var isApplicationActive = UIApplication.shared.applicationState == .active
+    private let lifecycleObserverBag = MotionLifecycleObserverBag()
+    #endif
+
+    init() {
+        installLifecycleObservers()
+    }
 
     /// Increments the subscriber count and starts streaming if needed.
     /// Call from a view's `onAppear` (paired with `release()` in `onDisappear`).
     func acquire(reduceMotion: Bool) {
         subscriberCount += 1
+        isReduceMotionEnabled = reduceMotion
         guard subscriberCount == 1 else { return }
-        guard !reduceMotion else { return }
-        startUpdates()
+        startUpdatesIfAllowed()
     }
 
     func release() {
@@ -46,7 +65,32 @@ final class MotionStore {
         if subscriberCount == 0 { stopUpdates() }
     }
 
+    func setReduceMotion(_ reduceMotion: Bool) {
+        isReduceMotionEnabled = reduceMotion
+        if reduceMotion {
+            stopUpdates()
+        } else {
+            startUpdatesIfAllowed()
+        }
+    }
+
     // MARK: - Streaming
+
+    private func startUpdatesIfAllowed() {
+        guard subscriberCount > 0, !isReduceMotionEnabled, allowsDeviceMotionUpdates else {
+            stopUpdates()
+            return
+        }
+        startUpdates()
+    }
+
+    private var allowsDeviceMotionUpdates: Bool {
+        #if canImport(UIKit)
+        return isApplicationActive
+        #else
+        return true
+        #endif
+    }
 
     private func startUpdates() {
         #if canImport(CoreMotion)
@@ -75,6 +119,44 @@ final class MotionStore {
         #endif
         tilt = .zero
         isActive = false
+    }
+
+    private func installLifecycleObservers() {
+        #if canImport(UIKit)
+        let center = NotificationCenter.default
+        lifecycleObserverBag.observers = [
+            center.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.isApplicationActive = true
+                    self?.startUpdatesIfAllowed()
+                }
+            },
+            center.addObserver(
+                forName: UIApplication.willResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.isApplicationActive = false
+                    self?.stopUpdates()
+                }
+            },
+            center.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.isApplicationActive = false
+                    self?.stopUpdates()
+                }
+            }
+        ]
+        #endif
     }
 }
 
@@ -109,6 +191,9 @@ struct MotionParallaxModifier: ViewModifier {
             )
             .onAppear { motion.acquire(reduceMotion: reduceMotion) }
             .onDisappear { motion.release() }
+            .onChange(of: reduceMotion) { _, value in
+                motion.setReduceMotion(value)
+            }
     }
 }
 

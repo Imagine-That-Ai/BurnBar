@@ -28,6 +28,7 @@ struct RootTabView: View {
     @State private var didApplyComputerUseE2EProof = false
     #endif
     @State private var router = PulseRouter()
+    @State private var settingsRouter = SettingsRouter()
     @State private var motionStore = MotionStore()
     @State private var hermesService = HermesService()
     @State private var studioPresenter = ChartStudioPresenter()
@@ -66,8 +67,10 @@ struct RootTabView: View {
         ZStack {
             if selection == .hermes {
                 contentForSelection
+                    .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
             } else {
                 contentForSelection
+                    .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
                     .ignoresSafeArea(.keyboard)
             }
 
@@ -219,6 +222,20 @@ struct RootTabView: View {
         return "\(uid)|\(conn)"
     }
 
+    private var rootBackgroundVisibility: MobileBackgroundVisibility {
+        if isCloudStoreChromeHidden || isMissionConsolePresented || studioPresenter.mode == .fullscreen {
+            return .obscured
+        }
+        switch liveStagePresenter.mode {
+        case .hidden, .dock:
+            return .prominent
+        case .split:
+            return .subtle
+        case .maximize:
+            return .obscured
+        }
+    }
+
     @State private var insightsDashboardStore = DashboardStore()
 
     private var insightsStack: some View {
@@ -275,6 +292,7 @@ struct RootTabView: View {
                 switch route {
                 case .sync: CloudSyncDetailsView(syncStore: syncHealthStore)
                 case .settings: SettingsHubView(authStore: authStore)
+                    .environment(settingsRouter)
                 case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
                 case .providers: ProviderConnectionsView(showsDoneButton: false)
                 case .computerUse: AgentWatchScreen(
@@ -282,6 +300,10 @@ struct RootTabView: View {
                     hermesService: hermesService
                 )
                 }
+            }
+            .navigationDestination(for: SettingsPageRoute.self) { route in
+                SettingsHubView.destination(for: route, authStore: authStore)
+                    .environment(settingsRouter)
             }
         }
     }

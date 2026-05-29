@@ -15,8 +15,9 @@ struct VelocityForecastCard: View {
     /// stays accurate across timezone boundaries and rebuild lag.
     var liveUsages: [TokenUsage] = []
 
+    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
+    @Environment(\.scenePhase) private var scenePhase
     @State private var nowTick: Date = Date()
-    private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var forecast: VelocityForecast? {
         // Compute live-day totals from usage events. The rollup "today"
@@ -91,10 +92,29 @@ struct VelocityForecastCard: View {
                 }
             }
         }
-        .onReceive(timer) { _ in nowTick = Date() }
+        .task(id: shouldRefreshForecastClock) { await runForecastClock() }
+        .onChange(of: shouldRefreshForecastClock) { _, shouldRefresh in
+            guard shouldRefresh else { return }
+            nowTick = Date()
+        }
     }
 
     // MARK: - Derived
+
+    private var shouldRefreshForecastClock: Bool {
+        MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: backgroundVisibility,
+            scenePhaseActive: scenePhase == .active
+        )
+    }
+
+    private func runForecastClock() async {
+        guard shouldRefreshForecastClock else { return }
+        while !Task.isCancelled {
+            await MainActor.run { nowTick = Date() }
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+        }
+    }
 
     private var projectedText: String {
         guard let forecast else { return "—" }

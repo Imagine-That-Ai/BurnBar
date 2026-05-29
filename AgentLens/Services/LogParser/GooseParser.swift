@@ -9,6 +9,16 @@ import GRDB
 final class GooseParser: LogParser, Sendable {
     let provider: AgentProvider = .goose
 
+    /// When set, the parser reads only this sessions directory (which holds
+    /// `sessions.db` and/or legacy `*.jsonl`). Keeps tests hermetic and lets
+    /// callers point at a non-default Goose data root. `nil` uses the standard
+    /// discovery order (env override + known install locations).
+    private let sessionDirectoryOverride: String?
+
+    init(sessionDirectoryOverride: String? = nil) {
+        self.sessionDirectoryOverride = sessionDirectoryOverride
+    }
+
     private static let sqliteDateFormats: [DateFormatter] = {
         let formats = [
             "yyyy-MM-dd HH:mm:ss",
@@ -39,12 +49,20 @@ final class GooseParser: LogParser, Sendable {
 
         if !databasePaths.isEmpty {
             var usagesBySessionId: [String: TokenUsage] = [:]
+            var conversationsById: [String: ConversationRecord] = [:]
             for dbPath in databasePaths {
-                for usage in try parseSQLiteDatabase(dbPath: dbPath) {
+                let result = try parseSQLiteDatabase(dbPath: dbPath)
+                for usage in result.usages {
                     usagesBySessionId[usage.sessionId] = usage
                 }
+                for conversation in result.conversations {
+                    conversationsById[conversation.id] = conversation
+                }
             }
-            return ParseResult(usages: Array(usagesBySessionId.values), conversations: [])
+            return ParseResult(
+                usages: Array(usagesBySessionId.values),
+                conversations: Array(conversationsById.values)
+            )
         }
 
         var usages: [TokenUsage] = []
@@ -73,16 +91,21 @@ final class GooseParser: LogParser, Sendable {
 
     // MARK: - SQLite Parsing
 
-    private func parseSQLiteDatabase(dbPath: String) throws -> [TokenUsage] {
+    private func parseSQLiteDatabase(dbPath: String) throws -> ParseResult {
         var usages: [TokenUsage] = []
+        var conversations: [ConversationRecord] = []
 
         var config = Configuration()
         config.readonly = true
         let db = try DatabaseQueue(path: dbPath, configuration: config)
 
         try db.read { db in
-            let tables = try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table'")
+            let tables = Set(try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table'"))
             guard tables.contains("sessions") else { return }
+
+            // Pull transcript turns from whichever message table this Goose build
+            // ships (schema has shifted across versions), keyed by session id.
+            let transcripts = try Self.loadTranscripts(db: db, tables: tables)
 
             let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(sessions)")
             let columnNames = Set(columns.compactMap { $0["name"] as? String })
@@ -93,6 +116,9 @@ final class GooseParser: LogParser, Sendable {
                 "provider",
                 "provider_name",
                 "model_config_json",
+                "description",
+                "title",
+                "name",
                 "working_dir",
                 "working_directory",
                 "cwd",
@@ -190,25 +216,174 @@ final class GooseParser: LogParser, Sendable {
                         provenanceConfidence: .exact
                     )
                 )
+
+                let description = stringValue(row, column: "description")
+                    ?? stringValue(row, column: "title")
+                    ?? stringValue(row, column: "name")
+                let turns = transcripts[sessionId] ?? []
+                if let conversation = Self.buildConversation(
+                    sessionId: sessionId,
+                    projectName: projectName,
+                    description: description,
+                    workingDirectory: cwd == "~" ? nil : cwd,
+                    startTime: startTime,
+                    endTime: endTime,
+                    turns: turns
+                ) {
+                    conversations.append(conversation)
+                }
             }
         }
 
-        return usages
+        return ParseResult(usages: usages, conversations: conversations)
     }
 
+    // MARK: - SQLite Transcript Extraction
+
+    private struct GooseTurn {
+        let role: String
+        let text: String
+        let order: Double
+    }
+
+    /// Loads message turns from whichever message table the Goose SQLite build exposes.
+    /// Returns `[sessionId: [GooseTurn]]` so the session loop can attach transcripts.
+    private static func loadTranscripts(db: Database, tables: Set<String>) throws -> [String: [GooseTurn]] {
+        let candidateTables = ["messages", "conversation_messages", "session_messages", "message"]
+        guard let table = candidateTables.first(where: { tables.contains($0) }) else { return [:] }
+
+        let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(\(table))")
+        let columnNames = Set(columns.compactMap { $0["name"] as? String })
+
+        guard let sessionColumn = ["session_id", "sessionId", "session"].first(where: { columnNames.contains($0) }),
+              let roleColumn = ["role", "type", "sender"].first(where: { columnNames.contains($0) }),
+              let contentColumn = ["content", "text", "body", "message", "parts"].first(where: { columnNames.contains($0) }) else {
+            return [:]
+        }
+        let orderColumn = ["created_at", "created_timestamp", "timestamp", "id", "rowid"].first(where: { columnNames.contains($0) }) ?? "rowid"
+
+        let rows = try Row.fetchAll(db, sql: "SELECT \(sessionColumn), \(roleColumn), \(contentColumn), \(orderColumn) FROM \(table)")
+
+        var transcripts: [String: [GooseTurn]] = [:]
+        for row in rows {
+            guard let sessionId: String = row[sessionColumn] else { continue }
+            let roleRaw: String? = row[roleColumn]
+            let role = (roleRaw ?? "").lowercased()
+            let contentRaw: String? = row[contentColumn]
+            guard let text = flattenContent(contentRaw)?.nonEmpty else { continue }
+            let fallbackOrder = Double(transcripts[sessionId]?.count ?? 0)
+            let orderValue: DatabaseValue? = row[orderColumn]
+            let order: Double
+            switch orderValue?.storage {
+            case .int64(let value): order = Double(value)
+            case .double(let value): order = value
+            case .string(let value): order = Double(value) ?? fallbackOrder
+            default: order = fallbackOrder
+            }
+            transcripts[sessionId, default: []].append(GooseTurn(role: role, text: text, order: order))
+        }
+        return transcripts
+    }
+
+    /// Flattens Goose message content that may be plain text or a JSON array of
+    /// `{type, text}` content blocks into a single transcript string.
+    private static func flattenContent(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        if raw.hasPrefix("[") || raw.hasPrefix("{"),
+           let data = raw.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) {
+            if let blocks = json as? [[String: Any]] {
+                let parts = blocks.compactMap { block -> String? in
+                    let type = (block["type"] as? String ?? "text").lowercased()
+                    guard type == "text" || type == "reasoning" || type.isEmpty else { return nil }
+                    return (block["text"] as? String ?? block["content"] as? String)?.nonEmpty
+                }
+                return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
+            }
+            if let dict = json as? [String: Any] {
+                return (dict["text"] as? String ?? dict["content"] as? String)?.nonEmpty
+            }
+        }
+        return raw
+    }
+
+    private static func buildConversation(
+        sessionId: String,
+        projectName: String,
+        description: String?,
+        workingDirectory: String?,
+        startTime: Date,
+        endTime: Date,
+        turns: [GooseTurn]
+    ) -> ConversationRecord? {
+        let sorted = turns.sorted { $0.order < $1.order }
+
+        var fullText = ""
+        var firstUser: String?
+        var lastAssistant = ""
+        var userWords = 0
+        var assistantWords = 0
+        var messageCount = 0
+
+        for turn in sorted {
+            let isAssistant = turn.role == "assistant" || turn.role == "ai"
+            let isUser = turn.role == "user" || turn.role == "human"
+            guard isAssistant || isUser else { continue }
+            if isAssistant {
+                assistantWords += turn.text.split { $0.isWhitespace || $0.isNewline }.count
+                lastAssistant = turn.text
+            } else {
+                userWords += turn.text.split { $0.isWhitespace || $0.isNewline }.count
+                if firstUser == nil { firstUser = String(turn.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120)) }
+            }
+            if !fullText.isEmpty { fullText += "\n\n" }
+            fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: isAssistant, body: turn.text)
+            messageCount += 1
+        }
+
+        let title = description?.nonEmpty ?? firstUser ?? projectName
+        // Metadata-only records (no transcript table) still back up and stay searchable by title/project.
+        return ConversationRecord(
+            id: ConversationRecord.stableId(provider: .goose, sessionId: sessionId),
+            provider: .goose,
+            sessionId: sessionId,
+            projectName: projectName,
+            startTime: startTime,
+            endTime: endTime,
+            messageCount: messageCount,
+            userWordCount: userWords,
+            assistantWordCount: assistantWords,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: title,
+            lastAssistantMessage: String(lastAssistant.prefix(500)),
+            fullText: fullText,
+            indexedAt: Date(),
+            workingDirectory: workingDirectory,
+            fileModifiedAt: endTime,
+            summary: nil
+        )
+    }
+
+    // Reads through `DatabaseValue` so a column whose stored type differs from
+    // the expected one (e.g. a TEXT `created_at`) never trips GRDB's force-decode
+    // `fatalError`. Missing columns and NULLs resolve to the zero/`nil` default.
     private func integerValue(_ row: Row, column: String) -> Int {
-        if let value: Int = row[column] { return value }
-        if let value: Int64 = row[column] { return Int(value) }
-        if let value: Double = row[column] { return Int(value.rounded()) }
-        if let value: String = row[column] { return Int(value) ?? 0 }
-        return 0
+        guard let dbValue: DatabaseValue = row[column] else { return 0 }
+        switch dbValue.storage {
+        case .int64(let value): return Int(value)
+        case .double(let value): return Int(value.rounded())
+        case .string(let value): return Int(value) ?? Int(Double(value) ?? 0)
+        case .null, .blob: return 0
+        }
     }
 
     private func stringValue(_ row: Row, column: String) -> String? {
-        if let value: String = row[column], !value.isEmpty {
-            return value
+        guard let dbValue: DatabaseValue = row[column], case .string(let value) = dbValue.storage, !value.isEmpty else {
+            return nil
         }
-        return nil
+        return value
     }
 
     private func resolvedModel(from row: Row) -> String {
@@ -245,24 +420,30 @@ final class GooseParser: LogParser, Sendable {
     }
 
     private func timestamp(from row: Row, column: String) -> Date? {
-        if let value: Int64 = row[column] {
+        guard let dbValue: DatabaseValue = row[column] else { return nil }
+        switch dbValue.storage {
+        case .int64(let value):
             return TimestampNormalizationUtility.date(fromEpoch: Double(value))
-        }
-        if let value: Double = row[column] {
+        case .double(let value):
             return TimestampNormalizationUtility.date(fromEpoch: value)
-        }
-        if let value: String = row[column] {
+        case .string(let value):
             if let parsed = ThreadSafeISO8601DateFormatter.parse(value) { return parsed }
             for formatter in Self.sqliteDateFormats {
                 if let parsed = formatter.date(from: value) {
                     return parsed
                 }
             }
+            return nil
+        case .null, .blob:
+            return nil
         }
-        return nil
     }
 
     private func resolvedSessionDirectories() -> [String] {
+        if let override = sessionDirectoryOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
+            return [(override as NSString).expandingTildeInPath]
+        }
+
         var candidates: [String] = []
         let env = ProcessInfo.processInfo.environment["GOOSE_PATH_ROOT"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let env, !env.isEmpty {

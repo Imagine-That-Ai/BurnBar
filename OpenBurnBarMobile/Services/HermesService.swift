@@ -667,6 +667,7 @@ final class HermesService {
     private let history: MobileChatHistoryStore
     private var runtimeGeneration = 0
     private var runtimeRefreshTask: Task<Void, Never>?
+    private var runtimeRefreshGeneration: Int?
     private var visibleCLIObservation: CLIAgentMissionObservation?
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
     private let selectedModelDefaultsKey = "hermes.selectedModelID"
@@ -765,10 +766,15 @@ final class HermesService {
     }
 
     func refreshRuntime() async {
-        if let runtimeRefreshTask {
+        if let runtimeRefreshTask, runtimeRefreshGeneration == runtimeGeneration {
             await runtimeRefreshTask.value
             return
         }
+
+        runtimeRefreshTask?.cancel()
+
+        let generation = runtimeGeneration
+        runtimeRefreshGeneration = generation
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -776,7 +782,11 @@ final class HermesService {
         }
         runtimeRefreshTask = task
         await task.value
-        runtimeRefreshTask = nil
+
+        if runtimeRefreshGeneration == generation {
+            runtimeRefreshTask = nil
+            runtimeRefreshGeneration = nil
+        }
     }
 
     private func performRuntimeRefresh() async {

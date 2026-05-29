@@ -277,7 +277,35 @@ service cloud.firestore {
         && !("payloadCiphertext" in request.resource.data)
         && !("ciphertext" in request.resource.data)
         && !("data" in request.resource.data)
-        && !("text" in request.resource.data);
+        && !("text" in request.resource.data)
+        && validSessionLogFacets(request.resource.data);
+    }
+
+    // Plaintext cockpit facets are metadata only (counters, cost, timing, working directory,
+    // and generic tool tags). This constrains each optional facet to a bounded primitive so
+    // conversation content can never ride along inside a facet field.
+    function validSessionLogFacetCount(data, field) {
+      return !(field in data) || (data[field] is int && data[field] >= 0 && data[field] <= 100000000000);
+    }
+
+    function validSessionLogFacets(data) {
+      return validSessionLogFacetCount(data, "inputTokens")
+        && validSessionLogFacetCount(data, "outputTokens")
+        && validSessionLogFacetCount(data, "cacheCreationTokens")
+        && validSessionLogFacetCount(data, "cacheReadTokens")
+        && validSessionLogFacetCount(data, "totalTokens")
+        && validSessionLogFacetCount(data, "messageCount")
+        && validSessionLogFacetCount(data, "userWordCount")
+        && validSessionLogFacetCount(data, "assistantWordCount")
+        && validSessionLogFacetCount(data, "durationSeconds")
+        && validSessionLogFacetCount(data, "facetSchemaVersion")
+        && (!("costUSD" in data) || (data.costUSD is number && data.costUSD >= 0))
+        && (!("model" in data) || (data.model is string && data.model.size() <= 200))
+        && (!("provider" in data) || (data.provider is string && data.provider.size() <= 80))
+        && (!("sourceType" in data) || (data.sourceType is string && data.sourceType.size() <= 80))
+        && (!("projectName" in data) || (data.projectName is string && data.projectName.size() <= 1024))
+        && (!("workingDirectory" in data) || (data.workingDirectory is string && data.workingDirectory.size() <= 1024))
+        && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32));
     }
 
     function ownerWritableSessionLogChunk(userId) {

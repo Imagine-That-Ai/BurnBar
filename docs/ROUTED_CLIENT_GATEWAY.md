@@ -78,8 +78,16 @@ Anthropic bridge for those local endpoints.
 
 A request for a model not advertised for that local endpoint returns `503`
 with `No eligible route for <model>. Add or enable an account/provider that
-serves this model.` A request whose route cannot prove an exact canonical model
-identity returns `503` before contacting upstream. Within a compatible pool,
+serves this model.` before BurnBar contacts upstream.
+
+Anthropic `-family` catalog rows can list multiple CLI wire IDs as aliases.
+`OpenBurnBarLiveModelCatalog` publishes every alias in `/v1/models`, and the
+gateway treats aliases on the same family row as mutually routable. When
+Anthropic ships a new default CLI model name, add the wire ID to the bundled
+`catalog.json` family row and restart the daemon so the running bundle picks
+up the change.
+
+A request whose route cannot prove an exact canonical model identity returns `503` before contacting upstream. Within a compatible pool,
 in-flight failover only retries routes whose `canonicalModelID` matches the
 requested canonical model. When a real upstream route proves that a
 provider/account/model pair cannot serve the selected model, BurnBar records
@@ -356,10 +364,13 @@ chat completion request it:
 1. ranks eligible routes for the requested model;
 2. attempts the highest-ranked provider account or slot;
 3. records the selected slot;
-4. fails over on quota, rate-limit, auth, or exhausted-plan style upstream
-   failures when another route is available;
-5. records usage from upstream response usage fields when present, or a
-   low-confidence estimate when the response is parseable but usage is missing.
+4. fails over on genuine quota, rate-limit, or exhausted-plan upstream failures
+   when another route is available — but only **before the first byte streams**
+   to the client, and not on bare `401`/`403` auth errors;
+5. records usage from upstream response usage fields (or the parsed final
+   streaming-usage chunk) when present, or a low-confidence estimate when the
+   response is parseable but usage is missing, always under a stable
+   idempotency key so retries are not double-counted.
 
 Pinned preferred slots stay first while they are healthy. When no preferred
 slot is pinned, healthy slots with equivalent scores rotate by least-recently
@@ -368,6 +379,98 @@ skipped before route attempts.
 
 This is the same quota-aware path used to avoid a depleted plan while another
 configured plan can still serve the model.
+
+## Streaming relay and accounting truth
+
+The gateway streams upstream responses through to the client chunk-by-chunk
+instead of buffering the whole completion and emitting one `Content-Length`
+body. This is the single biggest token-waste fix: long generations no longer
+exceed client idle timeouts and trigger a full-prompt retry that gets billed a
+second (or third) time.
+
+- **True passthrough.** When the client and upstream speak the same wire
+  format (OpenAI↔OpenAI, Anthropic↔Anthropic), Server-Sent Events relay
+  verbatim. Headers and `Transfer-Encoding: chunked` are written before the
+  upstream finishes, and each SSE chunk is flushed as it arrives.
+- **No failover after first byte.** Once any byte has streamed to the client,
+  the gateway never fails over to another account — a mid-stream switch would
+  corrupt the response and re-bill the prompt. Failover only happens before the
+  first byte, on a genuinely retryable upstream failure.
+- **Narrowed retryable set.** Failover triggers on real quota/rate-limit
+  exhaustion (e.g. `402`/`429` and explicit quota signals), not on every body
+  that happens to contain the substring "rate". `401`/`403` auth failures stop
+  the request instead of replaying the full prompt against the next account.
+- **Idempotent usage.** Usage is recorded under a stable idempotency key
+  derived from the request signature, the resolved route, and the attempt — so
+  a retried or duplicated completion is counted once, not twice. Streaming
+  responses parse their final token usage from the stream itself (OpenAI
+  `stream_options.include_usage` final chunk; Anthropic `message_delta.usage`)
+  and record after the stream completes, fixing the prior `usage=nil`
+  under-reporting on SSE.
+- **Effort-only thinking variants.** Thinking-level variants set reasoning
+  effort without inflating the caller's `max_tokens`. The Anthropic floor
+  (`budget_tokens + 4096`) is applied only when a variant explicitly requests
+  thinking — because the Messages API rejects `max_tokens ≤ budget_tokens` —
+  and never on a plain request that asked for no variant.
+
+Coverage lives in `OpenBurnBarHTTPGatewayServerTests.swift`
+(`testGatewayPreservesOllamaCloudToolCallsInStreamingChatCompletions`,
+`testGatewayResponsesStreamingFallbackEmitsResponsesEvents`,
+`testGatewayProxiesChatCompletionsAndFailsOverExhaustedPlan`),
+`OpenBurnBarRunServiceTests.swift`
+(`test_VAL_EXEC_011_usageAccountingIsIdempotentUnderFailover`,
+`test_VAL_EXEC_011_usageIdempotencyKeyIncludesAttempt`), and
+`BurnBarModelVariantExecutorTests.swift`.
+
+## Post-June-15 Anthropic metering and routing options
+
+From June 15, Anthropic bills third-party harnesses and the programmatic
+`claude -p`/`--print` and Agent SDK paths against a separate metered credit,
+distinct from the interactive Pro/Max subscription window. Anthropic's terms
+also prohibit routing Pro/Max credentials through third-party apps, and the
+interactive-vs-programmatic detection heuristic is undocumented. OpenBurnBar's
+default behavior stays fully legitimate; the gray-area paths below are all
+**off by default** and opt-in per the risk you accept.
+
+| Path | Risk posture | Default | How to enable |
+|---|---|---|---|
+| **Console API key (default)** | Legit. Bills the Console `sk-ant-api…` plan, not the subscription window. | On | Add an Anthropic Console key in Accounts; it is the default Anthropic route and unlocks gateway routing with cost-truth UI. |
+| **B1 — Interactive handoff** | Lowest brittleness, human-in-loop. Dispatches a task into a real interactive `claude` window the user drives (no `-p`); OpenBurnBar reconciles the subscription-window token delta as a companion. | Manual | `openburnbar-cli claude-handoff dispatch --briefing <text> [--terminal terminal\|iterm\|warp]`, then `claude-handoff reconcile <sessionID>`. |
+| **B2 — PTY interactive executor** | Highest brittleness / ToS risk. A resident interactive `claude` driven through a pseudo-terminal serves the completion full-auto; per-turn usage is read from the freshly-written `~/.claude` JSONL. Subscription (`sk-ant-oat…`) routes only. | Off | **Settings → Agents → Advanced → Experimental routing → "Interactive Claude routing"**, then restart the daemon. (Equivalently, export `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE=1` for a manually-launched daemon.) Logs a loud warning whenever it activates; any failure falls back to the legit path. |
+| **B3 — Cross-vendor degrade** | Legit (user's own keys), but relaxes the exact-model invariant. When the requested model cannot be served, substitutes an allow-listed OpenAI-compatible vendor on the user's own key. | Off | **Settings → Agents → Advanced → Experimental routing → "Cross-vendor degrade"**, then restart the daemon. (Equivalently, export `OPENBURNBAR_CROSS_VENDOR_DEGRADE=1`; optionally narrow/reorder vendors with `OPENBURNBAR_CROSS_VENDOR_DEGRADE_VENDORS=deepseek,zai,moonshot`.) |
+
+> **Where the toggles live.** Both B2 and B3 are surfaced as off-by-default,
+> `EXPERIMENTAL`-badged switches under **Settings → Agents → Advanced →
+> Experimental routing**. Flipping one persists the choice and the card prompts
+> you to **restart the daemon to apply** — the app emits the matching env var
+> into the launchd plist (`writeLaunchAgentPlist()`), and the gateway reads it
+> at launch. The env vars remain the source of truth for headless/manual daemon
+> launches.
+
+**Validate the premise before trusting B2.** The `claude-meter-experiment`
+diagnostic drives one PTY-attached interactive turn and reports whether it drew
+from the subscription window or the new metered credit, by reading
+`/api/oauth/usage` and the local `~/.claude/projects/*.jsonl` ledger:
+
+```
+openburnbar-cli claude-meter-experiment --prompt "say hi" [--model claude-opus-4-7] [--json]
+```
+
+Export `OPENBURNBAR_CLAUDE_OAUTH_ACCESS_TOKEN` so the experiment can confirm the
+billing pool via the OAuth usage endpoint. If the interactive turn does not dodge
+the meter, stay on the Console-key default and B3 rather than B2.
+
+**Cross-vendor degrade details (B3).** Degrade only fires on the OpenAI chat
+endpoint and only targets OpenAI-compatible vendors, so no cross-format
+translation is involved. It runs at two points: when no provider advertises the
+requested model at all, and as a final fallback after exact-model routes are
+exhausted with a failover-eligible error. The default allow-list is
+`deepseek`, `zai`, `moonshot` with preferred degrade models `deepseek-chat`,
+`glm-4.6`, `kimi-k2`; each substitution is logged loudly with the requested and
+degraded model IDs. Coverage:
+`testGatewayCrossVendorDegradeOffByDefaultReturnsNoEligibleRoute` and
+`testGatewayCrossVendorDegradeServesAllowlistedVendorWhenEnabled` in
+`OpenBurnBarHTTPGatewayServerTests.swift`, plus `BurnBarCrossVendorDegradeTests.swift`.
 
 ## Troubleshooting
 

@@ -448,6 +448,105 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertFalse(upstreamRequests.last?.body.contains("zai/primary/glm-5-turbo") == true)
     }
 
+    func testGatewayCrossVendorDegradeOffByDefaultReturnsNoEligibleRoute() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        // Snapshot fetches the configured vendor's /v1/models exactly once.
+        enqueueOpenAIModelCatalog(["deepseek-chat"], times: 1)
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            crossVendorDegradePolicy: .disabled,
+            modelCatalogSession: session
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["deepseek-chat"],
+                preferredCredentialSlotID: "default"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "default",
+            label: "Default plan",
+            apiKey: "deepseek-route-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, _) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-3-opus","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertNotEqual(response.statusCode, 200)
+        XCTAssertFalse(
+            GatewayUpstreamURLProtocol.recordedRequests().contains { $0.path == "/v1/chat/completions" },
+            "degrade must not fire while disabled"
+        )
+    }
+
+    func testGatewayCrossVendorDegradeServesAllowlistedVendorWhenEnabled() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        // Order: snapshot /v1/models for the configured vendor, then the
+        // degrade /v1/chat/completions.
+        enqueueOpenAIModelCatalog(["deepseek-chat"], times: 1)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-degrade","object":"chat.completion","model":"deepseek-chat","choices":[{"index":0,"message":{"role":"assistant","content":"degrade answered"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy(
+                isEnabled: true,
+                allowedVendorIDs: ["deepseek"],
+                preferredModelByVendorID: ["deepseek": "deepseek-chat"]
+            ),
+            modelCatalogSession: session
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["deepseek-chat"],
+                preferredCredentialSlotID: "default"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "default",
+            label: "Default plan",
+            apiKey: "deepseek-route-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-3-opus","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("degrade answered"))
+        let chatRequests = GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/chat/completions" }
+        XCTAssertEqual(chatRequests.count, 1)
+        XCTAssertTrue(chatRequests.first?.body.contains(#""model":"deepseek-chat""#) == true)
+    }
+
     func testGatewayPreservesLiveDynamicModelIDInsteadOfCatalogFamilyDowngrade() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -3008,6 +3107,76 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
+    func testGatewayMessagesRoutesClaudeOpus48WireIDWhenOnlyOpus47FamilyPreferred() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_opus48",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-opus-4-8[1m]",
+              "content": [{"type": "text", "text": "OK"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 4,
+                "output_tokens": 2,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["claude-opus-4-7-family"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "primary",
+            label: "Primary",
+            apiKey: "sk-ant-api03-primary-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (modelsResponse, modelsBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(modelsResponse.statusCode, 200)
+        let modelsObject = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let modelsData = try XCTUnwrap(modelsObject["data"] as? [[String: Any]])
+        XCTAssertTrue(modelsData.contains { ($0["id"] as? String) == "claude-opus-4-8[1m]" })
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"{"model":"claude-opus-4-8[1m]","max_tokens":16,"messages":[{"role":"user","content":"Reply OK"}]}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
+        XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-opus-4-8[1m]""#), upstreamRequest.body)
+    }
+
     /// Console API key routes must not receive the Claude Code identity
     /// dress-up. Those credentials bill differently and Anthropic treats
     /// the beta+guard combination as a signal the request is coming from
@@ -4064,6 +4233,7 @@ private final class GatewayHarness: @unchecked Sendable {
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
+        crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy = .disabled,
         modelCatalogSession: URLSession = GatewayHarness.makeUpstreamSession()
     ) throws {
         self.port = try Self.reservePort()
@@ -4099,6 +4269,7 @@ private final class GatewayHarness: @unchecked Sendable {
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
             factoryExecutor: factoryExecutor,
+            crossVendorDegradePolicy: crossVendorDegradePolicy,
             modelHealthStore: modelHealthStore,
             modelCatalogSession: modelCatalogSession,
             logger: BurnBarDaemonLogger(category: "gateway-tests")

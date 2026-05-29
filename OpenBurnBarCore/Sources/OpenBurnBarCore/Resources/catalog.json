@@ -14,25 +14,26 @@
       "formatFamily": "anthropic",
       "models": [
         {
-          "id": "claude-opus-4-7-family",
-          "displayName": "Claude Opus 4.7",
+          "id": "claude-opus-4-8-family",
+          "displayName": "Claude Opus 4.8",
           "visibility": "public",
           "aliases": [
-            "claude-opus-4-7"
+            "claude-opus-4-8",
+            "claude-opus-4-8[1m]"
           ],
           "matchers": [
             {
               "all": [
                 "claude",
                 "opus",
-                "4.7"
+                "4.8"
               ],
               "any": [],
               "none": []
             },
             {
               "all": [
-                "claude-opus-4-7"
+                "claude-opus-4-8"
               ],
               "any": [],
               "none": []
@@ -44,6 +45,62 @@
             "cacheCreationPerMToken": 6.25,
             "cacheReadPerMToken": 0.5
           },
+          "canonicalModelID": "claude-opus-4-7",
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
+        },
+        {
+          "id": "claude-opus-4-7-family",
+          "displayName": "Claude Opus 4.7",
+          "visibility": "public",
+          "aliases": [
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+            "claude-opus-4-8[1m]"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "claude",
+                "opus",
+                "4.7"
+              ],
+              "any": [],
+              "none": [
+                "4.8"
+              ]
+            },
+            {
+              "all": [
+                "claude-opus-4-7"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "claude",
+                "opus",
+                "4.8"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "claude-opus-4-8"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheCreationPerMToken": 6.25,
+            "cacheReadPerMToken": 0.5
+          },
+          "canonicalModelID": "claude-opus-4-7",
           "capabilityClassID": "anthropic:opus",
           "capabilityClassRank": 100
         },
@@ -62,7 +119,10 @@
                 "4.6"
               ],
               "any": [],
-              "none": []
+              "none": [
+                "4.7",
+                "4.8"
+              ]
             },
             {
               "all": [
@@ -98,7 +158,8 @@
               "any": [],
               "none": [
                 "4.6",
-                "4.7"
+                "4.7",
+                "4.8"
               ]
             },
             {
@@ -171,7 +232,8 @@
                 "4.1",
                 "4.5",
                 "4.6",
-                "4.7"
+                "4.7",
+                "4.8"
               ]
             },
             {

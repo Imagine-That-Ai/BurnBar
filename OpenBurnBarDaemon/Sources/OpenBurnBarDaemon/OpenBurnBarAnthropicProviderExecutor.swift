@@ -164,6 +164,55 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         )
     }
 
+    /// Open a true streaming Anthropic Messages request for verbatim SSE
+    /// passthrough. Applies the same Claude Code identity headers as
+    /// `proxyMessages` and forces `stream: true` so the upstream emits the
+    /// `message_start` / `message_delta` events the gateway accumulates for
+    /// usage accounting.
+    public func openMessagesStream(
+        body: Data,
+        route: BurnBarProviderRoute,
+        variant: BurnBarModelVariant? = nil
+    ) async throws -> BurnBarProviderProxyStream {
+        guard let baseURL = URL(string: route.baseURL) else {
+            throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
+        }
+
+        let usesClaudeCode = Self.usesClaudeCodeSubscriptionIdentity(for: route)
+        let outboundBody = try Self.rewritingModel(
+            in: body,
+            to: route.resolvedModelID,
+            applyClaudeCodeSystemGuard: usesClaudeCode,
+            variant: variant,
+            forceStream: true
+        )
+        let messagesURL = baseURL.appending(path: "messages")
+        let endpoint = usesClaudeCode
+            ? Self.appendingBetaQueryItem(to: messagesURL)
+            : messagesURL
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
+        applyAnthropicAuth(apiKey: route.apiKey, to: &request)
+
+        if usesClaudeCode {
+            request.setValue(Self.claudeCodeBetaHeader, forHTTPHeaderField: "anthropic-beta")
+            request.setValue(Self.claudeCodeUserAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue("cli", forHTTPHeaderField: "x-app")
+            request.setValue("true", forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
+        }
+
+        request.httpBody = outboundBody
+
+        return try await BurnBarProxyStreaming.openByteStream(
+            session: BurnBarProxyStreaming.streamingSession,
+            request: request,
+            defaultContentType: "text/event-stream"
+        )
+    }
+
     /// Serve OpenAI Chat Completions clients from an Anthropic-family route.
     ///
     /// `/v1/models` may advertise Claude to OpenAI-shape CLIs only because
@@ -250,7 +299,8 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         in body: Data,
         to resolvedModelID: String,
         applyClaudeCodeSystemGuard: Bool,
-        variant: BurnBarModelVariant? = nil
+        variant: BurnBarModelVariant? = nil,
+        forceStream: Bool = false
     ) throws -> Data {
         guard var json = try JSONSerialization.jsonObject(with: body, options: []) as? [String: Any] else {
             return body
@@ -266,7 +316,12 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             json["system"] = injectClaudeCodeSystemGuard(into: json["system"])
         }
         if let variant {
-            applyAnthropicVariant(variant, to: &json)
+            // Live proxy forwarding: clamp the thinking budget under the
+            // caller's max_tokens rather than inflating it (see A3).
+            applyAnthropicVariant(variant, to: &json, effortOnly: true)
+        }
+        if forceStream {
+            json["stream"] = true
         }
         return try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
     }
@@ -278,15 +333,46 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     /// `budget_tokens + 4096` when the caller's value would conflict.
     static func applyAnthropicVariant(
         _ variant: BurnBarModelVariant,
-        to object: inout [String: Any]
+        to object: inout [String: Any],
+        effortOnly: Bool = false
     ) {
         let budget = variant.thinkingLevel.anthropicBudgetTokens
+        object.removeValue(forKey: "effort")
+
+        if effortOnly {
+            // Respect the caller's max_tokens ceiling. Anthropic requires
+            // budget_tokens < max_tokens, so clamp the thinking budget to fit
+            // under whatever the caller asked for rather than inflating it.
+            let callerMax = intValue(object["max_tokens"])
+                ?? variant.maxOutputTokens
+                ?? (budget + 4096)
+            // Keep a minimum slice for the visible answer beyond the thinking
+            // budget; Anthropic's floor for a thinking budget is 1024 tokens.
+            let maxBudget = callerMax - 1024
+            if maxBudget >= 1024 {
+                let effectiveBudget = max(1024, min(budget, maxBudget))
+                object["thinking"] = [
+                    "type": "enabled",
+                    "budget_tokens": effectiveBudget
+                ]
+            } else {
+                // Caller's budget is too small to host extended thinking;
+                // leave thinking disabled rather than raising their ceiling.
+                object.removeValue(forKey: "thinking")
+            }
+            // Only set max_tokens when the caller omitted it (Anthropic
+            // requires the field); never raise a value they provided.
+            if intValue(object["max_tokens"]) == nil {
+                object["max_tokens"] = callerMax
+            }
+            return
+        }
+
         let thinking: [String: Any] = [
             "type": "enabled",
             "budget_tokens": budget
         ]
         object["thinking"] = thinking
-        object.removeValue(forKey: "effort")
 
         let floor = budget + 4096
         let callerMax = intValue(object["max_tokens"]) ?? 0

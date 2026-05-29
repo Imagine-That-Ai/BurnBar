@@ -19,15 +19,20 @@ import OpenBurnBarCore
 struct AuroraBackdrop: View {
     var density: AuroraDensity = .full
     var colorDriver: SwarmColorDriver?
+    var visibility: MobileBackgroundVisibility?
+    var allowsWebsiteBackground: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.motionStore) private var motion
+    @Environment(\.mobileBackgroundVisibility) private var inheritedVisibility
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.uiMode) private var uiMode
 
     @State private var phase: CGFloat = 0
     @State private var ribbonPhase: CGFloat = 0
+    @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
@@ -40,14 +45,18 @@ struct AuroraBackdrop: View {
     var body: some View {
         ZStack {
             if uiMode == .cooking {
-                EmberSurfaceBackground()
-            } else if useWebsiteBackground {
-                WebsiteBackgroundView(accent: MobileTheme.ember, colorDriver: colorDriver)
+                VisibilityAwareEmberSurfaceBackground()
+            } else if allowsWebsiteBackground && useWebsiteBackground {
+                WebsiteBackgroundView(
+                    accent: MobileTheme.ember,
+                    colorDriver: colorDriver,
+                    visibility: effectiveVisibility
+                )
             } else {
                 baseGradient
                     .ignoresSafeArea()
 
-                if !reduceTransparency {
+                if shouldRenderDecorativeLayers {
                     meshLayer
                         .ignoresSafeArea()
                         .blendMode(.plusLighter)
@@ -59,7 +68,7 @@ struct AuroraBackdrop: View {
                         .ignoresSafeArea()
                         .blendMode(.plusLighter)
 
-                    if density == .full {
+                    if shouldRenderParticles {
                         particleLayer
                             .ignoresSafeArea()
                             .allowsHitTesting(false)
@@ -76,9 +85,60 @@ struct AuroraBackdrop: View {
         .allowsHitTesting(false)
         .onAppear { startAnimating() }
         .onChange(of: reduceMotion) { _, _ in startAnimating() }
+        .onChange(of: scenePhase) { _, _ in startAnimating() }
+        .onChange(of: effectiveVisibility) { _, _ in startAnimating() }
+        .onChange(of: isLowPowerModeEnabled) { _, _ in startAnimating() }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
+            isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+        }
     }
 
     // MARK: - Base
+
+    private var effectiveVisibility: MobileBackgroundVisibility {
+        let requested = visibility ?? defaultVisibilityForDensity
+        return requested.constrained(by: inheritedVisibility)
+    }
+
+    private var defaultVisibilityForDensity: MobileBackgroundVisibility {
+        switch density {
+        case .full:
+            return .prominent
+        case .subtle:
+            return .subtle
+        case .minimal:
+            return .obscured
+        }
+    }
+
+    private var shouldAnimate: Bool {
+        shouldRenderLocalAurora
+            && scenePhase == .active
+            && !reduceMotion
+            && !isLowPowerModeEnabled
+            && effectiveVisibility == .prominent
+    }
+
+    private var shouldRenderLocalAurora: Bool {
+        uiMode != .cooking && !(allowsWebsiteBackground && useWebsiteBackground)
+    }
+
+    private var shouldRenderDecorativeLayers: Bool {
+        !reduceTransparency
+            && effectiveVisibility != .hidden
+            && effectiveVisibility != .obscured
+    }
+
+    private var shouldRenderParticles: Bool {
+        density == .full && shouldAnimate
+    }
+
+    private var layerOpacity: Double {
+        if effectiveVisibility == .subtle || density == .subtle {
+            return 0.55
+        }
+        return 1.0
+    }
 
     private var baseGradient: some View {
         LinearGradient(
@@ -104,21 +164,21 @@ struct AuroraBackdrop: View {
     private var meshLayer: some View {
         if #available(iOS 18.0, *) {
             AuroraMeshGradient(
-                phase: reduceMotion ? 0 : phase,
-                tilt: reduceMotion ? .zero : motion.tilt,
+                phase: shouldAnimate ? phase : 0,
+                tilt: shouldAnimate ? motion.tilt : .zero,
                 colorScheme: colorScheme
             )
-            .opacity(density == .subtle ? 0.55 : 1.0)
+            .opacity(layerOpacity)
         } else {
-            AuroraOrbFallback(phase: reduceMotion ? 0 : phase, colorScheme: colorScheme)
-                .opacity(density == .subtle ? 0.55 : 1.0)
+            AuroraOrbFallback(phase: shouldAnimate ? phase : 0, colorScheme: colorScheme)
+                .opacity(layerOpacity)
         }
     }
 
     // MARK: - Aurora Ribbon
 
     private var ribbonLayer: some View {
-        AuroraRibbon(phase: reduceMotion ? 0 : ribbonPhase, colorScheme: colorScheme)
+        AuroraRibbon(phase: shouldAnimate ? ribbonPhase : 0, colorScheme: colorScheme)
             .opacity(density == .full ? 0.55 : 0.35)
     }
 
@@ -127,7 +187,7 @@ struct AuroraBackdrop: View {
     private var particleLayer: some View {
         ZStack {
             ForEach(0..<8) { index in
-                AuroraEmberParticle(index: index, reduceMotion: reduceMotion)
+                AuroraEmberParticle(index: index, reduceMotion: !shouldAnimate)
             }
         }
     }
@@ -151,13 +211,30 @@ struct AuroraBackdrop: View {
     // MARK: - Animation Driver
 
     private func startAnimating() {
-        guard !reduceMotion else {
+        guard shouldAnimate else {
             phase = 0
             ribbonPhase = 0
             return
         }
         withAnimation(AuroraDesign.Motion.auroraDrift) { phase = 1 }
         withAnimation(AuroraDesign.Motion.auroraRibbon) { ribbonPhase = 1 }
+    }
+}
+
+struct VisibilityAwareEmberSurfaceBackground: View {
+    var respectsReduceTransparency: Bool = true
+
+    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        EmberSurfaceBackground(
+            respectsReduceTransparency: respectsReduceTransparency,
+            rendersEffects: MobileDecorativeRenderPolicy.allowsLiveEffects(
+                visibility: backgroundVisibility,
+                scenePhaseActive: scenePhase == .active
+            )
+        )
     }
 }
 

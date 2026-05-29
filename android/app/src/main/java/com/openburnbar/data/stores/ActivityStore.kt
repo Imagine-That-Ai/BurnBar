@@ -37,7 +37,7 @@ class ActivityStore(
     private val _hasMore = MutableStateFlow(false)
     val hasMore = _hasMore.asStateFlow()
 
-    private val _selectedSegment = MutableStateFlow(StreamsSegment.SESSIONS)
+    private val _selectedSegment = MutableStateFlow(StreamsSegment.COCKPIT)
     val selectedSegment = _selectedSegment.asStateFlow()
 
     private var lastDoc: com.google.firebase.firestore.DocumentSnapshot? = null
@@ -172,6 +172,7 @@ class ActivityStore(
 }
 
 enum class StreamsSegment(val label: String) {
+    COCKPIT("Cockpit"),
     SESSIONS("Sessions"),
     MODELS("Models"),
     PROJECTS("Projects")

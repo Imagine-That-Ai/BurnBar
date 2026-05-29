@@ -68,6 +68,31 @@ retrieval. Local `SearchService` remains the hot path for local corpus search;
 cloud search is a separate premium surface for mirrored hosted session logs and
 agent/MCP recall.
 
+### Streams cockpit faceted query (`queryConversations`)
+
+The mobile **Streams conversation cockpit** (iOS/iPadOS and Android) is a faceted
+*browse* surface layered on the same sealed manifests, distinct from the
+hash-based hosted *search* above:
+
+- Every indexed provider transcript — not just the in-app CLI thread — is backed
+  up by `SessionLogSyncService`. Each `session_logs/{id}` manifest carries cockpit
+  **facets** (tokens, cost, `workingDirectory`, model, provider, project, message
+  count, tags) alongside the existing sealed title/snippet. Bodies remain
+  `CloudVaultCrypto`-encrypted in Storage; the manifest holds no plaintext body.
+- The `queryConversations` Cloud Function answers faceted filters (provider,
+  model, project, date range), server-side sort, cursor pagination, and KPI
+  aggregates straight from the manifests. It requires an active hosted-quota
+  entitlement; `firestore.rules` allows the facet fields under the same paid gate
+  and keeps body content server-only, with composite indexes for the facet sorts.
+- The cockpit decrypts returned titles/snippets — and full bodies on demand —
+  locally via `CloudConversationSearchService`, so the server never sees
+  plaintext. Hash-based full-text search (above) stays available for keyword
+  recall; the cockpit adds structured filter/sort/aggregate browsing on top.
+- **Export** is the inverse path: macOS `ConversationBundleExporter` writes a
+  portable bundle (`conversations.json` + `README.md` index + per-conversation
+  Markdown), resolving bodies from local DB, cloud cache, or iCloud through a
+  `bodyProvider` seam; mobile shares a single conversation as Markdown.
+
 ## Diligence source map (doc → code)
 
 | Concept in this document | Where it is implemented in the repo today |

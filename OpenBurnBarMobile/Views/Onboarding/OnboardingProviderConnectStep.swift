@@ -903,7 +903,7 @@ private struct GuideStepRow: View {
         onConnected: { _ in },
         onSkip: { }
     )
-    .background(EmberSurfaceBackground().ignoresSafeArea())
+    .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
 }
 
 #Preview("Codex (hosted)") {
@@ -913,5 +913,5 @@ private struct GuideStepRow: View {
         onConnected: { _ in },
         onSkip: { }
     )
-    .background(EmberSurfaceBackground().ignoresSafeArea())
+    .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
 }

@@ -490,6 +490,16 @@ final class ConversationStore: Sendable {
         }
     }
 
+    /// Clears the encrypted-backup dirty flag for every local conversation so a facet-schema
+    /// bump re-enqueues each one through `SessionLogSyncService` exactly once.
+    @discardableResult
+    func markAllSessionLogsUnsynced() throws -> Int {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE conversations SET logSyncedAt = NULL WHERE isRemote = 0")
+            return db.changesCount
+        }
+    }
+
     func countConversations() throws -> Int {
         try dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM conversations") ?? 0

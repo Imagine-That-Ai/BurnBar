@@ -54,6 +54,37 @@ class CloudConversationSearchService(
             }
     }
 
+    /**
+     * Unlocks the 32-byte cloud vault key for the signed-in user, registering this device's escrow
+     * keypair on first use. Returns `null` when signed out or no active key wrapper has reached this
+     * device yet (so the cockpit can show a "vault locked on this device" notice).
+     */
+    suspend fun unlockVaultKeyOrNull(): ByteArray? {
+        val uid = auth.currentUser?.uid ?: return null
+        val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+        registerDevice(uid, keypair)
+        return unlockVaultKey(uid, keypair)
+    }
+
+    /**
+     * Downloads and decrypts the encrypted session body at [storagePath], verifying the plaintext
+     * SHA-256 matches [bodyHash]. Used by the cockpit to open a full transcript on demand without a
+     * pre-built search row.
+     */
+    suspend fun loadBodyAt(storagePath: String, bodyHash: String): String =
+        loadBody(
+            CloudConversationSearchRow(
+                id = "",
+                title = "",
+                snippet = "",
+                provider = null,
+                projectName = null,
+                storagePath = storagePath,
+                bodyHash = bodyHash,
+                score = 0.0
+            )
+        )
+
     suspend fun loadBody(row: CloudConversationSearchRow): String {
         val uid = auth.currentUser?.uid ?: throw IllegalStateException("Sign in before opening cloud conversations.")
         val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()

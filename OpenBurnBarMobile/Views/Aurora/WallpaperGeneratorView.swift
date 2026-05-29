@@ -3,6 +3,9 @@ import OpenBurnBarCore
 #if canImport(UIKit)
 import UIKit
 import Photos
+import AVFoundation
+import CoreMedia
+import ImageIO
 #endif
 
 // MARK: - Wallpaper Generator View
@@ -163,34 +166,8 @@ struct WallpaperGeneratorView: View {
             }
         }
         .statusBarHidden(true)
-        .alert(item: $saveResult) { result in
-            switch result {
-            case .successStill:
-                Alert(
-                    title: Text("Still Wallpaper Saved"),
-                    message: Text("Your wallpaper has been saved to Photos. Open Settings → Wallpaper to set it."),
-                    dismissButton: .default(Text("Done"))
-                )
-            case .successLive:
-                Alert(
-                    title: Text("Live Wallpaper Saved"),
-                    message: Text("Your dynamic wallpaper has been saved to Photos. Open Settings → Wallpaper to set it as a Live wallpaper."),
-                    dismissButton: .default(Text("Done"))
-                )
-            case .permissionDenied:
-                Alert(
-                    title: Text("Photos Access Required"),
-                    message: Text("Enable Photos access in Settings → BurnBar → Photos to save wallpapers.")
-                ,
-                    dismissButton: .default(Text("OK"))
-                )
-            case .error(let msg):
-                Alert(
-                    title: Text("Save Failed"),
-                    message: Text(msg),
-                    dismissButton: .default(Text("OK"))
-                )
-            }
+        .sheet(item: $saveResult) { result in
+            SaveResultSheet(result: result, colorScheme: effectiveStyle.isDark ? .dark : .light)
         }
         .preferredColorScheme(selectedStyle == .appDefault ? nil : (selectedStyle.isDark ? .dark : .light))
     }
@@ -861,8 +838,64 @@ struct WallpaperGeneratorView: View {
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("burnbar_wallpaper_\(Int(Date().timeIntervalSince1970)).mov")
+        let stillURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("burnbar_still_\(Int(Date().timeIntervalSince1970)).jpg")
+
+        // 1. Generate unique asset identifier to pair photo and video
+        let assetIdentifier = UUID().uuidString
 
         do {
+            // Render the still image (using the current swarm settings)
+            let wallpaperView = ZStack {
+                effectiveStyle.backgroundColor
+                SwarmCanvasView(
+                    accent: selectedStyle == .swarmEmber ? MobileTheme.ember : .white,
+                    pace: .cinematic,
+                    colorDriver: colorDriver,
+                    colorPalette: effectiveStyle.swarmPalette,
+                    enabledProviderGlyphs: selectedProviderGlyphs
+                )
+                RadialGradient(
+                    colors: [.clear, effectiveStyle.backgroundColor.opacity(0.7)],
+                    center: .center,
+                    startRadius: 120,
+                    endRadius: 500
+                )
+            }
+            .frame(width: screenBounds.width, height: screenBounds.height)
+            .preferredColorScheme(selectedStyle == .appDefault ? nil : (selectedStyle.isDark ? .dark : .light))
+
+            let renderer = ImageRenderer(content: wallpaperView)
+            renderer.scale = scale
+            renderer.proposedSize = ProposedViewSize(width: screenBounds.width, height: screenBounds.height)
+
+            guard let uiImage = renderer.uiImage else {
+                saveResult = .error("Failed to render wallpaper image.")
+                return
+            }
+
+            guard let stillData = uiImage.jpegData(compressionQuality: 0.9) else {
+                saveResult = .error("Failed to generate JPEG data.")
+                return
+            }
+
+            guard let source = CGImageSourceCreateWithData(stillData as CFData, nil),
+                  let destination = CGImageDestinationCreateWithURL(stillURL as CFURL, "public.jpeg" as CFString, 1, nil) else {
+                saveResult = .error("Failed to initialize image destination.")
+                return
+            }
+
+            let makerAppleDict: [String: Any] = ["17": assetIdentifier]
+            let metadataProperties: [CFString: Any] = [
+                kCGImagePropertyMakerAppleDictionary: makerAppleDict
+            ]
+            CGImageDestinationAddImageFromSource(destination, source, 0, metadataProperties as CFDictionary)
+            guard CGImageDestinationFinalize(destination) else {
+                saveResult = .error("Failed to write still image metadata.")
+                return
+            }
+
+            // 2. Set up AVAssetWriter for video
             let assetWriter = try AVAssetWriter(outputURL: tempURL, fileType: .mov)
             let videoSettings: [String: Any] = [
                 AVVideoCodecKey: AVVideoCodecType.hevc,
@@ -880,19 +913,60 @@ struct WallpaperGeneratorView: View {
                 ]
             )
 
+            // Inject the content identifier metadata into the movie file
+            let identifierItem = AVMutableMetadataItem()
+            identifierItem.key = "com.apple.quicktime.content.identifier" as NSString
+            identifierItem.keySpace = .quickTimeMetadata
+            identifierItem.value = assetIdentifier as NSString
+            identifierItem.dataType = "com.apple.metadata.datatype.UTF-8"
+            assetWriter.metadata = [identifierItem]
+
+            // Inject the timed metadata track for still image time
+            var formatDescription: CMFormatDescription?
+            let spec: [String: Any] = [
+                kCMMetadataFormatDescriptionMetadataSpecificationKey_Identifier as String: "mdta/com.apple.quicktime.still-image-time",
+                kCMMetadataFormatDescriptionMetadataSpecificationKey_DataType as String: kCMMetadataBaseDataType_SInt8
+            ]
+            CMMetadataFormatDescriptionCreateWithMetadataSpecifications(
+                allocator: kCFAllocatorDefault,
+                metadataType: kCMMetadataFormatType_Boxed,
+                metadataSpecifications: [spec] as CFArray,
+                formatDescriptionOut: &formatDescription
+            )
+
+            let metadataInput = AVAssetWriterInput(mediaType: .metadata, outputSettings: nil, sourceFormatHint: formatDescription)
+            metadataInput.expectsMediaDataInRealTime = false
+            let metadataAdaptor = AVAssetWriterInputMetadataAdaptor(assetWriterInput: metadataInput)
+
             guard assetWriter.canAdd(videoInput) else { throw NSError(domain: "AVAssetWriter", code: -1) }
             assetWriter.add(videoInput)
+
+            guard assetWriter.canAdd(metadataInput) else { throw NSError(domain: "AVAssetWriter", code: -2) }
+            assetWriter.add(metadataInput)
+
             assetWriter.startWriting()
             assetWriter.startSession(atSourceTime: .zero)
 
-            // 6-second loop (was 3s). Lets the swarm settle on screen for
-            // long enough that the final formation reads, with a long-enough
-            // tail of subtle ember motion to feel alive when looped.
+            // Write timed metadata at still-image-time (0)
+            let stillImageTimeItem = AVMutableMetadataItem()
+            stillImageTimeItem.key = "com.apple.quicktime.still-image-time" as NSString
+            stillImageTimeItem.keySpace = .quickTimeMetadata
+            stillImageTimeItem.value = 0 as NSNumber
+            stillImageTimeItem.dataType = kCMMetadataBaseDataType_SInt8 as String
+
+            let timedMetadataGroup = AVTimedMetadataGroup(items: [stillImageTimeItem], timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 100)))
+            
+            while !metadataInput.isReadyForMoreMediaData {
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            metadataAdaptor.append(timedMetadataGroup)
+
+            // 6-second loop
             let frameCount = 180
             let fps: Int32 = 30
             let frameDuration = CMTime(value: 1, timescale: fps)
 
-            // 1. Create a single simulation instance to avoid re-seeding / flickering
+            // Create a single simulation instance
             let simulation = SwarmSimulation(
                 particleCount: SwarmCanvasView.adaptiveParticleCount,
                 pace: .cinematic,
@@ -903,25 +977,20 @@ struct WallpaperGeneratorView: View {
             simulation.setAutoCyclingEnabled(false)
             simulation.assignMode(currentMode)
 
-            // 2. Pre-advance simulation by 600 steps (10s at 60Hz physics)
-            //    BEFORE recording starts. The previous 4s wasn't enough — the
-            //    cinematic pace plus complex shapes (anime girl, multi-glyph
-            //    layouts) need more time to converge to a recognizable form.
-            //    With 10s of pre-roll, the recorded video opens on a settled
-            //    formation and only the gentle ember motion remains.
+            // Pre-advance simulation by 600 steps
             var currentTime = Date()
             for _ in 0..<600 {
                 simulation.advance(to: currentTime, bounds: screenBounds.size, reduceMotion: false, isBatteryThrottled: false)
                 currentTime = currentTime.addingTimeInterval(1.0 / 60.0)
             }
 
-            // 3. Render 90 frames using the single advanced simulation
+            // Render 180 frames using the single advanced simulation
             for i in 0..<frameCount {
                 while !videoInput.isReadyForMoreMediaData {
                     try await Task.sleep(nanoseconds: 10_000_000)
                 }
 
-                // Step simulation twice to advance virtual time by 1/30s (at 60Hz physics accuracy)
+                // Step simulation twice to advance virtual time by 1/30s
                 for _ in 0..<2 {
                     simulation.advance(to: currentTime, bounds: screenBounds.size, reduceMotion: false, isBatteryThrottled: false)
                     currentTime = currentTime.addingTimeInterval(1.0 / 60.0)
@@ -960,19 +1029,26 @@ struct WallpaperGeneratorView: View {
                 let presentationTime = CMTimeMultiply(frameDuration, multiplier: Int32(i))
                 pixelBufferAdaptor.append(buffer, withPresentationTime: presentationTime)
 
-                // Yield to run loop slightly to prevent blocking UI main thread
+                // Yield slightly
                 try await Task.sleep(nanoseconds: 5_000_000)
             }
 
             videoInput.markAsFinished()
+            metadataInput.markAsFinished()
             await assetWriter.finishWriting()
 
+            // Save paired JPEG still and MOV video together as a Live Photo
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 PHPhotoLibrary.shared().performChanges {
                     let request = PHAssetCreationRequest.forAsset()
-                    request.addResource(with: .video, fileURL: tempURL, options: nil)
+                    let imageOptions = PHAssetResourceCreationOptions()
+                    let videoOptions = PHAssetResourceCreationOptions()
+                    
+                    request.addResource(with: .photo, fileURL: stillURL, options: imageOptions)
+                    request.addResource(with: .pairedVideo, fileURL: tempURL, options: videoOptions)
                 } completionHandler: { success, error in
                     try? FileManager.default.removeItem(at: tempURL)
+                    try? FileManager.default.removeItem(at: stillURL)
                     if success {
                         continuation.resume()
                     } else {
@@ -986,6 +1062,7 @@ struct WallpaperGeneratorView: View {
         } catch {
             saveResult = .error(error.localizedDescription)
             try? FileManager.default.removeItem(at: tempURL)
+            try? FileManager.default.removeItem(at: stillURL)
         }
         #endif
     }
@@ -1014,6 +1091,225 @@ struct OfflineSwarmRenderView: View {
             )
         }
         .frame(width: size.width, height: size.height)
+    }
+}
+
+// MARK: - Save Result Sheet
+
+struct SaveResultSheet: View {
+    let result: WallpaperGeneratorView.SaveResult
+    let colorScheme: ColorScheme
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 24) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [iconBgStart, iconBgEnd],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 80, height: 80)
+                
+                Image(systemName: iconName)
+                    .font(.system(size: 36, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [iconColorStart, iconColorEnd],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .padding(.top, 16)
+
+            // Text content
+            VStack(spacing: 8) {
+                Text(titleText)
+                    .font(.title2.bold())
+                    .foregroundStyle(colorScheme == .dark ? .white : .black)
+                
+                Text(messageText)
+                    .font(.subheadline)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(colorScheme == .dark ? .white.opacity(0.7) : .black.opacity(0.6))
+                    .padding(.horizontal, 24)
+            }
+
+            // Options/Actions
+            VStack(spacing: 12) {
+                switch result {
+                case .successStill, .successLive:
+                    Button(action: openSettingsWallpaper) {
+                        HStack {
+                            Image(systemName: "gearshape.fill")
+                            Text("Set in Wallpaper Settings")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(
+                            LinearGradient(
+                                colors: [MobileTheme.ember, MobileTheme.blaze],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 14)
+                        )
+                        .foregroundStyle(.white)
+                    }
+                    
+                    Button(action: openPhotosApp) {
+                        HStack {
+                            Image(systemName: "photo.fill.on.rectangle.fill")
+                            Text("View in Photos App")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                        .foregroundStyle(colorScheme == .dark ? .white : .black)
+                    }
+                    
+                case .permissionDenied:
+                    Button(action: openAppSettings) {
+                        HStack {
+                            Image(systemName: "gearshape.fill")
+                            Text("Open Settings")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(
+                            LinearGradient(
+                                colors: [MobileTheme.ember, MobileTheme.blaze],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 14)
+                        )
+                        .foregroundStyle(.white)
+                    }
+                    
+                case .error:
+                    Button(action: { dismiss() }) {
+                        Text("Dismiss")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                            .foregroundStyle(colorScheme == .dark ? .white : .black)
+                    }
+                }
+                
+                if case .permissionDenied = result {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.gray)
+                    .padding(.top, 8)
+                } else {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.gray)
+                    .padding(.top, 8)
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+        .padding(.vertical, 32)
+        .background(colorScheme == .dark ? Color(red: 0.08, green: 0.06, blue: 0.05) : Color(red: 0.98, green: 0.98, blue: 0.96))
+        .presentationDetents([.fraction(0.55), .medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var iconName: String {
+        switch result {
+        case .successStill: return "photo.on.rectangle.angled"
+        case .successLive: return "livephoto"
+        case .permissionDenied: return "exclamationmark.shield.fill"
+        case .error: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var iconColorStart: Color {
+        switch result {
+        case .successStill, .successLive: return MobileTheme.ember
+        case .permissionDenied: return .orange
+        case .error: return .red
+        }
+    }
+
+    private var iconColorEnd: Color {
+        switch result {
+        case .successStill, .successLive: return MobileTheme.blaze
+        case .permissionDenied: return .yellow
+        case .error: return .orange
+        }
+    }
+
+    private var iconBgStart: Color {
+        iconColorStart.opacity(0.2)
+    }
+
+    private var iconBgEnd: Color {
+        iconColorEnd.opacity(0.1)
+    }
+
+    private var titleText: String {
+        switch result {
+        case .successStill: return "Still Wallpaper Saved"
+        case .successLive: return "Live Photo Saved!"
+        case .permissionDenied: return "Photos Access Required"
+        case .error: return "Save Failed"
+        }
+    }
+
+    private var messageText: String {
+        switch result {
+        case .successStill:
+            return "Your high-resolution still image is now saved to your Photos library."
+        case .successLive:
+            return "Your 6-second dynamic loop is now saved as a paired Live Photo. Set it from Settings or view in your Photos library."
+        case .permissionDenied:
+            return "Enable Photos access in Settings → BurnBar → Photos to save wallpapers."
+        case .error(let msg):
+            return msg
+        }
+    }
+
+    private func openSettingsWallpaper() {
+        if let url = URL(string: "App-prefs:root=Wallpaper") {
+            UIApplication.shared.open(url) { success in
+                if !success {
+                    if let fallbackUrl = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(fallbackUrl)
+                    }
+                }
+            }
+        }
+        dismiss()
+    }
+
+    private func openPhotosApp() {
+        if let url = URL(string: "photos-redirect://") {
+            UIApplication.shared.open(url)
+        }
+        dismiss()
+    }
+
+    private func openAppSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+        dismiss()
     }
 }
 

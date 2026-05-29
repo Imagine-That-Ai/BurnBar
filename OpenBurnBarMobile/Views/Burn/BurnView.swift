@@ -24,7 +24,10 @@ struct BurnView: View {
 
     var body: some View {
         ZStack {
-            AuroraBackdrop(colorDriver: dashboard.swarmColorDriver)
+            AuroraBackdrop(
+                colorDriver: dashboard.swarmColorDriver,
+                visibility: burnBackgroundVisibility
+            )
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.lg) {
                     if quotaStore.snapshots.isEmpty && quotaStore.isLoading {
@@ -107,6 +110,10 @@ struct BurnView: View {
                 .presentationDragIndicator(.visible)
             }
         }
+    }
+
+    private var burnBackgroundVisibility: MobileBackgroundVisibility {
+        sheetProvider == nil ? MobileBackgroundVisibility.prominent : MobileBackgroundVisibility.obscured
     }
 
     // MARK: - Hero

@@ -118,6 +118,50 @@
 
 ---
 
+## Anthropic metering split (post-June-15) and routing options
+
+From June 15, Anthropic bills programmatic access (`claude -p`/`--print` and the
+Agent SDK) and third-party harnesses against a separate metered credit, distinct
+from the interactive Pro/Max subscription window. The local quota adapters above
+are unaffected — they read local artifacts and documented endpoints. The
+**gateway** routing options that interact with this split live in
+[`docs/ROUTED_CLIENT_GATEWAY.md`](ROUTED_CLIENT_GATEWAY.md); all gray-area paths
+are off by default:
+
+| Option | Default | Opt-in | Notes |
+|---|---|---|---|
+| Console API key route | On | Add `sk-ant-api…` in Accounts | Legit default; bills the Console plan, not the subscription window. |
+| Interactive handoff (B1) | Manual | `openburnbar-cli claude-handoff …` | Human-driven real `claude` session; companion reconciles the subscription-window token delta. |
+| PTY interactive executor (B2) | Off | Settings → Agents → Advanced → Experimental routing (or `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE=1`) | Experimental, brittle, subscription (`sk-ant-oat…`) routes only. UI toggle persists and restarts the daemon to apply. |
+| Cross-vendor degrade (B3) | Off | Settings → Agents → Advanced → Experimental routing (or `OPENBURNBAR_CROSS_VENDOR_DEGRADE=1` + optional `…_VENDORS`) | Substitutes an allow-listed OpenAI-compatible vendor on the user's own key when the requested model cannot be served. |
+| Meter-pool diagnostic (B0) | Manual | `openburnbar-cli claude-meter-experiment` | Reports whether an interactive turn drew from the subscription window or the metered credit. |
+
+## Conversation transcript parsers (Streams cockpit)
+
+The quota adapters above answer *"how much is left?"*. A second, independent
+family of **transcript parsers** answers *"what was said?"* — they index full
+session transcripts (text, token totals, cost, project, working directory) into
+the local `conversations` corpus, which then feeds the encrypted hosted backup
+and the **Streams conversation cockpit** (`queryConversations`). Parsers conform
+to `LogParser` and are registered in `ParserRegistry.defaultParsers()`.
+
+| Provider | Parser | Source | Format | Test seam |
+|----------|--------|--------|--------|-----------|
+| **Goose** | `GooseParser.swift` | `~/.local/share/goose/sessions/sessions.db` (also `~/Library/Application Support/Block/goose/sessions`); legacy `*.jsonl` fallback | SQLite `sessions` + `messages` tables; `accumulated_*`/`total_tokens`; transcript turns flattened from `messages` | `init(sessionDirectoryOverride:)` |
+| **OpenCode** | `OpenCodeParser` (`UsageAggregatorParsers.swift`) | `~/.local/share/opencode/opencode.db` (env: `OPENCODE_DB_PATH`, `OPENCODE_DATA_HOME`, `XDG_DATA_HOME`) | SQLite `session` / `message` / `part` rows with JSON `data` columns; `tokens.{input,output,cache.{read,write}}` | `init(databasePathOverride:)` |
+| **Pi Agent** | `PiAgentParser` (`UsageAggregatorParsers.swift`) | `~/.pi/sessions/*.jsonl` | One JSONL file per session; inline `usage` or character-based fallback estimate | reads `provider.logDirectory` |
+| **Goose / OpenCode hardening** | both | — | SQLite reads go through GRDB `DatabaseValue.storage`, so a column whose stored type differs from the expected one (e.g. a `TEXT` epoch) resolves instead of force-decode crashing | — |
+
+All indexed transcripts (these plus the existing Codex/Claude/Grok/Hermes/… parsers)
+route through `SessionLogSyncService` into the zero-knowledge hosted backup with
+cockpit facets (tokens, cost, `workingDirectory`, model, provider, project, tags).
+Bodies are encrypted client-side with `CloudVaultCrypto`; the `session_logs`
+manifest carries only sealed metadata. See
+[`docs/OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md`](OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md)
+for the cockpit query surface.
+
+---
+
 ## Adding a New Provider
 
 1. Create `{Provider}QuotaAdapter.swift` conforming to `ProviderQuotaAdapter`.

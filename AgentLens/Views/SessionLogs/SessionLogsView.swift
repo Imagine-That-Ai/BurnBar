@@ -91,6 +91,7 @@ struct SessionLogsView: View {
     @State private var iconPickerDeviceId: String?
     @State private var selectedDetailLog: ConversationRecord?
     @State private var resumeRequest: SessionResumeRequest?
+    @State private var isExporting = false
 
     private let defaultDisplayLimit = 15
     private var hasMultipleDevices: Bool { knownDevices.count > 1 }
@@ -424,8 +425,31 @@ struct SessionLogsView: View {
                 deviceFilterMenu
             }
 
+            exportButton
+
             dataSourceMenu
         }
+    }
+
+    private var exportButton: some View {
+        Button {
+            Task { await exportAllConversations() }
+        } label: {
+            if isExporting {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 24, height: 20)
+            } else {
+                filterIconButton(
+                    systemImage: "square.and.arrow.up",
+                    isActive: false,
+                    activeColor: DesignSystem.Colors.teal
+                )
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isExporting || filteredLogs.isEmpty)
+        .help("Export \(filteredLogs.count) conversation\(filteredLogs.count == 1 ? "" : "s") to a folder (JSON + Markdown)")
     }
 
     private func sourceFilterButton(_ filter: SessionLogSourceFilter) -> some View {
@@ -961,6 +985,67 @@ struct SessionLogsView: View {
         )
         refreshRetrievalHealth()
         Task { await runLocalRetrievalSearchIfNeeded() }
+    }
+
+    // MARK: - Export
+
+    /// Exports the currently visible conversations into a self-contained folder
+    /// bundle (JSON manifest + per-conversation Markdown). Bodies are resolved
+    /// against the active data source so cloud/iCloud transcripts are downloaded
+    /// before writing.
+    @MainActor
+    private func exportAllConversations() async {
+        let records = filteredLogs
+        guard !records.isEmpty else { return }
+
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Export"
+        panel.message = "Choose a folder to export \(records.count) conversation\(records.count == 1 ? "" : "s")"
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+
+        isExporting = true
+        defer { isExporting = false }
+
+        var bodies: [String: String] = [:]
+        for record in records {
+            bodies[record.id] = await resolveExportBody(for: record)
+        }
+        let resolvedBodies = bodies
+
+        do {
+            let result = try await ConversationBundleExporter.exportBundle(
+                records: records,
+                to: directory,
+                bodyProvider: { resolvedBodies[$0.id] ?? $0.fullText }
+            )
+            NSWorkspace.shared.activateFileViewerSelecting([result.jsonURL])
+        } catch {
+            dataSourceError = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func resolveExportBody(for record: ConversationRecord) async -> String {
+        switch dataSource {
+        case .local:
+            if let full = try? dataStore.fetchConversation(id: record.id)?.fullText, !full.isEmpty {
+                return full
+            }
+            return record.fullText
+        case .cloud:
+            if let cached = cloudBodyCache[record.sessionId], !cached.isEmpty { return cached }
+            if let body = try? await cloudSyncService?.fetchCloudSessionLogBody(docId: record.sessionId),
+               !body.isEmpty {
+                return body
+            }
+            return record.fullText
+        case .iCloud:
+            return record.fullText
+        }
     }
 
     // MARK: - Data Loading
@@ -1673,7 +1758,7 @@ struct SessionLogCloudConsentSheet: View {
 
             HStack(spacing: DesignSystem.Spacing.md) {
                 Button("Not now") {
-                    settingsManager.sessionLogCloudBackupEnabled = false
+                    settingsManager.conversationBackupEnabled = false
                     settingsManager.sessionLogCloudBackupConsentShown = true
                     onDismiss()
                 }
@@ -1683,7 +1768,7 @@ struct SessionLogCloudConsentSheet: View {
                 Spacer()
 
                 Button("Enable Cloud Backup") {
-                    settingsManager.sessionLogCloudBackupEnabled = true
+                    settingsManager.conversationBackupEnabled = true
                     settingsManager.sessionLogCloudBackupConsentShown = true
                     onDismiss()
                 }

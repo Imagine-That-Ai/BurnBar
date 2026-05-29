@@ -432,6 +432,21 @@ final class SettingsManager {
         ]
     }
 
+    /// Experimental: route Anthropic subscription traffic through an interactive
+    /// `claude` TUI (gray-area). Off by default; applied at daemon launch.
+    var experimentalInteractiveClaudeEnabled: Bool {
+        get { gateway.experimentalInteractiveClaudeEnabled }
+        set { gateway.experimentalInteractiveClaudeEnabled = newValue }
+    }
+
+    /// Experimental: substitute an allow-listed OpenAI-compatible vendor on the
+    /// user's own key when the requested model can't be served. Off by default;
+    /// applied at daemon launch.
+    var crossVendorDegradeEnabled: Bool {
+        get { gateway.crossVendorDegradeEnabled }
+        set { gateway.crossVendorDegradeEnabled = newValue }
+    }
+
     // MARK: Indexing
     var conversationIndexingEnabled: Bool {
         get { index.conversationIndexingEnabled }
@@ -487,6 +502,19 @@ final class SettingsManager {
     var sessionLogCloudBackupEnabled: Bool {
         get { cloudSync.sessionLogCloudBackupEnabled }
         set { cloudSync.sessionLogCloudBackupEnabled = newValue }
+    }
+
+    var conversationBackupEnabled: Bool {
+        get { cloudSync.sessionLogCloudBackupEnabled }
+        set {
+            cloudSync.sessionLogCloudBackupEnabled = newValue
+            cloudSync.conversationCloudBackupEnabled = newValue
+        }
+    }
+
+    var conversationFacetBackfillVersion: Int {
+        get { cloudSync.conversationFacetBackfillVersion }
+        set { cloudSync.conversationFacetBackfillVersion = newValue }
     }
 
     var sessionLogCloudBackupConsentShown: Bool {

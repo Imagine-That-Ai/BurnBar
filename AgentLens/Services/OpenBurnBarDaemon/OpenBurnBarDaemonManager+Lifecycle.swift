@@ -119,14 +119,7 @@ extension OpenBurnBarDaemonManager {
         }
 
         if sourceBinaryURL.standardizedFileURL != paths.installedBinaryURL.standardizedFileURL {
-            if dependencies.fileManager.fileExists(atPath: paths.installedBinaryURL.path) {
-                try dependencies.fileManager.removeItem(at: paths.installedBinaryURL)
-            }
-            try dependencies.fileManager.copyItem(at: sourceBinaryURL, to: paths.installedBinaryURL)
-            try dependencies.fileManager.setAttributes(
-                [.posixPermissions: 0o755],
-                ofItemAtPath: paths.installedBinaryURL.path
-            )
+            try atomicallyInstallBinary(from: sourceBinaryURL, to: paths.installedBinaryURL)
         }
 
         // Copy the OpenBurnBarCore resource bundle next to the daemon binary so that
@@ -148,6 +141,51 @@ extension OpenBurnBarDaemonManager {
             throw OpenBurnBarDaemonManagerError.daemonResourceBundleUnavailable(
                 expectedPath: installedBundleURL.path
             )
+        }
+    }
+
+    /// Atomically replaces the installed daemon binary so `launchd` (KeepAlive: true)
+    /// can never observe a missing binary mid-swap and flap into a crash loop.
+    ///
+    /// The new binary is copied to a sibling temp path on the same volume, made
+    /// executable, then `rename(2)`-swapped into place via `replaceItemAt`. A
+    /// currently-running daemon keeps executing its old inode; the path always
+    /// resolves to a complete binary (old or new), never a partial/absent file.
+    func atomicallyInstallBinary(from sourceURL: URL, to destinationURL: URL) throws {
+        let fileManager = dependencies.fileManager
+        let directory = destinationURL.deletingLastPathComponent()
+        let tempURL = directory.appendingPathComponent(
+            ".\(destinationURL.lastPathComponent).incoming-\(UUID().uuidString)"
+        )
+
+        if fileManager.fileExists(atPath: tempURL.path) {
+            try? fileManager.removeItem(at: tempURL)
+        }
+
+        do {
+            try fileManager.copyItem(at: sourceURL, to: tempURL)
+            try fileManager.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: tempURL.path
+            )
+
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                // Atomic rename swap on the same volume; preserves a complete
+                // binary at the destination path throughout.
+                _ = try fileManager.replaceItemAt(destinationURL, withItemAt: tempURL)
+            } else {
+                try fileManager.moveItem(at: tempURL, to: destinationURL)
+            }
+
+            // `replaceItemAt` may inherit metadata from the original; re-assert
+            // the executable bit so launchd can always exec the new binary.
+            try fileManager.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: destinationURL.path
+            )
+        } catch {
+            try? fileManager.removeItem(at: tempURL)
+            throw error
         }
     }
 
@@ -191,6 +229,18 @@ extension OpenBurnBarDaemonManager {
             if !gatewayAuthToken.isEmpty {
                 environmentVariables["OPENBURNBAR_GATEWAY_AUTH_TOKEN"] = gatewayAuthToken
             }
+        }
+
+        // Experimental, off-by-default gateway routing opt-ins. These map the
+        // app toggles to the daemon env vars read by
+        // `ClaudeInteractiveSessionExecutor.makeIfEnabled()` and
+        // `BurnBarCrossVendorDegradePolicy.fromEnvironment()` at gateway init,
+        // so flipping a toggle takes effect on the next daemon restart.
+        if settings.experimentalInteractiveClaudeEnabled {
+            environmentVariables["OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE"] = "1"
+        }
+        if settings.crossVendorDegradeEnabled {
+            environmentVariables["OPENBURNBAR_CROSS_VENDOR_DEGRADE"] = "1"
         }
 
         let plist: [String: Any] = [

@@ -22,12 +22,16 @@ struct PulseView: View {
     let router: PulseRouter
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.cloudSubscriptionStore) private var cloudStore
 
     var body: some View {
         ZStack {
-            AuroraBackdrop(colorDriver: dashboard.swarmColorDriver)
+            AuroraBackdrop(
+                colorDriver: dashboard.swarmColorDriver,
+                visibility: pulseBackgroundVisibility
+            )
             PulseDepthBackdrop()
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.lg) {
@@ -159,13 +163,7 @@ struct PulseView: View {
             quotaStore.stopListening()
             sessionsStore.stopLiveUsageListening()
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now in
-            liveNow = now
-            let queryStart = PulseWindowMetricBuilder.liveQueryStart(now: now)
-            guard queryStart != liveUsageStart else { return }
-            liveUsageStart = queryStart
-            sessionsStore.startLiveUsageListening(since: queryStart)
-        }
+        .task(id: shouldRunLivePulseClock) { await runLivePulseClock() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await dashboard.refresh() }
@@ -184,6 +182,34 @@ struct PulseView: View {
         .onChange(of: timelineScope) { _, scope in
             dashboard.setWindow(scope.rollupKey)
             Task { await dashboard.refresh() }
+        }
+    }
+
+    private var shouldRunLivePulseClock: Bool {
+        !showCloudStore
+            && MobileDecorativeRenderPolicy.allowsLiveEffects(
+                visibility: backgroundVisibility,
+                scenePhaseActive: scenePhase == .active
+            )
+    }
+
+    private var pulseBackgroundVisibility: MobileBackgroundVisibility {
+        showCloudStore ? MobileBackgroundVisibility.obscured : MobileBackgroundVisibility.prominent
+    }
+
+    private func runLivePulseClock() async {
+        guard shouldRunLivePulseClock else { return }
+        while !Task.isCancelled {
+            await MainActor.run {
+                let now = Date()
+                liveNow = now
+                let queryStart = PulseWindowMetricBuilder.liveQueryStart(now: now)
+                if queryStart != liveUsageStart {
+                    liveUsageStart = queryStart
+                    sessionsStore.startLiveUsageListening(since: queryStart)
+                }
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
     }
 
