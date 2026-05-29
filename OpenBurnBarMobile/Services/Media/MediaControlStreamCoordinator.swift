@@ -182,7 +182,31 @@ final class MediaControlStreamCoordinator: ObservableObject {
     }
 
     func start(uid: String, connectionID: String) {
-        guard supervisorTask == nil else { return }
+        if supervisorTask != nil {
+            let phaseRequiresRestart: Bool
+            switch phase {
+            case .idle, .stopped, .failed:
+                phaseRequiresRestart = true
+            case .dialing, .live, .reconnecting:
+                phaseRequiresRestart = false
+            }
+            let shouldRestart = activeUID != uid
+                || activeConnectionID != connectionID
+                || phaseRequiresRestart
+            guard shouldRestart else { return }
+            Self.log.info("control_stream_start_restart fromConnectionID=\(self.activeConnectionID ?? "", privacy: .public) toConnectionID=\(connectionID, privacy: .public)")
+            Self.debugTrace("control_stream_start_restart fromConnectionID=\(activeConnectionID ?? "") toConnectionID=\(connectionID)")
+            Task { [weak self] in
+                guard let self else { return }
+                await self.stop()
+                self.beginStart(uid: uid, connectionID: connectionID)
+            }
+            return
+        }
+        beginStart(uid: uid, connectionID: connectionID)
+    }
+
+    private func beginStart(uid: String, connectionID: String) {
         activeUID = uid
         activeConnectionID = connectionID
         phase = .dialing
