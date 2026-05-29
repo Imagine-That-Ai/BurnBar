@@ -480,7 +480,7 @@ struct ScreenShareViewerView: View {
             }
             .ignoresSafeArea()
         }
-        .overlay(alignment: .bottomLeading) {
+        .overlay(alignment: .topLeading) {
             remoteKeyboardCapture
         }
         .overlay(alignment: .bottom) {
@@ -533,7 +533,11 @@ struct ScreenShareViewerView: View {
             recomputeSmartTextCoach()
         }
         .onChange(of: coordinator.latestFocusContext) { _, _ in
-            applySmartZoomDecisionUsingCurrentLayout()
+            if isTyping, lastSmartTextNormalizedPoint != nil {
+                applyKeyboardAwareFraming()
+            } else {
+                applySmartZoomDecisionUsingCurrentLayout()
+            }
             recomputeSmartTextCoach()
         }
         .onChange(of: interactionMode) { _, newValue in
@@ -570,8 +574,7 @@ struct ScreenShareViewerView: View {
     /// Height of the on-screen keyboard that overlaps the viewport, capped so the
     /// remaining visible area can never collapse to nothing.
     private func keyboardInset(in size: CGSize) -> CGFloat {
-        guard size.height > 0 else { return 0 }
-        return min(max(keyboardHeight, 0), size.height * 0.6)
+        ScreenShareKeyboardFramePolicy.cappedInset(rawOverlap: keyboardHeight, viewportHeight: size.height)
     }
 
     /// Re-frames the smart-text target whenever the keyboard appears, resizes, or
@@ -581,7 +584,7 @@ struct ScreenShareViewerView: View {
         guard let size = lastLayoutSize, size.width > 0, size.height > 0 else { return }
         let contentRect = renderedContentRect(in: size)
         let inset = keyboardInset(in: size)
-        if let point = lastSmartTextNormalizedPoint {
+        if let point = activeTypingTargetNormalizedPoint() ?? lastSmartTextNormalizedPoint {
             applyDoubleTapZoom(toNormalized: point, in: size, contentRect: contentRect, bottomInset: inset)
         } else if isTyping {
             // Keyboard opened without a specific target (e.g. the Type button): lift the
@@ -611,6 +614,20 @@ struct ScreenShareViewerView: View {
             viewport.offset = decision.offset
         }
         smartZoomAutoFollowing = true
+    }
+
+    private func activeTypingTargetNormalizedPoint(now: Date = Date()) -> CGPoint? {
+        guard isTyping,
+              let context = coordinator.latestFocusContext,
+              ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
+                context: context,
+                selectedDisplayId: selectedDisplayId,
+                now: now
+              ),
+              let rect = context.normalizedRect else {
+            return nil
+        }
+        return ScreenShareSmartZoomReducer.normalizedCenter(of: rect)
     }
 
     private func applySmartZoomDecisionUsingCurrentLayout() {
@@ -1195,27 +1212,43 @@ private struct KeyboardHeightReader: View {
 
     var body: some View {
         #if canImport(UIKit)
-        Color.clear
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
-                if let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                    height = frame.height
+        GeometryReader { proxy in
+            Color.clear
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+                    guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                    height = ScreenShareKeyboardOverlapPolicy.overlap(keyboardFrame: frame, viewFrame: proxy.frame(in: .global))
                 }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
-                guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-                // Only count the keyboard while it actually overlaps the screen; a frame
-                // whose top sits at or below the screen bottom means it is hidden.
-                let screenHeight = UIScreen.main.bounds.height
-                height = max(0, screenHeight - frame.minY)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                height = 0
-            }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                    guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                    height = ScreenShareKeyboardOverlapPolicy.overlap(keyboardFrame: frame, viewFrame: proxy.frame(in: .global))
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                    height = 0
+                }
+        }
         #else
         Color.clear
         #endif
     }
 }
+
+enum ScreenShareKeyboardFramePolicy {
+    static func cappedInset(rawOverlap: CGFloat, viewportHeight: CGFloat) -> CGFloat {
+        guard viewportHeight > 0 else { return 0 }
+        return min(max(rawOverlap, 0), viewportHeight * 0.6)
+    }
+}
+
+#if canImport(UIKit)
+enum ScreenShareKeyboardOverlapPolicy {
+    static func overlap(keyboardFrame: CGRect, viewFrame: CGRect) -> CGFloat {
+        guard keyboardFrame.width > 0, keyboardFrame.height > 0, viewFrame.width > 0, viewFrame.height > 0 else {
+            return 0
+        }
+        return max(0, min(viewFrame.intersection(keyboardFrame).height, viewFrame.height))
+    }
+}
+#endif
 
 enum SmartZoomMode: String, CaseIterable, Identifiable, Sendable {
     case off
@@ -1423,6 +1456,13 @@ enum ScreenShareSmartZoomReducer {
             bottomInset: bottomInset
         )
         return Decision(scale: clampedScale, offset: offset, isAutoFollowing: true)
+    }
+
+    static func normalizedCenter(of rect: HermesRealtimeRelayNormalizedRect) -> CGPoint {
+        CGPoint(
+            x: CGFloat(rect.x + rect.width / 2),
+            y: CGFloat(rect.y + rect.height / 2)
+        )
     }
 
     /// Offset that puts `centerInContent` at the visual center of the

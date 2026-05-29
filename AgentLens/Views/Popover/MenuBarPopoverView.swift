@@ -839,9 +839,9 @@ struct MenuBarPopoverView: View {
             .popoverTooltip("Open settings")
 
             GlassButton(
-                title: "Quit OpenBurnBar",
+                title: "Quit",
                 icon: "power",
-                style: .regular
+                style: .cool
             ) {
                 NSApplication.shared.terminate(nil)
             }
@@ -1051,8 +1051,12 @@ struct GlassCard<Content: View>: View {
 
 struct GlassButton: View {
     enum Style {
+        /// Dashboard — warm ember, the app running hot.
         case prominent
+        /// Settings — neutral glass.
         case regular
+        /// Quit — the ember logo cooling to ice and draining away.
+        case cool
     }
 
     let title: String
@@ -1060,81 +1064,125 @@ struct GlassButton: View {
     let style: Style
     let action: () -> Void
 
+    @State private var isHovered = false
+    @State private var isPressed = false
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+    }
+
     var body: some View {
         Button(action: action) {
-            if style == .prominent {
-                prominentLabel
-            } else {
-                regularLabel
+            HStack(spacing: DesignSystem.Spacing.xs + 1) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(title)
+                    .font(DesignSystem.Typography.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignSystem.Spacing.sm + 1)
+            .padding(.horizontal, DesignSystem.Spacing.xs)
+            .background(background)
+            .clipShape(shape)
+            .overlay(border)
+            .shadow(color: glowColor.opacity(isHovered ? 0.35 : 0), radius: isHovered ? 9 : 0, y: 2)
         }
         .buttonStyle(.plain)
-    }
-
-    private var prominentLabel: some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
-            Text(title)
-                .font(DesignSystem.Typography.caption)
-        }
-        .foregroundStyle(DesignSystem.Colors.primaryGradient)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, DesignSystem.Spacing.sm)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(DesignSystem.Colors.ember.opacity(0.06))
-            }
-        }
-        .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [DesignSystem.Colors.ember.opacity(0.4), DesignSystem.Colors.amber.opacity(0.3)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.75
-                )
+        .contentShape(shape)
+        .scaleEffect(isPressed ? 0.97 : (isHovered ? 1.025 : 1.0))
+        .animation(isPressed ? DesignSystem.Animation.snappy : DesignSystem.Animation.hover, value: isHovered)
+        .animation(DesignSystem.Animation.snappy, value: isPressed)
+        .onHover { isHovered = $0 }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
         )
     }
 
-    private var regularLabel: some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
-            Text(title)
-                .font(DesignSystem.Typography.caption)
+    // MARK: - Per-style theming
+
+    private var foreground: AnyShapeStyle {
+        switch style {
+        case .prominent: return AnyShapeStyle(DesignSystem.Colors.primaryGradient)
+        case .regular:   return AnyShapeStyle(DesignSystem.Colors.textSecondary)
+        case .cool:      return AnyShapeStyle(DesignSystem.Colors.coolDownGradient)
         }
-        .foregroundStyle(DesignSystem.Colors.textSecondary)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, DesignSystem.Spacing.sm)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.5))
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        ZStack {
+            shape.fill(.ultraThinMaterial)
+            switch style {
+            case .prominent:
+                shape.fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                shape.fill(DesignSystem.Colors.ember.opacity(isHovered ? 0.12 : 0.06))
+            case .regular:
+                shape.fill(DesignSystem.Colors.surface.opacity(0.5))
+                shape.fill(Color.white.opacity(isHovered ? 0.05 : 0))
+            case .cool:
+                shape.fill(DesignSystem.Colors.surface.opacity(0.5))
+                // The cool wash drains downward — frost at the top fading to navy below.
+                shape.fill(
+                    LinearGradient(
+                        colors: [
+                            DesignSystem.Colors.frost.opacity(isHovered ? 0.18 : 0.09),
+                            DesignSystem.Colors.abyss.opacity(isHovered ? 0.22 : 0.11)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             }
         }
-        .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
-        )
+    }
+
+    @ViewBuilder
+    private var border: some View {
+        switch style {
+        case .prominent:
+            shape.strokeBorder(
+                LinearGradient(
+                    colors: [DesignSystem.Colors.ember.opacity(0.4), DesignSystem.Colors.amber.opacity(0.3)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 0.75
+            )
+        case .regular:
+            shape.strokeBorder(
+                LinearGradient(
+                    colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 0.5
+            )
+        case .cool:
+            shape.strokeBorder(
+                LinearGradient(
+                    colors: [
+                        DesignSystem.Colors.frost.opacity(isHovered ? 0.7 : 0.5),
+                        DesignSystem.Colors.abyss.opacity(0.35)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: 0.75
+            )
+        }
+    }
+
+    private var glowColor: Color {
+        switch style {
+        case .prominent: return DesignSystem.Colors.ember
+        case .regular:   return Color.white
+        case .cool:      return DesignSystem.Colors.glacier
+        }
     }
 }
 

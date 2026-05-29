@@ -834,7 +834,12 @@ struct WallpaperGeneratorView: View {
 
         let screenBounds = UIScreen.main.bounds
         let scale = UIScreen.main.scale
-        let size = CGSize(width: screenBounds.width * scale, height: screenBounds.height * scale)
+        
+        let width = Int(screenBounds.width * scale)
+        let height = Int(screenBounds.height * scale)
+        let evenWidth = (width % 2 == 0) ? width : width + 1
+        let evenHeight = (height % 2 == 0) ? height : height + 1
+        let size = CGSize(width: evenWidth, height: evenHeight)
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("burnbar_wallpaper_\(Int(Date().timeIntervalSince1970)).mov")
@@ -845,55 +850,6 @@ struct WallpaperGeneratorView: View {
         let assetIdentifier = UUID().uuidString
 
         do {
-            // Render the still image (using the current swarm settings)
-            let wallpaperView = ZStack {
-                effectiveStyle.backgroundColor
-                SwarmCanvasView(
-                    accent: selectedStyle == .swarmEmber ? MobileTheme.ember : .white,
-                    pace: .cinematic,
-                    colorDriver: colorDriver,
-                    colorPalette: effectiveStyle.swarmPalette,
-                    enabledProviderGlyphs: selectedProviderGlyphs
-                )
-                RadialGradient(
-                    colors: [.clear, effectiveStyle.backgroundColor.opacity(0.7)],
-                    center: .center,
-                    startRadius: 120,
-                    endRadius: 500
-                )
-            }
-            .frame(width: screenBounds.width, height: screenBounds.height)
-            .preferredColorScheme(selectedStyle == .appDefault ? nil : (selectedStyle.isDark ? .dark : .light))
-
-            let renderer = ImageRenderer(content: wallpaperView)
-            renderer.scale = scale
-            renderer.proposedSize = ProposedViewSize(width: screenBounds.width, height: screenBounds.height)
-
-            guard let uiImage = renderer.uiImage else {
-                saveResult = .error("Failed to render wallpaper image.")
-                return
-            }
-
-            guard let stillData = uiImage.jpegData(compressionQuality: 0.9) else {
-                saveResult = .error("Failed to generate JPEG data.")
-                return
-            }
-
-            guard let source = CGImageSourceCreateWithData(stillData as CFData, nil),
-                  let destination = CGImageDestinationCreateWithURL(stillURL as CFURL, "public.jpeg" as CFString, 1, nil) else {
-                saveResult = .error("Failed to initialize image destination.")
-                return
-            }
-
-            let makerAppleDict: [String: Any] = ["17": assetIdentifier]
-            let metadataProperties: [CFString: Any] = [
-                kCGImagePropertyMakerAppleDictionary: makerAppleDict
-            ]
-            CGImageDestinationAddImageFromSource(destination, source, 0, metadataProperties as CFDictionary)
-            guard CGImageDestinationFinalize(destination) else {
-                saveResult = .error("Failed to write still image metadata.")
-                return
-            }
 
             // 2. Set up AVAssetWriter for video
             let assetWriter = try AVAssetWriter(outputURL: tempURL, fileType: .mov)
@@ -1007,7 +963,28 @@ struct WallpaperGeneratorView: View {
                 renderer.scale = scale
                 renderer.proposedSize = ProposedViewSize(screenBounds.size)
 
-                guard let cgImage = renderer.uiImage?.cgImage else { continue }
+                guard let uiImage = renderer.uiImage, let cgImage = uiImage.cgImage else { continue }
+
+                // Capture and save the first frame as the key/still photo for the Live Photo!
+                if i == 0 {
+                    guard let stillData = uiImage.jpegData(compressionQuality: 0.9) else {
+                        throw NSError(domain: "WallpaperGenerator", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to generate first frame JPEG data."])
+                    }
+
+                    guard let source = CGImageSourceCreateWithData(stillData as CFData, nil),
+                          let destination = CGImageDestinationCreateWithURL(stillURL as CFURL, "public.jpeg" as CFString, 1, nil) else {
+                        throw NSError(domain: "WallpaperGenerator", code: -4, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize image destination."])
+                    }
+
+                    let makerAppleDict: [String: Any] = ["17": assetIdentifier]
+                    let metadataProperties: [CFString: Any] = [
+                        kCGImagePropertyMakerAppleDictionary: makerAppleDict
+                    ]
+                    CGImageDestinationAddImageFromSource(destination, source, 0, metadataProperties as CFDictionary)
+                    guard CGImageDestinationFinalize(destination) else {
+                        throw NSError(domain: "WallpaperGenerator", code: -5, userInfo: [NSLocalizedDescriptionKey: "Failed to write still image metadata."])
+                    }
+                }
 
                 var pixelBuffer: CVPixelBuffer?
                 CVPixelBufferPoolCreatePixelBuffer(nil, pixelBufferAdaptor.pixelBufferPool!, &pixelBuffer)

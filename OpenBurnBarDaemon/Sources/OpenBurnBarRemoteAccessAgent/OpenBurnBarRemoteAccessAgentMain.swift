@@ -1,7 +1,9 @@
 import ApplicationServices
 import Darwin
 import Foundation
+import IOKit.pwr_mgt
 import OpenBurnBarRemoteAccessAgentCore
+import SystemConfiguration
 
 private let agentVersion = "1"
 private let defaultSocketPath = "/var/run/openburnbar-remote-access-agent.sock"
@@ -59,12 +61,36 @@ private final class RemoteAccessAgentServer {
     }
 
     func run() throws -> Never {
+        // The socket is owned by `root` but must be reachable by the logged-in GUI user. The
+        // console user can change at any time (login, lock, fast-user-switch), so we re-assert
+        // ownership on a short cadence instead of only after each accepted connection — otherwise
+        // a connection that never arrives (e.g. the daemon started before anyone logged in) would
+        // leave the socket permanently unreachable. `poll` gives us that periodic wake-up without
+        // a busy loop, and crucially keeps the daemon alive across states where no console user is
+        // present (the login window), where the old "refresh-or-die" loop crash-looped under
+        // launchd and made Remote Unlock unreachable exactly when it was needed.
         while true {
-            try refreshSocketOwner()
+            refreshSocketOwner()
+
+            var descriptor = pollfd(fd: socketFD, events: Int16(truncatingIfNeeded: POLLIN), revents: 0)
+            let ready = poll(&descriptor, 1, 1_000)
+            if ready < 0 {
+                if errno == EINTR { continue }
+                // A genuine poll failure on a valid fd is not expected; pause briefly to avoid a
+                // tight spin, then retry rather than tear down the only unlock path.
+                usleep(100_000)
+                continue
+            }
+            guard ready > 0,
+                  descriptor.revents & Int16(truncatingIfNeeded: POLLIN) != 0 else {
+                continue
+            }
+
             let client = accept(socketFD, nil, nil)
             guard client >= 0 else {
                 if errno == EINTR { continue }
-                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+                // Transient accept errors (e.g. the peer hung up) must not kill the server.
+                continue
             }
             handle(client)
             close(client)
@@ -93,21 +119,27 @@ private final class RemoteAccessAgentServer {
         }
         guard status == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
 
-        try refreshSocketOwner()
+        // Best-effort: if no user is logged in yet (boot before login) we still bind and listen,
+        // then keep re-asserting ownership from the run loop once a user appears.
+        refreshSocketOwner()
 
         guard listen(socketFD, 16) == 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
     }
 
-    private func refreshSocketOwner() throws {
-        let consoleUser = try currentConsoleUser()
-        guard chown(socketPath, consoleUser.uid, consoleUser.gid) == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-        guard chmod(socketPath, S_IRUSR | S_IWUSR) == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
+    /// Re-assert socket ownership so the logged-in GUI user can connect while everyone else is
+    /// kept out by file permissions (peer credentials are still verified in `validatePeer`).
+    ///
+    /// Best-effort by design: when no interactive user is present (login window) we leave the
+    /// socket owned by `root` rather than failing. This must never throw — a transient inability
+    /// to resolve the console user previously crashed the daemon under launchd.
+    private func refreshSocketOwner() {
+        let owner = resolveConsoleUser()
+        let uid: uid_t = owner?.uid ?? 0
+        let gid: gid_t = owner?.gid ?? 0
+        _ = chown(socketPath, uid, gid)
+        _ = chmod(socketPath, S_IRUSR | S_IWUSR)
     }
 
     private func handle(_ client: Int32) {
@@ -117,6 +149,10 @@ private final class RemoteAccessAgentServer {
             let request = try JSONDecoder().decode(AgentRequest.self, from: requestData)
             switch request.operation {
             case "health":
+                try write(AgentResponse(ok: true, error: nil), to: client)
+            case "wakeDisplay":
+                let lease = RemoteAccessDisplayWake.prepareForCredentialEntry()
+                lease.release()
                 try write(AgentResponse(ok: true, error: nil), to: client)
             case "typeCredential":
                 let password = try validatedPassword(request.password)
@@ -137,7 +173,9 @@ private final class RemoteAccessAgentServer {
         guard getpeereid(client, &peerUID, &peerGID) == 0 else {
             throw AgentError.peerIdentityUnavailable
         }
-        let consoleUser = try currentConsoleUser()
+        guard let consoleUser = resolveConsoleUser() else {
+            throw AgentError.consoleUserUnavailable
+        }
         guard peerUID == consoleUser.uid else {
             throw AgentError.peerNotConsoleUser
         }
@@ -188,24 +226,37 @@ private final class RemoteAccessAgentServer {
     }
 }
 
-private struct ConsoleUser {
-    var uid: uid_t
-    var gid: gid_t
+/// Resolve the logged-in GUI user, preferring the canonical console user from SystemConfiguration
+/// (which survives a screen lock) and falling back to the `/dev/console` device owner. Returns
+/// `nil` when only the login window / root is present, so callers can keep the daemon alive.
+private func resolveConsoleUser() -> RemoteAccessConsoleUser? {
+    RemoteAccessConsoleUserResolver.resolve(
+        dynamicStoreUser: consoleUserFromDynamicStore(),
+        consoleDeviceOwner: consoleDeviceOwner()
+    )
 }
 
-private func currentConsoleUser() throws -> ConsoleUser {
-    let attributes: [FileAttributeKey: Any]
-    do {
-        attributes = try FileManager.default.attributesOfItem(atPath: "/dev/console")
-    } catch {
-        throw AgentError.consoleUserUnavailable
+/// The current console user as reported by `SCDynamicStoreCopyConsoleUser`. This continues to
+/// report the logged-in account (e.g. uid 501) while the screen is locked — it only reports
+/// `"loginwindow"`/uid 0 once the user has logged out or switched to the login window.
+private func consoleUserFromDynamicStore() -> (name: String?, uid: UInt32, gid: UInt32)? {
+    var uid: uid_t = 0
+    var gid: gid_t = 0
+    guard let name = SCDynamicStoreCopyConsoleUser(nil, &uid, &gid) else {
+        return nil
     }
-    guard let uid = attributes[.ownerAccountID] as? NSNumber,
-          let gid = attributes[.groupOwnerAccountID] as? NSNumber,
-          uid.uint32Value > 0 else {
-        throw AgentError.consoleUserUnavailable
+    return (name: name as String, uid: uid, gid: gid)
+}
+
+/// The owner of `/dev/console`. Used only as a fallback: it flips to `root` when the screen is
+/// locked, so it must never override a real console user from SystemConfiguration.
+private func consoleDeviceOwner() -> (uid: UInt32, gid: UInt32)? {
+    guard let attributes = try? FileManager.default.attributesOfItem(atPath: "/dev/console"),
+          let uid = attributes[.ownerAccountID] as? NSNumber,
+          let gid = attributes[.groupOwnerAccountID] as? NSNumber else {
+        return nil
     }
-    return ConsoleUser(uid: uid.uint32Value, gid: gid.uint32Value)
+    return (uid: uid.uint32Value, gid: gid.uint32Value)
 }
 
 private enum RemoteAccessCredentialWorker {
@@ -224,7 +275,12 @@ private enum RemoteAccessCredentialWorker {
 
     static func launch(password: String) throws {
         let executablePath = Bundle.main.executableURL?.path ?? CommandLine.arguments[0]
-        let consoleUser = try currentConsoleUser()
+        guard let consoleUser = resolveConsoleUser() else {
+            throw AgentError.consoleUserUnavailable
+        }
+        let wakeLease = RemoteAccessDisplayWake.prepareForCredentialEntry()
+        defer { wakeLease.release() }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         if let loginWindowPID = loginWindowPID(for: consoleUser.uid) {
@@ -304,12 +360,55 @@ private enum RemoteAccessCredentialWorker {
     }
 }
 
+private struct RemoteAccessDisplayWakeLease {
+    var assertionID: IOPMAssertionID?
+    var displayWasAsleep: Bool
+
+    func release() {
+        guard let assertionID, assertionID != 0 else { return }
+        IOPMAssertionRelease(assertionID)
+    }
+}
+
+private enum RemoteAccessDisplayWake {
+    static func prepareForCredentialEntry() -> RemoteAccessDisplayWakeLease {
+        let displayWasAsleep = CGDisplayIsAsleep(CGMainDisplayID()) != 0
+
+        var userActivityAssertion = IOPMAssertionID(0)
+        if IOPMAssertionDeclareUserActivity(
+            "OpenBurnBar Remote Unlock" as CFString,
+            kIOPMUserActiveRemote,
+            &userActivityAssertion
+        ) == kIOReturnSuccess, userActivityAssertion != 0 {
+            IOPMAssertionRelease(userActivityAssertion)
+        }
+
+        var noDisplaySleepAssertion = IOPMAssertionID(0)
+        let noDisplaySleepResult = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypeNoDisplaySleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            "OpenBurnBar Remote Unlock credential entry" as CFString,
+            &noDisplaySleepAssertion
+        )
+        let lease = RemoteAccessDisplayWakeLease(
+            assertionID: noDisplaySleepResult == kIOReturnSuccess ? noDisplaySleepAssertion : nil,
+            displayWasAsleep: displayWasAsleep
+        )
+
+        usleep(RemoteAccessDisplayWakePolicy.settleDelayMicroseconds(displayWasAsleep: displayWasAsleep))
+        return lease
+    }
+}
+
 private enum RemoteAccessTyper {
     static func typeCredential(_ password: String) throws {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw AgentError.eventSourceUnavailable
         }
         source.localEventsSuppressionInterval = 0
+
+        let wakeLease = RemoteAccessDisplayWake.prepareForCredentialEntry()
+        defer { wakeLease.release() }
 
         try focusCredentialField(source: source)
         if let plan = RemoteAccessKeystrokePlanner.planForANSIUSKeyboard(password) {

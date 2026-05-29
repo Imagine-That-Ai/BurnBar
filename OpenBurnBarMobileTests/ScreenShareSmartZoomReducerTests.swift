@@ -214,6 +214,14 @@ final class ScreenShareSmartZoomReducerTests: XCTestCase {
         XCTAssertEqual(abs(offset.height), limit, accuracy: 0.001)
     }
 
+    func testNormalizedCenterUsesFocusedRectCenter() {
+        let center = ScreenShareSmartZoomReducer.normalizedCenter(
+            of: .init(x: 0.1, y: 0.2, width: 0.4, height: 0.1)
+        )
+        XCTAssertEqual(center.x, 0.3, accuracy: 0.001)
+        XCTAssertEqual(center.y, 0.25, accuracy: 0.001)
+    }
+
     func testTargetMatchesRespectsMode() {
         XCTAssertTrue(ScreenShareSmartZoomReducer.targetMatches(mode: .smart, kind: .focusedElement))
         XCTAssertTrue(ScreenShareSmartZoomReducer.targetMatches(mode: .text, kind: .focusedElement))
