@@ -66,6 +66,8 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         defer { isSyncing = false }
 
         do {
+            await runFacetBackfillIfNeeded()
+
             let unsynced = try context.dataStore.fetchUnsyncedSessionLogs(limit: 50)
             guard !unsynced.isEmpty else {
                 lastSyncDate = Date()
@@ -75,6 +77,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
             let userRef = context.firestoreGateway.collection("users").document(uid)
             let logsRef = userRef.collection("session_logs")
             let sessionModelMap = (try? context.dataStore.sessionModelMap()) ?? [:]
+            let sessionFacetsMap = (try? context.dataStore.sessionFacetsMap()) ?? [:]
 
             for record in unsynced {
                 let markdown = SessionLogMarkdownFormatter.markdown(for: record)
@@ -84,13 +87,34 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                 let docId = "\(deviceId)_\(safeId)"
                 let manifestRef = logsRef.document(docId)
                 let bodyHash = Self.sha256Hex(markdown)
-                let model = sessionModelMap["\(record.provider.rawValue):\(record.sessionId)"] ?? "unknown"
+                let facetKey = Self.rootSessionKey(provider: record.provider, sessionId: record.sessionId)
+                let facets = sessionFacetsMap[facetKey]
+                let model = sessionModelMap["\(record.provider.rawValue):\(record.sessionId)"]
+                    ?? facets?.model
+                    ?? "unknown"
+                let facetFields = Self.facetFields(for: record, facets: facets, model: model)
                 let existingManifest = try await manifestRef.getData()
                 if let existing = existingManifest,
                    existing["bodyHash"] as? String == bodyHash,
                    existing["chunkMetadataVersion"] as? Int == Self.chunkMetadataVersion,
                    existing["cloudSearchIndexVersion"] as? Int == Self.cloudSearchIndexVersion,
                    existing["bodyStorage"] as? String == "firebase_storage_encrypted" {
+                    // Body + encrypted search index are already current. If only the plaintext
+                    // cockpit facets are stale, merge them onto the manifest without re-uploading
+                    // the encrypted blob or rebuilding the search index — a cheap metadata refresh.
+                    if existing["facetSchemaVersion"] as? Int != Self.facetSchemaVersion {
+                        var facetUpdate = facetFields
+                        facetUpdate["updatedAt"] = FieldValue.serverTimestamp()
+                        let facetBatch = context.firestoreGateway.batch()
+                        facetBatch.setData(facetUpdate, forDocument: manifestRef, merge: true)
+                        try await withCloudSyncRetry(
+                            policy: context.retryPolicy,
+                            circuitBreaker: context.circuitBreaker,
+                            domain: "sessionLog.facets"
+                        ) {
+                            try await facetBatch.commit()
+                        }
+                    }
                     await resolvedArchivedSessionMirror().mirrorArchivedLog(record, cloudLogDocumentID: docId)
                     try context.dataStore.markSessionLogsSynced(ids: [record.id])
                     continue
@@ -120,7 +144,6 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                     "sourceType": record.sourceType.rawValue,
                     "projectName": record.projectName,
                     "inferredTaskTitle": "Encrypted session",
-                    "messageCount": record.messageCount,
                     "bodyStorage": "firebase_storage_encrypted",
                     "storagePath": uploadTicket.storagePath,
                     "sealedTitle": try Self.dictionary(sealedTitle),
@@ -141,9 +164,9 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                     "chunkMetadataVersion": Self.chunkMetadataVersion,
                     "cloudSearchIndexVersion": Self.cloudSearchIndexVersion,
                     "cloudSearchIndexedAt": FieldValue.serverTimestamp(),
-                    "model": model,
                     "updatedAt": FieldValue.serverTimestamp()
                 ]
+                manifest.merge(facetFields) { _, new in new }
                 if let start = record.startTime { manifest["startTime"] = Timestamp(date: start) }
                 if let end = record.endTime { manifest["endTime"] = Timestamp(date: end) }
 
@@ -253,6 +276,24 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         }
     }
 
+    /// Clears every conversation's encrypted-backup dirty flag exactly once when the cockpit
+    /// facet schema advances, so existing manifests re-upload (or take the cheap facet-refresh
+    /// path) carrying the new facet block. The bumped version is persisted so it never repeats.
+    private func runFacetBackfillIfNeeded() async {
+        let needsBackfill = await MainActor.run {
+            context.settingsManager.conversationFacetBackfillVersion < Self.facetSchemaVersion
+        }
+        guard needsBackfill else { return }
+        do {
+            _ = try context.dataStore.markAllSessionLogsUnsynced()
+            await MainActor.run {
+                context.settingsManager.conversationFacetBackfillVersion = Self.facetSchemaVersion
+            }
+        } catch {
+            // Leave the version unchanged so the backfill retries on the next sync cycle.
+        }
+    }
+
     private func recordSyncError(_ error: Error) async {
         lastSyncError = error.localizedDescription
 
@@ -288,6 +329,64 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
 
     private static let chunkMetadataVersion = 1
     private static let cloudSearchIndexVersion = 2
+
+    /// Generation of the plaintext cockpit facet block stored on each manifest. Bumping this
+    /// triggers a one-time backfill (`markAllSessionLogsUnsynced`) so existing manifests get the
+    /// new facets. Facets are metadata only — token totals, cost, timing, working directory, and
+    /// generic tool tags — never conversation content (bodies stay encrypted in Cloud Storage).
+    static let facetSchemaVersion = 1
+
+    /// Root session id used to align a `ConversationRecord` with the aggregated usage facets,
+    /// which group `token_usage` rows under the portion before the first `/` sub-path.
+    private static func rootSessionKey(provider: AgentProvider, sessionId: String) -> String {
+        let root: Substring
+        if let slash = sessionId.firstIndex(of: "/") {
+            root = sessionId[..<slash]
+        } else {
+            root = Substring(sessionId)
+        }
+        return "\(provider.rawValue):\(root)"
+    }
+
+    /// Builds the plaintext cockpit facet block merged onto a session-log manifest. Pure metadata:
+    /// no message text, only counters, cost, timing, the working directory, and generic tool tags.
+    static func facetFields(
+        for record: ConversationRecord,
+        facets: SessionUsageFacets?,
+        model: String
+    ) -> [String: Any] {
+        var fields: [String: Any] = [
+            "facetSchemaVersion": facetSchemaVersion,
+            "model": model,
+            "messageCount": record.messageCount,
+            "userWordCount": record.userWordCount,
+            "assistantWordCount": record.assistantWordCount,
+            "inputTokens": facets?.inputTokens ?? 0,
+            "outputTokens": facets?.outputTokens ?? 0,
+            "cacheCreationTokens": facets?.cacheCreationTokens ?? 0,
+            "cacheReadTokens": facets?.cacheReadTokens ?? 0,
+            "totalTokens": facets?.totalTokens ?? 0,
+            "costUSD": facets?.costUSD ?? 0
+        ]
+        if let workingDirectory = record.workingDirectory, !workingDirectory.isEmpty {
+            fields["workingDirectory"] = workingDirectory
+        }
+        // Generic tool names (e.g. "bash", "edit") are non-identifying, unlike key files/commands
+        // which can reveal content, so only tools become queryable cockpit tags.
+        let toolTags = Array(Set(record.keyTools.map { $0.lowercased() }))
+            .filter { !$0.isEmpty }
+            .sorted()
+            .prefix(24)
+        if !toolTags.isEmpty {
+            fields["toolTags"] = Array(toolTags)
+        }
+        let start = facets?.startTime ?? record.startTime
+        let end = facets?.endTime ?? record.endTime
+        if let start, let end, end > start {
+            fields["durationSeconds"] = Int(end.timeIntervalSince(start).rounded())
+        }
+        return fields
+    }
 
     func uploadProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot) async throws {
         let gate = await context.syncGate()

@@ -72,6 +72,7 @@ export {
   getEncryptedProjectMemorySnapshot,
   listEncryptedProjectMemorySnapshots,
   searchEncryptedConversationIndex,
+  queryConversations,
 } from "./callables/encryptedSearch.js";
 
 export {

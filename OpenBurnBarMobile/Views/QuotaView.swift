@@ -6,6 +6,7 @@ struct QuotaView: View {
     @State private var selectedProvider: String?
     @State private var settings = QuotaSettingsStore()
     @State private var isJiggling = false
+    @Environment(\.mobileBackgroundVisibility) private var inheritedBackgroundVisibility
 
     var body: some View {
         ScrollView {
@@ -37,7 +38,11 @@ struct QuotaView: View {
                 .padding(.vertical, MobileTheme.Spacing.lg)
             }
         }
-        .background(emberBackground.ignoresSafeArea())
+        .background(
+            emberBackground
+                .environment(\.mobileBackgroundVisibility, quotaBackgroundVisibility)
+                .ignoresSafeArea()
+        )
         .navigationTitle("Quota")
         .refreshable {
             Haptics.success()
@@ -95,7 +100,7 @@ struct QuotaView: View {
     }
 
     private var emberBackground: some View {
-        EmberSurfaceBackground()
+        VisibilityAwareEmberSurfaceBackground()
             .onLongPressGesture(minimumDuration: 0.5) {
                 if !isJiggling {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
@@ -104,6 +109,11 @@ struct QuotaView: View {
                     Haptics.light()
                 }
             }
+    }
+
+    private var quotaBackgroundVisibility: MobileBackgroundVisibility {
+        (selectedProvider == nil ? MobileBackgroundVisibility.prominent : MobileBackgroundVisibility.obscured)
+            .constrained(by: inheritedBackgroundVisibility)
     }
 
     private var signedInDiagnostic: String {

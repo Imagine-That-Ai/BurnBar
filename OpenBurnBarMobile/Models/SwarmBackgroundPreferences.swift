@@ -19,6 +19,123 @@ public enum SwarmBackgroundCondition: String, Codable, CaseIterable, Identifiabl
     public var id: String { rawValue }
 }
 
+public enum MobileBackgroundVisibility: String, CaseIterable, Equatable, Sendable {
+    case prominent
+    case subtle
+    case obscured
+    case hidden
+
+    private var restrictionRank: Int {
+        switch self {
+        case .prominent: return 0
+        case .subtle: return 1
+        case .obscured: return 2
+        case .hidden: return 3
+        }
+    }
+
+    public func constrained(by inherited: MobileBackgroundVisibility) -> MobileBackgroundVisibility {
+        restrictionRank >= inherited.restrictionRank ? self : inherited
+    }
+}
+
+public struct SwarmBackgroundRenderPlan: Equatable, Sendable {
+    public enum Mode: Equatable, Sendable {
+        case live
+        case staticBackdrop
+        case disabledFallback
+    }
+
+    public let mode: Mode
+    public let maxFrameRate: Double?
+    public let particleScale: Double
+    public let motionSpeedMultiplierScale: Double
+    public let allowsAutoCycling: Bool
+    public let allowsSparkles: Bool
+    public let isBatteryThrottled: Bool
+
+    public static let prominentLive = SwarmBackgroundRenderPlan(
+        mode: .live,
+        maxFrameRate: 30,
+        particleScale: 1.0,
+        motionSpeedMultiplierScale: 1.0,
+        allowsAutoCycling: true,
+        allowsSparkles: true,
+        isBatteryThrottled: false
+    )
+
+    public static let subtleLive = SwarmBackgroundRenderPlan(
+        mode: .live,
+        maxFrameRate: 15,
+        particleScale: 0.45,
+        motionSpeedMultiplierScale: 0.55,
+        allowsAutoCycling: false,
+        allowsSparkles: false,
+        isBatteryThrottled: true
+    )
+
+    public static let staticBackdrop = SwarmBackgroundRenderPlan(
+        mode: .staticBackdrop,
+        maxFrameRate: nil,
+        particleScale: 0,
+        motionSpeedMultiplierScale: 0,
+        allowsAutoCycling: false,
+        allowsSparkles: false,
+        isBatteryThrottled: true
+    )
+
+    public static let disabledFallback = SwarmBackgroundRenderPlan(
+        mode: .disabledFallback,
+        maxFrameRate: nil,
+        particleScale: 0,
+        motionSpeedMultiplierScale: 0,
+        allowsAutoCycling: false,
+        allowsSparkles: false,
+        isBatteryThrottled: false
+    )
+}
+
+public enum SwarmBackgroundPowerPolicy {
+    public static func resolve(
+        location: SwarmBackgroundLocation,
+        conditionMet: Bool,
+        requestedVisibility: MobileBackgroundVisibility,
+        scenePhaseActive: Bool,
+        isLowPowerModeEnabled: Bool,
+        reduceMotion: Bool
+    ) -> SwarmBackgroundRenderPlan {
+        guard location != .disabled else {
+            return .disabledFallback
+        }
+        guard conditionMet else {
+            return .staticBackdrop
+        }
+        guard scenePhaseActive, requestedVisibility != .hidden else {
+            return .staticBackdrop
+        }
+        guard !reduceMotion, requestedVisibility != .obscured else {
+            return .staticBackdrop
+        }
+        if isLowPowerModeEnabled {
+            return requestedVisibility == .prominent ? .subtleLive : .staticBackdrop
+        }
+        return requestedVisibility == .prominent ? .prominentLive : .subtleLive
+    }
+}
+
+public enum MobileDecorativeRenderPolicy {
+    public static func allowsLiveEffects(
+        visibility: MobileBackgroundVisibility,
+        scenePhaseActive: Bool
+    ) -> Bool {
+        scenePhaseActive && visibility != .hidden && visibility != .obscured
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var mobileBackgroundVisibility: MobileBackgroundVisibility = .prominent
+}
+
 public struct SwarmBackgroundPreferences: Codable, Equatable {
     public var location: SwarmBackgroundLocation
     public var condition: SwarmBackgroundCondition

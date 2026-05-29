@@ -126,6 +126,9 @@ final class MercuryRouter: ObservableObject {
         let viewerDeviceID: String?
         let controlAuthorityPeerNodeID: String?
         let remoteUnlockSessionID: String?
+        /// Phase 12 — set when this viewer requested an interactive single-window
+        /// CLI; the launched Terminal session is terminated on viewer teardown.
+        var interactiveTerminalSession: LaunchedAgentTerminalSession?
     }
     private var activeMirrorSessionID: String?
     private var activeMirrorViewers: [String: ActiveMirrorViewer] = [:]
@@ -311,6 +314,9 @@ final class MercuryRouter: ObservableObject {
         mirrorStartupTaskIDs.removeValue(forKey: viewerID)
         guard let viewer = activeMirrorViewers.removeValue(forKey: viewerID) else { return nil }
         activeMirrorViewOrder.removeAll { $0 == viewerID }
+        if let terminalSession = viewer.interactiveTerminalSession {
+            InteractiveTerminalLauncher.terminate(terminalSession)
+        }
         if revokeRemoteUnlockSession {
             remoteUnlockReadiness.revokeRemoteUnlockSession(sessionId: viewer.remoteUnlockSessionID)
         }
@@ -336,6 +342,9 @@ final class MercuryRouter: ObservableObject {
         mirrorStartupTaskIDs.removeAll()
         activeMirrorSessionID = nil
         remoteUnlockReadiness.revokeAllRemoteUnlockSessions()
+        activeMirrorViewers.values
+            .compactMap(\.interactiveTerminalSession)
+            .forEach(InteractiveTerminalLauncher.terminate)
         activeMirrorViewers.removeAll()
         activeMirrorViewOrder.removeAll()
         activeControlViewerID = nil
@@ -1541,8 +1550,25 @@ final class MercuryRouter: ObservableObject {
         }
         guard activeMirrorViewers[viewer.viewerID]?.requestID == viewer.requestID else { return }
         do {
+            // Phase 12 — interactive single-window CLI. Launch the agent's CLI
+            // in a visible Terminal first so we can pin the capture to just that
+            // window (no `controlSurfaceFrame`/focus-follow dependency, so this
+            // works in the sandboxed MAS build too).
+            let terminalSession = await launchInteractiveTerminalIfRequested(for: viewer)
+
             try await startNormalCapture(for: viewer)
             guard activeMirrorViewers[viewer.viewerID]?.requestID == viewer.requestID else { return }
+
+            // Pin the mirror to just the launched Terminal window. If the window
+            // could not be resolved we leave the full-display capture in place.
+            if let windowID = terminalSession?.windowID {
+                do {
+                    try await sessionCoordinator.switchScreenShareTarget(displayId: nil, windowID: windowID)
+                } catch {
+                    Self.log.error("router_interactive_terminal_pin_failed requestID=\(viewer.requestID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                }
+            }
+
             if activeControlViewerID == viewer.viewerID {
                 do {
                     applyFocusFollowMode?(focusMode)
@@ -1557,6 +1583,40 @@ final class MercuryRouter: ObservableObject {
             }
         } catch {
             await failAcceptedMirrorRuntime(for: viewer, error: error)
+        }
+    }
+
+    /// Phase 12 — when the viewer's request carries an interactive `agentTerminal`
+    /// payload, launch that runtime's CLI in a visible Terminal and remember the
+    /// session on the viewer so it is terminated on teardown. Returns the
+    /// launched session (with its resolved `CGWindowID`) or `nil`.
+    private func launchInteractiveTerminalIfRequested(
+        for viewer: ActiveMirrorViewer
+    ) async -> LaunchedAgentTerminalSession? {
+        guard let request = viewer.frame.media?.mirrorRequest?.agentTerminal,
+              request.interactive,
+              !request.runtimeId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        do {
+            let workingDirectory = request.workingDirectory
+                .map { URL(fileURLWithPath: $0, isDirectory: true) }
+            let session = try await InteractiveTerminalLauncher.launchInteractive(
+                runtimeId: request.runtimeId,
+                workingDirectory: workingDirectory,
+                modelID: request.modelID
+            )
+            // The viewer may have disconnected while the Terminal was opening.
+            guard activeMirrorViewers[viewer.viewerID]?.requestID == viewer.requestID else {
+                InteractiveTerminalLauncher.terminate(session)
+                return nil
+            }
+            activeMirrorViewers[viewer.viewerID]?.interactiveTerminalSession = session
+            Self.log.info("router_interactive_terminal_launched runtime=\(request.runtimeId, privacy: .public) hasWindow=\(session.windowID != nil, privacy: .public)")
+            return session
+        } catch {
+            Self.log.error("router_interactive_terminal_launch_failed runtime=\(request.runtimeId, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            lastError = "Could not open \(request.runtimeId) in Terminal on your Mac: \(error.localizedDescription)"
+            return nil
         }
     }
 

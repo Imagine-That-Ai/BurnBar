@@ -91,6 +91,11 @@ struct MercuryLiveSheet: View {
     /// from `iOSFileTransferService.current` at presentation time.
     let fileTransferService: iOSFileTransferService?
     let uidProvider: @MainActor () -> String?
+    /// Phase 12 — when set, the mirror request asks the Mac to launch this
+    /// runtime's CLI interactively in a Terminal and pin the stream to just
+    /// that window (a focused native TUI) instead of mirroring the whole
+    /// display. `nil` keeps the standard full-display Mercury Live mirror.
+    var terminalRuntime: String? = nil
 
     @State private var lastAck: HermesRealtimeRelayMirrorAck?
     @State private var lastAckReceivedAt: Date?
@@ -163,6 +168,12 @@ struct MercuryLiveSheet: View {
 
     private var effectiveNickname: String {
         personalizationStore.effectiveNickname(for: connectionID, fallback: peer.displayName)
+    }
+
+    private var backgroundVisibility: MobileBackgroundVisibility {
+        isShowingMirrorViewer || isShowingCustomizeSheet
+            ? MobileBackgroundVisibility.obscured
+            : MobileBackgroundVisibility.prominent
     }
 
     var body: some View {
@@ -506,7 +517,8 @@ struct MercuryLiveSheet: View {
         case .website:
             WebsiteBackgroundView(
                 accent: accent,
-                colorDriver: dashboardStore.swarmColorDriver
+                colorDriver: dashboardStore.swarmColorDriver,
+                visibility: backgroundVisibility
             )
         }
     }
@@ -1111,7 +1123,10 @@ struct MercuryLiveSheet: View {
             viewerId: viewerID,
             viewerDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
             controlAuthorityPeerNodeId: controlAuthorityPeerNodeId,
-            remoteUnlockSession: remoteUnlockSession
+            remoteUnlockSession: remoteUnlockSession,
+            agentTerminal: terminalRuntime.map {
+                HermesRealtimeRelayAgentTerminalRequest(runtimeId: $0, interactive: true)
+            }
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,

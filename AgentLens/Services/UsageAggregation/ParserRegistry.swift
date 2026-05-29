@@ -13,6 +13,8 @@ enum ParserRegistry {
         parsers[.aider] = AiderParser()
         parsers[.cursor] = CursorParser()
         parsers[.codex] = CodexParser()
+        parsers[.openCode] = OpenCodeParser()
+        parsers[.piAgent] = PiAgentParser()
         parsers[.zai] = ModelFilterParser(modelPattern: "zai", provider: .zai)
         parsers[.minimax] = ModelFilterParser(modelPattern: "minimax", provider: .minimax)
         parsers[.kimi] = KimiParser()

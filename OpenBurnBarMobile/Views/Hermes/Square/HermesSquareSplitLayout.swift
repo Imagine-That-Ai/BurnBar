@@ -119,7 +119,7 @@ struct HermesSquareSplitLayout: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            WebsiteBackgroundView(accent: .purple).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: .prominent).ignoresSafeArea()
         }
         .task {
             HermesIrohRelayTransport.shared.mediaPresenceHeartbeatHandler = { heartbeat in
@@ -307,7 +307,7 @@ private struct HermesSquareRuntimeHistorySidebar: View {
 
     var body: some View {
         ZStack {
-            WebsiteBackgroundView(accent: .purple).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
             VStack(spacing: 0) {
                 header
                 ScrollView {
@@ -663,7 +663,7 @@ private struct HermesSquareLeftColumn: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            WebsiteBackgroundView(accent: .purple).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 14) {
                     federatedSearchBar
@@ -1966,7 +1966,7 @@ private struct HermesSquareDetailColumn: View {
             .padding(18)
         }
         .background {
-            WebsiteBackgroundView(accent: .purple).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
         }
     }
 
@@ -2067,7 +2067,7 @@ private struct HermesSquareDetailColumn: View {
             .padding(18)
         }
         .background {
-            WebsiteBackgroundView(accent: .purple).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
         }
         .navigationTitle("Cloud Session")
         .navigationBarTitleDisplayMode(.inline)

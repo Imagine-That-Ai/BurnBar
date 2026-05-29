@@ -9,6 +9,8 @@ struct DashboardView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.uiMode) private var uiMode
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
@@ -65,12 +67,20 @@ struct DashboardView: View {
             if useWebsiteBackground {
                 AuroraBackdrop(colorDriver: store.swarmColorDriver)
             } else {
-                EmberSurfaceBackground()
-                if !reduceMotion {
+                VisibilityAwareEmberSurfaceBackground()
+                if shouldRenderFlameFlicker {
                     flameFlicker
                 }
             }
         }
+    }
+
+    private var shouldRenderFlameFlicker: Bool {
+        !reduceMotion
+            && MobileDecorativeRenderPolicy.allowsLiveEffects(
+                visibility: backgroundVisibility,
+                scenePhaseActive: scenePhase == .active
+            )
     }
 
     @ViewBuilder

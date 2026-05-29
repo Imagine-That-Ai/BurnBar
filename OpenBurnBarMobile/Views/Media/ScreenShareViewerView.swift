@@ -83,10 +83,12 @@ struct ScreenShareViewerView: View {
     @State private var statsVisible: Bool = false
     @State private var viewport = ScreenShareViewportState()
     @AppStorage("mercurySmartZoomMode") private var smartZoomModeRaw: String = SmartZoomMode.smart.rawValue
-    @AppStorage("mercury.autoKeyboardOnTextFocus") private var autoKeyboardOnTextFocus = false
+    @AppStorage("mercury.smartTextDoubleTapLearned") private var smartTextDoubleTapLearned = false
     @State private var smartZoomManualOverrideUntil: Date?
-    @State private var autoTypeManualDismissUntil: Date?
     @State private var smartZoomAutoFollowing: Bool = false
+    @State private var smartTextCoachVisible: Bool = false
+    @State private var keyboardHeight: CGFloat = 0
+    @State private var lastSmartTextNormalizedPoint: CGPoint?
     @State private var lastLayoutSize: CGSize?
     @State private var interactionMode: ScreenShareInteractionMode = .view
     @State private var isTyping = false
@@ -102,6 +104,7 @@ struct ScreenShareViewerView: View {
     @State private var controlPanTranslation: CGSize = .zero
     @State private var tapFeedbackPoint: CGPoint?
     @State private var lastControlClickPoint: CGPoint?
+    @State private var lastControlClickAt: Date?
     @State private var controlPressStartedAt: Date?
     @State private var pendingControlRightClickTask: Task<Void, Never>?
     @State private var controlRightClickSentForCurrentPress = false
@@ -417,7 +420,6 @@ struct ScreenShareViewerView: View {
                     isZoomed: viewport.isZoomed,
                     smartZoomMode: smartZoomMode,
                     smartZoomAutoFollowing: smartZoomAutoFollowing,
-                    autoKeyboardOnTextFocus: $autoKeyboardOnTextFocus,
                     setSmartZoomMode: { newMode in
                         smartZoomMode = newMode
                         smartZoomManualOverrideUntil = nil
@@ -481,6 +483,15 @@ struct ScreenShareViewerView: View {
         .overlay(alignment: .bottomLeading) {
             remoteKeyboardCapture
         }
+        .overlay(alignment: .bottom) {
+            if smartTextCoachVisible {
+                smartTextCoachMark
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 104)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .background(KeyboardHeightReader(height: $keyboardHeight))
         .onChange(of: resetToken) { _, _ in
             withAnimation(.snappy) {
                 viewport.reset()
@@ -489,6 +500,9 @@ struct ScreenShareViewerView: View {
                 controlPanTranslation = .zero
                 tapFeedbackPoint = nil
                 lastControlClickPoint = nil
+                lastControlClickAt = nil
+                lastSmartTextNormalizedPoint = nil
+                smartTextCoachVisible = false
                 cancelPendingControlRightClick()
                 controlRightClickSentForCurrentPress = false
                 cursorPoint = nil
@@ -508,38 +522,38 @@ struct ScreenShareViewerView: View {
                 controlRightClickSentForCurrentPress = false
             }
         }
-        .onChange(of: isTyping) { oldValue, newValue in
+        .onChange(of: isTyping) { _, newValue in
             if newValue {
                 focusTypingBar()
             } else {
                 typingFocusTask?.cancel()
                 typingFocusTask = nil
-                if oldValue, shouldSetAutoTypeManualDismissOnKeyboardClose() {
-                    autoTypeManualDismissUntil = Date().addingTimeInterval(
-                        ScreenShareAutoTypeFollowPolicy.manualDismissHold
-                    )
-                }
+                lastSmartTextNormalizedPoint = nil
             }
+            recomputeSmartTextCoach()
         }
         .onChange(of: coordinator.latestFocusContext) { _, _ in
             applySmartZoomDecisionUsingCurrentLayout()
-            applyAutoTypeFollowDecision()
-        }
-        .onChange(of: autoKeyboardOnTextFocus) { _, _ in
-            applyAutoTypeFollowDecision()
+            recomputeSmartTextCoach()
         }
         .onChange(of: interactionMode) { _, newValue in
             if newValue != .control {
                 cancelPendingControlRightClick()
                 controlRightClickSentForCurrentPress = false
             }
-            applyAutoTypeFollowDecision()
+            recomputeSmartTextCoach()
         }
         .onChange(of: activeRemoteUnlockState?.lockState) { _, newValue in
-            applyAutoTypeFollowDecision()
+            if standardControlInputEnabled == false {
+                isTyping = false
+            }
+            recomputeSmartTextCoach()
             if newValue == nil || newValue == .unlocked {
                 remoteUnlockPasswordDraft = ""
             }
+        }
+        .onChange(of: keyboardHeight) { _, _ in
+            applyKeyboardAwareFraming()
         }
         .onDisappear {
             cancelPendingControlRightClick()
@@ -553,35 +567,50 @@ struct ScreenShareViewerView: View {
         smartZoomAutoFollowing = false
     }
 
-    private func shouldSetAutoTypeManualDismissOnKeyboardClose() -> Bool {
-        guard autoKeyboardOnTextFocus else { return false }
-        guard let context = coordinator.latestFocusContext else { return false }
-        return ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
-            context: context,
-            selectedDisplayId: selectedDisplayId,
-            now: Date()
-        )
+    /// Height of the on-screen keyboard that overlaps the viewport, capped so the
+    /// remaining visible area can never collapse to nothing.
+    private func keyboardInset(in size: CGSize) -> CGFloat {
+        guard size.height > 0 else { return 0 }
+        return min(max(keyboardHeight, 0), size.height * 0.6)
     }
 
-    private func applyAutoTypeFollowDecision() {
-        let action = ScreenShareAutoTypeFollowPolicy.reduce(
-            autoKeyboardEnabled: autoKeyboardOnTextFocus,
-            controlInputEnabled: standardControlInputEnabled,
-            isTyping: isTyping,
-            isCoPilotMode: interactionMode == .coPilot,
-            context: coordinator.latestFocusContext,
-            selectedDisplayId: selectedDisplayId,
-            manualDismissUntil: autoTypeManualDismissUntil,
-            now: Date()
-        )
-        switch action {
-        case .open:
-            focusTypingBar()
-        case .close:
-            isTyping = false
-        case .none:
-            break
+    /// Re-frames the smart-text target whenever the keyboard appears, resizes, or
+    /// dismisses — lifting the focused field into the visible area above the keyboard
+    /// (and back to center when it goes away).
+    private func applyKeyboardAwareFraming() {
+        guard let size = lastLayoutSize, size.width > 0, size.height > 0 else { return }
+        let contentRect = renderedContentRect(in: size)
+        let inset = keyboardInset(in: size)
+        if let point = lastSmartTextNormalizedPoint {
+            applyDoubleTapZoom(toNormalized: point, in: size, contentRect: contentRect, bottomInset: inset)
+        } else if isTyping {
+            // Keyboard opened without a specific target (e.g. the Type button): lift the
+            // current framing above the keyboard so the top of the screen is used.
+            withAnimation(.snappy) {
+                viewport.offset = ScreenShareViewportState.clamp(
+                    offset: CGSize(width: viewport.offset.width, height: -inset / 2),
+                    scale: viewport.scale,
+                    in: size,
+                    bottomInset: inset
+                )
+            }
         }
+    }
+
+    private func applyDoubleTapZoom(toNormalized point: CGPoint, in size: CGSize, contentRect: CGRect, bottomInset: CGFloat) {
+        guard size.width > 0, size.height > 0, contentRect.width > 0, contentRect.height > 0 else { return }
+        let decision = ScreenShareSmartZoomReducer.centerPointDecision(
+            normalizedPoint: HermesRealtimeRelayNormalizedPoint(x: Double(point.x), y: Double(point.y)),
+            viewportSize: size,
+            contentRect: contentRect,
+            scale: max(viewport.scale, ScreenShareSmartZoomReducer.doubleTapEntryScale),
+            bottomInset: bottomInset
+        )
+        withAnimation(.snappy) {
+            viewport.scale = decision.scale
+            viewport.offset = decision.offset
+        }
+        smartZoomAutoFollowing = true
     }
 
     private func applySmartZoomDecisionUsingCurrentLayout() {
@@ -600,7 +629,8 @@ struct ScreenShareViewerView: View {
             mode: smartZoomMode,
             selectedDisplayId: selectedDisplayId,
             manualOverrideUntil: smartZoomManualOverrideUntil,
-            now: Date()
+            now: Date(),
+            bottomInset: keyboardInset(in: viewportSize)
         )
         if decision.isAutoFollowing {
             withAnimation(.snappy) {
@@ -611,6 +641,46 @@ struct ScreenShareViewerView: View {
         } else if smartZoomAutoFollowing {
             smartZoomAutoFollowing = false
         }
+    }
+
+    @MainActor
+    private func triggerSmartTextDoubleTap(at point: CGPoint, in size: CGSize, contentRect: CGRect) {
+        guard controlInputEnabled else { return }
+        smartTextDoubleTapLearned = true
+        if smartTextCoachVisible {
+            withAnimation(.snappy) { smartTextCoachVisible = false }
+        }
+        if size.width > 0, size.height > 0,
+           contentRect.width > 0, contentRect.height > 0 {
+            // Zoom straight to the tapped point — this is an explicit gesture, so it
+            // zooms even when Smart Zoom mode is off. Remember the target so the framing
+            // can re-center above the keyboard once it animates up.
+            let normalized = viewport.normalizedPoint(for: point, in: size, contentRect: contentRect)
+            let target = CGPoint(x: normalized.x, y: normalized.y)
+            lastSmartTextNormalizedPoint = target
+            applyDoubleTapZoom(toNormalized: target, in: size, contentRect: contentRect, bottomInset: keyboardInset(in: size))
+        }
+        focusTypingBar()
+    }
+
+    private func recomputeSmartTextCoach() {
+        let hasActiveTextFocus: Bool = {
+            guard let context = coordinator.latestFocusContext else { return false }
+            return ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
+                context: context,
+                selectedDisplayId: selectedDisplayId,
+                now: Date()
+            )
+        }()
+        let shouldShow = ScreenShareSmartTextActivationPolicy.shouldShowDoubleTapCoach(
+            learned: smartTextDoubleTapLearned,
+            controlInputEnabled: standardControlInputEnabled,
+            isTyping: isTyping,
+            isCoPilotMode: interactionMode == .coPilot,
+            hasActiveTextFocus: hasActiveTextFocus
+        )
+        guard shouldShow != smartTextCoachVisible else { return }
+        withAnimation(.snappy) { smartTextCoachVisible = shouldShow }
     }
 
     private func viewportGesture(in size: CGSize) -> some Gesture {
@@ -698,6 +768,14 @@ struct ScreenShareViewerView: View {
 
                 if let clickPoint = resolvedClickPoint(for: value, distance: distance, in: size) {
                     let normalized = visibleViewport.normalizedPoint(for: clickPoint, in: size, contentRect: contentRect)
+                    let tappedAt = Date()
+                    let isDoubleTap = ScreenShareControlInputPolicy.isDoubleTap(
+                        previousAt: lastControlClickAt,
+                        previousPoint: lastControlClickPoint,
+                        currentPoint: clickPoint,
+                        now: tappedAt,
+                        maxDistance: clickRadii(in: size).repeated
+                    )
                     lastControlClickPoint = clickPoint
                     cursorPoint = clickPoint
                     showTapFeedback(at: clickPoint)
@@ -706,6 +784,15 @@ struct ScreenShareViewerView: View {
                         at: clickPoint,
                         pressStartedAt: pressStartedAt
                     )
+                    if isDoubleTap {
+                        // Second tap of a double-tap: jump straight into the field now,
+                        // instead of waiting for the Mac's focus context to round-trip.
+                        // Reset the timestamp so a third tap starts a fresh pair.
+                        lastControlClickAt = nil
+                        triggerSmartTextDoubleTap(at: clickPoint, in: size, contentRect: contentRect)
+                    } else {
+                        lastControlClickAt = tappedAt
+                    }
                     return
                 }
 
@@ -931,10 +1018,57 @@ struct ScreenShareViewerView: View {
         EmptyView()
         #endif
     }
+
+    private var smartTextCoachMark: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "hand.tap.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(red: 0.17, green: 0.79, blue: 0.75))
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Double-tap to type")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("Zoom into the focused field and open the keyboard instantly.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 4)
+            Button {
+                withAnimation(.snappy) {
+                    smartTextDoubleTapLearned = true
+                    smartTextCoachVisible = false
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .padding(7)
+                    .background(.thinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss tip")
+        }
+        .padding(.vertical, 11)
+        .padding(.leading, 16)
+        .padding(.trailing, 10)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(Color(red: 0.17, green: 0.79, blue: 0.75).opacity(0.45), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.28), radius: 16, y: 8)
+        .frame(maxWidth: 440)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Tip: double-tap a text field to zoom in and type")
+    }
 }
 
 #if canImport(UIKit)
-private struct RemoteKeyboardCaptureView: UIViewRepresentable {
+/// Hidden UITextView that captures hardware/soft-keyboard input and reports it
+/// as discrete text + key events. Reused by the focused interactive-CLI
+/// terminal (`InlineAgentMirrorView`) so typing flows into the live TUI.
+struct RemoteKeyboardCaptureView: UIViewRepresentable {
     @Binding var isActive: Bool
     let onText: (String) -> Void
     let onKey: (String) -> Void
@@ -1035,13 +1169,13 @@ private struct RemoteKeyboardCaptureView: UIViewRepresentable {
 }
 
 @MainActor
-private protocol RemoteKeyboardTextViewDelegate: AnyObject {
+protocol RemoteKeyboardTextViewDelegate: AnyObject {
     func remoteKeyboardTextView(_ textView: RemoteKeyboardTextView, didInsert text: String)
     func remoteKeyboardTextViewDidDeleteBackward(_ textView: RemoteKeyboardTextView)
 }
 
 @MainActor
-private final class RemoteKeyboardTextView: UITextView {
+final class RemoteKeyboardTextView: UITextView {
     weak var remoteKeyboardDelegate: RemoteKeyboardTextViewDelegate?
 
     override var canBecomeFirstResponder: Bool { true }
@@ -1055,6 +1189,33 @@ private final class RemoteKeyboardTextView: UITextView {
     }
 }
 #endif
+
+private struct KeyboardHeightReader: View {
+    @Binding var height: CGFloat
+
+    var body: some View {
+        #if canImport(UIKit)
+        Color.clear
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+                if let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                    height = frame.height
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                // Only count the keyboard while it actually overlaps the screen; a frame
+                // whose top sits at or below the screen bottom means it is hidden.
+                let screenHeight = UIScreen.main.bounds.height
+                height = max(0, screenHeight - frame.minY)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                height = 0
+            }
+        #else
+        Color.clear
+        #endif
+    }
+}
 
 enum SmartZoomMode: String, CaseIterable, Identifiable, Sendable {
     case off
@@ -1120,6 +1281,9 @@ enum ScreenShareSmartZoomReducer {
     static let windowScaleRange: ClosedRange<CGFloat> = 1.0...2.4
     static let cursorEntryScale: CGFloat = 1.8
     static let agentScaleRange: ClosedRange<CGFloat> = 1.0...3.0
+    /// Scale used when a double-tap optimistically zooms toward the tapped point,
+    /// before the Mac's focused-element rect arrives to refine the framing.
+    static let doubleTapEntryScale: CGFloat = 2.4
 
     struct Decision: Equatable {
         var scale: CGFloat
@@ -1135,7 +1299,8 @@ enum ScreenShareSmartZoomReducer {
         mode: SmartZoomMode,
         selectedDisplayId: String?,
         manualOverrideUntil: Date?,
-        now: Date
+        now: Date,
+        bottomInset: CGFloat = 0
     ) -> Decision {
         let idleDecision = Decision(
             scale: currentState.scale,
@@ -1164,7 +1329,8 @@ enum ScreenShareSmartZoomReducer {
                 viewportSize: viewportSize,
                 contentRect: contentRect,
                 fillRatio: textFillRatio,
-                scaleRange: textScaleRange
+                scaleRange: textScaleRange,
+                bottomInset: bottomInset
             )
         case .focusedWindow:
             guard let rect = context.normalizedRect else { return idleDecision }
@@ -1173,7 +1339,8 @@ enum ScreenShareSmartZoomReducer {
                 viewportSize: viewportSize,
                 contentRect: contentRect,
                 fillRatio: windowFillRatio,
-                scaleRange: windowScaleRange
+                scaleRange: windowScaleRange,
+                bottomInset: bottomInset
             )
         case .agentWorkspace:
             guard let rect = context.normalizedRect else { return idleDecision }
@@ -1182,7 +1349,8 @@ enum ScreenShareSmartZoomReducer {
                 viewportSize: viewportSize,
                 contentRect: contentRect,
                 fillRatio: agentFillRatio,
-                scaleRange: agentScaleRange
+                scaleRange: agentScaleRange,
+                bottomInset: bottomInset
             )
         case .cursor:
             guard let point = context.normalizedPoint else { return idleDecision }
@@ -1196,7 +1364,8 @@ enum ScreenShareSmartZoomReducer {
                 normalizedPoint: point,
                 viewportSize: viewportSize,
                 contentRect: contentRect,
-                scale: targetScale
+                scale: targetScale,
+                bottomInset: bottomInset
             )
         }
     }
@@ -1216,12 +1385,13 @@ enum ScreenShareSmartZoomReducer {
         viewportSize: CGSize,
         contentRect: CGRect,
         fillRatio: CGFloat,
-        scaleRange: ClosedRange<CGFloat>
+        scaleRange: ClosedRange<CGFloat>,
+        bottomInset: CGFloat = 0
     ) -> Decision {
         let rectWidthInContent = max(0.0001, CGFloat(rect.width)) * contentRect.width
         let rectHeightInContent = max(0.0001, CGFloat(rect.height)) * contentRect.height
         let shortRectAxis = min(rectWidthInContent, rectHeightInContent)
-        let shortViewportAxis = min(viewportSize.width, viewportSize.height)
+        let shortViewportAxis = min(viewportSize.width, max(1, viewportSize.height - bottomInset))
         let targetShortAxis = shortViewportAxis * fillRatio
         let rawScale = targetShortAxis / max(shortRectAxis, 0.0001)
         let scale = clamp(rawScale, range: scaleRange)
@@ -1230,7 +1400,8 @@ enum ScreenShareSmartZoomReducer {
         let offset = offsetForCenter(
             centerInContent: CGPoint(x: centerX, y: centerY),
             scale: scale,
-            viewportSize: viewportSize
+            viewportSize: viewportSize,
+            bottomInset: bottomInset
         )
         return Decision(scale: scale, offset: offset, isAutoFollowing: true)
     }
@@ -1239,7 +1410,8 @@ enum ScreenShareSmartZoomReducer {
         normalizedPoint point: HermesRealtimeRelayNormalizedPoint,
         viewportSize: CGSize,
         contentRect: CGRect,
-        scale: CGFloat
+        scale: CGFloat,
+        bottomInset: CGFloat = 0
     ) -> Decision {
         let clampedScale = ScreenShareViewportState.clampScale(scale)
         let centerX = contentRect.minX + CGFloat(point.x) * contentRect.width
@@ -1247,7 +1419,8 @@ enum ScreenShareSmartZoomReducer {
         let offset = offsetForCenter(
             centerInContent: CGPoint(x: centerX, y: centerY),
             scale: clampedScale,
-            viewportSize: viewportSize
+            viewportSize: viewportSize,
+            bottomInset: bottomInset
         )
         return Decision(scale: clampedScale, offset: offset, isAutoFollowing: true)
     }
@@ -1261,16 +1434,21 @@ enum ScreenShareSmartZoomReducer {
     static func offsetForCenter(
         centerInContent: CGPoint,
         scale: CGFloat,
-        viewportSize: CGSize
+        viewportSize: CGSize,
+        bottomInset: CGFloat = 0
     ) -> CGSize {
         let halfWidth = viewportSize.width / 2
         let halfHeight = viewportSize.height / 2
+        // Aim for the center of the *visible* area (above any keyboard) so the target
+        // lands in view and the content uses the top of the screen.
+        let lift = max(0, bottomInset) / 2
         let proposedX = (halfWidth - centerInContent.x) * scale
-        let proposedY = (halfHeight - centerInContent.y) * scale
+        let proposedY = (halfHeight - centerInContent.y) * scale - lift
         return ScreenShareViewportState.clamp(
             offset: CGSize(width: proposedX, height: proposedY),
             scale: scale,
-            in: viewportSize
+            in: viewportSize,
+            bottomInset: bottomInset
         )
     }
 
@@ -1357,17 +1535,19 @@ struct ScreenShareViewportState: Equatable {
         min(max(proposed, minimumScale), maximumScale)
     }
 
-    static func clamp(offset proposed: CGSize, scale: CGFloat, in size: CGSize) -> CGSize {
-        guard scale > minimumScale, size.width > 0, size.height > 0 else {
-            return .zero
-        }
+    static func clamp(offset proposed: CGSize, scale: CGFloat, in size: CGSize, bottomInset: CGFloat = 0) -> CGSize {
+        guard size.width > 0, size.height > 0 else { return .zero }
 
-        let horizontalLimit = size.width * (scale - 1) / 2
-        let verticalLimit = size.height * (scale - 1) / 2
+        let horizontalLimit = max(0, size.width * (scale - 1) / 2)
+        let verticalLimit = max(0, size.height * (scale - 1) / 2)
+        // When a keyboard covers the bottom, allow the content to ride up by half the
+        // covered height so the focused region sits in the visible area instead of
+        // being centered behind the keyboard (and leaving the top of the screen black).
+        let lift = max(0, bottomInset) / 2
 
         return CGSize(
             width: min(max(proposed.width, -horizontalLimit), horizontalLimit),
-            height: min(max(proposed.height, -verticalLimit), verticalLimit)
+            height: min(max(proposed.height, -(verticalLimit + lift)), verticalLimit)
         )
     }
 }
@@ -1380,19 +1560,29 @@ enum ScreenShareInteractionMode: Equatable {
 }
 
 enum ScreenShareSmartTextActivationPolicy {
-    static func modeAfterAutoKeyboardToggle(
-        enabled: Bool,
-        currentMode: ScreenShareInteractionMode,
-        controlInputEnabled: Bool
-    ) -> ScreenShareInteractionMode {
-        guard enabled, controlInputEnabled else { return currentMode }
-        return .control
+    /// Decides whether to surface the "double-tap to type" coaching hint. The hint
+    /// teaches the fast path at the exact moment it pays off: a text field is focused
+    /// on the Mac, control is live, and the keyboard is still down. It retires once the
+    /// user has performed the gesture (`learned`) or starts typing.
+    static func shouldShowDoubleTapCoach(
+        learned: Bool,
+        controlInputEnabled: Bool,
+        isTyping: Bool,
+        isCoPilotMode: Bool,
+        hasActiveTextFocus: Bool
+    ) -> Bool {
+        guard learned == false else { return false }
+        guard controlInputEnabled else { return false }
+        guard isCoPilotMode == false else { return false }
+        guard isTyping == false else { return false }
+        return hasActiveTextFocus
     }
 }
 
 enum ScreenShareControlInputPolicy {
     static let rightClickHoldDuration: TimeInterval = 0.55
     static let trackpadTapTravelLimit: CGFloat = 8
+    static let doubleTapMaxInterval: TimeInterval = 0.4
     static var rightClickHoldDelayNanoseconds: UInt64 {
         UInt64((rightClickHoldDuration * 1_000_000_000).rounded())
     }
@@ -1415,6 +1605,24 @@ enum ScreenShareControlInputPolicy {
             return 1
         }
         return travelDistance < trackpadTapTravelLimit ? 0 : nil
+    }
+
+    /// Detects whether the current control-surface tap completes a double-tap relative
+    /// to the previously resolved tap. The double-tap is the gesture that jumps the
+    /// viewer straight into a text field — zooming in and raising the keyboard
+    /// immediately, rather than waiting for the Mac's focus context to round-trip back.
+    static func isDoubleTap(
+        previousAt: Date?,
+        previousPoint: CGPoint?,
+        currentPoint: CGPoint,
+        now: Date,
+        maxDistance: CGFloat,
+        maxInterval: TimeInterval = doubleTapMaxInterval
+    ) -> Bool {
+        guard let previousAt, let previousPoint else { return false }
+        let elapsed = now.timeIntervalSince(previousAt)
+        guard elapsed >= 0, elapsed <= maxInterval else { return false }
+        return hypot(currentPoint.x - previousPoint.x, currentPoint.y - previousPoint.y) <= maxDistance
     }
 
     static func initialCursorPoint(in bounds: CGRect) -> CGPoint? {
@@ -1769,7 +1977,6 @@ private struct MirrorControlPanel: View {
     let isZoomed: Bool
     let smartZoomMode: SmartZoomMode
     let smartZoomAutoFollowing: Bool
-    @Binding var autoKeyboardOnTextFocus: Bool
     let setSmartZoomMode: (SmartZoomMode) -> Void
     let zoomIn: () -> Void
     let zoomOut: () -> Void
@@ -1899,7 +2106,7 @@ private struct MirrorControlPanel: View {
         case .mode: return interactionMode != .view
         case .zoom: return isZoomed || smartZoomMode != .off
         case .scroll: return edgeScrollEnabled || hardwareScrollEnabled
-        case .keyboard: return isTyping || autoKeyboardOnTextFocus
+        case .keyboard: return isTyping
         case .screen: return statsVisible || cursorStyle == .hidden
         }
     }
@@ -1995,11 +2202,11 @@ private struct MirrorControlPanel: View {
     @ViewBuilder
     private var zoomShelf: some View {
         leafButton(
-            "magnifyingglass.plus", label: "Zoom in",
+            "plus.magnifyingglass", label: "Zoom in",
             hint: "Zoom into the mirrored screen", action: zoomIn
         )
         leafButton(
-            "magnifyingglass.minus", label: "Zoom out",
+            "minus.magnifyingglass", label: "Zoom out",
             hint: "Zoom back out", disabled: isZoomed == false, action: zoomOut
         )
         if isZoomed {
@@ -2041,21 +2248,6 @@ private struct MirrorControlPanel: View {
 
     @ViewBuilder
     private var keyboardShelf: some View {
-        let autoKeyboardBinding = Binding<Bool>(
-            get: { autoKeyboardOnTextFocus },
-            set: { enabled in
-                autoKeyboardOnTextFocus = enabled
-                let nextMode = ScreenShareSmartTextActivationPolicy.modeAfterAutoKeyboardToggle(
-                    enabled: enabled,
-                    currentMode: interactionMode,
-                    controlInputEnabled: controlInputEnabled
-                )
-                guard nextMode != interactionMode else { return }
-                withAnimation(.snappy) {
-                    interactionMode = nextMode
-                }
-            }
-        )
         leafButton(
             "keyboard", label: "Type on Mac",
             hint: "Open the keyboard and type on the Mac",
@@ -2068,18 +2260,13 @@ private struct MirrorControlPanel: View {
             }
             if isTyping { focusTyping() }
         }
-        leafToggle(
-            "character.cursor.ibeam", label: "Auto keyboard",
-            hint: "Open the keyboard automatically when a text field is focused",
-            isOn: autoKeyboardBinding
-        )
         leafButton(
-            "doc.on.clipboard", label: "Paste to Mac",
+            "doc.on.clipboard", label: "To Mac",
             hint: "Send this iPhone's clipboard to the Mac",
             disabled: controlInputEnabled == false, action: pasteClipboardToMac
         )
         leafButton(
-            "arrow.down.doc", label: "Grab from Mac",
+            "arrow.down.doc", label: "From Mac",
             hint: "Copy the Mac's clipboard to this iPhone",
             disabled: controlInputEnabled == false, action: grabClipboardFromMac
         )

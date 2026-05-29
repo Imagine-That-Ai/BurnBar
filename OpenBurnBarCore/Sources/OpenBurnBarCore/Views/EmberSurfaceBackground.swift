@@ -8,15 +8,18 @@ import SwiftUI
 /// In Cooking Mode: beautiful vanilla/chocolate stove glow + drifting steam curves & simmer bubbles.
 public struct EmberSurfaceBackground: View {
     public let respectsReduceTransparency: Bool
+    public let rendersEffects: Bool
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiMode) private var uiMode
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var animate = false
 
-    public init(respectsReduceTransparency: Bool = true) {
+    public init(respectsReduceTransparency: Bool = true, rendersEffects: Bool = true) {
         self.respectsReduceTransparency = respectsReduceTransparency
+        self.rendersEffects = rendersEffects
     }
 
     public var body: some View {
@@ -28,12 +31,11 @@ public struct EmberSurfaceBackground: View {
                 particles
             }
         }
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) {
-                animate = true
-            }
-        }
+        .onAppear { syncAnimationState() }
+        .onChange(of: reduceMotion) { _, _ in syncAnimationState() }
+        .onChange(of: reduceTransparency) { _, _ in syncAnimationState() }
+        .onChange(of: scenePhase) { _, _ in syncAnimationState() }
+        .onChange(of: rendersEffects) { _, _ in syncAnimationState() }
         .accessibilityHidden(true)
     }
 
@@ -149,7 +151,22 @@ public struct EmberSurfaceBackground: View {
 
     private var shouldShowEffects: Bool {
         if respectsReduceTransparency && reduceTransparency { return false }
-        return true
+        return rendersEffects && scenePhase == .active
+    }
+
+    private var shouldAnimateEffects: Bool {
+        shouldShowEffects && !reduceMotion
+    }
+
+    private func syncAnimationState() {
+        guard shouldAnimateEffects else {
+            animate = false
+            return
+        }
+        guard !animate else { return }
+        withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) {
+            animate = true
+        }
     }
 }
 

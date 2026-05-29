@@ -80,7 +80,7 @@ struct SessionLogsView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .background(EmberSurfaceBackground().ignoresSafeArea())
+            .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
             .navigationTitle("Session Logs")
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions")
             .toolbar {
@@ -105,7 +105,7 @@ struct SessionLogsView: View {
                     title: "Select a Session",
                     message: "Tap a session from the list to view details."
                 )
-                .background(EmberSurfaceBackground().ignoresSafeArea())
+                .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
             }
         }
         .navigationSplitViewStyle(.balanced)

@@ -414,6 +414,14 @@ public struct BurnBarCLIRunner {
             )
         }
 
+        if effectiveArguments.first == "claude-meter-experiment" {
+            return try await runClaudeMeterExperiment(Array(effectiveArguments.dropFirst()))
+        }
+
+        if effectiveArguments.first == "claude-handoff" {
+            return try runClaudeHandoff(Array(effectiveArguments.dropFirst()))
+        }
+
         return BurnBarCLIInvocationResult(output: try run(arguments: arguments), exitCode: EXIT_SUCCESS)
     }
 
@@ -433,6 +441,127 @@ public struct BurnBarCLIRunner {
         return (response, mode)
     }
 
+    /// Part B0 diagnostic: drives one interactive `claude` turn through a PTY
+    /// and reports whether it billed the subscription window vs. a metered pool.
+    /// Off the routing path entirely; produces evidence for a human to read.
+    private func runClaudeMeterExperiment(_ arguments: [String]) async throws -> BurnBarCLIInvocationResult {
+        var options = ClaudeInteractiveMeterExperiment.Options()
+        var emitJSON = false
+        var index = 0
+        while index < arguments.count {
+            switch arguments[index] {
+            case "--prompt":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarCLIError.missingArgument("Usage: claude-meter-experiment --prompt <text>")
+                }
+                options.prompt = arguments[index]
+            case "--model":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarCLIError.missingArgument("Usage: claude-meter-experiment --model <model>")
+                }
+                options.model = arguments[index]
+            case "--json":
+                emitJSON = true
+            default:
+                throw BurnBarCLIError.invalidCommand("claude-meter-experiment \(arguments[index])")
+            }
+            index += 1
+        }
+
+        let report = try await ClaudeInteractiveMeterExperiment(options: options).run()
+        if emitJSON {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(report)
+            return BurnBarCLIInvocationResult(
+                output: String(decoding: data, as: UTF8.self),
+                exitCode: EXIT_SUCCESS
+            )
+        }
+        return BurnBarCLIInvocationResult(
+            output: ClaudeInteractiveMeterExperiment.format(report),
+            exitCode: report.verdict == .turnDidNotComplete ? EXIT_FAILURE : EXIT_SUCCESS
+        )
+    }
+
+    /// Part B1 handoff: dispatches a task into a genuine interactive `claude`
+    /// session (no `-p`) in the user's terminal of choice, recording a companion
+    /// session so the subscription-window token delta can be reconciled later.
+    private func runClaudeHandoff(_ arguments: [String]) throws -> BurnBarCLIInvocationResult {
+        guard let subcommand = arguments.first else {
+            throw BurnBarCLIError.missingArgument(Self.claudeHandoffUsageText)
+        }
+        let options = Array(arguments.dropFirst())
+        let service = ClaudeInteractiveHandoffService()
+
+        switch subcommand {
+        case "dispatch":
+            guard let briefing = optionValue("--briefing", in: options)
+                ?? optionValue("--prompt", in: options) else {
+                throw BurnBarCLIError.missingArgument(Self.claudeHandoffUsageText)
+            }
+            let terminalRaw = optionValue("--terminal", in: options) ?? "terminal"
+            guard let terminal = ClaudeInteractiveHandoffService.TerminalApp(rawValue: terminalRaw.lowercased()) else {
+                throw BurnBarCLIError.invalidCommand("claude-handoff --terminal \(terminalRaw)")
+            }
+            let request = ClaudeInteractiveHandoffService.Request(
+                briefing: briefing,
+                workingDirectory: optionValue("--cwd", in: options)
+                    ?? FileManager.default.currentDirectoryPath,
+                model: optionValue("--model", in: options),
+                terminal: terminal
+            )
+            let result = try service.dispatch(request)
+            return BurnBarCLIInvocationResult(
+                output: """
+                Dispatched interactive Claude handoff.
+                  session:   \(result.session.id)
+                  terminal:  \(result.session.terminal)
+                  baseline:  \(result.session.baselineTokens) tokens
+                  launcher:  \(result.launcherPath)
+                Reconcile usage later with:
+                  openburnbar-cli claude-handoff reconcile \(result.session.id)
+                """,
+                exitCode: EXIT_SUCCESS
+            )
+        case "reconcile":
+            guard let sessionID = options.first, !sessionID.hasPrefix("--") else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli claude-handoff reconcile <sessionID>")
+            }
+            let result = try service.reconcile(sessionID: sessionID)
+            return BurnBarCLIInvocationResult(
+                output: """
+                Reconciled session \(result.session.id).
+                  observed token delta: \(result.tokenDelta)
+                  changed sessions:     \(result.changedSessions.isEmpty ? "none" : result.changedSessions.joined(separator: ", "))
+                """,
+                exitCode: EXIT_SUCCESS
+            )
+        case "list":
+            let sessions = service.listSessions()
+            guard !sessions.isEmpty else {
+                return BurnBarCLIInvocationResult(output: "No companion handoff sessions.", exitCode: EXIT_SUCCESS)
+            }
+            let lines = sessions.map { session -> String in
+                let delta = session.observedTokenDelta.map { "\($0) tokens" } ?? "unreconciled"
+                return "\(session.id) [\(session.terminal)] baseline=\(session.baselineTokens) delta=\(delta)"
+            }
+            return BurnBarCLIInvocationResult(output: lines.joined(separator: "\n"), exitCode: EXIT_SUCCESS)
+        default:
+            throw BurnBarCLIError.invalidCommand("claude-handoff \(subcommand)")
+        }
+    }
+
+    private static let claudeHandoffUsageText = """
+    Usage:
+      openburnbar-cli claude-handoff dispatch --briefing <text> [--cwd <dir>] [--model <model>] [--terminal terminal|iterm|warp]
+      openburnbar-cli claude-handoff reconcile <sessionID>
+      openburnbar-cli claude-handoff list
+    """
+
     public static let usageText = """
     openburnbar-cli <command> [args]
 
@@ -448,6 +577,8 @@ public struct BurnBarCLIRunner {
       resume <sessionId> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]
       remote-unlock-certification <status|record-hardware-proof|reset>
       exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
+      claude-meter-experiment [--prompt <text>] [--model <model>] [--json]
+      claude-handoff <dispatch|reconcile|list> [args]
       install-shell-shims
     """
 

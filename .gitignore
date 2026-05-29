@@ -151,3 +151,11 @@ artifacts/**/android-cache/
 # App Store transaction IDs, notification readbacks, and live infrastructure
 # evidence, so keep them local and attach/redact deliberately.
 launch-evidence/
+
+# Generated dashboard snapshot — contains personal spend/token figures; keep
+# local (repo is public) and never commit.
+/state.json
+
+# Cursor IDE debug logs and local scratch experiments (preserved on disk only).
+.cursor/*.log
+scratch/

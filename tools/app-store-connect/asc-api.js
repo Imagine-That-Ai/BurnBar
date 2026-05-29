@@ -34,6 +34,8 @@ const APP = {
   appleId: process.env.APP_STORE_APPLE_APP_ID || "6766366964",
   bundleId: process.env.APP_STORE_BUNDLE_ID || "com.openburnbar.app",
   buildVersion: process.env.APP_STORE_BUILD_VERSION || currentMobileBuildVersion(),
+  macBuildVersion:
+    process.env.OPENBURNBAR_MAC_BUILD_VERSION || currentMacBuildVersion(),
   subscriptionId:
     process.env.OPENBURNBAR_HOSTED_QUOTA_SUBSCRIPTION_ID || "6768773163",
   subscriptionProductId:
@@ -53,6 +55,19 @@ function currentMobileBuildVersion() {
     const project = fs.readFileSync(projectPath, "utf8");
     const match = project.match(
       /OpenBurnBarMobile:[\s\S]*?CURRENT_PROJECT_VERSION:\s*"?([^"\n]+)"?/
+    );
+    return match?.[1]?.trim() || "1";
+  } catch {
+    return "1";
+  }
+}
+
+function currentMacBuildVersion() {
+  const projectPath = path.join(REPO_ROOT, "project.yml");
+  try {
+    const project = fs.readFileSync(projectPath, "utf8");
+    const match = project.match(
+      /settings:\s*\n\s*base:[\s\S]*?CURRENT_PROJECT_VERSION:\s*"?([^"\n]+)"?/
     );
     return match?.[1]?.trim() || "1";
   } catch {
@@ -101,6 +116,9 @@ The 6.7-inch iPhone and 13-inch iPad App Store screenshots have been replaced wi
 
 macOS Guideline 2.1(a), 2.1(b), and 3.1.2(c) fixes:
 The Mac App Store build includes the Sign in with Apple entitlement in the MAS-signed binary, so Settings -> Account -> Sign In Methods -> Sign in with Apple opens Apple's authorization flow instead of failing with AuthenticationServices.AuthorizationError error 1000.
+
+macOS Guideline 2.4.5(i) and Guideline 4 fixes:
+Build ${APP.macBuildVersion} removes the unused com.apple.security.network.server entitlement from the Mac App Store entitlements and signed binary. The menu bar popover also replaces the icon-only power quit control with a visible standard Quit OpenBurnBar command, while the secondary status-item menu continues to expose Quit OpenBurnBar.
 
 To find the macOS In-App Purchase:
 1. Open OpenBurnBar for macOS.

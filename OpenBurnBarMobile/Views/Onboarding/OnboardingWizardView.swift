@@ -33,7 +33,7 @@ struct OnboardingWizardView: View {
 
     var body: some View {
         ZStack {
-            EmberSurfaceBackground().ignoresSafeArea()
+            VisibilityAwareEmberSurfaceBackground().ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar

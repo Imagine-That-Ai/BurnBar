@@ -172,6 +172,11 @@ extension DataStore {
         try conversationStore.markSessionLogsSynced(ids: ids)
     }
 
+    @discardableResult
+    nonisolated func markAllSessionLogsUnsynced() throws -> Int {
+        try conversationStore.markAllSessionLogsUnsynced()
+    }
+
     nonisolated func countConversations() throws -> Int {
         try conversationStore.countConversations()
     }

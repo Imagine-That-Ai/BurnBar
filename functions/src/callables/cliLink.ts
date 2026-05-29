@@ -7,7 +7,7 @@ import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/
 import { Timestamp } from "firebase-admin/firestore";
 import { randomBytes, createHash } from "node:crypto";
 import { db } from "../adminRuntime.js";
-import { logInfo, logError, wrapCallableHandler } from "../logging.js";
+import { logError, wrapCallableHandler } from "../logging.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { assertActiveBurnBarProEntitlement, REMOTE_MCP_TOKEN_HMAC_SECRET } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";

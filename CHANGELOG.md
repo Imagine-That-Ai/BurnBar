@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Streams conversation cockpit (import, faceted cloud query, export)
+- **Every indexed provider transcript now flows into the encrypted hosted
+  backup.** New SQLite/JSONL transcript parsers cover **OpenCode**
+  (`~/.local/share/opencode/opencode.db` — `session`/`message`/`part` tables),
+  **Goose** (`~/.local/share/goose/sessions/sessions.db`, with legacy JSONL
+  fallback), and **Pi Agent** (`~/.pi/sessions/*.jsonl`), registered in
+  `ParserRegistry.defaultParsers()`. The Goose and OpenCode parsers read through
+  GRDB `DatabaseValue.storage`, so a column whose stored type differs from the
+  expected one (e.g. a `TEXT` `created_at`) resolves cleanly instead of tripping
+  a force-decode crash.
+- **`SessionLogSyncService` backs up the full provider corpus** (not just the
+  in-app CLI thread) and enriches each sealed manifest with cockpit facets —
+  tokens, cost, `workingDirectory`, model, provider, project, message count, and
+  tags — behind a unified backup toggle plus a one-time backfill. Bodies stay
+  client-side encrypted with `CloudVaultCrypto`; manifests carry no plaintext.
+- **`queryConversations` callable** powers the cockpit: faceted filters (provider,
+  model, project, date range), sort, cursor pagination, and aggregates over the
+  sealed `session_logs` manifests. It is gated on an active hosted-quota
+  entitlement; `firestore.rules` permits the new facet fields while keeping bodies
+  encrypted and paid-gated, with matching composite indexes.
+- **The iOS/iPadOS Streams tab and the Android Streams screen are now a faceted
+  conversation cockpit** — KPI header, facet bar, result rows, and a detail sheet
+  that decrypts titles/snippets/bodies locally through `CloudConversationSearchService`.
+- **Export / share:** macOS adds **Export all conversations** (a timestamped
+  bundle with `conversations.json`, a `README.md` index, and one Markdown file per
+  transcript via `ConversationBundleExporter`); iOS and Android share a single
+  conversation as formatted Markdown. CLI-agent import remains the inbound path.
+
+### Fixed — Gateway token burn & reliability
+- The local gateway (`127.0.0.1:8317`) now **streams upstream responses through
+  chunk-by-chunk** instead of buffering the whole completion. Long generations no
+  longer blow past client idle timeouts and trigger full-prompt retries that get
+  billed again. When client and upstream wire formats match, SSE relays verbatim.
+- **No failover after the first byte** has streamed to the client, and the
+  retryable error set was narrowed to genuine quota/rate-limit exhaustion
+  (dropping the `"rate"` substring false-positives and bare `401`/`403` replays).
+- **Idempotent usage accounting:** completions record under a stable key derived
+  from the request signature, route, and attempt, so retries are counted once.
+  Streaming responses now parse their final token usage from the stream
+  (OpenAI `stream_options.include_usage`; Anthropic `message_delta.usage`),
+  fixing the prior `usage=nil` under-reporting on SSE.
+- **Thinking variants are effort-only:** reasoning effort no longer inflates the
+  caller's `max_tokens`; the Anthropic `budget_tokens + 4096` floor applies only
+  when a variant explicitly requests thinking.
+- **Daemon no longer flaps** during upgrades — the binary swap is atomic
+  (copy-to-temp + rename) so `KeepAlive` cannot restart into a missing binary,
+  and a failed gateway socket bind now surfaces a clear error.
+
+### Added — Post-June-15 Anthropic routing options (opt-in)
+- Documented and implemented routing paths for Anthropic's June 15 metering split
+  (programmatic `claude -p`/SDK billed separately from the interactive
+  subscription window). All gray-area paths are **off by default**:
+  - **Console API key** stays the legitimate default Anthropic route.
+  - **B1 interactive handoff** — `openburnbar-cli claude-handoff dispatch/reconcile/list`
+    dispatches a task into a real human-driven `claude` window and reconciles the
+    subscription-window token delta as a companion.
+  - **B2 PTY interactive executor** — experimental resident interactive `claude`
+    behind `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE=1`, subscription
+    (`sk-ant-oat…`) routes only, with a loud ToS/brittleness warning.
+  - **B3 cross-vendor degrade** — `OPENBURNBAR_CROSS_VENDOR_DEGRADE=1` (optionally
+    `OPENBURNBAR_CROSS_VENDOR_DEGRADE_VENDORS=…`) substitutes an allow-listed
+    OpenAI-compatible vendor on the user's own key when the requested model
+    cannot be served.
+  - **B0 meter diagnostic** — `openburnbar-cli claude-meter-experiment` reports
+    whether an interactive turn drew from the subscription window or the metered
+    credit before trusting B2.
+- **Exposed B2 and B3 as `EXPERIMENTAL`-badged toggles** under **Settings →
+  Agents → Advanced → Experimental routing**, alongside the routing-strategy and
+  local-gateway cards. Each toggle persists, explains its risk posture inline
+  (B2 is against Anthropic's terms and brittle; B3 uses your own keys but won't
+  return the exact model requested), and prompts a one-click "Restart daemon to
+  apply" — the app emits the matching env var into the launchd plist so the
+  gateway picks it up at launch. The env vars remain the path for headless
+  daemons.
+- See [`docs/ROUTED_CLIENT_GATEWAY.md`](docs/ROUTED_CLIENT_GATEWAY.md) and
+  [`docs/PROVIDERS.md`](docs/PROVIDERS.md) for the full risk posture.
+
+### Changed — iOS background power policy
+- iOS now throttles or freezes the animated swarm background when it is subtle,
+  obscured, hidden, inactive, in Low Power Mode, or behind focused Mercury/Hermes
+  surfaces, while keeping the full live background for prominent foreground use.
+
 ### Added — Interactive CLI Link (`openburnbar mcp login`) & Secure Local Vault Key
 - Fully implemented the RFC 8628 style device link flow for `openburnbar mcp login` (no args) with automated user code verification and browser launching.
 - Added a secure, hierarchical local Vault-Key store resolver (`vaultStore.ts`) that reads from Env, Keychain, or fallback file with 0600 permissions, ensuring `obb resume` works seamlessly on decrypted hosted session-memory search results.

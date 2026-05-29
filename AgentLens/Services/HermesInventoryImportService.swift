@@ -109,8 +109,7 @@ final class HermesInventoryImportService {
             }
 
             if decision.backupToOpenBurnBarCloud {
-                settingsManager.conversationCloudBackupEnabled = true
-                settingsManager.sessionLogCloudBackupEnabled = true
+                settingsManager.conversationBackupEnabled = true
                 settingsManager.sessionLogCloudBackupConsentShown = true
                 await cloudSyncService?.uploadPending()
                 await cloudSyncService?.uploadPendingConversations()

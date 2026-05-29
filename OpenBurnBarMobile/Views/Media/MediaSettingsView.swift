@@ -8,7 +8,6 @@ import OpenBurnBarCore
 struct MediaSettingsView: View {
     @AppStorage("media.useBackCameraOnIPad") private var useBackCamera: Bool = false
     @AppStorage("media.statsOverlayEnabled") private var statsOverlayEnabled: Bool = false
-    @AppStorage("mercury.autoKeyboardOnTextFocus") private var autoKeyboardOnTextFocus = false
     /// Mercury Phase 8 — controls the auto-pin of the "My Mac" tile in
     /// Hermes Square. Off → the tile disappears; on → it auto-pins on
     /// next detection. Persisted via `UserDefaults` (key matches
@@ -33,11 +32,10 @@ struct MediaSettingsView: View {
                 }
                 #endif
                 Toggle("Show session stats overlay", isOn: $statsOverlayEnabled)
-                Toggle("Auto keyboard on text focus", isOn: $autoKeyboardOnTextFocus)
             } header: {
                 Text("Calls & screen share")
             } footer: {
-                Text("Auto keyboard opens the phone keyboard when your Mac focuses a text field. Smart Zoom still controls framing. Stats overlay also responds to a three-finger tap during a session.")
+                Text("During screen share, double-tap a text field to zoom in and open the keyboard. Smart Zoom controls framing. Stats overlay also responds to a three-finger tap during a session.")
             }
 
             Section {

@@ -32,6 +32,59 @@ struct CloudConversationSearchHit: Identifiable, Decodable, Hashable, Sendable {
     let indexVersion: Int?
 }
 
+/// Server-computed dashboard rollups for the conversation cockpit: exact count, cost, and token
+/// sums over the *filtered* set (not just the loaded page). `nil` when the matching Firestore
+/// aggregate index is still building, in which case the cockpit shows page rows without KPIs.
+struct ConversationQueryAggregates: Decodable, Hashable, Sendable {
+    let count: Int
+    let totalCostUSD: Double
+    let totalTokens: Int
+}
+
+/// One encrypted session-log manifest as returned by `queryConversations`. Facets are plaintext
+/// metadata (provider/project/model/tokens/cost/timing); the conversation title and preview stay
+/// sealed and are opened on-device with the vault key. Numeric facets are optional so manifests
+/// written before the facet backfill still decode.
+struct ConversationFacetRow: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let provider: String?
+    let projectName: String?
+    let sourceType: String?
+    let deviceId: String?
+    let model: String?
+    let facetSchemaVersion: Int?
+    let messageCount: Int?
+    let userWordCount: Int?
+    let assistantWordCount: Int?
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let cacheCreationTokens: Int?
+    let cacheReadTokens: Int?
+    let totalTokens: Int?
+    let costUSD: Double?
+    let workingDirectory: String?
+    let toolTags: [String]?
+    let durationSeconds: Int?
+    let sealedTitle: CloudVaultSealedText?
+    let sealedBodyPreview: CloudVaultSealedText?
+    let storagePath: String?
+    let bodyHash: String?
+    let startTime: Date?
+    let endTime: Date?
+    let updatedAt: Date?
+}
+
+/// Decoded response of the `queryConversations` callable: a page of facet rows, an opaque
+/// pagination cursor (`nil` when exhausted), the effective sort applied by the server, and the
+/// optional filtered-set aggregates.
+struct ConversationQueryResponse: Decodable, Sendable {
+    let rows: [ConversationFacetRow]
+    let nextCursor: String?
+    let sort: String?
+    let direction: String?
+    let aggregates: ConversationQueryAggregates?
+}
+
 private struct FirebaseCallablePayload: @unchecked Sendable {
     let rawValue: NSDictionary
 
@@ -314,6 +367,53 @@ final class FunctionsRepository {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode([CloudConversationSearchHit].self, from: data)
+    }
+
+    /// Faceted, paginated query over the user's encrypted session-log manifests for the cockpit.
+    /// All filtering and sorting happen on plaintext facets server-side; the returned rows carry
+    /// only sealed envelopes for title/preview, which the caller opens with the on-device vault
+    /// key. Pass `cursorDocId` from a prior `nextCursor` to page; request aggregates only on the
+    /// first page (`includeAggregates`) since they cover the whole filtered set.
+    func queryConversations(
+        providers: [String] = [],
+        models: [String] = [],
+        projectName: String? = nil,
+        deviceId: String? = nil,
+        sourceType: String? = nil,
+        dateFrom: Date? = nil,
+        dateTo: Date? = nil,
+        sort: String = "updatedAt",
+        direction: String = "desc",
+        limit: Int = 30,
+        cursorDocId: String? = nil,
+        includeAggregates: Bool = true
+    ) async throws -> ConversationQueryResponse {
+        let callable = functions.httpsCallable("queryConversations")
+        var payload: [String: Any] = [
+            "sort": sort,
+            "direction": direction,
+            "limit": max(1, min(limit, 100)),
+            "includeAggregates": includeAggregates
+        ]
+        if !providers.isEmpty { payload["providers"] = Array(providers.prefix(20)) }
+        if !models.isEmpty { payload["models"] = Array(models.prefix(20)) }
+        if let projectName, !projectName.isEmpty { payload["projectName"] = projectName }
+        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
+        if let sourceType, !sourceType.isEmpty { payload["sourceType"] = sourceType }
+        let iso = ISO8601DateFormatter()
+        if let dateFrom { payload["dateFrom"] = iso.string(from: dateFrom) }
+        if let dateTo { payload["dateTo"] = iso.string(from: dateTo) }
+        if let cursorDocId, !cursorDocId.isEmpty { payload["cursorDocId"] = cursorDocId }
+
+        let result = try await callable.call(payload)
+        guard let dict = result.data as? [String: Any] else {
+            throw FunctionsError.decodingFailed
+        }
+        let sanitized = FirestoreRepository.shared.sanitizeForJSON(dict)
+        let data = try JSONSerialization.data(withJSONObject: sanitized)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(ConversationQueryResponse.self, from: data)
     }
 
     func encryptedSessionBlobDownloadURL(storagePath: String) async throws -> URL {

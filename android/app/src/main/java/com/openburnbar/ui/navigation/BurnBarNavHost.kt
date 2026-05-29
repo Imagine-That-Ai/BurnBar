@@ -361,7 +361,12 @@ private fun BurnBarContent(
                 navDeepLink { uriPattern = "burnbar://streams" },
                 navDeepLink { uriPattern = "burnbar://search" }
             )
-        ) { StreamsView() }
+        ) {
+            StreamsView(
+                isCloudMember = isCloudMember,
+                onOpenCloudStore = { navController.navigate("cloud_store") }
+            )
+        }
         composable(
             BurnBarTab.HERMES.route,
             deepLinks = listOf(
