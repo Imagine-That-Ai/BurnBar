@@ -1,6 +1,7 @@
 import ApplicationServices
 import Darwin
 import Foundation
+import IOKit.pwr_mgt
 import OpenBurnBarRemoteAccessAgentCore
 import SystemConfiguration
 
@@ -149,6 +150,10 @@ private final class RemoteAccessAgentServer {
             switch request.operation {
             case "health":
                 try write(AgentResponse(ok: true, error: nil), to: client)
+            case "wakeDisplay":
+                let lease = RemoteAccessDisplayWake.prepareForCredentialEntry()
+                lease.release()
+                try write(AgentResponse(ok: true, error: nil), to: client)
             case "typeCredential":
                 let password = try validatedPassword(request.password)
                 try RemoteAccessCredentialWorker.launch(password: password)
@@ -273,6 +278,9 @@ private enum RemoteAccessCredentialWorker {
         guard let consoleUser = resolveConsoleUser() else {
             throw AgentError.consoleUserUnavailable
         }
+        let wakeLease = RemoteAccessDisplayWake.prepareForCredentialEntry()
+        defer { wakeLease.release() }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         if let loginWindowPID = loginWindowPID(for: consoleUser.uid) {
@@ -352,12 +360,55 @@ private enum RemoteAccessCredentialWorker {
     }
 }
 
+private struct RemoteAccessDisplayWakeLease {
+    var assertionID: IOPMAssertionID?
+    var displayWasAsleep: Bool
+
+    func release() {
+        guard let assertionID, assertionID != 0 else { return }
+        IOPMAssertionRelease(assertionID)
+    }
+}
+
+private enum RemoteAccessDisplayWake {
+    static func prepareForCredentialEntry() -> RemoteAccessDisplayWakeLease {
+        let displayWasAsleep = CGDisplayIsAsleep(CGMainDisplayID()) != 0
+
+        var userActivityAssertion = IOPMAssertionID(0)
+        if IOPMAssertionDeclareUserActivity(
+            "OpenBurnBar Remote Unlock" as CFString,
+            kIOPMUserActiveRemote,
+            &userActivityAssertion
+        ) == kIOReturnSuccess, userActivityAssertion != 0 {
+            IOPMAssertionRelease(userActivityAssertion)
+        }
+
+        var noDisplaySleepAssertion = IOPMAssertionID(0)
+        let noDisplaySleepResult = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypeNoDisplaySleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            "OpenBurnBar Remote Unlock credential entry" as CFString,
+            &noDisplaySleepAssertion
+        )
+        let lease = RemoteAccessDisplayWakeLease(
+            assertionID: noDisplaySleepResult == kIOReturnSuccess ? noDisplaySleepAssertion : nil,
+            displayWasAsleep: displayWasAsleep
+        )
+
+        usleep(RemoteAccessDisplayWakePolicy.settleDelayMicroseconds(displayWasAsleep: displayWasAsleep))
+        return lease
+    }
+}
+
 private enum RemoteAccessTyper {
     static func typeCredential(_ password: String) throws {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw AgentError.eventSourceUnavailable
         }
         source.localEventsSuppressionInterval = 0
+
+        let wakeLease = RemoteAccessDisplayWake.prepareForCredentialEntry()
+        defer { wakeLease.release() }
 
         try focusCredentialField(source: source)
         if let plan = RemoteAccessKeystrokePlanner.planForANSIUSKeyboard(password) {

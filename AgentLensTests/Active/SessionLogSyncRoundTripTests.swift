@@ -132,10 +132,9 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
 
     func test_countUnsyncedSessionLogs_tracksDirtyFlags() throws {
         let record = ConversationRecord(
-            id: "count-test",
+            id: ConversationRecord.stableId(provider: .cursor, sessionId: "sess-count"),
             provider: .cursor,
             sessionId: "sess-count",
-            sourceType: .providerLog,
             projectName: "CountProject",
             startTime: Date(),
             endTime: Date(),
@@ -146,7 +145,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             keyCommands: [],
             keyTools: [],
             inferredTaskTitle: "Count me",
-            lastAssistantMessage: nil,
+            lastAssistantMessage: "Done",
             fullText: "Body",
             fileModifiedAt: nil
         )
@@ -156,10 +155,9 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
 
     func test_manualBackupProgress_emitsRealCounters() async throws {
         let record = ConversationRecord(
-            id: "progress-test",
-            provider: .claude,
+            id: ConversationRecord.stableId(provider: .kimi, sessionId: "sess-progress"),
+            provider: .kimi,
             sessionId: "sess-progress",
-            sourceType: .providerLog,
             projectName: "ProgressProject",
             startTime: Date(),
             endTime: Date(),
@@ -170,7 +168,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             keyCommands: [],
             keyTools: [],
             inferredTaskTitle: "Progress session",
-            lastAssistantMessage: nil,
+            lastAssistantMessage: "Complete",
             fullText: "Progress body text.",
             fileModifiedAt: nil
         )
