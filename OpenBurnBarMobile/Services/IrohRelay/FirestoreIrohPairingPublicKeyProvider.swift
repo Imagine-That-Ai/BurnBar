@@ -33,7 +33,7 @@ final class FirestoreIrohPairingPublicKeyProvider: IrohPairingPublicKeyProviding
             .document(uid)
             .collection("iroh_pairing_keys")
             .document(roleId)
-            .getDocument()
+            .getDocument(source: .server)
         guard snapshot.exists, let data = snapshot.data() else {
             throw FirestoreIrohPairingPublicKeyError.publicKeyNotFound
         }

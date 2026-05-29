@@ -29,7 +29,7 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Send
             .document(uid)
             .collection("iroh_pairing")
             .document(connectionId)
-            .getDocument()
+            .getDocument(source: .server)
         guard snapshot.exists, let data = snapshot.data() else { return nil }
         return decode(data: data, uid: uid)
     }
