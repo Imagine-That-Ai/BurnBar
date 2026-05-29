@@ -47,6 +47,10 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         return shared
     }
 
+    func sync() async {
+        await sync(drainAll: false, progress: nil)
+    }
+
     /// Upload session-log manifests and search metadata to Firestore.
     func sync(drainAll: Bool = false, progress: CloudBackupProgressTracker? = nil) async {
         let gate = await context.syncGate()
