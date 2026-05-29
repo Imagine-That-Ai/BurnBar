@@ -305,6 +305,7 @@ public enum CLIAgentRelayChatEventKind: String, Codable, Sendable, Equatable, Ca
 public enum CLIAgentChatPresentationMode: String, Codable, Sendable, Equatable, Hashable, CaseIterable, Identifiable {
     case nativeChat = "native_chat"
     case macVisibleCLI = "mac_visible_cli"
+    case macInteractiveCLI = "mac_interactive_cli"
 
     public var id: String { rawValue }
 }

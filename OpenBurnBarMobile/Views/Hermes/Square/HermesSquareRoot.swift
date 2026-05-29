@@ -108,8 +108,19 @@ struct HermesSquareRoot: View {
     @ViewBuilder
     private var squareBackground: some View {
         Group {
-            WebsiteBackgroundView(accent: .purple).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: squareBackgroundVisibility).ignoresSafeArea()
         }
+    }
+
+    private var squareBackgroundVisibility: MobileBackgroundVisibility {
+        if isShowingDiscover
+            || isShowingSubscriptions
+            || isShowingFanOut
+            || isShowingVoice
+            || selectedMissionID != nil {
+            return .obscured
+        }
+        return .prominent
     }
 
     // MARK: Content

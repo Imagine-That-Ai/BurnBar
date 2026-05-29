@@ -15,6 +15,7 @@ struct ChatView: View {
         }
         return .agent
     }()
+    @Environment(\.mobileBackgroundVisibility) private var inheritedBackgroundVisibility
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -82,7 +83,13 @@ struct ChatView: View {
     }
 
     private var emberBackground: some View {
-        EmberSurfaceBackground()
+        VisibilityAwareEmberSurfaceBackground()
+            .environment(\.mobileBackgroundVisibility, chatBackgroundVisibility)
+    }
+
+    private var chatBackgroundVisibility: MobileBackgroundVisibility {
+        (atomRouter.pending == nil ? MobileBackgroundVisibility.prominent : MobileBackgroundVisibility.obscured)
+            .constrained(by: inheritedBackgroundVisibility)
     }
 
     // MARK: - Connection Status

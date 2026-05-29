@@ -55,6 +55,7 @@ Views never import Firestore types. Stores expose typed state and a `CloudErrorC
 | `DashboardStore` | Usage rollups, hero total, period totals, top providers/models, stale flag |
 | `QuotaStore` | Quota snapshots, urgency sort, classified errors, stale-all flag |
 | `ActivityStore` | Paginated `TokenUsage` events, classified errors |
+| `ConversationCockpitStore` | Streams cockpit: faceted `queryConversations` results, active facet filters, sort, pagination cursor, KPI aggregates, on-device decrypt of titles/snippets/bodies |
 | `DevicesStore` | Devices list, this-device trust state, bootstrap eligibility, rename/revoke/bootstrap actions |
 | `CredentialTransferStore` | Available envelopes, unsupported envelopes, history, import state machine |
 
@@ -74,6 +75,30 @@ idle → downloading → decrypting → storing → validating → validated
 2. **Quota** — urgency-sorted quota cards grouped by provider with source provenance and stale banner.
 3. **Activity** — paginated raw usage ledger with session detail. Errors render an inline classified panel.
 4. **Account** — profile, cloud sync, this-device card linking to **Devices**, provider summaries (from Mac), cross-device transfer, sync diagnostics, sign-out.
+
+### Streams conversation cockpit
+
+The **Streams** tab (`OpenBurnBarMobile/Views/Streams/StreamsView.swift`, store
+`ConversationCockpitStore` in `Models/ActivityStore.swift`) is a faceted
+conversation cockpit over the encrypted hosted backup — not just the in-app
+thread, but **every** indexed provider transcript the Mac mirrors (Codex, Claude,
+Droid, Goose, OpenCode, Pi, …). It is gated on an active hosted-quota
+entitlement; without it, the section shows an upsell rather than data.
+
+- **Data path:** `ConversationCockpitStore` → `FunctionsRepository.queryConversations`
+  → the `queryConversations` callable, which returns sealed `session_logs`
+  manifests (facets + encrypted title/snippet) with server-side filter, sort,
+  cursor pagination, and KPI aggregates. The store decrypts titles, snippets, and
+  on-demand full bodies locally through `CloudConversationSearchService`; the
+  server never sees plaintext.
+- **UI:** `ConversationCockpitSection` renders a KPI header (totals, tokens,
+  cost), a facet bar (provider / model / project / date), result rows, and a
+  detail sheet with the decrypted transcript and a **Share as Markdown** action.
+- **Export:** the inverse path lives on macOS via `ConversationBundleExporter`
+  (`conversations.json` + `README.md` index + per-conversation Markdown). See
+  [`docs/PROVIDERS.md`](PROVIDERS.md) → *Conversation transcript parsers* and the
+  faceted-query addendum in
+  [`docs/OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md`](OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md).
 
 ### Devices, Cross-device, and Diagnostics
 

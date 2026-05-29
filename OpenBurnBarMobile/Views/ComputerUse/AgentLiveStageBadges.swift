@@ -45,8 +45,9 @@ struct AgentLiveStageTelemetryCapsule: View {
     var actionsExecuted: Int
     var trustMode: ComputerUseTrustMode
 
+    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
+    @Environment(\.scenePhase) private var scenePhase
     @State private var now: Date = .now
-    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         HStack(spacing: 8) {
@@ -88,9 +89,28 @@ struct AgentLiveStageTelemetryCapsule: View {
                         .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
                 )
         )
-        .onReceive(ticker) { value in now = value }
+        .task(id: shouldUpdateTicker) { await runTickerLoop() }
+        .onChange(of: shouldUpdateTicker) { _, shouldUpdate in
+            guard shouldUpdate else { return }
+            now = .now
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Live mirror, \(elapsedString), \(actionsExecuted) actions, \(trustMode.rawValue) trust")
+    }
+
+    private var shouldUpdateTicker: Bool {
+        MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: backgroundVisibility,
+            scenePhaseActive: scenePhase == .active
+        )
+    }
+
+    private func runTickerLoop() async {
+        guard shouldUpdateTicker else { return }
+        while !Task.isCancelled {
+            await MainActor.run { now = .now }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
     }
 
     private var elapsedString: String {

@@ -14,30 +14,86 @@ import OpenBurnBarCore
 struct WebsiteBackgroundView: View {
     let accent: Color
     var colorDriver: SwarmColorDriver?
+    var visibility: MobileBackgroundVisibility = .prominent
 
     @AppStorage("appThemePalette") private var themePalette: AppThemePalette = .system
     @AppStorage(SwarmBackgroundPreferences.userDefaultsKey) private var prefsJSON: String = SwarmBackgroundPreferences.defaultJSON
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.mobileBackgroundVisibility) private var inheritedVisibility
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var envMonitor = SwarmEnvironmentMonitor.shared
+    @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     var body: some View {
         let prefs = SwarmBackgroundPreferences.from(jsonString: prefsJSON)
+        let effectiveVisibility = visibility.constrained(by: inheritedVisibility)
+        let plan = SwarmBackgroundPowerPolicy.resolve(
+            location: prefs.location,
+            conditionMet: envMonitor.meetsCondition(prefs.condition),
+            requestedVisibility: effectiveVisibility,
+            scenePhaseActive: scenePhase == .active,
+            isLowPowerModeEnabled: isLowPowerModeEnabled,
+            reduceMotion: reduceMotion
+        )
 
-        if prefs.location != .disabled && envMonitor.meetsCondition(prefs.condition) {
+        switch plan.mode {
+        case .live:
             SwarmCanvasView(
                 accent: accent,
                 pace: .cinematic,
+                particleCount: resolvedParticleCount(scale: plan.particleScale),
                 colorDriver: colorDriver,
+                isBatteryThrottled: plan.isBatteryThrottled,
                 backdropColors: themePalette.backdropColors,
                 colorPalette: themePalette.swarmPalette,
+                motionSpeedMultiplier: plan.motionSpeedMultiplierScale,
+                isAutoCyclingEnabled: plan.allowsAutoCycling,
                 enabledProviderGlyphs: prefs.selectedGlyphs,
                 isAvatarEnabled: prefs.isAvatarEnabled,
                 isBrandTextEnabled: prefs.isBrandTextEnabled,
-                excludeBrandShapesFromSwarm: prefs.excludeBrandShapes
+                enableSwarmSparkles: plan.allowsSparkles,
+                excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
+                maxFrameRate: plan.maxFrameRate,
+                rendersAsynchronously: true
             )
             .ignoresSafeArea()
-        } else {
-            AuroraBackdrop().ignoresSafeArea()
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
+                isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+            }
+        case .staticBackdrop:
+            staticBackdrop
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
+                    isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+                }
+        case .disabledFallback:
+            AuroraBackdrop(
+                density: effectiveVisibility == .prominent ? .full : .subtle,
+                colorDriver: colorDriver,
+                visibility: effectiveVisibility,
+                allowsWebsiteBackground: false
+            )
+            .ignoresSafeArea()
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
+                isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+            }
         }
+    }
+
+    private func resolvedParticleCount(scale: Double) -> Int {
+        max(96, Int(Double(SwarmCanvasView.adaptiveParticleCount) * scale))
+    }
+
+    private var staticBackdrop: some View {
+        LinearGradient(
+            colors: themePalette.backdropColors ?? [
+                MobileTheme.background,
+                MobileTheme.surface
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .overlay(accent.opacity(0.08))
+        .ignoresSafeArea()
     }
 }
 

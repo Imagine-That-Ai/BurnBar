@@ -37,6 +37,14 @@ final class CloudSyncSettings {
         didSet { persistence.set(enterpriseOrgViewEnabled, forKey: "enterpriseOrgViewEnabled") }
     }
 
+    /// Tracks which cockpit facet-schema version has been backfilled into the encrypted
+    /// session-log manifests. When the app ships a higher `SessionLogSyncService.facetSchemaVersion`,
+    /// the sync coordinator clears every conversation's `logSyncedAt` exactly once so the
+    /// enriched facets re-upload, then advances this counter.
+    var conversationFacetBackfillVersion: Int = 0 {
+        didSet { persistence.set(conversationFacetBackfillVersion, forKey: "conversationFacetBackfillVersion") }
+    }
+
     init(persistence: SettingsPersistenceCoordinator) {
         self.persistence = persistence
         self.conversationCloudBackupEnabled = persistence.bool(forKey: "conversationCloudBackupEnabled")
@@ -46,5 +54,6 @@ final class CloudSyncSettings {
         self.chatThreadContentCloudBackupEnabled = persistence.bool(forKey: "chatThreadContentCloudBackupEnabled")
         self.chatThreadContentCloudBackupConsentShown = persistence.bool(forKey: "chatThreadContentCloudBackupConsentShown")
         self.enterpriseOrgViewEnabled = persistence.bool(forKey: "enterpriseOrgViewEnabled")
+        self.conversationFacetBackfillVersion = persistence.integer(forKey: "conversationFacetBackfillVersion")
     }
 }

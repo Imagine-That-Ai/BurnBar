@@ -17,7 +17,12 @@ struct SettingsHubView: View {
     @State private var showDeleteAccountConfirmation = false
     @State private var accountDeletionError: String?
     @State private var showSignIn = false
-    @State private var router = SettingsRouter()
+    @Environment(SettingsRouter.self) private var environmentRouter: SettingsRouter?
+    @State private var localRouter = SettingsRouter()
+
+    private var router: SettingsRouter {
+        environmentRouter ?? localRouter
+    }
 
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
     @AppStorage("usageDisplayMode") private var usageDisplayMode: String = "currency"
@@ -35,15 +40,12 @@ struct SettingsHubView: View {
 
     var body: some View {
         hubContent
-            .navigationDestination(for: SettingsPageRoute.self) { route in
-                destination(for: route)
-                    .environment(router)
-            }
             .environment(router)
     }
 
     @ViewBuilder
     private var hubContent: some View {
+        @Bindable var router = router
         ZStack {
             AuroraBackdrop(density: .subtle)
             if router.isSearching {
@@ -97,10 +99,10 @@ struct SettingsHubView: View {
     }
 
     @ViewBuilder
-    private func destination(for route: SettingsPageRoute) -> some View {
+    static func destination(for route: SettingsPageRoute, authStore: AuthStore) -> some View {
         switch route {
         case .hubRoot:
-            hubContent
+            EmptyView()
         case .cloud:
             SettingsDeepLinkScrollContainer(route: .cloud) { _ in
                 CloudStoreView()

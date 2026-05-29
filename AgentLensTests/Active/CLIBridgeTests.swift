@@ -21,6 +21,59 @@ final class CLIBridgeTests: XCTestCase {
         )
     }
 
+    // MARK: - Interactive Terminal Launcher (Phase 12)
+
+    func test_interactiveInvocation_mapsKnownRuntimesToBareReplExecutables() {
+        func exe(_ runtime: String) -> String? {
+            InteractiveTerminalLauncher.interactiveInvocation(
+                runtimeId: runtime, modelID: nil, workingDirectory: nil
+            )?.executableName
+        }
+        XCTAssertEqual(exe("codex"), "codex")
+        XCTAssertEqual(exe("claude"), "claude")
+        XCTAssertEqual(exe("droid"), "droid")
+        XCTAssertEqual(exe("forge"), "forge")
+        XCTAssertEqual(exe("antigravity"), "agy")
+        XCTAssertEqual(exe("grok"), "grok")
+        XCTAssertEqual(exe("openclaw"), "openclaude")
+        XCTAssertEqual(exe("hermes"), "hermes")
+        XCTAssertEqual(exe("pi"), "pi")
+    }
+
+    func test_interactiveInvocation_isCaseInsensitiveAndRejectsUnknownRuntimes() {
+        XCTAssertEqual(
+            InteractiveTerminalLauncher.interactiveInvocation(
+                runtimeId: "Codex", modelID: nil, workingDirectory: nil
+            )?.executableName,
+            "codex"
+        )
+        XCTAssertNil(
+            InteractiveTerminalLauncher.interactiveInvocation(
+                runtimeId: "totally-unknown", modelID: nil, workingDirectory: nil
+            )
+        )
+    }
+
+    func test_interactiveInvocation_carriesModelButNoOneShotPromptFlags() {
+        let codex = InteractiveTerminalLauncher.interactiveInvocation(
+            runtimeId: "codex", modelID: "gpt-5.3-codex", workingDirectory: nil
+        )
+        XCTAssertEqual(codex?.arguments, ["-m", "gpt-5.3-codex"])
+        XCTAssertFalse(codex?.arguments.contains("exec") ?? true)
+
+        let claude = InteractiveTerminalLauncher.interactiveInvocation(
+            runtimeId: "claude", modelID: "claude-opus-4-8", workingDirectory: nil
+        )
+        XCTAssertEqual(claude?.arguments, ["--model", "claude-opus-4-8"])
+        XCTAssertFalse(claude?.arguments.contains("-p") ?? true)
+
+        let agy = InteractiveTerminalLauncher.interactiveInvocation(
+            runtimeId: "antigravity", modelID: nil, workingDirectory: URL(fileURLWithPath: "/tmp/ws")
+        )
+        XCTAssertEqual(agy?.arguments, ["--add-dir", "/tmp/ws"])
+        XCTAssertFalse(agy?.arguments.contains("--print") ?? true)
+    }
+
     // MARK: - Executable Path Parsing Tests
 
     func test_cliBridge_parseExecutablePath_prefersAbsolutePathLine() {

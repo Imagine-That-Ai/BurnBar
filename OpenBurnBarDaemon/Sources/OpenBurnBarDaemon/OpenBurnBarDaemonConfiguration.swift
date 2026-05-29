@@ -77,6 +77,11 @@ public enum BurnBarDaemonPaths {
             .appendingPathComponent("daemon", isDirectory: true)
             .appendingPathComponent("openburnbar-daemon.heartbeat.json", isDirectory: false)
     }
+
+    /// On-disk store of companion-mode interactive Claude handoff sessions (B1).
+    public static var defaultClaudeHandoffSessionsURL: URL {
+        supportDirectoryURL.appendingPathComponent("claude-handoff-sessions.json", isDirectory: false)
+    }
 }
 
 public enum BurnBarDaemonVersion {

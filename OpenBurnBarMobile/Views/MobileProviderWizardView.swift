@@ -798,7 +798,7 @@ struct MobileProviderWizardView: View {
         )
         .navigationTitle("Add provider")
         .navigationBarTitleDisplayMode(.inline)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
     }
 }
 
@@ -811,7 +811,7 @@ struct MobileProviderWizardView: View {
         )
         .navigationTitle("Add MiniMax")
         .navigationBarTitleDisplayMode(.inline)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
     }
 }
 
@@ -824,6 +824,6 @@ struct MobileProviderWizardView: View {
         )
         .navigationTitle("Add Codex")
         .navigationBarTitleDisplayMode(.inline)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
     }
 }

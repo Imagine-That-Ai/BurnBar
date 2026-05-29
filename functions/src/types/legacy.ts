@@ -858,6 +858,72 @@ export interface CloudVaultSealedTextDoc {
   tag: string;
 }
 
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/session_logs/{deviceId}_{escapedId}
+//
+// Encrypted conversation backup manifest. The conversation body is sealed in
+// Cloud Storage (`bodyStorage === "firebase_storage_encrypted"`); only metadata
+// lives in Firestore. The plaintext "cockpit facets" below are deliberately
+// content-free (counters, cost, timing, working directory, generic tool tags)
+// so the Streams cockpit can filter/sort/aggregate without ever decrypting.
+// ---------------------------------------------------------------------------
+
+/** Generation of the plaintext cockpit facet block; bump triggers a client backfill. */
+export const CONVERSATION_FACET_SCHEMA_VERSION = 1;
+
+/** Content-free facets attached to a session-log manifest for cockpit querying. */
+export interface ConversationCockpitFacetsDoc {
+  facetSchemaVersion: number;
+  model: string;
+  messageCount: number;
+  userWordCount: number;
+  assistantWordCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+  costUSD: number;
+  /** Absolute working directory of the session, when known. */
+  workingDirectory?: string;
+  /** Generic tool names used (e.g. "bash", "edit"); never key files or commands. */
+  toolTags?: string[];
+  /** Wall-clock session duration in seconds, when both endpoints are known. */
+  durationSeconds?: number;
+}
+
+export interface SessionLogManifestDoc extends ConversationCockpitFacetsDoc {
+  id: string;
+  deviceId: string;
+  provider: string;
+  sessionId: string;
+  sourceType: string;
+  projectName: string;
+  inferredTaskTitle: string;
+  bodyStorage: "firebase_storage_encrypted";
+  storagePath: string;
+  sealedTitle: CloudVaultSealedTextDoc;
+  sealedBodyPreview: CloudVaultSealedTextDoc;
+  encryption: {
+    algorithm: string;
+    keyVersion: number;
+    tokenHashVersion: number;
+    semanticHashVersion: number;
+  };
+  chunkCount: number;
+  searchChunkCount: number;
+  byteCount: number;
+  encryptedByteCount: number;
+  bodyHash: string;
+  chunkHashes: string[];
+  chunkMetadataVersion: number;
+  cloudSearchIndexVersion: number;
+  cloudSearchIndexedAt: import("firebase-admin/firestore").Timestamp | string;
+  startTime?: import("firebase-admin/firestore").Timestamp | string;
+  endTime?: import("firebase-admin/firestore").Timestamp | string;
+  updatedAt: import("firebase-admin/firestore").Timestamp | string;
+}
+
 export type TextExpansionModeDoc = "static" | "llm_rewrite";
 
 // ---------------------------------------------------------------------------

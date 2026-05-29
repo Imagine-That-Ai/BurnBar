@@ -838,12 +838,12 @@ struct MenuBarPopoverView: View {
             }
             .popoverTooltip("Open settings")
 
-            GlassIconButton(action: {
+            GlassButton(
+                title: "Quit OpenBurnBar",
+                icon: "power",
+                style: .regular
+            ) {
                 NSApplication.shared.terminate(nil)
-            }) {
-                Image(systemName: "power")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
             .popoverTooltip("Quit OpenBurnBar")
         }

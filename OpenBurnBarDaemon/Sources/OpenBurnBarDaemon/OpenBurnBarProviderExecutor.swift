@@ -69,6 +69,105 @@ public struct BurnBarProviderProxyResponse: Sendable {
     }
 }
 
+/// A live, chunk-by-chunk upstream response used for true streaming
+/// passthrough. The gateway relays `chunks` to the client verbatim as they
+/// arrive instead of buffering the whole body, which avoids client idle
+/// timeouts (and the full-request retries they trigger) on long generations.
+public struct BurnBarProviderProxyStream: Sendable {
+    public let statusCode: Int
+    public let contentType: String
+    public let chunks: AsyncThrowingStream<Data, Error>
+
+    public init(
+        statusCode: Int,
+        contentType: String,
+        chunks: AsyncThrowingStream<Data, Error>
+    ) {
+        self.statusCode = statusCode
+        self.contentType = contentType
+        self.chunks = chunks
+    }
+}
+
+/// Thrown by `open*Stream` helpers when an upstream cannot be streamed
+/// verbatim (e.g. the Ollama native API, which only speaks its own
+/// non-SSE chunk format). The gateway catches this and falls back to the
+/// buffered path on the same route instead of failing the request.
+public struct BurnBarProxyStreamingUnsupported: Error, Sendable {
+    public let reason: String
+    public init(reason: String) {
+        self.reason = reason
+    }
+}
+
+/// Shared streaming primitives: a long-lived `URLSession` tuned for SSE and
+/// a helper that opens a line-framed byte stream from a `URLRequest`.
+public enum BurnBarProxyStreaming {
+    /// Streaming responses can stay open far longer than a normal request,
+    /// so this session relaxes the per-request and resource timeouts that
+    /// `URLSession.shared` enforces. Without this, long Opus generations
+    /// trip the default 60s request timeout mid-stream.
+    public static let streamingSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 300
+        configuration.timeoutIntervalForResource = 86_400
+        configuration.waitsForConnectivity = true
+        configuration.httpShouldUsePipelining = false
+        return URLSession(configuration: configuration)
+    }()
+
+    /// Open a line-framed byte stream for `request`. On a non-2xx response the
+    /// error body is drained and surfaced as `upstreamError` *before* any
+    /// bytes reach the client, so the caller can still fail over safely.
+    public static func openByteStream(
+        session: URLSession,
+        request: URLRequest,
+        defaultContentType: String
+    ) async throws -> BurnBarProviderProxyStream {
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            var errorData = Data()
+            do {
+                for try await byte in bytes {
+                    errorData.append(byte)
+                    if errorData.count > 64 * 1024 { break }
+                }
+            } catch {
+                // Best-effort drain; fall through with whatever we captured.
+            }
+            throw BurnBarProviderExecutorError.upstreamError(
+                httpResponse.statusCode,
+                String(data: errorData, encoding: .utf8) ?? ""
+            )
+        }
+
+        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? defaultContentType
+        let stream = AsyncThrowingStream<Data, Error> { continuation in
+            let task = Task {
+                do {
+                    for try await line in bytes.lines {
+                        continuation.yield(Data((line + "\n").utf8))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+
+        return BurnBarProviderProxyStream(
+            statusCode: httpResponse.statusCode,
+            contentType: contentType,
+            chunks: stream
+        )
+    }
+}
+
 public struct BurnBarStructuredPromptRequest: Sendable {
     public let systemPrompt: String?
     public let userPrompt: String
@@ -283,6 +382,44 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
+    /// Open a true streaming Chat Completions request for verbatim SSE
+    /// passthrough. Forces `stream: true` and `stream_options.include_usage`
+    /// so the final chunk carries token usage for accounting. Throws
+    /// `BurnBarProxyStreamingUnsupported` for the Ollama native API, which
+    /// does not speak OpenAI-style SSE.
+    public func openChatCompletionsStream(
+        body: Data,
+        route: BurnBarProviderRoute,
+        variant: BurnBarModelVariant? = nil
+    ) async throws -> BurnBarProviderProxyStream {
+        let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
+
+        if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
+            throw BurnBarProxyStreamingUnsupported(reason: "ollama-native-api")
+        }
+
+        let outboundBody = try Self.rewritingChatCompletionsBody(
+            in: body,
+            to: route.resolvedModelID,
+            variant: variant,
+            effortOnly: true,
+            enableStreamUsage: true
+        )
+        let endpoint = baseURL.appending(path: "chat/completions")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(route.apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = outboundBody
+
+        return try await BurnBarProxyStreaming.openByteStream(
+            session: BurnBarProxyStreaming.streamingSession,
+            request: request,
+            defaultContentType: "text/event-stream"
+        )
+    }
+
     public func proxyResponses(
         body: Data,
         route: BurnBarProviderRoute,
@@ -414,7 +551,9 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
         object["model"] = modelID
         if let variant {
-            applyOpenAIVariant(variant, to: &object, isResponsesShape: true)
+            // Live proxy forwarding: inject reasoning effort without raising
+            // the caller's token ceiling (see A3 — variant inflation fix).
+            applyOpenAIVariant(variant, to: &object, isResponsesShape: true, effortOnly: true)
         }
         return try JSONSerialization.data(withJSONObject: object, options: [])
     }
@@ -422,7 +561,9 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     private static func rewritingChatCompletionsBody(
         in body: Data,
         to modelID: String,
-        variant: BurnBarModelVariant? = nil
+        variant: BurnBarModelVariant? = nil,
+        effortOnly: Bool = true,
+        enableStreamUsage: Bool = false
     ) throws -> Data {
         let json = try JSONSerialization.jsonObject(with: body)
         guard var object = json as? [String: Any] else {
@@ -431,7 +572,13 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         object["model"] = modelID
         normalizeOpenAICompatibleMessages(in: &object)
         if let variant {
-            applyOpenAIVariant(variant, to: &object, isResponsesShape: false)
+            applyOpenAIVariant(variant, to: &object, isResponsesShape: false, effortOnly: effortOnly)
+        }
+        if enableStreamUsage {
+            object["stream"] = true
+            var streamOptions = (object["stream_options"] as? [String: Any]) ?? [:]
+            streamOptions["include_usage"] = true
+            object["stream_options"] = streamOptions
         }
         return try JSONSerialization.data(withJSONObject: object, options: [])
     }
@@ -445,7 +592,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     static func applyOpenAIVariant(
         _ variant: BurnBarModelVariant,
         to object: inout [String: Any],
-        isResponsesShape: Bool
+        isResponsesShape: Bool,
+        effortOnly: Bool = false
     ) {
         let effort = variant.thinkingLevel.openAIEffort
         if isResponsesShape {
@@ -453,9 +601,18 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             reasoning["effort"] = effort
             object["reasoning"] = reasoning
             if let maxOutputTokens = variant.maxOutputTokens {
-                object["max_output_tokens"] = maxOutputTokens
-                object.removeValue(forKey: "max_completion_tokens")
-                object.removeValue(forKey: "max_tokens")
+                if effortOnly {
+                    // Treat the variant max as a ceiling: never raise the
+                    // caller's existing budget; only clamp it downward.
+                    let callerMax = intValue(object["max_output_tokens"])
+                    if let clamped = Self.clampedMaxTokens(variantMax: maxOutputTokens, callerMax: callerMax) {
+                        object["max_output_tokens"] = clamped
+                    }
+                } else {
+                    object["max_output_tokens"] = maxOutputTokens
+                    object.removeValue(forKey: "max_completion_tokens")
+                    object.removeValue(forKey: "max_tokens")
+                }
             }
         } else {
             object["reasoning_effort"] = effort
@@ -463,10 +620,32 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             reasoning["effort"] = effort
             object["reasoning"] = reasoning
             if let maxOutputTokens = variant.maxOutputTokens {
-                object["max_completion_tokens"] = maxOutputTokens
-                object["max_tokens"] = maxOutputTokens
+                if effortOnly {
+                    let callerMax = intValue(object["max_completion_tokens"]) ?? intValue(object["max_tokens"])
+                    if let clamped = Self.clampedMaxTokens(variantMax: maxOutputTokens, callerMax: callerMax) {
+                        if object["max_completion_tokens"] != nil {
+                            object["max_completion_tokens"] = clamped
+                        }
+                        if object["max_tokens"] != nil {
+                            object["max_tokens"] = clamped
+                        }
+                    }
+                } else {
+                    object["max_completion_tokens"] = maxOutputTokens
+                    object["max_tokens"] = maxOutputTokens
+                }
             }
         }
+    }
+
+    /// In effort-only mode the variant's `maxOutputTokens` acts as a ceiling,
+    /// never a raise: when the caller already set a smaller budget we keep it,
+    /// when the caller set a larger one we clamp down to the variant, and when
+    /// the caller set nothing we leave the field unset (returning `nil`) so we
+    /// never inflate a request that had no explicit limit.
+    private static func clampedMaxTokens(variantMax: Int, callerMax: Int?) -> Int? {
+        guard let callerMax, callerMax > 0 else { return nil }
+        return min(callerMax, variantMax)
     }
 
     private static func normalizeOpenAICompatibleMessages(in object: inout [String: Any]) {

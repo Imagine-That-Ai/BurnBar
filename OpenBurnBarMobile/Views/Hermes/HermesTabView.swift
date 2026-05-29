@@ -313,9 +313,21 @@ struct HermesConversationListView: View {
         return service.isReachable ? "Hermes online · \(name)" : "Hermes offline · \(name)"
     }
 
+    private var conversationListBackgroundVisibility: MobileBackgroundVisibility {
+        if showConnectionSheet
+            || showRuntimeSheet
+            || showModelPicker
+            || selectedLibrarySession != nil
+            || presentedChatRoute != nil
+            || showSetupWizard {
+            return .obscured
+        }
+        return .prominent
+    }
+
     var body: some View {
         ZStack {
-            AuroraBackdrop()
+            AuroraBackdrop(visibility: conversationListBackgroundVisibility)
 
             VStack(spacing: 0) {
                 brandHeader
@@ -1264,9 +1276,24 @@ struct HermesChatView: View {
         }
     }
 
+    private var chatBackgroundVisibility: MobileBackgroundVisibility {
+        if showConnectionSheet
+            || showRuntimeSheet
+            || showModelPicker
+            || permissionGrantThreadID != nil
+            || showSetupWizard
+            || showPretextPlayground
+            || showFileImporter
+            || showCameraSheet
+            || atomRouter.pending != nil {
+            return .obscured
+        }
+        return .prominent
+    }
+
     var body: some View {
         ZStack {
-            AuroraBackdrop()
+            AuroraBackdrop(visibility: chatBackgroundVisibility)
             VStack(spacing: 0) {
                 relaySuggestionBanner
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
@@ -2168,138 +2195,298 @@ private struct HermesConnectionSheet: View {
     @Bindable var service: HermesService
     @Environment(\.dismiss) private var dismiss
 
-    @State private var displayName = "Hermes Host"
-    @State private var endpointURL = "http://192.168.1.2:8642"
+    @State private var displayName = ""
+    @State private var endpointURL = ""
     @State private var bearerToken = ""
     @State private var isWorking = false
     @State private var errorText: String?
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Use Remote Relay away from home", systemImage: "antenna.radiowaves.left.and.right")
-                            .font(MobileTheme.Typography.body)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(MobileTheme.hermesAureate)
-                        Text("Same account is not enough by itself: your iPhone/iPad must choose the Mac relay host, and your Mac must be online with Remote Relay enabled.")
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+            ZStack {
+                AuroraBackdrop(density: .subtle)
 
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // 1. Suggested Mac Relay Banner (Clean & Contextual)
                         if let relay = service.suggestedRelayConnection,
                            service.selectedConnection.id != relay.id {
-                            Button {
-                                if service.connectToSuggestedRelay() {
-                                    dismiss()
-                                } else {
-                                    errorText = service.lastError
-                                }
-                            } label: {
-                                Label("Connect to my Mac", systemImage: "checkmark.shield.fill")
-                                    .font(MobileTheme.Typography.body)
-                                    .fontWeight(.semibold)
-                            }
-                            .buttonStyle(.aurora(.hermes, fullWidth: true))
-                            .padding(.top, 4)
-                        } else if service.suggestedRelayConnection == nil {
-                            Label("No Mac relay found yet", systemImage: "moon.zzz")
-                                .font(MobileTheme.Typography.caption)
-                                .foregroundStyle(MobileTheme.Colors.textMuted)
-                                .padding(.top, 2)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
+                            AuroraGlassCard(variant: .hero, cornerRadius: AuroraDesign.Shape.standardCorner) {
+                                VStack(alignment: .leading, spacing: 14) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "macbook.and.iphone")
+                                            .font(.system(size: 20, weight: .semibold))
+                                            .foregroundStyle(MobileTheme.hermesAureate)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Mac Relay Available")
+                                                .font(MobileTheme.Typography.body)
+                                                .fontWeight(.bold)
+                                                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                            Text("Connect to your signed-in Mac to access Hermes.")
+                                                .font(MobileTheme.Typography.caption)
+                                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                                        }
+                                    }
 
-                Section("Active Host") {
-                    ForEach(service.connections) { connection in
-                        Button {
-                            if service.selectConnection(connection) {
-                                dismiss()
-                            } else {
-                                errorText = service.lastError
+                                    Button {
+                                        if service.connectToSuggestedRelay() {
+                                            dismiss()
+                                        } else {
+                                            errorText = service.lastError
+                                        }
+                                    } label: {
+                                        Text("Connect to \(relay.displayName)")
+                                            .font(MobileTheme.Typography.body)
+                                            .fontWeight(.semibold)
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.aurora(.hermes, fullWidth: true))
+                                }
                             }
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(connection.displayName)
-                                        .font(MobileTheme.Typography.body)
-                                        .fontWeight(.semibold)
-                                    Text(connectionSubtitle(connection))
-                                        .font(MobileTheme.Typography.tiny)
+                        }
+
+                        // 2. Error Display Cards
+                        if let runtimeErrorText = service.runtimeErrorText {
+                            AuroraGlassCard(variant: .urgent, cornerRadius: AuroraDesign.Shape.standardCorner) {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundStyle(MobileTheme.error)
+                                        Text("Connection Status")
+                                            .font(MobileTheme.Typography.body)
+                                            .fontWeight(.bold)
+                                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                    }
+                                    Text(runtimeErrorText)
+                                        .font(MobileTheme.Typography.caption)
                                         .foregroundStyle(MobileTheme.Colors.textSecondary)
+
+                                    Button {
+                                        Task { await service.refreshConnections() }
+                                    } label: {
+                                        Text("Retry Discovery")
+                                            .font(MobileTheme.Typography.caption)
+                                            .fontWeight(.semibold)
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.aurora(.hermes, fullWidth: true))
+                                    .padding(.top, 4)
                                 }
-                                Spacer()
-                                Text(connection.status.rawValue.capitalized)
-                                    .font(MobileTheme.Typography.tiny)
-                                    .foregroundStyle(connection.status == .online ? MobileTheme.success : MobileTheme.warning)
-                                if connection.id == service.selectedConnection.id {
-                                    Image(systemName: "checkmark.circle.fill")
+                            }
+                        }
+
+                        if let errorText {
+                            AuroraGlassCard(variant: .urgent, cornerRadius: AuroraDesign.Shape.standardCorner) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Action Error")
+                                        .font(MobileTheme.Typography.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(MobileTheme.error)
+                                    Text(errorText)
+                                        .font(MobileTheme.Typography.caption)
+                                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                }
+                            }
+                        }
+
+                        // 3. Active Hosts Section
+                        AuroraGlassCard(variant: .standard, cornerRadius: AuroraDesign.Shape.standardCorner) {
+                            VStack(alignment: .leading, spacing: 16) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "antenna.radiowaves.left.and.right")
+                                        .font(.system(size: 16, weight: .semibold))
                                         .foregroundStyle(MobileTheme.hermesAureate)
+                                    Text("Available Hosts")
+                                        .font(MobileTheme.Typography.headline)
+                                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                    Spacer()
+                                }
+                                .padding(.bottom, 2)
+
+                                VStack(spacing: 0) {
+                                    ForEach(Array(service.connections.enumerated()), id: \.element.id) { index, connection in
+                                        let isSelected = connection.id == service.selectedConnection.id
+                                        VStack(spacing: 0) {
+                                            HStack(spacing: 12) {
+                                                Button {
+                                                    if service.selectConnection(connection) {
+                                                        dismiss()
+                                                    } else {
+                                                        errorText = service.lastError
+                                                    }
+                                                } label: {
+                                                    HStack(spacing: 12) {
+                                                        // Glowing status dot
+                                                        ZStack {
+                                                            Circle()
+                                                                .fill(connection.status == .online ? MobileTheme.success : MobileTheme.warning)
+                                                                .frame(width: 8, height: 8)
+                                                            if connection.status == .online {
+                                                                Circle()
+                                                                    .stroke(MobileTheme.success.opacity(0.4), lineWidth: 1.5)
+                                                                    .frame(width: 14, height: 14)
+                                                            }
+                                                        }
+                                                        .frame(width: 16, height: 16)
+
+                                                        VStack(alignment: .leading, spacing: 2) {
+                                                            Text(connection.displayName)
+                                                                .font(MobileTheme.Typography.body)
+                                                                .fontWeight(.semibold)
+                                                                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                                            Text(connectionSubtitle(connection))
+                                                                .font(MobileTheme.Typography.tiny)
+                                                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                                                        }
+                                                        Spacer()
+                                                    }
+                                                    .contentShape(Rectangle())
+                                                }
+                                                .buttonStyle(.plain)
+
+                                                if isSelected {
+                                                    Image(systemName: "checkmark.circle.fill")
+                                                        .font(.system(size: 18))
+                                                        .foregroundStyle(MobileTheme.hermesAureate)
+                                                }
+
+                                                if connection.id != HermesConnectionRecord.localDefault.id {
+                                                    Button {
+                                                        Task { await revoke(connection) }
+                                                    } label: {
+                                                        Image(systemName: "trash")
+                                                            .font(.system(size: 13, weight: .medium))
+                                                            .foregroundStyle(MobileTheme.Colors.textMuted.opacity(0.6))
+                                                            .padding(6)
+                                                            .background(Circle().fill(MobileTheme.Colors.surface.opacity(0.4)))
+                                                    }
+                                                    .buttonStyle(.plain)
+                                                    .padding(.leading, 4)
+                                                }
+                                            }
+                                            .padding(.vertical, 10)
+
+                                            if index < service.connections.count - 1 {
+                                                Divider()
+                                                    .background(MobileTheme.Colors.border.opacity(0.3))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            if connection.id != HermesConnectionRecord.localDefault.id {
-                                Button(role: .destructive) {
-                                    Task { await revoke(connection) }
-                                } label: {
-                                    Label("Revoke", systemImage: "trash")
+
+                        // 4. Add Direct Host Section
+                        AuroraGlassCard(variant: .standard, cornerRadius: AuroraDesign.Shape.standardCorner) {
+                            VStack(alignment: .leading, spacing: 16) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "link.badge.plus")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(MobileTheme.hermesAureate)
+                                    Text("Add Direct Host")
+                                        .font(MobileTheme.Typography.headline)
+                                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                    Spacer()
+                                }
+                                .padding(.bottom, 2)
+
+                                VStack(alignment: .leading, spacing: 14) {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text("Host Name")
+                                            .font(MobileTheme.Typography.tiny)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                                        TextField("e.g. Home Mac", text: $displayName)
+                                            .font(MobileTheme.Typography.body)
+                                            .padding(12)
+                                            .background(MobileTheme.Colors.surface.opacity(0.35))
+                                            .cornerRadius(10)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .stroke(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.8)
+                                            )
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text("Hermes URL")
+                                            .font(MobileTheme.Typography.tiny)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                                        TextField("http://192.168.1.2:8642", text: $endpointURL)
+                                            .font(MobileTheme.Typography.body)
+                                            .textInputAutocapitalization(.never)
+                                            .autocorrectionDisabled()
+                                            .padding(12)
+                                            .background(MobileTheme.Colors.surface.opacity(0.35))
+                                            .cornerRadius(10)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .stroke(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.8)
+                                            )
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text("API Server Key (optional)")
+                                            .font(MobileTheme.Typography.tiny)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                                        SecureField("Bearer token key", text: $bearerToken)
+                                            .font(MobileTheme.Typography.body)
+                                            .textInputAutocapitalization(.never)
+                                            .autocorrectionDisabled()
+                                            .padding(12)
+                                            .background(MobileTheme.Colors.surface.opacity(0.35))
+                                            .cornerRadius(10)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .stroke(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.8)
+                                            )
+                                    }
+
+                                    if !endpointURL.isEmpty, HermesService.validatedEndpointURL(endpointURL) == nil {
+                                        Text("Use HTTPS, or HTTP only for localhost/private LAN Hermes hosts.")
+                                            .font(MobileTheme.Typography.tiny)
+                                            .foregroundStyle(MobileTheme.error)
+                                    }
+
+                                    Button {
+                                        Task { await addDirectConnection() }
+                                    } label: {
+                                        if isWorking {
+                                            ProgressView()
+                                                .tint(.white)
+                                                .frame(maxWidth: .infinity)
+                                        } else {
+                                            Text("Register and Connect")
+                                                .font(MobileTheme.Typography.body)
+                                                .fontWeight(.bold)
+                                                .frame(maxWidth: .infinity)
+                                        }
+                                    }
+                                    .buttonStyle(.aurora(.hermes, fullWidth: true))
+                                    .disabled(isWorking || displayName.isEmpty || HermesService.validatedEndpointURL(endpointURL) == nil)
+                                    .padding(.top, 6)
                                 }
                             }
                         }
-                    }
-                }
 
-                if let runtimeErrorText = service.runtimeErrorText {
-                    Section {
-                        Text(runtimeErrorText)
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.error)
-                        Button {
-                            Task { await service.refreshConnections() }
-                        } label: {
-                            Label("Retry Connection Discovery", systemImage: "arrow.clockwise")
+                        // 5. Secure Storage Footnote
+                        HStack(spacing: 6) {
+                            Image(systemName: "lock.shield.fill")
+                                .font(.system(size: 11))
+                            Text("API keys stay securely stored locally on this device.")
+                                .font(MobileTheme.Typography.tiny)
                         }
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .padding(.top, 4)
+                        .padding(.bottom, 20)
                     }
-                }
-
-                Section {
-                    TextField("Display name", text: $displayName)
-                    TextField("Hermes URL", text: $endpointURL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("API_SERVER_KEY (optional)", text: $bearerToken)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    if !endpointURL.isEmpty, HermesService.validatedEndpointURL(endpointURL) == nil {
-                        Text("Use HTTPS, or HTTP only for localhost/private LAN Hermes hosts.")
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.error)
-                    }
-                    Button {
-                        Task { await addDirectConnection() }
-                    } label: {
-                        Label(isWorking ? "Registering…" : "Register and Connect", systemImage: "link.badge.plus")
-                    }
-                    .disabled(isWorking || displayName.isEmpty || HermesService.validatedEndpointURL(endpointURL) == nil)
-                } header: {
-                    Text("Add LAN/VPN Direct Host")
-                } footer: {
-                    Text("Use this for LAN/VPN/public HTTPS hosts. For cell signal away from home, keep OpenBurnBar running on your signed-in Mac and select its Remote Relay connection above; the Hermes API key stays on the Mac.")
-                }
-
-                if let errorText {
-                    Section {
-                        Text(errorText)
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.error)
-                    }
+                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                    .padding(.top, 16)
                 }
             }
             .navigationTitle("Hermes Connections")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
@@ -3452,6 +3639,8 @@ private struct ProviderStatusGlobeView: View {
     let isReachable: Bool
     let size: CGFloat = 24
 
+    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
+    @Environment(\.scenePhase) private var scenePhase
     @State private var animateGlow = false
 
     var body: some View {
@@ -3460,7 +3649,7 @@ private struct ProviderStatusGlobeView: View {
             Circle()
                 .fill((isReachable ? DesignSystemColors.primary(for: provider) : DesignSystemColors.error).opacity(0.2))
                 .frame(width: size * 1.4, height: size * 1.4)
-                .scaleEffect(animateGlow ? 1.25 : 0.85)
+                .scaleEffect(shouldAnimateGlow && animateGlow ? 1.25 : 0.85)
                 .blur(radius: 2)
                 .animation(
                     .easeInOut(duration: 1.8)
@@ -3506,8 +3695,18 @@ private struct ProviderStatusGlobeView: View {
         }
         .frame(width: size, height: size)
         .onAppear {
-            animateGlow = true
+            animateGlow = shouldAnimateGlow
         }
+        .onChange(of: shouldAnimateGlow) { _, shouldAnimate in
+            animateGlow = shouldAnimate
+        }
+    }
+
+    private var shouldAnimateGlow: Bool {
+        MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: backgroundVisibility,
+            scenePhaseActive: scenePhase == .active
+        )
     }
 }
 
@@ -3515,14 +3714,26 @@ private struct ProviderStatusGlobeView: View {
 
 private struct BreathingDot: ViewModifier {
     let active: Bool
+    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
+    @Environment(\.scenePhase) private var scenePhase
     @State private var phase = false
 
     func body(content: Content) -> some View {
         content
-            .scaleEffect(active && phase ? 1.5 : 1.0)
-            .opacity(active && phase ? 0.55 : 1.0)
-            .animation(active ? .easeInOut(duration: 1.4).repeatForever(autoreverses: true) : .default, value: phase)
-            .onAppear { phase = true }
+            .scaleEffect(shouldAnimate && phase ? 1.5 : 1.0)
+            .opacity(shouldAnimate && phase ? 0.55 : 1.0)
+            .animation(shouldAnimate ? .easeInOut(duration: 1.4).repeatForever(autoreverses: true) : .default, value: phase)
+            .onAppear { phase = shouldAnimate }
+            .onChange(of: shouldAnimate) { _, shouldAnimate in
+                phase = shouldAnimate
+            }
+    }
+
+    private var shouldAnimate: Bool {
+        active && MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: backgroundVisibility,
+            scenePhaseActive: scenePhase == .active
+        )
     }
 }
 
@@ -3543,6 +3754,8 @@ private struct HermesDynamicStatusWidget: View {
     let isRefreshing: Bool
     let refreshAction: () -> Void
 
+    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
+    @Environment(\.scenePhase) private var scenePhase
     @State private var activeState: WidgetState = .globe
     @State private var animateGlow = false
 
@@ -3644,10 +3857,9 @@ private struct HermesDynamicStatusWidget: View {
                 activeState = .refresh
             }
         }
-        .onReceive(Timer.publish(every: 4.5, on: .main, in: .common).autoconnect()) { _ in
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.76, blendDuration: 0)) {
-                activeState = activeState.next(isRefreshing: isRefreshing)
-            }
+        .task(id: statusWidgetTickerKey) { await runStatusWidgetTicker() }
+        .onChange(of: shouldUpdateStatusWidget) { _, shouldUpdate in
+            animateGlow = shouldUpdate
         }
         .onChange(of: isRefreshing) { _, refreshing in
             if refreshing {
@@ -3664,6 +3876,30 @@ private struct HermesDynamicStatusWidget: View {
         }
     }
 
+    private var shouldUpdateStatusWidget: Bool {
+        MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: backgroundVisibility,
+            scenePhaseActive: scenePhase == .active
+        )
+    }
+
+    private var statusWidgetTickerKey: String {
+        "\(shouldUpdateStatusWidget)-\(isRefreshing)"
+    }
+
+    private func runStatusWidgetTicker() async {
+        guard shouldUpdateStatusWidget else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            guard !Task.isCancelled, shouldUpdateStatusWidget else { return }
+            await MainActor.run {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.76, blendDuration: 0)) {
+                    activeState = activeState.next(isRefreshing: isRefreshing)
+                }
+            }
+        }
+    }
+
     private var modelBadge: some View {
         ZStack {
             // Pulse glow for model
@@ -3675,7 +3911,7 @@ private struct HermesDynamicStatusWidget: View {
                 .frame(width: 28, height: 28)
                 .scaleEffect(animateGlow ? 1.15 : 0.9)
                 .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: animateGlow)
-                .onAppear { animateGlow = true }
+                .onAppear { animateGlow = shouldUpdateStatusWidget }
 
             UnifiedProviderLogoView(provider: provider, size: 20, useFallbackColor: true)
                 .grayscale(isReachable ? 0.0 : 0.6)
@@ -3690,7 +3926,7 @@ private struct HermesDynamicStatusWidget: View {
                 .frame(width: 28, height: 28)
                 .scaleEffect(animateGlow ? 1.15 : 0.9)
                 .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: animateGlow)
-                .onAppear { animateGlow = true }
+                .onAppear { animateGlow = shouldUpdateStatusWidget }
 
             SpinningRefreshIcon(isRefreshing: isRefreshing)
         }
@@ -3699,6 +3935,8 @@ private struct HermesDynamicStatusWidget: View {
 
 private struct SpinningRefreshIcon: View {
     let isRefreshing: Bool
+    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
+    @Environment(\.scenePhase) private var scenePhase
     @State private var spinDegree = 0.0
 
     var body: some View {
@@ -3706,16 +3944,28 @@ private struct SpinningRefreshIcon: View {
             .font(.system(size: 13, weight: .bold))
             .foregroundStyle(MobileTheme.hermesAureate)
             .rotationEffect(.degrees(spinDegree))
-            .id(isRefreshing) // Recreates the view when isRefreshing changes, killing any infinite animation cleanly!
-            .onAppear {
-                if isRefreshing {
-                    spinDegree = 0.0
-                    withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
-                        spinDegree = 360.0
-                    }
-                } else {
-                    spinDegree = 0.0
-                }
+            .id(shouldSpin)
+            .onAppear { syncSpinState() }
+            .onChange(of: shouldSpin) { _, _ in
+                syncSpinState()
             }
+    }
+
+    private var shouldSpin: Bool {
+        isRefreshing && MobileDecorativeRenderPolicy.allowsLiveEffects(
+            visibility: backgroundVisibility,
+            scenePhaseActive: scenePhase == .active
+        )
+    }
+
+    private func syncSpinState() {
+        guard shouldSpin else {
+            spinDegree = 0.0
+            return
+        }
+        spinDegree = 0.0
+        withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+            spinDegree = 360.0
+        }
     }
 }

@@ -18,7 +18,20 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
 
         XCTAssertEqual(plist["com.apple.security.app-sandbox"] as? Bool, true)
         XCTAssertEqual(plist["com.apple.security.network.client"] as? Bool, true)
+        XCTAssertNil(plist["com.apple.security.network.server"])
         XCTAssertEqual(plist["com.apple.developer.applesignin"] as? [String], ["Default"])
+    }
+
+    func testMacPopoverUsesStandardVisibleQuitCommandName() throws {
+        let popoverURL = repoRoot()
+            .appendingPathComponent("AgentLens")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Popover")
+            .appendingPathComponent("MenuBarPopoverView.swift")
+        let source = try String(contentsOf: popoverURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("title: \"Quit OpenBurnBar\""))
+        XCTAssertTrue(source.contains("NSApplication.shared.terminate(nil)"))
     }
 
     func testMacCloudStoreHasNativeStoreKitPurchaseAndLegalLinks() throws {
@@ -74,6 +87,8 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("Subscribe with App Store"))
         XCTAssertTrue(source.contains("Terms of Use (EULA)"))
         XCTAssertTrue(source.contains("AuthenticationServices.AuthorizationError error 1000"))
+        XCTAssertTrue(source.contains("com.apple.security.network.server"))
+        XCTAssertTrue(source.contains("Quit OpenBurnBar"))
     }
 
     private func repoRoot(file: StaticString = #filePath) -> URL {

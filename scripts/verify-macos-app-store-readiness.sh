@@ -43,6 +43,10 @@ fi
 require_entitlement_bool "$entitlements" "com.apple.security.app-sandbox" "true"
 require_entitlement_bool "$entitlements" "com.apple.security.network.client" "true"
 require_entitlement_value "$entitlements" "com.apple.developer.applesignin" "Default"
+if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" "$entitlements" >/dev/null 2>&1; then
+  echo "MAS entitlements must not include com.apple.security.network.server unless the app exposes reviewer-visible server functionality." >&2
+  exit 1
+fi
 
 if [[ -f "$direct_entitlements" ]]; then
   require_entitlement_bool "$direct_entitlements" "com.apple.security.app-sandbox" "false"

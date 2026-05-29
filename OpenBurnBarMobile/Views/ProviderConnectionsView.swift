@@ -30,47 +30,53 @@ struct ProviderConnectionsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Provider Accounts")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    if showsDoneButton {
+        if showsDoneButton {
+            NavigationStack {
+                mainContent
+                    .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") { dismiss() }
                         }
                     }
-                }
-                .sheet(isPresented: $showAddSheet) {
-                    AddProviderConnectionView(provider: selectedProvider)
-                }
-                .alert(
-                    "Couldn't update account",
-                    isPresented: Binding(
-                        get: { pendingError != nil },
-                        set: { if !$0 { pendingError = nil } }
-                    ),
-                    actions: {
-                        Button("OK", role: .cancel) { pendingError = nil }
-                    },
-                    message: {
-                        Text(pendingError ?? "")
-                    }
-                )
-                .task {
-                    await store.fetchConnections()
-                    await connectionStore.load()
-                    connectionStore.startDeviceLinksStream()
-                }
-                .onDisappear { connectionStore.stopDeviceLinksStream() }
-                .refreshable {
-                    await store.fetchConnections()
-                    await connectionStore.load()
-                }
-                .onChange(of: connectionStore.error) { _, newValue in
-                    pendingError = newValue
-                }
+            }
+        } else {
+            mainContent
         }
+    }
+
+    private var mainContent: some View {
+        content
+            .navigationTitle("Provider Accounts")
+            .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showAddSheet) {
+                AddProviderConnectionView(provider: selectedProvider)
+            }
+            .alert(
+                "Couldn't update account",
+                isPresented: Binding(
+                    get: { pendingError != nil },
+                    set: { if !$0 { pendingError = nil } }
+                ),
+                actions: {
+                    Button("OK", role: .cancel) { pendingError = nil }
+                },
+                message: {
+                    Text(pendingError ?? "")
+                }
+            )
+            .task {
+                await store.fetchConnections()
+                await connectionStore.load()
+                connectionStore.startDeviceLinksStream()
+            }
+            .onDisappear { connectionStore.stopDeviceLinksStream() }
+            .refreshable {
+                await store.fetchConnections()
+                await connectionStore.load()
+            }
+            .onChange(of: connectionStore.error) { _, newValue in
+                pendingError = newValue
+            }
     }
 
     @ViewBuilder
@@ -167,7 +173,7 @@ struct ProviderConnectionsView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
         .settingsAnchor(SettingsAnchor.providersRow)
     }
 

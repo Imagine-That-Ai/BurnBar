@@ -142,5 +142,5 @@ private struct ConnectedAccountChip: View {
         onContinue: { }
     )
     .padding()
-    .background(EmberSurfaceBackground().ignoresSafeArea())
+    .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
 }

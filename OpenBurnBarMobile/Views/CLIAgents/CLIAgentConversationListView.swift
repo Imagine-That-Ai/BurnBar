@@ -1052,7 +1052,7 @@ struct CLIAgentChatThreadView: View {
         ZStack {
             AuroraBackdrop()
             VStack(spacing: 0) {
-                messageList
+                primaryContent
                 Divider().background(MobileTheme.Colors.border.opacity(0.35))
                 composer
             }
@@ -1144,6 +1144,24 @@ struct CLIAgentChatThreadView: View {
     private var lastMessageSignature: String {
         guard let last = messages.last else { return "empty" }
         return "\(last.id)-\(last.text.count)-\(last.toolCalls.count)"
+    }
+
+    /// In `.macInteractiveCLI` mode the chat list is replaced by the focused
+    /// single-window terminal: the Mac launches this runtime's CLI in a visible
+    /// Terminal and pins the mirror to just that window. Other modes keep the
+    /// native chat transcript.
+    @ViewBuilder
+    private var primaryContent: some View {
+        if presentationMode == .macInteractiveCLI {
+            InlineAgentMirrorView(
+                singleton: AgentWatchOverlaySingleton.shared,
+                hermesService: HermesService.shared,
+                runtime: runtime.rawValue
+            )
+            .padding(MobileTheme.Spacing.md)
+        } else {
+            messageList
+        }
     }
 
     private var messageList: some View {
@@ -1294,24 +1312,26 @@ struct CLIAgentChatThreadView: View {
                 CLIAgentPresentationModePreferences.set(newValue, for: runtime)
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message \(runtime.displayName)", text: $draft, axis: .vertical)
-                    .focused($inputFocused)
-                    .lineLimit(1...5)
-                    .textInputAutocapitalization(.sentences)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous).fill(MobileTheme.Colors.surfaceElevated))
-                    .onSubmit { send() }
-                Button {
-                    send()
-                } label: {
-                    Image(systemName: chatService.isSending ? "hourglass" : "arrow.up.circle.fill")
-                        .font(.system(size: 32, weight: .semibold))
-                        .foregroundStyle(canSend ? accent : MobileTheme.Colors.textMuted)
+            if presentationMode != .macInteractiveCLI {
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("Message \(runtime.displayName)", text: $draft, axis: .vertical)
+                        .focused($inputFocused)
+                        .lineLimit(1...5)
+                        .textInputAutocapitalization(.sentences)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous).fill(MobileTheme.Colors.surfaceElevated))
+                        .onSubmit { send() }
+                    Button {
+                        send()
+                    } label: {
+                        Image(systemName: chatService.isSending ? "hourglass" : "arrow.up.circle.fill")
+                            .font(.system(size: 32, weight: .semibold))
+                            .foregroundStyle(canSend ? accent : MobileTheme.Colors.textMuted)
+                    }
+                    .disabled(!canSend)
+                    .accessibilityLabel("Send message")
                 }
-                .disabled(!canSend)
-                .accessibilityLabel("Send message")
             }
         }
         .padding(MobileTheme.Spacing.md)
@@ -1351,6 +1371,7 @@ private extension CLIAgentChatPresentationMode {
         switch self {
         case .nativeChat: return "Chat"
         case .macVisibleCLI: return "Mac CLI"
+        case .macInteractiveCLI: return "Terminal"
         }
     }
 
@@ -1358,6 +1379,7 @@ private extension CLIAgentChatPresentationMode {
         switch self {
         case .nativeChat: return "bubble.left.and.bubble.right"
         case .macVisibleCLI: return "terminal"
+        case .macInteractiveCLI: return "terminal.fill"
         }
     }
 
@@ -1365,6 +1387,7 @@ private extension CLIAgentChatPresentationMode {
         switch self {
         case .nativeChat: return "ios-chat-native"
         case .macVisibleCLI: return "ios-chat-mac-visible-cli"
+        case .macInteractiveCLI: return "ios-chat-mac-interactive-cli"
         }
     }
 
@@ -1372,6 +1395,7 @@ private extension CLIAgentChatPresentationMode {
         switch self {
         case .nativeChat: return .actionOnly
         case .macVisibleCLI: return .fullStream
+        case .macInteractiveCLI: return .fullStream
         }
     }
 }

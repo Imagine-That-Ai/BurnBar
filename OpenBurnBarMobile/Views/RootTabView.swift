@@ -28,6 +28,7 @@ struct RootTabView: View {
     @State private var didApplyComputerUseE2EProof = false
     #endif
     @State private var router = PulseRouter()
+    @State private var settingsRouter = SettingsRouter()
     @State private var motionStore = MotionStore()
     @State private var hermesService = HermesService()
     @State private var studioPresenter = ChartStudioPresenter()
@@ -66,8 +67,10 @@ struct RootTabView: View {
         ZStack {
             if selection == .hermes {
                 contentForSelection
+                    .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
             } else {
                 contentForSelection
+                    .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
                     .ignoresSafeArea(.keyboard)
             }
 
@@ -187,6 +190,9 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
             openAgentWatchRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
+            openSettingsRoute()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
             isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
         }
@@ -214,6 +220,20 @@ struct RootTabView: View {
         let uid = authStore.currentIdentity?.uid ?? ""
         let conn = hermesService.selectedConnection.id
         return "\(uid)|\(conn)"
+    }
+
+    private var rootBackgroundVisibility: MobileBackgroundVisibility {
+        if isCloudStoreChromeHidden || isMissionConsolePresented || studioPresenter.mode == .fullscreen {
+            return .obscured
+        }
+        switch liveStagePresenter.mode {
+        case .hidden, .dock:
+            return .prominent
+        case .split:
+            return .subtle
+        case .maximize:
+            return .obscured
+        }
     }
 
     @State private var insightsDashboardStore = DashboardStore()
@@ -272,6 +292,7 @@ struct RootTabView: View {
                 switch route {
                 case .sync: CloudSyncDetailsView(syncStore: syncHealthStore)
                 case .settings: SettingsHubView(authStore: authStore)
+                    .environment(settingsRouter)
                 case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
                 case .providers: ProviderConnectionsView(showsDoneButton: false)
                 case .computerUse: AgentWatchScreen(
@@ -279,6 +300,10 @@ struct RootTabView: View {
                     hermesService: hermesService
                 )
                 }
+            }
+            .navigationDestination(for: SettingsPageRoute.self) { route in
+                SettingsHubView.destination(for: route, authStore: authStore)
+                    .environment(settingsRouter)
             }
         }
     }
@@ -314,6 +339,12 @@ struct RootTabView: View {
         selection = .you
         youPath = NavigationPath()
         youPath.append(YouRoute.computerUse)
+    }
+
+    private func openSettingsRoute() {
+        selection = .you
+        youPath = NavigationPath()
+        youPath.append(YouRoute.settings)
     }
 
     private func applyScreenshotRouteIfNeeded() {

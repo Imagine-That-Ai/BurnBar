@@ -15,6 +15,8 @@ import UIKit
 struct InlineAgentMirrorView: View {
     @ObservedObject var singleton: AgentWatchOverlaySingleton
     let hermesService: HermesService
+    /// Runtime whose CLI the Mac launches interactively and pins the mirror to.
+    let runtime: String
     @StateObject private var controller = InlineAgentMirrorController()
 
     @State private var viewport = ScreenShareViewportState()
@@ -22,11 +24,15 @@ struct InlineAgentMirrorView: View {
     @State private var smartZoomManualOverrideUntil: Date?
     @State private var smartZoomAutoFollowing: Bool = false
     @State private var lastLayoutSize: CGSize = .zero
+    /// Drives the hidden keyboard capture that types into the live TUI.
+    @State private var isTyping = false
 
     init(singleton: AgentWatchOverlaySingleton,
-         hermesService: HermesService = HermesService.shared) {
+         hermesService: HermesService = HermesService.shared,
+         runtime: String = AssistantRuntimeID.hermes.rawValue) {
         self.singleton = singleton
         self.hermesService = hermesService
+        self.runtime = runtime
     }
 
     private var smartZoomMode: SmartZoomMode {
@@ -94,17 +100,23 @@ struct InlineAgentMirrorView: View {
                         .padding(.horizontal, 8)
                         .padding(.bottom, 8)
                 }
+                if controller.phase.isLive && controller.controlInputReady {
+                    terminalControlBar
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8)
+                }
             }
         }
         .overlay(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
                 .strokeBorder(MobileTheme.mercuryGradient, lineWidth: 0.75)
         )
+        .background(keyboardCaptureLayer)
         .task {
             if smartZoomMode == .off {
                 smartZoomMode = .smart
             }
-            controller.start(hermesService: hermesService)
+            controller.start(hermesService: hermesService, runtime: runtime)
         }
         .onDisappear {
             controller.stop()
@@ -162,6 +174,76 @@ struct InlineAgentMirrorView: View {
         case .live, .idle, .error, .noRelay: return false
         default: return !usingSingleton
         }
+    }
+
+    // MARK: - Live TUI keyboard
+
+    /// Hidden 1×1 keyboard capture; each character/key is forwarded to the Mac
+    /// terminal via the controller's phone-control sender.
+    @ViewBuilder
+    private var keyboardCaptureLayer: some View {
+        #if canImport(UIKit)
+        if controller.controlInputReady {
+            RemoteKeyboardCaptureView(
+                isActive: $isTyping,
+                onText: { controller.sendText($0) },
+                onKey: { controller.sendKey($0) }
+            )
+            .frame(width: 1, height: 1)
+            .opacity(0.01)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+        #else
+        EmptyView()
+        #endif
+    }
+
+    /// Floating bar over the live terminal: a keyboard toggle plus the special
+    /// keys a TUI needs (Esc, Tab, Ctrl-C, arrows, Return).
+    private var terminalControlBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                terminalKeyButton(systemImage: isTyping ? "keyboard.chevron.compact.down" : "keyboard") {
+                    isTyping.toggle()
+                }
+                Divider().frame(height: 18).overlay(MobileTheme.Colors.border.opacity(0.4))
+                terminalKeyButton(label: "esc") { controller.sendKey("escape") }
+                terminalKeyButton(label: "tab") { controller.sendKey("tab") }
+                terminalKeyButton(label: "⌃C") { controller.sendKey("c", modifiers: ["control"]) }
+                terminalKeyButton(systemImage: "arrow.up") { controller.sendKey("up") }
+                terminalKeyButton(systemImage: "arrow.down") { controller.sendKey("down") }
+                terminalKeyButton(systemImage: "arrow.left") { controller.sendKey("left") }
+                terminalKeyButton(systemImage: "arrow.right") { controller.sendKey("right") }
+                terminalKeyButton(systemImage: "return") { controller.sendKey("return") }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+        }
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5))
+    }
+
+    private func terminalKeyButton(
+        systemImage: String? = nil,
+        label: String? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Group {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .semibold))
+                } else {
+                    Text(label ?? "")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                }
+            }
+            .foregroundStyle(MobileTheme.Colors.textPrimary)
+            .frame(minWidth: 30, minHeight: 26)
+            .background(MobileTheme.Colors.surfaceElevated.opacity(0.6), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Placeholders
@@ -251,7 +333,7 @@ struct InlineAgentMirrorView: View {
 
                 HStack(spacing: 8) {
                     Button {
-                        controller.start(hermesService: hermesService)
+                        controller.start(hermesService: hermesService, runtime: runtime)
                     } label: {
                         Label("Try Again", systemImage: "arrow.clockwise")
                             .font(.system(size: 12, weight: .semibold, design: .rounded))

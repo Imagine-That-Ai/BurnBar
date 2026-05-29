@@ -30,6 +30,7 @@ struct RootNavigationView: View {
     @State private var didApplyComputerUseE2EProof = false
     #endif
     @State private var router = PulseRouter()
+    @State private var settingsRouter = SettingsRouter()
     @State private var hermesService = HermesService()
     @State private var motionStore = MotionStore()
     @State private var insightsDashboardStore = DashboardStore()
@@ -56,6 +57,7 @@ struct RootNavigationView: View {
             } detail: {
                 detail
             }
+            .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
 
             AgentLiveStage(
                 singleton: liveStageSingleton,
@@ -107,6 +109,9 @@ struct RootNavigationView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
             openAgentWatchRoute()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
+            openSettingsRoute()
         }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
@@ -298,6 +303,20 @@ struct RootNavigationView: View {
         return "\(uid)|\(conn)"
     }
 
+    private var rootBackgroundVisibility: MobileBackgroundVisibility {
+        if isCloudStoreChromeHidden || showHermesSheet {
+            return .obscured
+        }
+        switch liveStagePresenter.mode {
+        case .hidden, .dock:
+            return .prominent
+        case .split:
+            return .subtle
+        case .maximize:
+            return .obscured
+        }
+    }
+
     @ViewBuilder
     private var detail: some View {
         if selection == .agents {
@@ -316,6 +335,7 @@ struct RootNavigationView: View {
                     case .agents:   EmptyView()
                     case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
                     case .settings: SettingsHubView(authStore: authStore)
+                        .environment(settingsRouter)
                     case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
                     case .providers: ProviderConnectionsView(showsDoneButton: false)
                     }
@@ -324,6 +344,7 @@ struct RootNavigationView: View {
                     switch route {
                     case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
                     case .settings: SettingsHubView(authStore: authStore)
+                        .environment(settingsRouter)
                     case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
                     case .providers: ProviderConnectionsView(showsDoneButton: false)
                     case .computerUse: AgentWatchScreen(
@@ -331,6 +352,10 @@ struct RootNavigationView: View {
                         hermesService: hermesService
                     )
                     }
+                }
+                .navigationDestination(for: SettingsPageRoute.self) { route in
+                    SettingsHubView.destination(for: route, authStore: authStore)
+                        .environment(settingsRouter)
                 }
                 .navigationDestination(for: TokenUsage.self) { usage in
                     SessionDetailView(usage: usage)
@@ -359,6 +384,12 @@ struct RootNavigationView: View {
         detailPath = NavigationPath()
         detailPath.append(YouRoute.computerUse)
         updateColumnVisibility(for: .you, animated: false)
+    }
+
+    private func openSettingsRoute() {
+        selection = .settings
+        detailPath = NavigationPath()
+        updateColumnVisibility(for: .settings, animated: false)
     }
 
     private func updateColumnVisibility(for destination: AppDestination, animated: Bool = true) {

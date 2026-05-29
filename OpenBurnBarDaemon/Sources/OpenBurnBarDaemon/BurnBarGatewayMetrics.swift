@@ -12,6 +12,47 @@ public enum BurnBarDaemonMetricsCounters {
     private static var rpcLatencyMsSamples: [Int] = []
     private static let maxLatencySamples = 256
 
+    /// Tri-state listener bind health: `nil` when the gateway has not attempted
+    /// to bind, `true` once the socket is ready, `false` when the bind failed
+    /// (e.g. the port is already in use). Surfaced on `GET /metrics` so a
+    /// "gateway port bound but not serving" condition is visible, not silent.
+    private static var gatewayListenerBound: Bool?
+    private static var gatewayListenerErrorMessage: String?
+
+    /// Records that the gateway TCP listener reached the `.ready` state.
+    public static func recordGatewayListenerReady() {
+        lock.lock()
+        gatewayListenerBound = true
+        gatewayListenerErrorMessage = nil
+        lock.unlock()
+    }
+
+    /// Records that the gateway TCP listener failed to bind, with a
+    /// human-readable reason (e.g. address-in-use) for operator surfacing.
+    public static func recordGatewayListenerFailure(_ message: String) {
+        lock.lock()
+        gatewayListenerBound = false
+        gatewayListenerErrorMessage = message
+        lock.unlock()
+    }
+
+    /// The most recent gateway listener bind failure message, if the listener
+    /// is currently in a failed state. `nil` when unknown or healthy.
+    public static func gatewayListenerError() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return gatewayListenerBound == false ? gatewayListenerErrorMessage : nil
+    }
+
+    /// `1` when the listener is bound, `0` when it failed to bind. Omitted from
+    /// the counters map (returns `nil`) until the gateway attempts to bind.
+    public static func gatewayListenerBoundCounter() -> Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let gatewayListenerBound else { return nil }
+        return gatewayListenerBound ? 1 : 0
+    }
+
     public static func recordRPCRequest() {
         lock.lock()
         rpcRequestsTotal &+= 1
@@ -66,6 +107,8 @@ public enum BurnBarDaemonMetricsCounters {
         rpcRequestsTotal = 0
         rpcErrorsTotal = 0
         rpcLatencyMsSamples = []
+        gatewayListenerBound = nil
+        gatewayListenerErrorMessage = nil
         lock.unlock()
     }
     #endif
@@ -88,6 +131,11 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
     public let heartbeatStale: Bool
     public let gatewayEnabled: Bool
     public let counters: [String: Int]
+    /// Human-readable reason the gateway TCP listener is not bound (e.g. the
+    /// port is already in use). `nil` when the listener is healthy or has not
+    /// attempted to bind. Lets operators see "8317 down but socket up" instead
+    /// of a silent failure.
+    public let gatewayListenerError: String?
 
     public init(
         generatedAt: Date = Date(),
@@ -97,7 +145,8 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
         heartbeat: BurnBarDaemonHeartbeatSnapshot?,
         heartbeatStale: Bool,
         gatewayEnabled: Bool,
-        counters: [String: Int] = [:]
+        counters: [String: Int] = [:],
+        gatewayListenerError: String? = nil
     ) {
         self.generatedAt = generatedAt
         self.daemonVersion = daemonVersion
@@ -107,6 +156,7 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
         self.heartbeatStale = heartbeatStale
         self.gatewayEnabled = gatewayEnabled
         self.counters = counters
+        self.gatewayListenerError = gatewayListenerError
     }
 
     public static let processStartDate = Date()
@@ -117,16 +167,21 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
         let heartbeat = BurnBarDaemonHeartbeat.readSnapshot()
         let heartbeatStale = BurnBarDaemonHeartbeat.isStale(snapshot: heartbeat)
         let uptime = max(0, Int(Date().timeIntervalSince(processStartDate)))
+        var counters = [
+            "daemon_heartbeat_present": heartbeat == nil ? 0 : 1,
+            "gateway_enabled": gatewayEnabled ? 1 : 0,
+            "heartbeat_stale": heartbeatStale ? 1 : 0,
+        ].merging(BurnBarDaemonMetricsCounters.snapshot()) { current, _ in current }
+        if let listenerBound = BurnBarDaemonMetricsCounters.gatewayListenerBoundCounter() {
+            counters["gateway_listener_bound"] = listenerBound
+        }
         return BurnBarGatewayMetricsSnapshot(
             uptimeSeconds: uptime,
             heartbeat: heartbeat,
             heartbeatStale: heartbeatStale,
             gatewayEnabled: gatewayEnabled,
-            counters: [
-                "daemon_heartbeat_present": heartbeat == nil ? 0 : 1,
-                "gateway_enabled": gatewayEnabled ? 1 : 0,
-                "heartbeat_stale": heartbeatStale ? 1 : 0,
-            ].merging(BurnBarDaemonMetricsCounters.snapshot()) { current, _ in current }
+            counters: counters,
+            gatewayListenerError: BurnBarDaemonMetricsCounters.gatewayListenerError()
         )
     }
 }

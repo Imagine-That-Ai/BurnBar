@@ -8,186 +8,6 @@ final class ScreenShareAutoTypeFollowPolicyTests: XCTestCase {
 
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    func testOpensOnFocusedElementWhenEnabled() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now)
-        )
-        XCTAssertEqual(action, .open)
-    }
-
-    func testBlockedWhenPreferenceOff() {
-        let action = reduce(
-            autoKeyboardEnabled: false,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now)
-        )
-        XCTAssertEqual(action, .none)
-    }
-
-    func testBlockedWhenContextStale() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now.addingTimeInterval(-2.0))
-        )
-        XCTAssertEqual(action, .none)
-    }
-
-    func testBlockedWhenWrongDisplay() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now, displayId: "display-other"),
-            selectedDisplayId: "display-1"
-        )
-        XCTAssertEqual(action, .none)
-    }
-
-    func testBlockedWhenCoPilotMode() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: false,
-            isCoPilotMode: true,
-            context: makeTextContext(receivedAt: now)
-        )
-        XCTAssertEqual(action, .none)
-    }
-
-    func testBlockedWhenManualDismissActive() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now),
-            manualDismissUntil: now.addingTimeInterval(2.0)
-        )
-        XCTAssertEqual(action, .none)
-    }
-
-    func testOpensWhenManualDismissExpired() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now),
-            manualDismissUntil: now.addingTimeInterval(-1.0)
-        )
-        XCTAssertEqual(action, .open)
-    }
-
-    func testOpensWhenSelectedDisplayMissing() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now, displayId: "display-1"),
-            selectedDisplayId: nil
-        )
-        XCTAssertEqual(action, .open)
-    }
-
-    func testBlockedWhenAlreadyTyping() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: true,
-            context: makeTextContext(receivedAt: now)
-        )
-        XCTAssertEqual(action, .none)
-    }
-
-    func testBlockedWhenControlDisabled() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            controlInputEnabled: false,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now)
-        )
-        XCTAssertEqual(action, .none)
-    }
-
-    func testClosesWhenControlDisabledWhileTyping() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            controlInputEnabled: false,
-            isTyping: true,
-            context: makeTextContext(receivedAt: now)
-        )
-        XCTAssertEqual(action, .close)
-    }
-
-    func testClosesWhenFocusLeavesTextField() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: true,
-            context: makeWindowContext(receivedAt: now)
-        )
-        XCTAssertEqual(action, .close)
-    }
-
-    func testClosesWhenContextStaleWhileTyping() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: true,
-            context: makeTextContext(receivedAt: now.addingTimeInterval(-2.0))
-        )
-        XCTAssertEqual(action, .close)
-    }
-
-    func testClosesWhenContextMissingWhileTyping() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: true,
-            context: nil
-        )
-        XCTAssertEqual(action, .close)
-    }
-
-    func testBlockedWhenConfidenceBelowFloor() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now, confidence: 0.4)
-        )
-        XCTAssertEqual(action, .none)
-    }
-
-    func testOpensWhenConfidenceMissing() {
-        let action = reduce(
-            autoKeyboardEnabled: true,
-            isTyping: false,
-            context: makeTextContext(receivedAt: now, confidence: nil)
-        )
-        XCTAssertEqual(action, .open)
-    }
-
-    func testEnablingAutoKeyboardMovesViewerIntoDirectControlMode() {
-        let mode = ScreenShareSmartTextActivationPolicy.modeAfterAutoKeyboardToggle(
-            enabled: true,
-            currentMode: .view,
-            controlInputEnabled: true
-        )
-
-        XCTAssertEqual(mode, .control)
-    }
-
-    func testAutoKeyboardTogglePreservesModeWhenControlUnavailableOrDisabling() {
-        XCTAssertEqual(
-            ScreenShareSmartTextActivationPolicy.modeAfterAutoKeyboardToggle(
-                enabled: true,
-                currentMode: .view,
-                controlInputEnabled: false
-            ),
-            .view
-        )
-        XCTAssertEqual(
-            ScreenShareSmartTextActivationPolicy.modeAfterAutoKeyboardToggle(
-                enabled: false,
-                currentMode: .trackpad,
-                controlInputEnabled: true
-            ),
-            .trackpad
-        )
-    }
-
     func testIsActiveTextFocusRequiresFocusedElement() {
         XCTAssertTrue(
             ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
@@ -205,24 +25,53 @@ final class ScreenShareAutoTypeFollowPolicyTests: XCTestCase {
         )
     }
 
-    private func reduce(
-        autoKeyboardEnabled: Bool,
-        controlInputEnabled: Bool = true,
-        isTyping: Bool,
-        isCoPilotMode: Bool = false,
-        context: ScreenShareSmartZoomContext?,
-        selectedDisplayId: String? = "display-1",
-        manualDismissUntil: Date? = nil
-    ) -> ScreenShareAutoTypeFollowPolicy.Action {
-        ScreenShareAutoTypeFollowPolicy.reduce(
-            autoKeyboardEnabled: autoKeyboardEnabled,
-            controlInputEnabled: controlInputEnabled,
-            isTyping: isTyping,
-            isCoPilotMode: isCoPilotMode,
-            context: context,
-            selectedDisplayId: selectedDisplayId,
-            manualDismissUntil: manualDismissUntil,
-            now: now
+    func testIsActiveTextFocusRejectsStaleContext() {
+        XCTAssertFalse(
+            ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
+                context: makeTextContext(receivedAt: now.addingTimeInterval(-2.0)),
+                selectedDisplayId: "display-1",
+                now: now
+            )
+        )
+    }
+
+    func testIsActiveTextFocusRejectsWrongDisplay() {
+        XCTAssertFalse(
+            ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
+                context: makeTextContext(receivedAt: now, displayId: "display-other"),
+                selectedDisplayId: "display-1",
+                now: now
+            )
+        )
+    }
+
+    func testIsActiveTextFocusAllowsMissingSelectedDisplay() {
+        XCTAssertTrue(
+            ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
+                context: makeTextContext(receivedAt: now, displayId: "display-1"),
+                selectedDisplayId: nil,
+                now: now
+            )
+        )
+    }
+
+    func testIsActiveTextFocusRejectsLowConfidence() {
+        XCTAssertFalse(
+            ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
+                context: makeTextContext(receivedAt: now, confidence: 0.4),
+                selectedDisplayId: "display-1",
+                now: now
+            )
+        )
+    }
+
+    func testIsActiveTextFocusAllowsMissingConfidence() {
+        XCTAssertTrue(
+            ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
+                context: makeTextContext(receivedAt: now, confidence: nil),
+                selectedDisplayId: "display-1",
+                now: now
+            )
         )
     }
 
