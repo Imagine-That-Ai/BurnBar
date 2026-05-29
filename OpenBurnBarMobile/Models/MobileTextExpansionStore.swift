@@ -27,6 +27,45 @@ final class MobileTextExpansionStore {
         } catch {
             snippets = []
         }
+        ingestInbox()
+    }
+
+    /// Drains snippets created in the iOS keyboard extension and merges them into
+    /// the live set so they sync to the cloud through the normal path. The keyboard
+    /// already merged each addition into the shared snapshot for instant local use;
+    /// this brings them into the app's source of truth and triggers an upload.
+    private func ingestInbox() {
+        let pending = TextExpansionInbox.drain()
+        guard pending.isEmpty == false else { return }
+
+        var byID = Dictionary(snippets.map { ($0.id, $0) }, uniquingKeysWith: { current, _ in current })
+        for snippet in pending {
+            if let existing = byID[snippet.id] {
+                if existing.updatedAt >= snippet.updatedAt { continue }
+            } else if snippets.contains(where: {
+                $0.id != snippet.id && $0.deletedAt == nil && $0.trigger == snippet.trigger
+            }) {
+                // Trigger was claimed by another snippet between keyboard add and
+                // ingestion — drop the duplicate rather than create a conflict.
+                continue
+            }
+            byID[snippet.id] = snippet
+        }
+
+        snippets = Self.sorted(Array(byID.values).filter(\.isActive))
+        saveLocalSnapshot()
+        scheduleCloudSync()
+    }
+
+    /// Foreground entry point: if the keyboard queued any additions, load them and
+    /// push to the cloud. Cheap no-op when the inbox is empty, so it is safe to call
+    /// on every `didBecomeActive`. The transient store is retained for the duration
+    /// of the upload by the `await`.
+    @MainActor
+    static func ingestKeyboardInboxIfNeeded() async {
+        guard TextExpansionInbox.hasPending() else { return }
+        let store = MobileTextExpansionStore()
+        await store.syncCloud()
     }
 
     func upsert(_ snippet: TextExpansionSnippet) {

@@ -500,6 +500,7 @@ public actor BurnBarHTTPGatewayServer {
     /// resolve it back to the base model the router knows how to score.
     private struct GatewayProxyModelOverride {
         let requestedModel: GatewayRequestedModel
+        let advertisedRequestedModel: GatewayRequestedModel
         let variant: BurnBarModelVariant?
         let alias: BurnBarModelAlias?
     }
@@ -532,6 +533,7 @@ public actor BurnBarHTTPGatewayServer {
                 )
                 return GatewayProxyModelOverride(
                     requestedModel: rewritten,
+                    advertisedRequestedModel: requestedModel,
                     variant: variant,
                     alias: nil
                 )
@@ -550,6 +552,7 @@ public actor BurnBarHTTPGatewayServer {
                 )
                 return GatewayProxyModelOverride(
                     requestedModel: rewritten,
+                    advertisedRequestedModel: requestedModel,
                     variant: nil,
                     alias: alias
                 )
@@ -620,6 +623,70 @@ public actor BurnBarHTTPGatewayServer {
             )
         }
         return routeKeysByFamily
+    }
+
+    private struct GatewayAdvertisedRouteResolution {
+        let requestedModel: GatewayRequestedModel
+        let advertisedRequestedModel: GatewayRequestedModel
+        let routeKeysByFamily: [BurnBarProviderFormatFamily: Set<String>]
+    }
+
+    private func resolveAdvertisedRouteKeys(
+        requestedModel: GatewayRequestedModel,
+        advertisedRequestedModel: GatewayRequestedModel
+    ) async throws -> GatewayAdvertisedRouteResolution {
+        let primaryKeys = try await advertisedRouteKeysByFamily(for: advertisedRequestedModel)
+        if primaryKeys.values.contains(where: { !$0.isEmpty }) {
+            return GatewayAdvertisedRouteResolution(
+                requestedModel: requestedModel,
+                advertisedRequestedModel: advertisedRequestedModel,
+                routeKeysByFamily: primaryKeys
+            )
+        }
+
+        guard let cloudCandidate = legacyOllamaCloudCandidate(for: requestedModel) else {
+            return GatewayAdvertisedRouteResolution(
+                requestedModel: requestedModel,
+                advertisedRequestedModel: advertisedRequestedModel,
+                routeKeysByFamily: primaryKeys
+            )
+        }
+
+        let cloudKeys = try await advertisedRouteKeysByFamily(for: cloudCandidate)
+        guard cloudKeys.values.contains(where: { !$0.isEmpty }) else {
+            return GatewayAdvertisedRouteResolution(
+                requestedModel: requestedModel,
+                advertisedRequestedModel: advertisedRequestedModel,
+                routeKeysByFamily: primaryKeys
+            )
+        }
+        return GatewayAdvertisedRouteResolution(
+            requestedModel: cloudCandidate,
+            advertisedRequestedModel: cloudCandidate,
+            routeKeysByFamily: cloudKeys
+        )
+    }
+
+    private func legacyOllamaCloudCandidate(for requestedModel: GatewayRequestedModel) -> GatewayRequestedModel? {
+        let requested = requestedModel.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requested.isEmpty else { return nil }
+        let lowercased = requested.lowercased()
+        guard !lowercased.hasSuffix(":cloud"), !lowercased.hasSuffix("-cloud") else {
+            return nil
+        }
+
+        let accountID: String?
+        if requestedModel.providerID?.caseInsensitiveCompare("ollama") == .orderedSame {
+            accountID = requestedModel.accountID
+        } else {
+            accountID = nil
+        }
+        return GatewayRequestedModel(
+            originalID: requestedModel.originalID,
+            modelID: "\(requested):cloud",
+            providerID: "ollama",
+            accountID: accountID
+        )
     }
 
     private struct GatewayModelCatalogEntry {
@@ -849,15 +916,22 @@ public actor BurnBarHTTPGatewayServer {
         let wantsStream = completionRequest.stream == true
         let requestSignature = Self.stableDigest(body)
         var requestedModel = gatewayRequestedModel(from: modelID)
-        let wireRequestedModel = requestedModel
+        var advertisedRequestedModel = requestedModel
         var resolvedVariant: BurnBarModelVariant?
         if let override = await resolveProxyModelOverride(forRequestedModel: requestedModel) {
             requestedModel = override.requestedModel
+            advertisedRequestedModel = override.advertisedRequestedModel
             resolvedVariant = override.variant
         }
 
         do {
-            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: wireRequestedModel)
+            let routeResolution = try await resolveAdvertisedRouteKeys(
+                requestedModel: requestedModel,
+                advertisedRequestedModel: advertisedRequestedModel
+            )
+            requestedModel = routeResolution.requestedModel
+            advertisedRequestedModel = routeResolution.advertisedRequestedModel
+            let advertisedRouteKeysByFamily = routeResolution.routeKeysByFamily
             guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
                 if let degraded = await attemptCrossVendorDegradeForChat(
                     bodyData: bodyData,
@@ -1049,15 +1123,22 @@ public actor BurnBarHTTPGatewayServer {
         }
         let requestSignature = Self.stableDigest(body)
         var requestedModel = gatewayRequestedModel(from: modelID)
-        let wireRequestedModel = requestedModel
+        var advertisedRequestedModel = requestedModel
         var resolvedVariant: BurnBarModelVariant?
         if let override = await resolveProxyModelOverride(forRequestedModel: requestedModel) {
             requestedModel = override.requestedModel
+            advertisedRequestedModel = override.advertisedRequestedModel
             resolvedVariant = override.variant
         }
 
         do {
-            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: wireRequestedModel)
+            let routeResolution = try await resolveAdvertisedRouteKeys(
+                requestedModel: requestedModel,
+                advertisedRequestedModel: advertisedRequestedModel
+            )
+            requestedModel = routeResolution.requestedModel
+            advertisedRequestedModel = routeResolution.advertisedRequestedModel
+            let advertisedRouteKeysByFamily = routeResolution.routeKeysByFamily
             guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
                 return noEligibleRouteResponse(modelID: modelID)
             }
@@ -1197,15 +1278,22 @@ public actor BurnBarHTTPGatewayServer {
         let wantsStream = messagesRequest.stream == true
         let requestSignature = Self.stableDigest(body)
         var requestedModel = gatewayRequestedModel(from: modelID)
-        let wireRequestedModel = requestedModel
+        var advertisedRequestedModel = requestedModel
         var resolvedVariant: BurnBarModelVariant?
         if let override = await resolveProxyModelOverride(forRequestedModel: requestedModel) {
             requestedModel = override.requestedModel
+            advertisedRequestedModel = override.advertisedRequestedModel
             resolvedVariant = override.variant
         }
 
         do {
-            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: wireRequestedModel)
+            let routeResolution = try await resolveAdvertisedRouteKeys(
+                requestedModel: requestedModel,
+                advertisedRequestedModel: advertisedRequestedModel
+            )
+            requestedModel = routeResolution.requestedModel
+            advertisedRequestedModel = routeResolution.advertisedRequestedModel
+            let advertisedRouteKeysByFamily = routeResolution.routeKeysByFamily
             guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
                 return .buffered(noEligibleRouteResponse(modelID: modelID))
             }

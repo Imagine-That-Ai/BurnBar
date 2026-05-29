@@ -116,4 +116,83 @@ final class TextExpansionTests: XCTestCase {
             threadID: "abc"
         ))
     }
+
+    func testKeyboardComposerMakeSnippetValidatesAndCreates() {
+        let existing = [
+            TextExpansionSnippet(title: "Already", trigger: "already", body: "Existing")
+        ]
+
+        // 1. Success case
+        let successResult = TextExpansionKeyboardComposer.makeSnippet(
+            rawTrigger: "&&hello",
+            body: "World!",
+            title: "Hello Snippet",
+            existing: existing
+        )
+        switch successResult {
+        case .success(let snippet):
+            XCTAssertEqual(snippet.trigger, "hello")
+            XCTAssertEqual(snippet.body, "World!")
+            XCTAssertEqual(snippet.title, "Hello Snippet")
+            XCTAssertTrue(snippet.isEnabled)
+        case .failure(let error):
+            XCTFail("Expected success, got error: \(error)")
+        }
+
+        // 2. Duplicate trigger
+        let duplicateResult = TextExpansionKeyboardComposer.makeSnippet(
+            rawTrigger: "&&already",
+            body: "New Body",
+            existing: existing
+        )
+        XCTAssertEqual(duplicateResult, .failure(.duplicateTrigger))
+
+        // 3. Empty body
+        let emptyBodyResult = TextExpansionKeyboardComposer.makeSnippet(
+            rawTrigger: "&&new",
+            body: "   \n  ",
+            existing: existing
+        )
+        XCTAssertEqual(emptyBodyResult, .failure(.emptyBody))
+
+        // 4. Invalid trigger (e.g. contains space)
+        let invalidTriggerResult = TextExpansionKeyboardComposer.makeSnippet(
+            rawTrigger: "&&invalid trigger",
+            body: "Body",
+            existing: existing
+        )
+        XCTAssertEqual(invalidTriggerResult, .failure(.invalidTrigger("Use lowercase letters, numbers, hyphen, or underscore.")))
+    }
+
+    func testTextExpansionUsageStoreRankingAndIncrementing() {
+        let snippetA = TextExpansionSnippet(title: "Alpha", trigger: "alpha", body: "Body A")
+        let snippetB = TextExpansionSnippet(title: "Beta", trigger: "beta", body: "Body B")
+        let snippetC = TextExpansionSnippet(title: "Gamma", trigger: "gamma", body: "Body C")
+
+        let snippets = [snippetB, snippetC, snippetA]
+
+        var log = TextExpansionUsageLog()
+        
+        // Initial rank (no usage): should fall back to case-insensitive alphabetical by title: Alpha, Beta, Gamma
+        let ranked1 = TextExpansionUsageStore.rank(snippets, using: log)
+        XCTAssertEqual(ranked1.map(\.title), ["Alpha", "Beta", "Gamma"])
+
+        // Increment Beta's usage
+        let dateB = Date()
+        log = log.incrementing(snippetB.id, at: dateB)
+        XCTAssertEqual(log.record(for: snippetB.id)?.count, 1)
+        XCTAssertEqual(log.record(for: snippetB.id)?.lastUsedAt, dateB)
+
+        // Rank now: Beta should be first because of higher usage count
+        let ranked2 = TextExpansionUsageStore.rank(snippets, using: log)
+        XCTAssertEqual(ranked2.map(\.title), ["Beta", "Alpha", "Gamma"])
+
+        // Increment Gamma's usage count to match Beta's count, but with a newer timestamp
+        let dateC = dateB.addingTimeInterval(10)
+        log = log.incrementing(snippetC.id, at: dateC)
+
+        // Rank now: Gamma and Beta have count 1, but Gamma is newer, so Gamma, Beta, Alpha
+        let ranked3 = TextExpansionUsageStore.rank(snippets, using: log)
+        XCTAssertEqual(ranked3.map(\.title), ["Gamma", "Beta", "Alpha"])
+    }
 }

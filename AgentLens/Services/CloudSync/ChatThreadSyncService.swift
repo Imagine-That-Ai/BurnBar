@@ -28,7 +28,7 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
     /// Uploads chat threads and messages to Firestore for cross-device resume.
     /// Uses `fetchChatThreadSummaries` and `fetchChatMessages` — no unsynced-tracking needed
     /// since chat threads are idempotently written with merge.
-    func sync() async {
+    func sync(progress: CloudBackupProgressTracker? = nil) async {
         let gate = await context.syncGate()
         guard gate.account.isFirebaseAvailable,
               gate.account.isSignedIn,
@@ -41,7 +41,8 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
         defer { isSyncing = false }
 
         do {
-            let threads = try context.dataStore.fetchChatThreadSummaries(limit: 50)
+            progress?.setPhase(.chatThreads, operation: "Loading chat threads…")
+            let threads = try context.dataStore.fetchChatThreadSummaries(limit: 500)
             guard !threads.isEmpty else {
                 lastSyncDate = Date()
                 return
@@ -56,6 +57,14 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
 
             let includeContent = gate.settings.chatThreadContentCloudBackupEnabled
             for thread in threads {
+                let label = thread.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "Thread \(thread.id.prefix(8))"
+                    : thread.title
+                progress?.setCurrentRecord(
+                    label: label,
+                    operation: includeContent ? "Packaging thread messages" : "Writing thread metadata"
+                )
+
                 let messages = includeContent
                     ? ((try? context.dataStore.fetchChatMessages(threadID: thread.id)) ?? [])
                     : []
@@ -108,8 +117,10 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                     data["preview"] = FieldValue.delete()
                 }
                 batch.setData(data, forDocument: docRef, merge: true)
+                progress?.recordChatThreadProcessed(label: label)
             }
 
+            progress?.setCurrentRecord(label: "Chat threads", operation: "Committing Firestore batch")
             try await withCloudSyncRetry(
                 policy: context.retryPolicy,
                 circuitBreaker: context.circuitBreaker,
@@ -120,6 +131,7 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
             lastSyncDate = Date()
             lastSyncError = nil
         } catch {
+            progress?.fail(error.localizedDescription)
             lastSyncError = error.localizedDescription
         }
     }

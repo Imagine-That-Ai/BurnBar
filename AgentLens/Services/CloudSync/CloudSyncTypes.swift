@@ -238,3 +238,244 @@ struct CollaborationHealthDetails: Codable {
     let conflicts: Int
     let skipped: Int
 }
+
+// MARK: - Manual backup progress (real counters, not simulated)
+
+/// Live snapshot emitted while a manual backup drains pending session logs and chat threads.
+struct CloudBackupProgressSnapshot: Equatable, Sendable {
+    enum Phase: String, Sendable, Equatable {
+        case idle
+        case preparing
+        case facetBackfill
+        case sessionLogs
+        case chatThreads
+        case complete
+        case failed
+    }
+
+    var phase: Phase = .idle
+    var startedAt: Date?
+    var updatedAt: Date = .init()
+
+    var pendingSessionLogs: Int = 0
+    var processedSessionLogs: Int = 0
+    var uploadedSessionLogs: Int = 0
+    var skippedSessionLogs: Int = 0
+    var facetRefreshSessionLogs: Int = 0
+
+    var pendingChatThreads: Int = 0
+    var processedChatThreads: Int = 0
+
+    var plaintextBytes: Int64 = 0
+    var encryptedBytes: Int64 = 0
+    var storageUploads: Int = 0
+    var firestoreWrites: Int = 0
+    var searchIndexCommits: Int = 0
+
+    var currentLabel: String?
+    var currentOperation: String?
+    var errorMessage: String?
+
+    var totalWorkItems: Int { pendingSessionLogs + pendingChatThreads }
+
+    var completedWorkItems: Int { processedSessionLogs + processedChatThreads }
+
+    var overallFraction: Double {
+        guard totalWorkItems > 0 else {
+            switch phase {
+            case .complete: return 1
+            default: return 0
+            }
+        }
+        return min(1, Double(completedWorkItems) / Double(totalWorkItems))
+    }
+
+    var elapsedSeconds: TimeInterval {
+        guard let startedAt else { return 0 }
+        return max(0, updatedAt.timeIntervalSince(startedAt))
+    }
+
+    var recordsPerSecond: Double {
+        guard elapsedSeconds > 0 else { return 0 }
+        return Double(completedWorkItems) / elapsedSeconds
+    }
+
+    var uploadBytesPerSecond: Double {
+        guard elapsedSeconds > 0 else { return 0 }
+        return Double(encryptedBytes) / elapsedSeconds
+    }
+
+    var phaseTitle: String {
+        switch phase {
+        case .idle: return "Ready"
+        case .preparing: return "Preparing backup"
+        case .facetBackfill: return "Refreshing cockpit facets"
+        case .sessionLogs: return "Uploading session logs"
+        case .chatThreads: return "Syncing chat threads"
+        case .complete: return "Backup complete"
+        case .failed: return "Backup failed"
+        }
+    }
+
+    var detailLine: String {
+        switch phase {
+        case .sessionLogs:
+            if pendingSessionLogs == 0 {
+                return "No pending session logs."
+            }
+            return "\(processedSessionLogs) of \(pendingSessionLogs) conversations processed"
+        case .chatThreads:
+            if pendingChatThreads == 0 {
+                return "No chat threads to sync."
+            }
+            return "\(processedChatThreads) of \(pendingChatThreads) threads synced"
+        case .complete:
+            return "\(uploadedSessionLogs) uploaded · \(skippedSessionLogs + facetRefreshSessionLogs) already current"
+        case .failed:
+            return errorMessage ?? "Unknown error"
+        default:
+            if let currentOperation, !currentOperation.isEmpty {
+                return currentOperation
+            }
+            return phaseTitle
+        }
+    }
+
+    static func formatBytes(_ bytes: Int64) -> String {
+        if bytes < 1024 { return "\(bytes) B" }
+        let kb = Double(bytes) / 1024
+        if kb < 1024 { return String(format: "%.1f KB", kb) }
+        let mb = kb / 1024
+        if mb < 1024 { return String(format: "%.1f MB", mb) }
+        return String(format: "%.2f GB", mb / 1024)
+    }
+
+    static func formatRate(bytesPerSecond: Double) -> String {
+        guard bytesPerSecond > 0 else { return "—" }
+        return "\(formatBytes(Int64(bytesPerSecond)))/s"
+    }
+
+    static func formatRate(recordsPerSecond: Double) -> String {
+        guard recordsPerSecond > 0 else { return "—" }
+        if recordsPerSecond >= 10 {
+            return String(format: "%.0f rec/s", recordsPerSecond)
+        }
+        return String(format: "%.1f rec/s", recordsPerSecond)
+    }
+}
+
+/// Thread-safe accumulator for backup progress. Sync services mutate this; UI observes copies.
+final class CloudBackupProgressTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var snapshot = CloudBackupProgressSnapshot()
+    private let onUpdate: (@Sendable (CloudBackupProgressSnapshot) -> Void)?
+
+    init(onUpdate: (@Sendable (CloudBackupProgressSnapshot) -> Void)? = nil) {
+        self.onUpdate = onUpdate
+    }
+
+    func currentSnapshot() -> CloudBackupProgressSnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return snapshot
+    }
+
+    func begin(pendingSessionLogs: Int, pendingChatThreads: Int) {
+        publish {
+            $0.phase = .preparing
+            $0.startedAt = Date()
+            $0.pendingSessionLogs = pendingSessionLogs
+            $0.pendingChatThreads = pendingChatThreads
+            $0.processedSessionLogs = 0
+            $0.uploadedSessionLogs = 0
+            $0.skippedSessionLogs = 0
+            $0.facetRefreshSessionLogs = 0
+            $0.processedChatThreads = 0
+            $0.plaintextBytes = 0
+            $0.encryptedBytes = 0
+            $0.storageUploads = 0
+            $0.firestoreWrites = 0
+            $0.searchIndexCommits = 0
+            $0.currentLabel = nil
+            $0.currentOperation = "Scanning local database…"
+            $0.errorMessage = nil
+        }
+    }
+
+    func setPhase(_ phase: CloudBackupProgressSnapshot.Phase, operation: String? = nil) {
+        publish {
+            $0.phase = phase
+            if let operation {
+                $0.currentOperation = operation
+            }
+        }
+    }
+
+    func setCurrentRecord(label: String, operation: String) {
+        publish {
+            $0.currentLabel = label
+            $0.currentOperation = operation
+        }
+    }
+
+    func recordSessionLogOutcome(
+        label: String,
+        uploaded: Bool,
+        facetRefreshOnly: Bool,
+        plaintextBytes: Int,
+        encryptedBytes: Int,
+        storageUploads: Int,
+        firestoreWrites: Int,
+        searchIndexCommits: Int
+    ) {
+        publish {
+            $0.processedSessionLogs += 1
+            if uploaded {
+                $0.uploadedSessionLogs += 1
+            } else if facetRefreshOnly {
+                $0.facetRefreshSessionLogs += 1
+            } else {
+                $0.skippedSessionLogs += 1
+            }
+            $0.plaintextBytes += Int64(plaintextBytes)
+            $0.encryptedBytes += Int64(encryptedBytes)
+            $0.storageUploads += storageUploads
+            $0.firestoreWrites += firestoreWrites
+            $0.searchIndexCommits += searchIndexCommits
+            $0.currentLabel = label
+        }
+    }
+
+    func recordChatThreadProcessed(label: String, firestoreWrites: Int = 1) {
+        publish {
+            $0.processedChatThreads += 1
+            $0.firestoreWrites += firestoreWrites
+            $0.currentLabel = label
+            $0.currentOperation = "Writing chat thread metadata"
+        }
+    }
+
+    func complete() {
+        publish {
+            $0.phase = .complete
+            $0.currentOperation = nil
+            $0.currentLabel = nil
+        }
+    }
+
+    func fail(_ message: String) {
+        publish {
+            $0.phase = .failed
+            $0.errorMessage = message
+        }
+    }
+
+    private func publish(_ mutate: (inout CloudBackupProgressSnapshot) -> Void) {
+        lock.lock()
+        mutate(&snapshot)
+        snapshot.updatedAt = Date()
+        let copy = snapshot
+        lock.unlock()
+        onUpdate?(copy)
+    }
+}
