@@ -168,6 +168,10 @@ extension DataStore {
         try conversationStore.fetchUnsyncedSessionLogs(limit: limit)
     }
 
+    nonisolated func countUnsyncedSessionLogs() throws -> Int {
+        try conversationStore.countUnsyncedSessionLogs()
+    }
+
     nonisolated func markSessionLogsSynced(ids: [String]) throws {
         try conversationStore.markSessionLogsSynced(ids: ids)
     }

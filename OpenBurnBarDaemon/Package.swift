@@ -55,7 +55,12 @@ let package = Package(
         .executableTarget(
             name: "OpenBurnBarRemoteAccessAgent",
             dependencies: ["OpenBurnBarRemoteAccessAgentCore"],
-            linkerSettings: [.unsafeFlags(["-framework", "ApplicationServices"])]
+            linkerSettings: [
+                .unsafeFlags([
+                    "-framework", "ApplicationServices",
+                    "-framework", "SystemConfiguration"
+                ])
+            ]
         ),
         .testTarget(
             name: "OpenBurnBarDaemonTests",

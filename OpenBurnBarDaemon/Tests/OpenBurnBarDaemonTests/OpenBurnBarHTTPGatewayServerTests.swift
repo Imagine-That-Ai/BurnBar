@@ -27,14 +27,15 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         }
     }
 
-    private func enqueueOllamaCloudCatalog(_ modelIDs: [String], times: Int = 1) {
+    private func enqueueOllamaCloudCatalog(_ modelIDs: [String], times: Int = 1, path: String? = nil) {
         let rows = modelIDs.map { id in
             #"<li x-test-model><a href="/library/\#(id)" class="group w-full"><span>\#(id)</span><span>cloud</span></a></li>"#
         }.joined(separator: "\n")
         for _ in 0..<times {
             GatewayUpstreamURLProtocol.enqueue(
                 status: 200,
-                body: #"<html><body><ol>\#(rows)</ol></body></html>"#
+                body: #"<html><body><ol>\#(rows)</ol></body></html>"#,
+                path: path
             )
         }
     }
@@ -2581,11 +2582,41 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].outputTokens, 5)
     }
 
-    func testGatewayDoesNotRouteUnsuffixedModelToOllamaCloudAlias() async throws {
+    func testGatewayRoutesLegacyOllamaCloudAliasesToAdvertisedCloudModel() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
-        enqueueOllamaCloudCatalog(["deepseek-v4-flash"], times: 1)
+        enqueueOllamaCloudCatalog(["glm-5.1", "deepseek-v4-flash"], times: 8, path: "/search")
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "model": "glm-5.1",
+              "created_at": "2026-05-29T00:00:00Z",
+              "message": {"role": "assistant", "content": "glm answered"},
+              "done": true,
+              "done_reason": "stop",
+              "prompt_eval_count": 11,
+              "eval_count": 7
+            }
+            """,
+            path: "/api/chat"
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "model": "deepseek-v4-flash",
+              "created_at": "2026-05-29T00:00:00Z",
+              "message": {"role": "assistant", "content": "deepseek answered"},
+              "done": true,
+              "done_reason": "stop",
+              "prompt_eval_count": 13,
+              "eval_count": 5
+            }
+            """,
+            path: "/api/chat"
+        )
 
         let harness = try GatewayHarness(
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
@@ -2600,15 +2631,35 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/chat/completions",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"hello"}],"stream":false}"#.utf8)
+            body: Data(#"{"model":"glm-5.1","messages":[{"role":"user","content":"hello"}],"stream":false}"#.utf8)
         )
 
-        XCTAssertEqual(response.statusCode, 503)
+        XCTAssertEqual(
+            response.statusCode,
+            200,
+            "\(String(decoding: body, as: UTF8.self)) paths: \(GatewayUpstreamURLProtocol.recordedRequests().map(\.path))"
+        )
         let bodyText = String(decoding: body, as: UTF8.self)
-        XCTAssertTrue(bodyText.contains("No eligible route for deepseek-v4-flash"), "body was: \(bodyText)")
-        let upstreamPaths = GatewayUpstreamURLProtocol.recordedRequests().map(\.path)
-        XCTAssertTrue(upstreamPaths.allSatisfy { $0 == "/search" }, "Unexpected upstream paths: \(upstreamPaths)")
-        XCTAssertFalse(upstreamPaths.contains("/api/chat"))
+        XCTAssertTrue(bodyText.contains("glm answered"), "body was: \(bodyText)")
+
+        let (prefixedResponse, prefixedBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"deepseek/deepseek-v4-flash","messages":[{"role":"user","content":"hello"}],"stream":false}"#.utf8)
+        )
+
+        XCTAssertEqual(prefixedResponse.statusCode, 200, String(decoding: prefixedBody, as: UTF8.self))
+        let prefixedBodyText = String(decoding: prefixedBody, as: UTF8.self)
+        XCTAssertTrue(prefixedBodyText.contains("deepseek answered"), "body was: \(prefixedBodyText)")
+
+        let chatRequests = GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/api/chat" }
+        XCTAssertEqual(chatRequests.count, 2)
+        XCTAssertTrue(chatRequests[0].body.contains(#""model":"glm-5.1""#))
+        XCTAssertTrue(chatRequests[1].body.contains(#""model":"deepseek-v4-flash""#))
+        XCTAssertFalse(chatRequests[0].body.contains(#""glm-5.1:cloud""#))
+        XCTAssertFalse(chatRequests[1].body.contains(#""deepseek/deepseek-v4-flash""#))
     }
 
     func testGatewayRoutesOllamaCloudModelDiscoveredFromCatalogPage() async throws {
@@ -4435,16 +4486,17 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         let status: Int
         let body: Data
         let delayNanoseconds: UInt64
+        let path: String?
     }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var queuedResponses: [Response] = []
     nonisolated(unsafe) private static var requests: [GatewayUpstreamRequest] = []
 
-    static func enqueue(status: Int, body: String, delayNanoseconds: UInt64 = 0) {
+    static func enqueue(status: Int, body: String, delayNanoseconds: UInt64 = 0, path: String? = nil) {
         lock.lock()
         defer { lock.unlock() }
-        queuedResponses.append(Response(status: status, body: Data(body.utf8), delayNanoseconds: delayNanoseconds))
+        queuedResponses.append(Response(status: status, body: Data(body.utf8), delayNanoseconds: delayNanoseconds, path: path))
     }
 
     static func recordedRequests() -> [GatewayUpstreamRequest] {
@@ -4471,9 +4523,18 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
 
     override func startLoading() {
         Self.lock.lock()
-        let response = Self.queuedResponses.isEmpty
-            ? Response(status: 500, body: Data(#"{"error":"missing fixture"}"#.utf8), delayNanoseconds: 0)
-            : Self.queuedResponses.removeFirst()
+        let requestPath = request.url?.path ?? ""
+        let response: Response
+        if let index = Self.queuedResponses.firstIndex(where: { $0.path == nil || $0.path == requestPath }) {
+            response = Self.queuedResponses.remove(at: index)
+        } else {
+            response = Response(
+                status: 500,
+                body: Data(#"{"error":"missing fixture"}"#.utf8),
+                delayNanoseconds: 0,
+                path: nil
+            )
+        }
         Self.requests.append(
             GatewayUpstreamRequest(
                 authorization: request.value(forHTTPHeaderField: "Authorization"),

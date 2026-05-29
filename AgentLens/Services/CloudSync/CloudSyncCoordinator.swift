@@ -102,14 +102,45 @@ final class CloudSyncCoordinator {
     }
 
     /// Upload chat threads and messages to Firestore for cross-device resume.
-    func syncChatThreads() async {
-        await propagateChatThreadErrors { await chatThreadSync.sync() }
+    func syncChatThreads(progress: CloudBackupProgressTracker? = nil) async {
+        await propagateChatThreadErrors { await chatThreadSync.sync(progress: progress) }
     }
 
     /// Upload session-log manifests and search metadata to Firestore.
     /// Gated on `sessionLogCloudBackupEnabled`.
-    func syncSessionLogs() async {
-        await propagateSessionLogErrors { await sessionLogSync.sync() }
+    func syncSessionLogs(drainAll: Bool = false, progress: CloudBackupProgressTracker? = nil) async {
+        await propagateSessionLogErrors {
+            await sessionLogSync.sync(drainAll: drainAll, progress: progress)
+        }
+    }
+
+    /// Drains all pending session logs and chat threads while emitting live progress snapshots.
+    @MainActor
+    func performManualBackup(onProgress: @escaping (CloudBackupProgressSnapshot) -> Void) async {
+        let pendingLogs = (try? context.dataStore.countUnsyncedSessionLogs()) ?? 0
+        let pendingThreads = (try? context.dataStore.fetchChatThreadSummaries(limit: 500).count) ?? 0
+
+        let tracker = CloudBackupProgressTracker { snapshot in
+            Task { @MainActor in
+                onProgress(snapshot)
+            }
+        }
+        tracker.begin(pendingSessionLogs: pendingLogs, pendingChatThreads: pendingThreads)
+
+        await syncSessionLogs(drainAll: true, progress: tracker)
+        if let err = lastSyncError, err.isEmpty == false {
+            tracker.fail(err)
+            return
+        }
+
+        await syncChatThreads(progress: tracker)
+        if let err = lastSyncError, err.isEmpty == false {
+            tracker.fail(err)
+            return
+        }
+
+        tracker.complete()
+        lastSyncDate = Date()
     }
 
     /// Upload and download encrypted Text Expansion snippets.

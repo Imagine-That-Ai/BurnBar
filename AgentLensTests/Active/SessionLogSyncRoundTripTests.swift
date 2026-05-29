@@ -130,6 +130,65 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(try dataStore.fetchUnsyncedSessionLogs().isEmpty)
     }
 
+    func test_countUnsyncedSessionLogs_tracksDirtyFlags() throws {
+        let record = ConversationRecord(
+            id: "count-test",
+            provider: .cursor,
+            sessionId: "sess-count",
+            sourceType: .providerLog,
+            projectName: "CountProject",
+            startTime: Date(),
+            endTime: Date(),
+            messageCount: 1,
+            userWordCount: 1,
+            assistantWordCount: 1,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Count me",
+            lastAssistantMessage: nil,
+            fullText: "Body",
+            fileModifiedAt: nil
+        )
+        try dataStore.upsertConversation(record)
+        XCTAssertEqual(try dataStore.countUnsyncedSessionLogs(), 1)
+    }
+
+    func test_manualBackupProgress_emitsRealCounters() async throws {
+        let record = ConversationRecord(
+            id: "progress-test",
+            provider: .claude,
+            sessionId: "sess-progress",
+            sourceType: .providerLog,
+            projectName: "ProgressProject",
+            startTime: Date(),
+            endTime: Date(),
+            messageCount: 2,
+            userWordCount: 3,
+            assistantWordCount: 4,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Progress session",
+            lastAssistantMessage: nil,
+            fullText: "Progress body text.",
+            fileModifiedAt: nil
+        )
+        try dataStore.upsertConversation(record)
+
+        var snapshots: [CloudBackupProgressSnapshot] = []
+        let tracker = CloudBackupProgressTracker { snapshots.append($0) }
+        tracker.begin(pendingSessionLogs: 1, pendingChatThreads: 0)
+
+        await sessionLogSync.sync(drainAll: true, progress: tracker)
+        tracker.complete()
+
+        XCTAssertFalse(snapshots.isEmpty)
+        XCTAssertEqual(snapshots.last?.uploadedSessionLogs, 1)
+        XCTAssertGreaterThan(snapshots.last?.encryptedBytes ?? 0, 0)
+        XCTAssertEqual(snapshots.last?.storageUploads, 1)
+    }
+
     // MARK: - Download
 
     func test_sessionLogDownload_reassemblesBody() async throws {

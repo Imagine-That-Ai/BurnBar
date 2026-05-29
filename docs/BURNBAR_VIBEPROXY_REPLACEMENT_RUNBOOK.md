@@ -47,6 +47,10 @@ models into the client config automatically:
 - `/v1/models` is derived from BurnBar's live provider/account configuration and only includes models that can route right now.
 - For OpenAI-compatible providers that expose `/models`, BurnBar lists upstream-advertised models for eligible accounts and hides missing-credential, disabled, exhausted, and cooling-down rows.
 - For Ollama Cloud, BurnBar reads the native `https://ollama.com/api/tags` catalog with the saved Ollama API key, advertises every route-eligible cloud model it returns, and proxies chat through `https://ollama.com/api/chat`.
+- For Ollama Cloud compatibility, the proxy accepts legacy or human-friendly
+  names that uniquely map to an advertised cloud row. For example, `glm-5.1`
+  and stale client entries like `deepseek/deepseek-v4-flash` resolve to their
+  live `*:cloud` route when `/v1/models` advertises that exact cloud model.
 - Anthropic/Claude models appear in `/v1/models` when an enabled Anthropic route exists. Their model rows include `format_family = anthropic` and `served_endpoints` so clients can tell whether BurnBar can serve `/v1/messages`, `/v1/chat/completions`, and `/v1/responses` for that model.
 - If a real request proves that a specific provider/account/model route cannot serve the model, BurnBar records that model health failure and stops advertising that exact row until the block expires. This prevents external CLIs from repeatedly choosing a model that the gateway just proved is unavailable, without hiding healthy sibling models on the same account.
 - Each model row includes provider id, account id, account label, capabilities, quota state, enabled state, route eligibility, and last refresh fields.

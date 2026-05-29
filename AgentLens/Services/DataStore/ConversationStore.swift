@@ -477,6 +477,18 @@ final class ConversationStore: Sendable {
         }
     }
 
+    func countUnsyncedSessionLogs() throws -> Int {
+        try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*) FROM conversations
+                WHERE logSyncedAt IS NULL AND isRemote = 0
+                """
+            ) ?? 0
+        }
+    }
+
     func markSessionLogsSynced(ids: [String]) throws {
         guard !ids.isEmpty else { return }
         let placeholders = ids.map { _ in "?" }.joined(separator: ", ")

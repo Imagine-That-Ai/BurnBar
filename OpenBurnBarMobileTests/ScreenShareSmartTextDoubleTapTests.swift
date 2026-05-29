@@ -187,5 +187,34 @@ final class ScreenShareSmartTextDoubleTapTests: XCTestCase {
         )
         XCTAssertEqual(clampedToLiftLimit.height, -150, accuracy: 0.0001)
     }
+
+    func testKeyboardInsetIsCappedToVisibleViewport() {
+        XCTAssertEqual(
+            ScreenShareKeyboardFramePolicy.cappedInset(rawOverlap: 700, viewportHeight: 900),
+            540,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            ScreenShareKeyboardFramePolicy.cappedInset(rawOverlap: -12, viewportHeight: 900),
+            0,
+            accuracy: 0.0001
+        )
+    }
+
+    func testKeyboardOverlapUsesViewIntersection() {
+        let view = CGRect(x: 0, y: 100, width: 400, height: 700)
+        let keyboard = CGRect(x: 0, y: 520, width: 400, height: 380)
+        XCTAssertEqual(
+            ScreenShareKeyboardOverlapPolicy.overlap(keyboardFrame: keyboard, viewFrame: view),
+            280,
+            accuracy: 0.0001
+        )
+        let hiddenKeyboard = CGRect(x: 0, y: 900, width: 400, height: 380)
+        XCTAssertEqual(
+            ScreenShareKeyboardOverlapPolicy.overlap(keyboardFrame: hiddenKeyboard, viewFrame: view),
+            0,
+            accuracy: 0.0001
+        )
+    }
 }
 #endif

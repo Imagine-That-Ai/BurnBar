@@ -40,6 +40,8 @@ struct OpenBurnBarMobileApp: App {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                     agentNotifications.updateLifecycle("active")
+                    // Sync any snippets the user added straight from the keyboard.
+                    Task { await MobileTextExpansionStore.ingestKeyboardInboxIfNeeded() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
                     agentNotifications.updateLifecycle("inactive")

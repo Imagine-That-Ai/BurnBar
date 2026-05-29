@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "CU+kCYjBAMHqwdxtPr+\/HuoOGDtyUZyoXZZTp3uTpiNUoeKO54GzedUupUazCpY=",
+  "chunkCiphertext" : "iFHV8rMfV4ZffBBQj0pspNFjQ7CVrMersSN+rFS59Ar7Ab2DBFZRrvBsmoQ2YDw=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
+  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19IiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "+csLkHLxPVHa8n+j2eCA+iXxGNBNeYwnRoD49Klw7ZXn98ZCFoQ9ykUXCpO9lvunhTJ4fAc5CS16XwjE\/243fj2xunq+28xI\/EkqHSFEB7UxTxDBMljUY7PWS0fExmgPEAeQx2gF+9DGLo+ZfhTB+fMPLN0DNYF79yk8f7ycERvfvhFQvFRJO2uRWZi5cd8+oaIAAmQI",
+  "payloadCiphertext" : "XHDf72EDi\/IqzjcvPFXeJ+zNAc0ixF1Y7N+bLEuXVnkKjkHo1e7i5Sa6ODNqKwkQcwbjjLtjV2EIC\/RZZ52FWNKmqCKNS2iT9HbAHUUiITO+dmyIkArdqdDQ1FPXwZRo+Hk3CSVIEf0nnBPSl0XTOn+CYnly\/88rrpsednJF6FM6JnnjV84w+67jJRVrkqCzsMIquODP",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BKNd8N9+QlsGNE7mCNOLdMOrTD0R6zDkwH\/XE3dC5Y+eS41Wnfj6rRwKw6RlDZo0mWMzJ4zHpmisBFAk6oVUVMjjfE\/WEI9m9YQl5esAz3dFr2WKqjJaqk+CbRwjwL73TcGsOhDuHWz9uvKBr93CoW474yvFibg8mlI30Y0="
+  "wrappedKey" : "BODLjbUIRUOHbnXea4GUcdHfJo14onBlF7OQla\/w91okbO0MrVbsL3taapTchj2Nrrzp2x+VDeV1bqU51JA\/cVHHydHOlcBSXXNSm9f++NSYSG6OCiAEnAi9gb4ql77y5Hke+SLRNTf24IBXdXmHhpAcpoXW8LUaazpeu2I="
 }
