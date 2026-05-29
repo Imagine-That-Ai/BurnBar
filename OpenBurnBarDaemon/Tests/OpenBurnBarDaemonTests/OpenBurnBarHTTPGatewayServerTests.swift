@@ -3008,6 +3008,76 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
+    func testGatewayMessagesRoutesClaudeOpus48WireIDWhenOnlyOpus47FamilyPreferred() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_opus48",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-opus-4-8[1m]",
+              "content": [{"type": "text", "text": "OK"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 4,
+                "output_tokens": 2,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["claude-opus-4-7-family"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "primary",
+            label: "Primary",
+            apiKey: "sk-ant-api03-primary-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (modelsResponse, modelsBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(modelsResponse.statusCode, 200)
+        let modelsObject = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let modelsData = try XCTUnwrap(modelsObject["data"] as? [[String: Any]])
+        XCTAssertTrue(modelsData.contains { ($0["id"] as? String) == "claude-opus-4-8[1m]" })
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"{"model":"claude-opus-4-8[1m]","max_tokens":16,"messages":[{"role":"user","content":"Reply OK"}]}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
+        XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-opus-4-8[1m]""#), upstreamRequest.body)
+    }
+
     /// Console API key routes must not receive the Claude Code identity
     /// dress-up. Those credentials bill differently and Anthropic treats
     /// the beta+guard combination as a signal the request is coming from
