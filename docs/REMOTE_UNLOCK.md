@@ -210,8 +210,11 @@ The agent exposes only a local Unix socket at
 active console user with mode `0600`, and the daemon verifies the Unix peer UID
 before handling a request. It accepts health checks and the single
 `typeCredential` operation used after the Mac app has already decrypted and
-validated a human Remote Unlock credential. The agent does not log the
-credential.
+validated a human Remote Unlock credential. Before typing, the agent explicitly
+declares remote user activity, holds a short no-display-sleep assertion, and
+waits for loginwindow to redraw when the display was asleep so the first
+synthetic key press is not consumed merely waking the display. The agent does
+not log the credential.
 
 Verify the installed agent with:
 

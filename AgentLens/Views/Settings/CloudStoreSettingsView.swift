@@ -28,6 +28,20 @@ struct CloudStoreSettingsView: View {
     @StateObject private var purchaseStore = MacHostedQuotaPurchaseStore()
     @State private var showBadgePicker = false
 
+    /// Injected so the Backup & Sync card can read/write the live cloud toggles
+    /// and trigger an on-demand session-log backup. Defaulted to the shared
+    /// singletons so the `#Preview` (and any zero-arg call site) still builds.
+    var settingsManager: SettingsManager = .shared
+    var accountManager: AccountManager = .shared
+    var dataStore: DataStore? = nil
+
+    @State private var isBackingUp = false
+    @State private var backupNoticeError: String?
+    @State private var lastManualBackupAt: Date?
+    @State private var backupProgress: CloudBackupProgressSnapshot?
+    @State private var pendingBackupSessionLogs = 0
+    @State private var pendingBackupChatThreads = 0
+
     var body: some View {
         ZStack {
             EmberSurfaceBackground()
@@ -47,6 +61,10 @@ struct CloudStoreSettingsView: View {
                         planCard
                             .padding(.horizontal, 28)
                     }
+
+                    backupSyncCard
+                        .padding(.horizontal, 28)
+                        .settingsAnchor(SettingsAnchor.cloudSyncToggle)
 
                     capabilityLineup
                         .padding(.horizontal, 28)
@@ -68,6 +86,7 @@ struct CloudStoreSettingsView: View {
         .onAppear {
             entitlement.start()
             Task { await purchaseStore.load() }
+            refreshPendingBackupCounts()
         }
     }
 
@@ -227,6 +246,434 @@ struct CloudStoreSettingsView: View {
         .shadow(color: DesignSystem.Colors.ember.opacity(0.40), radius: 28, y: 14)
         .shadow(color: DesignSystem.Colors.amber.opacity(0.22), radius: 40, y: 0)
     }
+
+    // MARK: - Backup & Sync (the one actionable card)
+    //
+    // The rest of this pane explains and sells Cloud; this card is where the
+    // user actually *does* something. The master toggle turns on end-to-end
+    // encrypted conversation + session-log backup — the exact switch that
+    // feeds the cross-device Streams cockpit — alongside the secondary iCloud
+    // and chat-thread mirrors, live signed-in / Cloud status, and an
+    // on-demand "Back up now". All in the same Aurora glass language.
+
+    private var backupSyncCard: some View {
+        AuroraGlassCardMac {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label("BACKUP & SYNC", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11, weight: .heavy))
+                        .tracking(2.4)
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                    Spacer()
+                    backupStatusChips
+                }
+
+                cloudControlRow(
+                    icon: "lock.icloud.fill",
+                    tint: DesignSystem.Colors.ember,
+                    title: "Conversation & session-log backup",
+                    subtitle: "End-to-end encrypted. Mirrors every conversation to the cloud so the Streams cockpit can search them on iPhone, iPad, and Mac.",
+                    isOn: backupBinding
+                )
+                .accessibilityIdentifier("macCloud.backupToggle")
+
+                if settingsManager.conversationBackupEnabled {
+                    Divider().background(DesignSystem.Colors.border.opacity(0.4))
+
+                    VStack(spacing: 12) {
+                        cloudControlRow(
+                            icon: "icloud.fill",
+                            tint: DesignSystem.Colors.teal,
+                            title: "Mirror sessions to iCloud",
+                            subtitle: "Keep a private copy in your own iCloud account for personal restore.",
+                            isOn: simpleBinding(\.iCloudSessionMirrorEnabled)
+                        )
+                        cloudControlRow(
+                            icon: "bubble.left.and.bubble.right.fill",
+                            tint: DesignSystem.Colors.blaze,
+                            title: "Back up chat thread content",
+                            subtitle: "Sync full chat threads so you can resume them on any device.",
+                            isOn: chatThreadBinding
+                        )
+                    }
+
+                    backupActionRow
+
+                    if isBackingUp, let backupProgress {
+                        backupProgressPanel(backupProgress)
+                    } else if pendingBackupSessionLogs > 0 || pendingBackupChatThreads > 0 {
+                        backupQueueSummary
+                    }
+                }
+
+                if let backupNoticeError {
+                    Label(backupNoticeError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("macCloud.backupError")
+                } else if !accountManager.isSignedIn {
+                    backupHint(
+                        "Sign in to OpenBurnBar to start backing up your conversations.",
+                        icon: "person.crop.circle.badge.exclamationmark"
+                    )
+                } else if !entitlement.isActive {
+                    backupHint(
+                        "Searchable Streams cockpit needs OpenBurnBar Cloud. Backups still upload fully encrypted.",
+                        icon: "sparkles"
+                    )
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var backupQueueSummary: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "tray.full.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.amber)
+            Text(backupQueueSummaryText)
+                .font(.system(size: 11))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.45))
+        )
+    }
+
+    private var backupQueueSummaryText: String {
+        switch (pendingBackupSessionLogs, pendingBackupChatThreads) {
+        case (let logs, 0):
+            return "\(logs) conversation\(logs == 1 ? "" : "s") waiting to back up."
+        case (0, let threads):
+            return "\(threads) chat thread\(threads == 1 ? "" : "s") ready to sync."
+        case (let logs, let threads):
+            return "\(logs) conversation\(logs == 1 ? "" : "s") and \(threads) chat thread\(threads == 1 ? "" : "s") waiting."
+        default:
+            return "Everything is backed up."
+        }
+    }
+
+    private func backupProgressPanel(_ progress: CloudBackupProgressSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(progress.phaseTitle)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(progress.detailLine)
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text("\(Int((progress.overallFraction * 100).rounded()))%")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.ember)
+            }
+
+            ProgressView(value: max(0, min(1, progress.overallFraction)))
+                .progressViewStyle(.linear)
+                .tint(DesignSystem.Colors.ember)
+
+            if let current = progress.currentLabel, progress.phase != .complete {
+                Label(current, systemImage: "doc.text.fill")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
+                ],
+                spacing: 8
+            ) {
+                backupMetricPill(
+                    title: "Records",
+                    value: "\(progress.completedWorkItems)/\(max(progress.totalWorkItems, progress.completedWorkItems))"
+                )
+                backupMetricPill(
+                    title: "Uploaded",
+                    value: "\(progress.uploadedSessionLogs)"
+                )
+                backupMetricPill(
+                    title: "Storage",
+                    value: "\(progress.storageUploads)"
+                )
+                backupMetricPill(
+                    title: "Encrypted",
+                    value: CloudBackupProgressSnapshot.formatBytes(progress.encryptedBytes)
+                )
+                backupMetricPill(
+                    title: "Speed",
+                    value: CloudBackupProgressSnapshot.formatRate(bytesPerSecond: progress.uploadBytesPerSecond)
+                )
+                backupMetricPill(
+                    title: "Throughput",
+                    value: CloudBackupProgressSnapshot.formatRate(recordsPerSecond: progress.recordsPerSecond)
+                )
+                backupMetricPill(
+                    title: "Firestore",
+                    value: "\(progress.firestoreWrites) writes"
+                )
+                backupMetricPill(
+                    title: "Search index",
+                    value: "\(progress.searchIndexCommits)"
+                )
+                backupMetricPill(
+                    title: "Elapsed",
+                    value: formatElapsed(progress.elapsedSeconds)
+                )
+            }
+
+            if let operation = progress.currentOperation, progress.phase != .complete {
+                Text(operation)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(2)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(DesignSystem.Colors.ember.opacity(0.28), lineWidth: 0.6)
+        )
+        .accessibilityIdentifier("macCloud.backupProgress")
+    }
+
+    private func backupMetricPill(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            Text(value)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.black.opacity(0.08))
+        )
+    }
+
+    private func formatElapsed(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return String(format: "%.0fs", seconds)
+        }
+        let minutes = Int(seconds) / 60
+        let remainder = Int(seconds) % 60
+        return "\(minutes)m \(remainder)s"
+    }
+
+    private func refreshPendingBackupCounts() {
+        guard let dataStore else {
+            pendingBackupSessionLogs = 0
+            pendingBackupChatThreads = 0
+            return
+        }
+        pendingBackupSessionLogs = (try? dataStore.countUnsyncedSessionLogs()) ?? 0
+        pendingBackupChatThreads = (try? dataStore.fetchChatThreadSummaries(limit: 500).count) ?? 0
+    }
+
+    private var backupActionRow: some View {
+        HStack(spacing: 12) {
+            Button {
+                triggerBackup()
+            } label: {
+                if isBackingUp {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Backing up…")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                } else {
+                    Label("Back up now", systemImage: "arrow.up.to.line")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+            }
+            .buttonStyle(AuroraSecondaryButtonStyle())
+            .disabled(!accountManager.isSignedIn || isBackingUp || dataStore == nil)
+            .accessibilityIdentifier("macCloud.backupNow")
+
+            if let lastManualBackupAt, !isBackingUp {
+                Text("Last backup \(Self.relativeFormatter.localizedString(for: lastManualBackupAt, relativeTo: Date()))")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var backupStatusChips: some View {
+        HStack(spacing: 6) {
+            statusChip(
+                active: accountManager.isSignedIn,
+                label: accountManager.isSignedIn ? "Signed in" : "Signed out",
+                icon: accountManager.isSignedIn ? "checkmark.seal.fill" : "person.crop.circle"
+            )
+            statusChip(
+                active: entitlement.isActive,
+                label: entitlement.isActive ? "Cloud" : "Free",
+                icon: entitlement.isActive ? "cloud.fill" : "cloud"
+            )
+        }
+    }
+
+    private func statusChip(active: Bool, label: String, icon: String) -> some View {
+        let tint = active ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted
+        return HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 9, weight: .bold))
+            Text(label).font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(tint.opacity(0.14)))
+    }
+
+    private func backupHint(_ text: String, icon: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.system(size: 11))
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func cloudControlRow(
+        icon: String,
+        tint: Color,
+        title: String,
+        subtitle: String,
+        isOn: Binding<Bool>
+    ) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [tint, tint.opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(DesignSystem.Colors.ember)
+        }
+    }
+
+    // MARK: Backup bindings + action
+
+    /// Master switch — flips both the session-log and conversation backup
+    /// flags (via `conversationBackupEnabled`), records consent, and kicks an
+    /// immediate backup on enable so data starts flowing right away.
+    private var backupBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.conversationBackupEnabled },
+            set: { newValue in
+                settingsManager.conversationBackupEnabled = newValue
+                settingsManager.sessionLogCloudBackupConsentShown = true
+                // Kick an immediate backup only for Cloud members so free
+                // users don't trip the paid-gated Firestore rules; everyone
+                // can still press "Back up now" explicitly.
+                if newValue && entitlement.isActive { triggerBackup() }
+            }
+        )
+    }
+
+    private var chatThreadBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.chatThreadContentCloudBackupEnabled },
+            set: { newValue in
+                settingsManager.chatThreadContentCloudBackupEnabled = newValue
+                if newValue { settingsManager.chatThreadContentCloudBackupConsentShown = true }
+            }
+        )
+    }
+
+    private func simpleBinding(_ keyPath: ReferenceWritableKeyPath<SettingsManager, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { settingsManager[keyPath: keyPath] },
+            set: { settingsManager[keyPath: keyPath] = $0 }
+        )
+    }
+
+    /// Builds a transient `CloudSyncCoordinator` from the injected dependencies
+    /// and uploads pending session logs (and chat threads) immediately. The
+    /// coordinator's session-log path runs the cockpit-facet backfill, so the
+    /// Streams cockpit fills in on the next refresh. Idempotent.
+    private func triggerBackup() {
+        guard let dataStore, accountManager.isSignedIn, !isBackingUp else { return }
+        isBackingUp = true
+        backupNoticeError = nil
+        backupProgress = nil
+        let sm = settingsManager
+        let am = accountManager
+        let ds = dataStore
+        Task { @MainActor in
+            let coordinator = CloudSyncCoordinator(
+                dataStore: ds,
+                accountManager: am,
+                settingsManager: sm
+            )
+            await coordinator.performManualBackup { snapshot in
+                backupProgress = snapshot
+            }
+            isBackingUp = false
+            refreshPendingBackupCounts()
+            if let error = coordinator.lastSyncError ?? backupProgress?.errorMessage {
+                backupNoticeError = error
+            } else if backupProgress?.phase == .failed {
+                backupNoticeError = backupProgress?.errorMessage ?? "Backup failed."
+            } else {
+                lastManualBackupAt = Date()
+                backupNoticeError = nil
+            }
+        }
+    }
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
 
     // MARK: - Hero
 

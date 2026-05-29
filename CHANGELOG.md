@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Mercury Remote Unlock display wake
+- The privileged Remote Unlock helper now explicitly wakes a sleeping display
+  and holds a short no-display-sleep assertion before typing the Mac password,
+  preventing the first synthetic key press from being consumed by display wake
+  instead of focusing the login-window password field.
+
 ### Added — Streams conversation cockpit (import, faceted cloud query, export)
 - **Every indexed provider transcript now flows into the encrypted hosted
   backup.** New SQLite/JSONL transcript parsers cover **OpenCode**
@@ -36,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conversation as formatted Markdown. CLI-agent import remains the inbound path.
 
 ### Fixed — Gateway token burn & reliability
+- **The local proxy now accepts legacy Ollama Cloud model aliases.** Requests
+  for unsuffixed cloud models such as `glm-5.1`, or stale provider-prefixed
+  client entries such as `deepseek/deepseek-v4-flash`, resolve to the single
+  advertised `*:cloud` route before execution instead of failing with
+  `No eligible route`.
 - The local gateway (`127.0.0.1:8317`) now **streams upstream responses through
   chunk-by-chunk** instead of buffering the whole completion. Long generations no
   longer blow past client idle timeouts and trigger full-prompt retries that get
