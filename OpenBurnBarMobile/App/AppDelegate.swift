@@ -39,9 +39,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// silently skipped) on builds that don't link the xcframework.
     @MainActor
     private func configureMercuryFileTransfer() {
-        guard let service = MediaFileTransferServiceFactory.make() else { return }
         let receiver = iOSFileTransferService(
-            service: service,
+            service: MediaFileTransferServiceFactory.make(),
             settingsProvider: { @MainActor in
                 // Mirrors the Mac `ChatBackendSettings.mediaBlobTransferEnabled`
                 // key so Remote Config + per-device sync stays consistent.

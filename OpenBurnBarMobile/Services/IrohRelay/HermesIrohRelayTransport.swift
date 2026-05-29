@@ -219,9 +219,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         if let existing = mediaControlCoordinator {
             if existing.connectionID == connectionID {
                 switch existing.phase {
-                case .live, .dialing, .reconnecting:
+                case .live, .dialing:
                     return
-                case .idle, .stopped, .failed:
+                case .idle, .stopped, .failed, .reconnecting:
                     break
                 }
             }
@@ -760,7 +760,11 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         connectionID: String,
         pairingPublicKey: Data
     ) {
-        guard mediaControlCoordinator == nil, let receiver = mediaControlReceiver else {
+        if let existing = mediaControlCoordinator {
+            existing.start(uid: uid, connectionID: connectionID)
+            return
+        }
+        guard let receiver = mediaControlReceiver else {
             return
         }
         startMediaControlCoordinator(

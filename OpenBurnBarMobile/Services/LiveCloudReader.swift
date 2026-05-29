@@ -35,6 +35,20 @@ enum MobileDeviceIdentity {
     }
 }
 
+enum CloudDeviceActivityDateResolver {
+    static func date(from data: [String: Any]) -> Date? {
+        firestoreDate(data["lastActiveAt"])
+            ?? firestoreDate(data["lastSeenAt"])
+            ?? firestoreDate(data["updatedAt"])
+    }
+
+    private static func firestoreDate(_ value: Any?) -> Date? {
+        if let timestamp = value as? Timestamp { return timestamp.dateValue() }
+        if let date = value as? Date { return date }
+        return nil
+    }
+}
+
 /// Production CloudReader + DeviceTrustGateway + EscrowGateway.
 /// Reads Firestore, manages device trust state, handles encrypted credential import.
 @MainActor
@@ -60,43 +74,77 @@ final class LiveCloudReader: CloudReader {
             // Find the primary Mac device to read its sync status
             let devicesSnap = try await db.collection("users/\(uid)/devices")
                 .whereField("platform", isEqualTo: "macOS")
-                .order(by: "lastActiveAt", descending: true)
-                .limit(to: 1)
                 .getDocuments()
 
-            let macDeviceId: String
+            let macDeviceId: String?
             let macName: String
-            if let macDoc = devicesSnap.documents.first {
+            if let macDoc = devicesSnap.documents.max(by: { lhs, rhs in
+                let left = CloudDeviceActivityDateResolver.date(from: lhs.data()) ?? .distantPast
+                let right = CloudDeviceActivityDateResolver.date(from: rhs.data()) ?? .distantPast
+                return left < right
+            }) {
                 let d = macDoc.data()
                 macDeviceId = d["deviceId"] as? String ?? macDoc.documentID
                 macName = d["deviceName"] as? String ?? "Mac"
             } else {
-                // No Mac found; return empty snapshot
-                return CloudSyncStatusSnapshot(
-                    lastPublishedAt: nil,
-                    lastReadAt: Date(),
-                    publisher: nil,
-                    lastErrorClassification: nil
+                macDeviceId = nil
+                macName = "Mac"
+            }
+
+            let syncStatusCollection = db.collection("users/\(uid)/sync_status")
+            if let macDeviceId {
+                let doc = try await syncStatusCollection.document(macDeviceId).getDocument()
+                if doc.exists {
+                    return Self.syncStatusSnapshot(
+                        deviceID: macDeviceId,
+                        displayName: macName,
+                        data: doc.data()
+                    )
+                }
+            }
+
+            let latestSyncStatus = try await syncStatusCollection
+                .order(by: "lastSyncAt", descending: true)
+                .limit(to: 1)
+                .getDocuments()
+            if let latest = latestSyncStatus.documents.first {
+                return Self.syncStatusSnapshot(
+                    deviceID: latest.documentID,
+                    displayName: macName,
+                    data: latest.data()
                 )
             }
 
-            let doc = try await db.document("users/\(uid)/sync_status/\(macDeviceId)").getDocument()
-            let d = doc.data()
-            let lastPublished = (d?["lastSyncAt"] as? Timestamp)?.dateValue()
-            let lastError = d?["lastError"] as? String
-
             return CloudSyncStatusSnapshot(
-                lastPublishedAt: lastPublished,
+                lastPublishedAt: nil,
                 lastReadAt: Date(),
-                publisher: CloudPublisherDevice(
-                    deviceID: macDeviceId,
-                    displayName: macName,
-                    platform: "macOS",
-                    lastSeen: lastPublished ?? Date()
-                ),
-                lastErrorClassification: lastError != nil ? .other(message: lastError!) : nil
+                publisher: nil,
+                lastErrorClassification: nil
             )
         } catch { throw classify(error) }
+    }
+
+    static func syncStatusSnapshot(
+        deviceID: String,
+        displayName: String,
+        data: [String: Any]?,
+        readAt: Date = Date()
+    ) -> CloudSyncStatusSnapshot {
+        let lastPublished = (data?["lastSyncAt"] as? Timestamp)?.dateValue()
+            ?? (data?["updatedAt"] as? Timestamp)?.dateValue()
+        let lastError = data?["lastError"] as? String
+
+        return CloudSyncStatusSnapshot(
+            lastPublishedAt: lastPublished,
+            lastReadAt: readAt,
+            publisher: CloudPublisherDevice(
+                deviceID: deviceID,
+                displayName: displayName,
+                platform: "macOS",
+                lastSeen: lastPublished ?? readAt
+            ),
+            lastErrorClassification: lastError != nil ? .other(message: lastError!) : nil
+        )
     }
 
     func loadProviderSummaries() async throws -> [ProviderConnectionDoc] {
@@ -126,7 +174,7 @@ final class LiveCloudReader: CloudReader {
                 id: did, displayName: d["deviceName"] as? String ?? "Unknown",
                 platform: d["platform"] as? String ?? "unknown",
                 appVersion: d["appVersion"] as? String,
-                lastSeen: (d["lastActiveAt"] as? Timestamp)?.dateValue(),
+                lastSeen: CloudDeviceActivityDateResolver.date(from: d),
                 trustState: did == deviceId ? .current : .trusted,
                 approvedAt: nil, keyVersion: nil,
                 isCurrentDevice: did == deviceId
@@ -156,7 +204,7 @@ final class LiveCloudReader: CloudReader {
                 deviceMap[did] = DeviceRecord(
                     id: existing.id, displayName: existing.displayName,
                     platform: existing.platform, appVersion: existing.appVersion,
-                    lastSeen: existing.lastSeen ?? (d["lastActiveAt"] as? Timestamp)?.dateValue(),
+                    lastSeen: existing.lastSeen ?? CloudDeviceActivityDateResolver.date(from: d),
                     trustState: trustState, approvedAt: approvedAt,
                     keyVersion: keyVersion, isCurrentDevice: existing.isCurrentDevice
                 )
@@ -165,7 +213,7 @@ final class LiveCloudReader: CloudReader {
                     id: did, displayName: d["deviceName"] as? String ?? "Unknown",
                     platform: d["platform"] as? String ?? "unknown",
                     appVersion: d["appVersion"] as? String,
-                    lastSeen: (d["lastActiveAt"] as? Timestamp)?.dateValue(),
+                    lastSeen: CloudDeviceActivityDateResolver.date(from: d),
                     trustState: trustState, approvedAt: approvedAt,
                     keyVersion: keyVersion, isCurrentDevice: did == deviceId
                 )
@@ -395,6 +443,7 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
                                               "revokedAt": FieldValue.serverTimestamp()], merge: true)
         }
     }
+
 }
 
 // MARK: - LiveEscrowGateway

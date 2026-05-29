@@ -843,7 +843,6 @@ struct MercuryLiveSheet: View {
     private var canRequestMirror: Bool {
         awaitingRequestID == nil
             && peer.capabilities.contains(.mirrorHost)
-            && controlStreamCoordinator.phase == .live
     }
 
     private var mirrorAutoAccept: Bool {
@@ -1053,6 +1052,10 @@ struct MercuryLiveSheet: View {
         guard canRequestMirror else {
             lastError = mercuryStatusMessage ?? "Mercury is not ready yet."
             return
+        }
+        if controlStreamCoordinator.phase != .live {
+            await controlStreamCoordinator.stop()
+            controlStreamCoordinator.start(uid: uid, connectionID: connectionID)
         }
         controlStreamCoordinator.suspendBackgroundTraffic(for: 30)
         if !retryingAfterControlStreamRefresh {

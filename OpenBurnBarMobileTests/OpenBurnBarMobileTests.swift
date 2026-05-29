@@ -1,5 +1,6 @@
 import XCTest
 import CryptoKit
+import FirebaseFirestore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -110,6 +111,89 @@ final class OpenBurnBarMobileTests: XCTestCase {
         }
 
         XCTAssertTrue(transport.isMediaControlReceiverInstalledForTesting)
+    }
+
+    func testMercuryReceiverCanInstallWithoutBlobBackend() async throws {
+        let receiver = iOSFileTransferService(service: nil, settingsProvider: { true })
+
+        do {
+            _ = try await receiver.bootstrapBlobEndpoint()
+            XCTFail("Expected backendUnavailable")
+        } catch {
+            guard case iOSFileTransferService.Failure.backendUnavailable = error else {
+                return XCTFail("Expected backendUnavailable, got \(error)")
+            }
+        }
+
+        let transport = HermesIrohRelayTransport(
+            directory: InMemoryIrohPairingDirectory(),
+            pairingPublicKeyProvider: MobileFakeIrohPairingPublicKeyProvider(),
+            auditLogger: MobileNoopIrohTransportAuditLogger(),
+            transportFactory: { _ in MobileNoopIrohRelayTransport() }
+        )
+        transport.installMediaControlStream(into: receiver)
+
+        XCTAssertTrue(transport.isMediaControlReceiverInstalledForTesting)
+    }
+
+    func testMobileRootSettingsNotificationRouteIsInstalled() throws {
+        let rootTab = try sourceFile("OpenBurnBarMobile/Views/RootTabView.swift")
+        let rootNavigation = try sourceFile("OpenBurnBarMobile/Views/RootNavigationView.swift")
+
+        XCTAssertTrue(rootTab.contains(#".init("ShowSettings")"#))
+        XCTAssertTrue(rootTab.contains("openSettingsRoute()"))
+        XCTAssertTrue(rootTab.contains("youPath.append(YouRoute.settings)"))
+        XCTAssertTrue(rootNavigation.contains(#".init("ShowSettings")"#))
+        XCTAssertTrue(rootNavigation.contains("openSettingsRoute()"))
+        XCTAssertTrue(rootNavigation.contains("selection = .settings"))
+    }
+
+    func testLiveCloudReaderUsesMacLastSeenHeartbeatAsActivityDate() throws {
+        let lastSeen = Date(timeIntervalSince1970: 1_800_000_000)
+        let updated = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let activity = CloudDeviceActivityDateResolver.date(from: [
+            "lastSeenAt": Timestamp(date: lastSeen),
+            "updatedAt": Timestamp(date: updated)
+        ])
+
+        let unwrappedActivity = try XCTUnwrap(activity)
+        XCTAssertEqual(unwrappedActivity.timeIntervalSince1970, lastSeen.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func testLiveCloudReaderBuildsSyncStatusSnapshotFromLatestStatusDoc() throws {
+        let readAt = Date(timeIntervalSince1970: 1_800_000_500)
+        let lastSync = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let snapshot = LiveCloudReader.syncStatusSnapshot(
+            deviceID: "23AA015D-B6C5-434C-8EBA-E33B8B8E4AAA",
+            displayName: "Mac",
+            data: [
+                "lastSyncAt": Timestamp(date: lastSync)
+            ],
+            readAt: readAt
+        )
+
+        let publishedAt = try XCTUnwrap(snapshot.lastPublishedAt)
+        let lastReadAt = try XCTUnwrap(snapshot.lastReadAt)
+        XCTAssertEqual(publishedAt.timeIntervalSince1970, lastSync.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(lastReadAt.timeIntervalSince1970, readAt.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(snapshot.publisher?.deviceID, "23AA015D-B6C5-434C-8EBA-E33B8B8E4AAA")
+        XCTAssertEqual(snapshot.publisher?.displayName, "Mac")
+        XCTAssertNil(snapshot.lastErrorClassification)
+    }
+
+    func testLiveCloudReaderCarriesSyncStatusErrorClassification() {
+        let snapshot = LiveCloudReader.syncStatusSnapshot(
+            deviceID: "mac-1",
+            displayName: "Mac",
+            data: [
+                "lastError": "writer failed"
+            ],
+            readAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(snapshot.lastErrorClassification, .other(message: "writer failed"))
     }
 
     // MARK: - Stream Session Projection
@@ -749,6 +833,20 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
     }
 
+    private func sourceFile(_ relativePath: String) throws -> String {
+        var root = URL(fileURLWithPath: #filePath)
+        let fileManager = FileManager.default
+        while root.path != "/" {
+            let project = root.appendingPathComponent("OpenBurnBar.xcodeproj")
+            if fileManager.fileExists(atPath: project.path) {
+                let url = root.appendingPathComponent(relativePath)
+                return try String(contentsOf: url, encoding: .utf8)
+            }
+            root.deleteLastPathComponent()
+        }
+        throw NSError(domain: "OpenBurnBarMobileTests", code: 1)
+    }
+
     private func makeUsage(
         provider: AgentProvider,
         sessionId: String,
@@ -784,6 +882,42 @@ final class ScreenShareControlInputPolicyTests: XCTestCase {
                 heldDuration: ScreenShareControlInputPolicy.rightClickHoldDuration
             ),
             1
+        )
+        XCTAssertEqual(ScreenShareControlInputPolicy.rightClickHoldDelayNanoseconds, 550_000_000)
+    }
+
+    func testPendingControlRightClickCancelsOnlyAfterGestureBecomesScrollOrPan() {
+        XCTAssertFalse(
+            ScreenShareControlInputPolicy.shouldCancelPendingControlRightClick(
+                distance: 12,
+                panStartDistance: 30,
+                isEdgeScrollGesture: false,
+                hasResolvedClickPoint: true
+            )
+        )
+        XCTAssertFalse(
+            ScreenShareControlInputPolicy.shouldCancelPendingControlRightClick(
+                distance: 34,
+                panStartDistance: 30,
+                isEdgeScrollGesture: false,
+                hasResolvedClickPoint: true
+            )
+        )
+        XCTAssertTrue(
+            ScreenShareControlInputPolicy.shouldCancelPendingControlRightClick(
+                distance: 34,
+                panStartDistance: 30,
+                isEdgeScrollGesture: false,
+                hasResolvedClickPoint: false
+            )
+        )
+        XCTAssertTrue(
+            ScreenShareControlInputPolicy.shouldCancelPendingControlRightClick(
+                distance: 12,
+                panStartDistance: 30,
+                isEdgeScrollGesture: true,
+                hasResolvedClickPoint: true
+            )
         )
     }
 

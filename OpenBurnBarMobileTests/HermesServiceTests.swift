@@ -382,7 +382,7 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.suggestedRelayConnection?.id, "relay-new")
     }
 
-    func testSuggestedRelayConnectionStillAttemptsStaleOnlineRelay() {
+    func testSuggestedRelayConnectionRejectsStaleOnlineRelay() {
         let stale = HermesConnectionRecord(
             id: "relay-stale",
             displayName: "Stale Mac Relay",
@@ -390,17 +390,40 @@ final class HermesServiceTests: XCTestCase {
             status: .online,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
             relayEncryption: HermesRelayCrypto.algorithm,
-            realtimeRelayLastSeenAt: Date().addingTimeInterval(-10 * 60),
+            realtimeRelayLastSeenAt: Date().addingTimeInterval(-60 * 60),
             capabilities: ["chat_completions", "remote_relay"],
-            lastSeenAt: Date().addingTimeInterval(-10 * 60),
-            updatedAt: Date().addingTimeInterval(-10 * 60)
+            lastSeenAt: Date().addingTimeInterval(-60 * 60),
+            updatedAt: Date().addingTimeInterval(-60 * 60)
         )
         let service = HermesService(relayTransport: FakeHermesRelayTransport())
         service.connections = [.localDefault, stale]
 
-        XCTAssertEqual(service.suggestedRelayConnection?.id, stale.id)
-        XCTAssertTrue(service.selectConnection(stale, refresh: false))
-        XCTAssertEqual(service.selectedConnection.id, stale.id)
+        XCTAssertNil(service.suggestedRelayConnection)
+        XCTAssertFalse(service.selectConnection(stale, refresh: false))
+        XCTAssertEqual(service.selectedConnection.id, HermesConnectionRecord.localDefault.id)
+        XCTAssertTrue(service.lastError?.contains("stopped checking in") ?? false)
+    }
+
+    func testSuggestedRelayConnectionKeepsBackgroundCadenceRelayUsable() {
+        let backgroundCadence = HermesConnectionRecord(
+            id: "relay-background",
+            displayName: "Backgrounded Mac Relay",
+            mode: .relayLink,
+            status: .online,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            realtimeRelayLastSeenAt: Date().addingTimeInterval(-12 * 60),
+            capabilities: ["chat_completions", "remote_relay"],
+            lastSeenAt: Date().addingTimeInterval(-12 * 60),
+            updatedAt: Date().addingTimeInterval(-12 * 60)
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, backgroundCadence]
+
+        XCTAssertEqual(service.suggestedRelayConnection?.id, "relay-background")
+        XCTAssertTrue(service.selectConnection(backgroundCadence, refresh: false))
+        XCTAssertEqual(service.selectedConnection.id, "relay-background")
+        XCTAssertNil(service.lastError)
     }
 
     func testSuggestedRelayConnectionRejectsOfflineRelay() {
