@@ -28,6 +28,17 @@ struct CloudStoreSettingsView: View {
     @StateObject private var purchaseStore = MacHostedQuotaPurchaseStore()
     @State private var showBadgePicker = false
 
+    /// Injected so the Backup & Sync card can read/write the live cloud toggles
+    /// and trigger an on-demand session-log backup. Defaulted to the shared
+    /// singletons so the `#Preview` (and any zero-arg call site) still builds.
+    var settingsManager: SettingsManager = .shared
+    var accountManager: AccountManager = .shared
+    var dataStore: DataStore? = nil
+
+    @State private var isBackingUp = false
+    @State private var backupNoticeError: String?
+    @State private var lastManualBackupAt: Date?
+
     var body: some View {
         ZStack {
             EmberSurfaceBackground()
@@ -47,6 +58,10 @@ struct CloudStoreSettingsView: View {
                         planCard
                             .padding(.horizontal, 28)
                     }
+
+                    backupSyncCard
+                        .padding(.horizontal, 28)
+                        .settingsAnchor(SettingsAnchor.cloudSyncToggle)
 
                     capabilityLineup
                         .padding(.horizontal, 28)
@@ -227,6 +242,257 @@ struct CloudStoreSettingsView: View {
         .shadow(color: DesignSystem.Colors.ember.opacity(0.40), radius: 28, y: 14)
         .shadow(color: DesignSystem.Colors.amber.opacity(0.22), radius: 40, y: 0)
     }
+
+    // MARK: - Backup & Sync (the one actionable card)
+    //
+    // The rest of this pane explains and sells Cloud; this card is where the
+    // user actually *does* something. The master toggle turns on end-to-end
+    // encrypted conversation + session-log backup — the exact switch that
+    // feeds the cross-device Streams cockpit — alongside the secondary iCloud
+    // and chat-thread mirrors, live signed-in / Cloud status, and an
+    // on-demand "Back up now". All in the same Aurora glass language.
+
+    private var backupSyncCard: some View {
+        AuroraGlassCardMac {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label("BACKUP & SYNC", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11, weight: .heavy))
+                        .tracking(2.4)
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                    Spacer()
+                    backupStatusChips
+                }
+
+                cloudControlRow(
+                    icon: "lock.icloud.fill",
+                    tint: DesignSystem.Colors.ember,
+                    title: "Conversation & session-log backup",
+                    subtitle: "End-to-end encrypted. Mirrors every conversation to the cloud so the Streams cockpit can search them on iPhone, iPad, and Mac.",
+                    isOn: backupBinding
+                )
+                .accessibilityIdentifier("macCloud.backupToggle")
+
+                if settingsManager.conversationBackupEnabled {
+                    Divider().background(DesignSystem.Colors.border.opacity(0.4))
+
+                    VStack(spacing: 12) {
+                        cloudControlRow(
+                            icon: "icloud.fill",
+                            tint: DesignSystem.Colors.teal,
+                            title: "Mirror sessions to iCloud",
+                            subtitle: "Keep a private copy in your own iCloud account for personal restore.",
+                            isOn: simpleBinding(\.iCloudSessionMirrorEnabled)
+                        )
+                        cloudControlRow(
+                            icon: "bubble.left.and.bubble.right.fill",
+                            tint: DesignSystem.Colors.blaze,
+                            title: "Back up chat thread content",
+                            subtitle: "Sync full chat threads so you can resume them on any device.",
+                            isOn: chatThreadBinding
+                        )
+                    }
+
+                    backupActionRow
+                }
+
+                if let backupNoticeError {
+                    Label(backupNoticeError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("macCloud.backupError")
+                } else if !accountManager.isSignedIn {
+                    backupHint(
+                        "Sign in to OpenBurnBar to start backing up your conversations.",
+                        icon: "person.crop.circle.badge.exclamationmark"
+                    )
+                } else if !entitlement.isActive {
+                    backupHint(
+                        "Searchable Streams cockpit needs OpenBurnBar Cloud. Backups still upload fully encrypted.",
+                        icon: "sparkles"
+                    )
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var backupActionRow: some View {
+        HStack(spacing: 12) {
+            Button {
+                triggerBackup()
+            } label: {
+                if isBackingUp {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Backing up…")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                } else {
+                    Label("Back up now", systemImage: "arrow.up.to.line")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+            }
+            .buttonStyle(AuroraSecondaryButtonStyle())
+            .disabled(!accountManager.isSignedIn || isBackingUp || dataStore == nil)
+            .accessibilityIdentifier("macCloud.backupNow")
+
+            if let lastManualBackupAt, !isBackingUp {
+                Text("Last backup \(Self.relativeFormatter.localizedString(for: lastManualBackupAt, relativeTo: Date()))")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var backupStatusChips: some View {
+        HStack(spacing: 6) {
+            statusChip(
+                active: accountManager.isSignedIn,
+                label: accountManager.isSignedIn ? "Signed in" : "Signed out",
+                icon: accountManager.isSignedIn ? "checkmark.seal.fill" : "person.crop.circle"
+            )
+            statusChip(
+                active: entitlement.isActive,
+                label: entitlement.isActive ? "Cloud" : "Free",
+                icon: entitlement.isActive ? "cloud.fill" : "cloud"
+            )
+        }
+    }
+
+    private func statusChip(active: Bool, label: String, icon: String) -> some View {
+        let tint = active ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted
+        return HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 9, weight: .bold))
+            Text(label).font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(tint.opacity(0.14)))
+    }
+
+    private func backupHint(_ text: String, icon: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.system(size: 11))
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func cloudControlRow(
+        icon: String,
+        tint: Color,
+        title: String,
+        subtitle: String,
+        isOn: Binding<Bool>
+    ) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [tint, tint.opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(DesignSystem.Colors.ember)
+        }
+    }
+
+    // MARK: Backup bindings + action
+
+    /// Master switch — flips both the session-log and conversation backup
+    /// flags (via `conversationBackupEnabled`), records consent, and kicks an
+    /// immediate backup on enable so data starts flowing right away.
+    private var backupBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.conversationBackupEnabled },
+            set: { newValue in
+                settingsManager.conversationBackupEnabled = newValue
+                settingsManager.sessionLogCloudBackupConsentShown = true
+                // Kick an immediate backup only for Cloud members so free
+                // users don't trip the paid-gated Firestore rules; everyone
+                // can still press "Back up now" explicitly.
+                if newValue && entitlement.isActive { triggerBackup() }
+            }
+        )
+    }
+
+    private var chatThreadBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.chatThreadContentCloudBackupEnabled },
+            set: { newValue in
+                settingsManager.chatThreadContentCloudBackupEnabled = newValue
+                if newValue { settingsManager.chatThreadContentCloudBackupConsentShown = true }
+            }
+        )
+    }
+
+    private func simpleBinding(_ keyPath: ReferenceWritableKeyPath<SettingsManager, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { settingsManager[keyPath: keyPath] },
+            set: { settingsManager[keyPath: keyPath] = $0 }
+        )
+    }
+
+    /// Builds a transient `CloudSyncCoordinator` from the injected dependencies
+    /// and uploads pending session logs (and chat threads) immediately. The
+    /// coordinator's session-log path runs the cockpit-facet backfill, so the
+    /// Streams cockpit fills in on the next refresh. Idempotent.
+    private func triggerBackup() {
+        guard let dataStore, accountManager.isSignedIn, !isBackingUp else { return }
+        isBackingUp = true
+        backupNoticeError = nil
+        let sm = settingsManager
+        let am = accountManager
+        let ds = dataStore
+        Task { @MainActor in
+            let coordinator = CloudSyncCoordinator(
+                dataStore: ds,
+                accountManager: am,
+                settingsManager: sm
+            )
+            await coordinator.syncSessionLogs()
+            await coordinator.syncChatThreads()
+            isBackingUp = false
+            if let error = coordinator.lastSyncError {
+                backupNoticeError = error
+            } else {
+                lastManualBackupAt = Date()
+            }
+        }
+    }
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
 
     // MARK: - Hero
 

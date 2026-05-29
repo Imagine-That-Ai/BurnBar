@@ -316,8 +316,12 @@ struct SettingsView: View {
             )
             .navigationTitle("Account")
         case .cloud:
-            CloudStoreSettingsView()
-                .navigationTitle("OpenBurnBar Cloud")
+            CloudStoreSettingsView(
+                settingsManager: settingsManager,
+                accountManager: accountManager,
+                dataStore: dataStore
+            )
+            .navigationTitle("OpenBurnBar Cloud")
         case .agents:
             AgentsSettingsView(
                 settingsManager: settingsManager,
