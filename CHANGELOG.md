@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Mercury Remote Unlock display wake
+- The privileged Remote Unlock helper now explicitly wakes a sleeping display
+  and holds a short no-display-sleep assertion before typing the Mac password,
+  preventing the first synthetic key press from being consumed by display wake
+  instead of focusing the login-window password field.
+
 ### Added — Streams conversation cockpit (import, faceted cloud query, export)
 - **Every indexed provider transcript now flows into the encrypted hosted
   backup.** New SQLite/JSONL transcript parsers cover **OpenCode**

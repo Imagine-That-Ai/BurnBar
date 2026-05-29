@@ -32,7 +32,13 @@ if [[ ! -S "$SOCKET_PATH" ]]; then
   exit 1
 fi
 
-console_owner="$(stat -f '%Su' /dev/console)"
+console_owner="$(
+  scutil <<< 'show State:/Users/ConsoleUser' 2>/dev/null \
+    | awk -F ' : ' '/Name :/ { print $2; exit }'
+)"
+if [[ -z "$console_owner" || "$console_owner" == "loginwindow" || "$console_owner" == "root" ]]; then
+  console_owner="$(stat -f '%Su' /dev/console)"
+fi
 socket_owner="$(stat -f '%Su' "$SOCKET_PATH")"
 socket_mode="$(stat -f '%Lp' "$SOCKET_PATH")"
 
@@ -46,31 +52,40 @@ if [[ "$socket_mode" != "600" ]]; then
   exit 1
 fi
 
-health="$(
+responses="$(
   python3 - <<'PY'
 import json
 import socket
 
 path = "/var/run/openburnbar-remote-access-agent.sock"
-client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-client.settimeout(2.0)
-client.connect(path)
-client.sendall(json.dumps({"operation": "health", "password": ""}).encode("utf-8") + b"\n")
-print(client.recv(4096).decode("utf-8").strip())
+def send(operation):
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(2.0)
+    client.connect(path)
+    client.sendall(json.dumps({"operation": operation, "password": ""}).encode("utf-8") + b"\n")
+    response = client.recv(4096).decode("utf-8").strip()
+    client.close()
+    return response
+
+print(send("health"))
+print(send("wakeDisplay"))
 PY
 )"
+health="$(printf '%s\n' "$responses" | sed -n '1p')"
+wake_probe="$(printf '%s\n' "$responses" | sed -n '2p')"
 
-if ! python3 - "$health" <<'PY'
+if ! python3 - "$health" "$wake_probe" <<'PY'
 import json
 import sys
 
-payload = json.loads(sys.argv[1])
-if payload.get("ok") is not True or payload.get("version") != "1":
-    raise SystemExit(1)
+for line in sys.argv[1:]:
+    payload = json.loads(line)
+    if payload.get("ok") is not True or payload.get("version") != "1":
+        raise SystemExit(1)
 PY
 then
-  echo "error: unexpected health response: $health" >&2
+  echo "error: unexpected agent probe response: health=$health wakeDisplay=$wake_probe" >&2
   exit 1
 fi
 
-printf 'Remote access agent healthy: %s owner=%s mode=%s health=%s\n' "$LABEL" "$socket_owner" "$socket_mode" "$health"
+printf 'Remote access agent healthy: %s owner=%s mode=%s health=%s wakeDisplay=%s\n' "$LABEL" "$socket_owner" "$socket_mode" "$health" "$wake_probe"

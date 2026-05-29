@@ -58,6 +58,7 @@ let package = Package(
             linkerSettings: [
                 .unsafeFlags([
                     "-framework", "ApplicationServices",
+                    "-framework", "IOKit",
                     "-framework", "SystemConfiguration"
                 ])
             ]

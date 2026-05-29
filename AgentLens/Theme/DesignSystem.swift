@@ -24,6 +24,13 @@ enum DesignSystem {
         static let teal   = whimsy
         static let gold   = amber
 
+        // Cooling spectrum — the "power down" inverse of the warm ember brand.
+        // The Quit control uses these so the logo reads as cooling from ember to
+        // ice and draining away into deep navy.
+        static let frost   = Color.adaptive(light: "5EB1EF", dark: "6FC2FF")  // bright sky — top of the drain
+        static let glacier = Color.adaptive(light: "3B82F6", dark: "4D9BF5")  // mid blue
+        static let abyss   = Color.adaptive(light: "1B3A6B", dark: "12294D")  // deep navy — bottom of the drain
+
         // Surfaces — light: coral + tangerine dust (ember / Spanish orange cast);
         // dark: cool slate blue ramp (GitHub/Xcode dark lineage) — warm accents pop on cool chrome.
         static let background      = Color.adaptive(light: "F3E8E6", dark: "0D1117")
@@ -84,6 +91,15 @@ enum DesignSystem {
             colors: [whimsy, whimsy.opacity(0.6)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
+        )
+
+        /// Vertical "cool down + drain" gradient for power-off states:
+        /// bright frost at the top draining to deep navy at the bottom — the
+        /// ember logo going cold. Powers the Quit control's glyph and wash.
+        static let coolDownGradient = LinearGradient(
+            colors: [frost, glacier, abyss],
+            startPoint: .top,
+            endPoint: .bottom
         )
 
         /// Pi runtime accent gradient. Mirrors `UnifiedDesignSystem.piGradient`

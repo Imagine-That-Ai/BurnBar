@@ -74,4 +74,19 @@ final class RemoteAccessConsoleUserResolverTests: XCTestCase {
         XCTAssertFalse(RemoteAccessConsoleUserResolver.isInteractive(name: "root", uid: 501))
         XCTAssertTrue(RemoteAccessConsoleUserResolver.isInteractive(name: "alberto", uid: 501))
     }
+
+    func testDisplayWakePolicyWaitsLongerWhenDisplayWasAsleep() {
+        XCTAssertEqual(
+            RemoteAccessDisplayWakePolicy.settleDelayMicroseconds(displayWasAsleep: false),
+            150_000
+        )
+        XCTAssertEqual(
+            RemoteAccessDisplayWakePolicy.settleDelayMicroseconds(displayWasAsleep: true),
+            900_000
+        )
+        XCTAssertGreaterThan(
+            RemoteAccessDisplayWakePolicy.settleDelayMicroseconds(displayWasAsleep: true),
+            RemoteAccessDisplayWakePolicy.settleDelayMicroseconds(displayWasAsleep: false)
+        )
+    }
 }
