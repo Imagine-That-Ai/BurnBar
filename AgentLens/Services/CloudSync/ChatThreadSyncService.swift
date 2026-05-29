@@ -25,6 +25,10 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
         self.context = context
     }
 
+    func sync() async {
+        await sync(progress: nil)
+    }
+
     /// Uploads chat threads and messages to Firestore for cross-device resume.
     /// Uses `fetchChatThreadSummaries` and `fetchChatMessages` — no unsynced-tracking needed
     /// since chat threads are idempotently written with merge.
