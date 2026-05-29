@@ -103,6 +103,8 @@ struct ScreenShareViewerView: View {
     @State private var tapFeedbackPoint: CGPoint?
     @State private var lastControlClickPoint: CGPoint?
     @State private var controlPressStartedAt: Date?
+    @State private var pendingControlRightClickTask: Task<Void, Never>?
+    @State private var controlRightClickSentForCurrentPress = false
     @State private var cursorPoint: CGPoint?
     @State private var cursorSize: CGFloat = 24
     @State private var cursorStyle: MirrorCursorStyle = .hidden
@@ -487,6 +489,8 @@ struct ScreenShareViewerView: View {
                 controlPanTranslation = .zero
                 tapFeedbackPoint = nil
                 lastControlClickPoint = nil
+                cancelPendingControlRightClick()
+                controlRightClickSentForCurrentPress = false
                 cursorPoint = nil
                 typingFocusTask?.cancel()
                 typingFocusTask = nil
@@ -500,6 +504,8 @@ struct ScreenShareViewerView: View {
                 interactionMode = .view
                 isTyping = false
                 controlPanTranslation = .zero
+                cancelPendingControlRightClick()
+                controlRightClickSentForCurrentPress = false
             }
         }
         .onChange(of: isTyping) { oldValue, newValue in
@@ -522,7 +528,11 @@ struct ScreenShareViewerView: View {
         .onChange(of: autoKeyboardOnTextFocus) { _, _ in
             applyAutoTypeFollowDecision()
         }
-        .onChange(of: interactionMode) { _, _ in
+        .onChange(of: interactionMode) { _, newValue in
+            if newValue != .control {
+                cancelPendingControlRightClick()
+                controlRightClickSentForCurrentPress = false
+            }
             applyAutoTypeFollowDecision()
         }
         .onChange(of: activeRemoteUnlockState?.lockState) { _, newValue in
@@ -530,6 +540,11 @@ struct ScreenShareViewerView: View {
             if newValue == nil || newValue == .unlocked {
                 remoteUnlockPasswordDraft = ""
             }
+        }
+        .onDisappear {
+            cancelPendingControlRightClick()
+            typingFocusTask?.cancel()
+            typingFocusTask = nil
         }
     }
 
@@ -628,20 +643,48 @@ struct ScreenShareViewerView: View {
             .onChanged { value in
                 if controlPressStartedAt == nil {
                     controlPressStartedAt = Date()
+                    let normalized = visibleViewport.normalizedPoint(for: value.startLocation, in: size, contentRect: contentRect)
+                    scheduleControlRightClick(
+                        at: value.startLocation,
+                        normalized: normalized
+                    )
                 }
                 let distance = hypot(value.translation.width, value.translation.height)
+                guard controlRightClickSentForCurrentPress == false else {
+                    controlPanTranslation = .zero
+                    return
+                }
+                let edgeScrollGesture = edgeScrollEnabled
+                    && distance > 14
+                    && isEdgeScrollStart(value.startLocation, in: size)
+                let resolvedClickPoint = resolvedClickPoint(for: value, distance: distance, in: size)
+                let shouldCancelRightClick = ScreenShareControlInputPolicy.shouldCancelPendingControlRightClick(
+                    distance: distance,
+                    panStartDistance: controlPanStartDistance(in: size),
+                    isEdgeScrollGesture: edgeScrollGesture,
+                    hasResolvedClickPoint: resolvedClickPoint != nil
+                )
+                if shouldCancelRightClick {
+                    cancelPendingControlRightClick()
+                }
                 guard distance > controlPanStartDistance(in: size),
-                      isEdgeScrollStart(value.startLocation, in: size) == false,
-                      resolvedClickPoint(for: value, distance: distance, in: size) == nil else {
+                      edgeScrollGesture == false,
+                      resolvedClickPoint == nil else {
                     controlPanTranslation = .zero
                     return
                 }
                 controlPanTranslation = value.translation
             }
             .onEnded { value in
-                defer { controlPanTranslation = .zero }
+                defer {
+                    controlPanTranslation = .zero
+                    cancelPendingControlRightClick()
+                    controlRightClickSentForCurrentPress = false
+                }
                 let pressStartedAt = controlPressStartedAt
                 controlPressStartedAt = nil
+
+                guard controlRightClickSentForCurrentPress == false else { return }
 
                 let distance = hypot(value.translation.width, value.translation.height)
                 if edgeScrollEnabled,
@@ -669,6 +712,33 @@ struct ScreenShareViewerView: View {
                 guard distance > controlPanStartDistance(in: size) else { return }
                 viewport.applyTranslation(value.translation, in: size)
             }
+    }
+
+    private func scheduleControlRightClick(at point: CGPoint, normalized: (x: Double, y: Double)) {
+        cancelPendingControlRightClick()
+        controlRightClickSentForCurrentPress = false
+        pendingControlRightClickTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: ScreenShareControlInputPolicy.rightClickHoldDelayNanoseconds)
+            guard Task.isCancelled == false else { return }
+            controlRightClickSentForCurrentPress = true
+            controlPanTranslation = .zero
+            lastControlClickPoint = point
+            cursorPoint = point
+            showTapFeedback(at: point)
+            triggerControlRightClickHaptic()
+            sendTapIntent(normalized.x, normalized.y, 1)
+        }
+    }
+
+    private func cancelPendingControlRightClick() {
+        pendingControlRightClickTask?.cancel()
+        pendingControlRightClickTask = nil
+    }
+
+    private func triggerControlRightClickHaptic() {
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
     }
 
     private func handleControlTap(normalized: (x: Double, y: Double), at point: CGPoint, pressStartedAt: Date?) {
@@ -1323,9 +1393,21 @@ enum ScreenShareSmartTextActivationPolicy {
 enum ScreenShareControlInputPolicy {
     static let rightClickHoldDuration: TimeInterval = 0.55
     static let trackpadTapTravelLimit: CGFloat = 8
+    static var rightClickHoldDelayNanoseconds: UInt64 {
+        UInt64((rightClickHoldDuration * 1_000_000_000).rounded())
+    }
 
     static func controlClickMouseButton(heldDuration: TimeInterval) -> Int {
         heldDuration >= rightClickHoldDuration ? 1 : 0
+    }
+
+    static func shouldCancelPendingControlRightClick(
+        distance: CGFloat,
+        panStartDistance: CGFloat,
+        isEdgeScrollGesture: Bool,
+        hasResolvedClickPoint: Bool
+    ) -> Bool {
+        isEdgeScrollGesture || (distance > panStartDistance && hasResolvedClickPoint == false)
     }
 
     static func trackpadClickMouseButton(heldDuration: TimeInterval, travelDistance: CGFloat) -> Int? {
