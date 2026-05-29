@@ -76,6 +76,24 @@ final class InlineAgentMirrorController: ObservableObject {
     private var handlersInstalled = false
     private var didInstallLongTermReferenceHandler = false
     private weak var hermesService: HermesService?
+    /// Runtime id (e.g. `hermes`, `codex`, `claude`) whose CLI the Mac should
+    /// launch interactively and pin the mirror to. Set via `start(_:runtime:)`.
+    private var agentRuntimeID: String = AssistantRuntimeID.hermes.rawValue
+
+    /// `true` once the phone-control lane is set up and keystrokes can flow to
+    /// the live TUI. Drives the keyboard affordance in the focused terminal.
+    /// (Direct-download Mac build only; the sandboxed MAS Mac ignores injected
+    /// keystrokes because Accessibility is unavailable there.)
+    @Published private(set) var controlInputReady: Bool = false
+    private var controlSender: PhoneControlSender?
+    private var controlSetupTask: Task<Void, Never>?
+    private static let emptyControlAuthority = HermesRealtimeRelayAuthorityEnvelope(
+        peerNodeId: "",
+        counter: 0,
+        timestamp: Date(timeIntervalSince1970: 0),
+        intentHashBlake3: "",
+        signatureEd25519: ""
+    )
 
     /// Total approval window after which we treat the request as dead.
     /// The Mac shows a ringing UI by default and may take a while if the
@@ -87,9 +105,11 @@ final class InlineAgentMirrorController: ObservableObject {
     private let approvalHintDelaySeconds: TimeInterval = 4
 
     /// Start the mirror flow. Idempotent — calling while already live is
-    /// cheap.
-    func start(hermesService: HermesService) {
+    /// cheap. `runtime` selects which agent CLI the Mac launches interactively
+    /// (and pins the mirror to). Defaults to Hermes for back-compat.
+    func start(hermesService: HermesService, runtime: String = AssistantRuntimeID.hermes.rawValue) {
         self.hermesService = hermesService
+        self.agentRuntimeID = runtime
         switch phase {
         case .live, .waitingForFrames, .connectingStream, .askingMirror, .waitingForApproval:
             return
@@ -219,7 +239,11 @@ final class InlineAgentMirrorController: ObservableObject {
             focusFollowMode: AgentFocusFollowMode.smart.rawValue,
             viewerId: viewerID,
             viewerDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
-            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
+            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId,
+            agentTerminal: HermesRealtimeRelayAgentTerminalRequest(
+                runtimeId: agentRuntimeID,
+                interactive: true
+            )
         )
 
         let frame = HermesRealtimeRelayFrame(
@@ -368,6 +392,88 @@ final class InlineAgentMirrorController: ObservableObject {
         approvalHintTask?.cancel()
         approvalHintTask = nil
         phase = .live
+        prepareControlInput()
+    }
+
+    // MARK: - Live keystroke input (focused TUI)
+
+    /// Bring up the phone-control lane so keystrokes typed on the phone reach
+    /// the live terminal. Mirrors `MercuryLiveSheet.startPhoneControlIfPossible`
+    /// but scoped to the inline controller's warm coordinator. Idempotent.
+    func prepareControlInput() {
+        guard controlSender == nil, controlSetupTask == nil,
+              let coordinator,
+              let uid = activeUID,
+              let connectionID = activeConnectionID else { return }
+        controlSetupTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.controlSetupTask = nil }
+            do {
+                await LiveDeviceTrustGateway().registerSelfIfNeeded()
+                try await coordinator.ensureResponsive(uid: uid, connectionID: connectionID)
+                let signingKey = try PhoneControlSigningKeyStore.shared.signingKey()
+                let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+                try await PhoneControlAuthorityPublisher.shared.publish(
+                    uid: uid,
+                    connectionId: connectionID,
+                    deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
+                    peerNodeId: peerNodeId,
+                    publicKey: signingKey.privateKey.publicKey
+                )
+                try await coordinator.send(frame: HermesRealtimeRelayFrame(
+                    type: .controlClassify,
+                    uid: uid,
+                    connectionId: connectionID,
+                    control: HermesRealtimeRelayControlPayload(
+                        streamClass: MediaStreamClass.controlInput.rawValue,
+                        authorityPeerNodeId: peerNodeId
+                    )
+                ))
+                self.controlSender = PhoneControlSender(
+                    peerNodeId: peerNodeId,
+                    uid: uid,
+                    connectionId: connectionID,
+                    signingKeyProvider: { signingKey },
+                    frameSink: { frame in try await coordinator.send(frame: frame) }
+                )
+                self.controlInputReady = true
+                Self.log.info("inline_mirror_control_ready connectionID=\(connectionID, privacy: .public)")
+            } catch {
+                self.controlInputReady = false
+                Self.log.error("inline_mirror_control_setup_failed error=\(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// Send typed text to the live terminal.
+    func sendText(_ text: String) {
+        guard let sender = controlSender, !text.isEmpty else { return }
+        let intent = HermesRealtimeRelayInputIntent(
+            kind: .type,
+            text: text,
+            authority: Self.emptyControlAuthority
+        )
+        Task { try? await sender.send(intent: intent) }
+    }
+
+    /// Send a key / shortcut (e.g. "Return", "Tab", "Escape", arrows, or a
+    /// letter with `["control"]` modifiers for Ctrl-C) to the live terminal.
+    func sendKey(_ key: String, modifiers: [String] = []) {
+        guard let sender = controlSender, !key.isEmpty else { return }
+        let intent = HermesRealtimeRelayInputIntent(
+            kind: .shortcut,
+            key: key,
+            modifiers: modifiers.isEmpty ? nil : modifiers,
+            authority: Self.emptyControlAuthority
+        )
+        Task { try? await sender.send(intent: intent) }
+    }
+
+    private func teardownControlInput() {
+        controlSetupTask?.cancel()
+        controlSetupTask = nil
+        controlSender = nil
+        controlInputReady = false
     }
 
     private func clearMirrorState() {
@@ -375,6 +481,7 @@ final class InlineAgentMirrorController: ObservableObject {
         activeMirrorRequestID = nil
         activeMirrorSessionId = nil
         activeMirrorViewerId = nil
+        teardownControlInput()
     }
 
     private func deviceDisplayName() -> String {

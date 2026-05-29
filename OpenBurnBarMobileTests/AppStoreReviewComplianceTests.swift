@@ -187,6 +187,25 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("openAgentWatchRoute()"))
     }
 
+    func testMobileRootsHandleSettingsNotificationRoutes() throws {
+        try skipSourceInspectionInSimulatorAppHost()
+        let mobileViewsURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Views")
+        let rootTabURL = mobileViewsURL.appendingPathComponent("RootTabView.swift")
+        let rootNavigationURL = mobileViewsURL.appendingPathComponent("RootNavigationView.swift")
+
+        let rootTab = try String(contentsOf: rootTabURL, encoding: .utf8)
+        let rootNavigation = try String(contentsOf: rootNavigationURL, encoding: .utf8)
+
+        XCTAssertTrue(rootTab.contains("ShowSettings"))
+        XCTAssertTrue(rootTab.contains("openSettingsRoute()"))
+        XCTAssertTrue(rootTab.contains("youPath.append(YouRoute.settings)"))
+        XCTAssertTrue(rootNavigation.contains("ShowSettings"))
+        XCTAssertTrue(rootNavigation.contains("openSettingsRoute()"))
+        XCTAssertTrue(rootNavigation.contains("selection = .settings"))
+    }
+
     func testReleaseAppCheckUsesAppAttestEntitlementForEnforcedFirestore() throws {
         try skipSourceInspectionInSimulatorAppHost()
         let entitlementsURL = repoRoot()

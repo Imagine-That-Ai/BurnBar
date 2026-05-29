@@ -50,7 +50,9 @@ import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -592,6 +594,68 @@ fun ScreenShareViewerScreen(
             )
         }
 
+        val isZoomed = smartZoomDecision.scale > 1.01f
+        val onZoomIn = {
+            beginManualSmartZoomOverride()
+            val currentScale = smartZoomDecision.scale
+            val currentTranslation = smartZoomDecision.translation
+            val newScale = (currentScale * 1.25f).coerceIn(1f, 5f)
+            val bounds = ScreenMirrorInputPolicy.surfaceBounds(surfaceLayoutSize, fit, aspect)
+            if (bounds != null) {
+                val halfW = bounds.width / 2f
+                val halfH = bounds.height / 2f
+                val maxTransX = halfW * (newScale - 1f)
+                val maxTransY = halfH * (newScale - 1f)
+                val newTranslationX = (currentTranslation.x * 1.25f).coerceIn(-maxTransX, maxTransX)
+                val newTranslationY = (currentTranslation.y * 1.25f).coerceIn(-maxTransY, maxTransY)
+                smartZoomDecision = ScreenShareSmartZoomDecision(
+                    scale = newScale,
+                    translation = Offset(newTranslationX, newTranslationY),
+                    isAutoFollowing = false
+                )
+            } else {
+                smartZoomDecision = ScreenShareSmartZoomDecision(
+                    scale = newScale,
+                    translation = Offset.Zero,
+                    isAutoFollowing = false
+                )
+            }
+        }
+        val onZoomOut = {
+            beginManualSmartZoomOverride()
+            val currentScale = smartZoomDecision.scale
+            val currentTranslation = smartZoomDecision.translation
+            val newScale = (currentScale * 0.8f).coerceIn(1f, 5f)
+            val bounds = ScreenMirrorInputPolicy.surfaceBounds(surfaceLayoutSize, fit, aspect)
+            if (bounds != null) {
+                val halfW = bounds.width / 2f
+                val halfH = bounds.height / 2f
+                val maxTransX = halfW * (newScale - 1f)
+                val maxTransY = halfH * (newScale - 1f)
+                val newTranslationX = (currentTranslation.x * 0.8f).coerceIn(-maxTransX, maxTransX)
+                val newTranslationY = (currentTranslation.y * 0.8f).coerceIn(-maxTransY, maxTransY)
+                smartZoomDecision = ScreenShareSmartZoomDecision(
+                    scale = newScale,
+                    translation = Offset(newTranslationX, newTranslationY),
+                    isAutoFollowing = false
+                )
+            } else {
+                smartZoomDecision = ScreenShareSmartZoomDecision(
+                    scale = newScale,
+                    translation = Offset.Zero,
+                    isAutoFollowing = false
+                )
+            }
+        }
+        val onResetZoom = {
+            beginManualSmartZoomOverride()
+            smartZoomDecision = ScreenShareSmartZoomDecision(
+                scale = 1f,
+                translation = Offset.Zero,
+                isAutoFollowing = false
+            )
+        }
+
         ScreenMirrorToolsDock(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -674,6 +738,10 @@ fun ScreenShareViewerScreen(
             onReconnect = onReconnect,
             onEnterPictureInPicture = onEnterPictureInPicture,
             onClose = onClose,
+            isZoomed = isZoomed,
+            onZoomIn = onZoomIn,
+            onZoomOut = onZoomOut,
+            onResetZoom = onResetZoom,
         )
     }
 
@@ -1210,6 +1278,10 @@ internal fun ScreenMirrorToolsDock(
     onReconnect: () -> Unit,
     onEnterPictureInPicture: () -> Unit,
     onClose: () -> Unit,
+    isZoomed: Boolean = false,
+    onZoomIn: () -> Unit = {},
+    onZoomOut: () -> Unit = {},
+    onResetZoom: () -> Unit = {},
 ) {
     val dockShape = RoundedCornerShape(24.dp)
     val mercuryBrush = Brush.linearGradient(screenShareControlGradientColors)
@@ -1336,6 +1408,10 @@ internal fun ScreenMirrorToolsDock(
                         onEnterPictureInPicture = onEnterPictureInPicture,
                         onTrayScaleChange = onTrayScaleChange,
                         showTooltip = showTip,
+                        isZoomed = isZoomed,
+                        onZoomIn = onZoomIn,
+                        onZoomOut = onZoomOut,
+                        onResetZoom = onResetZoom,
                     )
                 }
 
@@ -1487,6 +1563,10 @@ private fun MirrorControlShelf(
     onEnterPictureInPicture: () -> Unit,
     onTrayScaleChange: (Float) -> Unit,
     showTooltip: (String) -> Unit,
+    isZoomed: Boolean = false,
+    onZoomIn: () -> Unit = {},
+    onZoomOut: () -> Unit = {},
+    onResetZoom: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -1537,6 +1617,32 @@ private fun MirrorControlShelf(
                     )
                 }
                 MirrorControlGroup.ZOOM -> {
+                    KeycapButton(
+                        icon = Icons.Filled.ZoomIn,
+                        selected = false,
+                        label = "In",
+                        contentDescription = "Zoom in",
+                        onClick = onZoomIn,
+                        onLongClick = { showTooltip("Zoom into the mirrored screen") },
+                    )
+                    KeycapButton(
+                        icon = Icons.Filled.ZoomOut,
+                        selected = false,
+                        label = "Out",
+                        contentDescription = "Zoom out",
+                        onClick = onZoomOut,
+                        onLongClick = { showTooltip("Zoom back out") },
+                    )
+                    if (isZoomed) {
+                        KeycapButton(
+                            icon = Icons.Filled.Refresh,
+                            selected = false,
+                            label = "Reset",
+                            contentDescription = "Reset zoom",
+                            onClick = onResetZoom,
+                            onLongClick = { showTooltip("Return to fit-to-screen") },
+                        )
+                    }
                     KeycapButton(
                         icon = Icons.Filled.AspectRatio,
                         selected = false,
@@ -1595,18 +1701,18 @@ private fun MirrorControlShelf(
                     KeycapButton(
                         icon = Icons.Filled.ContentPaste,
                         selected = false,
-                        label = "Paste",
-                        contentDescription = "Paste to Mac",
+                        label = "To Mac",
+                        contentDescription = "Paste phone clipboard to Mac",
                         onClick = onPasteClipboardToMac,
-                        onLongClick = { showTooltip("Send this device's clipboard to the Mac") },
+                        onLongClick = { showTooltip("Send phone clipboard to the Mac active input") },
                     )
                     KeycapButton(
-                        icon = Icons.Filled.Download,
+                        icon = Icons.Filled.ContentCopy,
                         selected = false,
-                        label = "Grab",
-                        contentDescription = "Grab from Mac",
+                        label = "From Mac",
+                        contentDescription = "Copy Mac clipboard to phone",
                         onClick = onGrabClipboardFromMac,
-                        onLongClick = { showTooltip("Copy the Mac's clipboard to this device") },
+                        onLongClick = { showTooltip("Copy the Mac's clipboard to this phone") },
                     )
                     KeycapButton(
                         icon = Icons.Filled.Close,

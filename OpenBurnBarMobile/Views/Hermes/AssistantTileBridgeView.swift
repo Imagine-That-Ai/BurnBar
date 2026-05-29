@@ -50,7 +50,7 @@ struct AssistantTileBridgeView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
     }
 
     private var detailCopy: String {

@@ -2,7 +2,7 @@
  * @fileoverview Encrypted session logs, cloud search, and project memory callables
  */
 
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, AggregateField } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
@@ -30,10 +30,17 @@ import {
   assertActiveBurnBarProEntitlement,
 } from "./shared.js";
 import { randomBytes } from "node:crypto";
-import type { DocumentData, DocumentSnapshot, QuerySnapshot, WriteBatch } from "firebase-admin/firestore";
+import type { DocumentData, DocumentSnapshot, QuerySnapshot, WriteBatch, Query } from "firebase-admin/firestore";
 import type { ProjectMemorySnapshotDoc } from "../types.js";
 import { stripUndefinedObject } from "../guards.js";
 import { wrapCallableHandler } from "../logging.js";
+import {
+  applyConversationFacetFilters,
+  assertConversationFacetCombination,
+  buildConversationPageQuery,
+  mapSessionLogManifestRow,
+  resolveConversationSort,
+} from "./conversationQuery.js";
 
 // ---------------------------------------------------------------------------
 // Callable: encrypted hosted session logs + cloud search
@@ -650,6 +657,147 @@ export const searchEncryptedConversationIndex = onCall(
       if (hits.length >= limit) break;
     }
     return { hits };
+  }
+));
+
+// ---------------------------------------------------------------------------
+// Callable: faceted conversation cockpit query (zero-knowledge bodies stay sealed)
+// ---------------------------------------------------------------------------
+
+/**
+ * Faceted, paginated query over a paid user's encrypted session-log manifests. Filters and sorts
+ * run entirely on plaintext cockpit facets (provider, project, model, device, token/cost totals,
+ * timing); conversation bodies and titles remain sealed and are returned only as encrypted
+ * envelopes the client decrypts with its on-device vault key. Aggregates (count + cost + token
+ * sums) are computed with Firestore aggregation when an index is available, and degrade to `null`
+ * rather than failing the page when one is missing.
+ */
+export const queryConversations = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  wrapCallableHandler("queryConversations", async (
+    request: CallableRequest<{
+      providers?: unknown;
+      models?: unknown;
+      projectName?: unknown;
+      deviceId?: unknown;
+      sourceType?: unknown;
+      dateFrom?: unknown;
+      dateTo?: unknown;
+      sort?: unknown;
+      direction?: unknown;
+      limit?: unknown;
+      cursorDocId?: unknown;
+      includeAggregates?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before querying conversations.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarProEntitlement(uid);
+
+    const data = request.data ?? {};
+
+    // Equality facets. providers/models may be multi-valued (Firestore `in`, capped at 30), but
+    // only one `in` clause is allowed per query, so reject the both-multi case with guidance.
+    const providers = data.providers == null
+      ? []
+      : requireBoundedStringArray(data.providers, "providers", 20, 80);
+    const models = data.models == null
+      ? []
+      : requireBoundedStringArray(data.models, "models", 20, 120);
+    const projectName = boundedTrimmedString(data.projectName, "projectName", 512, false);
+    const deviceId = boundedTrimmedString(data.deviceId, "deviceId", 200, false);
+    const sourceType = boundedTrimmedString(data.sourceType, "sourceType", 80, false);
+
+    const { providerInClause, modelInClause } = assertConversationFacetCombination(providers, models);
+
+    const dateFrom = optionalISODateString(data.dateFrom, "dateFrom");
+    const dateTo = optionalISODateString(data.dateTo, "dateTo");
+    const hasDateRange = Boolean(dateFrom || dateTo);
+
+    // A range filter must lead the order-by, so a date window forces a startTime sort.
+    const requestedSort = boundedTrimmedString(data.sort, "sort", 32, false);
+    const sort = resolveConversationSort(requestedSort, hasDateRange, data.direction);
+
+    const limit = requireBoundedNumber(data.limit ?? 30, "limit", 1, 100);
+    const includeAggregates = data.includeAggregates !== false;
+
+    const logsRef = db.collection(`users/${uid}/session_logs`);
+    const filtered: Query = applyConversationFacetFilters(logsRef, {
+      providers,
+      models,
+      providerInClause,
+      modelInClause,
+      projectName,
+      deviceId,
+      sourceType,
+      dateFrom,
+      dateTo,
+    });
+
+    // Page query: stable order with a document-id tiebreaker so the cursor never skips or repeats.
+    let pageQuery: Query = buildConversationPageQuery(filtered, sort);
+
+    if (data.cursorDocId != null) {
+      const cursorDocId = safeCloudDocumentID(data.cursorDocId, "cursorDocId");
+      const cursorSnap = await logsRef.doc(cursorDocId).get();
+      if (cursorSnap.exists) {
+        pageQuery = pageQuery.startAfter(cursorSnap);
+      }
+    }
+
+    let pageSnap: QuerySnapshot;
+    try {
+      pageSnap = await pageQuery.limit(limit).get();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/index/iu.test(message)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "This conversation filter needs a Firestore index that is still building. Try again shortly or narrow the filters."
+        );
+      }
+      throw error;
+    }
+
+    const rows = pageSnap.docs.map((doc) => mapSessionLogManifestRow(doc.id, doc.data()));
+
+    const nextCursor = pageSnap.size === limit ? pageSnap.docs[pageSnap.docs.length - 1]?.id ?? null : null;
+
+    let aggregates: { count: number; totalCostUSD: number; totalTokens: number } | null = null;
+    if (includeAggregates) {
+      try {
+        const aggregateSnap = await filtered
+          .aggregate({
+            count: AggregateField.count(),
+            totalCostUSD: AggregateField.sum("costUSD"),
+            totalTokens: AggregateField.sum("totalTokens"),
+          })
+          .get();
+        const aggData = aggregateSnap.data();
+        aggregates = {
+          count: Number(aggData.count ?? 0),
+          totalCostUSD: Number(aggData.totalCostUSD ?? 0),
+          totalTokens: Number(aggData.totalTokens ?? 0),
+        };
+      } catch {
+        // Aggregation needs the same indexes as the filtered query; if one is still building we
+        // return the page without rollups rather than failing the whole request.
+        aggregates = null;
+      }
+    }
+
+    return {
+      rows,
+      nextCursor,
+      sort: sort.sortField,
+      direction: sort.direction,
+      aggregates,
+    };
   }
 ));
 

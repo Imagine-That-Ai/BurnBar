@@ -4,6 +4,7 @@ import OpenBurnBarCore
 struct ActivityView: View {
     @State private var store = ActivityStore()
     @State private var showFilters = false
+    @Environment(\.mobileBackgroundVisibility) private var inheritedBackgroundVisibility
 
     var body: some View {
         List {
@@ -50,7 +51,11 @@ struct ActivityView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(emberBackground.ignoresSafeArea())
+        .background(
+            emberBackground
+                .environment(\.mobileBackgroundVisibility, activityBackgroundVisibility)
+                .ignoresSafeArea()
+        )
         .navigationTitle("Activity")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -73,7 +78,12 @@ struct ActivityView: View {
     }
 
     private var emberBackground: some View {
-        EmberSurfaceBackground()
+        VisibilityAwareEmberSurfaceBackground()
+    }
+
+    private var activityBackgroundVisibility: MobileBackgroundVisibility {
+        (showFilters ? MobileBackgroundVisibility.obscured : MobileBackgroundVisibility.prominent)
+            .constrained(by: inheritedBackgroundVisibility)
     }
 
     // MARK: - Grouping
@@ -117,7 +127,7 @@ private struct DayHeader: View {
         .padding(.horizontal, MobileTheme.Spacing.lg)
         .padding(.vertical, MobileTheme.Spacing.sm)
         .background(
-            EmberSurfaceBackground()
+            VisibilityAwareEmberSurfaceBackground()
                 .opacity(0.5)
         )
     }

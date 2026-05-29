@@ -1398,6 +1398,104 @@ extension BurnBarProviderRouter {
         )
     }
 
+    /// Cross-vendor degrade candidates (Part B3, opt-in).
+    ///
+    /// Returns `[]` unless `policy.isEnabled` is true, so the default routing
+    /// path is byte-for-byte unchanged. When enabled, this deliberately ignores
+    /// the exact-canonical-model invariant: it substitutes a *different*,
+    /// allow-listed OpenAI-compatible model that runs on the user's own key,
+    /// ranked by the same five-factor scorer used for normal routing. The
+    /// gateway only consults this as a last resort after the requested model is
+    /// genuinely unavailable, and logs a `cross_vendor_degrade` event whenever a
+    /// candidate is used.
+    public func crossVendorDegradeRoutes(
+        policy: BurnBarCrossVendorDegradePolicy,
+        excludedRouteKeys: Set<String> = [],
+        taskCategory: ProviderRoutingTaskCategory = .unknown
+    ) async throws -> [BurnBarRankedRoute] {
+        guard policy.isEnabled else { return [] }
+        let configurations = try await configStore.resolvedConfigurations()
+
+        var candidates: [BurnBarProviderRoute] = []
+        var seenRouteKeys: Set<String> = []
+        for vendorID in policy.allowedVendorIDs {
+            guard let configuration = configurations.first(where: { configuration in
+                configuration.provider.id.lowercased() == vendorID
+                    && configuration.settings.isEnabled
+                    && configuration.provider.formatFamily == .openaiCompat
+            }) else { continue }
+
+            guard let modelName = degradeModelName(for: configuration, policy: policy) else { continue }
+
+            let vendorRoutes = selectRoutes(for: modelName, configurations: [configuration])
+                .filter { $0.formatFamily == .openaiCompat }
+                .filter { route in
+                    let key = routeKey(providerID: route.providerID, slotID: route.credentialSlotID)
+                    guard !excludedRouteKeys.contains(key) else { return false }
+                    return seenRouteKeys.insert(key).inserted
+                }
+            candidates.append(contentsOf: vendorRoutes)
+        }
+
+        guard !candidates.isEmpty else { return [] }
+
+        let slotInfoMap = buildSlotInfoMap(for: candidates, configurations: configurations)
+        let costRange = extractCostRange(from: candidates)
+        var ranked = candidates.map { route in
+            BurnBarRankedRoute(
+                route: route,
+                breakdown: computeBreakdown(
+                    for: route,
+                    slotInfoMap: slotInfoMap,
+                    costRange: costRange,
+                    preferredProviderID: nil
+                )
+            )
+        }
+
+        let benchmarkIndex = benchmarkSnapshotsByModelAndTask([])
+        ranked.sort { lhs, rhs in
+            let lhsScore = rankedCompositeScore(
+                lhs,
+                routerMode: .providerFamilyFailover,
+                taskCategory: taskCategory,
+                benchmarkIndex: benchmarkIndex
+            )
+            let rhsScore = rankedCompositeScore(
+                rhs,
+                routerMode: .providerFamilyFailover,
+                taskCategory: taskCategory,
+                benchmarkIndex: benchmarkIndex
+            )
+            if lhsScore != rhsScore {
+                return lhsScore > rhsScore
+            }
+            if lhs.route.providerID != rhs.route.providerID {
+                return lhs.route.providerID < rhs.route.providerID
+            }
+            return (lhs.route.credentialSlotID ?? "legacy") < (rhs.route.credentialSlotID ?? "legacy")
+        }
+
+        return Array(ranked.prefix(policy.maxCandidates))
+    }
+
+    /// Resolves the model name to send a degrade vendor: the policy's preferred
+    /// model when the catalog can resolve it, otherwise the vendor's first
+    /// public catalog model.
+    private func degradeModelName(
+        for configuration: BurnBarResolvedProviderConfiguration,
+        policy: BurnBarCrossVendorDegradePolicy
+    ) -> String? {
+        if let preferred = policy.preferredModelByVendorID[configuration.provider.id.lowercased()],
+           resolveModel(named: preferred, in: configuration) != nil {
+            return preferred
+        }
+        if let publicModel = configuration.preferredModels.first(where: { $0.visibility == .public }) {
+            return publicModel.id
+        }
+        return configuration.preferredModels.first?.id
+    }
+
     /// Returns score breakdowns for all candidate routes without filtering or selection.
     public func scoreBreakdowns(
         modelName: String,

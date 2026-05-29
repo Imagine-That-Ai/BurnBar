@@ -110,3 +110,60 @@ the Mac is locked or at the login window. The expected result is that frames
 resume without consuming another viewer slot, and keyboard input still reaches
 the Mac so the user can enter their password after the OS unlocks the secure
 input path.
+
+## Focused interactive CLI terminal (Phase 12)
+
+"CLI mode" in an agent chat opens a *focused single-window terminal* instead of
+mirroring the whole desktop. When the phone sends the mirror request it includes
+an optional `agentTerminal` payload (`HermesRealtimeRelayAgentTerminalRequest`:
+`runtimeId`, `workingDirectory?`, `interactive`, `modelID?`). On accept, the Mac:
+
+1. Launches that runtime's CLI **interactively** in Terminal.app via
+   `InteractiveTerminalLauncher` (`hermes`, `pi`, `codex`, `claude`, `droid`,
+   `forge`, `agy`, `grok`, `openclaude`) — a bare REPL/TUI, no one-shot
+   `-p`/`exec`/`--print` flags. It reuses the same `open -a Terminal <run.command>`
+   mechanism as the existing one-shot visible-CLI path, so it ships in the
+   sandboxed Mac App Store build too.
+2. Resolves the new Terminal window's `CGWindowID` (diffing the Terminal window
+   set before/after launch, with a unique window-title token as a secondary
+   signal).
+3. Pins the capture to just that window with
+   `MediaSessionCoordinator.switchScreenShareTarget(displayId: nil, windowID:)`
+   — deterministic, and **independent of** `AgentFocusFollowController`
+   (which is `#if !DISTRIBUTION_MAS`). So the focused-window view works in both
+   the direct and Mac App Store builds.
+
+The launched session is terminated (process tree killed, temp dir removed) when
+the mirror viewer is removed.
+
+### Build-specific behavior
+
+| Capability | Direct / notarized | Mac App Store (sandboxed) |
+| --- | --- | --- |
+| Launch interactive agent terminal | yes (`open -a Terminal`) | yes (same path) |
+| Show only that terminal window, focused | yes (windowID pin) | yes (windowID pin) |
+| Inject live keystrokes into the TUI | yes (`MacInputController`) | no — Accessibility unavailable |
+
+Live keystroke typing into the TUI is wired end to end: the focused terminal
+view (`InlineAgentMirrorView`) hosts a hidden `RemoteKeyboardCaptureView` plus a
+floating key bar (Esc / Tab / Ctrl-C / arrows / Return). Keystrokes flow
+`InlineAgentMirrorController.sendText`/`sendKey` -> `PhoneControlSender` -> relay
+-> the Mac control dispatcher -> `MacInputController` -> `CGEvent` into the
+frontmost Terminal window (which the launcher activates). The control lane is set
+up with the same recipe as `MercuryLiveSheet.startPhoneControlIfPossible`
+(device-trust register, authority publish, classify, signed intents) and is only
+effective in the **direct build** — the sandboxed MAS Mac compiles
+`MacInputController` out, so injected frames are dropped and the user falls back
+to the chat composer (flip the `CLIAgentChatPresentationMode` segmented control
+back to `nativeChat`). Needs on-device validation of the full inject path.
+
+### Surfaces
+
+- Hermes / Pi (`HermesTabView`, `ChatView`): CLI mode renders the inline mirror,
+  now pinned to the launched terminal (`InlineAgentMirrorView(runtime:)`).
+- Dedicated CLI agents (`CLIAgentChatThreadView`): the session-interface picker
+  gains `CLIAgentChatPresentationMode.macInteractiveCLI` ("Terminal"), which
+  replaces the transcript with the focused terminal for that runtime.
+- The full-screen Mercury Live viewer (`MercuryLiveSheet`) accepts a
+  `terminalRuntime` and threads the same `agentTerminal` payload, so the
+  fully-wired keyboard/control surface can host the focused terminal.

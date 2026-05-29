@@ -193,5 +193,5 @@ private struct ProviderPickerTile: View {
         alreadyConnected: [.openAI]
     )
     .padding()
-    .background(EmberSurfaceBackground().ignoresSafeArea())
+    .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
 }

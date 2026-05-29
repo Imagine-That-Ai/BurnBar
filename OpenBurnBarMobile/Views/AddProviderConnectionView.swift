@@ -21,7 +21,7 @@ struct AddProviderConnectionView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                EmberSurfaceBackground().ignoresSafeArea()
+                VisibilityAwareEmberSurfaceBackground().ignoresSafeArea()
 
                 MobileProviderWizardView(
                     preselectedProvider: provider,

@@ -31,6 +31,54 @@ data class CloudConversationSearchHit(
     val indexVersion: Int? = null
 )
 
+/**
+ * One encrypted session-log manifest row returned by the `queryConversations` callable. Facets are
+ * plaintext cockpit metadata (provider/project/model/token & cost totals/timing); the conversation
+ * title and preview stay sealed and are opened on-device with the vault key. Numeric facets are
+ * nullable so manifests written before the facet backfill still decode.
+ */
+data class ConversationFacetRow(
+    val id: String,
+    val provider: String?,
+    val projectName: String?,
+    val sourceType: String?,
+    val deviceId: String?,
+    val model: String?,
+    val messageCount: Int?,
+    val inputTokens: Int?,
+    val outputTokens: Int?,
+    val totalTokens: Int?,
+    val costUSD: Double?,
+    val workingDirectory: String?,
+    val toolTags: List<String>,
+    val durationSeconds: Int?,
+    val sealedTitle: CloudVaultSealedText?,
+    val sealedBodyPreview: CloudVaultSealedText?,
+    val storagePath: String?,
+    val bodyHash: String?,
+    val startTimeMs: Long?,
+    val endTimeMs: Long?,
+    val updatedAtMs: Long?
+)
+
+/** Filtered-set aggregates (count + cost + token sums) for the cockpit KPI header; `null` when the
+ *  matching Firestore aggregate index is still building. */
+data class ConversationQueryAggregates(
+    val count: Int,
+    val totalCostUSD: Double,
+    val totalTokens: Long
+)
+
+/** Decoded `queryConversations` response: a page of facet rows, an opaque pagination cursor
+ *  (`null` when exhausted), the effective server-applied sort, and the optional aggregates. */
+data class ConversationQueryResponse(
+    val rows: List<ConversationFacetRow>,
+    val nextCursor: String?,
+    val sort: String?,
+    val direction: String?,
+    val aggregates: ConversationQueryAggregates?
+)
+
 class FunctionsRepository {
     private val functions: FirebaseFunctions = Firebase.functions
 
@@ -59,6 +107,62 @@ class FunctionsRepository {
         )
         val hits = data["hits"].asStringAnyMapList() ?: return emptyList()
         return hits.mapNotNull { it.toCloudConversationSearchHit() }
+    }
+
+    /**
+     * Faceted, paginated query over the signed-in paid user's encrypted session-log manifests.
+     * Filtering and sorting run server-side on plaintext facets; titles, previews, and bodies stay
+     * sealed and are opened on-device. `providers` and `models` may be multi-valued, but the server
+     * rejects filtering by multiple of *both* at once (one Firestore `in` clause per query). A date
+     * window forces a `startTime` sort server-side.
+     */
+    suspend fun queryConversations(
+        providers: List<String> = emptyList(),
+        models: List<String> = emptyList(),
+        projectName: String? = null,
+        deviceId: String? = null,
+        sourceType: String? = null,
+        dateFromIso: String? = null,
+        dateToIso: String? = null,
+        sort: String = "updatedAt",
+        direction: String = "desc",
+        limit: Int = 30,
+        cursorDocId: String? = null,
+        includeAggregates: Boolean = true
+    ): ConversationQueryResponse {
+        val payload = mutableMapOf<String, Any>(
+            "sort" to sort,
+            "direction" to direction,
+            "limit" to limit.coerceIn(1, 100),
+            "includeAggregates" to includeAggregates
+        )
+        if (providers.isNotEmpty()) payload["providers"] = providers
+        if (models.isNotEmpty()) payload["models"] = models
+        projectName?.takeIf { it.isNotBlank() }?.let { payload["projectName"] = it }
+        deviceId?.takeIf { it.isNotBlank() }?.let { payload["deviceId"] = it }
+        sourceType?.takeIf { it.isNotBlank() }?.let { payload["sourceType"] = it }
+        dateFromIso?.takeIf { it.isNotBlank() }?.let { payload["dateFrom"] = it }
+        dateToIso?.takeIf { it.isNotBlank() }?.let { payload["dateTo"] = it }
+        cursorDocId?.takeIf { it.isNotBlank() }?.let { payload["cursorDocId"] = it }
+
+        val data = callMap("queryConversations", payload)
+        val rows = data["rows"].asStringAnyMapList()
+            ?.mapNotNull { it.toConversationFacetRow() }
+            ?: emptyList()
+        val aggregates = (data["aggregates"] as? Map<*, *>)?.let { agg ->
+            ConversationQueryAggregates(
+                count = (agg["count"] as? Number)?.toInt() ?: 0,
+                totalCostUSD = (agg["totalCostUSD"] as? Number)?.toDouble() ?: 0.0,
+                totalTokens = (agg["totalTokens"] as? Number)?.toLong() ?: 0L
+            )
+        }
+        return ConversationQueryResponse(
+            rows = rows,
+            nextCursor = data["nextCursor"] as? String,
+            sort = data["sort"] as? String,
+            direction = data["direction"] as? String,
+            aggregates = aggregates
+        )
     }
 
     suspend fun encryptedSessionBlobDownloadURL(storagePath: String): String {
@@ -309,6 +413,38 @@ private fun Map<String, Any>.toCloudConversationSearchHit(): CloudConversationSe
         semanticHashVersion = (this["semanticHashVersion"] as? Number)?.toInt(),
         indexVersion = (this["indexVersion"] as? Number)?.toInt()
     )
+}
+
+private fun Map<String, Any>.toConversationFacetRow(): ConversationFacetRow? {
+    val id = this["id"] as? String ?: return null
+    return ConversationFacetRow(
+        id = id,
+        provider = this["provider"] as? String,
+        projectName = this["projectName"] as? String,
+        sourceType = this["sourceType"] as? String,
+        deviceId = this["deviceId"] as? String,
+        model = this["model"] as? String,
+        messageCount = (this["messageCount"] as? Number)?.toInt(),
+        inputTokens = (this["inputTokens"] as? Number)?.toInt(),
+        outputTokens = (this["outputTokens"] as? Number)?.toInt(),
+        totalTokens = (this["totalTokens"] as? Number)?.toInt(),
+        costUSD = (this["costUSD"] as? Number)?.toDouble(),
+        workingDirectory = this["workingDirectory"] as? String,
+        toolTags = (this["toolTags"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+        durationSeconds = (this["durationSeconds"] as? Number)?.toInt(),
+        sealedTitle = (this["sealedTitle"] as? Map<*, *>)?.toSealedText(),
+        sealedBodyPreview = (this["sealedBodyPreview"] as? Map<*, *>)?.toSealedText(),
+        storagePath = this["storagePath"] as? String,
+        bodyHash = this["bodyHash"] as? String,
+        startTimeMs = parseIsoTimestampMs(this["startTime"]),
+        endTimeMs = parseIsoTimestampMs(this["endTime"]),
+        updatedAtMs = parseIsoTimestampMs(this["updatedAt"])
+    )
+}
+
+private fun parseIsoTimestampMs(value: Any?): Long? {
+    val raw = value as? String ?: return null
+    return runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrNull()
 }
 
 private fun Map<*, *>.toSealedText(): CloudVaultSealedText? {

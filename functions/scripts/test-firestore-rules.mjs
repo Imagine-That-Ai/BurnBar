@@ -1272,6 +1272,81 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
   );
 });
 
+test("session-log manifest accepts bounded cockpit facets but rejects malformed ones", async () => {
+  const db = authedDb("facet-user");
+  await seedHostedCloudEntitlement("facet-user");
+  const facetBase = {
+    id: "log",
+    deviceId: "device",
+    provider: "codex",
+    sessionId: "session",
+    chunkCount: 1,
+    updatedAt: serverTimestamp(),
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_ok"), {
+      ...facetBase,
+      facetSchemaVersion: 1,
+      model: "gpt-5-codex",
+      messageCount: 12,
+      userWordCount: 340,
+      assistantWordCount: 1820,
+      inputTokens: 12000,
+      outputTokens: 4200,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 9000,
+      totalTokens: 25200,
+      costUSD: 0.42,
+      workingDirectory: "/Users/dev/project",
+      toolTags: ["bash", "edit", "read"],
+      durationSeconds: 540,
+    })
+  );
+
+  // Negative cost is not a real facet value and must be rejected.
+  await assertFails(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_negcost"), {
+      ...facetBase,
+      costUSD: -5,
+    })
+  );
+
+  // Token counters must be integers, never smuggled strings (potential body leak vector).
+  await assertFails(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_strtokens"), {
+      ...facetBase,
+      inputTokens: "full conversation transcript hidden here",
+    })
+  );
+
+  // Tool tag lists are capped so they cannot become a content sidecar.
+  await assertFails(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_bigtags"), {
+      ...facetBase,
+      toolTags: Array.from({ length: 64 }, (_, index) => `tag${index}`),
+    })
+  );
+
+  // Plaintext string facets are length-bounded so none can smuggle a full transcript past the
+  // zero-knowledge boundary (projectName is the widest at 1024 chars).
+  await assertFails(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_bigproject"), {
+      ...facetBase,
+      projectName: "x".repeat(2048),
+    })
+  );
+
+  // A bounded project path is still accepted.
+  await assertSucceeds(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_okproject"), {
+      ...facetBase,
+      projectName: "/Users/dev/Documents/Windsurf/BurnBar",
+      sourceType: "cli_session",
+    })
+  );
+});
+
 test("owners can delete old paid-backup data after entitlement lapses", async () => {
   const db = authedDb("dana");
   const logPath = "users/dana/session_logs/device_log";

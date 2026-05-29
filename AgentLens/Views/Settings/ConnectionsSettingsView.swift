@@ -42,6 +42,10 @@ struct ConnectionsSettingsView: View {
     @State private var refreshingExternalCredentialIDs: Set<String> = []
     @State private var externalCredentialMessages: [String: String] = [:]
     @State private var isAdvancedExpanded = false
+    /// Set when an experimental routing toggle changes so the card can highlight
+    /// the "Restart daemon to apply" action (the env-based opt-ins only take
+    /// effect on the next daemon launch).
+    @State private var experimentalRoutingDirty = false
 
     init(
         settingsManager: SettingsManager,
@@ -397,6 +401,7 @@ struct ConnectionsSettingsView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 routingStrategyCard
                 localGatewayCard
+                experimentalRoutingCard
                 Divider().background(DesignSystem.Colors.border)
                 advancedFooter
             }
@@ -411,7 +416,7 @@ struct ConnectionsSettingsView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                 Spacer()
-                Text("Routing strategy, local gateway, daemon settings")
+                Text("Routing strategy, local gateway, experimental routing, daemon settings")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
@@ -543,6 +548,99 @@ struct ConnectionsSettingsView: View {
         .background(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
                 .fill(DesignSystem.Colors.surface.opacity(0.5))
+        )
+    }
+
+    /// Off-by-default, gray-area routing opt-ins for Anthropic's post-June-15
+    /// metering split. Each toggle maps to a daemon launch env var (see
+    /// `writeLaunchAgentPlist()`), so changes take effect on the next daemon
+    /// restart — hence the explicit apply action.
+    private var experimentalRoutingCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "testtube.2")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.amber)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Text("Experimental routing")
+                            .font(DesignSystem.Typography.body)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("EXPERIMENTAL")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(DesignSystem.Colors.amber)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(DesignSystem.Colors.amber.opacity(0.15)))
+                    }
+                    Text("Off by default. Ways to keep Claude usable after Anthropic's June 15 metering split.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                Spacer()
+            }
+
+            SettingsToggle(
+                title: "Interactive Claude routing",
+                subtitle: "Serve Anthropic subscription requests through a genuine interactive claude session (no -p), not the metered path. Against Anthropic's terms, brittle, and may be throttled without notice. Subscription (sk-ant-oat…) routes only.",
+                icon: "terminal",
+                isOn: experimentalRoutingBinding(\.experimentalInteractiveClaudeEnabled)
+            )
+
+            SettingsToggle(
+                title: "Cross-vendor degrade",
+                subtitle: "When the requested model can't be served, fall back to an allow-listed OpenAI-compatible vendor (DeepSeek, Z.ai, Moonshot) on your own key. Legitimate — but the reply won't be from the model you asked for.",
+                icon: "arrow.triangle.branch",
+                isOn: experimentalRoutingBinding(\.crossVendorDegradeEnabled)
+            )
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: experimentalRoutingDirty ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                    .foregroundStyle(DesignSystem.Colors.amber)
+                Text(experimentalRoutingDirty
+                    ? "Restart the daemon to apply your changes."
+                    : "Changes apply after the daemon restarts.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer()
+                Button {
+                    Task { @MainActor in
+                        await restartLocalGateway()
+                        experimentalRoutingDirty = false
+                    }
+                } label: {
+                    Label("Restart daemon to apply", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(daemonManager.isBusy)
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .stroke(DesignSystem.Colors.amber.opacity(experimentalRoutingDirty ? 0.5 : 0.18), lineWidth: 0.75)
+        )
+    }
+
+    /// Wraps an experimental routing toggle so flipping it both persists the
+    /// setting and marks the card dirty (the env-based opt-ins only apply on the
+    /// next daemon launch).
+    private func experimentalRoutingBinding(
+        _ keyPath: ReferenceWritableKeyPath<SettingsManager, Bool>
+    ) -> Binding<Bool> {
+        Binding(
+            get: { settingsManager[keyPath: keyPath] },
+            set: { newValue in
+                settingsManager[keyPath: keyPath] = newValue
+                experimentalRoutingDirty = true
+            }
         )
     }
 

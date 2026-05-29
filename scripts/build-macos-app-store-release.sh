@@ -126,6 +126,10 @@ if [[ ! -f "$entitlements" ]]; then
 fi
 require_entitlement_bool "$entitlements" "com.apple.security.app-sandbox" "true"
 require_entitlement_value "$entitlements" "com.apple.developer.applesignin" "Default"
+if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" "$entitlements" >/dev/null 2>&1; then
+  echo "MAS entitlements must not include com.apple.security.network.server unless the app exposes reviewer-visible server functionality." >&2
+  exit 1
+fi
 prepare_app_store_connect_auth
 
 if command -v xcodegen >/dev/null 2>&1; then
@@ -200,6 +204,10 @@ actual_entitlements="$release_dir/archive-entitlements.plist"
 codesign -d --entitlements :- "$app_path" > "$actual_entitlements" 2>/dev/null
 require_entitlement_bool "$actual_entitlements" "com.apple.security.app-sandbox" "true"
 require_entitlement_value "$actual_entitlements" "com.apple.developer.applesignin" "Default"
+if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" "$actual_entitlements" >/dev/null 2>&1; then
+  echo "Exported MAS app still has com.apple.security.network.server entitlement." >&2
+  exit 1
+fi
 codesign --verify --strict --verbose=2 "$app_path"
 
 xcodebuild -exportArchive \

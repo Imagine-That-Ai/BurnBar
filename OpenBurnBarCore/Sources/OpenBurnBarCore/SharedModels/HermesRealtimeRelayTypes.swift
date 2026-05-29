@@ -1607,6 +1607,61 @@ public struct HermesRealtimeRelayMediaAck: Codable, Sendable, Equatable {
 /// `project_media_rollout`: the Mac is the only gate. No authority
 /// envelope is required — the iroh pairing already authenticates the
 /// requester.
+/// Optional Phase 12 request to launch an agent's CLI **interactively** in a
+/// visible Mac Terminal and pin the mirror to that single Terminal window,
+/// rather than mirroring the full display. When present (and `interactive`),
+/// the Mac launches `runtimeId`'s CLI, resolves the new Terminal window's
+/// `CGWindowID`, and starts a window-pinned capture. Older Mac peers that do
+/// not know this field keep their existing full-display mirror behavior.
+public struct HermesRealtimeRelayAgentTerminalRequest: Codable, Sendable, Equatable {
+    /// CLI runtime identifier (e.g. `codex`, `claude`, `droid`, `forge`,
+    /// `antigravity`, `grok`, `hermes`, `pi`). Carried as a string for
+    /// forward-compat with runtimes the Mac may not yet recognize.
+    public var runtimeId: String
+    /// Optional working directory to `cd` into before launching the CLI.
+    public var workingDirectory: String?
+    /// Whether to launch an interactive REPL/TUI (true) vs a one-shot run.
+    /// Only `true` drives the window-pinned focused-terminal flow.
+    public var interactive: Bool
+    /// Optional model identifier to pass to the CLI.
+    public var modelID: String?
+
+    public init(
+        runtimeId: String,
+        workingDirectory: String? = nil,
+        interactive: Bool = true,
+        modelID: String? = nil
+    ) {
+        self.runtimeId = runtimeId
+        self.workingDirectory = workingDirectory
+        self.interactive = interactive
+        self.modelID = modelID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case runtimeId
+        case workingDirectory
+        case interactive
+        case modelID
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.runtimeId = try container.decode(String.self, forKey: .runtimeId)
+        self.workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
+        self.interactive = try container.decodeIfPresent(Bool.self, forKey: .interactive) ?? true
+        self.modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(runtimeId, forKey: .runtimeId)
+        try container.encodeIfPresent(workingDirectory, forKey: .workingDirectory)
+        try container.encode(interactive, forKey: .interactive)
+        try container.encodeIfPresent(modelID, forKey: .modelID)
+    }
+}
+
 public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
     /// iOS-generated UUID. Echoed in the ack for correlation.
     public var requestId: String
@@ -1631,6 +1686,11 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
     /// Optional Remote Unlock request metadata. Presence is not enough to
     /// start unlock; the embedded authority must still validate on the Mac.
     public var remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession?
+    /// Optional Phase 12 interactive-CLI request. When present (and
+    /// `interactive`), the Mac launches the runtime's CLI in a visible
+    /// Terminal and pins the mirror to that single window. Older peers omit
+    /// this field and keep the existing full-display mirror behavior.
+    public var agentTerminal: HermesRealtimeRelayAgentTerminalRequest?
 
     public init(
         requestId: String,
@@ -1642,7 +1702,8 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         viewerId: String? = nil,
         viewerDeviceId: String? = nil,
         controlAuthorityPeerNodeId: String? = nil,
-        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil
+        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil,
+        agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = nil
     ) {
         self.requestId = requestId
         self.requestedAt = requestedAt
@@ -1654,6 +1715,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         self.viewerDeviceId = viewerDeviceId
         self.controlAuthorityPeerNodeId = controlAuthorityPeerNodeId
         self.remoteUnlockSession = remoteUnlockSession
+        self.agentTerminal = agentTerminal
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1667,6 +1729,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         case viewerDeviceId
         case controlAuthorityPeerNodeId
         case remoteUnlockSession
+        case agentTerminal
     }
 
     public init(from decoder: Decoder) throws {
@@ -1687,6 +1750,10 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
             HermesRealtimeRelayRemoteUnlockSession.self,
             forKey: .remoteUnlockSession
         )
+        self.agentTerminal = try container.decodeIfPresent(
+            HermesRealtimeRelayAgentTerminalRequest.self,
+            forKey: .agentTerminal
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1701,6 +1768,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         try container.encodeIfPresent(viewerDeviceId, forKey: .viewerDeviceId)
         try container.encodeIfPresent(controlAuthorityPeerNodeId, forKey: .controlAuthorityPeerNodeId)
         try container.encodeIfPresent(remoteUnlockSession, forKey: .remoteUnlockSession)
+        try container.encodeIfPresent(agentTerminal, forKey: .agentTerminal)
     }
 }
 

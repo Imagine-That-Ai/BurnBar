@@ -40,7 +40,7 @@ struct AccountView: View {
     }
 
     private var emberBackground: some View {
-        EmberSurfaceBackground()
+        VisibilityAwareEmberSurfaceBackground()
     }
 
     // MARK: - Profile Card

@@ -448,6 +448,105 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertFalse(upstreamRequests.last?.body.contains("zai/primary/glm-5-turbo") == true)
     }
 
+    func testGatewayCrossVendorDegradeOffByDefaultReturnsNoEligibleRoute() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        // Snapshot fetches the configured vendor's /v1/models exactly once.
+        enqueueOpenAIModelCatalog(["deepseek-chat"], times: 1)
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            crossVendorDegradePolicy: .disabled,
+            modelCatalogSession: session
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["deepseek-chat"],
+                preferredCredentialSlotID: "default"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "default",
+            label: "Default plan",
+            apiKey: "deepseek-route-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, _) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-3-opus","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertNotEqual(response.statusCode, 200)
+        XCTAssertFalse(
+            GatewayUpstreamURLProtocol.recordedRequests().contains { $0.path == "/v1/chat/completions" },
+            "degrade must not fire while disabled"
+        )
+    }
+
+    func testGatewayCrossVendorDegradeServesAllowlistedVendorWhenEnabled() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        // Order: snapshot /v1/models for the configured vendor, then the
+        // degrade /v1/chat/completions.
+        enqueueOpenAIModelCatalog(["deepseek-chat"], times: 1)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-degrade","object":"chat.completion","model":"deepseek-chat","choices":[{"index":0,"message":{"role":"assistant","content":"degrade answered"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy(
+                isEnabled: true,
+                allowedVendorIDs: ["deepseek"],
+                preferredModelByVendorID: ["deepseek": "deepseek-chat"]
+            ),
+            modelCatalogSession: session
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["deepseek-chat"],
+                preferredCredentialSlotID: "default"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "default",
+            label: "Default plan",
+            apiKey: "deepseek-route-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-3-opus","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("degrade answered"))
+        let chatRequests = GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/chat/completions" }
+        XCTAssertEqual(chatRequests.count, 1)
+        XCTAssertTrue(chatRequests.first?.body.contains(#""model":"deepseek-chat""#) == true)
+    }
+
     func testGatewayPreservesLiveDynamicModelIDInsteadOfCatalogFamilyDowngrade() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -4134,6 +4233,7 @@ private final class GatewayHarness: @unchecked Sendable {
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
+        crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy = .disabled,
         modelCatalogSession: URLSession = GatewayHarness.makeUpstreamSession()
     ) throws {
         self.port = try Self.reservePort()
@@ -4169,6 +4269,7 @@ private final class GatewayHarness: @unchecked Sendable {
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
             factoryExecutor: factoryExecutor,
+            crossVendorDegradePolicy: crossVendorDegradePolicy,
             modelHealthStore: modelHealthStore,
             modelCatalogSession: modelCatalogSession,
             logger: BurnBarDaemonLogger(category: "gateway-tests")

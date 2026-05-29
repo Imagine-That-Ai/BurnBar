@@ -35,7 +35,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun StreamsView(
     activityStore: ActivityStore = viewModel(),
-    hermesPendingPrompt: MutableState<String?>? = null
+    hermesPendingPrompt: MutableState<String?>? = null,
+    isCloudMember: Boolean = false,
+    onOpenCloudStore: () -> Unit = {}
 ) {
     val usages by activityStore.usages.collectAsState()
     val projects by activityStore.projects.collectAsState()
@@ -56,7 +58,9 @@ fun StreamsView(
     var isLoadingCloudConversation by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { activityStore.loadInitial() }
-    LaunchedEffect(searchQuery) { activityStore.updateSearch(searchQuery) }
+    LaunchedEffect(searchQuery, selectedSegment) {
+        if (selectedSegment != StreamsSegment.COCKPIT) activityStore.updateSearch(searchQuery)
+    }
 
     // Detect scroll to bottom
     val reachedBottom by remember {
@@ -91,6 +95,14 @@ fun StreamsView(
                     }
                 }
 
+                if (selectedSegment == StreamsSegment.COCKPIT) {
+                    ConversationCockpitSection(
+                        isEntitled = isCloudMember,
+                        onOpenCloudStore = onOpenCloudStore,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+
                 // Search bar
                 OutlinedTextField(
                     value = searchQuery,
@@ -112,6 +124,8 @@ fun StreamsView(
                     contentPadding = PaddingValues(bottom = AuroraSpacing.xxl.dp)
                 ) {
                     when (selectedSegment) {
+                        // Cockpit renders its own surface above this list branch.
+                        StreamsSegment.COCKPIT -> {}
                         StreamsSegment.SESSIONS -> {
                             if (isLoading && usages.isEmpty()) {
                                 items(5) { ShimmerCard(height = 70) }
@@ -221,6 +235,7 @@ fun StreamsView(
                             }
                         }
                     }
+                }
                 }
             }
 

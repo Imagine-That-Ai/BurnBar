@@ -86,6 +86,14 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
     /// Whether to back up session logs to Firestore.
     var sessionLogCloudBackupEnabled: Bool { get set }
 
+    /// Unified conversation cloud-backup switch. Reading reflects the encrypted session-log
+    /// path (the zero-knowledge spine); writing drives both the encrypted backup and the
+    /// legacy metadata mirror so the Streams cockpit has a single user-facing control.
+    var conversationBackupEnabled: Bool { get set }
+
+    /// Cockpit facet-schema generation already backfilled into encrypted manifests.
+    var conversationFacetBackfillVersion: Int { get set }
+
     /// Whether session log backup consent has been shown.
     var sessionLogCloudBackupConsentShown: Bool { get set }
 
