@@ -23,7 +23,7 @@ def stable_id(path: str, salt: str) -> str:
 
 
 def pbx_quote(value: str) -> str:
-    if re.match(r"^[A-Za-z0-9_./+-]+$", value):
+    if re.match(r"^[A-Za-z0-9_./-]+$", value):
         return value
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'

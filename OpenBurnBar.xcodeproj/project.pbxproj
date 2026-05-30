@@ -1484,6 +1484,9 @@
 		2B333B29F9F92767057784CF /* BurnBarDaemonServer+RPCTooling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 211627971F7887BF216037D4 /* BurnBarDaemonServer+RPCTooling.swift */; };
 		C8A791A2EC3014D2BB909501 /* BurnBarDaemonServer+RPCUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A705EADDB1C6C66E88A4529 /* BurnBarDaemonServer+RPCUsage.swift */; };
 		392DA0092D4D5B374DA5D218 /* BurnBarDaemonSocketRPCCoverage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979604A54B71D853D4595C42 /* BurnBarDaemonSocketRPCCoverage.swift */; };
+		16ECFB0BFCD2A87A7B536F2B /* MediaBudgetStatusStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C35F9104513AF034C3E59CA8 /* MediaBudgetStatusStore.swift */; };
+		5A3AE75056339C60B59160BA /* ComputerUseBudgetStatusStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5AFD7A1DAC9CE5C706FE16 /* ComputerUseBudgetStatusStoreTests.swift */; };
+		175FC19DF27A21CDBB654D90 /* MediaBudgetStatusStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D05DB6B84EB390AFD1B735 /* MediaBudgetStatusStoreTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -3018,17 +3021,20 @@
 		41315DD8D8D46A8E2F7136AB /* ConversationStore+FTS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConversationStore+FTS.swift"; path = "AgentLens/Services/DataStore/ConversationStore+FTS.swift"; sourceTree = SOURCE_ROOT; };
 		E83A336A644DF3F99F4D9CB9 /* ConversationStore+TranscriptScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConversationStore+TranscriptScan.swift"; path = "AgentLens/Services/DataStore/ConversationStore+TranscriptScan.swift"; sourceTree = SOURCE_ROOT; };
 		431E8B640968FAD965AA9219 /* BurnBarCLIAuditVerify.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUse/BurnBarCLIAuditVerify.swift; sourceTree = "<group>"; };
-		05FC09CE4E9744DB3FA5A167 /* BurnBarDaemonServer+RPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCClient.swift; sourceTree = "<group>"; };
-		995374555891B371F3FD0B78 /* BurnBarDaemonServer+RPCComputerUse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCComputerUse.swift; sourceTree = "<group>"; };
-		7DCA248FA1DFC7947DDBE13C /* BurnBarDaemonServer+RPCConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCConfig.swift; sourceTree = "<group>"; };
-		38AFA5DE4B05705243D953A1 /* BurnBarDaemonServer+RPCEncoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCEncoding.swift; sourceTree = "<group>"; };
-		BB2DF72DAE6FAC4235BC8B4D /* BurnBarDaemonServer+RPCLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCLifecycle.swift; sourceTree = "<group>"; };
-		8EDCBAD92EC11F39676B3343 /* BurnBarDaemonServer+RPCMissionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCMissionControl.swift; sourceTree = "<group>"; };
-		7AABCE6787F135B0BA2EAAB9 /* BurnBarDaemonServer+RPCRunWorkspaceApproval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCRunWorkspaceApproval.swift; sourceTree = "<group>"; };
-		2BA175A770E0E70D515B9435 /* BurnBarDaemonServer+RPCSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCSearch.swift; sourceTree = "<group>"; };
-		211627971F7887BF216037D4 /* BurnBarDaemonServer+RPCTooling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCTooling.swift; sourceTree = "<group>"; };
-		4A705EADDB1C6C66E88A4529 /* BurnBarDaemonServer+RPCUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCUsage.swift; sourceTree = "<group>"; };
+		05FC09CE4E9744DB3FA5A167 /* BurnBarDaemonServer+RPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCClient.swift"; sourceTree = "<group>"; };
+		995374555891B371F3FD0B78 /* BurnBarDaemonServer+RPCComputerUse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCComputerUse.swift"; sourceTree = "<group>"; };
+		7DCA248FA1DFC7947DDBE13C /* BurnBarDaemonServer+RPCConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCConfig.swift"; sourceTree = "<group>"; };
+		38AFA5DE4B05705243D953A1 /* BurnBarDaemonServer+RPCEncoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCEncoding.swift"; sourceTree = "<group>"; };
+		BB2DF72DAE6FAC4235BC8B4D /* BurnBarDaemonServer+RPCLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCLifecycle.swift"; sourceTree = "<group>"; };
+		8EDCBAD92EC11F39676B3343 /* BurnBarDaemonServer+RPCMissionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCMissionControl.swift"; sourceTree = "<group>"; };
+		7AABCE6787F135B0BA2EAAB9 /* BurnBarDaemonServer+RPCRunWorkspaceApproval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCRunWorkspaceApproval.swift"; sourceTree = "<group>"; };
+		2BA175A770E0E70D515B9435 /* BurnBarDaemonServer+RPCSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCSearch.swift"; sourceTree = "<group>"; };
+		211627971F7887BF216037D4 /* BurnBarDaemonServer+RPCTooling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCTooling.swift"; sourceTree = "<group>"; };
+		4A705EADDB1C6C66E88A4529 /* BurnBarDaemonServer+RPCUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCUsage.swift"; sourceTree = "<group>"; };
 		979604A54B71D853D4595C42 /* BurnBarDaemonSocketRPCCoverage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonSocketRPCCoverage.swift; sourceTree = "<group>"; };
+		C35F9104513AF034C3E59CA8 /* MediaBudgetStatusStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MediaBudgetStatusStore.swift"; sourceTree = "<group>"; };
+		AA5AFD7A1DAC9CE5C706FE16 /* ComputerUseBudgetStatusStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ComputerUseBudgetStatusStoreTests.swift"; sourceTree = "<group>"; };
+		E4D05DB6B84EB390AFD1B735 /* MediaBudgetStatusStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MediaBudgetStatusStoreTests.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7166,6 +7172,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				175FC19DF27A21CDBB654D90 /* MediaBudgetStatusStoreTests.swift in Sources */,
+				5A3AE75056339C60B59160BA /* ComputerUseBudgetStatusStoreTests.swift in Sources */,
+				16ECFB0BFCD2A87A7B536F2B /* MediaBudgetStatusStore.swift in Sources */,
 				509EDFA3664A191D40F8EB14 /* AWTRIXClient.swift in Sources */,
 				8265E12B16507841034B60BC /* AXTypedAccess.swift in Sources */,
 				4BC3CDA09633D2855C5BFE12 /* AccountManager.swift in Sources */,
